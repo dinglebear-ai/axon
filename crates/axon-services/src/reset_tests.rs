@@ -166,6 +166,7 @@ async fn sqlite_wipe_and_remigrate_yields_fresh_schema() {
     assert_eq!(inv.schema_identity, schema);
     for table in [
         "axon_applied_migrations",
+        "embedding_vector_cache_state",
         "axon_observe_events",
         "axon_observe_heartbeats",
         "axon_observe_provider_health",
@@ -175,6 +176,10 @@ async fn sqlite_wipe_and_remigrate_yields_fresh_schema() {
             "composed inventory must include {table}"
         );
     }
+    assert_eq!(
+        inv.tables["embedding_vector_cache_state"].store, None,
+        "cache counter state is bookkeeping, not user content"
+    );
 
     let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
         .await

@@ -78,6 +78,16 @@ pub trait SourceAdapter: Send + Sync {
     ) -> Result<SourceAcquisition> {
         self.acquire(plan, diff).await
     }
+
+    /// Whether the shared executor may acquire the next bounded diff batch
+    /// while it normalizes and publishes the current batch.
+    ///
+    /// Adapters opt in only when acquisition is safe to overlap with their
+    /// normalization hooks and retaining one additional acquisition batch is
+    /// within their resource contract.
+    fn supports_acquisition_prefetch(&self) -> bool {
+        false
+    }
     async fn normalize(
         &self,
         plan: &SourcePlan,

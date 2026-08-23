@@ -100,6 +100,7 @@ fn store_for_table(table: &str) -> Option<&'static str> {
         | "job_heartbeats"
         | "job_artifacts"
         | "provider_reservations"
+        | "embedding_vector_cache"
         | "config_snapshots"
         | "axon_observe_events"
         | "axon_observe_heartbeats"
@@ -115,7 +116,7 @@ fn store_for_table(table: &str) -> Option<&'static str> {
         }
         // Schema bookkeeping is inventoried and checksummed but is not user
         // content, so it does not make a fresh DB appear non-empty.
-        "axon_applied_migrations" => None,
+        "axon_applied_migrations" | "embedding_vector_cache_state" => None,
         _ => None,
     }
 }
@@ -137,7 +138,10 @@ async fn inventory_tables(
             table.clone(),
             SqliteTableInventory {
                 rows: count.max(0) as u64,
-                store: if table == "axon_applied_migrations" {
+                store: if matches!(
+                    table.as_str(),
+                    "axon_applied_migrations" | "embedding_vector_cache_state"
+                ) {
                     None
                 } else {
                     Some(store_for_table(&table).unwrap_or("jobs").to_string())

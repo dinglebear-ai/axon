@@ -216,6 +216,17 @@
 # Apply the query/document instruction prefix when the provider capability
 # supports it. Env: AXON_TEI_QUERY_INSTRUCTION_ENABLED
 # query-instruction-enabled = true
+# Persist dense embedding vectors for warm/repeated ingestion. Disabled by
+# default. Entries become logically unusable seven days after creation. Source
+# deletion cannot immediately purge a shared content-addressed row; a periodic,
+# fixed-budget sweep reclaims expired rows physically and may require multiple
+# passes after a large backlog.
+# Env: AXON_EMBED_CACHE_ENABLED
+# cache-enabled = false
+# Target maximum cached vectors retained with amortized LRU pruning. The cache
+# may temporarily exceed this target between maintenance sweeps.
+# Env: AXON_EMBED_CACHE_MAX_ENTRIES
+# cache-max-entries = 100000
 # Max chunk inputs pooled into one native TEI embedding wave.
 # Env: AXON_EMBED_POOL_MAX_INPUTS
 # pool-max-inputs = 512

@@ -8,11 +8,46 @@ use axon_parse::vertical::{
 };
 
 use crate::{
-    ChunkingProfile, DocumentPreparer, PrepareSourceDocumentRequest,
+    ChunkingProfile, DocumentPreparer, DocumentPreparerConfig, PrepareSourceDocumentRequest,
     preparer::{validate_prepared_document, validate_prepared_document_ranges_against_bounds},
     source_range::bounds_for_text,
     testing::RecordingPreparer,
 };
+
+#[test]
+fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {
+    let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+        markdown_max_chars: 48,
+        markdown_min_chars: 1,
+        markdown_overlap_chars: 0,
+    });
+    let prepared = preparer
+        .prepare(request(
+            ContentKind::Markdown,
+            &format!("# Explicit\n{}", "content ".repeat(40)),
+            "gen-explicit-limits",
+            ChunkingProfile::MarkdownSections,
+        ))
+        .unwrap()
+        .document;
+
+    assert!(prepared.chunks.len() > 1);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.content.chars().count() <= 48)
+    );
+}
+
+#[test]
+fn document_preparation_hot_path_has_no_ambient_config_lookup() {
+    let markdown_source = include_str!("markdown.rs");
+    let preparer_source = include_str!("preparer.rs");
+
+    assert!(!markdown_source.contains("axon_core::config"));
+    assert!(!preparer_source.contains("axon_core::config"));
+}
 
 #[test]
 fn preparer_builds_prepared_document_from_inline_source_dto() {
@@ -51,6 +86,33 @@ fn preparer_builds_prepared_document_from_inline_source_dto() {
     assert_eq!(
         prepared.chunks[0].metadata["chunking_profile"],
         "markdown_sections"
+    );
+}
+
+#[test]
+fn large_intact_markdown_preserves_sections_instead_of_paragraph_fallback() {
+    let paragraphs = (0..2_000)
+        .map(|index| format!("paragraph {index}: {}", "reference text ".repeat(8)))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let text = format!("# Large reference\n\n{paragraphs}\n");
+    assert!(text.len() > crate::chunk_router::LARGE_DOCUMENT_BYTES);
+    let request = request(
+        ContentKind::Markdown,
+        &text,
+        "gen-large-markdown",
+        ChunkingProfile::MarkdownSections,
+    );
+
+    let prepared = DocumentPreparer::default()
+        .prepare(request)
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_method, "heading_sections");
+    assert!(
+        prepared.chunks.len() < 500,
+        "bounded structural windows should not degrade into one chunk per paragraph"
     );
 }
 

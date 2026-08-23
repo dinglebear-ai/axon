@@ -14,9 +14,14 @@ use axon_adapters::{NoopArtifactCandidateSink, NoopSourceEnricher, web::WebSourc
 use axon_api::source::{JobKind, ProviderId};
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
+use axon_document::DocumentPreparer;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_jobs::boundary::JobStore;
+#[cfg(test)]
+use axon_jobs::embedding_cache_store::SqliteEmbeddingVectorCacheStore;
 use axon_jobs::scheduler::ProviderScheduler;
+#[cfg(test)]
+use axon_jobs::scheduler::SqliteWriteGate;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use tokio::sync::{OnceCell, Semaphore};
@@ -61,6 +66,7 @@ pub struct TargetLocalSourceRuntime {
     pub vector_provider_id: ProviderId,
     pub embedding_model: String,
     pub embedding_dimensions: u32,
+    pub document_preparer: DocumentPreparer,
     pub document_prepare_concurrency: usize,
     pub embed_pool_max_inputs: usize,
     pub(crate) db_stage_slots: Arc<Semaphore>,
@@ -69,6 +75,10 @@ pub struct TargetLocalSourceRuntime {
     pub parse_scheduler: Option<Arc<ProviderScheduler>>,
     pub graph_scheduler: Option<Arc<ProviderScheduler>>,
     pub artifact_scheduler: Option<Arc<ProviderScheduler>>,
+    #[cfg(test)]
+    pub(crate) sqlite_write_gate: SqliteWriteGate,
+    #[cfg(test)]
+    pub(crate) embedding_cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
     pub artifact_store: Arc<dyn ArtifactStore>,
     pub document_cache: Arc<dyn DocumentCache>,
     /// Optional evidence delivery boundary for ArtifactCandidate batches. The
@@ -140,9 +150,12 @@ impl TargetLocalSourceRuntime {
             parse_scheduler: None,
             graph_scheduler: None,
             artifact_scheduler: None,
+            sqlite_write_gate: SqliteWriteGate::default(),
+            embedding_cache_store: None,
             embedding_provider_id,
             embedding_model: embedding_model.into(),
             embedding_dimensions,
+            document_preparer: DocumentPreparer::default(),
             document_prepare_concurrency: 1,
             embed_pool_max_inputs: 512,
             db_stage_slots,

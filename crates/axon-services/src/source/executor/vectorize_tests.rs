@@ -1,3 +1,4 @@
+use super::batching::{chunk_batches, split_oversized_document};
 use super::*;
 
 fn prepared_document(chunk_count: usize) -> PreparedDocument {

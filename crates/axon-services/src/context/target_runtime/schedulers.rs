@@ -6,7 +6,9 @@ use axon_adapters::providers::chrome_render::CHROME_RENDER_PROVIDER_ID;
 use axon_adapters::providers::http_fetch::HTTP_FETCH_PROVIDER_ID;
 use axon_api::source::{ProviderId, ProviderKind};
 use axon_core::config::Config;
-use axon_jobs::scheduler::{ProviderCapacityDomain, ProviderScheduler, SchedulerConfig};
+use axon_jobs::scheduler::{
+    ProviderCapacityDomain, ProviderScheduler, SchedulerConfig, SqliteWriteGate,
+};
 use sqlx::SqlitePool;
 
 /// Durable vector-scheduler capacity. `[providers.vector]` has no equivalent
@@ -30,9 +32,10 @@ pub(super) async fn build_runtime_schedulers(
     pool: &SqlitePool,
     embedding_provider_id: &ProviderId,
     vector_provider_id: &ProviderId,
+    write_gate: SqliteWriteGate,
 ) -> Result<RuntimeSchedulers, Box<dyn std::error::Error + Send + Sync>> {
     let authority_id = scheduler_authority_id(&cfg.sqlite_path);
-    let embedding = ProviderScheduler::new(
+    let embedding = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Embedding,
@@ -43,8 +46,9 @@ pub(super) async fn build_runtime_schedulers(
             cfg.embed_tei_max_concurrent as u32,
             cfg.embed_tei_interactive_reserved_requests as u32,
         ),
+        write_gate.clone(),
     )?;
-    let vector = ProviderScheduler::new(
+    let vector = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Vector,
@@ -55,8 +59,9 @@ pub(super) async fn build_runtime_schedulers(
             VECTOR_RESERVATION_CAPACITY,
             VECTOR_RESERVATION_INTERACTIVE_RESERVE,
         ),
+        write_gate.clone(),
     )?;
-    let fetch = ProviderScheduler::new(
+    let fetch = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Fetch,
@@ -64,8 +69,9 @@ pub(super) async fn build_runtime_schedulers(
             authority_id: authority_id.clone(),
         },
         scheduler_config(cfg.fetch_provider_concurrency as u32, 1),
+        write_gate.clone(),
     )?;
-    let render = ProviderScheduler::new(
+    let render = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Render,
@@ -73,8 +79,9 @@ pub(super) async fn build_runtime_schedulers(
             authority_id: authority_id.clone(),
         },
         scheduler_config(cfg.render_provider_concurrency as u32, 1),
+        write_gate.clone(),
     )?;
-    let parse = ProviderScheduler::new(
+    let parse = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Parser,
@@ -82,8 +89,9 @@ pub(super) async fn build_runtime_schedulers(
             authority_id: authority_id.clone(),
         },
         scheduler_config(cfg.embed_prep_concurrency.max(1) as u32, 1),
+        write_gate.clone(),
     )?;
-    let graph = ProviderScheduler::new(
+    let graph = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Graph,
@@ -91,8 +99,9 @@ pub(super) async fn build_runtime_schedulers(
             authority_id: authority_id.clone(),
         },
         scheduler_config(source_db_stage_capacity(pool) as u32, 1),
+        write_gate.clone(),
     )?;
-    let artifact = ProviderScheduler::new(
+    let artifact = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {
             kind: ProviderKind::Artifact,
@@ -100,6 +109,7 @@ pub(super) async fn build_runtime_schedulers(
             authority_id,
         },
         scheduler_config(cfg.batch_concurrency.max(1) as u32, 1),
+        write_gate,
     )?;
 
     for scheduler in [

@@ -262,7 +262,14 @@ pub(crate) fn decision_for_profile(
     // code path executes would be the same disconnect this gate exists to
     // prevent (see `docs/reports/2026-07-09-pipeline-unification-alignment-audit.md`
     // S2-19).
-    let method = if (large || fragment_prone)
+    // The Markdown heading walker is linear and fence-aware, so document size
+    // alone is not a reason to discard structure. Falling back large Markdown
+    // documents to paragraph windows creates thousands of tiny chunks for
+    // reference pages with many short paragraphs. Fragment-prone Markdown
+    // adapters still use the fallback because their input may not be a whole,
+    // structurally intact document.
+    let size_requires_fallback = large && profile != ChunkingProfile::MarkdownSections;
+    let method = if (size_requires_fallback || fragment_prone)
         && fallback_chain.len() > 1
         && profile.has_wired_structural_fallback()
     {

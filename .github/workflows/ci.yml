@@ -942,6 +942,9 @@ jobs:
 
       - name: live RAG embed→retrieve integration test
         env:
+          # Deep async client/service futures can overflow the 2 MiB Rust test
+          # harness stack before the live boundary is exercised.
+          RUST_MIN_STACK: "16777216"
           AXON_DATA_DIR: .cache/axon-ci
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db

@@ -189,11 +189,16 @@ impl Default for Config {
             embed_tei_background_max_concurrent_requests: 3,
             embed_tei_maintenance_max_concurrent_requests: 1,
             embed_tei_query_instruction_enabled: true,
+            embed_cache_enabled: false,
+            embed_cache_max_entries: 100_000,
             embed_pool_max_inputs: 512,
             embed_prep_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(8)
                 .clamp(2, 16),
+            chunking_markdown_max_chars: 2_000,
+            chunking_markdown_min_chars: 500,
+            chunking_overlap_chars: 200,
             embed_max_chunks_per_doc: None,
             embed_max_source_chunks_per_doc: None,
             embed_dedupe_exact_chunks: true,

@@ -341,6 +341,30 @@ async fn cooldown_until_is_cleared_by_mark_terminal_failure_path() {
         cooldown_until.is_none(),
         "cooldown_until must be cleared by the terminal write path too"
     );
+    let stages = store
+        .stages(job.job_id)
+        .await
+        .expect("terminal stage errors must retain the ApiError contract");
+    assert!(stages.iter().all(|stage| stage.error.is_some()));
+    let full_error_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM job_stages \
+         WHERE job_id = ? AND json_extract(error_json, '$.stage') IS NOT NULL",
+    )
+    .bind(job.job_id.0.to_string())
+    .fetch_one(store.pool_for_tests())
+    .await
+    .expect("count full stage errors");
+    assert_eq!(full_error_count as usize, stages.len());
+    let malformed_attempt_error_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM job_attempts \
+         WHERE job_id = ? AND error_json IS NOT NULL \
+           AND json_extract(error_json, '$.stage') IS NULL",
+    )
+    .bind(job.job_id.0.to_string())
+    .fetch_one(store.pool_for_tests())
+    .await
+    .expect("count malformed attempt errors");
+    assert_eq!(malformed_attempt_error_count, 0);
 }
 
 #[tokio::test]

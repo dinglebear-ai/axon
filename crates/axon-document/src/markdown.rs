@@ -10,6 +10,35 @@
 use crate::chunk::DocumentChunk;
 use crate::text::{plain_text_windows, source_range};
 
+mod semantics;
+mod windowing;
+use windowing::{closes_fence, opens_fence, pack_small_sections, split_oversized_sections};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MarkdownChunkLimits {
+    max_chars: usize,
+    min_chars: usize,
+    overlap_chars: usize,
+}
+
+#[cfg(test)]
+const CURRENT_STRUCTURAL_DEFAULTS: MarkdownChunkLimits = MarkdownChunkLimits {
+    max_chars: 2_000,
+    min_chars: 500,
+    overlap_chars: 200,
+};
+
+impl MarkdownChunkLimits {
+    pub(crate) fn new(max_chars: usize, min_chars: usize, overlap_chars: usize) -> Self {
+        let max_chars = max_chars.max(1);
+        Self {
+            max_chars,
+            min_chars: min_chars.clamp(1, max_chars),
+            overlap_chars: overlap_chars.min(max_chars.saturating_sub(1)),
+        }
+    }
+}
+
 /// One ATX heading line: byte offset of its `#` run, its level (1-6), and
 /// its title text.
 struct Heading {
@@ -18,7 +47,15 @@ struct Heading {
     title: String,
 }
 
+#[cfg(test)]
 pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
+    markdown_sections_with_limits(text, CURRENT_STRUCTURAL_DEFAULTS)
+}
+
+pub(crate) fn markdown_sections_with_limits(
+    text: &str,
+    limits: MarkdownChunkLimits,
+) -> Vec<DocumentChunk> {
     let (frontmatter, body_start) = extract_frontmatter(text);
     let mut chunks = Vec::new();
     if frontmatter.is_some() {
@@ -77,7 +114,8 @@ pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
         chunks.push(chunk);
     }
 
-    chunks
+    let chunks = split_oversized_sections(text, chunks, limits);
+    pack_small_sections(chunks, limits)
 }
 
 pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {
@@ -171,14 +209,18 @@ fn extract_frontmatter(text: &str) -> (Option<()>, usize) {
 /// inside a fenced code block, starting the scan at `from`.
 fn fence_aware_headings(text: &str, from: usize) -> Vec<Heading> {
     let mut headings = Vec::new();
-    let mut in_fence = false;
+    let mut open_fence: Option<(char, usize)> = None;
     let mut offset = from;
     for line in text[from..].split_inclusive('\n') {
         let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
         let stripped = trimmed.trim_start();
-        if is_fence_delimiter(stripped) {
-            in_fence = !in_fence;
-        } else if !in_fence && let Some(level) = atx_heading_level(stripped) {
+        if let Some((marker, width)) = open_fence {
+            if closes_fence(stripped, marker, width) {
+                open_fence = None;
+            }
+        } else if let Some((marker, width, _)) = opens_fence(stripped) {
+            open_fence = Some((marker, width));
+        } else if let Some(level) = atx_heading_level(stripped) {
             let title = stripped
                 .trim_start_matches('#')
                 .trim()
@@ -194,10 +236,6 @@ fn fence_aware_headings(text: &str, from: usize) -> Vec<Heading> {
         offset += line.len();
     }
     headings
-}
-
-fn is_fence_delimiter(line: &str) -> bool {
-    (line.starts_with("```") || line.starts_with("~~~")) && !line.trim().is_empty()
 }
 
 fn atx_heading_level(line: &str) -> Option<usize> {

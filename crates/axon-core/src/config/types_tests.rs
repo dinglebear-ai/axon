@@ -2,6 +2,13 @@ use super::*;
 use std::env;
 use std::io::Write as _;
 
+#[test]
+fn embedding_cache_is_opt_in_and_bounded_by_default() {
+    let config = Config::default();
+    assert!(!config.embed_cache_enabled);
+    assert_eq!(config.embed_cache_max_entries, 100_000);
+}
+
 /// Reuse the crate-wide env-mutation lock instead of relying solely on
 /// `#[serial_test::serial]`. `std::env` is process-global — `serial_test`'s
 /// default key and axon-core's `ENV_LOCK` (in

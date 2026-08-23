@@ -255,6 +255,11 @@ Routing order:
 5. Size-based fallback.
 6. Plain text fallback.
 
+Size fallback is profile-aware. Large intact Markdown remains on the linear,
+fence-aware heading parser so section packing and configured minimum sizes are
+preserved; fragment-prone Markdown adapters may still select paragraph windows.
+Large code documents may use their cheaper parser fallback.
+
 ## Chunking Profiles
 
 | Profile | Primary Inputs | Method | Boundary Preference | Typical Output |
@@ -449,6 +454,11 @@ Required behavior:
 - Include breadcrumb/title path in chunk metadata.
 - Include source URL/path anchors.
 - Preserve frontmatter as structured facts when present.
+- Apply configured character overlap only within one prose span; never overlap
+  or pack across frontmatter, heading paths, fenced code, or incompatible block
+  metadata.
+- Never cut a fenced code block to satisfy the prose maximum. An intact fence
+  may exceed that maximum, while prose before and after it remains bounded.
 
 Chunk metadata:
 

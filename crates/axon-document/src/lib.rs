@@ -30,7 +30,7 @@ pub mod transcript;
 
 pub use chunk_router::ChunkRouter;
 pub use prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
-pub use preparer::DocumentPreparer;
+pub use preparer::{DocumentPreparer, DocumentPreparerConfig};
 pub use profile::ChunkingProfile;
 
 #[cfg(test)]

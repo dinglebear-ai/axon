@@ -227,6 +227,8 @@ pub(in crate::config) struct RawEmbeddingSection {
     /// `background_max_concurrent_requests`.
     pub maintenance_max_concurrent_requests: Option<usize>,
     pub query_instruction_enabled: Option<bool>,
+    pub cache_enabled: Option<bool>,
+    pub cache_max_entries: Option<usize>,
     pub pool_max_inputs: Option<usize>,
     pub prep_concurrency: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,

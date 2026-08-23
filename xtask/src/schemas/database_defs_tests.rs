@@ -85,12 +85,13 @@ fn migration_records_match_runtime_identity_and_order() {
         namespaces,
         [
             // Ledger/graph each carry the publication-state 0002 migration.
-            // Jobs now has six ordered migrations: canonical jobs, durable
+            // Jobs now has eight ordered migrations: canonical jobs, durable
             // provider scheduling, scheduler performance indexes, parser-kind
             // capacity, provider identity cache, and complete watch request
-            // replay. Memory carries three.
-            "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "observe", "graph",
-            "graph", "memory", "memory", "memory"
+            // replay, embedding-vector cache, and bounded cache expiry. Memory
+            // carries three.
+            "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs",
+            "observe", "graph", "graph", "memory", "memory", "memory"
         ]
     );
     for migration in &schema.migrations {

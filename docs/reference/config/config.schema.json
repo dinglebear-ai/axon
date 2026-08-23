@@ -199,6 +199,32 @@
       "type": "integer"
     },
     {
+      "default": false,
+      "description": "Persist dense vectors for warm reuse; disabled by default to avoid cold-ingestion latency.",
+      "env_key": "AXON_EMBED_CACHE_ENABLED",
+      "key": "providers.embedding.cache_enabled",
+      "owner_crate": "axon-services",
+      "removed": false,
+      "replacement": null,
+      "restart_required": true,
+      "secret": false,
+      "section": "providers",
+      "type": "boolean"
+    },
+    {
+      "default": 100000,
+      "description": "Maximum vectors retained by the persistent embedding cache.",
+      "env_key": "AXON_EMBED_CACHE_MAX_ENTRIES",
+      "key": "providers.embedding.cache_max_entries",
+      "owner_crate": "axon-services",
+      "removed": false,
+      "replacement": null,
+      "restart_required": true,
+      "secret": false,
+      "section": "providers",
+      "type": "integer"
+    },
+    {
       "default": 1,
       "description": "Process-shared concurrent vector point/generation writes.",
       "env_key": null,
@@ -466,7 +492,7 @@
         "path": "docs/pipeline-unification/schemas/config-schema.md"
       },
       {
-        "checksum": "sha256:0a1da13cb09f70aa6b5bfe1c0048ff97fa0ab3a44753eacdb94b03883efc84e8",
+        "checksum": "sha256:5f4436bf8b9c84d7138eca3a0360193a1a06b73c9857aafc4a3d1333b3b62a1f",
         "kind": "rust_module",
         "path": "xtask/src/schemas/config_schema_registry.rs"
       }

@@ -27,7 +27,7 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:29cba9275f796620325b344e4e22897944ed327d79231c958194035feb8455d1"
+          "checksum": "sha256:5e0cc6d66ce0a9c36cd4dc08cc7f43ddfbd69040d7372eaff8b7889f1b043af8"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
@@ -45,7 +45,7 @@
           "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd"
         }
       ],
-      "manifest_checksum": "001be7ef9e122c37161918a7f6c98650a8936a6b7c4284f4f6c403e87ac1a8f0"
+      "manifest_checksum": "a7b663da4a6e9cd532dd113940201ced857743fe36c753c137d29f02d5c109e2"
     },
     {
       "family": "api",
@@ -383,10 +383,10 @@
         {
           "path": "xtask/src/schemas/config_schema_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:0a1da13cb09f70aa6b5bfe1c0048ff97fa0ab3a44753eacdb94b03883efc84e8"
+          "checksum": "sha256:5f4436bf8b9c84d7138eca3a0360193a1a06b73c9857aafc4a3d1333b3b62a1f"
         }
       ],
-      "manifest_checksum": "4b4ae7c0e0fc425581ea695c26c02df5e8d82cb3f5bc83f3319c91d1a4b36bca"
+      "manifest_checksum": "64a484203a3bd3528aa190c764bd5788677f212775db6fb2bdf14be34a23c440"
     },
     {
       "family": "database",
@@ -400,7 +400,7 @@
         {
           "path": "crates/axon-jobs/src/migrations",
           "kind": "sql_migration_directory",
-          "checksum": "sha256:12c4d0ab5f8a1e03e15d6021a5761428740f140d1ed8e0b007d618d49f392946"
+          "checksum": "sha256:a3d83fdf65a3070b3aaa1381a9d58d7e32a5b5af98fca9089de0f27dbc3cd486"
         },
         {
           "path": "crates/axon-ledger/src/migrations",
@@ -433,7 +433,7 @@
           "checksum": "sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b"
         }
       ],
-      "manifest_checksum": "80fec2c4038b8c08b996505b94692ecc9712c9211479777b05f26341940381e8"
+      "manifest_checksum": "89510248c232feccf529cf3d4128b74e19c20b6c346b9817e68773198dce2b10"
     },
     {
       "family": "errors",
@@ -811,7 +811,7 @@
         {
           "path": "docs/pipeline-unification/sources/chunking-contract.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8"
+          "checksum": "sha256:63c60a97db760d23a91846d0c5ca077363913b0ab778c965c6a73a8bf652826f"
         },
         {
           "path": "docs/pipeline-unification/sources/metadata-payload.md",
@@ -824,7 +824,7 @@
           "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c"
         }
       ],
-      "manifest_checksum": "a3ddcebb2a5f92179ddd4f05f51cb89f01c296d03cd5a40eadf198ef7d69536b"
+      "manifest_checksum": "ce3a144259be3fa23c997e5e92b5b92722d4bbcb25cb7481e9b39dffe1d223c1"
     }
   ]
 }

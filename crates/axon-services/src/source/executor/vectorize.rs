@@ -7,9 +7,15 @@ use uuid::Uuid;
 
 use super::preparation::prepare_documents;
 use super::progress::{PipelineProgress, ProgressCoordinator};
-use super::vector_points::{VectorPointBuild, point_batch};
+use super::vector_points::point_batch;
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
 use crate::reserved_call::{self, ProviderCallContext};
+
+mod batching;
+mod pipeline;
+
+use batching::chunk_batches;
+use pipeline::{embed_and_build_batch, publish_and_build_next, publish_built_batch};
 
 const DOCUMENT_BATCH_SIZE: usize = 64;
 const DOCUMENT_STATUS_BATCH_SIZE: usize = 64;
@@ -65,13 +71,17 @@ pub(super) async fn prepare_embed_publish(
                 input.execution.priority,
                 format!("parse:{}:{source_index}", generation.0),
             ),
-            move || {
-                prepare_documents(
-                    source_batch,
-                    generation,
-                    enrichment_graph,
-                    runtime.document_prepare_concurrency,
-                )
+            {
+                let document_preparer = runtime.document_preparer.clone();
+                move || {
+                    prepare_documents(
+                        source_batch,
+                        generation,
+                        enrichment_graph,
+                        document_preparer,
+                        runtime.document_prepare_concurrency,
+                    )
+                }
             },
         )
         .await?;
@@ -88,27 +98,39 @@ pub(super) async fn prepare_embed_publish(
             )
             .await;
         let batches = chunk_batches(prepared, runtime.embed_pool_max_inputs);
-        let batch_count = batches.len();
-        for (batch_index, batch) in batches.into_iter().enumerate() {
-            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
-            if input.plan.request.embed {
-                let batch_chunks = batch
-                    .iter()
-                    .map(|document| document.chunks.len() as u64)
-                    .sum();
-                let counts = progress.batched(batch_chunks);
-                coordinator
-                    .report(
-                        emitter,
-                        PipelinePhase::Batching,
-                        counts,
-                        "batching prepared chunks",
-                    )
-                    .await;
+        if !input.plan.request.embed {
+            for batch in batches {
+                merge_vectorize_result(
+                    &mut output,
+                    statuses_only(batch, DocumentLifecycleStatus::Prepared),
+                );
             }
-            let result = vectorize_batch(
+            continue;
+        }
+        let batch_count = batches.len();
+        let mut batches = batches.into_iter().enumerate();
+        let Some((first_index, first_batch)) = batches.next() else {
+            continue;
+        };
+        report_batching(input, &first_batch, emitter, coordinator, progress).await;
+        let mut ready = embed_and_build_batch(
+            runtime,
+            input,
+            first_batch,
+            collection.clone(),
+            emitter,
+            coordinator,
+            progress,
+            is_final_source_batch && first_index + 1 == batch_count,
+        )
+        .await?;
+        for (batch_index, batch) in batches {
+            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
+            report_batching(input, &batch, emitter, coordinator, progress).await;
+            let (result, next_ready) = publish_and_build_next(
                 runtime,
                 input,
+                ready,
                 batch,
                 collection.clone(),
                 emitter,
@@ -118,68 +140,38 @@ pub(super) async fn prepare_embed_publish(
             )
             .await?;
             merge_vectorize_result(&mut output, result);
+            ready = next_ready;
         }
+        let result =
+            publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
+        merge_vectorize_result(&mut output, result);
     }
     write_document_statuses(runtime.ledger.as_ref(), &output.document_statuses).await?;
     Ok(output)
 }
 
-fn chunk_batches(
-    documents: Vec<PreparedDocument>,
-    max_chunks: usize,
-) -> Vec<Vec<PreparedDocument>> {
-    let max_chunks = max_chunks.max(1);
-    let mut batches = Vec::new();
-    let mut current = Vec::new();
-    let mut chunks = 0;
-    for document in documents
-        .into_iter()
-        .flat_map(|document| split_oversized_document(document, max_chunks))
-    {
-        let count = document.chunks.len().max(1);
-        if !current.is_empty() && chunks + count > max_chunks {
-            batches.push(std::mem::take(&mut current));
-            chunks = 0;
-        }
-        chunks += count;
-        current.push(document);
+async fn report_batching(
+    input: &SourcePipelineInput<'_>,
+    batch: &[PreparedDocument],
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+) {
+    if !input.plan.request.embed {
+        return;
     }
-    if !current.is_empty() {
-        batches.push(current);
-    }
-    batches
-}
-
-fn split_oversized_document(
-    mut document: PreparedDocument,
-    max_chunks: usize,
-) -> Vec<PreparedDocument> {
-    let max_chunks = max_chunks.max(1);
-    if document.chunks.len() <= max_chunks {
-        return vec![document];
-    }
-
-    let chunks = std::mem::take(&mut document.chunks);
-    let window_count = chunks.len().div_ceil(max_chunks);
-    let mut chunks = chunks.into_iter();
-    let mut continuation = document.clone();
-    continuation.graph_candidates.clear();
-    continuation.warnings.clear();
-    continuation.errors.clear();
-
-    document.chunks = chunks.by_ref().take(max_chunks).collect();
-    let mut windows = Vec::with_capacity(window_count);
-    windows.push(document);
-    loop {
-        let window_chunks = chunks.by_ref().take(max_chunks).collect::<Vec<_>>();
-        if window_chunks.is_empty() {
-            break;
-        }
-        let mut window = continuation.clone();
-        window.chunks = window_chunks;
-        windows.push(window);
-    }
-    windows
+    let chunks = batch
+        .iter()
+        .map(|document| document.chunks.len() as u64)
+        .sum();
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Batching,
+            progress.batched(chunks),
+            "batching prepared chunks",
+        )
+        .await;
 }
 
 pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: VectorizeResult) {
@@ -206,139 +198,6 @@ pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: Vecto
             output.document_statuses.push(status);
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn vectorize_batch(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    documents: Vec<PreparedDocument>,
-    collection: CollectionSpec,
-    emitter: &SourceEventEmitter,
-    coordinator: &ProgressCoordinator,
-    progress: &mut PipelineProgress,
-    is_final_vector_batch: bool,
-) -> anyhow::Result<VectorizeResult> {
-    if !input.plan.request.embed {
-        return Ok(statuses_only(documents, DocumentLifecycleStatus::Prepared));
-    }
-    let mut embeddings =
-        embed_prepared_batch(runtime, input, &documents, emitter, coordinator, progress).await?;
-    let VectorPointBuild {
-        batch: point_batch,
-        skipped_redaction,
-        redaction_skips_by_source_item,
-        points_by_document,
-    } = point_batch(collection, &documents, &mut embeddings)?;
-    coordinator
-        .report(
-            emitter,
-            PipelinePhase::Vectorizing,
-            progress.vectorized(point_batch.points.len() as u64, is_final_vector_batch),
-            "built vector point batch",
-        )
-        .await;
-    let write =
-        upsert_vector_batch(runtime, input, point_batch, emitter, coordinator, progress).await?;
-    Ok(vectorize_result(
-        documents,
-        embeddings.warnings,
-        &points_by_document,
-        write,
-        skipped_redaction,
-        &redaction_skips_by_source_item,
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn embed_prepared_batch(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    documents: &[PreparedDocument],
-    emitter: &SourceEventEmitter,
-    coordinator: &ProgressCoordinator,
-    progress: &mut PipelineProgress,
-) -> anyhow::Result<EmbeddingResult> {
-    let counts = progress.embedding_counts();
-    coordinator
-        .report(
-            emitter,
-            PipelinePhase::Embedding,
-            counts.clone(),
-            "embedding prepared chunks",
-        )
-        .await;
-    let embedding_batch = embedding_batch(runtime, input, documents)?;
-    let embedding_operation = format!("embed:{}", embedding_batch.batch_id.0);
-    let result = reserved_call::embed(
-        runtime,
-        ProviderCallContext::for_phase(
-            input.plan.job_id,
-            input.execution.attempt,
-            PipelinePhase::Embedding,
-            input.execution.priority,
-            embedding_operation,
-        )
-        .with_counts(counts),
-        embedding_batch,
-    )
-    .await?;
-    coordinator
-        .checkpoint(
-            PipelinePhase::Embedding,
-            progress.embedded(result.vectors.len() as u64),
-            "embedded prepared chunks",
-        )
-        .await;
-    Ok(result)
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn upsert_vector_batch(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    batch: VectorPointBatch,
-    emitter: &SourceEventEmitter,
-    coordinator: &ProgressCoordinator,
-    progress: &mut PipelineProgress,
-) -> anyhow::Result<VectorStoreWriteResult> {
-    let counts = progress.upserting_counts();
-    coordinator
-        .report(
-            emitter,
-            PipelinePhase::Upserting,
-            counts.clone(),
-            "upserting vector point batch",
-        )
-        .await;
-    let expected_points = batch.points.len() as u64;
-    let upsert_operation = format!("upsert:{}", batch.batch_id.0);
-    let write = reserved_call::upsert(
-        runtime,
-        ProviderCallContext::for_phase(
-            input.plan.job_id,
-            input.execution.attempt,
-            PipelinePhase::Upserting,
-            input.execution.priority,
-            upsert_operation,
-        )
-        .with_counts(counts),
-        batch,
-    )
-    .await?;
-    validate_upsert_counts(
-        expected_points,
-        write.points_attempted,
-        write.points_written,
-    )?;
-    coordinator
-        .checkpoint(
-            PipelinePhase::Upserting,
-            progress.upserted(write.points_written),
-            "upserted vector point batch",
-        )
-        .await;
-    Ok(write)
 }
 
 fn vectorize_result(

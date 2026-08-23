@@ -41,11 +41,15 @@ chunkers do **not** persist graph facts — that is a separate step in `axon-gra
 | `SessionTurns` | session | [turn_segments, line_segments] | 1300 | 0 |
 | `AtomicMetadata` | atomic | [atomic_metadata] | 1600 | 0 |
 
-> **Shipped divergence:** these sizes live as in-source `ChunkLimits` in
-> `crates/axon-document/src/chunk_router.rs::profile_defaults`. The contract
-> phrases them as a `[pipeline.chunking]` config block, but **that config block
-> does not exist** in `config.schema.json` today — sizing is not yet
-> operator-tunable.
+The token limits above remain profile-level routing guidance. Markdown's
+concrete character packing is operator-tunable under `[pipeline.chunking]`
+with `markdown-max-chars`, `markdown-min-chars`, and `overlap-chars`; the
+corresponding environment overrides are documented in the generated config
+reference. `overlap-chars` applies only between consecutive windows cut from
+the same prose span. It never crosses frontmatter, heading paths, fenced code,
+or other incompatible Markdown block metadata. A fenced code block remains
+intact even when it alone exceeds `markdown-max-chars`; surrounding prose is
+still bounded by the configured maximum.
 
 ## ChunkRouter decision
 
@@ -62,7 +66,10 @@ metadata. Routing order:
 
 The adapter is checked first — a fragment-prone adapter forces the fallback
 method regardless of size; scope narrows token/overlap limits for partial
-captures.
+captures. Document size alone does not force intact Markdown onto paragraph
+windows: the fence-aware heading walker is linear and preserves the configured
+minimum chunk packing on large reference pages. Large code documents may still
+use their cheaper structural fallback.
 
 ## Tree-sitter-aware code chunks
 

@@ -13,6 +13,7 @@ pub(super) async fn prepare_documents(
     documents: Vec<SourceDocument>,
     generation: &SourceGenerationId,
     enrichment_graph: &BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
+    preparer: DocumentPreparer,
     concurrency: usize,
 ) -> anyhow::Result<Vec<PreparedDocument>> {
     let generation = generation.clone();
@@ -33,7 +34,7 @@ pub(super) async fn prepare_documents(
         |(document, _)| source_document_bytes(document),
         move |(document, graph_candidates)| {
             let item_key = document.source_item_key.0.clone();
-            Ok(DocumentPreparer::default()
+            Ok(preparer
                 .prepare(PrepareSourceDocumentRequest {
                     document,
                     generation: generation.clone(),

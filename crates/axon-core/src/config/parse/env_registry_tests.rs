@@ -97,6 +97,14 @@ fn embedding_tuning_env_keys_map_to_clean_break_provider_section() {
             "providers.embedding.max-in-flight-inputs",
         ),
         (
+            "AXON_EMBED_CACHE_ENABLED",
+            "providers.embedding.cache-enabled",
+        ),
+        (
+            "AXON_EMBED_CACHE_MAX_ENTRIES",
+            "providers.embedding.cache-max-entries",
+        ),
+        (
             "AXON_EMBED_POOL_MAX_INPUTS",
             "providers.embedding.pool-max-inputs",
         ),

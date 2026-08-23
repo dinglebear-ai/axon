@@ -1,5 +1,7 @@
 use super::*;
 use crate::store::open_sqlite_pool;
+use std::future::{Future, poll_fn};
+use std::task::Poll;
 
 #[test]
 fn priority_serialization_matches_scheduler_lane_order() {
@@ -26,6 +28,73 @@ async fn invalid_scheduler_capacity_is_rejected() {
     )
     .expect_err("reserve larger than capacity must be rejected");
     assert!(matches!(error, SchedulerError::RequestTooLarge));
+}
+
+#[tokio::test]
+async fn shared_write_gate_blocks_before_acquiring_pool_connections() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+
+    // Pre-warm all eight connections so a regression that acquires from the
+    // pool before waiting on the write gate does so synchronously on its first
+    // poll. This makes the assertion deterministic instead of relying on a
+    // sleep to guess whether spawned tasks reached SQLite contention.
+    let mut warmed = Vec::new();
+    for _ in 0..pool.options().get_max_connections() {
+        warmed.push(pool.acquire().await.expect("pre-warm pool connection"));
+    }
+    drop(warmed);
+
+    let held = axon_core::sqlite::ImmediateTx::begin(&pool)
+        .await
+        .expect("hold writer lock");
+    let gate = SchedulerWriteGate::default();
+    let held_gate = gate.lock().await;
+    let mut schedulers = Vec::new();
+    for index in 0..7 {
+        schedulers.push(
+            ProviderScheduler::new_with_write_gate(
+                pool.clone(),
+                ProviderCapacityDomain {
+                    kind: ProviderKind::Fetch,
+                    instance_id: format!("fetch-{index}"),
+                    authority_id: "authority-a".into(),
+                },
+                SchedulerConfig {
+                    capacity: 1,
+                    interactive_reserve: 0,
+                    max_entries: 10,
+                    max_units: 10,
+                },
+                gate.clone(),
+            )
+            .expect("scheduler"),
+        );
+    }
+
+    let mut waiters = schedulers
+        .iter()
+        .map(|scheduler| Box::pin(scheduler.reconcile()))
+        .collect::<Vec<_>>();
+    for waiter in &mut waiters {
+        poll_fn(|cx| {
+            assert!(
+                waiter.as_mut().poll(cx).is_pending(),
+                "reconcile must wait while the shared gate is held"
+            );
+            Poll::Ready(())
+        })
+        .await;
+    }
+
+    let control_connection = pool
+        .try_acquire()
+        .expect("gate waiters must not consume control-plane pool connections");
+    drop(control_connection);
+    held.rollback().await;
+    drop(held_gate);
+    for waiter in waiters {
+        waiter.await.expect("reconcile");
+    }
 }
 
 #[tokio::test]

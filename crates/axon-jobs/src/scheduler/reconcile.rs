@@ -13,6 +13,7 @@ pub struct Reconciliation {
 
 impl ProviderScheduler {
     pub async fn reconcile(&self) -> Result<Reconciliation, SchedulerError> {
+        let _write_permit = self.write_gate.lock().await;
         let expired_queued = sqlx::query(
             "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
              terminal_reason = 'abandoned_waiter', updated_at = datetime('now')

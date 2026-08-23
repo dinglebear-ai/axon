@@ -1,17 +1,35 @@
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{future::Future, future::poll_fn, task::Poll};
 
+use axon_api::source::{
+    BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
+    ProviderId,
+};
 use axon_core::config::Config;
+use axon_embedding::cache::{CachedEmbedding, EmbeddingVectorCacheStore};
+use axon_embedding::provider::EmbeddingProvider;
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
+use axon_jobs::embedding_cache_store::SqliteEmbeddingVectorCacheStore;
+use axon_jobs::scheduler::SqliteWriteGate;
 use httpmock::MockServer;
 use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Barrier;
 
 use super::{
-    artifact_candidate_sink_from_values, invalidate_embedding_identity_cache,
-    resolve_embedding_identity, tei_max_attempts,
+    RuntimeSchedulers, artifact_candidate_sink_from_values, build_runtime_schedulers,
+    invalidate_embedding_identity_cache, resolve_embedding_identity, tei_max_attempts,
 };
 use crate::context::TargetLocalSourceRuntime;
+
+async fn assert_pending<F: Future>(mut future: Pin<&mut F>, message: &str) {
+    poll_fn(|cx| {
+        assert!(future.as_mut().poll(cx).is_pending(), "{message}");
+        Poll::Ready(())
+    })
+    .await;
+}
 
 #[tokio::test]
 async fn artifact_candidate_sink_configuration_is_all_or_nothing() {
@@ -125,6 +143,170 @@ async fn source_db_stage_capacity_reserves_one_control_connection() {
 }
 
 #[tokio::test]
+async fn production_schedulers_share_one_gate_before_pool_acquisition() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(8)
+        .connect("sqlite::memory:")
+        .await
+        .expect("eight-connection pool");
+    axon_jobs::migrations::apply_all_migrations(&pool)
+        .await
+        .expect("shared runtime migrations");
+
+    let cfg = Config::test_default();
+    let RuntimeSchedulers {
+        embedding,
+        vector,
+        fetch,
+        render,
+        parse,
+        graph,
+        artifact,
+    } = build_runtime_schedulers(
+        &cfg,
+        &pool,
+        &ProviderId::new("test-embedding"),
+        &ProviderId::new("test-vector"),
+        SqliteWriteGate::default(),
+    )
+    .await
+    .expect("production schedulers");
+
+    // Ensure every pool acquisition below is immediately ready. With one
+    // writer connection held, the first reconciliation consumes one more
+    // connection while waiting in SQLite. The other six production schedulers
+    // must stop at the same process-local gate and leave the remaining six
+    // connections available to the control plane.
+    let mut warmed = Vec::new();
+    for _ in 0..pool.options().get_max_connections() {
+        warmed.push(pool.acquire().await.expect("pre-warm pool connection"));
+    }
+    drop(warmed);
+    let held = axon_core::sqlite::ImmediateTx::begin(&pool)
+        .await
+        .expect("hold writer lock");
+
+    let schedulers = [embedding, vector, fetch, render, parse, graph, artifact];
+    let mut waiters = schedulers
+        .iter()
+        .map(|scheduler| Box::pin(scheduler.reconcile()))
+        .collect::<Vec<_>>();
+    for waiter in &mut waiters {
+        poll_fn(|cx| {
+            assert!(
+                waiter.as_mut().poll(cx).is_pending(),
+                "reconciliation must wait behind the held SQLite writer"
+            );
+            Poll::Ready(())
+        })
+        .await;
+    }
+
+    let control_connection = pool
+        .try_acquire()
+        .expect("production scheduler contention must preserve a control-plane pool slot");
+    drop(control_connection);
+    held.rollback().await;
+    for waiter in waiters {
+        waiter.await.expect("reconcile after writer release");
+    }
+}
+
+#[tokio::test]
+async fn production_runtime_cache_and_schedulers_share_one_gate_before_pool_acquisition() {
+    let server = MockServer::start_async().await;
+    let _info = server
+        .mock_async(|when, then| {
+            when.method("GET").path("/info");
+            then.status(200)
+                .json_body(serde_json::json!({ "model_id": "acme/shared-gate" }));
+        })
+        .await;
+    let _embed = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32]]));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.tei_url = server.base_url();
+    cfg.tei_request_timeout_ms = 1_000;
+    cfg.embed_cache_enabled = true;
+    invalidate_embedding_identity_cache(&cfg);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(8)
+        .connect("sqlite::memory:")
+        .await
+        .expect("eight-connection pool");
+    axon_jobs::migrations::apply_all_migrations(&pool)
+        .await
+        .expect("shared runtime migrations");
+    let jobs: Arc<dyn JobStore> = Arc::new(FakeJobWatchStore::new());
+    let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
+        .await
+        .expect("production runtime");
+    let cache_store: Arc<SqliteEmbeddingVectorCacheStore> = runtime
+        .embedding_cache_store
+        .clone()
+        .expect("enabled cache store");
+    let scheduler = runtime
+        .embedding_scheduler
+        .as_ref()
+        .expect("production embedding scheduler");
+
+    let mut warmed = Vec::new();
+    for _ in 0..pool.options().get_max_connections() {
+        warmed.push(pool.acquire().await.expect("pre-warm pool connection"));
+    }
+    drop(warmed);
+    for _ in 0..100 {
+        if pool.num_idle() == pool.options().get_max_connections() as usize {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    let idle_before = pool.num_idle();
+    assert_eq!(
+        idle_before,
+        pool.options().get_max_connections() as usize,
+        "pre-warmed connections must be idle before polling writers"
+    );
+    let held_gate = runtime.sqlite_write_gate.lock().await;
+    let entries = [CachedEmbedding {
+        cache_key: format!("sha256:{}", "1".repeat(64)),
+        provider_id: ProviderId::new("tei"),
+        model: runtime.embedding_model.clone(),
+        dimensions: runtime.embedding_dimensions,
+        values: vec![0.5; runtime.embedding_dimensions as usize],
+    }];
+    let mut cache_write = Box::pin(cache_store.put_many(&entries, 100));
+    let mut scheduler_write = Box::pin(scheduler.reconcile());
+    assert_pending(
+        cache_write.as_mut(),
+        "production cache writer must wait on the composed gate",
+    )
+    .await;
+    assert_pending(
+        scheduler_write.as_mut(),
+        "production scheduler writer must wait on the composed gate",
+    )
+    .await;
+    assert_eq!(
+        pool.num_idle(),
+        idle_before,
+        "production gate waiters must not acquire pool connections"
+    );
+    drop(
+        pool.try_acquire()
+            .expect("production gate waiters must preserve a control-plane connection"),
+    );
+    drop(held_gate);
+    cache_write.await.expect("cache write");
+    scheduler_write.await.expect("scheduler write");
+}
+
+#[tokio::test]
 async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachable() {
     let mut cfg = Config::test_default();
     cfg.qdrant_url = "http://127.0.0.1:53333".to_string();
@@ -163,6 +345,76 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
         persisted, 0,
         "unverified fallback identity must never poison the durable cache"
     );
+}
+
+#[tokio::test]
+async fn runtime_embedding_cache_respects_enabled_and_disabled_configuration() {
+    for (cache_enabled, expected_embed_calls, expected_cache_rows) in
+        [(false, 3, 0_i64), (true, 2, 1_i64)]
+    {
+        let server = MockServer::start_async().await;
+        let _info = server
+            .mock_async(|when, then| {
+                when.method("GET").path("/info");
+                then.status(200)
+                    .json_body(serde_json::json!({ "model_id": "acme/runtime-cache" }));
+            })
+            .await;
+        let embed = server
+            .mock_async(|when, then| {
+                when.method("POST").path("/embed");
+                then.status(200)
+                    .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32]]));
+            })
+            .await;
+        let mut cfg = Config::test_default();
+        cfg.qdrant_url = "http://127.0.0.1:53333".into();
+        cfg.tei_url = server.base_url();
+        cfg.tei_request_timeout_ms = 1_000;
+        cfg.embed_cache_enabled = cache_enabled;
+        invalidate_embedding_identity_cache(&cfg);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        axon_jobs::migrations::apply_all_migrations(&pool)
+            .await
+            .unwrap();
+        let jobs: Arc<dyn JobStore> = Arc::new(FakeJobWatchStore::new());
+        let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
+            .await
+            .unwrap();
+        let request = EmbeddingBatch {
+            batch_id: BatchId::new(uuid::Uuid::new_v4()),
+            job_id: JobId::new(uuid::Uuid::new_v4()),
+            provider_id: ProviderId::new("tei"),
+            model: runtime.embedding_model.clone(),
+            items: vec![EmbeddingInput {
+                chunk_id: ChunkId::new("runtime-cache"),
+                text: "repeat me".into(),
+                content_kind: ContentKind::Markdown,
+                metadata: MetadataMap::new(),
+            }],
+            instruction: None,
+            priority: JobPriority::Normal,
+            metadata: MetadataMap::new(),
+        };
+
+        runtime
+            .embedding_provider
+            .embed(request.clone())
+            .await
+            .unwrap();
+        runtime.embedding_provider.embed(request).await.unwrap();
+
+        embed.assert_calls_async(expected_embed_calls).await;
+        let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM embedding_vector_cache")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, expected_cache_rows);
+    }
 }
 
 #[tokio::test]

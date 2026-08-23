@@ -23,6 +23,11 @@ fn http_adapter() -> WebSourceAdapter {
     )
 }
 
+#[test]
+fn web_adapter_opts_into_bounded_acquisition_prefetch() {
+    assert!(adapter(FakeAdapterProviders::new()).supports_acquisition_prefetch());
+}
+
 #[tokio::test]
 async fn web_adapter_declares_page_site_docs_and_map_scopes() {
     let adapter = adapter(FakeAdapterProviders::new());

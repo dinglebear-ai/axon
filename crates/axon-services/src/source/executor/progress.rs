@@ -26,6 +26,9 @@ trait ProgressStatusWriter: Send + Sync {
 
 struct JobStoreProgressWriter(Arc<dyn JobStore>);
 
+#[cfg(test)]
+struct NoopProgressWriter;
+
 #[async_trait]
 impl ProgressStatusWriter for JobStoreProgressWriter {
     async fn update(&self, update: JobStatusUpdate) -> JobResult<()> {
@@ -33,9 +36,19 @@ impl ProgressStatusWriter for JobStoreProgressWriter {
     }
 }
 
+#[cfg(test)]
+#[async_trait]
+impl ProgressStatusWriter for NoopProgressWriter {
+    async fn update(&self, _update: JobStatusUpdate) -> JobResult<()> {
+        Ok(())
+    }
+}
+
 #[derive(Debug, Default)]
 struct CoordinatorState {
     phase_counts: Vec<(PipelinePhase, StageCounts)>,
+    #[cfg(test)]
+    phase_history: Vec<PipelinePhase>,
 }
 
 /// Orchestration-owned publisher for complete, monotonic source-job snapshots.
@@ -61,6 +74,22 @@ impl ProgressCoordinator {
             interval: DEFAULT_PROGRESS_INTERVAL,
             foreground: input.execution.foreground.clone(),
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_noop() -> Self {
+        Self::with_writer(
+            Arc::new(NoopProgressWriter),
+            JobId::new(uuid::Uuid::from_u128(1)),
+            SourceId::new("src-overlap-test"),
+            "test",
+            Duration::ZERO,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) async fn recorded_phase_order(&self) -> Vec<PipelinePhase> {
+        self.state.lock().await.phase_history.clone()
     }
 
     #[cfg(test)]
@@ -139,6 +168,7 @@ impl ProgressCoordinator {
         batch_items_total: u64,
         items_offset: u64,
         documents_offset: u64,
+        publish_phase: bool,
     ) -> AcquisitionBatchProgress<'_> {
         AcquisitionBatchProgress {
             coordinator: self,
@@ -146,6 +176,7 @@ impl ProgressCoordinator {
             batch_items_total,
             items_offset,
             documents_offset,
+            publish_phase,
             state: Mutex::new(BatchProgressState::default()),
         }
     }
@@ -158,6 +189,10 @@ impl ProgressCoordinator {
     ) -> (StageCounts, bool) {
         let counts = {
             let mut state = self.state.lock().await;
+            #[cfg(test)]
+            if state.phase_history.last() != Some(&phase) {
+                state.phase_history.push(phase);
+            }
             normalize_phase_counts(&mut state.phase_counts, phase, counts)
         };
         let update = JobStatusUpdate {
@@ -216,6 +251,7 @@ pub(super) struct AcquisitionBatchProgress<'a> {
     batch_items_total: u64,
     items_offset: u64,
     documents_offset: u64,
+    publish_phase: bool,
     state: Mutex<BatchProgressState>,
 }
 
@@ -263,6 +299,9 @@ impl AcquisitionBatchProgress<'_> {
             (state.items_done, state.documents_done, should_write)
         };
         if !should_write {
+            return;
+        }
+        if !self.publish_phase {
             return;
         }
         let global_items = self

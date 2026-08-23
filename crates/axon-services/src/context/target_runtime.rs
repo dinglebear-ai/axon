@@ -24,9 +24,13 @@ use axon_adapters::{
 use axon_api::source::{InstructionSupport, ProviderId};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
+use axon_document::{DocumentPreparer, DocumentPreparerConfig};
+use axon_embedding::cache::CachedEmbeddingProvider;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
+use axon_jobs::embedding_cache_store::SqliteEmbeddingVectorCacheStore;
+use axon_jobs::scheduler::SqliteWriteGate;
 use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
@@ -46,7 +50,6 @@ use super::{
     db_limited_ledger::DbLimitedLedgerStore,
     scheduled_web::{ScheduledFetchProvider, ScheduledRenderProvider},
 };
-
 const DEPOT_URL_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_URL";
 const DEPOT_TOKEN_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN";
 
@@ -351,6 +354,8 @@ fn embedding_identity_cache() -> &'static Mutex<EmbeddingIdentityCache> {
 
 /// Provider id for the target local-source embedding provider.
 const EMBEDDING_PROVIDER_ID: &str = "target-local-embed";
+/// Provider identity returned by the TEI adapter and persisted in cache rows.
+const TEI_RESULT_PROVIDER_ID: &str = "tei";
 /// Provider id for the target local-source vector store.
 const VECTOR_PROVIDER_ID: &str = "target-local-vector";
 
@@ -363,6 +368,48 @@ const EMBEDDING_DIMENSIONS_FALLBACK: u32 = 1024;
 const MAX_INPUT_TOKENS: u32 = 8192;
 /// Max tokens pooled into one TEI embed batch.
 const MAX_BATCH_TOKENS: u32 = 65_536;
+
+struct EmbeddingComposition {
+    provider: Arc<dyn EmbeddingProvider>,
+    #[cfg(test)]
+    cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
+    write_gate: SqliteWriteGate,
+}
+
+fn build_embedding_composition(
+    cfg: &Config,
+    pool: &SqlitePool,
+    identity: &EmbeddingIdentity,
+) -> EmbeddingComposition {
+    let write_gate = SqliteWriteGate::default();
+    let raw_provider: Arc<dyn EmbeddingProvider> = Arc::new(build_tei_provider(cfg, identity));
+    let cache_store = cfg.embed_cache_enabled.then(|| {
+        Arc::new(SqliteEmbeddingVectorCacheStore::new(
+            pool.clone(),
+            write_gate.clone(),
+            cfg.embed_cache_max_entries,
+        ))
+    });
+    let provider: Arc<dyn EmbeddingProvider> = match &cache_store {
+        Some(store) => Arc::new(CachedEmbeddingProvider::new(
+            raw_provider,
+            store.clone(),
+            cfg.tei_url.as_str(),
+            ProviderId::new(TEI_RESULT_PROVIDER_ID),
+            identity.model.clone(),
+            identity.dimensions,
+            query_instruction_support(cfg),
+            cfg.embed_cache_max_entries,
+        )),
+        None => raw_provider,
+    };
+    EmbeddingComposition {
+        provider,
+        #[cfg(test)]
+        cache_store,
+        write_gate,
+    }
+}
 
 impl TargetLocalSourceRuntime {
     /// Build the production target local-source runtime from [`Config`].
@@ -394,7 +441,12 @@ impl TargetLocalSourceRuntime {
         ));
 
         let identity = resolve_embedding_identity_with_pool(cfg, &pool).await;
-        let embedding_provider = build_tei_provider(cfg, &identity);
+        let EmbeddingComposition {
+            provider: embedding_provider,
+            #[cfg(test)]
+                cache_store: embedding_cache_store,
+            write_gate: sqlite_write_gate,
+        } = build_embedding_composition(cfg, &pool, &identity);
 
         let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
         axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
@@ -414,8 +466,14 @@ impl TargetLocalSourceRuntime {
             parse: parse_scheduler,
             graph: graph_scheduler,
             artifact: artifact_scheduler,
-        } = build_runtime_schedulers(cfg, &pool, &embedding_provider_id, &vector_provider_id)
-            .await?;
+        } = build_runtime_schedulers(
+            cfg,
+            &pool,
+            &embedding_provider_id,
+            &vector_provider_id,
+            sqlite_write_gate.clone(),
+        )
+        .await?;
 
         let raw_fetch_provider: Arc<dyn FetchProvider> =
             Arc::new(HttpFetchProvider::new(HttpFetchConfig {
@@ -461,17 +519,26 @@ impl TargetLocalSourceRuntime {
         Ok(Self {
             jobs,
             ledger,
-            embedding_provider: Arc::new(embedding_provider),
+            embedding_provider,
             vector_store: Arc::new(vector_store),
             embedding_scheduler: Some(Arc::new(embedding_scheduler)),
             vector_scheduler: Some(Arc::new(vector_scheduler)),
             parse_scheduler: Some(Arc::new(parse_scheduler)),
             graph_scheduler: Some(Arc::new(graph_scheduler)),
             artifact_scheduler: Some(Arc::new(artifact_scheduler)),
+            #[cfg(test)]
+            sqlite_write_gate,
+            #[cfg(test)]
+            embedding_cache_store,
             embedding_provider_id,
             vector_provider_id,
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
+            document_preparer: DocumentPreparer::new(DocumentPreparerConfig {
+                markdown_max_chars: cfg.chunking_markdown_max_chars,
+                markdown_min_chars: cfg.chunking_markdown_min_chars,
+                markdown_overlap_chars: cfg.chunking_overlap_chars,
+            }),
             document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
             embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
             db_stage_slots,

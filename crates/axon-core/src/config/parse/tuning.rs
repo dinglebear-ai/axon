@@ -181,6 +181,16 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.embed_tei_query_instruction_enabled = env_bool_opt("AXON_TEI_QUERY_INSTRUCTION_ENABLED")
         .or(toml.embed.tei_query_instruction_enabled)
         .unwrap_or(true);
+    cfg.embed_cache_enabled = env_bool_opt("AXON_EMBED_CACHE_ENABLED")
+        .or(toml.embed.cache_enabled)
+        .unwrap_or(false);
+    cfg.embed_cache_max_entries = resolve_clamped_usize(
+        "AXON_EMBED_CACHE_MAX_ENTRIES",
+        toml.embed.cache_max_entries,
+        100_000,
+        1,
+        10_000_000,
+    );
     cfg.embed_pool_max_inputs = resolve_clamped_usize(
         "AXON_EMBED_POOL_MAX_INPUTS",
         toml.embed.pool_max_inputs,
@@ -197,6 +207,27 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
             .clamp(2, 16),
         1,
         64,
+    );
+    cfg.chunking_markdown_max_chars = resolve_clamped_usize(
+        "AXON_MARKDOWN_CHUNK_MAX_CHARS",
+        toml.chunking.markdown_max_chars,
+        2_000,
+        256,
+        16_384,
+    );
+    cfg.chunking_markdown_min_chars = resolve_clamped_usize(
+        "AXON_MARKDOWN_CHUNK_MIN_CHARS",
+        toml.chunking.markdown_min_chars,
+        500.min(cfg.chunking_markdown_max_chars),
+        1,
+        cfg.chunking_markdown_max_chars,
+    );
+    cfg.chunking_overlap_chars = resolve_clamped_usize(
+        "AXON_CHUNK_OVERLAP_CHARS",
+        toml.chunking.overlap_chars,
+        200.min(cfg.chunking_markdown_max_chars.saturating_sub(1)),
+        0,
+        cfg.chunking_markdown_max_chars.saturating_sub(1),
     );
     cfg.embed_max_chunks_per_doc = resolve_optional_usize(
         "AXON_EMBED_MAX_CHUNKS_PER_DOC",

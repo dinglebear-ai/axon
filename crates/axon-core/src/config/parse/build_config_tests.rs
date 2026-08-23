@@ -431,7 +431,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
+        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
     )
     .unwrap();
 
@@ -441,17 +441,23 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             "AXON_OPENAI_EMBED_MAX_CONCURRENT",
             "AXON_OPENAI_EMBEDDING_MODEL",
             "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC",
+            "AXON_EMBED_CACHE_ENABLED",
+            "AXON_EMBED_CACHE_MAX_ENTRIES",
         ],
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::set_var("AXON_OPENAI_EMBED_MAX_CONCURRENT", "16");
             env::set_var("AXON_OPENAI_EMBEDDING_MODEL", "from-env");
             env::set_var("AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC", "0");
+            env::remove_var("AXON_EMBED_CACHE_ENABLED");
+            env::set_var("AXON_EMBED_CACHE_MAX_ENTRIES", "300000");
 
             let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
 
             assert_eq!(cfg.embed_tei_max_concurrent, 7);
             assert_eq!(cfg.embed_tei_max_in_flight_inputs, 240);
+            assert!(cfg.embed_cache_enabled);
+            assert_eq!(cfg.embed_cache_max_entries, 300_000);
             assert_eq!(cfg.embed_pool_max_inputs, 640);
             assert_eq!(cfg.embed_prep_concurrency, 3);
             assert_eq!(cfg.embed_max_chunks_per_doc, Some(50));
@@ -462,6 +468,39 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert_eq!(cfg.openai_embed_max_concurrent, 16);
             assert_eq!(cfg.openai_embed_max_in_flight_inputs, 256);
             assert_eq!(cfg.openai_embed_pool_max_inputs, 768);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn markdown_chunking_limits_are_resolved_once_into_config() {
+    let _guard = env_guard();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[pipeline.chunking]\nmarkdown-max-chars = 900\nmarkdown-min-chars = 300\noverlap-chars = 75\n"
+    )
+    .unwrap();
+
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_MARKDOWN_CHUNK_MAX_CHARS",
+            "AXON_MARKDOWN_CHUNK_MIN_CHARS",
+            "AXON_CHUNK_OVERLAP_CHARS",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::set_var("AXON_MARKDOWN_CHUNK_MAX_CHARS", "800");
+            env::remove_var("AXON_MARKDOWN_CHUNK_MIN_CHARS");
+            env::remove_var("AXON_CHUNK_OVERLAP_CHARS");
+
+            let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+
+            assert_eq!(cfg.chunking_markdown_max_chars, 800);
+            assert_eq!(cfg.chunking_markdown_min_chars, 300);
+            assert_eq!(cfg.chunking_overlap_chars, 75);
         },
     );
 }

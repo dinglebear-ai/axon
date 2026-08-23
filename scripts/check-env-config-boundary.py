@@ -173,6 +173,8 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.background-max-concurrent-requests",
     "providers.embedding.maintenance-max-concurrent-requests",
     "providers.embedding.query-instruction-enabled",
+    "providers.embedding.cache-enabled",
+    "providers.embedding.cache-max-entries",
     "providers.embedding.max-concurrent-requests",
     "providers.embedding.max-in-flight-inputs",
     "providers.embedding.pool-max-inputs",

@@ -88,15 +88,15 @@ async fn runner_owned_batch_completion_publishes_global_counts_without_adapter_r
         .await;
 
     coordinator
-        .acquisition_batch(130, 64, 0, 0)
+        .acquisition_batch(130, 64, 0, 0, true)
         .complete(64)
         .await;
     coordinator
-        .acquisition_batch(130, 64, 64, 64)
+        .acquisition_batch(130, 64, 64, 64, true)
         .complete(63)
         .await;
     coordinator
-        .acquisition_batch(130, 2, 128, 127)
+        .acquisition_batch(130, 2, 128, 127, true)
         .complete(2)
         .await;
 
@@ -113,7 +113,7 @@ async fn runner_owned_batch_completion_publishes_global_counts_without_adapter_r
 async fn malformed_and_regressing_adapter_snapshots_are_clamped_monotonically() {
     let writer = Arc::new(RecordingWriter::default());
     let coordinator = coordinator(writer.clone());
-    let batch = coordinator.acquisition_batch(10, 5, 0, 0);
+    let batch = coordinator.acquisition_batch(10, 5, 0, 0, true);
 
     batch
         .report(AcquisitionProgress {
