@@ -1511,6 +1511,19 @@ async fn retry_accepts_historical_compact_stage_errors() {
         .await
         .expect("seed historical stage error");
 
+    let historical = store
+        .get(job.job_id)
+        .await
+        .expect("historical compact job error remains readable")
+        .expect("historical job exists");
+    assert_eq!(
+        historical
+            .last_error
+            .as_ref()
+            .map(|error| error.message.as_str()),
+        Some("historical failure")
+    );
+
     let retry = store
         .retry(
             job.job_id,

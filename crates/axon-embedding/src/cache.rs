@@ -34,10 +34,17 @@ pub struct CachedEmbedding {
     pub values: Vec<f32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorruptCacheEntry {
+    pub cache_key: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Default)]
 pub struct EmbeddingCacheLookup {
     pub hits: HashMap<String, CachedEmbedding>,
-    pub corrupt_keys: Vec<String>,
+    pub observed_created_at: HashMap<String, i64>,
+    pub corrupt_entries: Vec<CorruptCacheEntry>,
 }
 
 #[async_trait]
@@ -56,7 +63,7 @@ pub trait EmbeddingVectorCacheStore: Send + Sync {
         max_entries: usize,
     ) -> Result<(), CacheStoreError>;
 
-    async fn retire_many(&self, keys: &[String]) -> Result<(), CacheStoreError>;
+    async fn retire_many(&self, entries: &[CorruptCacheEntry]) -> Result<(), CacheStoreError>;
 }
 
 #[derive(Clone)]
@@ -134,20 +141,37 @@ impl CachedEmbeddingProvider {
         for key in &invalid_identity {
             lookup.hits.remove(key);
         }
-        lookup.corrupt_keys.extend(invalid_identity);
-        lookup.corrupt_keys.sort();
-        lookup.corrupt_keys.dedup();
+        lookup
+            .corrupt_entries
+            .extend(invalid_identity.into_iter().map(|cache_key| {
+                CorruptCacheEntry {
+                    created_at: lookup
+                        .observed_created_at
+                        .get(&cache_key)
+                        .copied()
+                        .unwrap_or_default(),
+                    cache_key,
+                }
+            }));
+        lookup
+            .corrupt_entries
+            .sort_by(|a, b| a.cache_key.cmp(&b.cache_key));
+        lookup
+            .corrupt_entries
+            .dedup_by(|a, b| a.cache_key == b.cache_key);
 
-        if !lookup.corrupt_keys.is_empty() {
+        if !lookup.corrupt_entries.is_empty() {
             metrics::counter!("axon_embedding_cache_corrupt_rows_total")
-                .increment(lookup.corrupt_keys.len() as u64);
+                .increment(lookup.corrupt_entries.len() as u64);
             let store = Arc::clone(&self.store);
-            let keys = lookup.corrupt_keys.clone();
+            let entries = lookup.corrupt_entries.clone();
             if let Ok(slot) = Arc::clone(&self.mutation_slots).try_acquire_owned() {
-                run_detached_mutation("retire", keys.len(), slot, async move {
-                    store.retire_many(&keys).await
+                run_detached_mutation("retire", entries.len(), slot, async move {
+                    store.retire_many(&entries).await
                 })
                 .await;
+            } else {
+                record_mutation_saturated("retire", entries.len());
             }
         }
 
@@ -161,6 +185,8 @@ impl CachedEmbeddingProvider {
                         record_store_error("touch", hit_keys.len(), &error);
                     }
                 });
+            } else {
+                record_mutation_saturated("touch", hit_keys.len());
             }
         }
         lookup.hits
@@ -213,6 +239,8 @@ impl CachedEmbeddingProvider {
                 store.put_many(&entries, max_entries).await
             })
             .await;
+        } else {
+            record_mutation_saturated("write", entries.len());
         }
         Ok((unique_miss_keys, Some(result)))
     }
@@ -228,19 +256,48 @@ async fn run_detached_mutation<F>(
 {
     // The spawned task owns the mutation. Timing out the optional wait detaches
     // it instead of cancelling an admitted SQLite transaction mid-rollback.
-    let task = tokio::spawn(async move {
+    let mut task = tokio::spawn(async move {
         let _slot = slot;
         future.await
     });
-    match tokio::time::timeout(OPTIONAL_CACHE_OPERATION_TIMEOUT, task).await {
+    match tokio::time::timeout(OPTIONAL_CACHE_OPERATION_TIMEOUT, &mut task).await {
         Ok(Ok(Ok(()))) => {}
         Ok(Ok(Err(error))) => record_store_error(operation, key_count, &error),
         Ok(Err(error)) => {
             let error: CacheStoreError = Box::new(error);
             record_store_error(operation, key_count, &error);
         }
-        Err(_) => record_store_timeout(operation, key_count),
+        Err(_) => {
+            record_store_timeout(operation, key_count);
+            tokio::spawn(async move {
+                match task.await {
+                    Ok(Ok(())) => metrics::counter!(
+                        "axon_embedding_cache_detached_mutations_completed_total",
+                        "operation" => operation
+                    )
+                    .increment(1),
+                    Ok(Err(error)) => record_store_error(operation, key_count, &error),
+                    Err(error) => {
+                        let error: CacheStoreError = Box::new(error);
+                        record_store_error(operation, key_count, &error);
+                    }
+                }
+            });
+        }
     }
+}
+
+fn record_mutation_saturated(operation: &'static str, key_count: usize) {
+    metrics::counter!(
+        "axon_embedding_cache_mutations_saturated_total",
+        "operation" => operation
+    )
+    .increment(1);
+    tracing::warn!(
+        operation,
+        key_count,
+        "embedding cache mutation skipped: admission saturated"
+    );
 }
 
 async fn bounded_store_operation<T, F>(

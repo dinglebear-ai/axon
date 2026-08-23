@@ -408,6 +408,100 @@ async fn version_five_watch_store_upgrades_with_replay_defaults_and_reopens_idem
 }
 
 #[tokio::test]
+async fn version_seven_cache_store_preserves_rows_and_initializes_exact_count() {
+    let jobs_through_seven = MigrationSet::new(JOBS_NAMESPACE, &JOBS_MIGRATIONS[..7]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("version-seven-cache.db");
+    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let pool = SqlitePool::connect(&url).await.expect("open fixture pool");
+    let old_sets = [
+        axon_ledger::migration::migration_set(),
+        jobs_through_seven,
+        axon_observe::migration::migration_set(),
+        axon_graph::migration::migration_set(),
+        axon_memory::migration::migration_set(),
+    ];
+    let mut tx = pool.begin().await.expect("begin version-seven fixture");
+    ensure_applied_table(&mut tx)
+        .await
+        .expect("create receipt table");
+    for set in old_sets {
+        apply_set(&mut tx, set)
+            .await
+            .expect("apply version-seven fixture set");
+    }
+    identity::stamp_schema_epoch(&mut tx)
+        .await
+        .expect("stamp epoch");
+    let cache_a = format!("sha256:{:064x}", 1);
+    let cache_b = format!("sha256:{:064x}", 2);
+    let cache_c = format!("sha256:{:064x}", 3);
+    for key in [&cache_a, &cache_b] {
+        sqlx::query(
+            "INSERT INTO embedding_vector_cache \
+             (cache_key, provider_id, model, dimensions, vector, created_at, last_used_at) \
+             VALUES (?, 'tei', 'model', 1, X'00000000', 1, 1)",
+        )
+        .bind(key)
+        .execute(&mut *tx)
+        .await
+        .expect("seed cache row");
+    }
+    tx.commit().await.expect("commit fixture");
+    pool.close().await;
+
+    let pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("upgrade version-seven database");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read initialized count");
+    assert_eq!(count, 2);
+    sqlx::query(
+        "INSERT INTO embedding_vector_cache \
+         (cache_key, provider_id, model, dimensions, vector, created_at, last_used_at) \
+         VALUES (?, 'tei', 'model', 1, X'00000000', 1, 1)",
+    )
+    .bind(&cache_c)
+    .execute(&pool)
+    .await
+    .expect("insert after upgrade");
+    sqlx::query("DELETE FROM embedding_vector_cache WHERE cache_key = ?")
+        .bind(&cache_a)
+        .execute(&pool)
+        .await
+        .expect("delete after upgrade");
+    let rows: Vec<String> =
+        sqlx::query_scalar("SELECT cache_key FROM embedding_vector_cache ORDER BY cache_key")
+            .fetch_all(&pool)
+            .await
+            .expect("read preserved rows");
+    assert_eq!(rows, [cache_b, cache_c]);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read trigger-maintained count");
+    assert_eq!(count, 2);
+    pool.close().await;
+
+    let reopened = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("reopen upgraded database");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+    )
+    .fetch_one(&reopened)
+    .await
+    .expect("read idempotent count");
+    assert_eq!(count, 2);
+}
+
+#[tokio::test]
 async fn parser_capacity_domain_is_accepted_after_migration() {
     let pool = open_sqlite_pool(":memory:").await.expect("migrations");
     sqlx::query(

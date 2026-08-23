@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use axon_api::source::ProviderId;
 use axon_embedding::cache::{
-    CacheStoreError, CachedEmbedding, EmbeddingCacheLookup, EmbeddingVectorCacheStore,
+    CacheStoreError, CachedEmbedding, CorruptCacheEntry, EmbeddingCacheLookup,
+    EmbeddingVectorCacheStore,
 };
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use std::sync::Arc;
@@ -95,23 +96,36 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
                 let key: String = row.try_get("cache_key")?;
                 let created_at: i64 = row.try_get("created_at")?;
                 if created_at < cache_cutoff_millis() {
-                    lookup.corrupt_keys.push(key);
+                    lookup.corrupt_entries.push(CorruptCacheEntry {
+                        cache_key: key,
+                        created_at,
+                    });
                     continue;
                 }
                 let dimensions: i64 = row.try_get("dimensions")?;
                 let bytes: Vec<u8> = row.try_get("vector")?;
                 let Ok(dimensions) = u32::try_from(dimensions) else {
-                    lookup.corrupt_keys.push(key);
+                    lookup.corrupt_entries.push(CorruptCacheEntry {
+                        cache_key: key,
+                        created_at,
+                    });
                     continue;
                 };
                 let Some(values) = decode_vector(&bytes, dimensions) else {
-                    lookup.corrupt_keys.push(key);
+                    lookup.corrupt_entries.push(CorruptCacheEntry {
+                        cache_key: key,
+                        created_at,
+                    });
                     continue;
                 };
                 if dimensions != expected_dimensions {
-                    lookup.corrupt_keys.push(key);
+                    lookup.corrupt_entries.push(CorruptCacheEntry {
+                        cache_key: key,
+                        created_at,
+                    });
                     continue;
                 }
+                lookup.observed_created_at.insert(key.clone(), created_at);
                 lookup.hits.insert(
                     key.clone(),
                     CachedEmbedding {
@@ -134,6 +148,11 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
         let Some(_write_permit) = self.inner.write_gate.try_lock() else {
             // LRU accuracy is advisory. A warm cache hit must never queue
             // behind source/job mutations on the shared SQLite writer gate.
+            metrics::counter!(
+                "axon_embedding_cache_touch_skipped_total",
+                "reason" => "writer_busy"
+            )
+            .increment(1);
             return Ok(());
         };
         let mut transaction = self.inner.pool.begin().await?;
@@ -201,17 +220,26 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
         Ok(())
     }
 
-    async fn retire_many(&self, keys: &[String]) -> Result<(), CacheStoreError> {
-        if keys.is_empty() {
+    async fn retire_many(&self, entries: &[CorruptCacheEntry]) -> Result<(), CacheStoreError> {
+        if entries.is_empty() {
             return Ok(());
         }
         let _write_permit = acquire_write_permit(&self.inner.write_gate).await?;
         let mut transaction = self.inner.pool.begin().await?;
-        for key_chunk in keys.chunks(KEY_BIND_BUDGET) {
+        for entry_chunk in entries.chunks(KEY_BIND_BUDGET / 2) {
             let mut query = QueryBuilder::<Sqlite>::new(
-                "DELETE FROM embedding_vector_cache WHERE cache_key IN (",
+                "DELETE FROM embedding_vector_cache WHERE (cache_key, created_at) IN (",
             );
-            push_key_bind_list(&mut query, key_chunk);
+            let mut separated = query.separated(", ");
+            for entry in entry_chunk {
+                separated
+                    .push_unseparated("(")
+                    .push_bind_unseparated(&entry.cache_key)
+                    .push_unseparated(", ")
+                    .push_bind_unseparated(entry.created_at)
+                    .push_unseparated(")");
+            }
+            separated.push_unseparated(")");
             query.build().execute(&mut *transaction).await?;
         }
         transaction.commit().await?;

@@ -56,7 +56,7 @@ async fn max_configured_batch_is_chunked_below_sqlite_bind_budget() {
     let lookup = store.get_many(&keys, 4).await.expect("bulk read");
 
     assert_eq!(lookup.hits.len(), entries.len());
-    assert!(lookup.corrupt_keys.is_empty());
+    assert!(lookup.corrupt_entries.is_empty());
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM embedding_vector_cache")
         .fetch_one(&pool)
         .await
@@ -80,9 +80,9 @@ async fn corrupt_rows_are_reported_and_can_be_retired() {
 
     let lookup = store.get_many(std::slice::from_ref(&key), 4).await.unwrap();
     assert!(lookup.hits.is_empty());
-    assert_eq!(lookup.corrupt_keys, vec![key.clone()]);
+    assert_eq!(lookup.corrupt_entries[0].cache_key, key);
 
-    store.retire_many(std::slice::from_ref(&key)).await.unwrap();
+    store.retire_many(&lookup.corrupt_entries).await.unwrap();
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM embedding_vector_cache")
         .fetch_one(&pool)
         .await
@@ -119,7 +119,14 @@ async fn non_finite_vectors_are_reported_as_corrupt() {
         .unwrap();
 
     assert!(lookup.hits.is_empty());
-    assert_eq!(lookup.corrupt_keys, vec![nan_key, infinite_key]);
+    assert_eq!(
+        lookup
+            .corrupt_entries
+            .iter()
+            .map(|entry| entry.cache_key.clone())
+            .collect::<Vec<_>>(),
+        vec![nan_key, infinite_key]
+    );
 }
 
 #[tokio::test]
@@ -170,7 +177,80 @@ async fn expired_entries_miss_and_are_reported_for_lazy_retirement() {
         .unwrap();
 
     assert!(lookup.hits.is_empty());
-    assert_eq!(lookup.corrupt_keys, vec![expired.cache_key]);
+    assert_eq!(lookup.corrupt_entries[0].cache_key, expired.cache_key);
+}
+
+#[tokio::test]
+async fn stale_retirement_cannot_delete_a_recomputed_entry() {
+    let (store, pool, _) = store().await;
+    let mut replacement = entry(43);
+    let expired_at = chrono::Utc::now().timestamp_millis() - MAX_CACHE_AGE.as_millis() as i64 - 1;
+    sqlx::query(
+        "INSERT INTO embedding_vector_cache \
+         (cache_key, provider_id, model, dimensions, vector, created_at, last_used_at) \
+         VALUES (?, 'tei', 'test-model', 4, ?, ?, ?)",
+    )
+    .bind(&replacement.cache_key)
+    .bind(encode_vector(&replacement.values))
+    .bind(expired_at)
+    .bind(expired_at)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stale = store
+        .get_many(std::slice::from_ref(&replacement.cache_key), 4)
+        .await
+        .unwrap();
+    replacement.values = vec![99.0; 4];
+    store.put_many(&[replacement.clone()], 100).await.unwrap();
+    store.retire_many(&stale.corrupt_entries).await.unwrap();
+
+    let lookup = store
+        .get_many(std::slice::from_ref(&replacement.cache_key), 4)
+        .await
+        .unwrap();
+    assert_eq!(
+        lookup.hits[&replacement.cache_key].values,
+        replacement.values
+    );
+}
+
+#[tokio::test]
+async fn successful_touch_updates_recency_and_protects_a_hot_entry() {
+    let (store, pool, _) = store().await;
+    let initial = [entry(50), entry(51), entry(52)];
+    store.put_many(&initial, 3).await.unwrap();
+    let base = chrono::Utc::now().timestamp_millis() - 10_000;
+    for (offset, item) in initial.iter().enumerate() {
+        sqlx::query("UPDATE embedding_vector_cache SET last_used_at = ? WHERE cache_key = ?")
+            .bind(base + offset as i64)
+            .bind(&item.cache_key)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    store
+        .touch_many(std::slice::from_ref(&initial[0].cache_key))
+        .await
+        .unwrap();
+    store.put_many(&[entry(53)], 3).await.unwrap();
+
+    let survivors: Vec<String> =
+        sqlx::query_scalar("SELECT cache_key FROM embedding_vector_cache ORDER BY cache_key")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(survivors.contains(&initial[0].cache_key));
+    assert!(!survivors.contains(&initial[1].cache_key));
+    let hit_count: i64 =
+        sqlx::query_scalar("SELECT hit_count FROM embedding_vector_cache WHERE cache_key = ?")
+            .bind(&initial[0].cache_key)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(hit_count, 1);
 }
 
 #[tokio::test]
@@ -206,6 +286,61 @@ async fn mutation_deadline_applies_only_to_writer_admission() {
         .unwrap();
     assert_eq!(count, 0, "timed-out admission must not begin a transaction");
     store.put_many(&[entry(7)], 100).await.unwrap();
+}
+
+#[tokio::test]
+async fn timed_out_wait_keeps_writer_gate_until_real_mutation_finishes() {
+    let directory = tempfile::tempdir().expect("cache database directory");
+    let database = directory.path().join("cache.db");
+    let pool = open_sqlite_pool(database.to_str().expect("UTF-8 database path"))
+        .await
+        .expect("cache database");
+    let gate = SqliteWriteGate::default();
+    let store =
+        SqliteEmbeddingVectorCacheStore::new_without_maintenance(pool.clone(), gate.clone(), 100);
+
+    let mut external_writer = pool.acquire().await.expect("external writer connection");
+    sqlx::query("BEGIN IMMEDIATE")
+        .execute(&mut *external_writer)
+        .await
+        .expect("hold SQLite writer lock");
+
+    let mut mutation = tokio::spawn({
+        let store = store.clone();
+        async move { store.put_many(&[entry(17)], 100).await }
+    });
+    poll_fn(|cx| {
+        if gate.try_lock().is_none() {
+            Poll::Ready(())
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    })
+    .await;
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut mutation)
+            .await
+            .is_err(),
+        "the caller deadline must expire while the real SQLite mutation remains owned"
+    );
+    let mut competing_writer = Box::pin(gate.lock());
+    assert_pending(
+        competing_writer.as_mut(),
+        "the admitted mutation must retain writer admission after caller timeout",
+    )
+    .await;
+
+    sqlx::query("COMMIT")
+        .execute(&mut *external_writer)
+        .await
+        .expect("release SQLite writer lock");
+    mutation
+        .await
+        .expect("mutation task")
+        .expect("mutation completes after lock release");
+    drop(competing_writer.await);
 }
 
 #[tokio::test]

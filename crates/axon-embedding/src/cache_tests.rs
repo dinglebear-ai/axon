@@ -14,7 +14,7 @@ struct MemoryCacheStore {
     entries: Mutex<HashMap<String, CachedEmbedding>>,
     retired: Mutex<Vec<String>>,
     fail_touch: bool,
-    corrupt: Mutex<Vec<String>>,
+    corrupt: Mutex<Vec<CorruptCacheEntry>>,
 }
 
 struct FailingCacheStore;
@@ -44,7 +44,8 @@ impl EmbeddingVectorCacheStore for BlockingCacheStore {
         }
         Ok(EmbeddingCacheLookup {
             hits: self.lookup.hits.clone(),
-            corrupt_keys: self.lookup.corrupt_keys.clone(),
+            observed_created_at: self.lookup.observed_created_at.clone(),
+            corrupt_entries: self.lookup.corrupt_entries.clone(),
         })
     }
 
@@ -66,7 +67,7 @@ impl EmbeddingVectorCacheStore for BlockingCacheStore {
         Ok(())
     }
 
-    async fn retire_many(&self, _keys: &[String]) -> Result<(), CacheStoreError> {
+    async fn retire_many(&self, _entries: &[CorruptCacheEntry]) -> Result<(), CacheStoreError> {
         if self.blocked == BlockedOperation::Retire {
             return pending().await;
         }
@@ -96,7 +97,7 @@ impl EmbeddingVectorCacheStore for FailingCacheStore {
         Err("cache unavailable".into())
     }
 
-    async fn retire_many(&self, _keys: &[String]) -> Result<(), CacheStoreError> {
+    async fn retire_many(&self, _entries: &[CorruptCacheEntry]) -> Result<(), CacheStoreError> {
         Err("cache unavailable".into())
     }
 }
@@ -114,7 +115,8 @@ impl EmbeddingVectorCacheStore for MemoryCacheStore {
                 .iter()
                 .filter_map(|key| entries.get(key).cloned().map(|entry| (key.clone(), entry)))
                 .collect(),
-            corrupt_keys: self.corrupt.lock().await.clone(),
+            observed_created_at: HashMap::new(),
+            corrupt_entries: self.corrupt.lock().await.clone(),
         })
     }
 
@@ -141,11 +143,14 @@ impl EmbeddingVectorCacheStore for MemoryCacheStore {
         Ok(())
     }
 
-    async fn retire_many(&self, keys: &[String]) -> Result<(), CacheStoreError> {
-        self.retired.lock().await.extend_from_slice(keys);
-        let mut entries = self.entries.lock().await;
-        for key in keys {
-            entries.remove(key);
+    async fn retire_many(&self, entries: &[CorruptCacheEntry]) -> Result<(), CacheStoreError> {
+        self.retired
+            .lock()
+            .await
+            .extend(entries.iter().map(|entry| entry.cache_key.clone()));
+        let mut stored = self.entries.lock().await;
+        for entry in entries {
+            stored.remove(&entry.cache_key);
         }
         Ok(())
     }
@@ -377,7 +382,8 @@ async fn stalled_touch_times_out_without_discarding_a_valid_hit() {
             blocked: BlockedOperation::Touch,
             lookup: EmbeddingCacheLookup {
                 hits: HashMap::from([(key.clone(), cached_entry(key, vec![1.0; 4]))]),
-                corrupt_keys: Vec::new(),
+                observed_created_at: HashMap::new(),
+                corrupt_entries: Vec::new(),
             },
         }),
     );
@@ -410,7 +416,11 @@ async fn stalled_retirement_times_out_and_refetches_the_corrupt_row() {
             blocked: BlockedOperation::Retire,
             lookup: EmbeddingCacheLookup {
                 hits: HashMap::new(),
-                corrupt_keys: vec![key],
+                observed_created_at: HashMap::new(),
+                corrupt_entries: vec![CorruptCacheEntry {
+                    cache_key: key,
+                    created_at: 1,
+                }],
             },
         }),
     );

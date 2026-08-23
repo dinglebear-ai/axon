@@ -115,7 +115,7 @@ pub(crate) fn row_to_summary(row: sqlx::sqlite::SqliteRow) -> Result<JobSummary>
         counts: from_optional_json(row.get::<Option<String>, _>("counts_json"))?,
         current: from_optional_json(row.get::<Option<String>, _>("current_json"))?,
         heartbeat: from_optional_json(row.get::<Option<String>, _>("heartbeat_json"))?,
-        last_error: from_optional_json(row.get::<Option<String>, _>("last_error_json"))?,
+        last_error: from_optional_source_error(row.get::<Option<String>, _>("last_error_json"))?,
         warnings: from_json(row.get::<String, _>("warnings_json"))?,
     })
 }
@@ -271,6 +271,36 @@ fn from_optional_api_error(value: Option<String>) -> Result<Option<ApiError>> {
                 .entry("details")
                 .or_insert_with(|| serde_json::json!({}));
             serde_json::from_value(value).map_err(json_error)
+        })
+        .transpose()
+}
+
+fn from_optional_source_error(value: Option<String>) -> Result<Option<SourceError>> {
+    value
+        .map(|value| {
+            let value: serde_json::Value = serde_json::from_str(&value).map_err(json_error)?;
+            let object = value.as_object().ok_or_else(|| {
+                ApiError::new(
+                    "job.json_error",
+                    ErrorStage::Publishing,
+                    "stored source error must be a JSON object",
+                )
+            })?;
+            let mut compact = serde_json::Map::new();
+            for key in [
+                "code",
+                "severity",
+                "message",
+                "source_item_key",
+                "retryable",
+                "provider_id",
+                "cause",
+            ] {
+                if let Some(value) = object.get(key) {
+                    compact.insert(key.to_string(), value.clone());
+                }
+            }
+            serde_json::from_value(serde_json::Value::Object(compact)).map_err(json_error)
         })
         .transpose()
 }
