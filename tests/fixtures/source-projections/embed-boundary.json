@@ -1,0 +1,1 @@
+{"operation":"embed","transport_input":{"inputs":[{"input":"/workspace/a","idempotency_key":"embed-a"},{"input":"/workspace/b","idempotency_key":"embed-b"}],"options":{"collection":"code","scope":"directory","limits":{"max_items":1000,"max_chunks":4000}}},"canonical_requests":"generated","expected_result":{"status":"accepted","disclosure":"detached"}}

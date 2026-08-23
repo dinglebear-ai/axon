@@ -1,0 +1,1 @@
+{"operation":"ingest","transport_input":{"inputs":[{"input":"https://example.test/failed","idempotency_key":"collision"}]},"canonical_requests":"generated","expected_result":{"batch_id":"batch_example","status":"completed_degraded","items":[{"index":0,"outcome":{"status":"failed","data":{"code":"projection.idempotency_collision","http_status":409}}}]}}

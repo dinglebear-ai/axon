@@ -1,0 +1,1 @@
+{"operation":"scrape","transport_input":{"inputs":[{"input":"https://example.test/page"}]},"canonical_requests":"generated","expected_result":{"status":"completed"}}

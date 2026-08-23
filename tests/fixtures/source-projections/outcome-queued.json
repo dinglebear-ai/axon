@@ -1,0 +1,1 @@
+{"operation":"crawl","transport_input":{"inputs":[{"input":"https://example.test/queued"}]},"canonical_requests":"generated","expected_result":{"batch_id":"batch_example","status":"accepted","items":[{"index":0,"outcome":{"status":"queued","data":{"job_id":"job_example"}}}]}}

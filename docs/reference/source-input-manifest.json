@@ -284,12 +284,12 @@
         {
           "path": "xtask/src/schemas/families.rs",
           "kind": "rust_module",
-          "checksum": "sha256:b455f8ba5b37ccb19ae41f0eca0762fe62718a54b224392e5b4c638124540721"
+          "checksum": "sha256:18a853822432f4e514faad577fea407b9e7e944c74a21446637feb3795c02e1a"
         },
         {
           "path": "xtask/src/schemas/families/bundles.rs",
           "kind": "rust_module",
-          "checksum": "sha256:e06e9d73ae8b2f88993f0582ca080d31764df3f62d8ae33fd2dc2ee77a39ff58"
+          "checksum": "sha256:b2932485a582231afb5c91e581d418e5068a8d31edbd4764decb67c20d5ca250"
         },
         {
           "path": "xtask/src/schemas/registry.rs",
@@ -312,7 +312,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "d63172bea2e8300400cca4ff8bef9552538a3129018fb1cd5e9e4aaec6e6f52c"
+      "manifest_checksum": "0b9a49471232bafc1e7e4433fb0c31f4acc8c845c9da1b6127d742cf56360c32"
     },
     {
       "family": "cli",
@@ -655,17 +655,17 @@
         {
           "path": "xtask/src/schemas/families.rs",
           "kind": "rust_module",
-          "checksum": "sha256:b455f8ba5b37ccb19ae41f0eca0762fe62718a54b224392e5b4c638124540721"
+          "checksum": "sha256:18a853822432f4e514faad577fea407b9e7e944c74a21446637feb3795c02e1a"
         },
         {
           "path": "xtask/src/schemas/families/bundles.rs",
           "kind": "rust_module",
-          "checksum": "sha256:e06e9d73ae8b2f88993f0582ca080d31764df3f62d8ae33fd2dc2ee77a39ff58"
+          "checksum": "sha256:b2932485a582231afb5c91e581d418e5068a8d31edbd4764decb67c20d5ca250"
         },
         {
           "path": "xtask/src/schemas/families/family_specs.rs",
           "kind": "rust_module",
-          "checksum": "sha256:2c8f81ae025d904f66e5b264e641b3a755bb004b3e6c826829cd93df882a229c"
+          "checksum": "sha256:866a3b791e774f615ab31fe4cd568ed2f29085a3542e9a8fac4a2038ba0cfa37"
         },
         {
           "path": "xtask/src/schemas/families/markdown.rs",
@@ -683,7 +683,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "64534bdd8ef5200af39dae9ad9333a37d4a0187ac02c9330199d15a764783e48"
+      "manifest_checksum": "34484e2f684676e108764f90a9c8dc6714b8de57862c4a3d719388ef6d510750"
     },
     {
       "family": "presentation",

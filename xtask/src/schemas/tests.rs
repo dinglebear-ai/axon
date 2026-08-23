@@ -26,6 +26,8 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-api/src/source/job.rs",
         "crates/axon-api/src/source/job_listing.rs",
         "crates/axon-api/src/source/provider_io.rs",
+        "crates/axon-api/src/source/projection.rs",
+        "crates/axon-api/src/source/projection_registry.rs",
         "crates/axon-api/src/source/prune.rs",
         "crates/axon-api/src/source/stage.rs",
         "crates/axon-api/src/source/state.rs",
@@ -106,6 +108,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "xtask/src/schemas/registry/canonical_enums.rs",
         "xtask/src/schemas/schema_json.rs",
         "xtask/src/schemas/source_input.rs",
+        "xtask/src/schemas/projections.rs",
         "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
         "docs/pipeline-unification/schemas/api-dto-schema.md",
@@ -151,6 +154,20 @@ pub(super) fn fixture_repo() -> TempDir {
         } else {
             write_fixture(tmp.path(), path, "fixture");
         }
+    }
+    let fixture_source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tests/fixtures/source-projections");
+    for entry in std::fs::read_dir(fixture_source).unwrap() {
+        let entry = entry.unwrap();
+        copy_workspace_fixture(
+            tmp.path(),
+            &format!(
+                "tests/fixtures/source-projections/{}",
+                entry.file_name().to_string_lossy()
+            ),
+        );
     }
     write_fixture(
         tmp.path(),
@@ -294,7 +311,8 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
         SchemaFamily::Api
         | SchemaFamily::Events
         | SchemaFamily::Errors
-        | SchemaFamily::Database => "{}",
+        | SchemaFamily::Database
+        | SchemaFamily::Projections => "{}",
     }
 }
 
@@ -310,6 +328,9 @@ fn needs_real_fixture(path: &str) -> bool {
             | "crates/axon-llm/src/fake.rs"
             | "crates/axon-vectors/src/store.rs"
             | "crates/axon-web/src/schema_registry.rs"
+            | "crates/axon-api/src/source/projection.rs"
+            | "crates/axon-api/src/source/projection_registry.rs"
+            | "xtask/src/schemas/projections.rs"
             | "crates/axon-web/src/schema_registry/admin_watch_routes.rs"
             | "crates/axon-web/src/schema_registry/extract_routes.rs"
             | "crates/axon-web/src/schema_registry/graph_routes.rs"
@@ -1984,6 +2005,7 @@ fn schema_cli_accepts_required_commands_and_flags() {
         SchemaCommand::VectorPayload(SchemaGenerateArgs::default()),
         SchemaCommand::Providers(SchemaGenerateArgs::default()),
         SchemaCommand::Adapters(SchemaGenerateArgs::default()),
+        SchemaCommand::Projections(SchemaGenerateArgs::default()),
     ] {
         run(tmp.path(), SchemasArgs { command }).expect("schema command should succeed");
     }

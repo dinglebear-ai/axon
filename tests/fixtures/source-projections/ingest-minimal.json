@@ -1,0 +1,1 @@
+{"operation":"ingest","transport_input":{"inputs":[{"input":"./README.md"}]},"canonical_requests":"generated","expected_result":{"status":"completed"}}

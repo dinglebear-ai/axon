@@ -132,6 +132,7 @@ pub(crate) fn schema_id(family: SchemaFamily) -> &'static str {
             "https://axon.local/schemas/runtime/provider-capabilities.schema.json"
         }
         SchemaFamily::Adapters => "https://axon.local/schemas/sources/adapter-scopes.json",
+        SchemaFamily::Projections => "https://axon.local/schemas/sources/projections.schema.json",
         SchemaFamily::Api | SchemaFamily::Errors => {
             unreachable!("real generators use explicit ids")
         }
