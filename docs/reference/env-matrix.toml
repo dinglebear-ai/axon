@@ -1019,6 +1019,30 @@ compatibility = "warn-env-override"
 reason = "Per-document embed timeout tuning."
 
 [[env]]
+key = "AXON_EMBED_CACHE_ENABLED"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.cache-enabled"
+compatibility = "warn-env-override"
+reason = "Opt-in content-addressed embedding cache toggle."
+
+[[env]]
+key = "AXON_EMBED_CACHE_MAX_ENTRIES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.cache-max-entries"
+compatibility = "warn-env-override"
+reason = "Maximum retained content-addressed embedding cache entries."
+
+[[env]]
 key = "AXON_UNIFIED_WORKER_CONCURRENCY"
 classification = "move-toml"
 runtime_placement = "not-runtime"
