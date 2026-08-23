@@ -4,7 +4,7 @@
 
 **Goal:** Restore first-class `scrape`, `crawl`, `embed`, `ingest`, and `code-search` operations across CLI, MCP, and REST as batch-capable projections over Axon's existing source and query services.
 
-**Architecture:** `axon-api` owns typed projection DTOs, pure projection rules, the operation registry, and generic batch envelopes. `axon-services` owns whole-batch preflight and execution; `axon-jobs` owns atomic detached admission, idempotency, and durable correlation. CLI, MCP, and REST parse and render only, and all generated contracts derive from the canonical registry.
+**Architecture:** `axon-api` owns typed projection DTOs, pure projection rules, the operation registry, and generic batch envelopes. `axon-services` owns whole-batch preflight and execution; `axon-jobs` owns job-first atomic admission for foreground and detached calls, idempotency, and durable correlation. CLI, MCP, and REST parse and render only, and generated metadata is validated against the canonical registry.
 
 **Tech Stack:** Rust 2024, Tokio, clap, serde/schemars/utoipa, Axum, rmcp, SQLx/SQLite, Axon xtask generators, Cargo nextest.
 
@@ -17,9 +17,11 @@
 - All five restored operations support the same one-or-many request semantics on CLI, MCP, and REST.
 - `scrape` fixes page scope and one-page limits; `crawl` fixes site scope; `embed` forces publication; `ingest` may disable embedding; `code-search` fixes code retrieval.
 - Whole-batch validation, routing, idempotency checks, and authorization complete before any side effect.
-- Detached source admission is one SQLite transaction: every item job is created or none are.
-- Source idempotency is scoped by operation, authenticated caller identity, and caller key; `code-search` rejects idempotency fields.
-- The expanded-work ceiling is deterministically partitioned and persisted per item; no in-memory batch coordinator is authoritative.
+- Source admission is one SQLite transaction in both modes: every item is
+  inserted/reused and correlated, or none are.
+- Source idempotency is scoped by operation, opaque authenticated principal,
+  and caller key; `code-search` rejects idempotency fields.
+- Persist operation/stage-specific effective limits; never claim one generic unit bounds pages, files, chunks, bytes, vectors, and query hits.
 - Existing scheduler claims, provider reservations, cooldowns, and global worker limits remain authoritative.
 - Shared telemetry never records raw inputs, queries, paths, headers, credentials, or idempotency keys.
 - Advance the shared REST/MCP contract version to `2026-08-23`.
@@ -59,7 +61,11 @@ fn code_search_rejects_source_idempotency_shape() {
 
 #[test]
 fn detached_batch_item_omits_input_echo() {
-    let item = BatchItem::<SourceResult>::queued(0, None, descriptor());
+    let item = BatchItem::<SourceResult> {
+        index: 0,
+        input: None,
+        outcome: BatchOutcome::Queued(descriptor()),
+    };
     assert!(serde_json::to_value(item).unwrap().get("input").is_none());
 }
 ```
@@ -109,6 +115,15 @@ pub struct BatchResult<T> {
     pub items: Vec<BatchItem<T>>,
     pub summary: BatchSummary,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[serde(tag = "status", content = "data", rename_all = "snake_case")]
+pub enum BatchOutcome<T> {
+    Completed(T),
+    Queued(JobDescriptor),
+    Failed(SanitizedApiError),
+    Canceled,
+}
 ```
 
 Use concrete aliases `ScrapeRequest`, `CrawlRequest`, `EmbedRequest`, `IngestRequest`, and `CodeSearchRequest` so schemars/utoipa register stable schema names.
@@ -145,7 +160,10 @@ pub fn project_code_search(request: &CodeSearchRequest) -> Result<Vec<CodeSearch
 pub fn validate_projection_registry(specs: &[ProjectionOperationSpec]) -> Result<(), ApiError>;
 ```
 
-`CodeSearchPlan` must carry query, collection, limit, offset, cwd, path prefix, language/source filters, hybrid controls, and `ensure_fresh`; it must not include an idempotency key.
+`CodeSearchPlan` carries query, collection, limit, offset, path prefix,
+language/source filters, and hybrid controls. It must not include cwd-driven
+refresh, `ensure_fresh`, or idempotency; projection forces committed-state
+retrieval so `axon:read` cannot mutate local/vector state.
 
 - [ ] **Step 6: Run API tests and contract-shape checks**
 
@@ -207,9 +225,15 @@ Expected: FAIL because the family and artifacts do not exist.
 
 Add `SchemaFamily::Projections` with source provenance rooted in the Task 1 modules and fixture directory. Generate JSON directly from the registry and render Markdown from the same in-memory value; do not parse the Markdown back into data.
 
-- [ ] **Step 4: Add complete canonical fixture cases**
+- [ ] **Step 4: Add bounded canonical fixture cases**
 
-Create named fixtures for each operation's minimal/full request, forbidden overrides, single/batch output, mixed outcomes, detached disclosure, deterministic budget allocation, and `409` idempotency collision. Each fixture must contain `operation`, `transport_input`, `canonical_requests`, and `expected_result` keys.
+Create one minimal and one boundary fixture per operation plus tagged outcome,
+detached disclosure, effective-limit, and `409` collision fixtures. Each fixture
+contains `operation`, `transport_input`, `canonical_requests`, and
+`expected_result`. Add the semantic registry-to-transport bijection harness now;
+later transport tasks plug their pure parsers into it before dispatch wiring.
+Compare canonical semantic fields while excluding principal/cwd/runtime context,
+not byte-for-byte incidental transport state.
 
 - [ ] **Step 5: Refresh and verify generated artifacts**
 
@@ -228,7 +252,7 @@ git add xtask/src tests/fixtures/source-projections docs/reference/sources/proje
 git commit -m "feat(contracts): generate restored projection registry"
 ```
 
-### Task 3: Typed Batch Policy Configuration
+### Task 3: Typed Admission and Stage-Limit Configuration
 
 **Files:**
 - Modify: `crates/axon-core/src/config/types/config.rs`
@@ -242,11 +266,18 @@ git commit -m "feat(contracts): generate restored projection registry"
 - Modify: `config.example.toml`
 
 **Interfaces:**
-- Produces: `Config::projection_batch_max_inputs`, `Config::projection_batch_max_concurrency`, and `Config::projection_batch_max_expanded_items`.
+- Produces: conservative count/body/input/key/result ceilings plus owning
+  page, manifest-item, prepared-byte, document, chunk, vector-point, redirect,
+  elapsed-time, and query-window ceilings. No generic expanded-item or
+  per-request concurrency knob is introduced.
 
 - [ ] **Step 1: Add failing default/TOML/env precedence tests**
 
-Use conservative defaults `32`, `4`, and `10_000`, and env names `AXON_PROJECTION_BATCH_MAX_INPUTS`, `AXON_PROJECTION_BATCH_MAX_CONCURRENCY`, and `AXON_PROJECTION_BATCH_MAX_EXPANDED_ITEMS`.
+Cover conservative defaults for maximum inputs, encoded request bytes,
+per-input/query/idempotency-key bytes, aggregate decoded bytes, response bytes,
+and each operation/stage unit. Include global caller/request admission/rate
+limits. Pin every TOML/env name in the generated registry rather than inventing
+one polymorphic ceiling.
 
 - [ ] **Step 2: Verify tests fail on missing fields**
 
@@ -256,7 +287,10 @@ cargo test -p axon-core projection_batch --locked
 
 - [ ] **Step 3: Implement config defaults, parsing, validation, and schema registration**
 
-Reject zero for every field and reject `max_expanded_items < max_inputs` at config load with the exact field paths in the error.
+Reject zero, arithmetic overflow, and unsafe/inverted owning limits with exact
+field paths. Enforce HTTP body bytes before deserialization and Unicode byte
+length after decoding. Request values may only clamp downward using
+`min(caller, fixed, server)`.
 
 - [ ] **Step 4: Run config tests and generated config checks**
 
@@ -281,8 +315,8 @@ git commit -m "feat(config): add projection batch policy"
 - Modify: `crates/axon-api/src/source/job_listing.rs`
 - Modify: `crates/axon-api/src/source/lifecycle.rs`
 - Modify: `crates/axon-jobs/src/boundary.rs`
-- Create: `crates/axon-jobs/src/unified/batch_create.rs`
-- Create: `crates/axon-jobs/src/unified/batch_create_tests.rs`
+- Create: `crates/axon-jobs/src/unified/projection_admission.rs`
+- Create: `crates/axon-jobs/src/unified/projection_admission_tests.rs`
 - Modify: `crates/axon-jobs/src/unified.rs`
 - Modify: `crates/axon-jobs/src/unified/ops.rs`
 - Modify: `crates/axon-jobs/src/unified/schema.rs`
@@ -292,37 +326,59 @@ git commit -m "feat(config): add projection batch policy"
 - Modify: `crates/axon-jobs/src/migrations_tests.rs`
 
 **Interfaces:**
-- Consumes: `BatchId`, `JobCreateRequest`, and source-only idempotency fingerprints.
-- Produces: `JobCreateRequest.batch_id`, `JobDescriptor.batch_id`, `JobSummary.batch_id`, `JobEvent.batch_id`, caller-scoped idempotency metadata, and `JobStore::create_batch_atomic`.
+- Consumes: `BatchId`, `JobCreateRequest`, opaque projection keys, and
+  `RequestFingerprintV1`.
+- Produces: `projection_batch_items`, principal-authorized ordered batch lookup,
+  originating batch metadata in event JSON, and
+  `JobStore::admit_projection_batch_atomic`.
 
 - [ ] **Step 1: Write failing migration and DTO round-trip tests**
 
-Assert nullable `batch_id` columns on `jobs` and `job_events`, index `idx_axon_jobs_batch_created`, event propagation, and generated database schema visibility.
+Assert `projection_batch_items(batch_id,item_index,job_id,operation,reused,
+principal_id,created_at)`, unique ordered membership, job foreign key, lookup
+index, event JSON propagation, principal-filtered lookup, and generated schema
+visibility. Assert no physical `job_events.batch_id` column is introduced.
 
 - [ ] **Step 2: Write failing atomic-admission tests**
 
 ```rust
 #[tokio::test]
-async fn batch_create_rolls_back_every_job_on_collision() {
+async fn projection_admission_rolls_back_every_job_on_collision() {
     let store = sqlite_store().await;
-    let result = store.create_batch_atomic(vec![valid(), conflicting()]).await;
+    store.create(conflict_owner()).await.unwrap();
+    let before = store.list(all_jobs()).await.unwrap().items.len();
+    let result = store
+        .admit_projection_batch_atomic(batch(vec![valid(), conflicting()]))
+        .await;
     assert!(result.is_err());
-    assert_eq!(store.list(all_jobs()).await.unwrap().items.len(), 0);
+    assert_eq!(store.list(all_jobs()).await.unwrap().items.len(), before);
+    assert!(store.find_by_key("new-key").await.unwrap().is_none());
 }
 ```
 
-Also test identical caller-scoped fingerprints reuse existing jobs, conflicting normalized payloads return `ApiError` with HTTP mapping `409`, and different callers do not collide.
+Also test same-key/same-fingerprint duplicates within one request, same-key/
+different-fingerprint rollback, mixed new/reused ordered descriptors, cross-batch
+reuse membership, different principals, unauthorized lookup, cancellation before
+commit, retry after committed response loss, and two-pool contention.
 
 - [ ] **Step 3: Verify focused tests fail**
 
 ```bash
-cargo test -p axon-jobs batch_create --locked
+cargo test -p axon-jobs projection_admission --locked
 cargo test -p axon-jobs migrations --locked
 ```
 
 - [ ] **Step 4: Implement the migration and DTO/codec propagation**
 
-Add nullable `batch_id`, `idempotency_scope`, and `request_fingerprint` columns in migration `0009`; replace the legacy global idempotency uniqueness rule with a partial unique index over `(idempotency_scope, idempotency_key)`; add `idx_axon_jobs_batch_created` over `(batch_id, created_at, job_id)`; update checksum inventory and every DTO/codec constructor. Preserve `SourceProgressEvent.batch_id` instead of forcing it to `None` in observe/terminal paths. Existing non-projection callers continue to use their current globally scoped behavior through an explicit legacy scope value.
+Add only the projection association table/index in migration `0009`; preserve
+the legacy global `jobs.idempotency_key` uniqueness and watch/recovery behavior.
+Projection storage keys are opaque hashes of
+`IdempotencyScopeV1(operation, principal)` plus the bounded caller key;
+`RequestFingerprintV1` is stored in bounded metadata and compared with a
+constant-time helper. Lifetime is explicitly the retained canonical job's
+lifetime. Persist only opaque principal/scopes and minimum authorization
+decisions—never email, token, secret config, or raw caller key. Preserve batch
+metadata in existing event JSON instead of adding a redundant event column.
 
 - [ ] **Step 5: Implement transactional bulk creation**
 
@@ -332,19 +388,27 @@ Extend the boundary:
 #[async_trait]
 pub trait JobStore: Send + Sync {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor>;
-    async fn create_batch_atomic(
-        &self,
-        requests: Vec<JobCreateRequest>,
-    ) -> Result<Vec<JobDescriptor>>;
+    async fn admit_projection_batch_atomic(
+        &self, admission: ProjectionBatchAdmission,
+    ) -> Result<ProjectionBatchAdmissionResult>;
 }
 ```
 
-`SqliteUnifiedJobStore` must open one SQLx transaction, validate all `(operation, authenticated caller identity, caller key)` scoped idempotency rows and normalized request fingerprints, insert/reuse in input order, and commit once. A matching fingerprint reuses its job; a different fingerprint returns the typed collision mapped to HTTP `409`. The fake store must emulate all-or-nothing behavior for service tests.
+Validate/serialize bounded requests, allocate IDs, and compute keys/fingerprints
+before `BEGIN IMMEDIATE`. Fetch all existing keys set-wise, compare in memory,
+and bulk-insert jobs/stages/associations in bind-safe chunks within one short
+transaction using the existing whole-operation busy/snapshot retry boundary.
+A matching fingerprint reuses its job and adds current-batch membership; a
+different fingerprint returns typed `409`. The fake store emulates atomicity.
+Migration regression tests cover populated legacy/watch keys and prove ordinary
+`create`, retry, recovery, and watch scheduling retain prior semantics. Add an
+optional batch filter to the canonical jobs lookup backed by the new association
+and assert its query plan uses the index.
 
 - [ ] **Step 6: Run durable job and schema tests**
 
 ```bash
-cargo test -p axon-jobs batch_create --locked
+cargo test -p axon-jobs projection_admission --locked
 cargo test -p axon-jobs migrations --locked
 cargo xtask schemas database --check
 ```
@@ -356,50 +420,60 @@ git add crates/axon-api/src/source/job* crates/axon-api/src/source/lifecycle.rs 
 git commit -m "feat(jobs): admit projection batches atomically"
 ```
 
-### Task 5: Whole-Batch Preflight and Deterministic Budgets
+### Task 5: Whole-Batch Preflight, Prepared Identity, and Enforceable Limits
 
 **Files:**
 - Create: `crates/axon-services/src/projections.rs`
 - Create: `crates/axon-services/src/projections/preflight.rs`
 - Create: `crates/axon-services/src/projections/preflight_tests.rs`
-- Create: `crates/axon-services/src/projections/budget.rs`
-- Create: `crates/axon-services/src/projections/budget_tests.rs`
+- Create: `crates/axon-services/src/projections/limits.rs`
+- Create: `crates/axon-services/src/projections/limits_tests.rs`
 - Modify: `crates/axon-services/src/lib.rs`
 - Modify: `crates/axon-services/src/source/authorize.rs`
 - Modify: `crates/axon-services/src/source/routing.rs`
 
 **Interfaces:**
 - Consumes: Task 1 projection requests, Task 3 config limits, canonical source router, and `AuthSnapshot`.
-- Produces: `ProjectionPreflight`, `PreparedSourceItem`, `PreparedCodeSearchItem`, `preflight_source_batch`, `preflight_code_search_batch`, and `partition_expanded_budget`.
+- Produces: prepared canonical targets and authorization evidence,
+  operation-specific effective limits, `preflight_source_batch`, and
+  `preflight_code_search_batch`.
 
-- [ ] **Step 1: Write failing deterministic budget tests**
+- [ ] **Step 1: Write failing effective-limit tests**
 
 ```rust
 #[test]
-fn partitions_remainder_by_stable_input_order() {
-    assert_eq!(partition_expanded_budget(10, 3).unwrap(), vec![4, 3, 3]);
+fn effective_limit_never_raises_caller_or_fixed_limit() {
+    assert_eq!(effective_limit(Some(2), Some(1), 100).unwrap(), 1);
 }
 
 #[test]
-fn rejects_budget_smaller_than_input_count() {
-    assert!(partition_expanded_budget(2, 3).is_err());
+fn oversized_unicode_input_is_measured_in_bytes() {
+    assert!(validate_input_bytes("🦀🦀", 7).is_err());
 }
 ```
 
 - [ ] **Step 2: Write failing side-effect-free preflight tests**
 
-Use fake acquisition/provider/job capabilities that panic on access. Test that an invalid or unauthorized final input produces no enqueue, reservation, artifact, ledger, or vector call for earlier items.
+Use panic-on-access fakes. An invalid/unauthorized final input creates no job,
+idempotency claim, reservation, artifact, ledger, or vector call. Add
+redirect-to-metadata, IPv6-mapped-private, DNS-change, `..`, absolute escape,
+and symlink-swap cases across web/local/git/tool families.
 
 - [ ] **Step 3: Verify tests fail**
 
 ```bash
 cargo test -p axon-services projection_preflight --locked
-cargo test -p axon-services projection_budget --locked
+cargo test -p axon-services projection_limits --locked
 ```
 
-- [ ] **Step 4: Implement budget partitioning and request persistence**
+- [ ] **Step 4: Implement owning limits and request persistence**
 
-Return deterministic `Vec<u32>` quotas, apply them to `SourceLimits.max_pages`/`max_items` or code-search result limits, and ensure the effective limits serialize inside each canonical request stored in a detached job.
+Compute `min(caller, fixed, server)` per owning unit and persist it in each
+canonical job. Thread limits to the stage creating crawl pages, local/git/feed
+manifest items, prepared bytes/documents, chunks/vector points, and query
+windows/results; stop before unit `limit + 1`. Separately bound redirects,
+elapsed time, fetched/decompressed bytes, and serialized results. Fail preflight
+for an adapter that cannot enforce its declared unit.
 
 - [ ] **Step 5: Implement whole-batch preflight**
 
@@ -420,7 +494,10 @@ pub fn preflight_code_search_batch(
 ) -> Result<ProjectionPreflight<PreparedCodeSearchItem>, ApiError>;
 ```
 
-The source function may classify, route, and authorize only. It must not invoke async acquisition or obtain provider handles.
+The source function classifies, routes, authorizes, and constructs an immutable
+prepared identity only. Execution consumes it without permissive rerouting and
+rechecks each redirect/connect/open through canonical SSRF and allowed-root/
+no-follow boundaries. Code search has no cwd refresh path.
 
 - [ ] **Step 6: Run service preflight/security tests**
 
@@ -450,16 +527,28 @@ git commit -m "feat(services): preflight projection batches"
 - Modify: `crates/axon-observe/src/metric.rs`
 
 **Interfaces:**
-- Consumes: `ProjectionPreflight<T>`, `JobStore::create_batch_atomic`, `index_source_with_auth`, and `query::code_search`.
-- Produces: `execute_source_projection_batch`, `enqueue_source_projection_batch`, `execute_code_search_projection_batch`, `CodeSearchCaller::Rest`, and redacted batch lifecycle events.
+- Consumes: prepared identities, `JobStore::admit_projection_batch_atomic`, the
+  canonical worker/wait path, and committed-state `query::code_search`.
+- Produces: `execute_source_projection_batch`,
+  `enqueue_source_projection_batch`, `execute_code_search_projection_batch`,
+  and redacted batch lifecycle events.
 
 - [ ] **Step 1: Add failing inline/mixed/detached executor tests**
 
-Test stable output order under concurrency, configured concurrency ceiling, mixed runtime results returning `BatchStatus::CompletedDegraded`, synchronous input echo, detached omission, and `202` only after atomic admission.
+Test job-first foreground execution, stable sequential wait order, mixed runtime
+outcomes, tagged outcome validity, synchronous input echo, detached omission,
+and `202` only after atomic admission. Barrier tests using two service contexts
+prove concurrent identical calls execute once and conflicting calls perform no
+acquisition/provider/ledger/vector work. Add panic, timeout, cancellation, and
+client-disconnect/response-loss recovery cases.
 
 - [ ] **Step 2: Add failing observability-redaction tests**
 
-Assert accepted/started/completed events contain batch ID, operation, counts, duration, and exhaustion flags while excluding raw URLs, queries, paths, headers, and idempotency keys.
+Assert accepted/started/completed events contain safe fields and exclude raw
+URLs, queries, paths, headers, tokens, secret config, and caller keys. Accepted
+appears only after commit; an observe-store failure does not fail successful
+work and increments a dropped-event counter. Sentinel-secret tests inspect
+logs, traces, metrics, errors, SQLite, and artifacts.
 
 - [ ] **Step 3: Verify tests fail**
 
@@ -468,17 +557,30 @@ cargo test -p axon-services projection_execute --locked
 cargo test -p axon-services projection_events --locked
 ```
 
-- [ ] **Step 4: Implement bounded ordered execution**
+- [ ] **Step 4: Implement job-first ordered execution**
 
-Use `futures::stream::iter(items).buffer_unordered(policy.max_concurrency)` with each future still entering existing scheduler/provider reservation paths. Collect `(index, result)`, sort by index, and build one `BatchResult<T>`.
+Admit every mutating item atomically, then either return queued descriptors or
+wait sequentially for the admitted/reused canonical jobs in input order. Do not
+add a per-request concurrency lane; the existing global scheduler/provider
+reservations own fairness after restart. Build `Vec<Option<BatchItem<T>>>` by
+index to avoid sorting/copying large results, and enforce aggregate serialized
+response bytes.
 
-- [ ] **Step 5: Implement atomic detached projection admission**
+- [ ] **Step 5: Implement shared foreground/detached admission**
 
-Build every `JobCreateRequest` with the shared `batch_id`, persisted effective limits, scoped idempotency fingerprint metadata, and canonical auth/config snapshots; call `create_batch_atomic` once.
+Build one `ProjectionBatchAdmission` with bounded canonical requests, persisted
+effective limits, opaque principal/scopes, opaque storage keys, and versioned
+fingerprints. Never persist bearer tokens or secret config. Call
+`admit_projection_batch_atomic` once for both modes and authorize every later
+batch/job/event read against the association principal.
 
 - [ ] **Step 6: Implement code-search plans over the existing service**
 
-Map `PreparedCodeSearchItem` into the existing `CodeSearchOptions`, add `CodeSearchCaller::Rest` with the same explicit-root safety rules as MCP, add any missing language/source filters at the service request boundary, and do not reintroduce `code-search-watch` or a separate indexer.
+Map `PreparedCodeSearchItem` into `CodeSearchOptions` with `ensure_fresh=false`
+and no cwd refresh controls. Add missing language/source filters, clamp
+`offset + limit` to the canonical search window, and group identical normalized
+plans so one embedding/Qdrant read fans out to duplicate ordered items. Do not
+reintroduce an indexer/watch or a `CodeSearchCaller::Rest` mutation mode.
 
 - [ ] **Step 7: Run service and observe tests**
 
@@ -520,13 +622,19 @@ git commit -m "feat(services): execute restored projection batches"
 
 Assert focused flags, repeated positional inputs, fixed-option rejection, `code-search` hyphen spelling, and absence from the removed-command registry.
 
-- [ ] **Step 2: Add failing keyed-input pairing tests**
+- [ ] **Step 2: Add failing self-contained item/request-file tests**
 
-Cover valid repeated `--input/--idempotency-key` groups; reject leading keys, duplicate keys, unpaired inputs, positional/keyed mixing, and all code-search idempotency flags.
+Cover repeatable `--item '{"input":...,"idempotency_key":...}'` and
+`--request-file` using the canonical DTO. Reject unknown/duplicate fields,
+malformed JSON, item/request-file/positional mixing, and every code-search
+idempotency field. Avoid adjacency-sensitive clap occurrence pairing.
 
 - [ ] **Step 3: Add failing output-path tests**
 
-Cover one-input `--output`, multi-input rejection, `--output-dir`, `{index}`/`{input_hash}` templates, normalized collision rejection, JSON batch stdout, and stderr-only progress.
+Cover one-input `--output`, multi-input rejection, `--output-dir`, restricted
+`{index}`/`{input_hash}` templates, canonical-root containment, `../`/absolute
+escape, symlink/hardlink swaps, case/Unicode collisions, existing targets,
+ENOSPC/rename cleanup, JSON batch stdout, and stderr-only progress.
 
 - [ ] **Step 4: Verify CLI tests fail**
 
@@ -541,7 +649,11 @@ Add `CommandKind::{Crawl, Embed, Ingest, CodeSearch}` and focused argument struc
 
 - [ ] **Step 6: Implement CLI execution and rendering**
 
-`run_projection` builds the focused DTO, calls the shared service function, prints exactly one JSON envelope under `--json`, and delegates human output to focused render helpers. Do not loop over the single-source CLI executor.
+`run_projection` builds the focused DTO, completes output-path preflight before
+admission, calls the shared service facade, prints exactly one JSON envelope
+under `--json`, and delegates human output to focused render helpers. File
+writes use create-new/no-follow temp files and atomic no-clobber rename. Do not
+loop over the single-source CLI executor.
 
 - [ ] **Step 7: Run CLI checks**
 
@@ -580,11 +692,15 @@ git commit -m "feat(cli): restore focused source commands"
 
 - [ ] **Step 1: Add failing MCP parse/schema/dispatch tests**
 
-Assert the five actions parse, removed guidance no longer rejects them, schemas reference canonical DTOs, action help/capabilities derive from the registry, and `code_search` rejects idempotency.
+Assert the five actions parse, removed guidance no longer rejects them, schemas
+reference canonical DTOs, action metadata matches the registry bijectively, and
+`code_search` rejects idempotency, cwd, and freshness controls.
 
 - [ ] **Step 2: Add failing authorization/preflight tests**
 
-Test write scope for four source actions, read scope for code search, local/execute fine-grained scopes for every source item, and zero execution when the last item is denied.
+Test write scope for four source actions, read-only committed-state code search,
+local/execute fine-grained scopes for every source item, principal-bound
+batch/job lookup, and zero admission/execution when the last item is denied.
 
 - [ ] **Step 3: Verify MCP tests fail**
 
@@ -636,11 +752,16 @@ git commit -m "feat(mcp): restore focused projection actions"
 
 - [ ] **Step 1: Add failing route/OpenAPI tests**
 
-Assert every route mounts, accepts single/batch DTOs, pins the exact operation ID, appears in the schema registry, and maps preflight/runtime statuses to `4xx`/`409`/`200`/`202`/`5xx` as specified.
+Assert every route mounts, accepts canonical one-or-many DTOs, pins the exact
+operation ID, matches registry metadata, enforces body size before
+deserialization, and maps statuses to `4xx`/`409`/`413`/`429`/`200`/`202`/`5xx`.
 
 - [ ] **Step 2: Add failing auth and loopback tests**
 
-Verify source routes use broad write plus per-target fine-grained checks, code search uses read, loopback guard treats all mutating projection routes like `/v1/sources`, and a denied final item leaves no jobs.
+Verify source routes use broad write plus per-target checks, code search uses
+read and cannot refresh/index, loopback guard treats mutations like
+`/v1/sources`, retrieval is principal-bound, and a denied final item leaves no
+jobs or idempotency reservation.
 
 - [ ] **Step 3: Verify web tests fail**
 
@@ -649,9 +770,11 @@ cargo test -p axon-web projections --locked
 cargo test -p axon-web routing_loopback_guard --locked
 ```
 
-- [ ] **Step 4: Extract shared source/query handler seams**
+- [ ] **Step 4: Keep orchestration in the public services facade**
 
-Keep transport mechanics in web while moving no domain logic into handlers. `sources.rs` should expose an internal function accepting an already-preflighted batch/service context; `rag.rs` should expose the equivalent query seam.
+Handlers call `axon-services::projections` directly. Transport-local helpers may
+map typed errors/status/body only; do not expose source/rag handler-to-handler
+seams or let web modules become a pseudo-service layer.
 
 - [ ] **Step 5: Implement routes and explicit utoipa operation IDs**
 
@@ -694,7 +817,11 @@ git commit -m "feat(rest): add focused projection endpoints"
 
 - [ ] **Step 1: Add failing cross-surface normalization tests**
 
-For every minimal/full/single/batch fixture, parse CLI, MCP JSON, and REST JSON, normalize to the canonical request list, and assert equality. Compare MCP/REST JSON and CLI `--json` against the same golden `BatchResult<T>`.
+Complete the Task 2 semantic harness: each explicit CLI/MCP/REST declaration
+must match registry name, mutation class, schema type, and result type
+bijectively. Parse representative minimal/boundary requests into the same
+canonical semantic fields while excluding legitimate auth/cwd/runtime context.
+Compare tagged batch outcomes, not incidental byte serialization context.
 
 - [ ] **Step 2: Add failing layering tests**
 
@@ -737,7 +864,7 @@ git add tests xtask/src/checks xtask/src/schemas/removed_registry.rs crates/*/sr
 git commit -m "test: enforce restored projection parity"
 ```
 
-### Task 11: Full Verification and Runtime Smoke
+### Task 11: Failure-Mode Matrix, Full Verification, and Runtime Smoke
 
 **Files:**
 - Modify only if verification exposes a defect; keep fixes scoped to the owning task files and add a regression test beside each fix.
@@ -745,7 +872,17 @@ git commit -m "test: enforce restored projection parity"
 **Interfaces:**
 - Produces: local contract/build/test evidence and safe configured-runtime proof. Hosted CI and deployed runtime remain separate claims.
 
-- [ ] **Step 1: Run formatting and static contract gates**
+- [ ] **Step 1: Complete the production failure-mode matrix**
+
+Add focused regression rows/tests for projection validation; principal
+resolution; URL/path validation at use; owning-limit exhaustion; admission
+reuse/collision/busy/disk-full/cancel/commit ambiguity; worker panic/timeout/
+cancel; response serialization/disconnect; telemetry failure; CLI create/write/
+rename; MCP/REST body/auth/rate limiting. Every row records rescue, test,
+user-visible typed outcome, and safe logging. No silent unrescued/untested row
+may remain.
+
+- [ ] **Step 2: Run formatting and static contract gates**
 
 ```bash
 cargo fmt --all -- --check
@@ -757,7 +894,7 @@ cargo xtask check-fetch-divergence
 
 Expected: PASS.
 
-- [ ] **Step 2: Run focused crate suites**
+- [ ] **Step 3: Run focused crate suites**
 
 ```bash
 cargo nextest run --locked -p axon-api -p axon-core -p axon-jobs -p axon-services -p axon-cli -p axon-mcp -p axon-web
@@ -765,7 +902,7 @@ cargo nextest run --locked -p axon-api -p axon-core -p axon-jobs -p axon-service
 
 Expected: PASS.
 
-- [ ] **Step 3: Run compile/lint gates that cover test sidecars**
+- [ ] **Step 4: Run compile/lint gates that cover test sidecars**
 
 ```bash
 cargo test --no-run --workspace --features test-helpers --locked
@@ -774,7 +911,7 @@ cargo clippy --all-targets --locked -- -D warnings
 
 Expected: PASS.
 
-- [ ] **Step 4: Run the repository pre-PR gate**
+- [ ] **Step 5: Run the repository pre-PR gate**
 
 ```bash
 just verify
@@ -782,7 +919,7 @@ just verify
 
 Expected: PASS. If a failure is unrelated or environmental, record the exact command, exit status, and boundary instead of masking it.
 
-- [ ] **Step 5: Run safe runtime smoke against configured providers**
+- [ ] **Step 6: Run safe runtime smoke against configured providers**
 
 Use bounded disposable inputs and machine-readable output:
 
@@ -796,7 +933,7 @@ Use bounded disposable inputs and machine-readable output:
 
 Then invoke equivalent MCP and REST batches against the configured local server and compare their normalized envelopes to CLI output. Do not claim production/deployed proof from these local calls.
 
-- [ ] **Step 6: Inspect final worktree and commit verification fixes**
+- [ ] **Step 7: Inspect final worktree and commit verification fixes**
 
 ```bash
 git status --short
@@ -806,7 +943,7 @@ git log --oneline --decorate -12
 
 If verification required fixes, commit each with its regression test. Otherwise leave the already committed implementation history intact.
 
-- [ ] **Step 7: Update the Bead only after every required local gate passes**
+- [ ] **Step 8: Update the Bead only after every required local gate passes**
 
 ```bash
 bd close axon_rust-twfx7
