@@ -1,10 +1,7 @@
 use super::*;
 use std::fs;
 
-#[test]
-fn cli_main_thread_has_source_pipeline_stack_capacity() {
-    assert!(CLI_MAIN_THREAD_STACK_SIZE >= 64 * 1024 * 1024);
-}
+const _: () = assert!(CLI_MAIN_THREAD_STACK_SIZE >= 64 * 1024 * 1024);
 
 /// Drop guard that restores env vars even if the test body panics.
 /// Without this, an assertion failure leaks mutated env state into
