@@ -36,6 +36,7 @@ const CANONICAL_TABLES: &[&str] = &[
     "memory_reviews",
     "provider_identity_cache",
     "provider_reservations",
+    "projection_batch_items",
     "source_generations",
     "source_items",
     "source_manifests",
@@ -149,6 +150,13 @@ const CANONICAL_FOREIGN_KEYS: &[(&str, &str, &str, &str, &str)] = &[
         "job_stages",
         "stage_id",
         "SET NULL",
+    ),
+    (
+        "projection_batch_items",
+        "job_id",
+        "jobs",
+        "job_id",
+        "CASCADE",
     ),
     (
         "source_generations",

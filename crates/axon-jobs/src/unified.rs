@@ -72,6 +72,8 @@ mod ops;
 mod ops_helpers;
 #[path = "unified/pagination.rs"]
 pub(crate) mod pagination;
+#[path = "unified/projection_admission.rs"]
+mod projection_admission;
 #[path = "unified/recovery.rs"]
 mod recovery;
 #[path = "unified/request_read.rs"]
@@ -135,6 +137,23 @@ impl SqliteUnifiedJobStore {
 impl JobStore for SqliteUnifiedJobStore {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
         retry_job_write("job create", || self.create_job(request.clone())).await
+    }
+
+    async fn admit_projection_batch_atomic(
+        &self,
+        admission: ProjectionBatchAdmission,
+    ) -> Result<ProjectionBatchAdmissionResult> {
+        retry_job_write("projection batch admission", || {
+            self.admit_projection_batch(admission.clone())
+        })
+        .await
+    }
+
+    async fn projection_batch(
+        &self,
+        lookup: ProjectionBatchLookup,
+    ) -> Result<Option<ProjectionBatchAdmissionResult>> {
+        self.lookup_projection_batch(lookup).await
     }
 
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>> {

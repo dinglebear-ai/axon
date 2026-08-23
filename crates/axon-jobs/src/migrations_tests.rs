@@ -105,6 +105,7 @@ async fn fresh_db_migrates_all_namespaces() {
         "jobs",
         "embedding_vector_cache",
         "provider_identity_cache",
+        "projection_batch_items",
         // observe / graph / memory
         "axon_observe_events",
         "axon_observe_provider_health",
@@ -159,6 +160,50 @@ async fn fresh_db_migrates_all_namespaces() {
     .execute(&pool)
     .await
     .expect("insert job with valid FK");
+}
+
+#[tokio::test]
+async fn projection_batch_migration_has_ordered_membership_and_no_event_column() {
+    let pool = open_sqlite_pool(":memory:").await.expect("open pool");
+    let columns: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM pragma_table_info('projection_batch_items') ORDER BY cid",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read projection columns");
+    assert_eq!(
+        columns,
+        [
+            "batch_id",
+            "item_index",
+            "job_id",
+            "operation",
+            "reused",
+            "principal_id",
+            "created_at",
+        ]
+    );
+    let event_columns: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info('job_events') ORDER BY cid")
+            .fetch_all(&pool)
+            .await
+            .expect("read event columns");
+    assert!(!event_columns.iter().any(|column| column == "batch_id"));
+    let foreign_table: String = sqlx::query_scalar(
+        "SELECT `table` FROM pragma_foreign_key_list('projection_batch_items') WHERE `from` = 'job_id'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read projection foreign key");
+    assert_eq!(foreign_table, "jobs");
+    let index_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN
+         ('idx_projection_batch_items_principal_batch', 'idx_projection_batch_items_job')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read projection indexes");
+    assert_eq!(index_count, 2);
 }
 
 /// Re-running the composed runner on an already-migrated pool is a no-op: no

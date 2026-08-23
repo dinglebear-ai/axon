@@ -4,23 +4,28 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axon_api::source::*;
 use tokio::sync::Mutex;
+#[cfg(test)]
 use uuid::Uuid;
 
 use crate::boundary::{JobDeleteResult, JobStore, Result};
 use crate::limits::clamp_page_limit;
-use crate::state_machine::{validate_stage_plan, validate_transition};
+use crate::state_machine::validate_transition;
 use crate::unified::pagination::{
     EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
     encode_job_cursor,
 };
 use crate::unified_codec::reject_non_public_visibility;
 
+#[path = "fake_store/create.rs"]
+mod create;
 #[path = "fake_store/helpers.rs"]
 mod helpers;
 #[path = "fake_store/inspection.rs"]
 mod inspection;
 #[path = "fake_store/mode.rs"]
 mod mode;
+#[path = "fake_store/projection.rs"]
+mod projection;
 #[path = "fake_store/watch.rs"]
 mod watch;
 
@@ -42,6 +47,8 @@ struct FakeJobWatchState {
     status_updates: BTreeMap<JobId, Vec<JobStatusUpdate>>,
     heartbeats: BTreeMap<JobId, Vec<JobHeartbeat>>,
     idempotency_keys: BTreeMap<String, JobId>,
+    projection_fingerprints: BTreeMap<String, RequestFingerprintV1>,
+    projection_batches: BTreeMap<BatchId, (String, Vec<ProjectionAdmissionResultItem>)>,
     watches: BTreeMap<WatchId, WatchResult>,
     watch_runs: BTreeMap<WatchId, Vec<JobId>>,
     next_job: u128,
@@ -59,69 +66,21 @@ impl FakeJobWatchStore {
 #[async_trait]
 impl JobStore for FakeJobWatchStore {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
-        validate_stage_plan(&request.stage_plan)?;
-        let mut state = self.state.lock().await;
-        if let Some(job_id) = request
-            .idempotency_key
-            .as_ref()
-            .and_then(|key| state.idempotency_keys.get(key).copied())
-        {
-            let summary = state
-                .jobs
-                .get(&job_id)
-                .cloned()
-                .ok_or_else(|| missing_job(job_id))?;
-            return Ok(descriptor(&summary));
-        }
-        state.next_job += 1;
-        let job_id = JobId::new(Uuid::from_u128(state.next_job));
-        let root_job_id = request.root_job_id.unwrap_or(job_id);
-        let created_at = state.timestamp();
-        let summary = JobSummary {
-            job_id,
-            kind: request.job_kind,
-            intent: Some(request.job_intent),
-            status: LifecycleStatus::Queued,
-            phase: PipelinePhase::Queued,
-            created_at: created_at.clone(),
-            updated_at: created_at.clone(),
-            started_at: None,
-            finished_at: None,
-            source_id: request.source_id.clone(),
-            watch_id: request.watch_id.clone(),
-            parent_job_id: request.parent_job_id,
-            root_job_id: Some(root_job_id),
-            attempt: 0,
-            priority: request.priority,
-            counts: None,
-            current: None,
-            heartbeat: None,
-            last_error: None,
-            warnings: Vec::new(),
-        };
-        state.jobs.insert(job_id, summary);
-        if let Some(request_json) = request.request.clone() {
-            state.requests.insert(job_id, request_json);
-        }
-        let mut stages = Vec::new();
-        for (ordinal, stage) in request.stage_plan.into_iter().enumerate() {
-            stages.push(JobStageSnapshot {
-                stage_id: stage.stable_id(job_id, ordinal),
-                phase: stage.phase,
-                status: LifecycleStatus::Queued,
-                required: stage.required,
-                provider_requirements: stage.provider_requirements,
-                counts: empty_counts(),
-                started_at: None,
-                completed_at: None,
-                error: None,
-            });
-        }
-        state.stages.insert(job_id, stages);
-        if let Some(key) = request.idempotency_key {
-            state.idempotency_keys.insert(key, job_id);
-        }
-        Ok(new_job_descriptor(job_id, request.job_kind, created_at))
+        create::create(self, request).await
+    }
+
+    async fn admit_projection_batch_atomic(
+        &self,
+        admission: ProjectionBatchAdmission,
+    ) -> Result<ProjectionBatchAdmissionResult> {
+        projection::admit(self, admission).await
+    }
+
+    async fn projection_batch(
+        &self,
+        lookup: ProjectionBatchLookup,
+    ) -> Result<Option<ProjectionBatchAdmissionResult>> {
+        projection::lookup(self, lookup).await
     }
 
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>> {
