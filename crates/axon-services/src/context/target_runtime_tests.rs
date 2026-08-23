@@ -260,11 +260,16 @@ async fn production_runtime_cache_and_schedulers_share_one_gate_before_pool_acqu
         warmed.push(pool.acquire().await.expect("pre-warm pool connection"));
     }
     drop(warmed);
-    for _ in 0..100 {
-        if pool.num_idle() == pool.options().get_max_connections() as usize {
-            break;
-        }
-        tokio::task::yield_now().await;
+    // SQLx returns a dropped `PoolConnection` to the idle set from a spawned
+    // task. Spinning on `yield_now` only reschedules this runtime's ready
+    // queue, so under a loaded `cargo test` (every other test racing for the
+    // same cores) the return tasks may not have run yet and the assertion
+    // below sees a partially refilled pool. Wait on wall-clock time instead.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while pool.num_idle() < pool.options().get_max_connections() as usize
+        && tokio::time::Instant::now() < deadline
+    {
+        tokio::time::sleep(Duration::from_millis(5)).await;
     }
     let idle_before = pool.num_idle();
     assert_eq!(

@@ -548,6 +548,52 @@ fn well_formed_giant_fence_is_split_with_code_metadata_preserved() {
     assert!(chunks.iter().all(|c| c.content.chars().count() <= 200));
 }
 
+/// A greedy `max_chars` slice leaves a degenerate remainder: a fence one
+/// character over the cap becomes a full-size window plus a 1-character one.
+/// `pack_small_sections` cannot merge that tail back (its predecessor is
+/// already at the cap), so it would be embedded and published as its own
+/// vector point. `char_windows` balances the windows instead.
+#[test]
+fn barely_oversized_fence_does_not_leave_a_degenerate_tail_chunk() {
+    let max_chars = 200usize;
+    // Fence span = "```\n" + body + "\n```\n", and the section's trailing
+    // newline is trimmed off the last window — size the body so the fence is
+    // exactly one character over the cap.
+    let delimiters = "```\n\n```".chars().count();
+    let body = "y".repeat(max_chars + 1 - delimiters);
+    let text = format!("# Doc\n```\n{body}\n```\n");
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars,
+            min_chars: 1,
+            overlap_chars: 0,
+        },
+    );
+
+    let code = chunks
+        .iter()
+        .filter(|chunk| chunk.metadata["markdown_block_kind"] == "code")
+        .map(|chunk| chunk.content.chars().count())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        code.len(),
+        2,
+        "a fence one character over the cap splits into two windows: {code:?}"
+    );
+    assert!(
+        chunks
+            .iter()
+            .all(|c| c.content.chars().count() <= max_chars),
+        "the hard size cap still holds"
+    );
+    let smallest = code.iter().copied().min().expect("code windows");
+    assert!(
+        smallest > max_chars / 4,
+        "balanced windows must not leave a degenerate tail chunk (got {code:?})"
+    );
+}
+
 // -- M5: frontmatter delimiter strictness + backstop ----------------------
 
 #[test]

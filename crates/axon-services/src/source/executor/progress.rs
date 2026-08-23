@@ -156,13 +156,13 @@ impl ProgressCoordinator {
         self.persist(phase, counts, &message).await;
     }
 
-    /// Persist a count-only checkpoint for `phase` without regressing the
-    /// externally published phase: the counts are stored under `phase` (so
-    /// later `phase` snapshots continue from them) while the durable update
-    /// keeps the currently published phase. Used by speculative prefetch
-    /// acquisition, whose Fetching counts would otherwise freeze at the first
-    /// batch (2026-08-23 adversarial pipeline review, low: fetch-count
-    /// freeze).
+    /// Record a checkpoint for `phase` that may not be the currently published
+    /// phase: the counts are always stored under `phase` (so later `phase`
+    /// snapshots continue from them), and the durable snapshot is written only
+    /// while `phase` still *is* the published phase. Used by speculative
+    /// prefetch acquisition, whose Fetching counts would otherwise freeze at
+    /// the first batch (2026-08-23 adversarial pipeline review, low:
+    /// fetch-count freeze).
     async fn checkpoint_counts(
         &self,
         phase: PipelinePhase,
@@ -218,25 +218,36 @@ impl ProgressCoordinator {
         phase: PipelinePhase,
         counts: StageCounts,
         message: &str,
-        keep_published_phase: bool,
+        count_only: bool,
     ) -> (StageCounts, bool) {
-        let (published_phase, counts) = {
+        let (published_phase, counts, publish) = {
             let mut state = self.state.lock().await;
-            let published_phase = if keep_published_phase {
+            let published_phase = if count_only {
                 state.current_phase.unwrap_or(phase)
             } else {
                 state.current_phase = Some(phase);
                 phase
             };
+            // A durable snapshot carries exactly one (phase, counts) pair and
+            // `update_status` replaces `counts_json` wholesale, so publishing
+            // `phase`'s counts while another phase is live would overwrite the
+            // live phase's coordinates with unrelated numbers (a speculative
+            // acquisition resetting Upserting to zero chunks). Record the
+            // counts either way; only publish when the phases agree.
+            let publish = !count_only || published_phase == phase;
             #[cfg(test)]
-            if state.phase_history.last() != Some(&published_phase) {
+            if publish && state.phase_history.last() != Some(&published_phase) {
                 state.phase_history.push(published_phase);
             }
             (
                 published_phase,
                 normalize_phase_counts(&mut state.phase_counts, phase, counts),
+                publish,
             )
         };
+        if !publish {
+            return (counts, false);
+        }
         let update = JobStatusUpdate {
             job_id: self.job_id,
             source_id: Some(self.source_id.clone()),

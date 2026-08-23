@@ -191,7 +191,49 @@ async fn speculative_batch_counts_advance_without_regressing_the_published_phase
         PipelinePhase::Normalizing,
         "the count-only checkpoint must not regress the published phase"
     );
-    assert_eq!(last.counts.as_ref().expect("counts").items_done, 128);
+    // A durable snapshot carries one (phase, counts) pair and `update_status`
+    // replaces `counts_json` wholesale, so the speculative acquisition must
+    // not publish its Fetching counts under the live Normalizing phase.
+    let normalizing = last.counts.as_ref().expect("counts");
+    assert_eq!(
+        (normalizing.items_done, normalizing.documents_done),
+        (10, 10),
+        "the published snapshot must keep the live phase's own coordinates"
+    );
+    assert!(
+        updates
+            .iter()
+            .all(|update| update.phase != PipelinePhase::Normalizing
+                || update
+                    .counts
+                    .as_ref()
+                    .is_none_or(|counts| counts.items_done <= 10)),
+        "no Normalizing snapshot may carry acquisition counts"
+    );
+}
+
+#[tokio::test]
+async fn count_only_checkpoints_still_publish_while_their_phase_is_live() {
+    let writer = Arc::new(RecordingWriter::default());
+    let coordinator = coordinator(writer.clone());
+    coordinator
+        .checkpoint(
+            PipelinePhase::Fetching,
+            stage_counts(Some(130), 0, Some(130), 0, None, 0),
+            "starting acquisition",
+        )
+        .await;
+    // Fetching is still the published phase, so a count-only checkpoint for
+    // Fetching is a normal durable snapshot.
+    coordinator
+        .acquisition_batch(130, 64, 0, 0, false)
+        .complete(64)
+        .await;
+
+    let updates = writer.updates.lock().await;
+    let last = updates.last().expect("persisted updates");
+    assert_eq!(last.phase, PipelinePhase::Fetching);
+    assert_eq!(last.counts.as_ref().expect("counts").items_done, 64);
 }
 
 #[tokio::test]

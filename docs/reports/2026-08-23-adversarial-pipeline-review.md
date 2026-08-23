@@ -348,3 +348,80 @@ Fixes are landing on this PR's branch alongside the report:
    chunk limits or duplicate content.
 4. M1 — gate cache decoration on `identity.verified`.
 5. M2/M3/M7 and the low items as scheduled hardening.
+
+## Follow-up review of the remediation (2026-08-23)
+
+The remediation commits above were themselves reviewed against the same
+adversarial bar. Three defects were found in the fixes and repaired on this
+branch.
+
+### F1 (high). Count-only checkpoints published the wrong phase's counts
+
+`ProgressCoordinator::checkpoint_counts` — added for the "fetch-count
+freeze" low — kept the published phase but still emitted the *acquisition*
+counts under it. `SqliteUnifiedJobStore::update_job_status` assigns
+`counts_json = ?` unconditionally, so a speculative prefetch overwrote the
+live phase's coordinates.
+
+The web adapter reports `supports_acquisition_prefetch() == true`, so every
+batch after the first acquires with `publish_fetching_phase = false`. On a
+130-URL recrawl, while batch 1 sat in `Upserting` at 5000/5000 chunks,
+batch 2's prefetch wrote `{phase: Upserting, items_done: 128,
+documents_done: 128, chunks_total: null, chunks_done: 0}` with the message
+"acquired 128/130 source items" — `axon status`, `axon jobs get`, and the
+foreground progress bar all regressed to zero chunks and then jumped
+forward again. Before the remediation the write was skipped entirely, so
+this was a regression introduced by the fix.
+
+`persist_with_phase_floor` now always records the counts under their own
+phase (so the freeze fix still holds and later snapshots continue from
+them) but only publishes a durable snapshot while that phase *is* the
+published phase.
+
+### F2 (medium). Schema-extension allowlist dropped extensionless OpenAPI URLs
+
+M6's fix required `.json`/`.yaml`/`.yml` before the `openapi`/`swagger`
+path substring counted. The false positives it targets are prose
+*extensions* (`docs/openapi-guide.md`, `vendor/swagger-ui.html`), but the
+allowlist also excluded schema documents served with no extension at all —
+`https://api.example.com/v3/openapi`, Springdoc's `/v3/api-docs`, FastAPI's
+default endpoints — or behind a query string. Those regressed from
+`ChunkingProfile::ApiSchema` to generic prose/JSON routing.
+
+`is_api_schema` now strips any query/fragment and excludes a prose
+extension denylist instead, which fixes M6 without the regression.
+
+### F3 (low). `char_windows` left a degenerate tail chunk
+
+H2/M5's hard size backstop sliced greedily at exactly `max_chars`, so a
+fence one character over the cap became a full-size window plus a
+one-character window. `pack_small_sections` cannot merge that tail back
+(its predecessor is already at the cap), so the junk chunk was embedded and
+published to Qdrant as its own vector point. `char_windows` now balances
+the windows over the same count, preserving the hard cap without the
+degenerate remainder.
+
+### Also fixed
+
+`production_runtime_cache_and_schedulers_share_one_gate_before_pool_acquisition`
+spun on `yield_now` waiting for SQLx to return dropped connections to the
+idle set. SQLx returns them from a spawned task, so under a loaded
+`cargo test` the spin completed before those tasks ran and the test failed
+on a partially refilled pool. It now waits on wall-clock time. (Pre-existing
+on `main`, where the `axon-services` lib suite additionally aborts with a
+stack overflow that this PR's `Box::pin` in `run_generation` resolves.)
+
+### Reviewed and accepted as-is
+
+- `resolve_and_checkpoint_overlap` absorbing the current batch's write
+  accounting before the paired embedding error surfaces has no observable
+  effect — `prepare_embed_publish` propagates with `?` and drops `output`.
+  It is harmless and mirrors `batches.rs`'s shape; left in place.
+- `html_article`'s `cursor = open` leaves an unterminated trailing tag in
+  the visible text, but that same cursor placement is what preserves a bare
+  `<` used as literal text ("5 < 10"), which is the more common case.
+- `QUARANTINE_RELEASE_SECS` (120 s) exceeds `WAIT_TIMEOUT` (30 s), so the
+  first ~2 minutes after a crash can fail reservations rather than queue
+  them. Strictly better than the pre-fix permanent wedge; `authority_id` is
+  derived from the SQLite path and is stable across restarts, so recovery
+  does happen.
