@@ -216,7 +216,8 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
                      OR embedding_vector_cache.model != excluded.model \
                      OR embedding_vector_cache.dimensions != excluded.dimensions \
                      OR embedding_vector_cache.vector != excluded.vector \
-                     THEN excluded.created_at ELSE embedding_vector_cache.created_at END, \
+                     THEN MAX(excluded.created_at, embedding_vector_cache.created_at + 1) \
+                     ELSE embedding_vector_cache.created_at END, \
                      last_used_at = excluded.last_used_at",
             );
             query.build().execute(&mut *transaction).await?;

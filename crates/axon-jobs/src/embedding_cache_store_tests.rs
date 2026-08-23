@@ -251,6 +251,13 @@ async fn corrupt_row_retirement_cannot_delete_a_recomputed_entry() {
         .put_many(std::slice::from_ref(&replacement), 100)
         .await
         .unwrap();
+    let refreshed_at: i64 =
+        sqlx::query_scalar("SELECT created_at FROM embedding_vector_cache WHERE cache_key = ?")
+            .bind(&replacement.cache_key)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(refreshed_at > created_at);
     store.retire_many(&stale.corrupt_entries).await.unwrap();
 
     let lookup = store
