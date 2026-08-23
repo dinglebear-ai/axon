@@ -23,7 +23,11 @@ async fn store() -> (SqliteEmbeddingVectorCacheStore, SqlitePool, SqliteWriteGat
     let pool = open_sqlite_pool(":memory:").await.expect("cache database");
     let gate = SqliteWriteGate::default();
     (
-        SqliteEmbeddingVectorCacheStore::new(pool.clone(), gate.clone(), 100_000),
+        SqliteEmbeddingVectorCacheStore::new_without_maintenance(
+            pool.clone(),
+            gate.clone(),
+            100_000,
+        ),
         pool,
         gate,
     )
@@ -227,7 +231,9 @@ async fn maintenance_uses_fixed_size_passes_and_exact_trigger_count() {
 
 #[tokio::test]
 async fn periodic_maintenance_reclaims_expired_rows_without_cache_traffic() {
-    let (store, pool, _) = store().await;
+    let pool = open_sqlite_pool(":memory:").await.expect("cache database");
+    let store =
+        SqliteEmbeddingVectorCacheStore::new(pool.clone(), SqliteWriteGate::default(), 100_000);
     let expired = entry(91);
     sqlx::query(
         "INSERT INTO embedding_vector_cache \

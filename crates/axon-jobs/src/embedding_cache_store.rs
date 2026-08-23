@@ -44,13 +44,33 @@ struct CacheStoreInner {
 
 impl SqliteEmbeddingVectorCacheStore {
     pub fn new(pool: SqlitePool, write_gate: SqliteWriteGate, max_entries: usize) -> Self {
+        Self::build(pool, write_gate, max_entries, true)
+    }
+
+    fn build(
+        pool: SqlitePool,
+        write_gate: SqliteWriteGate,
+        max_entries: usize,
+        start_maintenance: bool,
+    ) -> Self {
         let inner = Arc::new(CacheStoreInner {
             pool,
             write_gate,
             max_entries: AtomicUsize::new(max_entries.max(1)),
         });
-        spawn_maintenance(&inner);
+        if start_maintenance {
+            spawn_maintenance(&inner);
+        }
         Self { inner }
+    }
+
+    #[cfg(test)]
+    fn new_without_maintenance(
+        pool: SqlitePool,
+        write_gate: SqliteWriteGate,
+        max_entries: usize,
+    ) -> Self {
+        Self::build(pool, write_gate, max_entries, false)
     }
 }
 
