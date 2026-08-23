@@ -29334,12 +29334,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be",
+        "checksum": "sha256:4cb12ff492247305468c3126a142a850cf9616120d7cc51f73b3527e38da4ee8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:55aed9857c3350b4b53d06d8d08036da81de12df8dc8d4d4dfded2971a17697f",
+        "checksum": "sha256:e1883f7ab3543709f2621409b8675189bc3933b5388a22d9ddcecfd4b3685f15",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -29437,6 +29437,16 @@
         "checksum": "sha256:1379621c768b5ca22fcb63ac058b21220c87cbf63de6991119d141b3b92c6dc8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/memory.rs"
+      },
+      {
+        "checksum": "sha256:5878a2d1796d0bd63b20f35d91e7610a59f39f6bd699095df433bcfc31dd98ae",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/projection.rs"
+      },
+      {
+        "checksum": "sha256:7dea163c1a66f9619958e4c60ef48ab6effeaf1993981d1016f83ababb296244",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/projection_registry.rs"
       },
       {
         "checksum": "sha256:1e3dd5ee5b31b41cc97f5850707f26427c41620996281b5d2b87aba126f03578",

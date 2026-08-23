@@ -21,6 +21,8 @@ pub mod lifecycle;
 pub mod listing;
 pub mod llm;
 pub mod memory;
+pub mod projection;
+pub mod projection_registry;
 pub mod provider_io;
 pub mod prune;
 pub mod redaction;
@@ -48,6 +50,8 @@ pub use lifecycle::*;
 pub use listing::*;
 pub use llm::*;
 pub use memory::*;
+pub use projection::*;
+pub use projection_registry::*;
 pub use provider_io::*;
 pub use prune::*;
 pub use redaction::*;
@@ -105,3 +109,11 @@ mod audit_tests;
 #[cfg(test)]
 #[path = "source_redaction_tests.rs"]
 mod redaction_tests;
+
+#[cfg(test)]
+#[path = "source/projection_tests.rs"]
+mod projection_tests;
+
+#[cfg(test)]
+#[path = "source/projection_registry_tests.rs"]
+mod projection_registry_tests;

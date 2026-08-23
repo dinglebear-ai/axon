@@ -2125,7 +2125,7 @@
         "path": "crates/axon-adapters/src/boundary.rs"
       },
       {
-        "checksum": "sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be",
+        "checksum": "sha256:4cb12ff492247305468c3126a142a850cf9616120d7cc51f73b3527e38da4ee8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
