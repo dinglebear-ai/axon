@@ -59,6 +59,13 @@ pub fn preflight_source_batch(
         });
     }
     validate_aggregate(total, policy.max_aggregate_input_bytes)?;
+    validate_request_size(
+        &prepared
+            .iter()
+            .map(|item| &item.request)
+            .collect::<Vec<_>>(),
+        policy.max_request_bytes,
+    )?;
     Ok(ProjectionPreflight {
         batch_id: BatchId::new(Uuid::new_v4()),
         items: prepared,
@@ -93,11 +100,28 @@ pub fn preflight_code_search_batch(
         prepared.push(PreparedCodeSearchItem { index, plan });
     }
     validate_aggregate(total, policy.max_aggregate_input_bytes)?;
+    validate_request_size(
+        &prepared.iter().map(|item| &item.plan).collect::<Vec<_>>(),
+        policy.max_request_bytes,
+    )?;
     Ok(ProjectionPreflight {
         batch_id: BatchId::new(Uuid::new_v4()),
         items: prepared,
         aggregate_input_bytes: total,
     })
+}
+
+fn validate_request_size<T: serde::Serialize>(request: &T, maximum: usize) -> Result<(), ApiError> {
+    let actual = serde_json::to_vec(request)
+        .map_err(|error| preflight_error("projection.request_encoding_failed", error.to_string()))?
+        .len();
+    if actual <= maximum {
+        return Ok(());
+    }
+    Err(preflight_error(
+        "projection.request_too_large",
+        format!("normalized request is {actual} bytes; maximum is {maximum} bytes"),
+    ))
 }
 
 fn validate_count(actual: usize, maximum: usize) -> Result<(), ApiError> {

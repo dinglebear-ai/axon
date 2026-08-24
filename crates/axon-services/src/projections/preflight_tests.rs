@@ -61,3 +61,20 @@ fn projection_preflight_rejects_local_escape_before_execution() {
         .is_err()
     );
 }
+
+#[test]
+fn projection_preflight_bounds_normalized_request_bytes() {
+    let policy = ProjectionBatchPolicy {
+        max_request_bytes: 16,
+        ..ProjectionBatchPolicy::default()
+    };
+    let error = preflight_source_batch(
+        ProjectionOperation::Scrape,
+        vec![SourceRequest::new("https://example.com")],
+        None,
+        &policy,
+        &SourceAccessPolicy::default(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code.0, "projection.request_too_large");
+}
