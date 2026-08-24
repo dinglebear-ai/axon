@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [7.2.23] - 2026-08-24
 
+### Fixed
+
+- **render:** a dead `AXON_CHROME_REMOTE_URL` no longer degrades renders to a
+  browserless HTTP crawl. The CDP probe now distinguishes "unreachable after
+  retries" from "skipped inside Docker", clears a confirmed-dead remote so
+  Spider genuinely launches a local Chrome, and stops warning on every render
+  in Docker where handing Spider the discovery URL is the intended path (#582).
+- **jobs:** `provider_reservations.provider_kind` accepts the full
+  `ProviderKind` registry. The migration-0004 CHECK allowed 11 kinds while the
+  enum had grown to 20, so graph/ledger/memory/job/watch/config/credential/
+  security/rate_limiter/health_probe reservations failed with SQLite error 275
+  and silently degraded their summaries — baseline graph upserts in particular.
+  Migration 0009 widens it, and a compiler-enforced exhaustiveness witness now
+  fails the build if a new enum variant ships without a widening migration (#583).
+
 ## [7.2.22] - 2026-08-21
 
 ## [7.2.21] - 2026-08-21
