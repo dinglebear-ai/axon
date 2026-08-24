@@ -70,15 +70,7 @@ fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<d
         request
     } else {
         ScrapeRequest {
-            inputs: cfg
-                .positional
-                .iter()
-                .cloned()
-                .map(|input| SourceProjectionInput {
-                    input,
-                    idempotency_key: None,
-                })
-                .collect(),
+            inputs: positional_source_inputs(cfg),
             options,
         }
     };
@@ -125,14 +117,7 @@ where
         return Ok(serde_json::from_slice(&fs::read(path)?)?);
     }
     let inputs = if cfg.projection_items.is_empty() {
-        cfg.positional
-            .iter()
-            .cloned()
-            .map(|input| SourceProjectionInput {
-                input,
-                idempotency_key: None,
-            })
-            .collect()
+        positional_source_inputs(cfg)
     } else {
         cfg.projection_items
             .iter()
@@ -169,11 +154,7 @@ fn load_code_search_request(cfg: &Config) -> Result<CodeSearchRequest, Box<dyn E
         return Ok(serde_json::from_slice(&fs::read(path)?)?);
     }
     let inputs = if cfg.projection_items.is_empty() {
-        cfg.positional
-            .iter()
-            .cloned()
-            .map(|input| QueryProjectionInput { input })
-            .collect()
+        positional_query_inputs(cfg)
     } else {
         cfg.projection_items
             .iter()
@@ -188,6 +169,25 @@ fn load_code_search_request(cfg: &Config) -> Result<CodeSearchRequest, Box<dyn E
             ..CodeSearchProjectionOptions::default()
         },
     })
+}
+
+fn positional_source_inputs(cfg: &Config) -> Vec<SourceProjectionInput> {
+    cfg.positional
+        .iter()
+        .cloned()
+        .map(|input| SourceProjectionInput {
+            input,
+            idempotency_key: None,
+        })
+        .collect()
+}
+
+fn positional_query_inputs(cfg: &Config) -> Vec<QueryProjectionInput> {
+    cfg.positional
+        .iter()
+        .cloned()
+        .map(|input| QueryProjectionInput { input })
+        .collect()
 }
 
 fn print_batch<T: serde::Serialize>(
