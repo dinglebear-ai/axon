@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/code-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["codeSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections": {
         parameters: {
             query?: never;
@@ -190,6 +206,22 @@ export interface paths {
         get: operations["collections_openapi_marker"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/crawl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["crawlSources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -238,6 +270,22 @@ export interface paths {
         get: operations["domains"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/embed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["embedSources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -398,6 +446,22 @@ export interface paths {
         get: operations["get_source_subgraph"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingestSources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1032,6 +1096,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/scrape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["scrapeSources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/screenshot": {
         parameters: {
             query?: never;
@@ -1472,6 +1552,90 @@ export interface components {
         };
         /** @enum {string} */
         AuthorityLevel: "official" | "verified" | "user_pinned" | "inferred" | "community" | "mirror" | "conflicting" | "unknown";
+        /** Format: uuid */
+        BatchId: string;
+        BatchItem_QueryResult: {
+            index: number;
+            input?: string | null;
+            outcome: components["schemas"]["BatchOutcome_QueryResult"];
+        };
+        BatchItem_SourceResult: {
+            index: number;
+            input?: string | null;
+            outcome: components["schemas"]["BatchOutcome_SourceResult"];
+        };
+        BatchOutcome_QueryResult: {
+            data: {
+                results: components["schemas"]["QueryHit"][];
+            };
+            /** @enum {string} */
+            status: "completed";
+        } | {
+            data: components["schemas"]["JobDescriptor"];
+            /** @enum {string} */
+            status: "queued";
+        } | {
+            data: components["schemas"]["ApiError"];
+            /** @enum {string} */
+            status: "failed";
+        } | {
+            /** @enum {string} */
+            status: "canceled";
+        };
+        BatchOutcome_SourceResult: {
+            data: {
+                adapter: components["schemas"]["AdapterRef"];
+                artifacts?: components["schemas"]["ArtifactRef"][];
+                canonical_uri: string;
+                counts: components["schemas"]["SourceCounts"];
+                errors?: components["schemas"]["SourceError"][];
+                graph: components["schemas"]["GraphWriteSummary"];
+                inline?: null | components["schemas"]["InlineSourceResult"];
+                job?: null | components["schemas"]["JobDescriptor"];
+                job_id: components["schemas"]["JobId"];
+                ledger: components["schemas"]["LedgerSummary"];
+                scope: components["schemas"]["SourceScope"];
+                source_id: components["schemas"]["SourceId"];
+                source_kind: components["schemas"]["SourceKind"];
+                status: components["schemas"]["LifecycleStatus"];
+                warnings: components["schemas"]["SourceWarning"][];
+                watch?: null | components["schemas"]["WatchResult"];
+            };
+            /** @enum {string} */
+            status: "completed";
+        } | {
+            data: components["schemas"]["JobDescriptor"];
+            /** @enum {string} */
+            status: "queued";
+        } | {
+            data: components["schemas"]["ApiError"];
+            /** @enum {string} */
+            status: "failed";
+        } | {
+            /** @enum {string} */
+            status: "canceled";
+        };
+        BatchResult_QueryResult: {
+            batch_id: components["schemas"]["BatchId"];
+            items: components["schemas"]["BatchItem_QueryResult"][];
+            status: components["schemas"]["BatchStatus"];
+            summary: components["schemas"]["BatchSummary"];
+        };
+        BatchResult_SourceResult: {
+            batch_id: components["schemas"]["BatchId"];
+            items: components["schemas"]["BatchItem_SourceResult"][];
+            status: components["schemas"]["BatchStatus"];
+            summary: components["schemas"]["BatchSummary"];
+        };
+        /** @enum {string} */
+        BatchStatus: "accepted" | "completed" | "completed_degraded" | "canceled";
+        BatchSummary: {
+            canceled: number;
+            completed: number;
+            failed: number;
+            queued: number;
+            total: number;
+        };
         BrandColor: {
             count: number;
             hex: string;
@@ -1508,6 +1672,19 @@ export interface components {
         /** @enum {string} */
         ChunkProfile: "code_symbol" | "code_manifest" | "markdown_sections" | "html_article" | "plain_text_windows" | "transcript_segments" | "structured_records" | "api_schema" | "tool_output" | "session_turns" | "atomic_metadata";
         CleanupDebtId: string;
+        CodeSearchProjectionOptions: {
+            collection?: string | null;
+            language?: string | null;
+            limit?: number;
+            no_hybrid_search?: boolean;
+            offset?: number;
+            path_prefix?: string | null;
+            source?: string | null;
+        };
+        CodeSearchRequest: {
+            inputs: components["schemas"]["QueryProjectionInput"][];
+            options?: components["schemas"]["CodeSearchProjectionOptions"];
+        };
         /** @enum {string} */
         ColorUsage: "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         ContentRef: {
@@ -1528,6 +1705,18 @@ export interface components {
             /** @enum {string} */
             kind: "external";
             uri: string;
+        };
+        CrawlOptions: {
+            collection?: string | null;
+            execution?: components["schemas"]["ExecutionPolicy"];
+            limits?: components["schemas"]["SourceLimits"];
+            options?: components["schemas"]["AdapterOptions"];
+            output?: components["schemas"]["OutputPolicy"];
+            refresh?: components["schemas"]["SourceRefreshPolicy"];
+        };
+        CrawlRequest: {
+            inputs: components["schemas"]["SourceProjectionInput"][];
+            options?: components["schemas"]["CrawlOptions"];
         };
         /** @enum {string} */
         CredentialKind: "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
@@ -1567,6 +1756,19 @@ export interface components {
         /** @enum {string} */
         DocumentBackend: "qdrant" | "stored_source" | "live_scrape";
         DocumentId: string;
+        EmbedOptions: {
+            collection?: string | null;
+            execution?: components["schemas"]["ExecutionPolicy"];
+            limits?: components["schemas"]["SourceLimits"];
+            options?: components["schemas"]["AdapterOptions"];
+            output?: components["schemas"]["OutputPolicy"];
+            refresh?: components["schemas"]["SourceRefreshPolicy"];
+            scope?: null | components["schemas"]["SourceScope"];
+        };
+        EmbedRequest: {
+            inputs: components["schemas"]["SourceProjectionInput"][];
+            options?: components["schemas"]["EmbedOptions"];
+        };
         /** @enum {string} */
         EndpointKind: "relative_path" | "absolute_url" | "graphql" | "websocket";
         EndpointReport: {
@@ -1770,6 +1972,20 @@ export interface components {
             evidence_records: number;
             /** Format: int64 */
             nodes_upserted: number;
+        };
+        IngestOptions: {
+            collection?: string | null;
+            execution?: components["schemas"]["ExecutionPolicy"];
+            limits?: components["schemas"]["SourceLimits"];
+            no_embed?: boolean;
+            options?: components["schemas"]["AdapterOptions"];
+            output?: components["schemas"]["OutputPolicy"];
+            refresh?: components["schemas"]["SourceRefreshPolicy"];
+            scope?: null | components["schemas"]["SourceScope"];
+        };
+        IngestRequest: {
+            inputs: components["schemas"]["SourceProjectionInput"][];
+            options?: components["schemas"]["IngestOptions"];
         };
         InlineSourceResult: {
             content?: null | components["schemas"]["ContentRef"];
@@ -2507,6 +2723,9 @@ export interface components {
             symbol_extraction_status?: string | null;
             url: string;
         };
+        QueryProjectionInput: {
+            input: string;
+        };
         QueryResult: {
             results: components["schemas"]["QueryHit"][];
         };
@@ -2894,6 +3113,17 @@ export interface components {
         RpcTransport: "http" | "sse";
         /** @enum {string} */
         SafetyClass: "public_network" | "authenticated_network" | "local_filesystem" | "tool_execution";
+        ScrapeOptions: {
+            collection?: string | null;
+            execution?: components["schemas"]["ExecutionPolicy"];
+            options?: components["schemas"]["AdapterOptions"];
+            output?: components["schemas"]["OutputPolicy"];
+            refresh?: components["schemas"]["SourceRefreshPolicy"];
+        };
+        ScrapeRequest: {
+            inputs: components["schemas"]["SourceProjectionInput"][];
+            options?: components["schemas"]["ScrapeOptions"];
+        };
         ScreenshotResult: {
             artifact_id: components["schemas"]["ArtifactId"];
             captured_at: components["schemas"]["Timestamp"];
@@ -2973,6 +3203,10 @@ export interface components {
             max_total_bytes?: number | null;
             /** Format: int64 */
             provider_timeout_ms?: number | null;
+        };
+        SourceProjectionInput: {
+            idempotency_key?: string | null;
+            input: string;
         };
         SourceRange: {
             /** Format: int64 */
@@ -3899,6 +4133,66 @@ export interface operations {
             };
         };
     };
+    codeSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Committed-state code search results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_QueryResult"];
+                };
+            };
+            /** @description Invalid code search request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Code search request exceeds a configured limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     collections_openapi_marker: {
         parameters: {
             query?: never;
@@ -3937,6 +4231,84 @@ export interface operations {
             };
             /** @description Qdrant collections request failed */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    crawlSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrawlRequest"];
+            };
+        };
+        responses: {
+            /** @description Projection batch admitted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
+            /** @description Invalid projection request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection target is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Idempotency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection request exceeds a configured limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection admission is saturated */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4096,6 +4468,84 @@ export interface operations {
             };
             /** @description Upstream vector service unavailable */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    embedSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmbedRequest"];
+            };
+        };
+        responses: {
+            /** @description Projection batch admitted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
+            /** @description Invalid projection request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection target is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Idempotency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection request exceeds a configured limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection admission is saturated */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4649,6 +5099,84 @@ export interface operations {
             };
             /** @description Graph storage unavailable */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ingestSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Projection batch admitted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
+            /** @description Invalid projection request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection target is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Idempotency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection request exceeds a configured limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection admission is saturated */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7030,6 +7558,84 @@ export interface operations {
             };
             /** @description Upstream vector service unavailable */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    scrapeSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScrapeRequest"];
+            };
+        };
+        responses: {
+            /** @description Projection batch admitted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
+            /** @description Invalid projection request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection target is not authorized */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Idempotency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection request exceeds a configured limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Projection admission is saturated */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

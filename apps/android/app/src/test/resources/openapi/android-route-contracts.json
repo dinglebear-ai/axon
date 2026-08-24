@@ -468,5 +468,30 @@
     "method": "GET",
     "path": "/v1/graph/sources/{source_id}",
     "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/scrape",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/crawl",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/embed",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/ingest",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/code-search",
+    "requiresAuth": true
   }
 ]
