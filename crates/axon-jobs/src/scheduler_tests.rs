@@ -884,3 +884,118 @@ async fn live_polling_waiter_is_not_expired_and_ages_up() {
         .await
         .expect("release holder");
 }
+
+/// Every current `ProviderKind` variant. Kept in lockstep with the
+/// `provider_kind` CHECK in `migrations/0009_provider_scheduler_kind_registry.sql`
+/// by `provider_kind_registry_is_exhaustive` below — adding an enum variant
+/// breaks that witness until both this list and a new migration widen the
+/// registry.
+const ALL_PROVIDER_KINDS: &[ProviderKind] = &[
+    ProviderKind::Llm,
+    ProviderKind::Embedding,
+    ProviderKind::Vector,
+    ProviderKind::Search,
+    ProviderKind::Fetch,
+    ProviderKind::Render,
+    ProviderKind::Parser,
+    ProviderKind::NetworkCapture,
+    ProviderKind::Artifact,
+    ProviderKind::Ledger,
+    ProviderKind::Graph,
+    ProviderKind::Memory,
+    ProviderKind::Job,
+    ProviderKind::Watch,
+    ProviderKind::Config,
+    ProviderKind::Credential,
+    ProviderKind::Cache,
+    ProviderKind::Security,
+    ProviderKind::RateLimiter,
+    ProviderKind::HealthProbe,
+];
+
+#[test]
+fn provider_kind_registry_is_exhaustive() {
+    // Compiler-enforced: a new ProviderKind variant fails this match, which is
+    // the signal to extend ALL_PROVIDER_KINDS *and* ship a migration widening
+    // the provider_reservations provider_kind CHECK (see 0009).
+    let witness = |kind: ProviderKind| match kind {
+        ProviderKind::Llm
+        | ProviderKind::Embedding
+        | ProviderKind::Vector
+        | ProviderKind::Search
+        | ProviderKind::Fetch
+        | ProviderKind::Render
+        | ProviderKind::Parser
+        | ProviderKind::NetworkCapture
+        | ProviderKind::Artifact
+        | ProviderKind::Ledger
+        | ProviderKind::Graph
+        | ProviderKind::Memory
+        | ProviderKind::Job
+        | ProviderKind::Watch
+        | ProviderKind::Config
+        | ProviderKind::Credential
+        | ProviderKind::Cache
+        | ProviderKind::Security
+        | ProviderKind::RateLimiter
+        | ProviderKind::HealthProbe => (),
+    };
+    for kind in ALL_PROVIDER_KINDS {
+        witness(*kind);
+    }
+    assert_eq!(ALL_PROVIDER_KINDS.len(), 20);
+}
+
+#[tokio::test]
+async fn every_provider_kind_passes_the_reservation_check_constraint() {
+    // Regression for the production failure "CHECK constraint failed:
+    // provider_kind IN (...)": the 0004 CHECK lagged the ProviderKind enum, so
+    // graph (and other newer) capacity domains could not insert reservations
+    // and baseline graph upserts degraded. Reserve once per kind — the insert
+    // itself exercises the CHECK.
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query("INSERT INTO sources (source_id, summary_json, created_at, updated_at) VALUES ('s', '{}', '', '')")
+        .execute(&pool)
+        .await
+        .expect("source");
+    sqlx::query("INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at) VALUES ('00000000-0000-0000-0000-000000000042', 'source', 'queued', 'queued', 'normal', 's', '', '')")
+        .execute(&pool)
+        .await
+        .expect("job");
+
+    for (index, kind) in ALL_PROVIDER_KINDS.iter().enumerate() {
+        let scheduler = ProviderScheduler::new(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: *kind,
+                instance_id: format!("registry-{index}"),
+                authority_id: "authority-registry".into(),
+            },
+            SchedulerConfig {
+                capacity: 1,
+                interactive_reserve: 0,
+                max_entries: 10,
+                max_units: 10,
+            },
+        )
+        .expect("scheduler");
+        let grant = scheduler
+            .reserve(ReservationRequest {
+                job_id: JobId::new(Uuid::from_u128(0x42)),
+                stage_id: None,
+                attempt: 1,
+                fence: format!("fence-registry-{index}"),
+                priority: JobPriority::Normal,
+                units: 1,
+            })
+            .await
+            .unwrap_or_else(|error| {
+                panic!("reserve must pass the provider_kind CHECK for {kind:?}: {error:?}")
+            });
+        assert!(grant.granted, "reservation for {kind:?} must be granted");
+        scheduler
+            .complete(&grant.reservation_id, &format!("fence-registry-{index}"))
+            .await
+            .expect("completion");
+    }
+}
