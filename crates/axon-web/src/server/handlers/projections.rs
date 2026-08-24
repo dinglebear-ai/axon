@@ -148,11 +148,13 @@ pub(crate) async fn code_search(
     let ctx = Arc::clone(&state.service_context);
     let handle = tokio::runtime::Handle::current();
     let result = tokio::task::spawn_blocking(move || {
-        handle.block_on(execute_code_search_projection_batch(
-            ctx.as_ref(),
-            prepared,
-            axon_api::CodeSearchCaller::Rest,
-        ))
+        handle
+            .block_on(execute_code_search_projection_batch(
+                ctx.as_ref(),
+                prepared,
+                axon_api::CodeSearchCaller::Rest,
+            ))
+            .map_err(Box::new)
     })
     .await
     .map_err(|error| {
@@ -162,7 +164,7 @@ pub(crate) async fn code_search(
             format!("code search task failed: {error}"),
         )
     })?
-    .map_err(HttpError::from_api_error)?;
+    .map_err(|error| HttpError::from_api_error(*error))?;
     Ok(Json(result))
 }
 

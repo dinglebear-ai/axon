@@ -97,15 +97,17 @@ impl AxonMcpServer {
             .map_err(|error| logged_internal_error("code_search.context", error.as_ref()))?;
         let handle = tokio::runtime::Handle::current();
         let result = tokio::task::spawn_blocking(move || {
-            handle.block_on(execute_code_search_projection_batch(
-                ctx.as_ref(),
-                prepared,
-                axon_api::CodeSearchCaller::Mcp,
-            ))
+            handle
+                .block_on(execute_code_search_projection_batch(
+                    ctx.as_ref(),
+                    prepared,
+                    axon_api::CodeSearchCaller::Mcp,
+                ))
+                .map_err(Box::new)
         })
         .await
         .map_err(|error| super::common::internal_error(format!("code_search task: {error}")))?
-        .map_err(|error| logged_internal_error("code_search.execute", &error))?;
+        .map_err(|error| logged_internal_error("code_search.execute", error.as_ref()))?;
         projection_response(ProjectionOperation::CodeSearch, result)
     }
 }
