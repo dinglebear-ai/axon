@@ -142,7 +142,10 @@ fn clean_break_system_actions_have_only_canonical_subactions() {
         subactions("uploads"),
         ["list", "create", "get", "put_content", "complete", "abort"]
     );
-    for removed in ["crawl", "embed", "ingest", "dedupe", "purge"] {
+    for restored in ["scrape", "crawl", "embed", "ingest", "code_search"] {
+        assert!(live_action_names().contains(&restored));
+    }
+    for removed in ["dedupe", "purge"] {
         assert!(!live_action_names().contains(&removed));
     }
 }

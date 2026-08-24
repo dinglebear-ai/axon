@@ -308,11 +308,13 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "committed_generation": null
 }"#
         }
+        SchemaFamily::Projections => {
+            r#"{"contract_version":"fixture","operations":[{},{},{},{},{}],"fixtures":[{},{},{},{},{},{},{},{},{},{}]}"#
+        }
         SchemaFamily::Api
         | SchemaFamily::Events
         | SchemaFamily::Errors
-        | SchemaFamily::Database
-        | SchemaFamily::Projections => "{}",
+        | SchemaFamily::Database => "{}",
     }
 }
 
@@ -889,7 +891,7 @@ fn removed_surface_registry_matches_contract() {
     let registry = removed::removed_surface_registry();
 
     assert!(
-        registry
+        !registry
             .cli_commands
             .iter()
             .any(|command| command.name == "embed")
@@ -906,7 +908,7 @@ fn removed_surface_registry_matches_contract() {
             .iter()
             .any(|action| action.name == "vertical_scrape")
     );
-    assert!(registry.rest_routes.iter().any(|route| {
+    assert!(!registry.rest_routes.iter().any(|route| {
         route.method == "POST" && route.path == "/v1/embed" && route.operation_id == "embed"
     }));
     assert!(
@@ -927,7 +929,7 @@ fn removed_surface_checker_reports_structural_findings() {
         artifact::SchemaArtifact::new(
             "docs/reference/cli/commands.json",
             serde_json::json!({
-                "commands": [{"name": "embed"}, {"name": "query"}]
+                "commands": [{"name": "code-search-watch"}, {"name": "query"}]
             })
             .to_string(),
         ),
@@ -942,7 +944,7 @@ fn removed_surface_checker_reports_structural_findings() {
             "docs/reference/rest/openapi.json",
             serde_json::json!({
                 "routes": [
-                    {"method": "POST", "path": "/v1/embed", "operation_id": "embed"},
+                    {"method": "POST", "path": "/v1/purge", "operation_id": "purge"},
                     {"method": "POST", "path": "/v1/query", "operation_id": "query"}
                 ]
             })
@@ -985,10 +987,10 @@ fn removed_surface_checker_reports_structural_findings() {
         .map(|finding| (finding.category, finding.surface.as_str()))
         .collect::<std::collections::BTreeSet<_>>();
 
-    assert!(findings.contains(&("CLI command", "embed")));
+    assert!(findings.contains(&("CLI command", "code-search-watch")));
     assert!(findings.contains(&("MCP action", "vertical_scrape")));
-    assert!(findings.contains(&("REST route", "POST /v1/embed")));
-    assert!(findings.contains(&("REST operation", "embed")));
+    assert!(findings.contains(&("REST route", "POST /v1/purge")));
+    assert!(findings.contains(&("REST operation", "purge")));
     assert!(findings.contains(&("config key", "AXON_MCP_HTTP_TOKEN")));
     assert!(findings.contains(&("DTO schema", "CodeSearchRequest")));
     assert!(findings.contains(&("DTO field", "CodeSearchRequest.cwd")));
@@ -1186,9 +1188,14 @@ fn mcp_schema_is_registry_backed_and_validates_action_branches() {
     assert!(value["$defs"]["ExtractRequest"].is_object());
     let action_enum = value["$defs"]["Action"]["enum"].as_array().unwrap();
     assert!(action_enum.iter().any(|a| a == "extract"));
-    // Removed/HTTP-only/never-contracted actions must be absent from the
-    // live Action enum.
-    for removed in ["crawl", "embed", "ingest", "purge", "dedupe", "scrape"] {
+    for restored in ["scrape", "crawl", "embed", "ingest", "code_search"] {
+        assert!(
+            action_enum.iter().any(|action| action == restored),
+            "restored action {restored:?} must appear in the Action enum"
+        );
+    }
+    // Retired/never-contracted actions remain absent.
+    for removed in ["purge", "dedupe", "vertical_scrape"] {
         assert!(
             !action_enum.iter().any(|a| a == removed),
             "removed action {removed:?} must not appear in the Action enum"
@@ -1699,9 +1706,6 @@ fn openapi_registry_exposes_only_canonical_admin_watch_and_artifact_routes() {
     }
 
     for removed in [
-        "/v1/crawl",
-        "/v1/embed",
-        "/v1/ingest",
         "/v1/dedupe",
         "/v1/purge",
         "/v1/prune/dedupe",
@@ -1793,7 +1797,7 @@ fn markdown_and_json_drift_together() {
 }
 
 #[test]
-fn removed_surface_drift_checks_legacy_api_defs_by_schema_path() {
+fn restored_projection_api_defs_are_allowed_by_schema_path() {
     let artifacts = vec![artifact::SchemaArtifact::new(
         "docs/reference/api/schemas.json",
         serde_json::json!({
@@ -1809,9 +1813,8 @@ fn removed_surface_drift_checks_legacy_api_defs_by_schema_path() {
         })
         .to_string(),
     )];
-    let err = registry::check_removed_surface_drift(&artifacts)
-        .expect_err("legacy API request def should fail");
-    assert!(err.to_string().contains("EmbedRequest"), "{err}");
+    registry::check_removed_surface_drift(&artifacts)
+        .expect("restored projection API request def should be allowed");
 }
 
 #[test]

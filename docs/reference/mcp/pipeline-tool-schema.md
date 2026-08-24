@@ -10,6 +10,11 @@ Axon exposes one MCP tool (`axon`) with an `action`/`subaction`-routed input. Th
 
 | Action | Scope | Mutates | Async | Request DTO | Grouped | Description |
 |---|---|---|---|---|---|---|
+| `scrape` | write | true | true | `ScrapeRequest` | false | Project page acquisition onto the canonical source pipeline |
+| `crawl` | write | true | true | `CrawlRequest` | false | Project site crawling onto the canonical source pipeline |
+| `embed` | write | true | true | `EmbedRequest` | false | Project embedding onto the canonical source pipeline |
+| `ingest` | write | true | true | `IngestRequest` | false | Project ingestion onto the canonical source pipeline |
+| `code_search` | read | false | false | `CodeSearchRequest` | false | Search committed code vectors without refreshing the index |
 | `help` | info | false | false | `HelpRequest` | false | List actions, subactions, defaults, and schema resource links |
 | `status` | read | false | false | `StatusRequest` | false | Show unified jobs, watches, cleanup, totals, and service status |
 | `jobs` | write | true | false | `JobsRequest` | true | List, inspect, page events, cancel, retry, recover, cleanup, or clear unified durable jobs |
@@ -83,7 +88,7 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | `crates/axon-mcp/src/server.rs` | `sha256:aa3d5c6047988343ae31162b59e909909483a1e709fc2e9d89e23e3d0587efcf` |
 | `crates/axon-mcp/src/server/authz.rs` | `sha256:008e95919150c2e2790ae57dfe9dd0d2407af364eb07bfa96414580df3ecd260` |
 | `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024` |
-| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1` |
+| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:6cde7e3336c9d6619a447ffde77dff93782ac1c4bfd2e397f3a56938af467f5a` |
 
 ## Drift Checks
 

@@ -139,10 +139,6 @@ const DTO_FIELDS: &[RemovedDtoField] = &[
 const GENERATED_CLIENTS: &[&str] = &["web", "palette", "android", "chrome-extension"];
 
 const GENERATED_CLIENT_OPERATIONS: &[RemovedOperation] = &[
-    op("embed", "create_source"),
-    op("ingest", "create_source"),
-    op("scrape", "create_source"),
-    op("crawl", "create_source"),
     op("purge", "prune_plan then prune_exec"),
     op("dedupe", "prune_plan then prune_exec"),
     op("prune_purge", "prune_plan then prune_exec"),

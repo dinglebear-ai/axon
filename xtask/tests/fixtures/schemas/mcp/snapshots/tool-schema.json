@@ -2,6 +2,11 @@
   "$defs": {
     "Action": {
       "enum": [
+        "scrape",
+        "crawl",
+        "embed",
+        "ingest",
+        "code_search",
         "help",
         "status",
         "jobs",
@@ -37,6 +42,126 @@
     "ActionDiscriminatorRules": {
       "description": "One if/then branch per live MCP action; constrains subaction requirement and the effective request DTO.",
       "oneOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "scrape"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ScrapeRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "crawl"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/CrawlRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "embed"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/EmbedRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "ingest"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/IngestRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "code_search"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/CodeSearchRequest"
+              }
+            }
+          }
+        },
         {
           "if": {
             "properties": {
@@ -1095,6 +1220,89 @@
       ],
       "type": "string"
     },
+    "CodeSearchRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/CodeSearchRequest_QueryProjectionInput"
+          },
+          "type": "array"
+        },
+        "options": {
+          "$ref": "#/$defs/CodeSearchRequest_CodeSearchProjectionOptions",
+          "default": {
+            "limit": 20,
+            "no_hybrid_search": false,
+            "offset": 0
+          }
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "CodeSearchRequest",
+      "type": "object"
+    },
+    "CodeSearchRequest_CodeSearchProjectionOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": 20,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "no_hybrid_search": {
+          "default": false,
+          "type": "boolean"
+        },
+        "offset": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path_prefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "CodeSearchRequest_QueryProjectionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "type": "object"
+    },
     "CollectionsMcpRequest": {
       "additionalProperties": false,
       "properties": {
@@ -1151,6 +1359,294 @@
       "enum": [
         "list",
         "get"
+      ],
+      "type": "string"
+    },
+    "CrawlRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/CrawlRequest_SourceProjectionInput"
+          },
+          "type": "array"
+        },
+        "options": {
+          "$ref": "#/$defs/CrawlRequest_CrawlOptions",
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "limits": {},
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          }
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "CrawlRequest",
+      "type": "object"
+    },
+    "CrawlRequest_AdapterOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "CrawlRequest_ArtifactMode": {
+      "enum": [
+        "none",
+        "on_large_output",
+        "always"
+      ],
+      "type": "string"
+    },
+    "CrawlRequest_CrawlOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution": {
+          "$ref": "#/$defs/CrawlRequest_ExecutionPolicy",
+          "default": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          }
+        },
+        "limits": {
+          "$ref": "#/$defs/CrawlRequest_SourceLimits",
+          "default": {}
+        },
+        "options": {
+          "$ref": "#/$defs/CrawlRequest_AdapterOptions",
+          "default": {
+            "values": {}
+          }
+        },
+        "output": {
+          "$ref": "#/$defs/CrawlRequest_OutputPolicy",
+          "default": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          }
+        },
+        "refresh": {
+          "$ref": "#/$defs/CrawlRequest_SourceRefreshPolicy",
+          "default": "if_stale"
+        }
+      },
+      "type": "object"
+    },
+    "CrawlRequest_ExecutionMode": {
+      "enum": [
+        "foreground",
+        "background",
+        "wait"
+      ],
+      "type": "string"
+    },
+    "CrawlRequest_ExecutionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "detached": {
+          "type": "boolean"
+        },
+        "heartbeat_interval_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/CrawlRequest_ExecutionMode"
+        },
+        "priority": {
+          "$ref": "#/$defs/CrawlRequest_JobPriority"
+        },
+        "wait_timeout_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "priority",
+        "detached",
+        "heartbeat_interval_secs"
+      ],
+      "type": "object"
+    },
+    "CrawlRequest_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "CrawlRequest_OutputPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_mode": {
+          "$ref": "#/$defs/CrawlRequest_ArtifactMode"
+        },
+        "include_progress": {
+          "type": "boolean"
+        },
+        "inline_limit_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "json": {
+          "type": "boolean"
+        },
+        "response_mode": {
+          "$ref": "#/$defs/CrawlRequest_ResponseMode"
+        }
+      },
+      "required": [
+        "json",
+        "response_mode",
+        "inline_limit_bytes",
+        "artifact_mode",
+        "include_progress"
+      ],
+      "type": "object"
+    },
+    "CrawlRequest_ResponseMode": {
+      "enum": [
+        "auto",
+        "summary",
+        "full",
+        "inline",
+        "artifact",
+        "path",
+        "job_only"
+      ],
+      "type": "string"
+    },
+    "CrawlRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "CrawlRequest_SourceProjectionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "type": "object"
+    },
+    "CrawlRequest_SourceRefreshPolicy": {
+      "enum": [
+        "if_stale",
+        "force",
+        "never"
       ],
       "type": "string"
     },
@@ -1236,6 +1732,336 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "EmbedRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/EmbedRequest_SourceProjectionInput"
+          },
+          "type": "array"
+        },
+        "options": {
+          "$ref": "#/$defs/EmbedRequest_EmbedOptions",
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "limits": {},
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          }
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "EmbedRequest",
+      "type": "object"
+    },
+    "EmbedRequest_AdapterOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "EmbedRequest_ArtifactMode": {
+      "enum": [
+        "none",
+        "on_large_output",
+        "always"
+      ],
+      "type": "string"
+    },
+    "EmbedRequest_EmbedOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution": {
+          "$ref": "#/$defs/EmbedRequest_ExecutionPolicy",
+          "default": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          }
+        },
+        "limits": {
+          "$ref": "#/$defs/EmbedRequest_SourceLimits",
+          "default": {}
+        },
+        "options": {
+          "$ref": "#/$defs/EmbedRequest_AdapterOptions",
+          "default": {
+            "values": {}
+          }
+        },
+        "output": {
+          "$ref": "#/$defs/EmbedRequest_OutputPolicy",
+          "default": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          }
+        },
+        "refresh": {
+          "$ref": "#/$defs/EmbedRequest_SourceRefreshPolicy",
+          "default": "if_stale"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmbedRequest_SourceScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "EmbedRequest_ExecutionMode": {
+      "enum": [
+        "foreground",
+        "background",
+        "wait"
+      ],
+      "type": "string"
+    },
+    "EmbedRequest_ExecutionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "detached": {
+          "type": "boolean"
+        },
+        "heartbeat_interval_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/EmbedRequest_ExecutionMode"
+        },
+        "priority": {
+          "$ref": "#/$defs/EmbedRequest_JobPriority"
+        },
+        "wait_timeout_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "priority",
+        "detached",
+        "heartbeat_interval_secs"
+      ],
+      "type": "object"
+    },
+    "EmbedRequest_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "EmbedRequest_OutputPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_mode": {
+          "$ref": "#/$defs/EmbedRequest_ArtifactMode"
+        },
+        "include_progress": {
+          "type": "boolean"
+        },
+        "inline_limit_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "json": {
+          "type": "boolean"
+        },
+        "response_mode": {
+          "$ref": "#/$defs/EmbedRequest_ResponseMode"
+        }
+      },
+      "required": [
+        "json",
+        "response_mode",
+        "inline_limit_bytes",
+        "artifact_mode",
+        "include_progress"
+      ],
+      "type": "object"
+    },
+    "EmbedRequest_ResponseMode": {
+      "enum": [
+        "auto",
+        "summary",
+        "full",
+        "inline",
+        "artifact",
+        "path",
+        "job_only"
+      ],
+      "type": "string"
+    },
+    "EmbedRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "EmbedRequest_SourceProjectionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "type": "object"
+    },
+    "EmbedRequest_SourceRefreshPolicy": {
+      "enum": [
+        "if_stale",
+        "force",
+        "never"
+      ],
+      "type": "string"
+    },
+    "EmbedRequest_SourceScope": {
+      "enum": [
+        "page",
+        "site",
+        "docs",
+        "repo",
+        "workspace",
+        "branch",
+        "org",
+        "package",
+        "version",
+        "feed",
+        "subreddit",
+        "thread",
+        "comment",
+        "video",
+        "playlist",
+        "channel",
+        "issue",
+        "pull_request",
+        "merge_request",
+        "release",
+        "wiki",
+        "file",
+        "directory",
+        "map",
+        "tool",
+        "script",
+        "api"
       ],
       "type": "string"
     },
@@ -1659,6 +2485,341 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "IngestRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/IngestRequest_SourceProjectionInput"
+          },
+          "type": "array"
+        },
+        "options": {
+          "$ref": "#/$defs/IngestRequest_IngestOptions",
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "limits": {},
+            "no_embed": false,
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          }
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "IngestRequest",
+      "type": "object"
+    },
+    "IngestRequest_AdapterOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "IngestRequest_ArtifactMode": {
+      "enum": [
+        "none",
+        "on_large_output",
+        "always"
+      ],
+      "type": "string"
+    },
+    "IngestRequest_ExecutionMode": {
+      "enum": [
+        "foreground",
+        "background",
+        "wait"
+      ],
+      "type": "string"
+    },
+    "IngestRequest_ExecutionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "detached": {
+          "type": "boolean"
+        },
+        "heartbeat_interval_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/IngestRequest_ExecutionMode"
+        },
+        "priority": {
+          "$ref": "#/$defs/IngestRequest_JobPriority"
+        },
+        "wait_timeout_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "priority",
+        "detached",
+        "heartbeat_interval_secs"
+      ],
+      "type": "object"
+    },
+    "IngestRequest_IngestOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution": {
+          "$ref": "#/$defs/IngestRequest_ExecutionPolicy",
+          "default": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          }
+        },
+        "limits": {
+          "$ref": "#/$defs/IngestRequest_SourceLimits",
+          "default": {}
+        },
+        "no_embed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "options": {
+          "$ref": "#/$defs/IngestRequest_AdapterOptions",
+          "default": {
+            "values": {}
+          }
+        },
+        "output": {
+          "$ref": "#/$defs/IngestRequest_OutputPolicy",
+          "default": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          }
+        },
+        "refresh": {
+          "$ref": "#/$defs/IngestRequest_SourceRefreshPolicy",
+          "default": "if_stale"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IngestRequest_SourceScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "IngestRequest_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "IngestRequest_OutputPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_mode": {
+          "$ref": "#/$defs/IngestRequest_ArtifactMode"
+        },
+        "include_progress": {
+          "type": "boolean"
+        },
+        "inline_limit_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "json": {
+          "type": "boolean"
+        },
+        "response_mode": {
+          "$ref": "#/$defs/IngestRequest_ResponseMode"
+        }
+      },
+      "required": [
+        "json",
+        "response_mode",
+        "inline_limit_bytes",
+        "artifact_mode",
+        "include_progress"
+      ],
+      "type": "object"
+    },
+    "IngestRequest_ResponseMode": {
+      "enum": [
+        "auto",
+        "summary",
+        "full",
+        "inline",
+        "artifact",
+        "path",
+        "job_only"
+      ],
+      "type": "string"
+    },
+    "IngestRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "IngestRequest_SourceProjectionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "type": "object"
+    },
+    "IngestRequest_SourceRefreshPolicy": {
+      "enum": [
+        "if_stale",
+        "force",
+        "never"
+      ],
+      "type": "string"
+    },
+    "IngestRequest_SourceScope": {
+      "enum": [
+        "page",
+        "site",
+        "docs",
+        "repo",
+        "workspace",
+        "branch",
+        "org",
+        "package",
+        "version",
+        "feed",
+        "subreddit",
+        "thread",
+        "comment",
+        "video",
+        "playlist",
+        "channel",
+        "issue",
+        "pull_request",
+        "merge_request",
+        "release",
+        "wiki",
+        "file",
+        "directory",
+        "map",
+        "tool",
+        "script",
+        "api"
       ],
       "type": "string"
     },
@@ -3357,6 +4518,227 @@
       ],
       "type": "string"
     },
+    "ScrapeRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/ScrapeRequest_SourceProjectionInput"
+          },
+          "type": "array"
+        },
+        "options": {
+          "$ref": "#/$defs/ScrapeRequest_ScrapeOptions",
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          }
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "ScrapeRequest",
+      "type": "object"
+    },
+    "ScrapeRequest_AdapterOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
+    "ScrapeRequest_ArtifactMode": {
+      "enum": [
+        "none",
+        "on_large_output",
+        "always"
+      ],
+      "type": "string"
+    },
+    "ScrapeRequest_ExecutionMode": {
+      "enum": [
+        "foreground",
+        "background",
+        "wait"
+      ],
+      "type": "string"
+    },
+    "ScrapeRequest_ExecutionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "detached": {
+          "type": "boolean"
+        },
+        "heartbeat_interval_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "$ref": "#/$defs/ScrapeRequest_ExecutionMode"
+        },
+        "priority": {
+          "$ref": "#/$defs/ScrapeRequest_JobPriority"
+        },
+        "wait_timeout_secs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "priority",
+        "detached",
+        "heartbeat_interval_secs"
+      ],
+      "type": "object"
+    },
+    "ScrapeRequest_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
+    },
+    "ScrapeRequest_OutputPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_mode": {
+          "$ref": "#/$defs/ScrapeRequest_ArtifactMode"
+        },
+        "include_progress": {
+          "type": "boolean"
+        },
+        "inline_limit_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "json": {
+          "type": "boolean"
+        },
+        "response_mode": {
+          "$ref": "#/$defs/ScrapeRequest_ResponseMode"
+        }
+      },
+      "required": [
+        "json",
+        "response_mode",
+        "inline_limit_bytes",
+        "artifact_mode",
+        "include_progress"
+      ],
+      "type": "object"
+    },
+    "ScrapeRequest_ResponseMode": {
+      "enum": [
+        "auto",
+        "summary",
+        "full",
+        "inline",
+        "artifact",
+        "path",
+        "job_only"
+      ],
+      "type": "string"
+    },
+    "ScrapeRequest_ScrapeOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution": {
+          "$ref": "#/$defs/ScrapeRequest_ExecutionPolicy",
+          "default": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          }
+        },
+        "options": {
+          "$ref": "#/$defs/ScrapeRequest_AdapterOptions",
+          "default": {
+            "values": {}
+          }
+        },
+        "output": {
+          "$ref": "#/$defs/ScrapeRequest_OutputPolicy",
+          "default": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          }
+        },
+        "refresh": {
+          "$ref": "#/$defs/ScrapeRequest_SourceRefreshPolicy",
+          "default": "if_stale"
+        }
+      },
+      "type": "object"
+    },
+    "ScrapeRequest_SourceProjectionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "type": "object"
+    },
+    "ScrapeRequest_SourceRefreshPolicy": {
+      "enum": [
+        "if_stale",
+        "force",
+        "never"
+      ],
+      "type": "string"
+    },
     "ScreenshotRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -4033,7 +5415,7 @@
       }
     ],
     "generated_by": "cargo xtask schemas mcp",
-    "live_action_count": 29,
+    "live_action_count": 34,
     "owner_crates": [
       "axon-mcp",
       "axon-api"
@@ -4095,7 +5477,7 @@
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1",
+        "checksum": "sha256:6cde7e3336c9d6619a447ffde77dff93782ac1c4bfd2e397f3a56938af467f5a",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

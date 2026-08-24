@@ -29574,7 +29574,7 @@
         "path": "xtask/src/schemas/families/bundles.rs"
       },
       {
-        "checksum": "sha256:e311c00778ae7f149f1d2df39ab5dd62050a261a700607b3ab9286de1b98eb2c",
+        "checksum": "sha256:9171055ed091190014a9b813d3920e44331ad65ff40d1dd43c5b56fa948fd84a",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       },

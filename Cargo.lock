@@ -404,7 +404,6 @@ dependencies = [
  "httpmock",
  "proptest",
  "reqwest 0.13.4",
- "rmcp",
  "rustls",
  "serde",
  "serde_json",

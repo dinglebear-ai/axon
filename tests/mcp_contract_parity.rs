@@ -445,23 +445,18 @@ fn mcp_source_start_returns_job_id_payload_shape() {
     );
 }
 
-/// Comment #17 — mcp_ingest_start_is_removed
-///
-/// The legacy ingest action was removed from MCP; callers use action=source.
+/// The restored ingest action accepts the focused batch shape and rejects the
+/// former lifecycle subaction wrapper.
 #[test]
-fn mcp_ingest_start_is_removed() {
+fn mcp_ingest_uses_the_focused_projection_shape() {
     let raw = serde_json::json!({
         "action": "ingest",
-        "subaction": "start"
+        "inputs": [{"input": "https://example.com"}]
     });
-    let parsed = parse_axon_request(raw.as_object().unwrap().clone());
-    assert!(
-        parsed.is_err(),
-        "ingest/start must fail at the MCP parse boundary"
-    );
-    let err = parsed.unwrap_err();
-    assert!(err.contains("action `ingest` was removed from MCP"));
-    assert!(err.contains("action=source"));
+    assert!(parse_axon_request(raw.as_object().unwrap().clone()).is_ok());
+
+    let legacy = serde_json::json!({"action": "ingest", "subaction": "start"});
+    assert!(parse_axon_request(legacy.as_object().unwrap().clone()).is_err());
 }
 
 /// Comment #16 — mcp_screenshot_payload_contains_path_size_and_viewport

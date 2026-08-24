@@ -5,7 +5,7 @@
 <!-- Run `cargo xtask gen-api-parity` to regenerate; `cargo xtask check-api-parity` (in `xtask check`) fails on drift. -->
 
 Factual matrix of which operations are exposed on each control surface.
-`✓` = exposed, `—` = not. 54 operations: 49 CLI, 31 MCP, 33 REST, 26 on all three.
+`✓` = exposed, `—` = not. 59 operations: 53 CLI, 36 MCP, 38 REST, 30 on all three.
 
 | Operation | CLI | MCP | REST |
 |---|:--:|:--:|:--:|
@@ -14,19 +14,24 @@ Factual matrix of which operations are exposed on each control surface.
 | `brand` | ✓ | ✓ | ✓ |
 | `capabilities` | ✓ | ✓ | ✓ |
 | `chat` | ✓ | ✓ | ✓ |
+| `code-search` | — | — | ✓ |
+| `code_search` | ✓ | ✓ | — |
 | `collections` | ✓ | ✓ | ✓ |
 | `completions` | ✓ | — | — |
 | `compose` | ✓ | — | — |
 | `config` | ✓ | — | — |
+| `crawl` | ✓ | ✓ | ✓ |
 | `debug` | ✓ | — | — |
 | `diff` | ✓ | ✓ | ✓ |
 | `doctor` | ✓ | ✓ | ✓ |
 | `domains` | ✓ | — | ✓ |
+| `embed` | ✓ | ✓ | ✓ |
 | `endpoints` | ✓ | ✓ | ✓ |
 | `evaluate` | ✓ | ✓ | ✓ |
 | `extract` | ✓ | ✓ | ✓ |
 | `graph` | ✓ | ✓ | ✓ |
 | `help` | — | ✓ | — |
+| `ingest` | ✓ | ✓ | ✓ |
 | `jobs` | ✓ | ✓ | ✓ |
 | `map` | ✓ | ✓ | ✓ |
 | `mcp` | ✓ | — | — |
@@ -44,7 +49,7 @@ Factual matrix of which operations are exposed on each control surface.
 | `reset` | ✓ | ✓ | ✓ |
 | `resolve` | — | ✓ | ✓ |
 | `retrieve` | ✓ | ✓ | ✓ |
-| `scrape` | ✓ | — | — |
+| `scrape` | ✓ | ✓ | ✓ |
 | `screenshot` | ✓ | ✓ | ✓ |
 | `search` | ✓ | ✓ | ✓ |
 | `serve` | ✓ | — | — |
@@ -64,4 +69,4 @@ Factual matrix of which operations are exposed on each control surface.
 | `watch` | ✓ | ✓ | — |
 | `watches` | — | — | ✓ |
 
-**Notes.** MCP intentionally omits destructive/stateful admin actions routed HTTP-only (see the `AxonRequest` arm in `crates/axon-mcp/src/server.rs`). REST-only rows (`memories`, `mobile`, `watches`) are client/server surfaces with no CLI/MCP command. CLI-only rows are local/dev commands (`serve`, `mcp`, `completions`, `setup`, `config`, …). A gap here is not automatically a bug — but a *new* gap should be a conscious decision. See [crate-ownership.md](../architecture/crate-ownership.md) for where the shared logic behind each surface lives.
+**Notes.** MCP intentionally omits destructive/stateful admin actions routed HTTP-only (see the `AxonRequest` arm in `crates/axon-mcp/src/server.rs`). REST-only rows (`code-search`, `memories`, `mobile`, `watches`) are client/server surfaces with no CLI/MCP command. CLI-only rows are local/dev commands (`serve`, `mcp`, `completions`, `setup`, `config`, …). A gap here is not automatically a bug — but a *new* gap should be a conscious decision. See [crate-ownership.md](../architecture/crate-ownership.md) for where the shared logic behind each surface lives.

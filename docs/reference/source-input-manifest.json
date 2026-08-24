@@ -294,7 +294,7 @@
         {
           "path": "xtask/src/schemas/registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:e311c00778ae7f149f1d2df39ab5dd62050a261a700607b3ab9286de1b98eb2c"
+          "checksum": "sha256:9171055ed091190014a9b813d3920e44331ad65ff40d1dd43c5b56fa948fd84a"
         },
         {
           "path": "xtask/src/schemas/registry/canonical_enums.rs",
@@ -312,7 +312,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "3340e81e6d6fad48038db398fee7edfed235c3edd1903e01133bd94851352728"
+      "manifest_checksum": "be087a9d9072453eb0cb9bd00230c4c6994d4327443b0e8d0f4df0944e543c92"
     },
     {
       "family": "cli",
@@ -608,10 +608,10 @@
         {
           "path": "xtask/src/schemas/mcp_action_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1"
+          "checksum": "sha256:6cde7e3336c9d6619a447ffde77dff93782ac1c4bfd2e397f3a56938af467f5a"
         }
       ],
-      "manifest_checksum": "4169529c21d0be894a4c6476dc6d976db795bb0431e25fa715418458e25ff0ab"
+      "manifest_checksum": "5d899f5b5f98c456c6836e47836c0b8572d7d5ea1f768e20cb2aaca51abfc66e"
     },
     {
       "family": "openapi",
