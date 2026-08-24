@@ -1,6 +1,7 @@
 use super::*;
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
+use std::sync::Arc;
 
 async fn store() -> SqliteUnifiedJobStore {
     SqliteUnifiedJobStore::new(open_sqlite_pool(":memory:").await.unwrap())
@@ -149,5 +150,125 @@ async fn reused_job_can_belong_to_multiple_batches() {
             .await
             .unwrap()
             .is_some()
+    );
+}
+
+#[tokio::test]
+async fn concurrent_same_fingerprint_admissions_reuse_one_job() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("projection-concurrent.db");
+    let store = Arc::new(SqliteUnifiedJobStore::new(
+        open_sqlite_pool(path.to_str().unwrap()).await.unwrap(),
+    ));
+    let first = batch("principal-a", vec![item("same", "fp")]);
+    let second = batch("principal-a", vec![item("same", "fp")]);
+
+    let (first_result, second_result) = tokio::join!(
+        store.admit_projection_batch_atomic(first),
+        store.admit_projection_batch_atomic(second),
+    );
+    let results = [first_result.unwrap(), second_result.unwrap()];
+
+    assert_eq!(
+        results[0].items[0].descriptor.job_id,
+        results[1].items[0].descriptor.job_id
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| result.items[0].reused)
+            .count(),
+        1
+    );
+    let job_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs")
+        .fetch_one(store.pool_for_tests())
+        .await
+        .unwrap();
+    let batch_item_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projection_batch_items")
+        .fetch_one(store.pool_for_tests())
+        .await
+        .unwrap();
+    assert_eq!(job_count, 1);
+    assert_eq!(batch_item_count, 2);
+}
+
+#[tokio::test]
+async fn concurrent_idempotency_collision_leaves_only_winning_batch() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("projection-collision.db");
+    let store = Arc::new(SqliteUnifiedJobStore::new(
+        open_sqlite_pool(path.to_str().unwrap()).await.unwrap(),
+    ));
+    let first = batch("principal-a", vec![item("same", "fp-a")]);
+    let second = batch("principal-a", vec![item("same", "fp-b")]);
+
+    let (first_result, second_result) = tokio::join!(
+        store.admit_projection_batch_atomic(first),
+        store.admit_projection_batch_atomic(second),
+    );
+    let results = [first_result, second_result];
+
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    let error = results
+        .iter()
+        .find_map(|result| result.as_ref().err())
+        .expect("one admission must collide");
+    assert_eq!(error.code.0, "projection.idempotency_collision");
+    let job_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs")
+        .fetch_one(store.pool_for_tests())
+        .await
+        .unwrap();
+    let batch_item_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projection_batch_items")
+        .fetch_one(store.pool_for_tests())
+        .await
+        .unwrap();
+    assert_eq!(job_count, 1);
+    assert_eq!(batch_item_count, 1);
+}
+
+#[tokio::test]
+async fn file_backed_reopen_preserves_reuse_and_principal_scoped_lookup() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("projection-reopen.db");
+    let first_store =
+        SqliteUnifiedJobStore::new(open_sqlite_pool(path.to_str().unwrap()).await.unwrap());
+    let original = batch("principal-a", vec![item("stable", "fp")]);
+    let original_batch_id = original.batch_id;
+    let original_result = first_store
+        .admit_projection_batch_atomic(original)
+        .await
+        .unwrap();
+    first_store.pool_for_tests().close().await;
+
+    let reopened =
+        SqliteUnifiedJobStore::new(open_sqlite_pool(path.to_str().unwrap()).await.unwrap());
+    let reused = reopened
+        .admit_projection_batch_atomic(batch("principal-a", vec![item("stable", "fp")]))
+        .await
+        .unwrap();
+    assert!(reused.items[0].reused);
+    assert_eq!(
+        reused.items[0].descriptor.job_id,
+        original_result.items[0].descriptor.job_id
+    );
+    assert!(
+        reopened
+            .projection_batch(ProjectionBatchLookup {
+                batch_id: original_batch_id,
+                principal_id: "principal-a".to_string(),
+            })
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        reopened
+            .projection_batch(ProjectionBatchLookup {
+                batch_id: original_batch_id,
+                principal_id: "principal-b".to_string(),
+            })
+            .await
+            .unwrap()
+            .is_none()
     );
 }
