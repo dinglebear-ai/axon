@@ -410,7 +410,7 @@
         {
           "path": "crates/axon-jobs/src/migrations",
           "kind": "sql_migration_directory",
-          "checksum": "sha256:462725f9f1c68adf26950293f6019668722b665ba071fec0835e137505854d4a"
+          "checksum": "sha256:948308a33657353f903f2d74a8b6fb28f441b13aadcf9110bc9ac8f9f30acc3b"
         },
         {
           "path": "crates/axon-ledger/src/migrations",
@@ -443,7 +443,7 @@
           "checksum": "sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b"
         }
       ],
-      "manifest_checksum": "02461d31dcf5c6d5cf446116966d59de6ffe50b7f63905aae2b9b3dce456901a"
+      "manifest_checksum": "1a9bbb8c30cd83b8c587148673ec75122ea9cf8104a797b91ace8f4181efbbd4"
     },
     {
       "family": "errors",

@@ -603,7 +603,7 @@ async fn repeated_run_is_noop() {
 }
 
 #[tokio::test]
-async fn canonical_jobs_one_through_eight_upgrade_through_nine() {
+async fn canonical_jobs_one_through_nine_upgrade_through_ten() {
     let pool = SqlitePool::connect(":memory:").await.expect("open pool");
     let sets = composed_sets();
     let mut tx = pool.begin().await.expect("begin historical schema");
@@ -611,7 +611,7 @@ async fn canonical_jobs_one_through_eight_upgrade_through_nine() {
     apply_set(&mut tx, sets[0]).await.expect("ledger baseline");
     apply_set(
         &mut tx,
-        MigrationSet::new(JOBS_NAMESPACE, &JOBS_MIGRATIONS[..8]),
+        MigrationSet::new(JOBS_NAMESPACE, &JOBS_MIGRATIONS[..9]),
     )
     .await
     .expect("historical jobs migrations");
