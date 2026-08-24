@@ -86,7 +86,7 @@ async fn run_code_search(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<d
     let plans = project_code_search(&request)?;
     let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)?;
     let result =
-        execute_code_search_projection_batch(ctx, prepared, axon_api::CodeSearchCaller::Cli)
+        execute_code_search_projection_batch(ctx, prepared, axon_api::CodeSearchCaller::Cli, None)
             .await?;
     print_batch(cfg, &result)
 }

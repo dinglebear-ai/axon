@@ -628,19 +628,6 @@
       "type": "integer"
     },
     {
-      "default": 10,
-      "description": "Maximum followed redirects.",
-      "env_key": "AXON_PROJECTION_BATCH_MAX_REDIRECTS",
-      "key": "server.projection_batch.max_redirects",
-      "owner_crate": "axon-core",
-      "removed": false,
-      "replacement": null,
-      "restart_required": true,
-      "secret": false,
-      "section": "server",
-      "type": "integer"
-    },
-    {
       "default": 900,
       "description": "Maximum elapsed request seconds.",
       "env_key": "AXON_PROJECTION_BATCH_MAX_ELAPSED_SECS",

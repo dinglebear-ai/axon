@@ -29,15 +29,28 @@ pub fn apply_source_limits(
     policy: &ProjectionBatchConfig,
 ) {
     limits.max_pages = effective_limit(limits.max_pages, fixed_pages, policy.max_pages);
-    limits.max_items = effective_limit(limits.max_items, None, policy.max_manifest_items);
-    limits.max_bytes_per_item = effective_limit(
-        limits.max_bytes_per_item,
-        None,
-        policy.max_fetched_bytes_per_item,
-    );
+    let item_ceiling = policy
+        .max_manifest_items
+        .min(policy.max_documents)
+        .min(policy.max_vector_points);
+    limits.max_items = effective_limit(limits.max_items, None, item_ceiling);
+    let item_bytes_ceiling = policy
+        .max_fetched_bytes_per_item
+        .min(policy.max_decompressed_bytes_per_item);
+    limits.max_bytes_per_item =
+        effective_limit(limits.max_bytes_per_item, None, item_bytes_ceiling);
     limits.max_total_bytes =
         effective_limit(limits.max_total_bytes, None, policy.max_prepared_bytes);
-    limits.max_chunks = effective_limit(limits.max_chunks, None, policy.max_chunks);
+    limits.max_chunks = effective_limit(
+        limits.max_chunks,
+        None,
+        policy.max_chunks.min(policy.max_vector_points),
+    );
+    limits.provider_timeout_ms = effective_limit(
+        limits.provider_timeout_ms,
+        None,
+        policy.max_elapsed_secs.saturating_mul(1_000),
+    );
 }
 
 fn validate_bytes(code: &str, label: &str, actual: usize, maximum: usize) -> Result<(), ApiError> {

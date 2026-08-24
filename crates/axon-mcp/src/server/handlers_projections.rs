@@ -88,6 +88,7 @@ impl AxonMcpServer {
         &self,
         request: CodeSearchRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
+        let auth = current_auth();
         let plans = project_code_search(&request).map_err(projection_input_error)?;
         let prepared = preflight_code_search_batch(plans, &self.cfg.projection_batch)
             .map_err(projection_preflight_error)?;
@@ -102,6 +103,7 @@ impl AxonMcpServer {
                     ctx.as_ref(),
                     prepared,
                     axon_api::CodeSearchCaller::Mcp,
+                    auth.as_ref(),
                 ))
                 .map_err(Box::new)
         })

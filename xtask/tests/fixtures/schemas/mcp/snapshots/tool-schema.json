@@ -1234,7 +1234,6 @@
           "$ref": "#/$defs/CodeSearchRequest_CodeSearchProjectionOptions",
           "default": {
             "limit": 20,
-            "no_hybrid_search": false,
             "offset": 0
           }
         }
@@ -1265,10 +1264,6 @@
           "format": "uint",
           "minimum": 0,
           "type": "integer"
-        },
-        "no_hybrid_search": {
-          "default": false,
-          "type": "boolean"
         },
         "offset": {
           "default": 0,

@@ -37,7 +37,6 @@ fn projection_preflight_code_search_has_no_refresh_and_clamps_window() {
         path_prefix: None,
         language: None,
         source: None,
-        hybrid_search: true,
     };
     let result = preflight_code_search_batch(vec![plan], &policy).unwrap();
     assert_eq!(result.items[0].plan.limit, 2);

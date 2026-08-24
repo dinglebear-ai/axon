@@ -23,8 +23,10 @@ handler dispatch.
 
 ## Source Indexing
 
-`action=source` replaces the removed `scrape`, `crawl`, `embed`, `ingest`,
-`code_search`, and `vertical_scrape` MCP actions. It maps to `SourceRequest`:
+`action=source` remains the universal source surface. Focused `scrape`,
+`crawl`, `embed`, and `ingest` projections map to the same `SourceRequest`
+pipeline; read-only `code_search` queries committed local-code vectors.
+`vertical_scrape` remains removed. The universal source shape is:
 
 ```json
 { "action": "source", "source": "https://example.com", "scope": "page", "embed": true }

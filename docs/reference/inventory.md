@@ -57,8 +57,9 @@ The full current action set is defined by `MCP_ACTION_SPECS` in
 
 ### REST-only or CLI-only operations
 
-Removed source-family MCP actions (`scrape`, `crawl`, `embed`, `ingest`,
-`code_search`, `vertical_scrape`) are not exposed. Use `action=source`.
+Focused MCP actions (`scrape`, `crawl`, `embed`, `ingest`, and read-only
+`code_search`) share the canonical service layer with `action=source`.
+`vertical_scrape` remains removed.
 
 `debug`, `domains`, `migrate`, `setup`, `sources`, `stats`, and artifact file serving are
 documented in `docs/reference/api-parity.md`. They are not dedicated MCP action

@@ -5,12 +5,9 @@ use std::process::Command;
 use axon_api::source::{
     BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
     OperationKind, RedactionMetadata, SourceGenerationId, SourceId, SourceRange,
-    VectorSearchRequest,
 };
 use axon_api::{CanonicalCitation, QueryHit};
 use axon_core::config::Config;
-use axon_vectors::payload::generation_payload_i64;
-use serde_json::json;
 
 use super::provider_execution::ReadExecution;
 use crate::context::ServiceContext;
@@ -21,11 +18,14 @@ pub use self::refresh::{
     CodeSearchProjectResult, CodeSearchRefreshResult, refresh_code_search_index,
     refresh_code_search_index_with_progress, resolve_code_search_project,
 };
+use self::request::target_code_search_request;
 use self::support::{CodeIndexIdentity, CodeSearchAllowedRoots, validate_path_prefix};
 pub use self::support::{FreshnessWarning, ReindexProgress, ReindexProgressSink};
 
 #[path = "code_search_refresh.rs"]
 mod refresh;
+#[path = "code_search_request.rs"]
+mod request;
 #[path = "code_search_support.rs"]
 mod support;
 
@@ -136,13 +136,16 @@ async fn target_code_search(
             .ok_or("target code_search query embedding returned no vector")?;
 
         let request = target_code_search_request(
-            ctx.cfg().collection.clone(),
+            opts.collection
+                .clone()
+                .unwrap_or_else(|| ctx.cfg().collection.clone()),
             text,
             opts.limit.saturating_add(opts.offset).max(1),
             dense_vector,
             &source_id,
             &generation,
             path_prefix,
+            opts.language.as_deref(),
         )?;
         let matches = store
             .search(request)
@@ -169,45 +172,6 @@ async fn target_code_search(
     .await;
     execution.finish(ctx, &result).await;
     result
-}
-
-fn target_code_search_request(
-    collection: String,
-    query: &str,
-    limit: usize,
-    dense_vector: Vec<f32>,
-    source_id: &SourceId,
-    committed_generation: &SourceGenerationId,
-    path_prefix: Option<&str>,
-) -> Result<VectorSearchRequest, Box<dyn Error + Send + Sync>> {
-    let mut filters = MetadataMap::new();
-    filters.insert("source_id".to_string(), json!(source_id.0));
-    filters.insert(
-        "committed_generation".to_string(),
-        json!(generation_payload_i64(
-            committed_generation,
-            "committed_generation"
-        )?),
-    );
-    // Code-search indexes are local/internal data. The refresh path must not
-    // relabel them public merely to make this specialized reader work.
-    filters.insert("visibility".to_string(), json!("internal"));
-    filters.insert("redaction_status".to_string(), json!("clean"));
-    if let Some(prefix) = path_prefix {
-        filters.insert("path_prefix".to_string(), json!(prefix));
-    }
-    Ok(VectorSearchRequest {
-        collection,
-        query: query.to_string(),
-        limit: u32::try_from(limit).unwrap_or(u32::MAX),
-        dense_vector: Some(dense_vector),
-        sparse_vector: None,
-        filters,
-        hybrid: Some(false),
-        generation: None,
-        graph_refs: Vec::new(),
-        metadata: MetadataMap::new(),
-    })
 }
 
 fn target_vector_match_to_query_hit(

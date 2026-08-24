@@ -24,6 +24,7 @@ macro_rules! source_handler {
             operation_id = $operation_id,
             request_body = $request,
             responses(
+                (status = 200, description = "Projection batch completed", body = BatchResult<SourceResult>),
                 (status = 202, description = "Projection batch admitted", body = BatchResult<SourceResult>),
                 (status = 400, description = "Invalid projection request", body = crate::server::error::ErrorBody),
                 (status = 403, description = "Projection target is not authorized", body = crate::server::error::ErrorBody),
@@ -123,7 +124,16 @@ async fn source_projection(
     )
     .await
     .map_err(HttpError::from_api_error)?;
-    Ok((StatusCode::ACCEPTED, Json(result)))
+    let status = source_projection_status(result.status.clone());
+    Ok((status, Json(result)))
+}
+
+fn source_projection_status(status: BatchStatus) -> StatusCode {
+    if status == BatchStatus::Accepted {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::OK
+    }
 }
 
 #[utoipa::path(
@@ -140,8 +150,16 @@ async fn source_projection(
 )]
 pub(crate) async fn code_search(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(request): Json<CodeSearchRequest>,
 ) -> Result<Json<BatchResult<QueryResult>>, HttpError> {
+    let auth_snapshot = auth.map(|Extension(auth)| {
+        AuthSnapshot::from_caller(
+            &caller_context_from_auth(&auth),
+            Visibility::Internal,
+            "runtime",
+        )
+    });
     let plans = project_code_search(&request).map_err(unbox_api_error)?;
     let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)
         .map_err(HttpError::from_api_error)?;
@@ -153,6 +171,7 @@ pub(crate) async fn code_search(
                 ctx.as_ref(),
                 prepared,
                 axon_api::CodeSearchCaller::Rest,
+                auth_snapshot.as_ref(),
             ))
             .map_err(Box::new)
     })

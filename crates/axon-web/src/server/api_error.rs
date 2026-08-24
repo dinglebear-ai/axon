@@ -97,7 +97,18 @@ pub(crate) fn status_for_api_error(error: &ApiError) -> StatusCode {
 
     // Code-family driven mapping (most specific first).
     match category {
-        "projection" if code == "projection.idempotency_collision" => StatusCode::CONFLICT,
+        "projection" => match code {
+            "projection.idempotency_collision" => StatusCode::CONFLICT,
+            "projection.global_admission_saturated"
+            | "projection.caller_admission_saturated"
+            | "projection.caller_rate_limited" => StatusCode::TOO_MANY_REQUESTS,
+            "projection.input_too_large"
+            | "projection.query_too_large"
+            | "projection.aggregate_input_too_large"
+            | "projection.request_too_large"
+            | "projection.response_too_large" => StatusCode::PAYLOAD_TOO_LARGE,
+            _ => status_from_stage(error.stage),
+        },
         "command" | "action" | "route" => match code {
             "route.not_found" => StatusCode::NOT_FOUND,
             "route.method_not_allowed" => StatusCode::METHOD_NOT_ALLOWED,

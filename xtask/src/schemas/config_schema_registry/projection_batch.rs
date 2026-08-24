@@ -90,12 +90,6 @@ pub const PROJECTION_BATCH_KEYS: &[(&str, &str, &str, &str)] = &[
         "Maximum vector points.",
     ),
     (
-        "max_redirects",
-        "10",
-        "AXON_PROJECTION_BATCH_MAX_REDIRECTS",
-        "Maximum followed redirects.",
-    ),
-    (
         "max_elapsed_secs",
         "900",
         "AXON_PROJECTION_BATCH_MAX_ELAPSED_SECS",

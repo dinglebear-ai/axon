@@ -116,12 +116,12 @@ the live OpenAPI 3.1.0 spec at
 
 ## Removed routes
 
-Removed pre-unification routes (`/v1/actions`, `/v1/migrate`, `/v1/scrape`,
-`/v1/crawl`, `/v1/embed`, `/v1/ingest`, family-scoped `/v1/{crawl,embed,...}*`,
-`/v1/watch`, `/v1/memory`) are **not** mounted as aliases — they return normal
-404. Compatibility belongs in migration data handling, not public HTTP routes.
-Acquisition is `/v1/sources`; watches are `/v1/watches`; memories are
-`/v1/memories/*`.
+Removed pre-unification routes (`/v1/actions`, `/v1/migrate`, legacy
+family-scoped lifecycle routes, `/v1/watch`, and `/v1/memory`) are **not**
+mounted as aliases. Focused `/v1/scrape`, `/v1/crawl`, `/v1/embed`,
+`/v1/ingest`, and `/v1/code-search` routes are supported projections, not
+compatibility aliases. Universal acquisition is `/v1/sources`; watches are
+`/v1/watches`; memories are `/v1/memories/*`.
 
 If routes change, update `crates/axon-web/src/schema_registry.rs` and
 regenerate via `cargo xtask schemas openapi` in the same PR.

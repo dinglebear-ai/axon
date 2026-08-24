@@ -6,6 +6,7 @@ use axon_error::{ApiError, ErrorStage};
 use axon_jobs::boundary::JobStore;
 use sha2::{Digest, Sha256};
 
+use super::admission::acquire_projection_admission;
 use super::{PreparedCodeSearchItem, PreparedSourceItem, ProjectionPreflight};
 use crate::context::ServiceContext;
 
@@ -51,6 +52,7 @@ async fn admit_source_batch(
     honor_foreground: bool,
 ) -> Result<BatchResult<SourceResult>, ApiError> {
     let principal_id = principal_digest(auth.as_ref());
+    let _admission = acquire_projection_admission(&principal_id, &ctx.cfg().projection_batch)?;
     let admission_items = preflight
         .items
         .iter()
@@ -264,7 +266,10 @@ pub async fn execute_code_search_projection_batch(
     ctx: &ServiceContext,
     preflight: ProjectionPreflight<PreparedCodeSearchItem>,
     caller: CodeSearchCaller,
+    auth: Option<&AuthSnapshot>,
 ) -> Result<BatchResult<QueryResult>, ApiError> {
+    let principal_id = principal_digest(auth);
+    let _admission = acquire_projection_admission(&principal_id, &ctx.cfg().projection_batch)?;
     let mut items = Vec::with_capacity(preflight.items.len());
     for prepared in preflight.items {
         let plan = prepared.plan;
@@ -272,10 +277,12 @@ pub async fn execute_code_search_projection_batch(
             ctx,
             &plan.query,
             CodeSearchOptions {
+                collection: plan.collection,
                 limit: plan.limit,
                 offset: plan.offset,
                 cwd: plan.source.map(std::path::PathBuf::from),
                 path_prefix: plan.path_prefix,
+                language: plan.language,
                 ensure_fresh: false,
                 caller,
             },
@@ -293,16 +300,28 @@ pub async fn execute_code_search_projection_batch(
         };
         items.push(BatchItem {
             index: prepared.index,
-            input: Some(plan.query),
+            input: None,
             outcome,
         });
     }
+    finish_code_search_batch(
+        preflight.batch_id,
+        items,
+        ctx.cfg().projection_batch.max_response_bytes,
+    )
+}
+
+fn finish_code_search_batch(
+    batch_id: BatchId,
+    items: Vec<BatchItem<QueryResult>>,
+    max_response_bytes: usize,
+) -> Result<BatchResult<QueryResult>, ApiError> {
     let failed = items
         .iter()
         .filter(|item| matches!(item.outcome, BatchOutcome::Failed(_)))
         .count();
     let result = BatchResult {
-        batch_id: preflight.batch_id,
+        batch_id,
         status: if failed == 0 {
             BatchStatus::Completed
         } else {
@@ -317,7 +336,7 @@ pub async fn execute_code_search_projection_batch(
         },
         items,
     };
-    validate_response_size(&result, ctx.cfg().projection_batch.max_response_bytes)?;
+    validate_response_size(&result, max_response_bytes)?;
     Ok(result)
 }
 

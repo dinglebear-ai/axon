@@ -29439,7 +29439,7 @@
         "path": "crates/axon-api/src/source/memory.rs"
       },
       {
-        "checksum": "sha256:5878a2d1796d0bd63b20f35d91e7610a59f39f6bd699095df433bcfc31dd98ae",
+        "checksum": "sha256:b6fa53177f6aec0d06faa306be3467ab1091ffede4f4d3195a3e0e616d5fa42d",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/projection.rs"
       },

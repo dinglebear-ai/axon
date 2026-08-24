@@ -2,7 +2,7 @@
 
 Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.
 
-Version: 7.2.22
+Version: 7.2.23
 
 Every source — a web page, a site, a local checkout, a Git repo, a package, a
 Reddit subreddit, a YouTube transcript, or an AI session export — enters

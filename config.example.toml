@@ -40,8 +40,12 @@
 # allow-fallback-web-assets = false
 
 [server.projection-batch]
-# Shared CLI/MCP/REST request and stage ceilings. Environment variables use
-# AXON_PROJECTION_BATCH_<UPPER_SNAKE_KEY>. Callers may only clamp lower.
+# Shared CLI/MCP/REST ceilings. Preflight owns request/input/query bounds;
+# source plans persist the page/item/byte/document/chunk/vector/time clamps;
+# execution owns serialized response size and global/per-principal admission
+# and start-rate limits. Provider redirect safety remains provider-owned rather
+# than exposing a projection knob that an adapter might ignore. Environment
+# variables use AXON_PROJECTION_BATCH_<UPPER_SNAKE_KEY>; callers only clamp lower.
 # max-inputs = 32
 # max-request-bytes = 1048576
 # max-input-bytes = 16384
@@ -57,7 +61,6 @@
 # max-documents = 10000
 # max-chunks = 100000
 # max-vector-points = 100000
-# max-redirects = 10
 # max-elapsed-secs = 900
 # max-query-window = 1000
 # global-max-in-flight-requests = 64

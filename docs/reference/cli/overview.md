@@ -27,8 +27,8 @@ Headline command groups:
 
 | Group | Commands |
 |---|---|
-| Acquisition | `source` (`axon <source>`), `scrape`, `map`, `sessions` |
-| Retrieval/synthesis | `query`, `retrieve`, `ask`, `chat`, `summarize`, `evaluate`, `suggest`, `search`, `research` |
+| Acquisition | `source` (`axon <source>`), `scrape`, `crawl`, `embed`, `ingest`, `map`, `sessions` |
+| Retrieval/synthesis | `query`, `code-search`, `retrieve`, `ask`, `chat`, `summarize`, `evaluate`, `suggest`, `search`, `research` |
 | Extraction/inspection | `extract` (+ lifecycle), `brand`, `diff`, `endpoints`, `screenshot` |
 | Lifecycle | `jobs list/get/events/stream/cancel/retry/recover/cleanup/clear/worker`, `watch create/.../history` |
 | Memory | `memory remember/list/search/show/link/supersede/context` |

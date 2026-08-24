@@ -99,3 +99,96 @@ fn response_size_gate_rejects_oversized_completed_payload() {
     let error = validate_response_size(&value, 8).unwrap_err();
     assert_eq!(error.code.0, "projection.response_too_large");
 }
+
+#[tokio::test]
+async fn projection_admission_is_claimed_by_the_canonical_source_worker() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut cfg = axon_core::config::Config::test_default();
+    cfg.sqlite_path = temp.path().join("projection-worker.db");
+    cfg.qdrant_url.clear();
+    cfg.tei_url.clear();
+    let cfg = std::sync::Arc::new(cfg);
+    let ctx = crate::context::ServiceContext::new_with_workers(std::sync::Arc::clone(&cfg))
+        .await
+        .expect("service context with canonical workers");
+    let mut request = SourceRequest::new("https://example.com/projection-worker");
+    request.execution.mode = ExecutionMode::Background;
+    request.execution.detached = true;
+    let prepared = crate::projections::preflight_source_batch(
+        ProjectionOperation::Ingest,
+        vec![request],
+        None,
+        &cfg.projection_batch,
+        &crate::projections::SourceAccessPolicy::default(),
+    )
+    .expect("projection preflight");
+    let batch = enqueue_source_projection_batch(&ctx, ProjectionOperation::Ingest, prepared, None)
+        .await
+        .expect("atomic projection admission");
+    let descriptor = match &batch.items[0].outcome {
+        BatchOutcome::Queued(descriptor) => descriptor.clone(),
+        other => panic!("expected queued projection, got {other:?}"),
+    };
+    let store = ctx.job_store().expect("unified job store");
+    let summary = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        loop {
+            let summary = store
+                .get(descriptor.job_id)
+                .await
+                .expect("read admitted job")
+                .expect("admitted job exists");
+            if matches!(
+                summary.status,
+                LifecycleStatus::Completed
+                    | LifecycleStatus::CompletedDegraded
+                    | LifecycleStatus::Failed
+                    | LifecycleStatus::Canceled
+            ) {
+                break summary;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("canonical source worker reaches terminal state");
+    assert_eq!(summary.job_id, descriptor.job_id);
+    assert_eq!(summary.status, LifecycleStatus::Failed);
+}
+
+#[test]
+fn mixed_code_search_outcomes_preserve_order_and_summary() {
+    let items = vec![
+        BatchItem {
+            index: 0,
+            input: Some("first".to_string()),
+            outcome: BatchOutcome::Completed(QueryResult { results: vec![] }),
+        },
+        BatchItem {
+            index: 1,
+            input: Some("second".to_string()),
+            outcome: BatchOutcome::Failed(ApiError::new(
+                "projection.code_search_failed",
+                ErrorStage::Retrieving,
+                "failed",
+            )),
+        },
+        BatchItem {
+            index: 2,
+            input: Some("third".to_string()),
+            outcome: BatchOutcome::Completed(QueryResult { results: vec![] }),
+        },
+    ];
+    let result = finish_code_search_batch(BatchId::new(uuid::Uuid::nil()), items, 64 * 1024)
+        .expect("mixed result");
+    assert_eq!(result.status, BatchStatus::CompletedDegraded);
+    assert_eq!(result.summary.completed, 2);
+    assert_eq!(result.summary.failed, 1);
+    assert_eq!(
+        result
+            .items
+            .iter()
+            .map(|item| item.index)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+}

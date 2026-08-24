@@ -4,6 +4,8 @@ use axon_api::source::*;
 use axon_core::config::ProjectionBatchConfig;
 use std::path::PathBuf;
 
+#[path = "projections/admission.rs"]
+pub mod admission;
 #[path = "projections/events.rs"]
 pub mod events;
 #[path = "projections/execute.rs"]

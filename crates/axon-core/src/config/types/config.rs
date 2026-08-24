@@ -29,7 +29,6 @@ pub struct ProjectionBatchConfig {
     pub max_documents: u64,
     pub max_chunks: u64,
     pub max_vector_points: u64,
-    pub max_redirects: usize,
     pub max_elapsed_secs: u64,
     pub max_query_window: usize,
     pub global_max_in_flight_requests: usize,
@@ -89,10 +88,6 @@ impl ProjectionBatchConfig {
                 self.max_vector_points,
             ),
             (
-                "server.projection-batch.max-redirects",
-                self.max_redirects as u64,
-            ),
-            (
                 "server.projection-batch.max-elapsed-secs",
                 self.max_elapsed_secs,
             ),
@@ -147,7 +142,6 @@ impl Default for ProjectionBatchConfig {
             max_documents: 10_000,
             max_chunks: 100_000,
             max_vector_points: 100_000,
-            max_redirects: 10,
             max_elapsed_secs: 900,
             max_query_window: 1_000,
             global_max_in_flight_requests: 64,

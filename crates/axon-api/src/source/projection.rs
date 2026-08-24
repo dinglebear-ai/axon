@@ -189,8 +189,6 @@ pub struct CodeSearchProjectionOptions {
     pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    #[serde(default)]
-    pub no_hybrid_search: bool,
 }
 
 impl Default for CodeSearchProjectionOptions {
@@ -202,7 +200,6 @@ impl Default for CodeSearchProjectionOptions {
             path_prefix: None,
             language: None,
             source: None,
-            no_hybrid_search: false,
         }
     }
 }
@@ -234,7 +231,6 @@ pub struct CodeSearchPlan {
     pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    pub hybrid_search: bool,
 }
 
 pub fn project_scrape(request: &ScrapeRequest) -> ProjectionResult<Vec<SourceRequest>> {
@@ -311,7 +307,6 @@ pub fn project_code_search(request: &CodeSearchRequest) -> ProjectionResult<Vec<
             path_prefix: request.options.path_prefix.clone(),
             language: request.options.language.clone(),
             source: request.options.source.clone(),
-            hybrid_search: !request.options.no_hybrid_search,
         })
         .collect())
 }

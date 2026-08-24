@@ -157,7 +157,6 @@ pub(super) fn flatten(raw: RawTomlConfig) -> TomlConfig {
     flat.projection_batch.max_documents = batch.max_documents;
     flat.projection_batch.max_chunks = batch.max_chunks;
     flat.projection_batch.max_vector_points = batch.max_vector_points;
-    flat.projection_batch.max_redirects = batch.max_redirects;
     flat.projection_batch.max_elapsed_secs = batch.max_elapsed_secs;
     flat.projection_batch.max_query_window = batch.max_query_window;
     flat.projection_batch.global_max_in_flight_requests = batch.global_max_in_flight_requests;

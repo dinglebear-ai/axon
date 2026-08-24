@@ -91,6 +91,41 @@ async fn v1_ask_auth_layer_rejects_missing_and_wrong_tokens() {
 
 #[tokio::test]
 #[serial]
+async fn focused_projection_routes_share_validation_and_body_limits() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+    for path in ["scrape", "crawl", "embed", "ingest", "code-search"] {
+        let response = client
+            .post(format!("{base}/v1/{path}"))
+            .header("authorization", "Bearer secret")
+            .json(&serde_json::json!({"inputs": [], "options": {}}))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("POST {path}: {error}"));
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{path} should reject the same empty batch contract"
+        );
+    }
+    let oversized = client
+        .post(format!("{base}/v1/crawl"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({
+            "inputs": [{"input": "x".repeat(129 * 1024)}],
+            "options": {}
+        }))
+        .send()
+        .await
+        .expect("oversized projection request");
+    stop(shutdown, handle).await;
+    assert_eq!(oversized.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+#[serial]
 async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =

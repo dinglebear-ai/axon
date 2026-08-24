@@ -89,7 +89,6 @@ pub(in crate::config) struct RawProjectionBatchSection {
     pub max_documents: Option<u64>,
     pub max_chunks: Option<u64>,
     pub max_vector_points: Option<u64>,
-    pub max_redirects: Option<usize>,
     pub max_elapsed_secs: Option<u64>,
     pub max_query_window: Option<usize>,
     pub global_max_in_flight_requests: Option<usize>,

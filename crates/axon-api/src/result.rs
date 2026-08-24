@@ -75,10 +75,12 @@ pub enum CodeSearchCaller {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeSearchOptions {
+    pub collection: Option<String>,
     pub limit: usize,
     pub offset: usize,
     pub cwd: Option<PathBuf>,
     pub path_prefix: Option<String>,
+    pub language: Option<String>,
     pub ensure_fresh: bool,
     pub caller: CodeSearchCaller,
 }

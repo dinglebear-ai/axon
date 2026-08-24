@@ -45,6 +45,28 @@ fn projection_idempotency_collision_maps_to_conflict() {
 }
 
 #[test]
+fn projection_admission_and_size_codes_map_to_public_statuses() {
+    let saturated = ApiError::new(
+        "projection.caller_admission_saturated",
+        ErrorStage::Leasing,
+        "limited",
+    );
+    assert_eq!(
+        status_for_api_error(&saturated),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let oversized = ApiError::new(
+        "projection.request_too_large",
+        ErrorStage::Validation,
+        "large",
+    );
+    assert_eq!(
+        status_for_api_error(&oversized),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+}
+
+#[test]
 fn upload_errors_map_to_stable_transport_statuses() {
     for (code, expected) in [
         ("upload.not_found", StatusCode::NOT_FOUND),

@@ -159,7 +159,7 @@
         {
           "path": "crates/axon-api/src/source/projection.rs",
           "kind": "rust_module",
-          "checksum": "sha256:5878a2d1796d0bd63b20f35d91e7610a59f39f6bd699095df433bcfc31dd98ae"
+          "checksum": "sha256:b6fa53177f6aec0d06faa306be3467ab1091ffede4f4d3195a3e0e616d5fa42d"
         },
         {
           "path": "crates/axon-api/src/source/projection_registry.rs",
@@ -312,7 +312,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "be087a9d9072453eb0cb9bd00230c4c6994d4327443b0e8d0f4df0944e543c92"
+      "manifest_checksum": "341931b52722fe6a7c7e1c64fc4fd2d1c27580618d55ca81ee29302821445af9"
     },
     {
       "family": "cli",
@@ -351,12 +351,12 @@
         {
           "path": "xtask/src/schemas/cli_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b"
+          "checksum": "sha256:dbd6c81106df8b302a43d12402ca61f3450da036c13a44c7420a500fcf6faa3e"
         },
         {
           "path": "xtask/src/schemas/cli_registry/part1.rs",
           "kind": "rust_module",
-          "checksum": "sha256:8e9a1cb2fe10b7989d346bfc7b053855aedd20a54da92cbdab0cb28532c51aa0"
+          "checksum": "sha256:f456755aae6da2988c91cb49d70ed41b888d724d8376611ef4d0f41957a33838"
         },
         {
           "path": "xtask/src/schemas/cli_registry/part2.rs",
@@ -374,7 +374,7 @@
           "checksum": "sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7"
         }
       ],
-      "manifest_checksum": "4323b062ad59ce9d6753dae51c6d5aee4a28b94b2e45915bbb8a6e427522e18a"
+      "manifest_checksum": "0062c31e3a4c3c329839ad50e11bbd29e7bdda0165d5773fd9c541c9a127291b"
     },
     {
       "family": "config",

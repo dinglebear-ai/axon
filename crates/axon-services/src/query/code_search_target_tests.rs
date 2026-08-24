@@ -131,10 +131,12 @@ async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
         &ctx,
         "stable_answer",
         CodeSearchOptions {
+            collection: None,
             limit: 10,
             offset: 0,
             cwd: Some(repo.path().to_path_buf()),
             path_prefix: None,
+            language: None,
             ensure_fresh: false,
             caller: CodeSearchCaller::Cli,
         },
@@ -230,6 +232,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         source_id,
         committed,
         None,
+        Some("rust"),
     )
     .expect("target search request");
     assert_eq!(request.filters["source_id"], serde_json::json!(source_id.0));
@@ -242,6 +245,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         request.filters["redaction_status"],
         serde_json::json!("clean")
     );
+    assert_eq!(request.filters["language"], serde_json::json!("rust"));
 
     let mut staged = test_clean_point(TestPointSpec {
         collection: &cfg.collection,
@@ -348,10 +352,12 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         &ctx,
         "answer",
         CodeSearchOptions {
+            collection: None,
             limit: 20,
             offset: 0,
             cwd: Some(repo.path().to_path_buf()),
             path_prefix: None,
+            language: None,
             ensure_fresh: false,
             caller: CodeSearchCaller::Cli,
         },
@@ -423,10 +429,12 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
         &ctx,
         "answer",
         CodeSearchOptions {
+            collection: None,
             limit: 10,
             offset: 0,
             cwd: Some(repo.path().to_path_buf()),
             path_prefix: None,
+            language: None,
             ensure_fresh: true,
             caller: CodeSearchCaller::Cli,
         },

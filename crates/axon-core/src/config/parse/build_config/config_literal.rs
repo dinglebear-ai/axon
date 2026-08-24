@@ -107,7 +107,6 @@ fn resolve_projection_batch(
     resolve!(max_documents, "AXON_PROJECTION_BATCH_MAX_DOCUMENTS");
     resolve!(max_chunks, "AXON_PROJECTION_BATCH_MAX_CHUNKS");
     resolve!(max_vector_points, "AXON_PROJECTION_BATCH_MAX_VECTOR_POINTS");
-    resolve!(max_redirects, "AXON_PROJECTION_BATCH_MAX_REDIRECTS");
     resolve!(max_elapsed_secs, "AXON_PROJECTION_BATCH_MAX_ELAPSED_SECS");
     resolve!(max_query_window, "AXON_PROJECTION_BATCH_MAX_QUERY_WINDOW");
     resolve!(

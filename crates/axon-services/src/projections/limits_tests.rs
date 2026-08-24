@@ -18,13 +18,17 @@ fn projection_limits_clamp_every_owned_source_unit_downward() {
         max_pages: 10,
         max_manifest_items: 20,
         max_fetched_bytes_per_item: 30,
+        max_decompressed_bytes_per_item: 25,
         max_prepared_bytes: 40,
+        max_documents: 15,
         max_chunks: 50,
+        max_vector_points: 12,
+        max_elapsed_secs: 3,
         ..ProjectionBatchConfig::default()
     };
     let mut limits = SourceLimits {
         max_pages: Some(100),
-        max_items: Some(2),
+        max_items: None,
         max_bytes_per_item: None,
         max_total_bytes: Some(400),
         max_chunks: Some(5),
@@ -32,8 +36,9 @@ fn projection_limits_clamp_every_owned_source_unit_downward() {
     };
     apply_source_limits(&mut limits, None, &policy);
     assert_eq!(limits.max_pages, Some(10));
-    assert_eq!(limits.max_items, Some(2));
-    assert_eq!(limits.max_bytes_per_item, Some(30));
+    assert_eq!(limits.max_items, Some(12));
+    assert_eq!(limits.max_bytes_per_item, Some(25));
     assert_eq!(limits.max_total_bytes, Some(40));
     assert_eq!(limits.max_chunks, Some(5));
+    assert_eq!(limits.provider_timeout_ms, Some(3_000));
 }
