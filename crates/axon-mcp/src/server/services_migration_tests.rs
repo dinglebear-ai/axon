@@ -189,11 +189,10 @@ fn dedicated_dashboard_tool_requires_read_scope() {
         super::server_authz::required_scope_for_tool("axon", "source", ""),
         Some("axon:write")
     );
-    // Removed indexing actions are no longer in the allow-list — they resolve to
-    // the deny sentinel at the MCP boundary.
+    // Restored source projections use the same write boundary as `source`.
     assert_eq!(
         super::server_authz::required_scope_for_tool("axon", "crawl", ""),
-        Some("__deny__")
+        Some("axon:write")
     );
 }
 
