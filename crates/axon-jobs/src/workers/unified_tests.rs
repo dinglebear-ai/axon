@@ -52,6 +52,45 @@ async fn enqueue_test_job(pool: &SqlitePool, kind: UnifiedJobKind) -> JobId {
 /// `failed` rather than leaving it stuck `running` forever.
 struct PanickingRunner;
 
+struct ResultRunner;
+
+#[async_trait::async_trait]
+impl UnifiedJobRunner for ResultRunner {
+    async fn run(
+        &self,
+        _claimed: &UnifiedClaimedJob,
+        _store: &SqliteUnifiedJobStore,
+        _shutdown: &CancellationToken,
+    ) -> Result<UnifiedJobOutcome, ApiError> {
+        Ok(UnifiedJobOutcome::completed_without_counts()
+            .with_result_json(r#"{"canonical":"result"}"#.to_string()))
+    }
+}
+
+#[tokio::test]
+async fn completed_runner_persists_canonical_typed_result() {
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Memory).await;
+    let claimed = claim_next_unified_job(&pool)
+        .await
+        .unwrap()
+        .expect("job should be claimable");
+    let mut registry = JobRunnerRegistry::new();
+    registry.register(UnifiedJobKind::Memory, Arc::new(ResultRunner));
+    run_unified_claimed(
+        &pool,
+        &claimed,
+        &CancellationToken::new(),
+        Some(&Arc::new(registry)),
+    )
+    .await;
+    let store = SqliteUnifiedJobStore::new(pool);
+    assert_eq!(
+        store.result_json(job_id).await.unwrap(),
+        Some(serde_json::json!({"canonical": "result"}))
+    );
+}
+
 #[async_trait::async_trait]
 impl UnifiedJobRunner for PanickingRunner {
     async fn run(

@@ -36,4 +36,19 @@ impl SqliteUnifiedJobStore {
         let request_json = row.get::<Option<String>, _>("request_json");
         from_optional_json(request_json)
     }
+
+    pub(crate) async fn get_job_result_json(
+        &self,
+        job_id: JobId,
+    ) -> Result<Option<serde_json::Value>> {
+        let row = sqlx::query("SELECT result_json FROM jobs WHERE job_id = ?")
+            .bind(job_id.0.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sql_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        from_optional_json(row.get::<Option<String>, _>("result_json"))
+    }
 }

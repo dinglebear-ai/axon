@@ -43,6 +43,24 @@ fn projection_preflight_code_search_has_no_refresh_and_clamps_window() {
 }
 
 #[test]
+fn projection_preflight_rejects_zero_code_search_limit() {
+    let mut plan = CodeSearchPlan {
+        query: "needle".to_string(),
+        content_kind: "code".to_string(),
+        collection: None,
+        limit: 0,
+        offset: 0,
+        path_prefix: None,
+        language: None,
+        source: None,
+    };
+    plan.limit = 0;
+    let error =
+        preflight_code_search_batch(vec![plan], &ProjectionBatchPolicy::default()).unwrap_err();
+    assert_eq!(error.code.0, "projection.query_limit_invalid");
+}
+
+#[test]
 fn projection_preflight_rejects_local_escape_before_execution() {
     let request = SourceRequest::new("/etc/passwd");
     let access = SourceAccessPolicy {

@@ -120,6 +120,22 @@ async fn focused_projection_routes_share_validation_and_body_limits() {
         .send()
         .await
         .expect("oversized projection request");
+    let valid = client
+        .post(format!("{base}/v1/ingest"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({
+            "inputs": [{"input": "https://example.com/rest-projection", "idempotency_key": "rest-valid-request"}],
+            "options": {}
+        }))
+        .send()
+        .await
+        .expect("valid projection request");
+    assert_eq!(valid.status(), StatusCode::ACCEPTED);
+    let valid_body: serde_json::Value = valid.json().await.expect("valid projection JSON");
+    assert_eq!(valid_body["status"], "accepted");
+    assert_eq!(valid_body["items"][0]["index"], 0);
+    assert!(valid_body["items"][0].get("input").is_none());
+    assert_eq!(valid_body["items"][0]["outcome"]["status"], "queued");
     stop(shutdown, handle).await;
     assert_eq!(oversized.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }

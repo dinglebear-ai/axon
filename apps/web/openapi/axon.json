@@ -1007,6 +1007,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
           "202": {
             "description": "Projection batch admitted",
             "content": {
@@ -1371,6 +1381,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
           "202": {
             "description": "Projection batch admitted",
             "content": {
@@ -2301,6 +2321,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
           "202": {
             "description": "Projection batch admitted",
             "content": {
@@ -5921,6 +5951,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
           "202": {
             "description": "Projection batch admitted",
             "content": {
@@ -9265,9 +9305,6 @@
           "limit": {
             "type": "integer",
             "minimum": 0
-          },
-          "no_hybrid_search": {
-            "type": "boolean"
           },
           "offset": {
             "type": "integer",

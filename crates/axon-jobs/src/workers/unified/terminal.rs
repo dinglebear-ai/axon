@@ -64,6 +64,7 @@ pub(super) async fn fail_unified_claimed(
         LifecycleStatus::Failed,
         PipelinePhase::Complete,
         None,
+        None,
         Some(error),
     )
     .await
@@ -145,6 +146,7 @@ pub(super) async fn mark_canceled(
         PipelinePhase::Canceled,
         None,
         None,
+        None,
     )
     .await
     {
@@ -158,10 +160,19 @@ pub(super) async fn mark_terminal(
     status: LifecycleStatus,
     phase: PipelinePhase,
     counts: Option<StageCounts>,
+    result_json: Option<String>,
     error: Option<ApiError>,
 ) -> Result<(), ApiError> {
     retry_job_write("unified worker terminal transition", || {
-        mark_terminal_once(pool, claimed, status, phase, counts.clone(), error.clone())
+        mark_terminal_once(
+            pool,
+            claimed,
+            status,
+            phase,
+            counts.clone(),
+            result_json.clone(),
+            error.clone(),
+        )
     })
     .await
 }
@@ -172,6 +183,7 @@ async fn mark_terminal_once(
     status: LifecycleStatus,
     phase: PipelinePhase,
     counts: Option<StageCounts>,
+    result_json: Option<String>,
     error: Option<ApiError>,
 ) -> Result<(), ApiError> {
     let now = Timestamp::from(chrono::Utc::now());
@@ -215,6 +227,7 @@ async fn mark_terminal_once(
             updated_at = ?,
             finished_at = COALESCE(finished_at, ?),
             counts_json = COALESCE(?, counts_json),
+            result_json = COALESCE(?, result_json),
             last_error_json = ?,
             cooldown_until = NULL
          WHERE job_id = ? AND attempt = ?
@@ -229,6 +242,7 @@ async fn mark_terminal_once(
     .bind(now.0.as_str())
     .bind(now.0.as_str())
     .bind(counts_json.as_deref())
+    .bind(result_json.as_deref())
     .bind(source_error_json.as_deref())
     .bind(claimed.job_id.0.to_string())
     .bind(claimed.attempt as i64)

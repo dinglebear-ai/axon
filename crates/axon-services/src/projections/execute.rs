@@ -185,67 +185,26 @@ async fn wait_for_source_outcome(
                     .map_or_else(|| "source job failed".to_string(), |error| error.message),
             ))
         }
-        status => BatchOutcome::Completed(source_result_from_summary(
-            prepared, descriptor, summary, status,
+        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded => {
+            match store.result_json(descriptor.job_id).await {
+                Ok(Some(value)) => match serde_json::from_value::<SourceResult>(value) {
+                    Ok(result) => BatchOutcome::Completed(result),
+                    Err(error) => BatchOutcome::Failed(execution_error(
+                        "projection.result_invalid",
+                        format!("persisted source result is invalid: {error}"),
+                    )),
+                },
+                Ok(None) => BatchOutcome::Failed(execution_error(
+                    "projection.result_missing",
+                    "completed source job has no persisted canonical result",
+                )),
+                Err(error) => BatchOutcome::Failed(error),
+            }
+        }
+        status => BatchOutcome::Failed(execution_error(
+            "projection.source_non_terminal",
+            format!("source job wait returned non-terminal status {status:?}"),
         )),
-    }
-}
-
-fn source_result_from_summary(
-    prepared: &PreparedSourceItem,
-    descriptor: JobDescriptor,
-    summary: JobSummary,
-    status: LifecycleStatus,
-) -> SourceResult {
-    let counts = summary.counts.unwrap_or(StageCounts {
-        items_total: None,
-        items_done: 0,
-        documents_total: None,
-        documents_done: 0,
-        chunks_total: None,
-        chunks_done: 0,
-        bytes_total: None,
-        bytes_done: 0,
-    });
-    let source_counts = SourceCounts {
-        items_total: counts.items_done,
-        items_changed: counts.items_done,
-        documents_total: counts.documents_done,
-        chunks_total: counts.chunks_done,
-        vector_points_total: counts.chunks_done,
-        bytes_total: counts.bytes_done,
-    };
-    let source_id = summary
-        .source_id
-        .unwrap_or_else(|| prepared.route.source.source_id.clone());
-    SourceResult {
-        job_id: descriptor.job_id,
-        source_id: source_id.clone(),
-        canonical_uri: prepared.route.source.canonical_uri.clone(),
-        source_kind: prepared.kind,
-        adapter: prepared.route.adapter.clone(),
-        scope: prepared.route.scope,
-        status,
-        ledger: LedgerSummary {
-            source_id,
-            generation: SourceGenerationId::new(""),
-            committed_generation: None,
-            status,
-            counts: source_counts.clone(),
-        },
-        graph: GraphWriteSummary {
-            nodes_upserted: 0,
-            edges_upserted: 0,
-            evidence_records: 0,
-            degraded: status == LifecycleStatus::CompletedDegraded,
-        },
-        counts: source_counts,
-        warnings: summary.warnings,
-        inline: None,
-        job: Some(descriptor),
-        watch: None,
-        artifacts: Vec::new(),
-        errors: summary.last_error.into_iter().collect(),
     }
 }
 
@@ -271,32 +230,43 @@ pub async fn execute_code_search_projection_batch(
     let principal_id = principal_digest(auth);
     let _admission = acquire_projection_admission(&principal_id, &ctx.cfg().projection_batch)?;
     let mut items = Vec::with_capacity(preflight.items.len());
+    let mut outcomes: std::collections::HashMap<String, BatchOutcome<QueryResult>> =
+        std::collections::HashMap::new();
     for prepared in preflight.items {
         let plan = prepared.plan;
-        let result = crate::query::code_search(
-            ctx,
-            &plan.query,
-            CodeSearchOptions {
-                collection: plan.collection,
-                limit: plan.limit,
-                offset: plan.offset,
-                cwd: plan.source.map(std::path::PathBuf::from),
-                path_prefix: plan.path_prefix,
-                language: plan.language,
-                ensure_fresh: false,
-                caller,
-            },
-        )
-        .await;
-        let outcome = match result {
-            Ok(result) => BatchOutcome::Completed(QueryResult {
-                results: result.results,
-            }),
-            Err(error) => BatchOutcome::Failed(ApiError::new(
-                "projection.code_search_failed",
-                ErrorStage::Retrieving,
-                error.to_string(),
-            )),
+        let key = serde_json::to_string(&plan).map_err(|error| {
+            execution_error("projection.plan_encoding_failed", error.to_string())
+        })?;
+        let outcome = if let Some(outcome) = outcomes.get(&key) {
+            outcome.clone()
+        } else {
+            let result = crate::query::code_search(
+                ctx,
+                &plan.query,
+                CodeSearchOptions {
+                    collection: plan.collection,
+                    limit: plan.limit,
+                    offset: plan.offset,
+                    cwd: plan.source.map(std::path::PathBuf::from),
+                    path_prefix: plan.path_prefix,
+                    language: plan.language,
+                    ensure_fresh: false,
+                    caller,
+                },
+            )
+            .await;
+            let outcome = match result {
+                Ok(result) => BatchOutcome::Completed(QueryResult {
+                    results: result.results,
+                }),
+                Err(error) => BatchOutcome::Failed(ApiError::new(
+                    "projection.code_search_failed",
+                    ErrorStage::Retrieving,
+                    error.to_string(),
+                )),
+            };
+            outcomes.insert(key, outcome.clone());
+            outcome
         };
         items.push(BatchItem {
             index: prepared.index,

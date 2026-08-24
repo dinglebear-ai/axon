@@ -77,7 +77,14 @@ async fn target_code_search(
         refresh_code_search_index_with_progress(ctx, opts.cwd.as_deref(), opts.caller, progress)
             .await?
     } else {
-        refresh::target_code_search_committed_state(ctx, opts.cwd.as_deref(), opts.caller).await?
+        let collection = opts.collection.as_deref().unwrap_or(&ctx.cfg().collection);
+        refresh::target_code_search_committed_state(
+            ctx,
+            opts.cwd.as_deref(),
+            opts.caller,
+            collection,
+        )
+        .await?
     };
     let Some(source_id) = refresh.target_source_id.clone() else {
         return Ok(code_search_missing_index_result(text, refresh.freshness));
@@ -445,14 +452,18 @@ fn reject_unsafe_code_root(root: &Path) -> Result<(), Box<dyn Error + Send + Syn
     Ok(())
 }
 
-pub(super) async fn code_search_identity(cfg: &Config, project_root: PathBuf) -> CodeIndexIdentity {
+pub(super) async fn code_search_identity(
+    cfg: &Config,
+    project_root: PathBuf,
+    collection: &str,
+) -> CodeIndexIdentity {
     let origin = code_search_project_origin(&project_root).await;
     let embedder = if cfg.tei_url.trim().is_empty() {
         "tei".to_string()
     } else {
         cfg.tei_url.clone()
     };
-    CodeIndexIdentity::new(project_root, origin, &cfg.collection, &embedder)
+    CodeIndexIdentity::new(project_root, origin, collection, &embedder)
 }
 
 pub(crate) async fn code_search_project_origin(project_root: &Path) -> String {

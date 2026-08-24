@@ -886,7 +886,7 @@
             "limit": {
               "default": 20,
               "format": "uint",
-              "minimum": 0,
+              "minimum": 1,
               "type": "integer"
             },
             "offset": {
@@ -1954,7 +1954,7 @@
   ],
   "source_inputs": [
     {
-      "checksum": "sha256:b6fa53177f6aec0d06faa306be3467ab1091ffede4f4d3195a3e0e616d5fa42d",
+      "checksum": "sha256:94a758bdd56f3a04830dfe64e45c51df7ea3aa2ddeeb421e04f2d96449aaf58a",
       "kind": "rust_module",
       "path": "crates/axon-api/src/source/projection.rs"
     },
@@ -1969,7 +1969,7 @@
       "path": "tests/fixtures/source-projections"
     },
     {
-      "checksum": "sha256:aaf1c4c519caeef98677308b9c7090026363c54a5f691dd22504ed7e9956c146",
+      "checksum": "sha256:76d8aed0c05f6523625c0ea6c7613c6a03b36def7c7db3154f6c130bb2258c28",
       "kind": "rust_module",
       "path": "xtask/src/schemas/projections.rs"
     }

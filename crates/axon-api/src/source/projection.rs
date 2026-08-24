@@ -180,6 +180,8 @@ pub struct CodeSearchProjectionOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collection: Option<String>,
     #[serde(default = "default_code_search_limit")]
+    #[schemars(range(min = 1))]
+    #[schema(minimum = 1)]
     pub limit: usize,
     #[serde(default)]
     pub offset: usize,

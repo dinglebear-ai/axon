@@ -15,7 +15,7 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-graph/src/migrations` | `sha256:d48f6524ebda76d77e5e3dbc8a0195eac896edbe1108b2fca40ca9c442a2a5bf` |
-| `crates/axon-jobs/src/migrations` | `sha256:4fe6cc6d0ac031de6e016bb355f531c07b0d365fe8434af08ae6c81de36bc571` |
+| `crates/axon-jobs/src/migrations` | `sha256:e7d98399fc14b59a8fce76a3fcf82e872b9339a5f9c964acc28e566bda2f4092` |
 | `crates/axon-ledger/src/migrations` | `sha256:0414a82d0bc32cf9f1b877828f9faf6262796af088e86f041be619fc0ed205a8` |
 | `crates/axon-memory/src/migrations` | `sha256:1d08bb6ab6696a4c7e574a3915cd003c270ec427b12ab2e68592aaf686c7958a` |
 | `crates/axon-observe/src/migrations` | `sha256:ae4a86b45a62940c12d472880ab4facf253c284dcc985721d58ae0c8c7f2f723` |

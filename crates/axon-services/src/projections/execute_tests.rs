@@ -155,6 +155,37 @@ async fn projection_admission_is_claimed_by_the_canonical_source_worker() {
     assert_eq!(summary.status, LifecycleStatus::Failed);
 }
 
+#[tokio::test]
+async fn foreground_projection_waits_for_the_admitted_job_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut cfg = axon_core::config::Config::test_default();
+    cfg.sqlite_path = temp.path().join("projection-foreground.db");
+    cfg.qdrant_url.clear();
+    cfg.tei_url.clear();
+    cfg.projection_batch.max_elapsed_secs = 10;
+    let cfg = std::sync::Arc::new(cfg);
+    let ctx = crate::context::ServiceContext::new_with_workers(std::sync::Arc::clone(&cfg))
+        .await
+        .expect("service context with canonical workers");
+    let mut request = SourceRequest::new("https://example.com/projection-foreground");
+    request.execution.mode = ExecutionMode::Foreground;
+    request.execution.detached = false;
+    let prepared = crate::projections::preflight_source_batch(
+        ProjectionOperation::Ingest,
+        vec![request],
+        None,
+        &cfg.projection_batch,
+        &crate::projections::SourceAccessPolicy::default(),
+    )
+    .unwrap();
+    let batch = execute_source_projection_batch(&ctx, ProjectionOperation::Ingest, prepared, None)
+        .await
+        .expect("foreground batch response");
+    assert_eq!(batch.status, BatchStatus::CompletedDegraded);
+    assert_eq!(batch.summary.failed, 1);
+    assert!(matches!(batch.items[0].outcome, BatchOutcome::Failed(_)));
+}
+
 #[test]
 fn mixed_code_search_outcomes_preserve_order_and_summary() {
     let items = vec![

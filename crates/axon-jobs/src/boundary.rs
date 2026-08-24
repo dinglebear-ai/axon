@@ -55,6 +55,10 @@ pub trait JobStore: Send + Sync {
     async fn request_json(&self, _job_id: JobId) -> Result<Option<serde_json::Value>> {
         Ok(None)
     }
+    /// Canonical typed terminal result persisted by a domain runner.
+    async fn result_json(&self, _job_id: JobId) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>>;
     async fn stages(&self, job_id: JobId) -> Result<Vec<JobStageSnapshot>>;
     async fn update_status(&self, status: JobStatusUpdate) -> Result<()>;

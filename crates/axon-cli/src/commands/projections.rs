@@ -6,7 +6,7 @@ use axon_api::source::*;
 use axon_core::config::{CommandKind, Config};
 use axon_services::context::ServiceContext;
 use axon_services::projections::{
-    SourceAccessPolicy, enqueue_source_projection_batch, execute_code_search_projection_batch,
+    SourceAccessPolicy, execute_code_search_projection_batch, execute_source_projection_batch,
     preflight_code_search_batch, preflight_source_batch,
 };
 
@@ -47,7 +47,7 @@ async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(),
         &cfg.projection_batch,
         &SourceAccessPolicy::default(),
     )?;
-    let result = enqueue_source_projection_batch(ctx, operation, prepared, None).await?;
+    let result = execute_source_projection_batch(ctx, operation, prepared, None).await?;
     print_batch(cfg, &result)
 }
 

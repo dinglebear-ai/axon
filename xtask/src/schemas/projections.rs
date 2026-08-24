@@ -144,9 +144,10 @@ fn normalize_fixture(fixture: &mut Value) -> Result<()> {
     fixture
         .get("canonical_requests")
         .context("missing canonical_requests")?;
-    fixture
+    let expected_result = fixture
         .get("expected_result")
         .context("missing expected_result")?;
+    validate_expected_result(expected_result)?;
 
     let actual = match operation {
         ProjectionOperation::Scrape => {
@@ -170,6 +171,53 @@ fn normalize_fixture(fixture: &mut Value) -> Result<()> {
         fixture["canonical_requests"] = actual;
     } else if &actual != expected {
         bail!("canonical_requests do not match the declared projection");
+    }
+    Ok(())
+}
+
+fn validate_expected_result(result: &Value) -> Result<()> {
+    let object = result
+        .as_object()
+        .context("expected_result must be an object")?;
+    let status = object
+        .get("status")
+        .and_then(Value::as_str)
+        .context("expected_result.status must be a string")?;
+    if !matches!(
+        status,
+        "accepted" | "queued" | "completed" | "completed_degraded" | "failed" | "canceled"
+    ) {
+        bail!("expected_result.status `{status}` is not a canonical batch status");
+    }
+    if let Some(items) = object.get("items") {
+        for item in items
+            .as_array()
+            .context("expected_result.items must be an array")?
+        {
+            let item = item
+                .as_object()
+                .context("expected_result item must be an object")?;
+            item.get("index")
+                .and_then(Value::as_u64)
+                .context("expected_result item index must be an unsigned integer")?;
+            let outcome = item
+                .get("outcome")
+                .and_then(Value::as_object)
+                .context("expected_result item outcome must be an object")?;
+            let outcome_status = outcome
+                .get("status")
+                .and_then(Value::as_str)
+                .context("expected_result outcome status must be a string")?;
+            if !matches!(
+                outcome_status,
+                "completed" | "queued" | "failed" | "canceled"
+            ) {
+                bail!("expected_result outcome status `{outcome_status}` is invalid");
+            }
+            if outcome_status != "canceled" && !outcome.contains_key("data") {
+                bail!("expected_result `{outcome_status}` outcome requires data");
+            }
+        }
     }
     Ok(())
 }

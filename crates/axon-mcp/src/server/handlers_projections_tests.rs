@@ -90,3 +90,26 @@ async fn projection_handler_rejects_oversized_input_before_runtime_access() {
         .unwrap_err();
     assert_eq!(error.code.0, -32602);
 }
+
+#[tokio::test]
+async fn valid_source_projection_is_admitted_with_redacted_ordered_output() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut cfg = axon_core::config::Config::test_default();
+    cfg.sqlite_path = temp.path().join("mcp-projection.db");
+    let server = AxonMcpServer::new(cfg);
+    let response = server
+        .handle_ingest_projection(IngestRequest {
+            inputs: vec![SourceProjectionInput {
+                input: "https://example.com/mcp-projection".to_string(),
+                idempotency_key: Some("mcp-valid-request".to_string()),
+            }],
+            options: IngestOptions::default(),
+        })
+        .await
+        .expect("valid MCP projection");
+    let result: BatchResult<SourceResult> = serde_json::from_value(response.data).unwrap();
+    assert_eq!(result.status, BatchStatus::Accepted);
+    assert_eq!(result.items[0].index, 0);
+    assert!(result.items[0].input.is_none());
+    assert!(matches!(result.items[0].outcome, BatchOutcome::Queued(_)));
+}

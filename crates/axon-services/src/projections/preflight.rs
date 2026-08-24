@@ -81,6 +81,12 @@ pub fn preflight_code_search_batch(
     let mut total = 0usize;
     let mut prepared = Vec::with_capacity(plans.len());
     for (index, mut plan) in plans.into_iter().enumerate() {
+        if plan.limit == 0 {
+            return Err(preflight_error(
+                "projection.query_limit_invalid",
+                "query limit must be at least 1",
+            ));
+        }
         validate_query_bytes(&plan.query, policy.max_query_bytes)?;
         total = total.checked_add(plan.query.len()).ok_or_else(|| {
             preflight_error(

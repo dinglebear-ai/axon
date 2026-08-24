@@ -245,7 +245,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         request.filters["redaction_status"],
         serde_json::json!("clean")
     );
-    assert_eq!(request.filters["language"], serde_json::json!("rust"));
+    assert_eq!(request.filters["code_language"], serde_json::json!("rust"));
 
     let mut staged = test_clean_point(TestPointSpec {
         collection: &cfg.collection,

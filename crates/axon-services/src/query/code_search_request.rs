@@ -29,7 +29,7 @@ pub(super) fn target_code_search_request(
         filters.insert("path_prefix".to_string(), json!(prefix));
     }
     if let Some(language) = language {
-        filters.insert("language".to_string(), json!(language));
+        filters.insert("code_language".to_string(), json!(language));
     }
     Ok(VectorSearchRequest {
         collection,

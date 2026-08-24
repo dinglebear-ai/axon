@@ -164,6 +164,10 @@ impl JobStore for SqliteUnifiedJobStore {
         self.get_job_request_json(job_id).await
     }
 
+    async fn result_json(&self, job_id: JobId) -> Result<Option<serde_json::Value>> {
+        self.get_job_result_json(job_id).await
+    }
+
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>> {
         self.job_attempts(job_id).await
     }

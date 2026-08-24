@@ -1676,7 +1676,6 @@ export interface components {
             collection?: string | null;
             language?: string | null;
             limit?: number;
-            no_hybrid_search?: boolean;
             offset?: number;
             path_prefix?: string | null;
             source?: string | null;
@@ -4253,6 +4252,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Projection batch completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
             /** @description Projection batch admitted */
             202: {
                 headers: {
@@ -4490,6 +4498,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Projection batch completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
             /** @description Projection batch admitted */
             202: {
                 headers: {
@@ -5121,6 +5138,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Projection batch completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
             /** @description Projection batch admitted */
             202: {
                 headers: {
@@ -7580,6 +7606,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Projection batch completed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult_SourceResult"];
+                };
+            };
             /** @description Projection batch admitted */
             202: {
                 headers: {
