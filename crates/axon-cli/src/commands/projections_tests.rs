@@ -38,12 +38,14 @@ fn projection_output_is_atomic_and_never_clobbers() {
 
 #[test]
 fn scrape_config_uses_shared_projection_and_preserves_legacy_flags() {
-    let mut cfg = Config::default();
-    cfg.command = CommandKind::Scrape;
-    cfg.positional = vec!["https://example.test/page".to_string()];
-    cfg.collection = "docs".to_string();
-    cfg.embed = false;
-    cfg.scrape_inline = true;
+    let cfg = Config {
+        command: CommandKind::Scrape,
+        positional: vec!["https://example.test/page".to_string()],
+        collection: "docs".to_string(),
+        embed: false,
+        scrape_inline: true,
+        ..Config::default()
+    };
 
     let requests = scrape_requests_from_config(&cfg).unwrap();
     assert_eq!(requests.len(), 1);
@@ -60,8 +62,10 @@ fn scrape_config_uses_shared_projection_and_preserves_legacy_flags() {
 
 #[test]
 fn projection_output_policy_rejects_ambiguous_or_unsafe_batch_paths() {
-    let mut cfg = Config::default();
-    cfg.output_path = Some("combined.json".into());
+    let mut cfg = Config {
+        output_path: Some("combined.json".into()),
+        ..Config::default()
+    };
     assert!(validate_output_policy(&cfg, 2).is_err());
 
     cfg.output_path = None;
@@ -113,9 +117,11 @@ fn scrape_request_file_preserves_canonical_options() {
         },
     };
     fs::write(&path, serde_json::to_vec(&request).unwrap()).unwrap();
-    let mut cfg = Config::default();
-    cfg.command = CommandKind::Scrape;
-    cfg.projection_request_file = Some(path.clone());
+    let cfg = Config {
+        command: CommandKind::Scrape,
+        projection_request_file: Some(path.clone()),
+        ..Config::default()
+    };
 
     let requests = scrape_requests_from_config(&cfg).unwrap();
     assert_eq!(requests[0].collection.as_deref(), Some("from-file"));
