@@ -425,3 +425,41 @@ stack overflow that this PR's `Box::pin` in `run_generation` resolves.)
   them. Strictly better than the pre-fix permanent wedge; `authority_id` is
   derived from the SQLite path and is stable across restarts, so recovery
   does happen.
+
+## Pre-existing failures addressed on this branch (2026-08-23, second pass)
+
+Beyond the PR's own scope, every failing or hanging test in the workspace was
+run to root cause and fixed here:
+
+- **Debug-build stack overflow under the source pipeline (`axon-cli` map
+  tests, and the same class as the `axon-services` aborts on `main`).** A
+  gdb backtrace of the overflow showed spider's `crawl_raw`/
+  `crawl_cache_phase` poll frames — enormous in debug builds — polled inline
+  on top of ~40 pipeline frames. Boxing alone cannot reduce poll *depth*, so
+  `web_engine/fresh_stack.rs` now runs every spider crawl on its own spawned
+  task (poll frames start from the runtime's base stack) with inline
+  semantics preserved: dropping the wrapper aborts the task, and a panic is
+  resumed on the caller's thread. Applied at all four crawl sites (scrape,
+  engine, thin refetch, screenshot), plus `Box::pin` around `dispatch_kind`
+  in `index_source_inner`.
+
+- **`live_command_harness` flake/hang (reproducible 3/3 with the suite's own
+  parallelism).** Two structural defects in the harness's owned-Chrome
+  cleanup (`scripts/lib/live-cli-reporting.sh`): the ownership probes
+  (`/proc/<pid>/stat` read, `ps` token scan) were single-shot, so a
+  transient read under process churn made cleanup *refuse* to kill its own
+  Chrome and exit 0 with it alive; and after refusing the KILL it still ran
+  an unconditional `wait` on the deliberately TERM-immune group — an
+  unbounded hang. The probes now retry with a pid-level fast path, and the
+  `wait` runs only after the group was actually signalled dead. Verified
+  4/4 green after the fix (previously 3/3 failing).
+
+- **Env-sensitive test suites.** `cli_json_golden_contract`,
+  `worker_drain_lock_cross_process`, `setup_check_cli`, and the `axon-web`
+  server tests inherited `AXON_CONFIG_PATH` from the invoking shell — an
+  explicit config path pointing at a missing file is a hard startup error by
+  design, so an operator's exported env failed 30+ tests that otherwise
+  self-isolate. All four now scrub `AXON_CONFIG_PATH`/`AXON_ENV_FILE`.
+
+Final state: `cargo test --workspace --features test-helpers --no-fail-fast`
+passes cleanly (90/90 suites), with fmt and `clippy -D warnings` green.

@@ -283,10 +283,19 @@ pub async fn fetch_single_page(
         }
         pages
     });
-    match cfg.render_mode {
-        RenderMode::Http | RenderMode::AutoSwitch => website.crawl_raw().await,
-        RenderMode::Chrome => website.crawl().await,
-    }
+    // The crawl polls on its own task stack (see `fresh_stack`); the website
+    // moves in and back out so the retained-page inspection below still sees
+    // the crawl's results.
+    let render_mode = cfg.render_mode;
+    let mut crawl_site = std::mem::take(website);
+    *website = super::fresh_stack::crawl_on_fresh_stack(async move {
+        match render_mode {
+            RenderMode::Http | RenderMode::AutoSwitch => crawl_site.crawl_raw().await,
+            RenderMode::Chrome => crawl_site.crawl().await,
+        }
+        crawl_site
+    })
+    .await;
     website.unsubscribe();
     let mut candidates = collect
         .await

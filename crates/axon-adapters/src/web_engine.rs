@@ -4,6 +4,7 @@ pub mod automation;
 pub(crate) mod browser;
 pub mod chrome_bootstrap;
 pub mod engine;
+pub(crate) mod fresh_stack;
 pub mod manifest;
 pub mod scrape;
 pub mod screenshot;

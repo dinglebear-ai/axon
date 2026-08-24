@@ -37,7 +37,11 @@ fn run_json_isolated(args: &[&str], extra_envs: &[(&str, &str)]) -> String {
     cmd.args(args)
         .env("NO_COLOR", "1")
         .env("HOME", home)
-        .env("AXON_DATA_DIR", &data_dir);
+        .env("AXON_DATA_DIR", &data_dir)
+        // An inherited explicit config path is a hard startup error when the
+        // file is missing; this test owns its whole environment.
+        .env_remove("AXON_CONFIG_PATH")
+        .env_remove("AXON_ENV_FILE");
     for (key, value) in extra_envs {
         cmd.env(key, value);
     }
@@ -54,6 +58,8 @@ fn run_json_isolated(args: &[&str], extra_envs: &[(&str, &str)]) -> String {
         .env("NO_COLOR", "1")
         .env("HOME", home)
         .env("AXON_DATA_DIR", &data_dir)
+        .env_remove("AXON_CONFIG_PATH")
+        .env_remove("AXON_ENV_FILE")
         .envs(extra_envs.iter().copied())
         .output()
         .expect("failed to execute axon binary");

@@ -100,7 +100,14 @@ async fn fetch_url_with_chrome(
     let collect: tokio::task::JoinHandle<Option<Page>> =
         tokio::spawn(async move { rx.recv().await.ok() });
 
-    website.crawl().await;
+    // Crawl on its own task stack (see `fresh_stack`); the website moves in
+    // and back out so retained-page fallbacks below still see the crawl.
+    let mut crawl_site = std::mem::take(&mut website);
+    website = crate::web_engine::fresh_stack::crawl_on_fresh_stack(async move {
+        crawl_site.crawl().await;
+        crawl_site
+    })
+    .await;
     website.unsubscribe();
 
     let page = match collect.await {

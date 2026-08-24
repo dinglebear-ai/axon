@@ -129,7 +129,14 @@ pub async fn spider_screenshot_with_options(
     let mut rx = website.subscribe(16);
     let collect = tokio::spawn(async move { rx.recv().await.ok() });
 
-    website.crawl().await;
+    // Crawl on its own task stack (see `fresh_stack`); the website moves in
+    // and back out so the retained-page fallback below still sees the crawl.
+    let mut crawl_site = std::mem::take(&mut website);
+    website = super::fresh_stack::crawl_on_fresh_stack(async move {
+        crawl_site.crawl().await;
+        crawl_site
+    })
+    .await;
     website.unsubscribe();
 
     let screenshot_bytes = match collect.await {

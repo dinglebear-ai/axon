@@ -2,12 +2,19 @@
 # Reporting and semantic coverage helpers.
 
 cleanup_live_fixtures() {
-  local collection _attempt member member_pgid
+  local collection _attempt member member_pgid chrome_group_killed
   cleanup_warning() {
     printf 'warning: failed to clean up %s; inspect %s\n' "$1" "$2" >&2
   }
   chrome_group_has_session_token() {
     [ -n "${live_chrome_pgid:-}" ] && [ -n "${live_chrome_session_token:-}" ] || return 1
+    # Fast pid-level path: the spawned leader itself still carries the token.
+    # Robust against transient `ps` failures and process churn from
+    # concurrently running harness instances.
+    if tr '\0' '\n' <"/proc/$live_chrome_pid/environ" 2>/dev/null \
+      | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
+      return 0
+    fi
     while read -r member member_pgid; do
       [ "$member_pgid" = "$live_chrome_pgid" ] || continue
       [ -r "/proc/$member/environ" ] || continue
@@ -18,25 +25,60 @@ cleanup_live_fixtures() {
     done < <(ps -eo pid=,pgid= 2>/dev/null)
     return 1
   }
+  # A single probe can fail transiently (fork pressure, churned /proc entries)
+  # while the group is still verifiably ours; a false refusal here leaks a
+  # deliberately TERM-immune Chrome group. Retry before concluding anything.
+  chrome_group_ownership_confirmed() {
+    local _ownership_attempt
+    for _ownership_attempt in 1 2 3; do
+      if chrome_group_has_session_token; then
+        return 0
+      fi
+      kill -0 -- "-$live_chrome_pgid" 2>/dev/null || return 1
+      sleep 0.1
+    done
+    return 1
+  }
+  chrome_pid_identity_intact() {
+    local _identity_attempt observed_start_time
+    [ -n "${live_chrome_start_time:-}" ] || return 1
+    for _identity_attempt in 1 2 3; do
+      observed_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+      if [ -n "$observed_start_time" ]; then
+        [ "$observed_start_time" = "$live_chrome_start_time" ]
+        return
+      fi
+      kill -0 "$live_chrome_pid" 2>/dev/null || return 1
+      sleep 0.1
+    done
+    return 1
+  }
   if [ -n "${live_chrome_pid:-}" ] \
     && [ -n "${live_chrome_pgid:-}" ] \
-    && [ -n "${live_chrome_start_time:-}" ] \
-    && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
-    && chrome_group_has_session_token; then
+    && chrome_pid_identity_intact \
+    && chrome_group_ownership_confirmed; then
+    chrome_group_killed=1
     kill -TERM -- "-$live_chrome_pgid" 2>/dev/null || true
     for _attempt in $(seq 1 20); do
       kill -0 -- "-$live_chrome_pgid" 2>/dev/null || break
       sleep 0.1
     done
     if kill -0 -- "-$live_chrome_pgid" 2>/dev/null; then
-      if chrome_group_has_session_token; then
+      if chrome_group_ownership_confirmed; then
         kill -KILL -- "-$live_chrome_pgid" 2>/dev/null || true
       else
+        chrome_group_killed=0
         cleanup_warning "Chrome process group (ownership identity changed before KILL)" \
           "$OUTDIR/logs/chrome.stderr.log"
       fi
     fi
-    wait "$live_chrome_pid" 2>/dev/null || true
+    # Reap the direct child only when the group was actually signalled dead.
+    # An unconditional `wait` here parked the harness forever whenever the
+    # KILL was refused: the fixture Chrome ignores TERM by design, so the
+    # wait had nothing left that could ever end it.
+    if [ "$chrome_group_killed" -eq 1 ]; then
+      wait "$live_chrome_pid" 2>/dev/null || true
+    fi
   elif [ -n "${live_chrome_pid:-}" ]; then
     cleanup_warning "Chrome process group (ownership identity unavailable)" \
       "$OUTDIR/logs/chrome.stderr.log"

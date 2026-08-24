@@ -158,6 +158,9 @@ pub(super) async fn spawn_full_test_server_with_config(
     let axon_home = home.path().join(".axon");
     std::fs::create_dir_all(&axon_home).expect("create axon home");
     let data_dir_guard = EnvGuard::set_key("AXON_DATA_DIR", axon_home.to_str());
+    // An inherited explicit config path would be resolved by panel/config
+    // initialization; this server owns its whole environment.
+    let config_path_guard = EnvGuard::set_key("AXON_CONFIG_PATH", None);
     std::fs::write(axon_home.join("panel-password"), b"test-panel-token\n")
         .expect("write panel password");
     let panel = Arc::new(super::PanelRuntimeState::initialize("127.0.0.1", 0).expect("panel"));
@@ -182,6 +185,7 @@ pub(super) async fn spawn_full_test_server_with_config(
             .expect("test server");
         drop(home_guard);
         drop(data_dir_guard);
+        drop(config_path_guard);
         drop(home);
     });
 

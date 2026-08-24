@@ -95,6 +95,7 @@ fn preflight_skips_mutation_and_warnings_are_nonfatal() {
         .env_remove("AXON_DATA_DIR")
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
@@ -124,6 +125,7 @@ fn preflight_warns_when_required_child_dirs_are_missing() {
         .env_remove("AXON_DATA_DIR")
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
@@ -152,6 +154,7 @@ fn preflight_reads_oauth_config_from_managed_env_file() {
         .env_remove("AXON_DATA_DIR")
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .env_remove("AXON_GOOGLE_CLIENT_ID")
         .env_remove("AXON_GOOGLE_CLIENT_SECRET")
@@ -178,6 +181,7 @@ fn setup_skips_runtime_phases_after_prerequisite_errors() {
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
@@ -202,6 +206,7 @@ fn preflight_returns_nonzero_after_printing_plain_error_report() {
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
@@ -228,6 +233,7 @@ fn preflight_returns_nonzero_after_printing_json_error_report() {
         .env("PATH", fake_path(fake_bin.path()))
         .env("AXON_TEST_DOCKER_FAIL", "1")
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();
@@ -260,6 +266,7 @@ fn setup_plugin_hook_json_reports_policy_without_setup() {
         .env_remove("AXON_DATA_DIR")
         .env("PATH", fake_path(fake_bin.path()))
         .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_CONFIG_PATH")
         .env_remove("AXON_AUTH_MODE")
         .output()
         .unwrap();

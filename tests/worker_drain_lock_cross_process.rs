@@ -81,6 +81,10 @@ fn worker_command() -> Command {
     let mut cmd = Command::new(axon_bin());
     cmd.env("QDRANT_URL", "http://127.0.0.1:1")
         .env("TEI_URL", "http://127.0.0.1:1")
-        .env("AXON_ALLOW_INCOMPATIBLE_STORE_STARTUP", "1");
+        .env("AXON_ALLOW_INCOMPATIBLE_STORE_STARTUP", "1")
+        // An inherited explicit config path is a hard startup error when the
+        // file is missing; this test owns its whole environment.
+        .env_remove("AXON_CONFIG_PATH")
+        .env_remove("AXON_ENV_FILE");
     cmd
 }
