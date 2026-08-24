@@ -91,3 +91,37 @@ fn projection_batch_directory_writes_one_no_clobber_file_per_item() {
     fs::remove_file(output).unwrap();
     fs::remove_dir(directory).unwrap();
 }
+
+#[test]
+fn scrape_request_file_preserves_canonical_options() {
+    let directory = std::env::temp_dir().join(format!("axon-projection-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&directory).unwrap();
+    let path = directory.join("request.json");
+    let request = ScrapeRequest {
+        inputs: vec![SourceProjectionInput {
+            input: "https://example.test/page".to_string(),
+            idempotency_key: None,
+        }],
+        options: ScrapeOptions {
+            collection: Some("from-file".to_string()),
+            execution: axon_api::ExecutionPolicy {
+                mode: ExecutionMode::Background,
+                detached: true,
+                ..axon_api::ExecutionPolicy::default()
+            },
+            ..ScrapeOptions::default()
+        },
+    };
+    fs::write(&path, serde_json::to_vec(&request).unwrap()).unwrap();
+    let mut cfg = Config::default();
+    cfg.command = CommandKind::Scrape;
+    cfg.projection_request_file = Some(path.clone());
+
+    let requests = scrape_requests_from_config(&cfg).unwrap();
+    assert_eq!(requests[0].collection.as_deref(), Some("from-file"));
+    assert_eq!(requests[0].execution.mode, ExecutionMode::Background);
+    assert!(requests[0].execution.detached);
+
+    fs::remove_file(path).unwrap();
+    fs::remove_dir(directory).unwrap();
+}

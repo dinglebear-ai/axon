@@ -64,7 +64,16 @@ fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<d
     if cfg.output_path.is_some() {
         options.output.artifact_mode = ArtifactMode::Always;
     }
-    let request = if cfg.projection_request_file.is_some() || !cfg.projection_items.is_empty() {
+    let request = if cfg.projection_request_file.is_some() {
+        let mut request = load_source_request::<ScrapeRequest>(cfg)?;
+        if cfg.scrape_inline {
+            request.options.output.response_mode = ResponseMode::Inline;
+        }
+        if cfg.output_path.is_some() {
+            request.options.output.artifact_mode = ArtifactMode::Always;
+        }
+        request
+    } else if !cfg.projection_items.is_empty() {
         let mut request = load_source_request::<ScrapeRequest>(cfg)?;
         request.options = options;
         request
@@ -76,7 +85,9 @@ fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<d
     };
     let mut requests = project_scrape(&request)?;
     for request in &mut requests {
-        request.embed = cfg.embed;
+        if !cfg.embed {
+            request.embed = false;
+        }
     }
     Ok(requests)
 }
