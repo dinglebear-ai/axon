@@ -44,6 +44,61 @@ pub fn rest_route_registry() -> &'static [RestRouteSpec] {
 }
 
 static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
+    RestRouteSpec {
+        method: "POST",
+        path: "/v1/scrape",
+        operation_id: "scrapeSources",
+        request_dto: Some("ScrapeRequest"),
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        streaming: false,
+        responses: WRITE_RESPONSES,
+    },
+    RestRouteSpec {
+        method: "POST",
+        path: "/v1/crawl",
+        operation_id: "crawlSources",
+        request_dto: Some("CrawlRequest"),
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        streaming: false,
+        responses: WRITE_RESPONSES,
+    },
+    RestRouteSpec {
+        method: "POST",
+        path: "/v1/embed",
+        operation_id: "embedSources",
+        request_dto: Some("EmbedRequest"),
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        streaming: false,
+        responses: WRITE_RESPONSES,
+    },
+    RestRouteSpec {
+        method: "POST",
+        path: "/v1/ingest",
+        operation_id: "ingestSources",
+        request_dto: Some("IngestRequest"),
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        streaming: false,
+        responses: WRITE_RESPONSES,
+    },
+    RestRouteSpec {
+        method: "POST",
+        path: "/v1/code-search",
+        operation_id: "codeSearch",
+        request_dto: Some("CodeSearchRequest"),
+        result_dto: "BatchResult<QueryResult>",
+        required_scope: "read",
+        mutates: false,
+        streaming: false,
+        responses: READ_RESPONSES,
+    },
     read(
         "GET",
         "/v1/capabilities",
@@ -405,10 +460,6 @@ static POST_MEMORY_ROUTES: &[RestRouteSpec] = &[
 
 pub fn removed_routes() -> &'static [&'static str] {
     &[
-        "/v1/embed",
-        "/v1/ingest",
-        "/v1/scrape",
-        "/v1/crawl",
         "/v1/purge",
         "/v1/dedupe",
         "/v1/extract/cleanup",

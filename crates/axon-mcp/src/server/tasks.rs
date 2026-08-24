@@ -269,6 +269,11 @@ fn parse_uuid(raw: &str) -> Result<Uuid, ErrorData> {
 
 fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
     let (action, subaction) = match request {
+        AxonRequest::Scrape(_) => ("scrape", "None".to_string()),
+        AxonRequest::Crawl(_) => ("crawl", "None".to_string()),
+        AxonRequest::Embed(_) => ("embed", "None".to_string()),
+        AxonRequest::Ingest(_) => ("ingest", "None".to_string()),
+        AxonRequest::CodeSearch(_) => ("code_search", "None".to_string()),
         AxonRequest::Extract(req) => ("extract", format!("{:?}", req.subaction)),
         AxonRequest::Memory(req) => ("memory", format!("{:?}", req.subaction)),
         AxonRequest::Status(_) => ("status", "None".to_string()),

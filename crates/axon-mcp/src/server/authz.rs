@@ -44,6 +44,36 @@ pub(super) struct McpActionSpec {
 
 pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
+        name: "scrape",
+        scope: ActionScope::Write,
+        description: "Project one or more page acquisitions onto the canonical source pipeline",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "crawl",
+        scope: ActionScope::Write,
+        description: "Project one or more site crawls onto the canonical source pipeline",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "embed",
+        scope: ActionScope::Write,
+        description: "Project one or more embedding requests onto the canonical source pipeline",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "ingest",
+        scope: ActionScope::Write,
+        description: "Project one or more ingestion requests onto the canonical source pipeline",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "code_search",
+        scope: ActionScope::Read,
+        description: "Search committed code vectors without refreshing the index",
+        cost: "cheap",
+    },
+    McpActionSpec {
         name: "help",
         scope: ActionScope::InfoOnly,
         description: "List actions, subactions, defaults, and schema resource links",

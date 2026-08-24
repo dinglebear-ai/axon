@@ -171,7 +171,7 @@ pub(crate) async fn index_source(
 /// scope that class requires, and runs [`ScopeSecurityPolicy::authorize_source`]
 /// against the caller's scopes. Denials surface as an enveloped
 /// `auth.forbidden` error carrying the required scope.
-async fn authorize_source_request(
+pub(super) async fn authorize_source_request(
     request: &SourceRequest,
     auth: &AuthContext,
 ) -> Result<(), HttpError> {
@@ -211,7 +211,7 @@ async fn authorize_source_request(
     Ok(())
 }
 
-fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
+pub(super) fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
     let auth_mode = if auth.sub == "static-bearer" {
         AuthMode::StaticToken
     } else {

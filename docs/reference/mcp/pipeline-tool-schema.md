@@ -72,16 +72,16 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-api/src/mcp_schema.rs` | `sha256:901e8f74737618b4aa1ae2fee254dae508a41f2dceecf281e7fac233b3183dff` |
+| `crates/axon-api/src/mcp_schema.rs` | `sha256:2ef23b5c0c3ede5e4dfc72be4ea2e763da02c323d6857fb3a361ef16c9ae1ef0` |
 | `crates/axon-api/src/mcp_schema/prune_request.rs` | `sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656` |
 | `crates/axon-api/src/mcp_schema/requests.rs` | `sha256:eae4ecdacb0babcea192182e53b98ab5018695e276bb4c1098ad9c2be21a09fb` |
 | `crates/axon-api/src/mcp_schema/requests/discovery.rs` | `sha256:74cc0184db8d8f39740e9822a92509b4eb468caa1c731a7e23ea557167dfc5d7` |
 | `crates/axon-api/src/mcp_schema/requests/graph.rs` | `sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1` |
 | `crates/axon-api/src/mcp_schema/requests/watch.rs` | `sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a` |
 | `crates/axon-api/src/mcp_schema/utility.rs` | `sha256:87986a79e3cf49b28af6bd41672e2395ddbb41dbbf9c8b791c85cc0515a16a56` |
-| `crates/axon-mcp/src/schema_registry.rs` | `sha256:f525fb9c6b14755f9cc86b02f5604f242dbbd5a80ceb6e6918332c57e6bf976b` |
-| `crates/axon-mcp/src/server.rs` | `sha256:2b3d11ad120bb2aedca2afe81d5208f09efcc1214a4f1bbd5b8617993adf1179` |
-| `crates/axon-mcp/src/server/authz.rs` | `sha256:6fab7996dbda20241bda6296f0e6420ef6eb216ce4af889e0a79f48dd1c318e1` |
+| `crates/axon-mcp/src/schema_registry.rs` | `sha256:70e1b74aef0cd2496658f0b8ffa1b9ebc35fa5acb5cdb6c001c80f442ce0bbde` |
+| `crates/axon-mcp/src/server.rs` | `sha256:aa3d5c6047988343ae31162b59e909909483a1e709fc2e9d89e23e3d0587efcf` |
+| `crates/axon-mcp/src/server/authz.rs` | `sha256:008e95919150c2e2790ae57dfe9dd0d2407af364eb07bfa96414580df3ecd260` |
 | `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024` |
 | `xtask/src/schemas/mcp_action_registry.rs` | `sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1` |
 

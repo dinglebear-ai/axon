@@ -9,10 +9,10 @@ caller via `axon-authz`, and maps every call into `axon-services`. Full contract
 [../../../docs/pipeline-unification/surfaces/tool-contract.md](../../../docs/pipeline-unification/surfaces/tool-contract.md).
 
 ## Status — live unified transport
-The single `axon` tool is the live MCP surface. Source acquisition is under
-`action=source`; removed indexing actions are omitted from the live action enum
-and rejected during strict request parsing. Job DTOs use canonical kinds such as
-`source`; there are no crawl/embed/ingest compatibility variants. Artifact-backed
+The single `axon` tool is the live MCP surface. Source acquisition remains under
+`action=source`, with focused `scrape`, `crawl`, `embed`, and `ingest` projections
+plus read-only committed-state `code_search`. These actions use canonical batch
+DTOs and the same source/job services; they are not compatibility pipelines. Artifact-backed
 responses return opaque artifact IDs rather than server filesystem paths.
 
 ## Module map
@@ -40,7 +40,7 @@ Current groups from `crates/axon-mcp/src/`:
 - One action-dispatched `axon` tool (`action` + optional `subaction`) — never one tool per operation.
 - Every action routes to exactly one `axon-services` entrypoint; tool schema is generated from shared `axon-api` DTOs.
 - Error envelopes align with REST and CLI JSON output; every response returns a structured envelope.
-- Removed actions are absent from the schema and cannot dispatch after the clean break; destructive reset stays under `action=reset` with admin scope.
+- Removed actions such as `code_search_watch`, purge, dedupe, and `vertical_scrape` remain absent; destructive reset stays under `action=reset` with admin scope.
 
 ## DTO ownership
 Wire DTOs and the response envelope live in **`axon-api`** (`axon_api::mcp_schema`

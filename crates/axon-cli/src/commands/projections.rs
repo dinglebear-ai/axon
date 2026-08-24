@@ -1,0 +1,202 @@
+use std::error::Error;
+use std::fs;
+use std::io::Write;
+
+use axon_api::source::*;
+use axon_core::config::{CommandKind, Config};
+use axon_services::context::ServiceContext;
+use axon_services::projections::{
+    SourceAccessPolicy, enqueue_source_projection_batch, execute_code_search_projection_batch,
+    preflight_code_search_batch, preflight_source_batch,
+};
+
+pub async fn run_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    match cfg.command {
+        CommandKind::CodeSearch => run_code_search(cfg, ctx).await,
+        CommandKind::Crawl | CommandKind::Embed | CommandKind::Ingest => {
+            run_source_projection(cfg, ctx).await
+        }
+        _ => Err("run_projection called for a non-projection command".into()),
+    }
+}
+
+async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    let (operation, requests) = match cfg.command {
+        CommandKind::Crawl => (
+            ProjectionOperation::Crawl,
+            project_crawl(&load_source_request::<CrawlRequest>(cfg)?)?,
+        ),
+        CommandKind::Embed => (
+            ProjectionOperation::Embed,
+            project_embed(&load_source_request::<EmbedRequest>(cfg)?)?,
+        ),
+        CommandKind::Ingest => (
+            ProjectionOperation::Ingest,
+            project_ingest(&load_source_request::<IngestRequest>(cfg)?)?,
+        ),
+        _ => unreachable!(),
+    };
+    let prepared = preflight_source_batch(
+        operation,
+        requests,
+        None,
+        &cfg.projection_batch,
+        &SourceAccessPolicy::default(),
+    )?;
+    let result = enqueue_source_projection_batch(ctx, operation, prepared, None).await?;
+    print_batch(cfg, &result)
+}
+
+async fn run_code_search(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    let request = load_code_search_request(cfg)?;
+    let plans = project_code_search(&request)?;
+    let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)?;
+    let result =
+        execute_code_search_projection_batch(ctx, prepared, axon_api::CodeSearchCaller::Cli)
+            .await?;
+    print_batch(cfg, &result)
+}
+
+fn reject_mixed_inputs(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let kinds = [
+        !cfg.positional.is_empty(),
+        !cfg.projection_items.is_empty(),
+        cfg.projection_request_file.is_some(),
+    ]
+    .into_iter()
+    .filter(|present| *present)
+    .count();
+    if kinds != 1 {
+        return Err("provide exactly one of positional inputs, --item, or --request-file".into());
+    }
+    Ok(())
+}
+
+fn load_source_request<R>(cfg: &Config) -> Result<R, Box<dyn Error>>
+where
+    R: serde::de::DeserializeOwned + ProjectionRequestOptions,
+    DefaultOptions<R>: Default,
+{
+    reject_mixed_inputs(cfg)?;
+    if let Some(path) = &cfg.projection_request_file {
+        return Ok(serde_json::from_slice(&fs::read(path)?)?);
+    }
+    let inputs = if cfg.projection_items.is_empty() {
+        cfg.positional
+            .iter()
+            .cloned()
+            .map(|input| SourceProjectionInput {
+                input,
+                idempotency_key: None,
+            })
+            .collect()
+    } else {
+        cfg.projection_items
+            .iter()
+            .map(|item| serde_json::from_str(item))
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    Ok(R::new(inputs, <DefaultOptions<R>>::default()))
+}
+
+trait ProjectionRequestOptions {
+    type Options: Default;
+    fn new(inputs: Vec<SourceProjectionInput>, options: Self::Options) -> Self;
+}
+type DefaultOptions<R> = <R as ProjectionRequestOptions>::Options;
+
+macro_rules! source_request_loader {
+    ($request:ty, $options:ty) => {
+        impl ProjectionRequestOptions for $request {
+            type Options = $options;
+            fn new(inputs: Vec<SourceProjectionInput>, options: Self::Options) -> Self {
+                Self { inputs, options }
+            }
+        }
+    };
+}
+source_request_loader!(CrawlRequest, CrawlOptions);
+source_request_loader!(EmbedRequest, EmbedOptions);
+source_request_loader!(IngestRequest, IngestOptions);
+
+fn load_code_search_request(cfg: &Config) -> Result<CodeSearchRequest, Box<dyn Error>> {
+    reject_mixed_inputs(cfg)?;
+    if let Some(path) = &cfg.projection_request_file {
+        return Ok(serde_json::from_slice(&fs::read(path)?)?);
+    }
+    let inputs = if cfg.projection_items.is_empty() {
+        cfg.positional
+            .iter()
+            .cloned()
+            .map(|input| QueryProjectionInput { input })
+            .collect()
+    } else {
+        cfg.projection_items
+            .iter()
+            .map(|item| serde_json::from_str(item))
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    Ok(CodeSearchRequest {
+        inputs,
+        options: CodeSearchProjectionOptions {
+            collection: Some(cfg.collection.clone()),
+            limit: cfg.search_limit,
+            ..CodeSearchProjectionOptions::default()
+        },
+    })
+}
+
+fn print_batch<T: serde::Serialize>(
+    cfg: &Config,
+    result: &BatchResult<T>,
+) -> Result<(), Box<dyn Error>> {
+    let json = serde_json::to_vec_pretty(result)?;
+    if let Some(path) = &cfg.output_path {
+        if result.items.len() != 1 {
+            return Err("--output is only valid for a one-item projection batch".into());
+        }
+        write_atomic_no_clobber(path, &json)?;
+    } else {
+        println!("{}", String::from_utf8(json)?);
+    }
+    Ok(())
+}
+
+fn write_atomic_no_clobber(path: &std::path::Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let parent = fs::canonicalize(parent)?;
+    let name = path
+        .file_name()
+        .ok_or("--output must name a file")?
+        .to_string_lossy();
+    if name == "." || name == ".." {
+        return Err("--output must name a file".into());
+    }
+    let target = parent.join(name.as_ref());
+    if fs::symlink_metadata(&target).is_ok() {
+        return Err(format!("output already exists: {}", target.display()).into());
+    }
+    let temporary = parent.join(format!(".axon-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<(), Box<dyn Error>> {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::hard_link(&temporary, &target)?;
+        fs::remove_file(&temporary)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+#[cfg(test)]
+#[path = "projections_tests.rs"]
+mod tests;

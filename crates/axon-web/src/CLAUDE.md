@@ -8,13 +8,12 @@ contract (owns / API / deps / tests):
 · surface spec:
 [../../../docs/pipeline-unification/surfaces/rest-contract.md](../../../docs/pipeline-unification/surfaces/rest-contract.md).
 
-## Status — live crate, post Phase 10 cutover
-The router exposes the clean-break REST surface: source lifecycle flows through
-`/v1/sources`, job lifecycle flows through `/v1/jobs`, and prune flows through
-`/v1/prune/*`. Removed direct verb/family routes (`/v1/scrape`, `/v1/crawl`,
-`/v1/embed`, `/v1/ingest`, `/v1/purge`, `/v1/dedupe`, and family-scoped job
-routes such as `/v1/extract/{id}`) are absent from the router, OpenAPI, and
-generated clients. Do not add legacy route aliases.
+## Status — focused projections over the unified pipeline
+The router exposes canonical `/v1/sources`, `/v1/jobs`, and `/v1/prune/*`
+resources plus focused `/v1/scrape`, `/v1/crawl`, `/v1/embed`, `/v1/ingest`,
+and read-only `/v1/code-search` projections. The focused routes share DTOs,
+preflight, admission, and services with CLI/MCP; `/v1/purge`, `/v1/dedupe`, and
+family-scoped job routes remain absent.
 
 ## Module map
 Current groups from `crates/axon-web/src/`:

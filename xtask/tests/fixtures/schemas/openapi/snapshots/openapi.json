@@ -24,6 +24,105 @@
   ],
   "routes": [
     {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "scrapeSources",
+      "path": "/v1/scrape",
+      "request_dto": "ScrapeRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "BatchResult<SourceResult>",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "crawlSources",
+      "path": "/v1/crawl",
+      "request_dto": "CrawlRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "BatchResult<SourceResult>",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "embedSources",
+      "path": "/v1/embed",
+      "request_dto": "EmbedRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "BatchResult<SourceResult>",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "ingestSources",
+      "path": "/v1/ingest",
+      "request_dto": "IngestRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "BatchResult<SourceResult>",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": false,
+      "operation_id": "codeSearch",
+      "path": "/v1/code-search",
+      "request_dto": "CodeSearchRequest",
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "BatchResult<QueryResult>",
+      "streaming": false
+    },
+    {
       "method": "GET",
       "mutates": false,
       "operation_id": "capabilities",
@@ -1833,7 +1932,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:27cb2ee8ec9a6f0920842885b028266fdf5c551172a8e5da60cb2dd016807e73",
+        "checksum": "sha256:e1310a80469c6e3f614a9ebaa7837d90e822b690d6389abca2cab76bf8919ab9",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

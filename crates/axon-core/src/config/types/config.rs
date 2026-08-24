@@ -168,6 +168,12 @@ pub struct Config {
     /// Positional arguments after the subcommand (URLs, query text, job sub-subcommand tokens).
     pub positional: Vec<String>,
 
+    /// Canonical JSON projection items supplied through repeatable `--item`.
+    pub projection_items: Vec<String>,
+
+    /// Canonical focused request supplied through `--request-file`.
+    pub projection_request_file: Option<PathBuf>,
+
     /// Comma-separated URL list provided via `--urls` (alternative to positional arguments).
     pub urls_csv: Option<String>,
 

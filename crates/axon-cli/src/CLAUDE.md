@@ -10,12 +10,11 @@ nothing more. Full contract (owns / API / deps / tests):
 · help text:
 [../../../docs/pipeline-unification/surfaces/axon-help.md](../../../docs/pipeline-unification/surfaces/axon-help.md).
 
-## Status — live crate, Phase 10 surface cutover already applied
-`embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`, `purge`,
-`dedupe`, `refresh`, and `fresh` are already **removed** from the clap tree
-(not aliased) — verified against the live binary, they do not appear in the
-`Command` enum in `crates/axon-core/src/config/cli.rs`. `scrape` is retained as
-a canonical one-page SourceRequest projection. The target `axon <source>` grammar is
+## Status — focused projections over the unified pipeline
+`scrape`, `crawl`, `embed`, `ingest`, and `code-search` are supported focused
+commands backed by the shared projection DTOs and services. They are not
+alternate pipelines or compatibility aliases. `code-search-watch`, `purge`,
+`dedupe`, `refresh`, and `fresh` remain removed. The target `axon <source>` grammar is
 implemented: the parser (`route_bare_source` in
 `crates/axon-core/src/config/source_routing.rs`) routes any first positional
 that is not a canonical/removed command or global flag to the `source`
@@ -44,7 +43,7 @@ Current groups from `crates/axon-cli/src/`:
 - `axon <source>` is the default pipeline command; `ask`/`query`/`retrieve`/`search` keep clear, non-overlapping semantics.
 - Every command maps to exactly one service request/result path — the CLI is a transport, not the pipeline owner.
 - `--json` emits the shared `axon-api` envelope; human progress renders from shared `axon-observe` progress events.
-- No removed command (`embed`/`ingest`/`crawl`/`code-search`/`code-search-watch`/`purge`/`dedupe`/`refresh`/`fresh`) survives in help, completions, or the parser after the clean break.
+- No removed command (`code-search-watch`/`purge`/`dedupe`/`refresh`/`fresh`) survives in help, completions, or the parser.
 
 ## DTO ownership
 Wire DTOs (`SourceRequest`/`SourceResult`, `AskRequest`, `QueryResult`, the

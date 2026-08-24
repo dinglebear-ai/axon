@@ -92,7 +92,7 @@ pub async fn execute_code_search_projection_batch(
             CodeSearchOptions {
                 limit: plan.limit,
                 offset: plan.offset,
-                cwd: None,
+                cwd: plan.source.map(std::path::PathBuf::from),
                 path_prefix: plan.path_prefix,
                 ensure_fresh: false,
                 caller,

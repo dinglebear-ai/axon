@@ -1,13 +1,6 @@
 use super::removed::{RemovedDtoField, RemovedOperation, RemovedRestRoute, RemovedSurfaceRegistry};
 
 const CLI_COMMANDS: &[RemovedOperation] = &[
-    op("embed", "axon <source>"),
-    op("ingest", "axon <source>"),
-    op("crawl", "axon <url> --scope site"),
-    op(
-        "code-search",
-        "axon query <query> --content-kind code --freshness committed",
-    ),
     op("code-search-watch", "axon watch <path>"),
     op("purge", "axon prune plan ... then axon prune exec ..."),
     op("dedupe", "axon prune plan ... then axon prune exec ..."),
@@ -16,14 +9,6 @@ const CLI_COMMANDS: &[RemovedOperation] = &[
 ];
 
 const MCP_ACTIONS: &[RemovedOperation] = &[
-    op("embed", "source"),
-    op("ingest", "source"),
-    op("scrape", "source with scope=page"),
-    op("crawl", "source with scope=site"),
-    op(
-        "code_search",
-        "query with code filters and committed freshness",
-    ),
     op("code_search_watch", "watch"),
     op("vertical_scrape", "adapter capabilities plus source"),
     op("purge", "prune"),
@@ -31,10 +16,6 @@ const MCP_ACTIONS: &[RemovedOperation] = &[
 ];
 
 const REST_ROUTES: &[RemovedRestRoute] = &[
-    route("POST", "/v1/embed", "embed", "POST /v1/sources"),
-    route("POST", "/v1/ingest", "ingest", "POST /v1/sources"),
-    route("POST", "/v1/scrape", "scrape", "POST /v1/sources"),
-    route("POST", "/v1/crawl", "crawl", "POST /v1/sources"),
     route(
         "POST",
         "/v1/purge",

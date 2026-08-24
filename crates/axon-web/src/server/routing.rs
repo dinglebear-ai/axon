@@ -122,6 +122,7 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
         )
         .route("/v1/memories", get(handlers::memory::list_memories))
         .route("/v1/query", post(handlers::rag::query))
+        .route("/v1/code-search", post(handlers::projections::code_search))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))
         .route("/v1/artifacts", get(handlers::artifacts::list_artifacts))
@@ -206,6 +207,10 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
         .route("/v1/diff", post(handlers::exploration::diff))
         .route("/v1/screenshot", post(handlers::exploration::screenshot))
         .route("/v1/sources", post(handlers::sources::index_source))
+        .route("/v1/scrape", post(handlers::projections::scrape))
+        .route("/v1/crawl", post(handlers::projections::crawl))
+        .route("/v1/embed", post(handlers::projections::embed))
+        .route("/v1/ingest", post(handlers::projections::ingest))
         .route("/v1/uploads", post(handlers::uploads::create_upload))
         .route(
             "/v1/uploads/{upload_id}",

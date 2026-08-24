@@ -151,6 +151,8 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
         .cloned()
         .unwrap_or_default();
     cfg.positional = inputs.dispatched.positional.clone();
+    cfg.projection_items = inputs.dispatched.projection_items.clone();
+    cfg.projection_request_file = inputs.dispatched.projection_request_file.clone();
     cfg.urls_csv = g.urls.clone();
     cfg.url_glob = g.url_glob.clone();
     cfg.query = g.query.clone();

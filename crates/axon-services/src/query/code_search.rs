@@ -418,13 +418,17 @@ pub(crate) async fn resolve_code_search_root(
         (CodeSearchCaller::Mcp, None) => {
             return Err("code_search MCP requests must provide cwd".into());
         }
+        (CodeSearchCaller::Rest, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Rest, None) => {
+            return Err("code_search REST requests must provide an explicit root".into());
+        }
     };
     let canonical_cwd = tokio::fs::canonicalize(&cwd)
         .await
         .map_err(|_| "code_search cwd could not be resolved")?;
     let git_root = git_toplevel(&canonical_cwd).await?;
     reject_unsafe_code_root(&git_root)?;
-    if matches!(caller, CodeSearchCaller::Mcp) {
+    if matches!(caller, CodeSearchCaller::Mcp | CodeSearchCaller::Rest) {
         let allowed = CodeSearchAllowedRoots::from_env().await?;
         if !allowed.contains(&git_root) {
             return Err(code_search_outside_allowed_roots_message().into());

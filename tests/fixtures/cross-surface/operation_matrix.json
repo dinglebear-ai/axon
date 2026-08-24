@@ -2,6 +2,11 @@
   "description": "Expected CLI/REST/MCP presence per contracted operation (issue #298, docs/pipeline-unification/surfaces/tool-contract.md Crosswalk table). Drift here means a surface added or removed an operation without updating the other two, OR the fixture needs an intentional update after a real cutover step.",
   "operations": [
     { "op": "source", "cli": true, "rest": true, "mcp": true, "cli_command": "source", "rest_paths": ["/v1/sources"], "mcp_action": "source", "divergence": false, "note": "" },
+    { "op": "scrape", "cli": true, "rest": true, "mcp": true, "cli_command": "scrape", "rest_paths": ["/v1/scrape"], "mcp_action": "scrape", "divergence": false, "note": "" },
+    { "op": "crawl", "cli": true, "rest": true, "mcp": true, "cli_command": "crawl", "rest_paths": ["/v1/crawl"], "mcp_action": "crawl", "divergence": false, "note": "" },
+    { "op": "embed", "cli": true, "rest": true, "mcp": true, "cli_command": "embed", "rest_paths": ["/v1/embed"], "mcp_action": "embed", "divergence": false, "note": "" },
+    { "op": "ingest", "cli": true, "rest": true, "mcp": true, "cli_command": "ingest", "rest_paths": ["/v1/ingest"], "mcp_action": "ingest", "divergence": false, "note": "" },
+    { "op": "code-search", "cli": true, "rest": true, "mcp": true, "cli_command": "code-search", "rest_paths": ["/v1/code-search"], "mcp_action": "code_search", "divergence": false, "note": "" },
     { "op": "resolve", "cli": false, "rest": true, "mcp": true, "cli_command": null, "rest_paths": ["/v1/resolve"], "mcp_action": "resolve", "divergence": false, "note": "tool-contract.md crosswalk documents CLI as 'internal/diagnostic' — absence is intentional, not drift." },
     { "op": "map", "cli": true, "rest": true, "mcp": true, "cli_command": "map", "rest_paths": ["/v1/map"], "mcp_action": "map", "divergence": false, "note": "" },
     { "op": "search", "cli": true, "rest": true, "mcp": true, "cli_command": "search", "rest_paths": ["/v1/search"], "mcp_action": "search", "divergence": false, "note": "" },

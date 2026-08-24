@@ -70,6 +70,7 @@ pub struct QueryResult {
 pub enum CodeSearchCaller {
     Cli,
     Mcp,
+    Rest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

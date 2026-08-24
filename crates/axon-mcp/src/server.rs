@@ -14,6 +14,8 @@ mod handlers_graph;
 mod handlers_jobs;
 #[path = "server/handlers_memory.rs"]
 mod handlers_memory;
+#[path = "server/handlers_projections.rs"]
+mod handlers_projections;
 #[path = "server/handlers_query.rs"]
 mod handlers_query;
 #[path = "server/handlers_source.rs"]
@@ -139,7 +141,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, chat, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads, artifacts. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Uploads use distinct upl_* staging IDs and art_* artifact IDs. The `source` action indexes any supported source through the unified pipeline.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, scrape, crawl, embed, ingest, code_search, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, chat, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads, artifacts. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Focused source actions share the canonical source/job pipeline; code_search reads committed vectors only.",
         input_schema = tool_schema::axon_tool_input_schema()
     )]
     async fn axon<'a>(
@@ -189,6 +191,11 @@ impl AxonMcpServer {
                 invalid_params(format!("invalid request: {e}"))
             })?;
             match request {
+                AxonRequest::Scrape(req) => self.handle_scrape_projection(req).await?,
+                AxonRequest::Crawl(req) => self.handle_crawl_projection(req).await?,
+                AxonRequest::Embed(req) => self.handle_embed_projection(req).await?,
+                AxonRequest::Ingest(req) => self.handle_ingest_projection(req).await?,
+                AxonRequest::CodeSearch(req) => self.handle_code_search_projection(req).await?,
                 AxonRequest::Status(req) => self.handle_status(req).await?,
                 AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
                 AxonRequest::Source(req) => self.handle_source(req).await?,

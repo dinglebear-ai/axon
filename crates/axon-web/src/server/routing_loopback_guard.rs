@@ -35,6 +35,10 @@ pub(super) async fn block_loopback_destructive_request(
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
         && (path == "/v1/sources"
+            || path == "/v1/scrape"
+            || path == "/v1/crawl"
+            || path == "/v1/embed"
+            || path == "/v1/ingest"
             || path == "/v1/watches"
             || path == "/v1/jobs/recover"
             || path == "/v1/jobs/cleanup"

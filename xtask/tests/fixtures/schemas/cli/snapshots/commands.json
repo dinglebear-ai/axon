@@ -1416,12 +1416,12 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:0e551ddbd987f079d50a73b15521bfd7f5166d13f7f2a5c39e762eb026942168",
+        "checksum": "sha256:707482ba0d3348ece1913c8e26970460e7b1c817424dd050920ac174102c5014",
         "kind": "rust_module",
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:47bb65cde7e714f5d7aa9363dfb1c4a57949b056c8e032e9aaca3a0538c25fe6",
+        "checksum": "sha256:7d04f719c8580de5670b78d22611ea40245ae56a02b8a54cc9394c7f1cc7edca",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },

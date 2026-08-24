@@ -34,6 +34,8 @@ fn env_usize_or(var: &str, default: usize) -> usize {
 pub(super) struct DispatchOutput {
     pub command: CommandKind,
     pub positional: Vec<String>,
+    pub projection_items: Vec<String>,
+    pub projection_request_file: Option<std::path::PathBuf>,
     pub ask_diagnostics: bool,
     pub ask_explain: bool,
     pub ask_stream: bool,
@@ -104,6 +106,8 @@ impl DispatchOutput {
         Self {
             command: CommandKind::Doctor, // overwritten by every match arm
             positional: Vec::new(),
+            projection_items: Vec::new(),
+            projection_request_file: None,
             ask_diagnostics: false,
             ask_explain: false,
             ask_stream: false,
@@ -216,6 +220,10 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Search(args) => set_simple(&mut out, CommandKind::Search, args.value),
         CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
         CliCommand::Scrape(args) => apply_scrape(&mut out, args),
+        CliCommand::Crawl(args) => set_projection(&mut out, CommandKind::Crawl, args),
+        CliCommand::Embed(args) => set_projection(&mut out, CommandKind::Embed, args),
+        CliCommand::Ingest(args) => set_projection(&mut out, CommandKind::Ingest, args),
+        CliCommand::CodeSearch(args) => set_projection(&mut out, CommandKind::CodeSearch, args),
         CliCommand::Brand(args) => {
             out.command = CommandKind::Brand;
             out.positional = args.positional_urls;
@@ -585,6 +593,17 @@ fn apply_scrape(out: &mut DispatchOutput, args: ScrapeSourceArgs) {
     out.source_scope = Some("page".to_string());
     out.scrape_inline = args.inline;
     out.scrape_no_embed = args.no_embed;
+}
+
+fn set_projection(
+    out: &mut DispatchOutput,
+    command: CommandKind,
+    args: super::super::super::cli::FocusedProjectionArgs,
+) {
+    out.command = command;
+    out.positional = args.inputs;
+    out.projection_items = args.items;
+    out.projection_request_file = args.request_file;
 }
 
 fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {

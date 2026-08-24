@@ -16,6 +16,8 @@ impl Default for Config {
             command: CommandKind::Status,
             start_url: String::new(),
             positional: Vec::new(),
+            projection_items: Vec::new(),
+            projection_request_file: None,
             urls_csv: None,
             url_glob: Vec::new(),
             query: None,

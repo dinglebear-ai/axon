@@ -117,9 +117,9 @@ axon /home/user/project --wait true
 axon query "provider cooling" --content-kind code
 ```
 
-`scrape` is intentionally retained as a one-page `SourceRequest` projection.
-The former source-family commands have no parser variants, hidden aliases,
-separate job lifecycle, or compatibility dispatchers. Use `axon jobs ...` for
+`scrape`, `crawl`, `embed`, and `ingest` are focused `SourceRequest` projections;
+`code-search` is a committed-state query projection. They share the canonical
+services and job lifecycle and do not restore separate pipelines. Use `axon jobs ...` for
 the canonical durable lifecycle. The generated extract lifecycle convenience
 commands (`status`, `cancel`, `errors`, `list`, `cleanup`, `clear`, `worker`,
 `recover`) project over that same unified store, not a separate extract job
