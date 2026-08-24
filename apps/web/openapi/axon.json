@@ -9304,7 +9304,7 @@
           },
           "limit": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 1
           },
           "offset": {
             "type": "integer",
