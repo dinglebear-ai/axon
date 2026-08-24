@@ -2,6 +2,7 @@
 
 use axon_core::config::{Config, RenderMode};
 use axon_core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings};
+use axon_core::logging::log_warn;
 use spider::features::chrome_common::{
     RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector,
 };
@@ -84,11 +85,29 @@ pub(crate) async fn configure_spider_browser(
     timeout_policy: BrowserTimeoutPolicy,
 ) -> Result<Website, Box<dyn Error>> {
     if let Some(remote_url) = &cfg.chrome_remote_url {
-        let chrome_url = match super::engine::resolve_cdp_ws_url(remote_url).await {
-            Some(ws_url) => ws_url,
-            None => cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.clone()),
-        };
-        website.with_chrome_connection(Some(chrome_url));
+        match super::engine::resolve_cdp_ws_url(remote_url).await {
+            Some(ws_url) => {
+                website.with_chrome_connection(Some(ws_url));
+            }
+            None if super::engine::cdp_probe_skipped_in_docker() => {
+                // Inside Docker the hostname resolves on the bridge network;
+                // hand spider the discovery URL unresolved.
+                website.with_chrome_connection(Some(
+                    cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.clone()),
+                ));
+            }
+            None => {
+                // Probe ran on a host and failed: leaving the dead endpoint
+                // configured would make spider redial it (~11 attempts) and
+                // then degrade to a browserless HTTP crawl. Skipping the
+                // connection lets spider launch a local Chrome instead
+                // (bead axon_rust-nkh6y).
+                log_warn(&format!(
+                    "remote chrome at {remote_url} is unreachable; \
+                     using local Chrome launcher for this render"
+                ));
+            }
+        }
     }
     apply_spider_browser_defaults_with_timeout(cfg, &mut website, mode, timeout_policy);
     if matches!(mode, RenderMode::Chrome) {

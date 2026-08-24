@@ -45,3 +45,58 @@ fn map_browser_work_can_request_an_exact_short_deadline() {
         Some(Duration::from_secs(8))
     );
 }
+
+#[tokio::test]
+async fn preresolved_ws_url_is_wired_as_the_chrome_connection() {
+    let ws = "ws://127.0.0.1:1/devtools/browser/test";
+    let cfg = Config {
+        render_mode: RenderMode::AutoSwitch,
+        chrome_remote_url: Some(ws.to_string()),
+        ..Config::default()
+    };
+    let website = Website::new("https://example.com/");
+
+    // AutoSwitch skips the Chrome-mode `.build()` so no browser is launched.
+    let website = configure_spider_browser(
+        &cfg,
+        website,
+        RenderMode::AutoSwitch,
+        BrowserTimeoutPolicy::FloorForBrowserWork,
+    )
+    .await
+    .expect("configure must succeed");
+
+    assert_eq!(
+        website.configuration.chrome_connection_url.as_deref(),
+        Some(ws)
+    );
+}
+
+#[tokio::test]
+async fn unreachable_remote_leaves_the_chrome_connection_unset() {
+    // Inside Docker the probe is skipped and the discovery URL is handed to
+    // spider as-is — this test covers the host path only.
+    if super::super::engine::cdp_probe_skipped_in_docker() {
+        return;
+    }
+
+    let cfg = Config {
+        render_mode: RenderMode::AutoSwitch,
+        chrome_remote_url: Some("http://127.0.0.1:9".to_string()),
+        ..Config::default()
+    };
+    let website = Website::new("https://example.com/");
+
+    let website = configure_spider_browser(
+        &cfg,
+        website,
+        RenderMode::AutoSwitch,
+        BrowserTimeoutPolicy::FloorForBrowserWork,
+    )
+    .await
+    .expect("configure must succeed");
+
+    // The dead endpoint must NOT be wired in: spider would redial it and then
+    // degrade to a browserless HTTP crawl instead of launching local Chrome.
+    assert!(website.configuration.chrome_connection_url.is_none());
+}
