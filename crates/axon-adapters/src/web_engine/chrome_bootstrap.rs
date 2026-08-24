@@ -42,6 +42,14 @@ pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
         return outcome;
     };
 
+    // A pre-resolved ws:// URL needs no liveness probe — honor it everywhere,
+    // including inside Docker (matches resolve_cdp_ws_url's own shortcut).
+    if remote_url.starts_with("ws://") || remote_url.starts_with("wss://") {
+        outcome.remote_ready = true;
+        outcome.resolved_ws_url = Some(remote_url.to_string());
+        return outcome;
+    }
+
     // Inside Docker the probe cannot run (the remote hostname resolves on the
     // bridge network, not from here); spider gets the discovery URL as-is.
     if cdp_probe_skipped_in_docker() {
