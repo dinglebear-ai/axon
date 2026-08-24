@@ -13,7 +13,7 @@ use axon_services::projections::{
 pub async fn run_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match cfg.command {
         CommandKind::CodeSearch => run_code_search(cfg, ctx).await,
-        CommandKind::Crawl | CommandKind::Embed | CommandKind::Ingest => {
+        CommandKind::Scrape | CommandKind::Crawl | CommandKind::Embed | CommandKind::Ingest => {
             run_source_projection(cfg, ctx).await
         }
         _ => Err("run_projection called for a non-projection command".into()),
@@ -22,6 +22,10 @@ pub async fn run_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(), Bo
 
 async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let (operation, requests) = match cfg.command {
+        CommandKind::Scrape => (
+            ProjectionOperation::Scrape,
+            scrape_requests_from_config(cfg)?,
+        ),
         CommandKind::Crawl => (
             ProjectionOperation::Crawl,
             project_crawl(&load_source_request::<CrawlRequest>(cfg)?)?,
@@ -45,6 +49,36 @@ async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(),
     )?;
     let result = enqueue_source_projection_batch(ctx, operation, prepared, None).await?;
     print_batch(cfg, &result)
+}
+
+fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<dyn Error>> {
+    let mut options = ScrapeOptions::default();
+    options.collection = Some(cfg.collection.clone());
+    options.execution.mode = ExecutionMode::Foreground;
+    options.execution.detached = false;
+    if cfg.scrape_inline {
+        options.output.response_mode = ResponseMode::Inline;
+    }
+    if cfg.output_path.is_some() {
+        options.output.artifact_mode = ArtifactMode::Always;
+    }
+    let request = ScrapeRequest {
+        inputs: cfg
+            .positional
+            .iter()
+            .cloned()
+            .map(|input| SourceProjectionInput {
+                input,
+                idempotency_key: None,
+            })
+            .collect(),
+        options,
+    };
+    let mut requests = project_scrape(&request)?;
+    for request in &mut requests {
+        request.embed = cfg.embed;
+    }
+    Ok(requests)
 }
 
 async fn run_code_search(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {

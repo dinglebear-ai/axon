@@ -35,6 +35,16 @@ fn watch_not_found_maps_to_not_found() {
 }
 
 #[test]
+fn projection_idempotency_collision_maps_to_conflict() {
+    let err = ApiError::new(
+        "projection.idempotency_collision",
+        ErrorStage::Storage,
+        "idempotency key was already used for a different request",
+    );
+    assert_eq!(status_for_api_error(&err), StatusCode::CONFLICT);
+}
+
+#[test]
 fn upload_errors_map_to_stable_transport_statuses() {
     for (code, expected) in [
         ("upload.not_found", StatusCode::NOT_FOUND),

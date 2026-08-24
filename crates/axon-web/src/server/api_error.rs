@@ -97,6 +97,7 @@ pub(crate) fn status_for_api_error(error: &ApiError) -> StatusCode {
 
     // Code-family driven mapping (most specific first).
     match category {
+        "projection" if code == "projection.idempotency_collision" => StatusCode::CONFLICT,
         "command" | "action" | "route" => match code {
             "route.not_found" => StatusCode::NOT_FOUND,
             "route.method_not_allowed" => StatusCode::METHOD_NOT_ALLOWED,

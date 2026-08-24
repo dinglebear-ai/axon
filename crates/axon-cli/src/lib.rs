@@ -52,10 +52,11 @@ async fn run_once(
         CommandKind::Monitor => run_monitor(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg, service_context).await?,
-        CommandKind::Scrape => run_source(cfg, service_context).await?,
-        CommandKind::Crawl | CommandKind::Embed | CommandKind::Ingest | CommandKind::CodeSearch => {
-            run_projection(cfg, service_context).await?
-        }
+        CommandKind::Scrape
+        | CommandKind::Crawl
+        | CommandKind::Embed
+        | CommandKind::Ingest
+        | CommandKind::CodeSearch => run_projection(cfg, service_context).await?,
         CommandKind::Brand => run_brand(cfg).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Diff => run_diff(cfg).await?,

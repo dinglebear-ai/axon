@@ -35,3 +35,25 @@ fn projection_output_is_atomic_and_never_clobbers() {
     fs::remove_file(output).unwrap();
     fs::remove_dir(directory).unwrap();
 }
+
+#[test]
+fn scrape_config_uses_shared_projection_and_preserves_legacy_flags() {
+    let mut cfg = Config::default();
+    cfg.command = CommandKind::Scrape;
+    cfg.positional = vec!["https://example.test/page".to_string()];
+    cfg.collection = "docs".to_string();
+    cfg.embed = false;
+    cfg.scrape_inline = true;
+
+    let requests = scrape_requests_from_config(&cfg).unwrap();
+    assert_eq!(requests.len(), 1);
+    let request = &requests[0];
+    assert_eq!(request.scope, Some(SourceScope::Page));
+    assert_eq!(request.limits.max_pages, Some(1));
+    assert_eq!(request.limits.max_items, Some(1));
+    assert_eq!(request.collection.as_deref(), Some("docs"));
+    assert!(!request.embed);
+    assert_eq!(request.output.response_mode, ResponseMode::Inline);
+    assert_eq!(request.execution.mode, ExecutionMode::Foreground);
+    assert!(!request.execution.detached);
+}

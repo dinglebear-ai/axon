@@ -80,7 +80,7 @@ impl AxonMcpServer {
             .map_err(|error| logged_internal_error("projection.context", error.as_ref()))?;
         let result = execute_source_projection_batch(ctx.as_ref(), operation, prepared, auth)
             .await
-            .map_err(|error| logged_internal_error("projection.execute", &error))?;
+            .map_err(projection_execution_error)?;
         projection_response(operation, result)
     }
 
@@ -124,6 +124,14 @@ fn projection_input_error(error: Box<ApiError>) -> ErrorData {
 
 fn projection_preflight_error(error: ApiError) -> ErrorData {
     invalid_params(error.to_string())
+}
+
+fn projection_execution_error(error: ApiError) -> ErrorData {
+    if error.code.0 == "projection.idempotency_collision" {
+        let data = serde_json::to_value(&error).ok();
+        return ErrorData::invalid_params(error.message, data);
+    }
+    logged_internal_error("projection.execute", &error)
 }
 
 fn projection_response<T: serde::Serialize>(
