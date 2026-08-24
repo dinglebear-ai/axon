@@ -281,11 +281,33 @@ async fn prune(
     .bind(MAINTENANCE_DELETE_BUDGET)
     .execute(&mut **transaction)
     .await?;
-    let count: i64 = sqlx::query_scalar(
+    let count: Option<i64> = sqlx::query_scalar(
         "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
     )
-    .fetch_one(&mut **transaction)
+    .fetch_optional(&mut **transaction)
     .await?;
+    let count = match count {
+        Some(count) => count,
+        None => {
+            // Self-heal a missing state singleton (external drift, manual DB
+            // surgery) by recomputing the exact count instead of failing every
+            // cache write forever; the triggers keep it maintained afterwards.
+            sqlx::query(
+                "INSERT OR IGNORE INTO embedding_vector_cache_state (singleton, entry_count)
+                 SELECT 1, COUNT(*) FROM embedding_vector_cache",
+            )
+            .execute(&mut **transaction)
+            .await?;
+            sqlx::query_scalar(
+                "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+            )
+            .fetch_one(&mut **transaction)
+            .await?
+        }
+    };
+    // `max_entries` is a soft bound: each pass deletes at most
+    // MAINTENANCE_DELETE_BUDGET rows, so a burst that overshoots by more than
+    // the budget drains over subsequent put/maintenance passes by design.
     let victims = count
         .saturating_sub(max_entries)
         .clamp(0, MAINTENANCE_DELETE_BUDGET);

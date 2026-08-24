@@ -1,4 +1,5 @@
 use axon_api::source::{AuthSnapshot, JobId, JobPriority, SourceRequest};
+use tokio_util::sync::CancellationToken;
 
 use super::foreground_progress::ForegroundProgressSender;
 
@@ -10,6 +11,13 @@ pub(crate) struct SourceExecutionContext {
     pub(crate) idempotency_key: Option<String>,
     pub(crate) attempt: u32,
     pub(crate) foreground: Option<ForegroundProgressSender>,
+    /// Cooperative cancellation for worker-executed runs. When set, the
+    /// executor resolves to an error at its cancellation checkpoint instead
+    /// of relying on the caller dropping the pipeline future, so
+    /// failed-generation cleanup (vector cleanup + `fail_generation`) still
+    /// runs for an uncommitted generation (2026-08-23 adversarial pipeline
+    /// review, M3).
+    pub(crate) cancellation: Option<CancellationToken>,
 }
 
 impl SourceExecutionContext {
@@ -21,6 +29,7 @@ impl SourceExecutionContext {
             idempotency_key: request.idempotency_key,
             attempt: 1,
             foreground: None,
+            cancellation: None,
         }
     }
 
@@ -47,6 +56,13 @@ impl SourceExecutionContext {
             idempotency_key: request.idempotency_key,
             attempt,
             foreground: None,
+            cancellation: None,
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_cancellation(mut self, cancellation: CancellationToken) -> Self {
+        self.cancellation = Some(cancellation);
+        self
     }
 }

@@ -675,6 +675,332 @@ impl ArtifactCandidateSink for CommitAwareCandidateSink {
     }
 }
 
+/// Stamp the adapter-owned vector payload fields the point builder requires,
+/// the way real adapters (e.g. `local`) do in `normalize` —
+/// `FakeSourceAdapter` leaves document metadata empty, which fails vector
+/// payload validation when `embed = true`.
+fn stamp_required_payload_metadata(
+    plan: &SourcePlan,
+    result: &mut axon_api::source::StageExecutionResult<Vec<SourceDocument>>,
+) {
+    for document in &mut result.data {
+        let metadata = &mut document.metadata;
+        metadata.insert("source_family".to_string(), serde_json::json!("code"));
+        metadata.insert(
+            "source_kind".to_string(),
+            serde_json::json!(plan.route.source.source_kind),
+        );
+        metadata.insert(
+            "source_adapter".to_string(),
+            serde_json::json!(plan.route.adapter.name),
+        );
+        metadata.insert(
+            "source_scope".to_string(),
+            serde_json::json!(plan.route.scope),
+        );
+        metadata.insert(
+            "item_canonical_uri".to_string(),
+            serde_json::json!(document.canonical_uri.clone()),
+        );
+        metadata.insert(
+            "committed_generation".to_string(),
+            serde_json::json!("uncommitted"),
+        );
+        metadata.insert("visibility".to_string(), serde_json::json!("internal"));
+        metadata.insert("redaction_status".to_string(), serde_json::json!("clean"));
+    }
+}
+
+/// [`FakeSourceAdapter`] plus the payload metadata stamp above, so
+/// `embed = true` pipelines run end-to-end against the fakes.
+struct StampingSourceAdapter {
+    inner: FakeSourceAdapter,
+}
+
+#[async_trait::async_trait]
+impl SourceAdapter for StampingSourceAdapter {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn version(&self) -> &'static str {
+        self.inner.version()
+    }
+
+    async fn capabilities(
+        &self,
+    ) -> std::result::Result<axon_api::source::SourceAdapterCapability, ApiError> {
+        self.inner.capabilities().await
+    }
+
+    async fn discover(
+        &self,
+        plan: &SourcePlan,
+    ) -> std::result::Result<axon_api::source::SourceManifest, ApiError> {
+        self.inner.discover(plan).await
+    }
+
+    async fn acquire(
+        &self,
+        plan: &SourcePlan,
+        diff: &axon_api::source::SourceManifestDiff,
+    ) -> std::result::Result<axon_api::source::SourceAcquisition, ApiError> {
+        self.inner.acquire(plan, diff).await
+    }
+
+    async fn normalize(
+        &self,
+        plan: &SourcePlan,
+        acquisition: axon_api::source::SourceAcquisition,
+    ) -> std::result::Result<axon_api::source::StageExecutionResult<Vec<SourceDocument>>, ApiError>
+    {
+        let mut result = self.inner.normalize(plan, acquisition).await?;
+        stamp_required_payload_metadata(plan, &mut result);
+        Ok(result)
+    }
+}
+
+#[tokio::test]
+async fn removal_only_recrawl_publishes_generation_and_retires_removed_docs() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors.clone(), ledger.clone());
+
+    let full = StampingSourceAdapter {
+        inner: FakeSourceAdapter::new(route.adapter.clone())
+            .with_item(
+                "kept.md",
+                axon_api::source::ContentKind::Markdown,
+                "# Kept\nbody\n",
+            )
+            .with_item(
+                "removed.md",
+                axon_api::source::ContentKind::Markdown,
+                "# Removed\nbody\n",
+            ),
+    };
+    let first = dispatch_materialized(
+        &runtime,
+        &full,
+        family_source_plan(&source, &route, true, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("initial two-item generation succeeds");
+    assert_eq!(first.documents_prepared, 2);
+    assert!(first.vector_points_written > 0);
+
+    let shrunk = StampingSourceAdapter {
+        inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "kept.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Kept\nbody\n",
+        ),
+    };
+    let second = dispatch_materialized(
+        &runtime,
+        &shrunk,
+        family_source_plan(&source, &route, true, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect(
+        "a removal-only recrawl has zero changed acquisition batches and must \
+         publish the shrunk generation instead of failing (H1)",
+    );
+
+    assert_eq!(second.removed, 1);
+    assert_ne!(second.generation, first.generation);
+    assert_eq!(
+        ledger.committed_generation(&second.source_id).await,
+        Some(second.generation.clone()),
+        "the removal-only generation must commit"
+    );
+    let points = vectors.points("axon-test").await;
+    let item_key = |point: &axon_api::source::VectorPoint| {
+        point
+            .payload
+            .get("source_item_key")
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+    };
+    // Live points carry `retired_epoch: null`; retirement stamps a number.
+    let retired = |point: &axon_api::source::VectorPoint| {
+        point
+            .payload
+            .get("retired_epoch")
+            .is_some_and(|value| !value.is_null())
+    };
+    let removed_points = points
+        .iter()
+        .filter(|point| item_key(point).as_deref() == Some("removed.md"))
+        .collect::<Vec<_>>();
+    assert!(
+        !removed_points.is_empty() && removed_points.iter().all(|point| retired(point)),
+        "every vector point of the removed document must be retired"
+    );
+    assert!(
+        points
+            .iter()
+            .any(|point| { item_key(point).as_deref() == Some("kept.md") && !retired(point) }),
+        "the kept document must stay live in the published generation"
+    );
+}
+
+/// Adapter whose N-th `normalize` call parks forever after signalling the
+/// test, so cancellation can be delivered mid-generation with the first
+/// batch's vectors already upserted.
+struct BlockingNormalizeAdapter {
+    inner: FakeSourceAdapter,
+    normalize_calls: std::sync::atomic::AtomicUsize,
+    block_on_call: usize,
+    entered: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+}
+
+#[async_trait::async_trait]
+impl SourceAdapter for BlockingNormalizeAdapter {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn version(&self) -> &'static str {
+        self.inner.version()
+    }
+
+    async fn capabilities(
+        &self,
+    ) -> std::result::Result<axon_api::source::SourceAdapterCapability, ApiError> {
+        self.inner.capabilities().await
+    }
+
+    async fn discover(
+        &self,
+        plan: &SourcePlan,
+    ) -> std::result::Result<axon_api::source::SourceManifest, ApiError> {
+        self.inner.discover(plan).await
+    }
+
+    async fn acquire(
+        &self,
+        plan: &SourcePlan,
+        diff: &axon_api::source::SourceManifestDiff,
+    ) -> std::result::Result<axon_api::source::SourceAcquisition, ApiError> {
+        self.inner.acquire(plan, diff).await
+    }
+
+    async fn normalize(
+        &self,
+        plan: &SourcePlan,
+        acquisition: axon_api::source::SourceAcquisition,
+    ) -> std::result::Result<axon_api::source::StageExecutionResult<Vec<SourceDocument>>, ApiError>
+    {
+        let call = self
+            .normalize_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if call == self.block_on_call {
+            if let Some(entered) = self.entered.lock().expect("entered mutex poisoned").take() {
+                let _ = entered.send(());
+            }
+            std::future::pending::<()>().await;
+        }
+        let mut result = self.inner.normalize(plan, acquisition).await?;
+        stamp_required_payload_metadata(plan, &mut result);
+        Ok(result)
+    }
+}
+
+#[tokio::test]
+async fn cancellation_mid_generation_cleans_vectors_and_fails_generation() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors.clone(), ledger.clone());
+
+    // Two acquisition batches (65 items > the 64-item streaming batch bound):
+    // the first batch upserts its vectors, the second parks in `normalize`
+    // while the test delivers cancellation.
+    let mut inner = FakeSourceAdapter::new(route.adapter.clone());
+    for index in 0..65 {
+        inner = inner.with_item(
+            format!("doc-{index:03}.md"),
+            axon_api::source::ContentKind::Markdown,
+            format!("# Doc {index}\nbody\n"),
+        );
+    }
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let adapter = BlockingNormalizeAdapter {
+        inner,
+        normalize_calls: std::sync::atomic::AtomicUsize::new(0),
+        block_on_call: 2,
+        entered: Mutex::new(Some(entered_tx)),
+    };
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let execution = test_execution(&source).with_cancellation(cancel.clone());
+
+    let run = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, true, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &execution,
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    );
+    let (result, ()) = tokio::join!(run, async {
+        entered_rx
+            .await
+            .expect("second batch normalization must start");
+        cancel.cancel();
+    });
+
+    let error = result.expect_err("a canceled run must surface an error");
+    assert!(
+        format!("{error:#}").contains("canceled"),
+        "expected a cancellation error, got: {error:#}"
+    );
+    assert!(
+        ledger
+            .committed_generation(&route.source.source_id)
+            .await
+            .is_none(),
+        "a canceled generation must not commit"
+    );
+    let generation = ledger
+        .generation(&route.source.source_id, &SourceGenerationId::new("gen_1"))
+        .await
+        .expect("uncommitted generation row");
+    assert_eq!(
+        generation.status,
+        LifecycleStatus::Failed,
+        "cancel must mark the uncommitted generation row failed (M3)"
+    );
+    assert!(
+        vectors.points("axon-test").await.is_empty(),
+        "cancel must clean the uncommitted generation's already-upserted vectors (M3)"
+    );
+    let summary = ledger
+        .get_source(route.source.source_id.clone())
+        .await
+        .expect("source summary lookup")
+        .expect("source summary");
+    assert_eq!(summary.status, LifecycleStatus::Failed);
+}
+
 #[tokio::test]
 async fn artifact_candidates_are_delivered_after_commit_and_not_replayed_when_unchanged() {
     let root = tempfile::tempdir().unwrap();

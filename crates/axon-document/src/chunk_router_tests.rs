@@ -205,6 +205,68 @@ fn router_recognizes_common_manifest_and_config_files() {
     }
 }
 
+#[test]
+fn openapi_named_prose_routes_by_content_kind_not_path_substring() {
+    let guide = source_doc(
+        ContentKind::Markdown,
+        "# OpenAPI Guide\nHow to write specs.",
+    )
+    .with_path("docs/openapi-guide.md");
+    assert_eq!(
+        ChunkRouter.route(&guide).unwrap(),
+        ChunkingProfile::MarkdownSections,
+        "Markdown prose about OpenAPI must not route to the schema parser"
+    );
+
+    let swagger_page = source_doc(ContentKind::Html, "<html>swagger ui</html>")
+        .with_path("vendor/swagger-ui.html");
+    assert_eq!(
+        ChunkRouter.route(&swagger_page).unwrap(),
+        ChunkingProfile::HtmlArticle
+    );
+
+    let spec = source_doc(ContentKind::Yaml, "openapi: 3.1.0").with_path("openapi.yaml");
+    assert_eq!(
+        ChunkRouter.route(&spec).unwrap(),
+        ChunkingProfile::ApiSchema
+    );
+
+    let json_spec =
+        source_doc(ContentKind::Json, "{\"swagger\":\"2.0\"}").with_path("api/swagger.json");
+    assert_eq!(
+        ChunkRouter.route(&json_spec).unwrap(),
+        ChunkingProfile::ApiSchema
+    );
+}
+
+/// OpenAPI documents are routinely served with no file extension at all
+/// (Springdoc's `/v3/api-docs`, FastAPI's `/openapi.json`, plain `/openapi`)
+/// or behind a query string. Excluding prose extensions must not turn into an
+/// extension allowlist that drops those.
+#[test]
+fn extensionless_and_query_string_schema_urls_still_route_to_api_schema() {
+    for uri in [
+        "https://api.example.com/v3/openapi",
+        "https://api.example.com/openapi?version=2",
+        "https://api.example.com/swagger#/paths",
+    ] {
+        let spec = source_doc(ContentKind::Json, "{\"openapi\":\"3.1.0\"}").with_path(uri);
+        assert_eq!(
+            ChunkRouter.route(&spec).unwrap(),
+            ChunkingProfile::ApiSchema,
+            "{uri} is a served schema document, not prose"
+        );
+    }
+
+    let guide = source_doc(ContentKind::Markdown, "# OpenAPI\nprose")
+        .with_path("https://example.com/docs/openapi-guide.md?utm=1");
+    assert_eq!(
+        ChunkRouter.route(&guide).unwrap(),
+        ChunkingProfile::MarkdownSections,
+        "a query string must not defeat the prose-extension exclusion"
+    );
+}
+
 trait SourceDocTestExt {
     fn with_path(self, path: &str) -> Self;
 }

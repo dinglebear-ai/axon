@@ -89,7 +89,12 @@ pub(super) async fn process_generation_batches(
             is_final: index + 1 == batch_count,
         });
     let Some(first) = batches.next() else {
-        anyhow::bail!("created generation has no changed acquisition batches");
+        // Removal-only and failed-only diffs pass `manifest_has_changes` but
+        // yield no added/modified acquisition batches. Skip acquisition and
+        // fall through so finalization still publishes the removals and
+        // retires the previous generation instead of failing the run
+        // (2026-08-23 adversarial pipeline review, H1).
+        return Ok(());
     };
     let mut acquired = acquire_changed_batch(
         input,
@@ -127,6 +132,7 @@ pub(super) async fn process_generation_batches(
                     archive_requested,
                     coordinator,
                     stage,
+                    artifact_cleanup,
                 ),
                 next_acquisition,
             )
@@ -150,6 +156,7 @@ pub(super) async fn process_generation_batches(
             archive_requested,
             coordinator,
             stage,
+            artifact_cleanup,
         )
         .await?;
         accumulated.absorb(artifact_cleanup, processed);
@@ -208,6 +215,7 @@ async fn process_acquired_batch(
     archive_requested: bool,
     coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
+    artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<ProcessedBatch> {
     let AcquiredChangedBatch {
         batch, acquisition, ..
@@ -219,6 +227,11 @@ async fn process_acquired_batch(
     source_progress::acquired(emitter, &acquisition).await;
 
     let resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
+    // Track in-batch artifacts with the cleanup guard as they are produced,
+    // not only after batch success in `GenerationAccumulator::absorb` — a
+    // later in-batch failure would otherwise orphan them (2026-08-23
+    // adversarial pipeline review, low: in-batch artifact tracking).
+    artifact_cleanup.track(&resolved.acquisition.artifacts);
     let refreshed_manifest_items = resolved.acquisition.manifest.items.clone();
     let acquisition_artifacts = resolved.acquisition.artifacts.clone();
     let archive_items = if archive_requested {
@@ -237,6 +250,9 @@ async fn process_acquired_batch(
         is_final_batch,
     )
     .await?;
+    for enrichment in enrichments.values() {
+        artifact_cleanup.track(&enrichment.artifacts);
+    }
 
     let total = is_final_batch.then_some(stage.acquired_documents);
     coordinator
@@ -283,6 +299,7 @@ async fn process_acquired_batch(
 
     let (candidate_collection, clean_output) =
         finalize_normalized_batch(runtime, input, generation, &mut documents, &enrichments).await?;
+    artifact_cleanup.track(&clean_output.artifacts);
     warnings.extend(candidate_collection.warnings);
     let enrichment_graph = take_enrichment_graph_candidates(&mut enrichments);
     let vectorized = vectorize::prepare_embed_publish(

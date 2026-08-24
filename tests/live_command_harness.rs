@@ -586,7 +586,9 @@ exit 7
         .expect("probe owned Chrome pid");
     assert!(
         !status.success(),
-        "owned Chrome process survived harness cleanup"
+        "owned Chrome process survived harness cleanup\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
     let child_pid = fs::read_to_string(chrome_child_pid).expect("owned Chrome child pid");
     let child_status = Command::new("kill")

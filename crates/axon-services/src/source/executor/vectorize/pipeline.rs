@@ -48,14 +48,22 @@ fn resolve_upsert_completion<Write, Embeddings>(
 async fn resolve_and_checkpoint_overlap(
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
+    output: &mut VectorizeResult,
     write: anyhow::Result<VectorStoreWriteResult>,
     embeddings: anyhow::Result<EmbeddingResult>,
-) -> anyhow::Result<(VectorStoreWriteResult, EmbeddingResult)> {
+    absorb: impl FnOnce(VectorStoreWriteResult) -> VectorizeResult,
+) -> anyhow::Result<EmbeddingResult> {
     let write = resolve_upsert_completion(write, &embeddings)?;
     finish_upsert(coordinator, progress, &write).await;
+    // The current batch's write is durably checkpointed; absorb its
+    // accounting before the speculative embedding result can fail the step,
+    // mirroring `batches.rs`'s absorb-before-error policy (2026-08-23
+    // adversarial pipeline review, low: dropped overlapped upsert
+    // accounting).
+    merge_vectorize_result(output, absorb(write));
     let embeddings = embeddings?;
     finish_embedding(coordinator, progress, &embeddings).await;
-    Ok((write, embeddings))
+    Ok(embeddings)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -126,8 +134,9 @@ pub(super) async fn publish_and_build_next(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
+    output: &mut VectorizeResult,
     is_final_vector_batch: bool,
-) -> anyhow::Result<(VectorizeResult, BuiltVectorBatch)> {
+) -> anyhow::Result<BuiltVectorBatch> {
     let BuiltVectorBatch {
         documents: current_documents,
         embedding_warnings: current_warnings,
@@ -139,27 +148,37 @@ pub(super) async fn publish_and_build_next(
     let upsert_counts = begin_upsert(emitter, coordinator, progress).await;
     // The next batch embeds speculatively while the current batch remains the
     // externally active Upserting phase. Publish Embedding only after the
-    // current write has been accounted, preserving monotonic phase order.
-    let embedding_counts = progress.embedding_counts();
+    // current write has been accounted, preserving monotonic phase order —
+    // including in the durable provider heartbeats, which report the still-
+    // published Upserting phase for the speculative call (finding M2).
+    let heartbeat_counts = upsert_counts.clone();
 
     let upsert = call_upsert(runtime, input, current_points, upsert_counts);
-    let embedding = call_embedding(runtime, input, &next_documents, embedding_counts);
+    let embedding = call_embedding(
+        runtime,
+        input,
+        &next_documents,
+        PipelinePhase::Upserting,
+        heartbeat_counts,
+    );
     let (write, embeddings) = join_upsert_and_embedding(upsert, embedding).await;
 
     // Preserve batch ordering even though provider work overlaps: account for
     // the current publication before exposing the next embedding result.
-    let (write, mut embeddings) =
-        resolve_and_checkpoint_overlap(coordinator, progress, write, embeddings).await?;
+    let mut embeddings =
+        resolve_and_checkpoint_overlap(coordinator, progress, output, write, embeddings, |write| {
+            vectorize_result(
+                current_documents,
+                current_warnings,
+                &current_points_by_document,
+                write,
+                current_skipped_redaction,
+                &current_redaction_skips,
+            )
+        })
+        .await?;
 
-    let result = vectorize_result(
-        current_documents,
-        current_warnings,
-        &current_points_by_document,
-        write,
-        current_skipped_redaction,
-        &current_redaction_skips,
-    );
-    let next = build_vector_batch(
+    build_vector_batch(
         next_documents,
         collection,
         &mut embeddings,
@@ -168,8 +187,7 @@ pub(super) async fn publish_and_build_next(
         progress,
         is_final_vector_batch,
     )
-    .await?;
-    Ok((result, next))
+    .await
 }
 
 #[cfg(test)]
@@ -214,7 +232,8 @@ async fn embed_prepared_batch(
     progress: &mut PipelineProgress,
 ) -> anyhow::Result<EmbeddingResult> {
     let counts = begin_embedding(emitter, coordinator, progress).await;
-    let result = call_embedding(runtime, input, documents, counts).await?;
+    let result =
+        call_embedding(runtime, input, documents, PipelinePhase::Embedding, counts).await?;
     finish_embedding(coordinator, progress, &result).await;
     Ok(result)
 }
@@ -254,23 +273,26 @@ async fn call_embedding(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     documents: &[PreparedDocument],
+    heartbeat_phase: PipelinePhase,
     counts: StageCounts,
 ) -> anyhow::Result<EmbeddingResult> {
     let batch = embedding_batch(runtime, input, documents)?;
     let operation = format!("embed:{}", batch.batch_id.0);
-    Ok(reserved_call::embed(
-        runtime,
-        ProviderCallContext::for_phase(
-            input.plan.job_id,
-            input.execution.attempt,
-            PipelinePhase::Embedding,
-            input.execution.priority,
-            operation,
-        )
-        .with_counts(counts),
-        batch,
+    // Reservation identity (stage id / fence) always stays Embedding; only
+    // the durable heartbeat reports `heartbeat_phase`, so a speculative
+    // embedding overlapped with a still-active Upserting write never
+    // publishes a job phase ahead of the ProgressCoordinator's snapshots
+    // (finding M2).
+    let mut context = ProviderCallContext::for_phase(
+        input.plan.job_id,
+        input.execution.attempt,
+        PipelinePhase::Embedding,
+        input.execution.priority,
+        operation,
     )
-    .await?)
+    .with_counts(counts);
+    context.phase = Some(heartbeat_phase);
+    Ok(reserved_call::embed(runtime, context, batch).await?)
 }
 
 #[allow(clippy::too_many_arguments)]

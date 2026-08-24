@@ -383,7 +383,19 @@ fn build_embedding_composition(
 ) -> EmbeddingComposition {
     let write_gate = SqliteWriteGate::default();
     let raw_provider: Arc<dyn EmbeddingProvider> = Arc::new(build_tei_provider(cfg, identity));
-    let cache_store = cfg.embed_cache_enabled.then(|| {
+    // The cache key and per-hit identity re-validation are only as good as the
+    // resolved identity. An unverified (fallback or stale) identity could label
+    // vectors from a different live model with the fallback name, mixing models
+    // in one collection — so fail open to the raw provider instead.
+    if cfg.embed_cache_enabled && !identity.verified {
+        tracing::warn!(
+            model = %identity.model,
+            dimensions = identity.dimensions,
+            "embedding vector cache skipped: embedding identity could not be verified \
+             against the TEI provider; using the raw provider without cache decoration"
+        );
+    }
+    let cache_store = (cfg.embed_cache_enabled && identity.verified).then(|| {
         Arc::new(SqliteEmbeddingVectorCacheStore::new(
             pool.clone(),
             write_gate.clone(),

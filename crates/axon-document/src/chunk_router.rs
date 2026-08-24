@@ -416,8 +416,26 @@ fn is_session_turns(doc: &SourceDocument) -> bool {
 
 fn is_api_schema(doc: &SourceDocument) -> bool {
     let path = doc.path.as_deref().unwrap_or(&doc.canonical_uri);
-    path.contains("openapi")
-        || path.contains("swagger")
+    // The `openapi`/`swagger` path-substring heuristic must not capture prose
+    // that merely talks about them (`docs/openapi-guide.md`,
+    // `vendor/swagger-ui.html`). Exclude prose *extensions* rather than
+    // allowlisting schema extensions: OpenAPI documents are routinely served
+    // without one at all (`/v3/api-docs`, `/openapi`) or behind a query
+    // string, and an allowlist would drop every one of those.
+    let route = path.split(['?', '#']).next().unwrap_or(path);
+    let prose_extension = [
+        ".md",
+        ".mdx",
+        ".markdown",
+        ".rst",
+        ".txt",
+        ".html",
+        ".htm",
+        ".pdf",
+    ]
+    .iter()
+    .any(|extension| route.ends_with(extension));
+    (!prose_extension && (route.contains("openapi") || route.contains("swagger")))
         || path.ends_with(".graphql")
         || path.ends_with(".graphqls")
         || path.ends_with(".proto")

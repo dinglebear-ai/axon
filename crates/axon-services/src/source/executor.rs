@@ -343,7 +343,10 @@ async fn run_generation(
     manifest.generation = generation.generation.clone();
     runtime.ledger.put_manifest_ref(&manifest).await?;
 
-    let result = created_generation::run_created_generation(
+    // Boxed: this is by far the largest future in the pipeline, and holding
+    // it inline alongside the cancellation select overflows the default test
+    // stack in debug builds.
+    let run = Box::pin(created_generation::run_created_generation(
         runtime,
         input,
         emitter,
@@ -353,8 +356,24 @@ async fn run_generation(
         generation.clone(),
         previous,
         &coordinator,
-    )
-    .await;
+    ));
+    // Cooperative cancellation: resolve to an error instead of letting the
+    // caller drop the pipeline future mid-flight, so the failed-generation
+    // cleanup below (vector cleanup + `fail_generation`) still runs for the
+    // uncommitted generation (2026-08-23 adversarial pipeline review, M3).
+    let result = match input.execution.cancellation.as_ref() {
+        Some(cancel) => {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => Err(anyhow::anyhow!(
+                    "source indexing canceled before generation {} was published",
+                    generation.generation.0
+                )),
+                result = run => result,
+            }
+        }
+        None => run.await,
+    };
     if result.is_err() {
         let committed = runtime
             .ledger

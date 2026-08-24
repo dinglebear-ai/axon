@@ -14,15 +14,6 @@ pub(super) fn split_oversized_sections(
     let positions = SourcePositions::new(source);
     let mut split = Vec::with_capacity(chunks.len());
     for chunk in chunks {
-        if chunk
-            .metadata
-            .get("markdown_block_kind")
-            .and_then(serde_json::Value::as_str)
-            == Some("frontmatter")
-        {
-            split.push(chunk);
-            continue;
-        }
         if chunk.content.chars().count() <= limits.max_chars {
             split.push(chunk);
             continue;
@@ -43,30 +34,61 @@ pub(super) fn split_oversized_sections(
             continue;
         };
         let content_start = range_start + relative_content_start;
+        if chunk
+            .metadata
+            .get("markdown_block_kind")
+            .and_then(serde_json::Value::as_str)
+            == Some("frontmatter")
+        {
+            // Hard size backstop: genuine frontmatter within limits stays
+            // atomic (handled above), but an oversized block — usually a
+            // thematic-break false positive — must not bypass `max_chars`.
+            for (window_start, window_end) in char_windows(&chunk.content, limits.max_chars) {
+                if let Some(window) = ranged_clone(
+                    source,
+                    &positions,
+                    &chunk,
+                    content_start,
+                    window_start,
+                    window_end,
+                ) {
+                    split.push(window);
+                }
+            }
+            continue;
+        }
         for span in fenced_spans(&chunk.content) {
             match span.kind {
                 MarkdownSpanKind::Fence { language } => {
-                    let Some(mut window) = ranged_clone(
-                        source,
-                        &positions,
-                        &chunk,
-                        content_start,
-                        span.start,
-                        span.end,
-                    ) else {
-                        continue;
-                    };
-                    window
-                        .metadata
-                        .insert("markdown_block_kind".to_string(), "code".into());
-                    if let Some(language) = language {
+                    // Hard size backstop: a fence larger than `max_chars`
+                    // (including an unterminated fence that runs to the end
+                    // of the section) is split into plain char-bounded
+                    // windows — no overlap inside code — with the code
+                    // metadata preserved on every window.
+                    let fence = &chunk.content[span.start..span.end];
+                    for (window_start, window_end) in char_windows(fence, limits.max_chars) {
+                        let Some(mut window) = ranged_clone(
+                            source,
+                            &positions,
+                            &chunk,
+                            content_start,
+                            span.start + window_start,
+                            span.start + window_end,
+                        ) else {
+                            continue;
+                        };
                         window
                             .metadata
-                            .insert("code_fence_language".to_string(), language.into());
-                    } else {
-                        window.metadata.remove("code_fence_language");
+                            .insert("markdown_block_kind".to_string(), "code".into());
+                        if let Some(language) = &language {
+                            window
+                                .metadata
+                                .insert("code_fence_language".to_string(), language.clone().into());
+                        } else {
+                            window.metadata.remove("code_fence_language");
+                        }
+                        split.push(window);
                     }
-                    split.push(window);
                 }
                 MarkdownSpanKind::Prose => {
                     let prose = &chunk.content[span.start..span.end];
@@ -94,6 +116,40 @@ pub(super) fn split_oversized_sections(
         }
     }
     split
+}
+
+/// Plain char-bounded, UTF-8-safe byte windows over `content`, each at most
+/// `max_chars` characters, with no overlap. Size backstop for spans that are
+/// otherwise emitted whole (fences, frontmatter).
+///
+/// The windows are *balanced*, not greedy: slicing greedily at exactly
+/// `max_chars` leaves a degenerate remainder (a 1201-character fence under a
+/// 1200-character cap becomes a 1200-char chunk plus a 1-char chunk), and
+/// `pack_small_sections` cannot merge that tail back because its predecessor
+/// is already at the cap — so the junk chunk would be embedded and published
+/// as its own vector point. Spreading the same character count over the same
+/// number of windows keeps the hard cap and removes the degenerate tail.
+fn char_windows(content: &str, max_chars: usize) -> Vec<(usize, usize)> {
+    let max_chars = max_chars.max(1);
+    let mut char_offsets = content
+        .char_indices()
+        .map(|(offset, _)| offset)
+        .collect::<Vec<_>>();
+    char_offsets.push(content.len());
+    let char_count = char_offsets.len().saturating_sub(1);
+    if char_count == 0 {
+        return Vec::new();
+    }
+    let window_count = char_count.div_ceil(max_chars);
+    let window_chars = char_count.div_ceil(window_count).min(max_chars).max(1);
+    let mut windows = Vec::new();
+    let mut start_char = 0usize;
+    while start_char < char_count {
+        let end_char = start_char.saturating_add(window_chars).min(char_count);
+        windows.push((char_offsets[start_char], char_offsets[end_char]));
+        start_char = end_char;
+    }
+    windows
 }
 
 fn bounded_content_windows(

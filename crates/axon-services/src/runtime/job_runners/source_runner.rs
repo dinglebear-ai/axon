@@ -43,6 +43,11 @@ use tokio_util::sync::CancellationToken;
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::runtime::job_runners::{heartbeat_running, heartbeat_running_preserving_progress};
 
+/// How long a canceled run may keep executing to reach its cooperative
+/// cancellation checkpoint and finish failed-generation cleanup before the
+/// runner gives up and drops the pipeline future (pre-M3 behavior).
+const CANCEL_CLEANUP_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
 pub(super) struct SourceRunner {
     cfg: Arc<Config>,
     ctx: OnceCell<ServiceContext>,
@@ -125,7 +130,12 @@ impl UnifiedJobRunner for SourceRunner {
             })?;
 
         let ctx = self.service_context().await?;
-        let run_fut = run_source_request_with_context(claimed, source_request, ctx);
+        let run_fut = run_source_request_with_cancellation(
+            claimed,
+            source_request,
+            ctx,
+            Some(shutdown.clone()),
+        );
         tokio::pin!(run_fut);
         let mut heartbeat = tokio::time::interval_at(
             tokio::time::Instant::now() + std::time::Duration::from_secs(30),
@@ -134,7 +144,19 @@ impl UnifiedJobRunner for SourceRunner {
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let result = loop {
             tokio::select! {
-                _ = shutdown.cancelled() => return Err(source_error("source canceled")),
+                _ = shutdown.cancelled() => {
+                    // Cooperative cancel: the pipeline observes `shutdown` and
+                    // resolves promptly with an error, letting the executor
+                    // clean the uncommitted generation's vectors and mark the
+                    // generation row failed before this runner returns
+                    // (finding M3). Bound the wait so a stage that has not
+                    // reached the cancellation checkpoint yet cannot stall
+                    // worker shutdown indefinitely.
+                    break match tokio::time::timeout(CANCEL_CLEANUP_GRACE, &mut run_fut).await {
+                        Ok(result) => result,
+                        Err(_) => return Err(source_error("source canceled")),
+                    };
+                }
                 result = &mut run_fut => break result,
                 _ = heartbeat.tick() => {
                     heartbeat_running_preserving_progress(store, claimed).await;
@@ -154,18 +176,31 @@ impl UnifiedJobRunner for SourceRunner {
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn run_source_request_with_context(
     claimed: &UnifiedClaimedJob,
     source_request: SourceRequest,
     ctx: &ServiceContext,
 ) -> anyhow::Result<SourceResult> {
+    run_source_request_with_cancellation(claimed, source_request, ctx, None).await
+}
+
+async fn run_source_request_with_cancellation(
+    claimed: &UnifiedClaimedJob,
+    source_request: SourceRequest,
+    ctx: &ServiceContext,
+    cancellation: Option<CancellationToken>,
+) -> anyhow::Result<SourceResult> {
     let auth_snapshot: Option<AuthSnapshot> = Some(claimed.auth_snapshot.clone());
-    let execution = crate::source::SourceExecutionContext::existing_job(
+    let mut execution = crate::source::SourceExecutionContext::existing_job(
         claimed.job_id,
         source_request.clone(),
         auth_snapshot,
         claimed.attempt,
     );
+    if let Some(cancellation) = cancellation {
+        execution = execution.with_cancellation(cancellation);
+    }
     crate::source::index_source_with_execution(source_request, ctx, execution).await
 }
 

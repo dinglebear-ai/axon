@@ -175,7 +175,11 @@ async fn index_source_inner(
     let collection = source_collection(&request, ctx);
     let owner_id = DEFAULT_OWNER_ID;
 
-    let counts = dispatch_kind::dispatch_kind(
+    // Boxed: `dispatch_kind` owns the entire source pipeline (adapter
+    // acquisition through vector publish); polled inline, the nested debug
+    // poll frames overflow the default test-thread stack (the same class of
+    // failure as `run_generation`'s boxed pipeline future).
+    let counts = Box::pin(dispatch_kind::dispatch_kind(
         kind,
         route.scope,
         ctx,
@@ -195,7 +199,7 @@ async fn index_source_inner(
             .get("project_filter")
             .and_then(serde_json::Value::as_str),
         &execution,
-    )
+    ))
     .await?;
 
     finalize_source_index(

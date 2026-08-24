@@ -127,7 +127,10 @@ pub(super) async fn prepare_embed_publish(
         for (batch_index, batch) in batches {
             let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
             report_batching(input, &batch, emitter, coordinator, progress).await;
-            let (result, next_ready) = publish_and_build_next(
+            // The current batch's write accounting is absorbed into `output`
+            // inside `publish_and_build_next`, before an overlapped embedding
+            // failure can surface.
+            ready = publish_and_build_next(
                 runtime,
                 input,
                 ready,
@@ -136,11 +139,10 @@ pub(super) async fn prepare_embed_publish(
                 emitter,
                 coordinator,
                 progress,
+                &mut output,
                 is_final_vector_batch,
             )
             .await?;
-            merge_vectorize_result(&mut output, result);
-            ready = next_ready;
         }
         let result =
             publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;

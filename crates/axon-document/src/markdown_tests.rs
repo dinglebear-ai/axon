@@ -199,7 +199,31 @@ fn markdown_packing_keeps_frontmatter_and_sibling_headings_separate() {
 }
 
 #[test]
-fn oversized_frontmatter_remains_one_frontmatter_chunk() {
+fn fitting_frontmatter_remains_one_frontmatter_chunk() {
+    let text = "---\ndescription: doc metadata\n---\n# Body\ntext\n";
+    let chunks = markdown_sections_with_limits(
+        text,
+        MarkdownChunkLimits {
+            max_chars: 64,
+            min_chars: 1,
+            overlap_chars: 8,
+        },
+    );
+
+    assert_eq!(chunks[0].metadata["markdown_block_kind"], "frontmatter");
+    assert!(chunks[0].content.starts_with("---\n"));
+    assert!(chunks[0].content.ends_with("\n---"));
+    assert_eq!(
+        chunks
+            .iter()
+            .filter(|chunk| chunk.metadata["markdown_block_kind"] == "frontmatter")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn oversized_frontmatter_is_split_into_bounded_frontmatter_windows() {
     let text = format!(
         "---\ndescription: {}\n---\n# Body\ntext\n",
         "metadata ".repeat(40)
@@ -213,21 +237,17 @@ fn oversized_frontmatter_remains_one_frontmatter_chunk() {
         },
     );
 
-    assert_eq!(chunks[0].metadata["markdown_block_kind"], "frontmatter");
-    assert!(chunks[0].content.chars().count() > 64);
-    assert!(chunks[0].content.starts_with("---\n"));
-    assert!(chunks[0].content.ends_with("\n---"));
-    assert_eq!(
-        chunks
-            .iter()
-            .filter(|chunk| chunk.metadata["markdown_block_kind"] == "frontmatter")
-            .count(),
-        1
-    );
+    let frontmatter = chunks
+        .iter()
+        .filter(|chunk| chunk.metadata["markdown_block_kind"] == "frontmatter")
+        .collect::<Vec<_>>();
+    assert!(frontmatter.len() > 1);
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 64));
+    assert!(frontmatter[0].content.starts_with("---\n"));
 }
 
 #[test]
-fn oversized_markdown_keeps_fence_whole_and_bounds_surrounding_prose() {
+fn oversized_markdown_bounds_fence_and_surrounding_prose() {
     let fence_body = "let value = 42;\n".repeat(12);
     let text = format!(
         "# Mixed\n{}\n```rust\n{fence_body}```\n{}\n",
@@ -247,16 +267,18 @@ fn oversized_markdown_keeps_fence_whole_and_bounds_surrounding_prose() {
         .iter()
         .filter(|chunk| chunk.metadata["markdown_block_kind"] == "code")
         .collect::<Vec<_>>();
-    assert_eq!(code.len(), 1, "one fence must remain one chunk");
-    assert!(code[0].content.starts_with("```rust\n"));
-    assert!(code[0].content.ends_with("```"));
-    assert!(code[0].content.chars().count() > 64);
     assert!(
-        chunks
-            .iter()
-            .filter(|chunk| chunk.metadata["markdown_block_kind"] != "code")
-            .all(|chunk| chunk.content.chars().count() <= 64)
+        code.len() > 1,
+        "an oversized fence must split into bounded code windows"
     );
+    assert!(code[0].content.starts_with("```rust\n"));
+    assert!(code.last().unwrap().content.ends_with("```"));
+    assert!(
+        code.iter()
+            .all(|chunk| chunk.metadata["code_fence_language"] == "rust"),
+        "every code window keeps the fence language"
+    );
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 64));
 }
 
 #[test]
@@ -273,14 +295,15 @@ fn consecutive_oversized_fences_ignore_blank_prose_between_them() {
         },
     );
 
-    assert_eq!(
-        chunks
-            .iter()
-            .filter(|chunk| chunk.metadata["markdown_block_kind"] == "code")
-            .count(),
-        2
-    );
+    let code = chunks
+        .iter()
+        .filter(|chunk| chunk.metadata["markdown_block_kind"] == "code")
+        .collect::<Vec<_>>();
+    assert!(code.len() >= 2);
+    assert!(code.iter().any(|chunk| chunk.content.contains("first();")));
+    assert!(code.iter().any(|chunk| chunk.content.contains("second();")));
     assert!(chunks.iter().all(|chunk| !chunk.content.trim().is_empty()));
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 64));
 }
 
 #[test]
@@ -449,4 +472,217 @@ fn html_article_preserves_content_after_unclosed_non_content_tag() {
         .join(" ");
     assert!(text.contains("before"));
     assert!(text.contains("visible fallback"));
+}
+
+// -- H2: hard size backstop for fence spans -------------------------------
+
+#[test]
+fn unterminated_fence_at_document_start_yields_bounded_code_windows() {
+    let text = format!("```rust\n{}", "let broken = true;\n".repeat(400));
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars: 256,
+            min_chars: 1,
+            overlap_chars: 16,
+        },
+    );
+
+    assert!(chunks.len() > 1, "unterminated fence must not be one chunk");
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 256));
+    assert!(
+        chunks
+            .iter()
+            .all(|chunk| chunk.metadata["markdown_block_kind"] == "code"
+                && chunk.metadata["code_fence_language"] == "rust")
+    );
+    for chunk in &chunks {
+        let start = chunk.range.byte_start.unwrap() as usize;
+        let end = chunk.range.byte_end.unwrap() as usize;
+        assert!(text.is_char_boundary(start));
+        assert!(text.is_char_boundary(end));
+        assert_eq!(&text[start..end], chunk.content);
+    }
+}
+
+#[test]
+fn indented_literal_fence_marker_no_longer_yields_an_unbounded_chunk() {
+    let text = format!(
+        "# Doc\n\n    ```\n{}",
+        "    literal code line inside an indented block\n".repeat(300)
+    );
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars: 256,
+            min_chars: 1,
+            overlap_chars: 16,
+        },
+    );
+
+    assert!(chunks.len() > 1);
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 256));
+}
+
+#[test]
+fn well_formed_giant_fence_is_split_with_code_metadata_preserved() {
+    let text = format!("# Doc\n```python\n{}```\nafter\n", "x = 1\n".repeat(500));
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars: 200,
+            min_chars: 1,
+            overlap_chars: 0,
+        },
+    );
+
+    let code = chunks
+        .iter()
+        .filter(|chunk| chunk.metadata["markdown_block_kind"] == "code")
+        .collect::<Vec<_>>();
+    assert!(code.len() > 1);
+    assert!(
+        code.iter()
+            .all(|chunk| chunk.metadata["code_fence_language"] == "python")
+    );
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 200));
+}
+
+/// A greedy `max_chars` slice leaves a degenerate remainder: a fence one
+/// character over the cap becomes a full-size window plus a 1-character one.
+/// `pack_small_sections` cannot merge that tail back (its predecessor is
+/// already at the cap), so it would be embedded and published as its own
+/// vector point. `char_windows` balances the windows instead.
+#[test]
+fn barely_oversized_fence_does_not_leave_a_degenerate_tail_chunk() {
+    let max_chars = 200usize;
+    // Fence span = "```\n" + body + "\n```\n", and the section's trailing
+    // newline is trimmed off the last window — size the body so the fence is
+    // exactly one character over the cap.
+    let delimiters = "```\n\n```".chars().count();
+    let body = "y".repeat(max_chars + 1 - delimiters);
+    let text = format!("# Doc\n```\n{body}\n```\n");
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars,
+            min_chars: 1,
+            overlap_chars: 0,
+        },
+    );
+
+    let code = chunks
+        .iter()
+        .filter(|chunk| chunk.metadata["markdown_block_kind"] == "code")
+        .map(|chunk| chunk.content.chars().count())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        code.len(),
+        2,
+        "a fence one character over the cap splits into two windows: {code:?}"
+    );
+    assert!(
+        chunks
+            .iter()
+            .all(|c| c.content.chars().count() <= max_chars),
+        "the hard size cap still holds"
+    );
+    let smallest = code.iter().copied().min().expect("code windows");
+    assert!(
+        smallest > max_chars / 4,
+        "balanced windows must not leave a degenerate tail chunk (got {code:?})"
+    );
+}
+
+// -- M5: frontmatter delimiter strictness + backstop ----------------------
+
+#[test]
+fn frontmatter_closer_with_trailing_junk_is_not_a_closer() {
+    for text in [
+        "---\ntitle: Doc\n--- junk\nbody\n",
+        "---\ntitle: Doc\n----\nbody\n",
+    ] {
+        let chunks = markdown_sections(text);
+        assert!(
+            chunks
+                .iter()
+                .all(|chunk| chunk.metadata["markdown_block_kind"] != "frontmatter"),
+            "{text:?} must not be treated as frontmatter"
+        );
+    }
+}
+
+#[test]
+fn crlf_frontmatter_is_extracted() {
+    let text = "---\r\ntitle: Doc\r\n---\r\n# Heading\r\nbody\r\n";
+    let chunks = markdown_sections(text);
+
+    assert_eq!(chunks[0].metadata["markdown_block_kind"], "frontmatter");
+    assert!(chunks[0].content.contains("title: Doc"));
+    assert_eq!(chunks[1].title.as_deref(), Some("Heading"));
+}
+
+#[test]
+fn thematic_break_false_positive_frontmatter_is_size_bounded() {
+    let text = format!(
+        "---\n\n{}\n---\n# Real Body\ntext\n",
+        "prose paragraph line\n".repeat(300)
+    );
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars: 256,
+            min_chars: 1,
+            overlap_chars: 16,
+        },
+    );
+
+    assert!(chunks.len() > 1);
+    assert!(chunks.iter().all(|c| c.content.chars().count() <= 256));
+}
+
+// -- M4: html_article trailing unclosed tag -------------------------------
+
+#[test]
+fn html_article_does_not_duplicate_text_before_a_trailing_unclosed_tag() {
+    let chunks = html_article("hello world <truncated-at-end");
+    let text = chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert_eq!(text, "hello world <truncated-at-end");
+}
+
+#[test]
+fn html_article_keeps_text_between_tags_once_when_tail_tag_is_unclosed() {
+    let chunks = html_article("<p>alpha</p> beta <a href='x");
+    let text = chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert_eq!(text, "alpha beta <a href='x");
+}
+
+// -- Low: first_fence_language quirks -------------------------------------
+
+#[test]
+fn first_fence_language_handles_wide_fences() {
+    assert_eq!(
+        first_fence_language("````rust\ncode\n````\n"),
+        Some("rust".to_string())
+    );
+}
+
+#[test]
+fn first_fence_language_ignores_fence_lines_inside_other_marker_fence() {
+    assert_eq!(
+        first_fence_language("~~~\n```rust\nnot an opener\n~~~\n"),
+        None
+    );
+    assert_eq!(
+        first_fence_language("~~~\n```rust\n~~~\n\n```python\nreal\n```\n"),
+        Some("python".to_string())
+    );
 }

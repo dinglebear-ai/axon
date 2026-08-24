@@ -5,14 +5,10 @@
 //! provider. The in-memory reservation manager is intentionally not used by
 //! this module.
 
-use axon_api::source::{
-    JobId, JobPriority, ProviderId, ProviderKind, ProviderReservationSnapshot,
-    ProviderReservationStatus, ReservationId, StageId, Timestamp,
-};
+use axon_api::source::{JobId, JobPriority, ProviderKind, StageId};
 use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
-use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -22,6 +18,19 @@ const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_MIN: Duration = Duration::from_millis(20);
 const POLL_MAX: Duration = Duration::from_millis(250);
 const AGING_QUANTUM_SECS: i64 = 30;
+/// A queued waiter proves liveness by touching `renewed_at` on every grant
+/// poll, so abandonment means "no poll recently", not "queued for a while".
+/// Deliberately larger than the slowest poll cadence (`POLL_MAX` plus
+/// writer-gate stalls) and decoupled from `WAIT_TIMEOUT` so third parties
+/// never expire a live waiter and priority aging (`AGING_QUANTUM_SECS`,
+/// measured from the untouched `updated_at`) can actually progress.
+const QUEUED_LIVENESS_TIMEOUT_SECS: i64 = 90;
+/// Quarantined-active leases whose fence has not renewed for this long are
+/// terminalized by `reconcile`, releasing their granted units. Renewal clears
+/// quarantine, so a live lease that is still renewing can never reach this;
+/// the margin over the 60-second quarantine staleness threshold is the grace
+/// period for a stalled-but-recovering holder.
+const QUARANTINE_RELEASE_SECS: i64 = 120;
 #[cfg(not(test))]
 const RENEW_INTERVAL: Duration = Duration::from_secs(20);
 #[cfg(test)]
@@ -60,7 +69,10 @@ pub struct ReservationGrant {
 }
 
 mod grant;
+mod lease;
 mod reconcile;
+use lease::WaitingReservationGuard;
+pub use lease::{ActiveReservationLease, call_reserved};
 pub use reconcile::Reconciliation;
 
 #[derive(Debug, thiserror::Error)]
@@ -100,6 +112,12 @@ pub struct ProviderScheduler {
 /// SQLite admits one writer at a time. Without this gate, concurrent provider
 /// calls can park every SQLx connection worker inside SQLite's busy handler,
 /// starving unrelated job heartbeats and control-plane reads of a pool slot.
+///
+/// The gate is intentionally process-local even though the DB is shared with
+/// short-lived CLI processes: cross-process writers are serialized by SQLite's
+/// own write lock, so the accepted bound is that a gate holder may stall up to
+/// the busy timeout behind an external writer while in-process writers queue
+/// behind the gate.
 #[derive(Debug, Clone, Default)]
 pub struct SqliteWriteGate(Arc<Mutex<()>>);
 
@@ -116,158 +134,6 @@ impl SqliteWriteGate {
     pub fn try_lock(&self) -> Option<tokio::sync::MutexGuard<'_, ()>> {
         self.0.try_lock().ok()
     }
-}
-
-#[derive(Debug)]
-pub struct ActiveReservationLease<K> {
-    scheduler: ProviderScheduler,
-    reservation_id: String,
-    fence: String,
-    _kind: std::marker::PhantomData<fn() -> K>,
-}
-
-struct WaitingReservationGuard {
-    scheduler: ProviderScheduler,
-    reservation_id: String,
-    fence: String,
-    armed: bool,
-}
-
-impl WaitingReservationGuard {
-    fn new(scheduler: ProviderScheduler, reservation_id: String, fence: String) -> Self {
-        Self {
-            scheduler,
-            reservation_id,
-            fence,
-            armed: true,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for WaitingReservationGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        let scheduler = self.scheduler.clone();
-        let reservation_id = self.reservation_id.clone();
-        let fence = self.fence.clone();
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                let _ = scheduler
-                    .cancel_waiting(&reservation_id, &fence, "waiter_dropped")
-                    .await;
-            });
-        }
-    }
-}
-
-impl<K> Clone for ActiveReservationLease<K> {
-    fn clone(&self) -> Self {
-        Self {
-            scheduler: self.scheduler.clone(),
-            reservation_id: self.reservation_id.clone(),
-            fence: self.fence.clone(),
-            _kind: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<K> ActiveReservationLease<K> {
-    #[must_use]
-    pub fn snapshot(
-        &self,
-        priority: JobPriority,
-        requested_units: u32,
-    ) -> ProviderReservationSnapshot {
-        ProviderReservationSnapshot {
-            reservation_id: ReservationId::new(self.reservation_id.clone()),
-            provider_kind: self.scheduler.domain.kind,
-            provider_id: Some(ProviderId::new(self.scheduler.domain.instance_id.clone())),
-            priority,
-            requested_units,
-            granted_units: requested_units,
-            acquired_at: Some(Timestamp::from(chrono::Utc::now())),
-            expires_at: None,
-            status: ProviderReservationStatus::Active,
-            queue_depth: None,
-            cooling: None,
-        }
-    }
-
-    pub async fn renew(&self) -> Result<(), SchedulerError> {
-        self.scheduler
-            .renew(&self.reservation_id, &self.fence)
-            .await
-    }
-
-    pub async fn complete(self) -> Result<(), SchedulerError> {
-        self.scheduler
-            .complete(&self.reservation_id, &self.fence)
-            .await
-    }
-
-    pub async fn cancel(self) -> Result<(), SchedulerError> {
-        self.scheduler
-            .cancel(&self.reservation_id, &self.fence)
-            .await
-    }
-
-    pub async fn fail(self) -> Result<(), SchedulerError> {
-        self.scheduler.fail(&self.reservation_id, &self.fence).await
-    }
-}
-
-/// Execute one provider operation only after the SQLite scheduler has granted
-/// capacity. Provider traits stay unchanged; the lease is the only value the
-/// operation receives from the scheduler boundary.
-pub async fn call_reserved<K, T, E, F, Fut>(
-    scheduler: &ProviderScheduler,
-    request: ReservationRequest,
-    operation: F,
-) -> Result<T, ReservedCallError<E>>
-where
-    F: FnOnce(ActiveReservationLease<K>) -> Fut,
-    Fut: Future<Output = Result<T, E>>,
-{
-    let fence = request.fence.clone();
-    let grant = scheduler.reserve_wait(request).await?;
-    let lease = ActiveReservationLease {
-        scheduler: scheduler.clone(),
-        reservation_id: grant.reservation_id,
-        fence,
-        _kind: std::marker::PhantomData,
-    };
-    scheduler
-        .activate(&lease.reservation_id, &lease.fence)
-        .await?;
-    let operation = operation(lease.clone());
-    tokio::pin!(operation);
-    let mut renewal = tokio::time::interval(RENEW_INTERVAL);
-    renewal.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    renewal.tick().await;
-    let value = loop {
-        tokio::select! {
-            result = &mut operation => {
-                break match result {
-                    Ok(value) => value,
-                    Err(error) => {
-                        lease.fail().await?;
-                        return Err(ReservedCallError::Provider(error));
-                    }
-                };
-            }
-            _ = renewal.tick() => {
-                lease.renew().await?;
-            }
-        }
-    };
-    lease.complete().await?;
-    Ok(value)
 }
 
 impl ProviderScheduler {
@@ -447,8 +313,11 @@ impl ProviderScheduler {
 
     async fn renew(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
+        // A successful renewal proves the holder is alive, so it also clears
+        // quarantine: reconcile only terminalizes quarantined rows whose
+        // renewals have stopped, keeping live leases immune to capacity loss.
         let changed = sqlx::query(
-            "UPDATE provider_reservations SET renewed_at = datetime('now'),
+            "UPDATE provider_reservations SET renewed_at = datetime('now'), quarantined = 0,
              expires_at = datetime('now', '+300 seconds'), updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'active'",
         )
@@ -465,12 +334,22 @@ impl ProviderScheduler {
     }
 
     async fn fail(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        self.release(reservation_id, fence, "provider_failed").await
+    }
+
+    async fn release(
+        &self,
+        reservation_id: &str,
+        fence: &str,
+        reason: &str,
+    ) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'released', granted_units = 0,
-             terminal_reason = 'provider_failed', updated_at = datetime('now')
+             terminal_reason = ?, updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status IN ('granted','active')",
         )
+        .bind(reason)
         .bind(reservation_id)
         .bind(fence)
         .bind(&self.domain.authority_id)

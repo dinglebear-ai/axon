@@ -260,16 +260,23 @@ pub async fn run_crawl_once(
 
     // Spider-native sitemap phase: pages flow through the live subscription above.
     // persist_links() carries accumulated sitemap links into the subsequent main crawl.
-    if run_sitemap && cfg.discover_sitemaps {
-        website.crawl_sitemap().await;
-        website.persist_links();
-    }
-
-    match mode {
-        RenderMode::Http => website.crawl_raw().await,
-        RenderMode::Chrome => website.crawl().await,
-        RenderMode::AutoSwitch => website.crawl_raw().await,
-    }
+    // Both phases poll on their own task stack (see `fresh_stack`); the website
+    // moves in and back out so ETag reconciliation below still sees the crawl.
+    let sitemap_phase = run_sitemap && cfg.discover_sitemaps;
+    let mut crawl_site = std::mem::take(&mut website);
+    website = super::fresh_stack::crawl_on_fresh_stack(async move {
+        if sitemap_phase {
+            crawl_site.crawl_sitemap().await;
+            crawl_site.persist_links();
+        }
+        match mode {
+            RenderMode::Http => crawl_site.crawl_raw().await,
+            RenderMode::Chrome => crawl_site.crawl().await,
+            RenderMode::AutoSwitch => crawl_site.crawl_raw().await,
+        }
+        crawl_site
+    })
+    .await;
     website.unsubscribe();
     memory_guard.stop();
 

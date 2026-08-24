@@ -220,6 +220,25 @@ fn cached_entry(key: String, values: Vec<f32>) -> CachedEmbedding {
     }
 }
 
+/// Inner provider that returns valid vectors in reversed order, simulating a
+/// provider that violates the order-preservation contract.
+struct ReorderingProvider {
+    inner: Arc<FakeEmbeddingProvider>,
+}
+
+#[async_trait]
+impl EmbeddingProvider for ReorderingProvider {
+    async fn embed(&self, batch: EmbeddingBatch) -> Result<EmbeddingResult, ApiError> {
+        let mut result = self.inner.embed(batch).await?;
+        result.vectors.reverse();
+        Ok(result)
+    }
+
+    async fn capabilities(&self) -> Result<ProviderCapability, ApiError> {
+        self.inner.capabilities().await
+    }
+}
+
 #[tokio::test]
 async fn repeated_inputs_are_cached_and_deduplicated_in_original_order() {
     let fake = Arc::new(FakeEmbeddingProvider::new("tei", 4));
@@ -238,6 +257,87 @@ async fn repeated_inputs_are_cached_and_deduplicated_in_original_order() {
     assert_eq!(first.vectors[0].values, first.vectors[2].values);
     assert_eq!(second.vectors[0].values, first.vectors[1].values);
     assert_eq!(second.usage.requests, 0);
+}
+
+#[tokio::test]
+async fn empty_batch_fails_like_the_raw_provider_without_touching_cache_or_provider() {
+    let fake = Arc::new(FakeEmbeddingProvider::new("tei", 4));
+    let store = Arc::new(MemoryCacheStore::default());
+    let cached = provider(Arc::clone(&fake), store);
+
+    let error = cached.embed(batch(&[])).await.unwrap_err();
+
+    assert_eq!(error.code.0, "embedding.batch_empty");
+    assert!(fake.calls().await.is_empty());
+}
+
+#[tokio::test]
+async fn fully_cached_batch_still_rejects_blank_and_duplicate_items() {
+    let fake = Arc::new(FakeEmbeddingProvider::new("tei", 4));
+    let store = Arc::new(MemoryCacheStore::default());
+    let cached = provider(Arc::clone(&fake), Arc::clone(&store));
+    // Warm the cache so "alpha" is a guaranteed hit.
+    cached.embed(batch(&["alpha"])).await.unwrap();
+    assert_eq!(fake.calls().await.len(), 1);
+
+    let mut blank = batch(&["alpha", "   "]);
+    blank.items[1].chunk_id = ChunkId::new("chunk-blank");
+    let error = cached.embed(blank).await.unwrap_err();
+    assert_eq!(error.code.0, "embedding.blank_text");
+
+    let mut duplicate = batch(&["alpha", "alpha"]);
+    duplicate.items[1].chunk_id = duplicate.items[0].chunk_id.clone();
+    let error = cached.embed(duplicate).await.unwrap_err();
+    assert_eq!(error.code.0, "embedding.duplicate_chunk_id");
+
+    // Validation must fire before any provider call, regardless of warmth.
+    assert_eq!(fake.calls().await.len(), 1);
+}
+
+#[tokio::test]
+async fn reordered_provider_vectors_fail_closed_and_cache_nothing() {
+    let fake = Arc::new(FakeEmbeddingProvider::new("tei", 4));
+    let store = Arc::new(MemoryCacheStore::default());
+    let reordering = Arc::new(ReorderingProvider {
+        inner: Arc::clone(&fake),
+    });
+    let cached = CachedEmbeddingProvider::new(
+        reordering,
+        Arc::clone(&store) as Arc<dyn EmbeddingVectorCacheStore>,
+        "http://tei.test",
+        ProviderId::new("tei"),
+        "fake-embedding",
+        4,
+        InstructionSupport::QueryAndDocument,
+        100_000,
+    );
+
+    let error = cached.embed(batch(&["alpha", "beta"])).await.unwrap_err();
+
+    assert_eq!(error.code.0, "embedding.cache.result_misaligned");
+    assert_eq!(fake.calls().await.len(), 1);
+    tokio::task::yield_now().await;
+    assert!(
+        store.entries.lock().await.is_empty(),
+        "a mis-aligned provider result must not populate the cache"
+    );
+}
+
+#[tokio::test]
+async fn full_cache_hit_reports_unmetered_usage() {
+    let fake = Arc::new(FakeEmbeddingProvider::new("tei", 4));
+    let store = Arc::new(MemoryCacheStore::default());
+    let cached = provider(Arc::clone(&fake), Arc::clone(&store));
+    cached.embed(batch(&["alpha"])).await.unwrap();
+
+    let warm = cached.embed(batch(&["alpha"])).await.unwrap();
+
+    assert_eq!(fake.calls().await.len(), 1);
+    assert_eq!(warm.usage.requests, 0);
+    assert_eq!(
+        warm.usage.input_tokens, None,
+        "a full cache hit is unmetered and must not report Some(0)"
+    );
 }
 
 #[tokio::test]
