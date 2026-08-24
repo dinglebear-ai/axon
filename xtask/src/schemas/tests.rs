@@ -169,6 +169,10 @@ pub(super) fn fixture_repo() -> TempDir {
             ),
         );
     }
+    copy_workspace_fixture(
+        tmp.path(),
+        "tests/fixtures/source-projection-canonical-hashes.json",
+    );
     write_fixture(
         tmp.path(),
         "crates/axon-jobs/src/migrations/0001_create_jobs.sql",
