@@ -31,4 +31,4 @@ Server policy clamps caller limits downward. The universal `source` and `query` 
 
 ## Fixtures
 
-14 canonical semantic fixtures are embedded in the JSON contract. Transport-specific caller, cwd, authentication, and runtime context are intentionally excluded.
+10 canonical semantic fixtures are embedded in the JSON contract. Transport-specific caller, cwd, authentication, and runtime context are intentionally excluded.

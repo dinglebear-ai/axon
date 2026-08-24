@@ -1469,7 +1469,7 @@
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:4b6f0d74ce4d86a0271cad4430784540b37064d5c90d2fa4b9f77c17f17b58a5",
+        "checksum": "sha256:88f712e049e56a7a232ad904968531f67b22bf900a2d0efc08658cf797a79211",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },

@@ -365,10 +365,6 @@ pub(super) struct FocusedProjectionArgs {
     #[arg(long = "request-file", value_name = "PATH")]
     pub(super) request_file: Option<std::path::PathBuf>,
 
-    /// Existing directory for one overwrite-safe JSON file per batch item.
-    #[arg(long = "output-dir", value_name = "DIR")]
-    pub(super) output_dir: Option<std::path::PathBuf>,
-
     /// Filename template containing `{index}` or `{input_hash}`.
     #[arg(
         long = "output-template",
@@ -406,9 +402,6 @@ pub(super) struct ScrapeSourceArgs {
     /// Read one canonical scrape request from a JSON file.
     #[arg(long = "request-file", value_name = "PATH")]
     pub(super) request_file: Option<std::path::PathBuf>,
-    /// Existing directory for one overwrite-safe JSON file per batch item.
-    #[arg(long = "output-dir", value_name = "DIR")]
-    pub(super) output_dir: Option<std::path::PathBuf>,
     /// Filename template containing `{index}` or `{input_hash}`.
     #[arg(
         long = "output-template",

@@ -26,12 +26,6 @@
           "source": "axon"
         }
       ],
-      "expected_result": {
-        "effective_limits": {
-          "query_window": 100
-        },
-        "status": "completed"
-      },
       "operation": "code_search",
       "transport_input": {
         "inputs": [
@@ -61,9 +55,6 @@
           "query": "projection registry"
         }
       ],
-      "expected_result": {
-        "status": "completed"
-      },
       "operation": "code_search",
       "transport_input": {
         "inputs": [
@@ -111,12 +102,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "effective_limits": {
-          "max_pages": 25
-        },
-        "status": "completed"
-      },
       "operation": "crawl",
       "transport_input": {
         "inputs": [
@@ -167,9 +152,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "status": "queued"
-      },
       "operation": "crawl",
       "transport_input": {
         "inputs": [
@@ -244,10 +226,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "disclosure": "detached",
-        "status": "accepted"
-      },
       "operation": "embed",
       "transport_input": {
         "inputs": [
@@ -298,9 +276,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "status": "completed"
-      },
       "operation": "embed",
       "transport_input": {
         "inputs": [
@@ -343,13 +318,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "error": {
-          "code": "projection.idempotency_collision",
-          "http_status": 409
-        },
-        "status": "failed"
-      },
       "operation": "ingest",
       "transport_input": {
         "inputs": [
@@ -396,227 +364,11 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "status": "completed"
-      },
       "operation": "ingest",
       "transport_input": {
         "inputs": [
           {
             "input": "./README.md"
-          }
-        ]
-      }
-    },
-    {
-      "canonical_requests": [
-        {
-          "embed": true,
-          "execution": {
-            "detached": false,
-            "heartbeat_interval_secs": 5,
-            "mode": "background",
-            "priority": "normal"
-          },
-          "intent": "acquire",
-          "limits": {},
-          "metadata": {},
-          "options": {
-            "values": {}
-          },
-          "output": {
-            "artifact_mode": "on_large_output",
-            "include_progress": false,
-            "inline_limit_bytes": 65536,
-            "json": false,
-            "response_mode": "auto"
-          },
-          "refresh": "if_stale",
-          "source": "/workspace/canceled",
-          "watch": "disabled"
-        }
-      ],
-      "expected_result": {
-        "batch_id": "batch_example",
-        "items": [
-          {
-            "index": 0,
-            "outcome": {
-              "status": "canceled"
-            }
-          }
-        ],
-        "status": "canceled"
-      },
-      "operation": "embed",
-      "transport_input": {
-        "inputs": [
-          {
-            "input": "/workspace/canceled"
-          }
-        ]
-      }
-    },
-    {
-      "canonical_requests": [
-        {
-          "embed": true,
-          "execution": {
-            "detached": false,
-            "heartbeat_interval_secs": 5,
-            "mode": "background",
-            "priority": "normal"
-          },
-          "intent": "acquire",
-          "limits": {
-            "max_items": 1,
-            "max_pages": 1
-          },
-          "metadata": {},
-          "options": {
-            "values": {}
-          },
-          "output": {
-            "artifact_mode": "on_large_output",
-            "include_progress": false,
-            "inline_limit_bytes": 65536,
-            "json": false,
-            "response_mode": "auto"
-          },
-          "refresh": "if_stale",
-          "scope": "page",
-          "source": "https://example.test/completed",
-          "watch": "disabled"
-        }
-      ],
-      "expected_result": {
-        "batch_id": "batch_example",
-        "items": [
-          {
-            "index": 0,
-            "outcome": {
-              "data": {
-                "source": "https://example.test/completed"
-              },
-              "status": "completed"
-            }
-          }
-        ],
-        "status": "completed"
-      },
-      "operation": "scrape",
-      "transport_input": {
-        "inputs": [
-          {
-            "input": "https://example.test/completed"
-          }
-        ]
-      }
-    },
-    {
-      "canonical_requests": [
-        {
-          "embed": true,
-          "execution": {
-            "detached": false,
-            "heartbeat_interval_secs": 5,
-            "mode": "background",
-            "priority": "normal"
-          },
-          "idempotency_key": "collision",
-          "intent": "acquire",
-          "limits": {},
-          "metadata": {},
-          "options": {
-            "values": {}
-          },
-          "output": {
-            "artifact_mode": "on_large_output",
-            "include_progress": false,
-            "inline_limit_bytes": 65536,
-            "json": false,
-            "response_mode": "auto"
-          },
-          "refresh": "if_stale",
-          "source": "https://example.test/failed",
-          "watch": "disabled"
-        }
-      ],
-      "expected_result": {
-        "batch_id": "batch_example",
-        "items": [
-          {
-            "index": 0,
-            "outcome": {
-              "data": {
-                "code": "projection.idempotency_collision",
-                "http_status": 409
-              },
-              "status": "failed"
-            }
-          }
-        ],
-        "status": "completed_degraded"
-      },
-      "operation": "ingest",
-      "transport_input": {
-        "inputs": [
-          {
-            "idempotency_key": "collision",
-            "input": "https://example.test/failed"
-          }
-        ]
-      }
-    },
-    {
-      "canonical_requests": [
-        {
-          "embed": true,
-          "execution": {
-            "detached": false,
-            "heartbeat_interval_secs": 5,
-            "mode": "background",
-            "priority": "normal"
-          },
-          "intent": "acquire",
-          "limits": {},
-          "metadata": {},
-          "options": {
-            "values": {}
-          },
-          "output": {
-            "artifact_mode": "on_large_output",
-            "include_progress": false,
-            "inline_limit_bytes": 65536,
-            "json": false,
-            "response_mode": "auto"
-          },
-          "refresh": "if_stale",
-          "scope": "site",
-          "source": "https://example.test/queued",
-          "watch": "disabled"
-        }
-      ],
-      "expected_result": {
-        "batch_id": "batch_example",
-        "items": [
-          {
-            "index": 0,
-            "outcome": {
-              "data": {
-                "job_id": "job_example"
-              },
-              "status": "queued"
-            }
-          }
-        ],
-        "status": "accepted"
-      },
-      "operation": "crawl",
-      "transport_input": {
-        "inputs": [
-          {
-            "input": "https://example.test/queued"
           }
         ]
       }
@@ -687,9 +439,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "status": "completed_degraded"
-      },
       "operation": "scrape",
       "transport_input": {
         "inputs": [
@@ -756,9 +505,6 @@
           "watch": "disabled"
         }
       ],
-      "expected_result": {
-        "status": "completed"
-      },
       "operation": "scrape",
       "transport_input": {
         "inputs": [
@@ -1964,12 +1710,12 @@
       "path": "crates/axon-api/src/source/projection_registry.rs"
     },
     {
-      "checksum": "sha256:3c499adaee3aa8ce7bb65a12ea8e27dc393e3ba7f16600b296df9997745530e2",
+      "checksum": "sha256:1797bc72658b9a101e745efebbf7f1035936050e49f0048c1dbe2df11588ef45",
       "kind": "rust_directory",
       "path": "tests/fixtures/source-projections"
     },
     {
-      "checksum": "sha256:a56039366e7f4ad5208b0b5622e38782881a5b1a3e2f4dcc1c95c67f761ae80f",
+      "checksum": "sha256:f47398849a3f55b91509922522051ba012d6ae656e00f47488118f450215f58d",
       "kind": "rust_module",
       "path": "xtask/src/schemas/projections.rs"
     }

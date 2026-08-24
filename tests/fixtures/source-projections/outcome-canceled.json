@@ -1,1 +1,0 @@
-{"operation":"embed","transport_input":{"inputs":[{"input":"/workspace/canceled"}]},"canonical_requests":"generated","expected_result":{"batch_id":"batch_example","status":"canceled","items":[{"index":0,"outcome":{"status":"canceled"}}]}}

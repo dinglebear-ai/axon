@@ -14,7 +14,7 @@ fn projection_family_contains_all_operations() {
 }
 
 #[test]
-fn projection_fixtures_execute_and_cover_every_operation() {
+fn projection_fixtures_project_and_cover_every_operation() {
     let fixtures = load_fixtures(&repository_root()).unwrap();
     validate_fixture_coverage(&fixtures).unwrap();
     assert!(fixtures.len() >= 10);

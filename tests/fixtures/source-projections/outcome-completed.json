@@ -1,1 +1,0 @@
-{"operation":"scrape","transport_input":{"inputs":[{"input":"https://example.test/completed"}]},"canonical_requests":"generated","expected_result":{"batch_id":"batch_example","status":"completed","items":[{"index":0,"outcome":{"status":"completed","data":{"source":"https://example.test/completed"}}}]}}

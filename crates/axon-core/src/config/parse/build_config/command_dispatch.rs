@@ -36,7 +36,6 @@ pub(super) struct DispatchOutput {
     pub positional: Vec<String>,
     pub projection_items: Vec<String>,
     pub projection_request_file: Option<std::path::PathBuf>,
-    pub projection_output_dir: Option<std::path::PathBuf>,
     pub projection_output_template: Option<String>,
     pub ask_diagnostics: bool,
     pub ask_explain: bool,
@@ -110,7 +109,6 @@ impl DispatchOutput {
             positional: Vec::new(),
             projection_items: Vec::new(),
             projection_request_file: None,
-            projection_output_dir: None,
             projection_output_template: None,
             ask_diagnostics: false,
             ask_explain: false,
@@ -596,7 +594,6 @@ fn apply_scrape(out: &mut DispatchOutput, args: ScrapeSourceArgs) {
     out.positional = args.urls;
     out.projection_items = args.items;
     out.projection_request_file = args.request_file;
-    out.projection_output_dir = args.output_dir;
     out.projection_output_template = args.output_template;
     out.source_scope = Some("page".to_string());
     out.scrape_inline = args.inline;
@@ -612,7 +609,6 @@ fn set_projection(
     out.positional = args.inputs;
     out.projection_items = args.items;
     out.projection_request_file = args.request_file;
-    out.projection_output_dir = args.output_dir;
     out.projection_output_template = args.output_template;
 }
 

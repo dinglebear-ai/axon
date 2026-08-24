@@ -54,8 +54,10 @@ async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(),
 
 fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<dyn Error>> {
     reject_mixed_inputs(cfg)?;
-    let mut options = ScrapeOptions::default();
-    options.collection = Some(cfg.collection.clone());
+    let mut options = ScrapeOptions {
+        collection: Some(cfg.collection.clone()),
+        ..ScrapeOptions::default()
+    };
     options.execution.mode = ExecutionMode::Foreground;
     options.execution.detached = false;
     if cfg.scrape_inline {

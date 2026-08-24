@@ -34,6 +34,7 @@ pub(super) struct LiteralInputs<'a> {
     pub exclude_path_prefix: Vec<String>,
     pub viewport_width: u32,
     pub viewport_height: u32,
+    pub output_dir_was_explicit: bool,
 }
 
 /// Top-level builder. Mirrors the original literal precisely; field population
@@ -152,7 +153,19 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.positional = inputs.dispatched.positional.clone();
     cfg.projection_items = inputs.dispatched.projection_items.clone();
     cfg.projection_request_file = inputs.dispatched.projection_request_file.clone();
-    cfg.projection_output_dir = inputs.dispatched.projection_output_dir.clone();
+    cfg.projection_output_dir = if inputs.output_dir_was_explicit
+        && matches!(
+            inputs.dispatched.command,
+            CommandKind::Scrape
+                | CommandKind::Crawl
+                | CommandKind::Embed
+                | CommandKind::Ingest
+                | CommandKind::CodeSearch
+        ) {
+        Some(g.output_dir.clone())
+    } else {
+        None
+    };
     cfg.projection_output_template = inputs.dispatched.projection_output_template.clone();
     cfg.urls_csv = g.urls.clone();
     cfg.url_glob = g.url_glob.clone();

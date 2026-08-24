@@ -104,10 +104,10 @@ fn scrape_request_file_preserves_canonical_options() {
         }],
         options: ScrapeOptions {
             collection: Some("from-file".to_string()),
-            execution: axon_api::ExecutionPolicy {
+            execution: ExecutionPolicy {
                 mode: ExecutionMode::Background,
                 detached: true,
-                ..axon_api::ExecutionPolicy::default()
+                ..ExecutionPolicy::default()
             },
             ..ScrapeOptions::default()
         },

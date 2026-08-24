@@ -7,10 +7,6 @@
   "embed-minimal.json": "990b48544efd236fe964bc752aa87452cf15b027cddf987c8acabeb937fc9354",
   "ingest-boundary.json": "7f3c6c9a80f56bf953154be3f41e9f33118de828d730a6407ee5f007ddbae802",
   "ingest-minimal.json": "f8a96883da825e9ac942d4c8d11d7e36ef0fc7022a20496e468e19a0c5affbd3",
-  "outcome-canceled.json": "9eef5c96c5652b74cf818e8056f095b6ce3d9fe3f739e32ddbe69ae5a0cf2015",
-  "outcome-completed.json": "1d237b964386addcfd170dc655c04d5289656b85bc19da9c95ee9f1ae2086646",
-  "outcome-failed.json": "b519a1fa60226bb50aa11e2051ef0ce142a85790e49b77ff9872cdc68cda98df",
-  "outcome-queued.json": "fef660e88de5fb6b84d29c21b03191c701b3d6d43e34b665407426e0144704a7",
   "scrape-boundary.json": "bfc651df097877f9ea630b7e5c965df772ccf93242dabeb8b9b73ca5fcfec332",
   "scrape-minimal.json": "83f86b723c30e5e3e529376804db841e72a45a355843dff3f4e9c95c2339712f"
 }

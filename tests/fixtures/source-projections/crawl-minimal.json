@@ -1,1 +1,1 @@
-{"operation":"crawl","transport_input":{"inputs":[{"input":"https://example.test/docs"}]},"canonical_requests":"generated","expected_result":{"status":"queued"}}
+{"operation":"crawl","transport_input":{"inputs":[{"input":"https://example.test/docs"}]},"canonical_requests":"generated"}

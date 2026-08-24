@@ -80,6 +80,18 @@ fn focused_projection_commands_parse_repeated_inputs() {
         .is_ok()
     );
     assert!(Cli::try_parse_from(["axon", "crawl", "--request-file", "batch.json"]).is_ok());
+    assert!(
+        Cli::try_parse_from([
+            "axon",
+            "crawl",
+            "https://example.test",
+            "--output-dir",
+            "/tmp/projection-output",
+            "--output-template",
+            "{index}.json",
+        ])
+        .is_ok()
+    );
 }
 
 #[test]
