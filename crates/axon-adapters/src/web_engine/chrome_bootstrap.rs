@@ -3,7 +3,7 @@
 //!
 //! Shared by both CLI sync-crawl and the services crawl_sync layer.
 
-use crate::web_engine::engine::resolve_cdp_ws_url;
+use crate::web_engine::engine::{cdp_probe_skipped_in_docker, resolve_cdp_ws_url};
 use axon_core::config::{Config, RenderMode};
 use std::time::Duration;
 
@@ -12,6 +12,11 @@ pub struct ChromeBootstrapOutcome {
     pub remote_ready: bool,
     /// Pre-resolved CDP WebSocket URL (`ws://host:port/devtools/browser/UUID`).
     pub resolved_ws_url: Option<String>,
+    /// The probe actually ran (non-Docker host with a configured remote) and
+    /// exhausted its retries — the remote endpoint is unreachable. Distinct
+    /// from `remote_ready == false` alone, which also covers "no remote
+    /// configured" and "probe skipped inside Docker".
+    pub remote_unreachable: bool,
     pub warnings: Vec<String>,
 }
 
@@ -23,6 +28,7 @@ pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
     let mut outcome = ChromeBootstrapOutcome {
         remote_ready: false,
         resolved_ws_url: None,
+        remote_unreachable: false,
         warnings: Vec::new(),
     };
 
@@ -35,6 +41,20 @@ pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
         );
         return outcome;
     };
+
+    // A pre-resolved ws:// URL needs no liveness probe — honor it everywhere,
+    // including inside Docker (matches resolve_cdp_ws_url's own shortcut).
+    if remote_url.starts_with("ws://") || remote_url.starts_with("wss://") {
+        outcome.remote_ready = true;
+        outcome.resolved_ws_url = Some(remote_url.to_string());
+        return outcome;
+    }
+
+    // Inside Docker the probe cannot run (the remote hostname resolves on the
+    // bridge network, not from here); spider gets the discovery URL as-is.
+    if cdp_probe_skipped_in_docker() {
+        return outcome;
+    }
 
     let bootstrap_timeout = Duration::from_millis(cfg.chrome_bootstrap_timeout_ms);
     for attempt in 0..=cfg.chrome_bootstrap_retries {
@@ -49,11 +69,30 @@ pub async fn bootstrap_chrome_runtime(cfg: &Config) -> ChromeBootstrapOutcome {
         }
     }
 
-    outcome
-        .warnings
-        .push("remote chrome probe failed; falling back to local Chrome launcher".to_string());
+    outcome.remote_unreachable = true;
+    outcome.warnings.push(format!(
+        "remote chrome at {remote_url} is unreachable after {} probe attempt(s); \
+         falling back to local Chrome launcher",
+        cfg.chrome_bootstrap_retries + 1
+    ));
 
     outcome
+}
+
+/// Fold a bootstrap outcome back into the render `Config`.
+///
+/// On success the pre-resolved `ws://` URL replaces the discovery URL so the
+/// per-render `/json/version` round-trip is skipped. On a confirmed-unreachable
+/// remote the URL is **cleared** — leaving it set would make spider redial the
+/// dead endpoint (~11 attempts) and then silently degrade to a browserless
+/// HTTP crawl instead of launching a local Chrome (bead axon_rust-nkh6y).
+/// A skipped probe (Docker, or no remote configured) leaves the config as-is.
+pub fn apply_bootstrap_outcome(cfg: &mut Config, outcome: &ChromeBootstrapOutcome) {
+    if let Some(ws_url) = &outcome.resolved_ws_url {
+        cfg.chrome_remote_url = Some(ws_url.clone());
+    } else if outcome.remote_unreachable {
+        cfg.chrome_remote_url = None;
+    }
 }
 
 pub fn resolve_initial_mode(cfg: &Config) -> RenderMode {
@@ -65,3 +104,7 @@ pub fn resolve_initial_mode(cfg: &Config) -> RenderMode {
         m => m,
     }
 }
+
+#[cfg(test)]
+#[path = "chrome_bootstrap_tests.rs"]
+mod tests;

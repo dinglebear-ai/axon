@@ -25,15 +25,17 @@ use std::time::Duration;
 /// so the host CLI can reach the Chrome proxy.
 ///
 /// Returns `None` inside Docker (container hostnames resolve on the bridge
-/// network) or when the fetch/parse fails.
+/// network) or when the fetch/parse fails. Callers that need to distinguish
+/// those two `None` cases check [`cdp_probe_skipped_in_docker`]: in Docker the
+/// unresolved discovery URL is still the right thing to hand spider, while a
+/// failed probe on a host means the remote is unreachable.
 pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     // ws:// shortcut: bootstrap already resolved the URL — use it directly.
     if remote_url.starts_with("ws://") || remote_url.starts_with("wss://") {
         return Some(remote_url.to_string());
     }
 
-    // Inside Docker the container hostname resolves on the Docker network.
-    if Path::new("/.dockerenv").exists() {
+    if cdp_probe_skipped_in_docker() {
         return None;
     }
 
@@ -63,6 +65,13 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     }
 
     Some(parsed.to_string())
+}
+
+/// Whether the CDP liveness probe is skipped because this process runs inside
+/// Docker, where the remote Chrome hostname resolves on the bridge network and
+/// the unresolved discovery URL is handed to spider as-is.
+pub fn cdp_probe_skipped_in_docker() -> bool {
+    Path::new("/.dockerenv").exists()
 }
 
 pub(super) fn apply_limit_and_behavior_settings(

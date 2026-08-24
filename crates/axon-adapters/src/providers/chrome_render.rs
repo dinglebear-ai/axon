@@ -247,9 +247,7 @@ impl RenderProvider for ChromeRenderProvider {
             for warning in &bootstrap.warnings {
                 log_warn(&format!("[chrome_render] {warning}"));
             }
-            if let Some(ws_url) = bootstrap.resolved_ws_url {
-                cfg.chrome_remote_url = Some(ws_url);
-            }
+            crate::web_engine::chrome_bootstrap::apply_bootstrap_outcome(&mut cfg, &bootstrap);
         }
         let render_mode = cfg.render_mode;
         let timeout_policy = if request

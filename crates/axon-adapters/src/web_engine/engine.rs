@@ -37,7 +37,7 @@ pub use map::MapResult;
 #[cfg(test)]
 pub use map::{derive_map_scope, merge_map_candidate_urls};
 pub use map::{discover_site_urls, discover_site_urls_with_metadata};
-pub use runtime::resolve_cdp_ws_url;
+pub use runtime::{cdp_probe_skipped_in_docker, resolve_cdp_ws_url};
 pub use sitemap::append_candidate_backfill;
 pub use sitemap::{BackfillStats, append_sitemap_backfill};
 pub use sitemap::{SitemapDiscovery, discover_sitemap_urls};
