@@ -18,6 +18,8 @@ impl Default for Config {
             positional: Vec::new(),
             projection_items: Vec::new(),
             projection_request_file: None,
+            projection_output_dir: None,
+            projection_output_template: None,
             urls_csv: None,
             url_glob: Vec::new(),
             query: None,

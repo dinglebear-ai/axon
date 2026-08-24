@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS "jobs" (
     stage_plan_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(stage_plan_json)),
     requirements_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(requirements_json)),
     result_schema TEXT NOT NULL DEFAULT '',
-    result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
     error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
     last_event_sequence INTEGER NOT NULL DEFAULT 0 CHECK (last_event_sequence >= 0),
     cooldown_until TEXT,

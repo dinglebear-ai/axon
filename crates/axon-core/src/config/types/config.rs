@@ -167,6 +167,8 @@ pub struct Config {
 
     /// Canonical focused request supplied through `--request-file`.
     pub projection_request_file: Option<PathBuf>,
+    pub projection_output_dir: Option<PathBuf>,
+    pub projection_output_template: Option<String>,
 
     /// Comma-separated URL list provided via `--urls` (alternative to positional arguments).
     pub urls_csv: Option<String>,

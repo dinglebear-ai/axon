@@ -25,6 +25,11 @@ impl fmt::Debug for Config {
             .field("exclude_path_prefix", &self.exclude_path_prefix)
             .field("output_dir", &self.output_dir)
             .field("output_path", &self.output_path)
+            .field("projection_output_dir", &self.projection_output_dir)
+            .field(
+                "projection_output_template",
+                &self.projection_output_template,
+            )
             .field("warc_output", &self.warc_output)
             .field("automation_script", &self.automation_script)
             .field("render_mode", &self.render_mode)

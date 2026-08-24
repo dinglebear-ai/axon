@@ -15,7 +15,7 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-cli/src/schema_registry.rs` | `sha256:707482ba0d3348ece1913c8e26970460e7b1c817424dd050920ac174102c5014` |
-| `crates/axon-core/src/config/cli.rs` | `sha256:7d04f719c8580de5670b78d22611ea40245ae56a02b8a54cc9394c7f1cc7edca` |
+| `crates/axon-core/src/config/cli.rs` | `sha256:4b6f0d74ce4d86a0271cad4430784540b37064d5c90d2fa4b9f77c17f17b58a5` |
 | `crates/axon-core/src/config/cli/config_args.rs` | `sha256:4dd1a47605f798d0504820d3118d205cc335d048febdd97e5656bf7f7e38caa7` |
 | `crates/axon-core/src/config/cli/resources_args.rs` | `sha256:220dffa6f6fd4159b35794c8e1950cfdab0738da9ca5f7b6760b4638347705c2` |
 | `crates/axon-core/src/config/cli/setup_args.rs` | `sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7` |

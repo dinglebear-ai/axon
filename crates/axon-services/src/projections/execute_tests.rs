@@ -72,11 +72,25 @@ fn queued_projection_item_never_echoes_sensitive_input() {
         created_at: None,
         updated_at: None,
     };
-    let item = redacted_source_item(0, BatchOutcome::Queued(descriptor));
+    let item = source_item(0, "sensitive", false, BatchOutcome::Queued(descriptor));
     let json = serde_json::to_string(&item).unwrap();
     assert!(item.input.is_none());
     assert!(!json.contains("sensitive"));
     assert!(!json.contains("input"));
+}
+
+#[test]
+fn synchronous_projection_item_echoes_input_to_initiating_caller() {
+    let item = source_item(
+        0,
+        "https://example.com/synchronous",
+        true,
+        BatchOutcome::Canceled,
+    );
+    assert_eq!(
+        item.input.as_deref(),
+        Some("https://example.com/synchronous")
+    );
 }
 
 #[test]

@@ -603,6 +603,43 @@ async fn repeated_run_is_noop() {
 }
 
 #[tokio::test]
+async fn canonical_jobs_one_through_eight_upgrade_through_nine() {
+    let pool = SqlitePool::connect(":memory:").await.expect("open pool");
+    let sets = composed_sets();
+    let mut tx = pool.begin().await.expect("begin historical schema");
+    ensure_applied_table(&mut tx).await.expect("receipt table");
+    apply_set(&mut tx, sets[0]).await.expect("ledger baseline");
+    apply_set(
+        &mut tx,
+        MigrationSet::new(JOBS_NAMESPACE, &JOBS_MIGRATIONS[..8]),
+    )
+    .await
+    .expect("historical jobs migrations");
+    identity::stamp_schema_epoch(&mut tx)
+        .await
+        .expect("stamp canonical epoch");
+    tx.commit().await.expect("commit historical schema");
+
+    apply_all_migrations(&pool)
+        .await
+        .expect("current migration set upgrades historical canonical store");
+    let result_column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name = 'result_json'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("inspect jobs columns");
+    assert_eq!(result_column, 1);
+    let projection_table: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'projection_batch_items'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("inspect projection table");
+    assert_eq!(projection_table, 1);
+}
+
+#[tokio::test]
 async fn canonical_store_with_tampered_checksum_is_rejected() {
     let pool = open_sqlite_pool(":memory:")
         .await

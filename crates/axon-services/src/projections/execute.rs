@@ -75,7 +75,12 @@ async fn admit_source_batch(
         } else {
             BatchOutcome::Queued(item.descriptor)
         };
-        items.push(redacted_source_item(item.index, outcome));
+        items.push(source_item(
+            item.index,
+            &prepared.request.source,
+            wait,
+            outcome,
+        ));
     }
     let completed = items
         .iter()
@@ -122,13 +127,15 @@ fn should_wait(execution: &ExecutionPolicy) -> bool {
         )
 }
 
-fn redacted_source_item(
+fn source_item(
     index: usize,
+    input: &str,
+    disclose_input: bool,
     outcome: BatchOutcome<SourceResult>,
 ) -> BatchItem<SourceResult> {
     BatchItem {
         index,
-        input: None,
+        input: disclose_input.then(|| input.to_string()),
         outcome,
     }
 }

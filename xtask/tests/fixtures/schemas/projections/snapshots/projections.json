@@ -1969,7 +1969,7 @@
       "path": "tests/fixtures/source-projections"
     },
     {
-      "checksum": "sha256:76d8aed0c05f6523625c0ea6c7613c6a03b36def7c7db3154f6c130bb2258c28",
+      "checksum": "sha256:a56039366e7f4ad5208b0b5622e38782881a5b1a3e2f4dcc1c95c67f761ae80f",
       "kind": "rust_module",
       "path": "xtask/src/schemas/projections.rs"
     }

@@ -326,7 +326,7 @@
         {
           "path": "crates/axon-core/src/config/cli.rs",
           "kind": "rust_module",
-          "checksum": "sha256:7d04f719c8580de5670b78d22611ea40245ae56a02b8a54cc9394c7f1cc7edca"
+          "checksum": "sha256:4b6f0d74ce4d86a0271cad4430784540b37064d5c90d2fa4b9f77c17f17b58a5"
         },
         {
           "path": "crates/axon-core/src/config/cli/config_args.rs",
@@ -374,7 +374,7 @@
           "checksum": "sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7"
         }
       ],
-      "manifest_checksum": "0062c31e3a4c3c329839ad50e11bbd29e7bdda0165d5773fd9c541c9a127291b"
+      "manifest_checksum": "ae4d693e6e0ba10dfd96c9968417f65bf91f4699f78fa6045b28d3b189232265"
     },
     {
       "family": "config",
@@ -410,7 +410,7 @@
         {
           "path": "crates/axon-jobs/src/migrations",
           "kind": "sql_migration_directory",
-          "checksum": "sha256:e7d98399fc14b59a8fce76a3fcf82e872b9339a5f9c964acc28e566bda2f4092"
+          "checksum": "sha256:462725f9f1c68adf26950293f6019668722b665ba071fec0835e137505854d4a"
         },
         {
           "path": "crates/axon-ledger/src/migrations",
@@ -443,7 +443,7 @@
           "checksum": "sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b"
         }
       ],
-      "manifest_checksum": "938309e0f7a2724642f62604e06d4ce64b05f70e1178883c3a834176361a6e47"
+      "manifest_checksum": "02461d31dcf5c6d5cf446116966d59de6ffe50b7f63905aae2b9b3dce456901a"
     },
     {
       "family": "errors",

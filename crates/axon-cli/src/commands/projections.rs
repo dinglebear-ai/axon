@@ -40,6 +40,7 @@ async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(),
         ),
         _ => unreachable!(),
     };
+    validate_output_policy(cfg, requests.len())?;
     let prepared = preflight_source_batch(
         operation,
         requests,
@@ -52,6 +53,7 @@ async fn run_source_projection(cfg: &Config, ctx: &ServiceContext) -> Result<(),
 }
 
 fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<dyn Error>> {
+    reject_mixed_inputs(cfg)?;
     let mut options = ScrapeOptions::default();
     options.collection = Some(cfg.collection.clone());
     options.execution.mode = ExecutionMode::Foreground;
@@ -62,17 +64,23 @@ fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<d
     if cfg.output_path.is_some() {
         options.output.artifact_mode = ArtifactMode::Always;
     }
-    let request = ScrapeRequest {
-        inputs: cfg
-            .positional
-            .iter()
-            .cloned()
-            .map(|input| SourceProjectionInput {
-                input,
-                idempotency_key: None,
-            })
-            .collect(),
-        options,
+    let request = if cfg.projection_request_file.is_some() || !cfg.projection_items.is_empty() {
+        let mut request = load_source_request::<ScrapeRequest>(cfg)?;
+        request.options = options;
+        request
+    } else {
+        ScrapeRequest {
+            inputs: cfg
+                .positional
+                .iter()
+                .cloned()
+                .map(|input| SourceProjectionInput {
+                    input,
+                    idempotency_key: None,
+                })
+                .collect(),
+            options,
+        }
     };
     let mut requests = project_scrape(&request)?;
     for request in &mut requests {
@@ -84,6 +92,7 @@ fn scrape_requests_from_config(cfg: &Config) -> Result<Vec<SourceRequest>, Box<d
 async fn run_code_search(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let request = load_code_search_request(cfg)?;
     let plans = project_code_search(&request)?;
+    validate_output_policy(cfg, plans.len())?;
     let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)?;
     let result =
         execute_code_search_projection_batch(ctx, prepared, axon_api::CodeSearchCaller::Cli, None)
@@ -149,6 +158,7 @@ macro_rules! source_request_loader {
         }
     };
 }
+source_request_loader!(ScrapeRequest, ScrapeOptions);
 source_request_loader!(CrawlRequest, CrawlOptions);
 source_request_loader!(EmbedRequest, EmbedOptions);
 source_request_loader!(IngestRequest, IngestOptions);
@@ -186,12 +196,72 @@ fn print_batch<T: serde::Serialize>(
 ) -> Result<(), Box<dyn Error>> {
     let json = serde_json::to_vec_pretty(result)?;
     if let Some(path) = &cfg.output_path {
-        if result.items.len() != 1 {
-            return Err("--output is only valid for a one-item projection batch".into());
-        }
         write_atomic_no_clobber(path, &json)?;
+    } else if let Some(directory) = &cfg.projection_output_dir {
+        write_batch_directory(
+            directory,
+            cfg.projection_output_template.as_deref(),
+            &result.items,
+        )?;
     } else {
         println!("{}", String::from_utf8(json)?);
+    }
+    Ok(())
+}
+
+fn validate_output_policy(cfg: &Config, item_count: usize) -> Result<(), Box<dyn Error>> {
+    if item_count > 1 && cfg.output_path.is_some() {
+        return Err(
+            "--output is only valid for a one-item projection batch; use --output-dir".into(),
+        );
+    }
+    if let Some(template) = &cfg.projection_output_template
+        && !valid_output_template(template)
+    {
+        return Err("--output-template accepts only literal text plus {index} or {input_hash}, must include one placeholder, and cannot contain path separators".into());
+    }
+    Ok(())
+}
+
+fn valid_output_template(template: &str) -> bool {
+    if template.contains('/') || template.contains('\\') || template == "." || template == ".." {
+        return false;
+    }
+    let stripped = template.replace("{index}", "").replace("{input_hash}", "");
+    (template.contains("{index}") || template.contains("{input_hash}"))
+        && !stripped.contains('{')
+        && !stripped.contains('}')
+}
+
+fn write_batch_directory<T: serde::Serialize>(
+    directory: &std::path::Path,
+    template: Option<&str>,
+    items: &[BatchItem<T>],
+) -> Result<(), Box<dyn Error>> {
+    let directory = fs::canonicalize(directory)?;
+    if !directory.is_dir() {
+        return Err("--output-dir must name an existing directory".into());
+    }
+    let template = template.unwrap_or("{index}.json");
+    if !valid_output_template(template) {
+        return Err("invalid projection output template".into());
+    }
+    for item in items {
+        let input_hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(item.input.as_deref().unwrap_or("redacted").as_bytes());
+            hasher.update(item.index.to_le_bytes());
+            hex::encode(hasher.finalize())
+        };
+        let filename = template
+            .replace("{index}", &item.index.to_string())
+            .replace("{input_hash}", &input_hash);
+        if filename.contains('/') || filename.contains('\\') || filename == "." || filename == ".."
+        {
+            return Err("projection output template produced an unsafe filename".into());
+        }
+        write_atomic_no_clobber(&directory.join(filename), &serde_json::to_vec_pretty(item)?)?;
     }
     Ok(())
 }

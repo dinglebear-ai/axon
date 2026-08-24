@@ -1,3 +1,6 @@
+ALTER TABLE jobs ADD COLUMN result_json TEXT
+    CHECK (result_json IS NULL OR json_valid(result_json));
+
 CREATE TABLE projection_batch_items (
     batch_id TEXT NOT NULL,
     item_index INTEGER NOT NULL CHECK (item_index >= 0),

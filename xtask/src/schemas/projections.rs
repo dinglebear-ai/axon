@@ -107,6 +107,9 @@ fn inline_schema<T: JsonSchema>() -> Result<Value> {
 
 fn load_fixtures(root: &Path) -> Result<Vec<Value>> {
     let directory = root.join("tests/fixtures/source-projections");
+    let expected_hashes: BTreeMap<String, String> = serde_json::from_slice(&std::fs::read(
+        root.join("tests/fixtures/source-projection-canonical-hashes.json"),
+    )?)?;
     let mut paths = std::fs::read_dir(&directory)
         .with_context(|| format!("failed to read {}", directory.display()))?
         .map(|entry| entry.map(|entry| entry.path()))
@@ -125,6 +128,23 @@ fn load_fixtures(root: &Path) -> Result<Vec<Value>> {
                 .with_context(|| format!("invalid projection fixture {}", path.display()))?;
             normalize_fixture(&mut fixture)
                 .with_context(|| format!("projection fixture {}", path.display()))?;
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("projection fixture filename is not UTF-8")?;
+            let expected_hash = expected_hashes
+                .get(name)
+                .with_context(|| format!("missing canonical hash for {name}"))?;
+            let actual_hash = {
+                use sha2::{Digest, Sha256};
+                Sha256::digest(fixture["canonical_requests"].to_string())
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            };
+            if &actual_hash != expected_hash {
+                bail!("canonical projection drift for {name}: expected {expected_hash}, got {actual_hash}");
+            }
             Ok(fixture)
         })
         .collect()
