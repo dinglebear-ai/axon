@@ -114,7 +114,12 @@ jobs:
 
   image-build-smoke:
     name: image-build-smoke
-    runs-on: ci-pool-system
+    # GitHub-hosted for the same reason as docker-image.yml's build job: the
+    # self-hosted pools run DIND=false (ci-runner-farm's fail-closed gate
+    # refuses privileged runners while org-scoped targeting covers public
+    # repos), so no pool can offer this job a Docker daemon. buildx cache is
+    # type=gha and nothing here is host-local, so hosted is a drop-in.
+    runs-on: ubuntu-latest
     # Slowest observed green run: 2.9 min, but that is a warm buildx cache — the
     # Dockerfile runs a full cargo build inside the container, so a cache miss is
     # far slower than anything measured here.
