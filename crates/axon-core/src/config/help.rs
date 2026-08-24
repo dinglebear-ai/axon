@@ -11,6 +11,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
         "Web And Extraction",
         &[
             "scrape",
+            "crawl",
             "map",
             "endpoints",
             "search",
@@ -24,6 +25,9 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Vector And RAG",
         &[
+            "embed",
+            "ingest",
+            "code-search",
             "query",
             "retrieve",
             "ask",

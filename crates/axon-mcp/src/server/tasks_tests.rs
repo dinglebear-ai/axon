@@ -19,20 +19,21 @@ fn unsupported_task_request_names_immediate_actions() {
 }
 
 #[test]
-fn task_mode_removed_crawl_fails_before_task_dispatch() {
+fn task_mode_crawl_is_rejected_as_an_immediate_action() {
     let raw = serde_json::json!({
         "action": "crawl",
-        "subaction": "start",
-        "urls": ["https://example.com/one"]
+        "inputs": [{"input": "https://example.com/one"}]
     })
     .as_object()
     .expect("object")
     .clone();
 
-    let err = parse_axon_request(raw).expect_err("removed crawl must not parse");
+    let request = parse_axon_request(raw).expect("crawl should parse");
+    let err = unsupported_task_request(&request);
     assert!(
-        err.contains("action `crawl` was removed from MCP") && err.contains("action=source"),
-        "removed crawl should fail closed with replacement guidance: {err}"
+        err.message.contains("crawl"),
+        "unexpected error: {}",
+        err.message
     );
 }
 

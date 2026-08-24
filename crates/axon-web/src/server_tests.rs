@@ -742,9 +742,8 @@ async fn v1_ask_rejects_removed_graph_field() {
 // stricter behavior the shadow router never had (it had no destructive-route
 // guard at all).
 
-/// Removed direct verb/family routes must 404 on the live router, and the
-/// unified `POST /v1/sources` replacement must be mounted (never 404/405).
-/// Ported from `rest_tests.rs::legacy_indexing_routes_are_absent_and_sources_present`.
+/// Restored projection routes are mounted while retired cleanup aliases remain
+/// absent, and the canonical source route remains available.
 #[tokio::test]
 #[serial]
 async fn legacy_indexing_routes_are_absent_and_sources_present_on_live_router() {
@@ -754,13 +753,32 @@ async fn legacy_indexing_routes_are_absent_and_sources_present_on_live_router() 
     let client = reqwest::Client::new();
 
     for path in [
-        "/v1/embed",
-        "/v1/ingest",
         "/v1/scrape",
         "/v1/crawl",
-        "/v1/purge",
-        "/v1/dedupe",
+        "/v1/embed",
+        "/v1/ingest",
+        "/v1/code-search",
     ] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header("authorization", "Bearer secret")
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("post {path}: {e}"));
+        assert_ne!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "restored route {path}"
+        );
+        assert_ne!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "restored route {path}"
+        );
+    }
+
+    for path in ["/v1/purge", "/v1/dedupe"] {
         let response = client
             .post(format!("{base}{path}"))
             .json(&serde_json::json!({}))

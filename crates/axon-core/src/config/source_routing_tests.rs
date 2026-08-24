@@ -34,18 +34,10 @@ fn bare_registry_target_routes_to_source() {
 }
 
 #[test]
-fn crawl_is_reserved_and_does_not_route_as_source() {
-    let command = build_cli_command();
-    let args = vec![
-        "axon".to_string(),
-        "crawl".to_string(),
-        "https://example.com".to_string(),
-    ];
-    let err = route_bare_source_or_error(args, &command).expect_err("crawl is reserved");
-    assert_eq!(err.token(), "crawl");
+fn crawl_is_a_real_subcommand() {
     assert_eq!(
-        err.replacement(),
-        "Use `axon <url> --scope site` or `axon <url> --scope docs`."
+        route(&["axon", "crawl", "https://example.com"]),
+        vec!["axon", "crawl", "https://example.com"]
     );
 }
 
@@ -60,14 +52,7 @@ fn retained_scrape_is_a_real_subcommand() {
 #[test]
 fn removed_source_and_cleanup_commands_are_reserved() {
     let command = build_cli_command();
-    for removed in [
-        "embed",
-        "ingest",
-        "code-search",
-        "code-search-watch",
-        "purge",
-        "dedupe",
-    ] {
+    for removed in ["code-search-watch", "purge", "dedupe"] {
         let args = vec![
             "axon".to_string(),
             removed.to_string(),

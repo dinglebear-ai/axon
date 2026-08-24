@@ -71,7 +71,19 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         .expect("tools/list inputSchema publishes properties.action.enum");
 
     for action in [
-        "source", "extract", "retrieve", "ask", "query", "status", "jobs", "memory",
+        "source",
+        "scrape",
+        "crawl",
+        "embed",
+        "ingest",
+        "code_search",
+        "extract",
+        "retrieve",
+        "ask",
+        "query",
+        "status",
+        "jobs",
+        "memory",
     ] {
         assert!(
             action_enum
@@ -81,18 +93,7 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         );
     }
 
-    // The legacy indexing actions were folded into `source` and must not appear
-    // anywhere in the published MCP schema.
-    for removed in [
-        "crawl",
-        "scrape",
-        "embed",
-        "ingest",
-        "code_search",
-        "vertical_scrape",
-        "dedupe",
-        "purge",
-    ] {
+    for removed in ["vertical_scrape", "dedupe", "purge"] {
         assert!(
             !action_enum
                 .iter()
@@ -197,21 +198,9 @@ fn mcp_schema_documents_jobs_subactions() {
 }
 
 #[test]
-fn mcp_schema_omits_removed_indexing_surface() {
-    // Removed names must be absent from action-bearing surfaces. Field names are
-    // intentionally checked separately: `source.embed` is still a valid option,
-    // even though the old top-level `embed` action is gone.
+fn mcp_schema_omits_retired_indexing_surface() {
     let schema = axon_input_schema();
-    let removed_actions = [
-        "crawl",
-        "scrape",
-        "embed",
-        "ingest",
-        "code_search",
-        "vertical_scrape",
-        "dedupe",
-        "purge",
-    ];
+    let removed_actions = ["vertical_scrape", "dedupe", "purge"];
 
     let action_enum = schema
         .pointer("/properties/action/enum")
@@ -297,7 +286,7 @@ fn mcp_schema_job_kind_filters_migration_only_families() {
 }
 
 #[test]
-fn removed_crawl_fixture_is_outside_mcp_action_enum() {
+fn restored_crawl_fixture_is_inside_mcp_action_enum() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
         "../../tests/fixtures/schema/removed_crawl.invalid.json"
     ))
@@ -312,10 +301,10 @@ fn removed_crawl_fixture_is_outside_mcp_action_enum() {
         .and_then(serde_json::Value::as_array)
         .expect("tools/list inputSchema publishes properties.action.enum");
     assert!(
-        !action_enum
+        action_enum
             .iter()
             .any(|value| value.as_str() == Some(action)),
-        "removed crawl action must be rejected before handler dispatch"
+        "restored crawl action must be accepted before handler dispatch"
     );
 }
 

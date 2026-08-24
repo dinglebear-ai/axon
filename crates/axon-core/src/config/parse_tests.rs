@@ -142,50 +142,37 @@ fn parse_repeatable_global_vectors_preserves_every_occurrence() {
     );
 }
 
-/// The removed source-family commands (`crawl`, `embed`, `ingest`,
-/// `code-search`, `code-search-watch`) must not appear anywhere in the rendered
-/// top-level help after the pipeline-unification clean break (#298 P10), while
-/// the retained `scrape` surface remains visible as a real subcommand.
+/// Restored focused projections appear in help while retired watch/cleanup
+/// aliases remain absent.
 #[test]
-fn help_omits_removed_source_commands() {
+fn help_lists_restored_source_projections() {
     let mut command = super::build_cli_command();
     let help = command.render_long_help().to_string();
 
-    for removed in [
-        "  crawl",
-        "  embed",
-        "  ingest",
-        "  code-search",
-        "code-search-watch",
-    ] {
+    for restored in ["scrape", "crawl", "embed", "ingest", "code-search"] {
+        assert!(
+            help.contains(restored),
+            "missing restored command {restored}"
+        );
+    }
+    for removed in ["code-search-watch", "  purge", "  dedupe"] {
         assert!(
             !help.contains(removed),
             "removed command `{}` still appears in help:\n{help}",
             removed.trim()
         );
     }
-    assert!(help.contains("scrape"));
-    // Canonical replacements remain.
     assert!(help.contains("source"));
     assert!(help.contains("query"));
 }
 
-/// Removed source-family command names stay reserved/removed at the routing
-/// layer. `scrape` is intentionally excluded because it is retained as a real
-/// clap subcommand again, and `crawl` is reserved with dedicated guidance.
+/// Retired command names stay reserved at the routing layer.
 #[allow(unsafe_code)]
 #[test]
 fn removed_command_names_are_reserved_not_sources() {
     let _guard = env_guard();
 
-    for removed in [
-        "embed",
-        "ingest",
-        "code-search",
-        "code-search-watch",
-        "purge",
-        "dedupe",
-    ] {
+    for removed in ["code-search-watch", "purge", "dedupe"] {
         let raw = vec![
             "axon".to_string(),
             "--tei-url".to_string(),
