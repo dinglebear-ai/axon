@@ -489,3 +489,7 @@ pub(super) use watch_routes::WATCH_ROUTES;
 #[path = "data/graph_routes.rs"]
 mod graph_routes;
 pub(super) use graph_routes::GRAPH_ROUTES;
+
+#[path = "data/projection_routes.rs"]
+mod projection_routes;
+pub(super) use projection_routes::PROJECTION_ROUTES;

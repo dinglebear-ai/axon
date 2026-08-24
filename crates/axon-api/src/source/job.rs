@@ -6,6 +6,7 @@ use super::common::*;
 use super::enums::*;
 use super::ids::*;
 use super::lifecycle::JobDescriptor;
+use super::projection::ProjectionOperation;
 use super::stage::StageCounts;
 use super::status::ApiError;
 use super::status::ProgressCurrent;
@@ -51,6 +52,53 @@ pub struct JobCreateRequest {
     /// Fields" (`deadline_at`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_at: Option<Timestamp>,
+}
+
+/// Versioned semantic fingerprint stored with projection idempotency metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(transparent)]
+pub struct RequestFingerprintV1(pub String);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionAdmissionItem {
+    pub operation: ProjectionOperation,
+    /// Opaque hash of operation, principal namespace, and caller key.
+    pub storage_key: String,
+    pub fingerprint: RequestFingerprintV1,
+    pub request: JobCreateRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionBatchAdmission {
+    pub batch_id: BatchId,
+    /// Opaque stable principal digest; never an email or bearer token.
+    pub principal_id: String,
+    pub items: Vec<ProjectionAdmissionItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionAdmissionResultItem {
+    pub index: usize,
+    pub operation: ProjectionOperation,
+    pub descriptor: JobDescriptor,
+    pub reused: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionBatchAdmissionResult {
+    pub batch_id: BatchId,
+    pub items: Vec<ProjectionAdmissionResultItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectionBatchLookup {
+    pub batch_id: BatchId,
+    pub principal_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

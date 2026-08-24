@@ -452,12 +452,7 @@ fn parse_retrieve_action_with_collection_and_time_filters() {
 #[test]
 fn removed_mcp_actions_fail_closed_with_guidance() {
     for (action, guidance) in [
-        ("crawl", "action=source with scope=site"),
-        ("scrape", "action=source with scope=page"),
-        ("embed", "action=source"),
-        ("ingest", "action=source"),
-        ("vertical_scrape", "action=source"),
-        ("code_search", "action=query"),
+        ("vertical_scrape", "action=scrape"),
         ("dedupe", "action=prune"),
         ("purge", "action=prune"),
     ] {
@@ -584,17 +579,17 @@ fn case_sensitive_action_no_folding() {
 // --- removed action boundary and field validation ---
 
 #[test]
-fn removed_crawl_unknown_subaction_returns_guidance_error() {
+fn crawl_rejects_noncanonical_subaction() {
     let raw = obj(json!({
         "action": "crawl",
         "subaction": "fly_to_moon"
     }));
     let result = parse_axon_request(raw);
-    assert!(result.is_err(), "removed crawl action must return an error");
+    assert!(result.is_err(), "focused crawl has no subaction field");
 }
 
 #[test]
-fn removed_crawl_with_unknown_fields_returns_guidance_error() {
+fn crawl_rejects_unknown_fields() {
     let raw = obj(json!({
         "action": "crawl",
         "subaction": "start",
@@ -602,7 +597,28 @@ fn removed_crawl_with_unknown_fields_returns_guidance_error() {
         "totally_unknown_field": true
     }));
     let result = parse_axon_request(raw);
-    assert!(result.is_err(), "removed crawl action must return an error");
+    assert!(result.is_err(), "focused crawl must reject unknown fields");
+}
+
+#[test]
+fn focused_projection_actions_parse_canonical_batches() {
+    for action in ["scrape", "crawl", "embed", "ingest"] {
+        let request = obj(json!({
+            "action": action,
+            "inputs": [{"input": "https://example.com", "idempotency_key": "key-1"}],
+            "options": {}
+        }));
+        assert!(parse_axon_request(request).is_ok(), "{action} should parse");
+    }
+    let request = obj(json!({
+        "action": "code_search",
+        "inputs": [{"input": "needle"}],
+        "options": {"source": "/repo"}
+    }));
+    assert!(matches!(
+        parse_axon_request(request),
+        Ok(AxonRequest::CodeSearch(_))
+    ));
 }
 
 #[test]

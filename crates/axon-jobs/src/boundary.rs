@@ -35,6 +35,14 @@ pub struct JobDeleteResult {
 #[async_trait]
 pub trait JobStore: Send + Sync {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor>;
+    async fn admit_projection_batch_atomic(
+        &self,
+        admission: ProjectionBatchAdmission,
+    ) -> Result<ProjectionBatchAdmissionResult>;
+    async fn projection_batch(
+        &self,
+        lookup: ProjectionBatchLookup,
+    ) -> Result<Option<ProjectionBatchAdmissionResult>>;
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>>;
     /// The raw `request` payload captured at `create()` time (e.g. the
     /// `{"urls": [...], "config_json": "..."}` shape `JobKind::Extract`
@@ -45,6 +53,10 @@ pub trait JobStore: Send + Sync {
     /// Default implementation returns `Ok(None)` for stores that do not
     /// persist request payloads.
     async fn request_json(&self, _job_id: JobId) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+    /// Canonical typed terminal result persisted by a domain runner.
+    async fn result_json(&self, _job_id: JobId) -> Result<Option<serde_json::Value>> {
         Ok(None)
     }
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>>;

@@ -64,6 +64,11 @@ pub async fn dispatch_action(
 
 pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
     match action {
+        AxonRequest::Scrape(_)
+        | AxonRequest::Crawl(_)
+        | AxonRequest::Embed(_)
+        | AxonRequest::Ingest(_) => Some("axon:write"),
+        AxonRequest::CodeSearch(_) => Some("axon:read"),
         AxonRequest::Status(_) => Some("axon:read"),
         AxonRequest::Extract(_) => Some("axon:write"),
         AxonRequest::Memory(req) => match req.subaction.unwrap_or(MemorySubaction::Remember) {
@@ -174,6 +179,11 @@ fn internal_error(err: Box<dyn Error>) -> ClientActionError {
 
 fn action_name(action: &AxonRequest) -> &'static str {
     match action {
+        AxonRequest::Scrape(_) => "scrape",
+        AxonRequest::Crawl(_) => "crawl",
+        AxonRequest::Embed(_) => "embed",
+        AxonRequest::Ingest(_) => "ingest",
+        AxonRequest::CodeSearch(_) => "code_search",
         AxonRequest::Status(_) => "status",
         AxonRequest::Jobs(_) => "jobs",
         AxonRequest::Extract(_) => "extract",

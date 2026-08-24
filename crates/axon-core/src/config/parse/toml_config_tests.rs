@@ -111,6 +111,20 @@ fn valid_toml_parses_tool_execution_security_gate() {
 }
 
 #[test]
+fn projection_batch_toml_parses_all_owning_limit_kinds() {
+    let cfg = load_toml_config_from_str(
+        "[server.projection-batch]\nmax-inputs = 4\nmax-request-bytes = 4096\nmax-pages = 8\nmax-prepared-bytes = 8192\nmax-query-window = 20\ncaller-max-in-flight-requests = 2\n",
+    )
+    .unwrap();
+    assert_eq!(cfg.projection_batch.max_inputs, Some(4));
+    assert_eq!(cfg.projection_batch.max_request_bytes, Some(4096));
+    assert_eq!(cfg.projection_batch.max_pages, Some(8));
+    assert_eq!(cfg.projection_batch.max_prepared_bytes, Some(8192));
+    assert_eq!(cfg.projection_batch.max_query_window, Some(20));
+    assert_eq!(cfg.projection_batch.caller_max_in_flight_requests, Some(2));
+}
+
+#[test]
 fn valid_toml_parses_chrome_bootstrap_section() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(

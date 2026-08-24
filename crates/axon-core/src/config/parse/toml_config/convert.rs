@@ -141,6 +141,27 @@ pub(super) fn flatten(raw: RawTomlConfig) -> TomlConfig {
     flat.mcp.embed.max_local_bytes = raw.server.mcp.embed.max_local_bytes;
     flat.mcp.embed.max_local_depth = raw.server.mcp.embed.max_local_depth;
     flat.mcp.embed.max_local_entries = raw.server.mcp.embed.max_local_entries;
+    let batch = &raw.server.projection_batch;
+    flat.projection_batch.max_inputs = batch.max_inputs;
+    flat.projection_batch.max_request_bytes = batch.max_request_bytes;
+    flat.projection_batch.max_input_bytes = batch.max_input_bytes;
+    flat.projection_batch.max_query_bytes = batch.max_query_bytes;
+    flat.projection_batch.max_idempotency_key_bytes = batch.max_idempotency_key_bytes;
+    flat.projection_batch.max_aggregate_input_bytes = batch.max_aggregate_input_bytes;
+    flat.projection_batch.max_response_bytes = batch.max_response_bytes;
+    flat.projection_batch.max_pages = batch.max_pages;
+    flat.projection_batch.max_manifest_items = batch.max_manifest_items;
+    flat.projection_batch.max_fetched_bytes_per_item = batch.max_fetched_bytes_per_item;
+    flat.projection_batch.max_decompressed_bytes_per_item = batch.max_decompressed_bytes_per_item;
+    flat.projection_batch.max_prepared_bytes = batch.max_prepared_bytes;
+    flat.projection_batch.max_documents = batch.max_documents;
+    flat.projection_batch.max_chunks = batch.max_chunks;
+    flat.projection_batch.max_vector_points = batch.max_vector_points;
+    flat.projection_batch.max_elapsed_secs = batch.max_elapsed_secs;
+    flat.projection_batch.max_query_window = batch.max_query_window;
+    flat.projection_batch.global_max_in_flight_requests = batch.global_max_in_flight_requests;
+    flat.projection_batch.caller_max_in_flight_requests = batch.caller_max_in_flight_requests;
+    flat.projection_batch.caller_rate_limit_per_minute = batch.caller_rate_limit_per_minute;
 
     flat.code_search.freshness_ttl_secs = raw.sources.code_search.freshness_ttl_secs;
     flat.code_search.reindex_timeout_secs = raw.sources.code_search.reindex_timeout_secs;

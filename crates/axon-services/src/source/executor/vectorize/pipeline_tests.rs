@@ -284,6 +284,20 @@ impl axon_jobs::boundary::JobStore for HeartbeatRecordingJobStore {
         self.inner.create(request).await
     }
 
+    async fn admit_projection_batch_atomic(
+        &self,
+        admission: ProjectionBatchAdmission,
+    ) -> axon_jobs::boundary::Result<ProjectionBatchAdmissionResult> {
+        self.inner.admit_projection_batch_atomic(admission).await
+    }
+
+    async fn projection_batch(
+        &self,
+        lookup: ProjectionBatchLookup,
+    ) -> axon_jobs::boundary::Result<Option<ProjectionBatchAdmissionResult>> {
+        self.inner.projection_batch(lookup).await
+    }
+
     async fn get(&self, job_id: JobId) -> axon_jobs::boundary::Result<Option<JobSummary>> {
         self.inner.get(job_id).await
     }

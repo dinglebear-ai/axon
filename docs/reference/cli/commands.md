@@ -14,14 +14,14 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-cli/src/schema_registry.rs` | `sha256:0e551ddbd987f079d50a73b15521bfd7f5166d13f7f2a5c39e762eb026942168` |
-| `crates/axon-core/src/config/cli.rs` | `sha256:47bb65cde7e714f5d7aa9363dfb1c4a57949b056c8e032e9aaca3a0538c25fe6` |
+| `crates/axon-cli/src/schema_registry.rs` | `sha256:707482ba0d3348ece1913c8e26970460e7b1c817424dd050920ac174102c5014` |
+| `crates/axon-core/src/config/cli.rs` | `sha256:88f712e049e56a7a232ad904968531f67b22bf900a2d0efc08658cf797a79211` |
 | `crates/axon-core/src/config/cli/config_args.rs` | `sha256:4dd1a47605f798d0504820d3118d205cc335d048febdd97e5656bf7f7e38caa7` |
 | `crates/axon-core/src/config/cli/resources_args.rs` | `sha256:220dffa6f6fd4159b35794c8e1950cfdab0738da9ca5f7b6760b4638347705c2` |
 | `crates/axon-core/src/config/cli/setup_args.rs` | `sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7` |
 | `docs/pipeline-unification/schemas/cli-schema.md` | `sha256:e542f512c3329c4f102fc3b93f57415906a00de3b302d1d836b5d9131e5d1a08` |
-| `xtask/src/schemas/cli_registry.rs` | `sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b` |
-| `xtask/src/schemas/cli_registry/part1.rs` | `sha256:8e9a1cb2fe10b7989d346bfc7b053855aedd20a54da92cbdab0cb28532c51aa0` |
+| `xtask/src/schemas/cli_registry.rs` | `sha256:dbd6c81106df8b302a43d12402ca61f3450da036c13a44c7420a500fcf6faa3e` |
+| `xtask/src/schemas/cli_registry/part1.rs` | `sha256:f456755aae6da2988c91cb49d70ed41b888d724d8376611ef4d0f41957a33838` |
 | `xtask/src/schemas/cli_registry/part2.rs` | `sha256:95a0e61d6e097be6a01c4f27dff6fa18e7f076d723ac2562d53db6a6437bcc4f` |
 | `xtask/src/schemas/cli_registry/part3.rs` | `sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088` |
 | `xtask/src/schemas/cli_registry/part4.rs` | `sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7` |
@@ -64,7 +64,7 @@ Run `cargo xtask generated-contracts check`.
 
 ## Commands
 
-Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that can return a durable job id instead of completing synchronously.
+Sourced from `docs/reference/cli/commands.json` (113 commands). `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that can return a durable job id instead of completing synchronously.
 
 | Command | Group | Summary | Mutates | Auth Scope | Async |
 |---|---|---|---|---|---|
@@ -75,6 +75,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `brand` | `brand` | Analyze a URL's brand identity: colors, fonts, logos, favicon | no | `read` | no |
 | `capabilities` | `capabilities` | Print machine-readable runtime capabilities | no | `read` | no |
 | `chat` | `chat` | Send a direct prompt to the configured LLM | no | `read` | no |
+| `code-search` | `code-search` | Search committed local-code vectors without refreshing the index | no | `read` | no |
 | `collections get` | `collections` | Show one vector collection with optional schema and indexes | no | `read` | no |
 | `collections list` | `collections` | List configured vector collections | no | `read` | no |
 | `completions` | `completions` | Generate shell completions (bash, zsh, fish) | no | `read` | no |
@@ -87,11 +88,13 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `config path` | `config` | Print resolved paths to .env and config.toml | no | `admin` | no |
 | `config set` | `config` | Write a config value (auto-detects file by key shape) | yes | `admin` | no |
 | `config unset` | `config` | Remove a config value from .env or config.toml | yes | `admin` | no |
+| `crawl` | `crawl` | Crawl source roots through the canonical source projection | yes | `write` | yes |
 | `debug` | `debug` | Run doctor diagnostics plus LLM-assisted troubleshooting | no | `admin` | no |
 | `diff` | `diff` | Diff two URLs — show what changed between them | no | `read` | no |
 | `doctor` | `doctor` | Check connectivity to all required services | no | `admin` | no |
 | `doctor diagnose` | `doctor` | Print doctor output plus LLM diagnosis when configured | no | `admin` | no |
 | `domains` | `domains` | List indexed domains with document statistics | no | `read` | no |
+| `embed` | `embed` | Embed sources through the canonical source projection | yes | `write` | yes |
 | `endpoints` | `endpoints` | Discover API endpoints from page HTML/JS bundles | no | `read` | no |
 | `evaluate` | `evaluate` | RAG vs baseline with independent LLM judge scoring | no | `read` | no |
 | `extract` | `extract` | LLM-powered structured data extraction from URLs | yes | `write` | yes |
@@ -109,6 +112,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `graph query` | `graph` | Query SourceGraph nodes | no | `read` | no |
 | `graph resolve` | `graph` | Resolve an identifier to SourceGraph nodes | no | `read` | no |
 | `graph source` | `graph` | Walk the SourceGraph neighborhood of a source | no | `read` | no |
+| `ingest` | `ingest` | Ingest sources through the canonical source projection | yes | `write` | yes |
 | `jobs cancel` | `jobs` | Request cancellation for a unified durable job | yes | `write` | no |
 | `jobs cleanup` | `jobs` | Remove old terminal unified durable jobs | yes | `write` | no |
 | `jobs clear` | `jobs` | Clear terminal unified durable job rows; active jobs require cancel/recover first | yes | `admin` | no |
@@ -140,7 +144,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `research` | `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing | yes | `read` | no |
 | `reset` | `reset` | Plan a clean-slate reset or execute a reviewed plan with flags | yes | `admin` | no |
 | `retrieve` | `retrieve` | Fetch stored document chunks from Qdrant by URL | no | `read` | no |
-| `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through SourceRequest | yes | `write` | no |
+| `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through the scrape projection | yes | `write` | yes |
 | `screenshot` | `screenshot` | Capture a full-page screenshot of one or more URLs | yes | `write` | no |
 | `search` | `search` | Web search via SearXNG/Tavily, auto-queues Source jobs for results | yes | `read` | no |
 | `serve` | `serve` | Start service runtimes | no | `admin` | no |
@@ -178,7 +182,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `watch status` | `watch` | Show source watch status | no | `read` | no |
 | `watch update` | `watch` | Update a source watch | yes | `write` | no |
 
-Total: 109 commands.
+Total: 113 commands.
 
 ## Removed Commands
 
@@ -186,10 +190,6 @@ Removed in the 7.0.0 clean-break pipeline unification (issue #298) and not prese
 
 | Removed command | Replacement |
 |---|---|
-| `axon embed ...` | `axon <source>` |
-| `axon ingest ...` | `axon <source>` |
-| `axon crawl ...` | `axon <url> --scope site` |
-| `axon code-search ...` | `axon query <query> --content-kind code --freshness committed` |
 | `axon code-search-watch ...` | `axon watch <path>` |
 | `axon purge ...` | `axon prune plan ... then axon prune exec ...` |
 | `axon dedupe ...` | `axon prune plan ... then axon prune exec ...` |

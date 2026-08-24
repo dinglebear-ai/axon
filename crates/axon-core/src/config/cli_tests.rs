@@ -59,6 +59,42 @@ fn retained_scrape_parses_scrape_specific_flags() {
 }
 
 #[test]
+fn focused_projection_commands_parse_repeated_inputs() {
+    for command in ["crawl", "embed", "ingest", "code-search"] {
+        let result = Cli::try_parse_from(["axon", command, "first", "second"]);
+        assert!(
+            result.is_ok(),
+            "{command} should parse repeated inputs: {result:?}"
+        );
+    }
+    assert!(Cli::try_parse_from(["axon", "code_search", "needle"]).is_err());
+    assert!(
+        Cli::try_parse_from([
+            "axon",
+            "ingest",
+            "--item",
+            r#"{"input":"one","idempotency_key":"key-1"}"#,
+            "--item",
+            r#"{"input":"two"}"#,
+        ])
+        .is_ok()
+    );
+    assert!(Cli::try_parse_from(["axon", "crawl", "--request-file", "batch.json"]).is_ok());
+    assert!(
+        Cli::try_parse_from([
+            "axon",
+            "crawl",
+            "https://example.test",
+            "--output-dir",
+            "/tmp/projection-output",
+            "--output-template",
+            "{index}.json",
+        ])
+        .is_ok()
+    );
+}
+
+#[test]
 fn map_rejects_removed_crawl_fallback_flag() {
     let err = Cli::try_parse_from([
         "axon",
@@ -75,15 +111,7 @@ fn map_rejects_removed_crawl_fallback_flag() {
 /// break (issue #298 P10). `scrape` is retained and must continue to parse.
 #[test]
 fn removed_commands_no_longer_parse() {
-    for name in [
-        "crawl",
-        "embed",
-        "ingest",
-        "code-search",
-        "code-search-watch",
-        "purge",
-        "dedupe",
-    ] {
+    for name in ["code-search-watch", "purge", "dedupe"] {
         let err = Cli::try_parse_from(["axon", name, "x"])
             .expect_err(&format!("`axon {name}` must not parse after removal"));
         assert_eq!(

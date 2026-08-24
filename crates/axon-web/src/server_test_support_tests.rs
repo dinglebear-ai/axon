@@ -151,7 +151,7 @@ pub(super) async fn spawn_full_test_server(
 
 pub(super) async fn spawn_full_test_server_with_config(
     auth_policy: AuthPolicy,
-    cfg: axon_core::config::Config,
+    mut cfg: axon_core::config::Config,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
     let home = tempfile::tempdir().expect("temp home");
     let home_guard = EnvGuard::set_key("HOME", home.path().to_str());
@@ -163,12 +163,14 @@ pub(super) async fn spawn_full_test_server_with_config(
     let config_path_guard = EnvGuard::set_key("AXON_CONFIG_PATH", None);
     std::fs::write(axon_home.join("panel-password"), b"test-panel-token\n")
         .expect("write panel password");
+    cfg.sqlite_path = axon_home.join("jobs.db");
     let panel = Arc::new(super::PanelRuntimeState::initialize("127.0.0.1", 0).expect("panel"));
     let cfg = Arc::new(cfg);
-    let ctx = Arc::new(ServiceContext::from_runtime(
-        Arc::clone(&cfg),
-        Arc::new(EmptyRuntime),
-    ));
+    let ctx = Arc::new(
+        ServiceContext::new_with_workers(Arc::clone(&cfg))
+            .await
+            .expect("test service context"),
+    );
     let app = super::router(cfg, panel, ctx, auth_policy);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))

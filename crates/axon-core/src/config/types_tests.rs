@@ -412,3 +412,36 @@ fn default_config_has_github_issue_pr_limits() {
     assert_eq!(cfg.github_max_issues, 100);
     assert_eq!(cfg.github_max_prs, 100);
 }
+
+#[test]
+fn projection_batch_defaults_are_bounded_and_valid() {
+    let limits = Config::default().projection_batch;
+    assert_eq!(limits.max_inputs, 32);
+    assert_eq!(limits.max_request_bytes, 1024 * 1024);
+    assert_eq!(limits.max_idempotency_key_bytes, 256);
+    assert_eq!(limits.max_query_window, 1_000);
+    assert_eq!(limits.caller_max_in_flight_requests, 8);
+    limits.validate().unwrap();
+}
+
+#[test]
+fn projection_batch_rejects_zero_and_inverted_limits() {
+    let limits = ProjectionBatchConfig {
+        max_chunks: 0,
+        ..ProjectionBatchConfig::default()
+    };
+    assert!(limits.validate().unwrap_err().contains("max-chunks"));
+
+    let limits = ProjectionBatchConfig {
+        caller_max_in_flight_requests: ProjectionBatchConfig::default()
+            .global_max_in_flight_requests
+            + 1,
+        ..ProjectionBatchConfig::default()
+    };
+    assert!(
+        limits
+            .validate()
+            .unwrap_err()
+            .contains("caller-max-in-flight")
+    );
+}

@@ -33,6 +33,7 @@ use super::UnifiedClaimedJob;
 pub struct UnifiedJobOutcome {
     pub status: LifecycleStatus,
     pub counts: Option<StageCounts>,
+    pub result_json: Option<String>,
 }
 
 impl UnifiedJobOutcome {
@@ -40,6 +41,7 @@ impl UnifiedJobOutcome {
         Self {
             status: LifecycleStatus::Completed,
             counts: Some(counts),
+            result_json: None,
         }
     }
 
@@ -47,6 +49,7 @@ impl UnifiedJobOutcome {
         Self {
             status: LifecycleStatus::Completed,
             counts: None,
+            result_json: None,
         }
     }
 
@@ -54,7 +57,13 @@ impl UnifiedJobOutcome {
         Self {
             status: LifecycleStatus::CompletedDegraded,
             counts: Some(counts),
+            result_json: None,
         }
+    }
+
+    pub fn with_result_json(mut self, result_json: String) -> Self {
+        self.result_json = Some(result_json);
+        self
     }
 }
 

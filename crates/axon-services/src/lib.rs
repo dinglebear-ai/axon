@@ -42,6 +42,7 @@ pub mod mobile_sessions;
 pub mod query;
 pub mod reddit_target;
 pub use reddit_target::is_reddit_target;
+pub mod projections;
 pub mod prune;
 pub(crate) mod reserved_call;
 pub mod reset;

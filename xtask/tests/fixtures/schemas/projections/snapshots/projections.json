@@ -1,0 +1,1725 @@
+{
+  "$id": "https://axon.local/schemas/sources/projections.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract_version": "2026-08-23",
+  "fixtures": [
+    {
+      "canonical_requests": [
+        {
+          "collection": "code",
+          "content_kind": "code",
+          "language": "rust",
+          "limit": 100,
+          "offset": 10,
+          "path_prefix": "crates/",
+          "query": "reserve_or_reuse_batch",
+          "source": "axon"
+        },
+        {
+          "collection": "code",
+          "content_kind": "code",
+          "language": "rust",
+          "limit": 100,
+          "offset": 10,
+          "path_prefix": "crates/",
+          "query": "PreparedSourceItem",
+          "source": "axon"
+        }
+      ],
+      "operation": "code_search",
+      "transport_input": {
+        "inputs": [
+          {
+            "input": "reserve_or_reuse_batch"
+          },
+          {
+            "input": "PreparedSourceItem"
+          }
+        ],
+        "options": {
+          "collection": "code",
+          "language": "rust",
+          "limit": 100,
+          "offset": 10,
+          "path_prefix": "crates/",
+          "source": "axon"
+        }
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "content_kind": "code",
+          "limit": 20,
+          "offset": 0,
+          "query": "projection registry"
+        }
+      ],
+      "operation": "code_search",
+      "transport_input": {
+        "inputs": [
+          {
+            "input": "projection registry"
+          }
+        ]
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "idempotency_key": "crawl-001",
+          "intent": "acquire",
+          "limits": {
+            "max_bytes_per_item": 1048576,
+            "max_chunks": 500,
+            "max_depth": 3,
+            "max_items": 50,
+            "max_pages": 25,
+            "max_total_bytes": 8388608,
+            "provider_timeout_ms": 30000
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "scope": "site",
+          "source": "https://example.test/docs",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "crawl",
+      "transport_input": {
+        "inputs": [
+          {
+            "idempotency_key": "crawl-001",
+            "input": "https://example.test/docs"
+          }
+        ],
+        "options": {
+          "limits": {
+            "max_bytes_per_item": 1048576,
+            "max_chunks": 500,
+            "max_depth": 3,
+            "max_items": 50,
+            "max_pages": 25,
+            "max_total_bytes": 8388608,
+            "provider_timeout_ms": 30000
+          }
+        }
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "intent": "acquire",
+          "limits": {},
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "scope": "site",
+          "source": "https://example.test/docs",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "crawl",
+      "transport_input": {
+        "inputs": [
+          {
+            "input": "https://example.test/docs"
+          }
+        ]
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "collection": "code",
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "idempotency_key": "embed-a",
+          "intent": "acquire",
+          "limits": {
+            "max_chunks": 4000,
+            "max_items": 1000
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "scope": "directory",
+          "source": "/workspace/a",
+          "watch": "disabled"
+        },
+        {
+          "collection": "code",
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "idempotency_key": "embed-b",
+          "intent": "acquire",
+          "limits": {
+            "max_chunks": 4000,
+            "max_items": 1000
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "scope": "directory",
+          "source": "/workspace/b",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "embed",
+      "transport_input": {
+        "inputs": [
+          {
+            "idempotency_key": "embed-a",
+            "input": "/workspace/a"
+          },
+          {
+            "idempotency_key": "embed-b",
+            "input": "/workspace/b"
+          }
+        ],
+        "options": {
+          "collection": "code",
+          "limits": {
+            "max_chunks": 4000,
+            "max_items": 1000
+          },
+          "scope": "directory"
+        }
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "intent": "acquire",
+          "limits": {},
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "source": "/workspace/project",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "embed",
+      "transport_input": {
+        "inputs": [
+          {
+            "input": "/workspace/project"
+          }
+        ]
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "embed": false,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "idempotency_key": "ingest-001",
+          "intent": "acquire",
+          "limits": {
+            "max_items": 200,
+            "max_total_bytes": 16777216
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "scope": "feed",
+          "source": "https://example.test/feed",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "ingest",
+      "transport_input": {
+        "inputs": [
+          {
+            "idempotency_key": "ingest-001",
+            "input": "https://example.test/feed"
+          }
+        ],
+        "options": {
+          "limits": {
+            "max_items": 200,
+            "max_total_bytes": 16777216
+          },
+          "no_embed": true,
+          "scope": "feed"
+        }
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "intent": "acquire",
+          "limits": {},
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "source": "./README.md",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "ingest",
+      "transport_input": {
+        "inputs": [
+          {
+            "input": "./README.md"
+          }
+        ]
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "collection": "docs",
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "wait",
+            "priority": "high",
+            "wait_timeout_secs": 30
+          },
+          "idempotency_key": "scrape-001",
+          "intent": "acquire",
+          "limits": {
+            "max_items": 1,
+            "max_pages": 1
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "none",
+            "include_progress": true,
+            "inline_limit_bytes": 4096,
+            "json": true,
+            "response_mode": "inline"
+          },
+          "refresh": "force",
+          "scope": "page",
+          "source": "https://example.test/a?token=redacted",
+          "watch": "disabled"
+        },
+        {
+          "collection": "docs",
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "wait",
+            "priority": "high",
+            "wait_timeout_secs": 30
+          },
+          "intent": "acquire",
+          "limits": {
+            "max_items": 1,
+            "max_pages": 1
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "none",
+            "include_progress": true,
+            "inline_limit_bytes": 4096,
+            "json": true,
+            "response_mode": "inline"
+          },
+          "refresh": "force",
+          "scope": "page",
+          "source": "https://example.test/b",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "scrape",
+      "transport_input": {
+        "inputs": [
+          {
+            "idempotency_key": "scrape-001",
+            "input": "https://example.test/a?token=redacted"
+          },
+          {
+            "input": "https://example.test/b"
+          }
+        ],
+        "options": {
+          "collection": "docs",
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "wait",
+            "priority": "high",
+            "wait_timeout_secs": 30
+          },
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "none",
+            "include_progress": true,
+            "inline_limit_bytes": 4096,
+            "json": true,
+            "response_mode": "inline"
+          },
+          "refresh": "force"
+        }
+      }
+    },
+    {
+      "canonical_requests": [
+        {
+          "embed": true,
+          "execution": {
+            "detached": false,
+            "heartbeat_interval_secs": 5,
+            "mode": "background",
+            "priority": "normal"
+          },
+          "intent": "acquire",
+          "limits": {
+            "max_items": 1,
+            "max_pages": 1
+          },
+          "metadata": {},
+          "options": {
+            "values": {}
+          },
+          "output": {
+            "artifact_mode": "on_large_output",
+            "include_progress": false,
+            "inline_limit_bytes": 65536,
+            "json": false,
+            "response_mode": "auto"
+          },
+          "refresh": "if_stale",
+          "scope": "page",
+          "source": "https://example.test/page",
+          "watch": "disabled"
+        }
+      ],
+      "operation": "scrape",
+      "transport_input": {
+        "inputs": [
+          {
+            "input": "https://example.test/page"
+          }
+        ]
+      }
+    }
+  ],
+  "generated_by": "cargo xtask schemas projections",
+  "operations": [
+    {
+      "auth_scope": "axon:write",
+      "cli_name": "scrape",
+      "mcp_name": "scrape",
+      "mutating": true,
+      "operation": "scrape",
+      "request_schema": "ScrapeRequest",
+      "rest_path": "/v1/scrape",
+      "result_schema": "SourceResult",
+      "supports_batch": true,
+      "supports_idempotency": true
+    },
+    {
+      "auth_scope": "axon:write",
+      "cli_name": "crawl",
+      "mcp_name": "crawl",
+      "mutating": true,
+      "operation": "crawl",
+      "request_schema": "CrawlRequest",
+      "rest_path": "/v1/crawl",
+      "result_schema": "SourceResult",
+      "supports_batch": true,
+      "supports_idempotency": true
+    },
+    {
+      "auth_scope": "axon:write",
+      "cli_name": "embed",
+      "mcp_name": "embed",
+      "mutating": true,
+      "operation": "embed",
+      "request_schema": "EmbedRequest",
+      "rest_path": "/v1/embed",
+      "result_schema": "SourceResult",
+      "supports_batch": true,
+      "supports_idempotency": true
+    },
+    {
+      "auth_scope": "axon:write",
+      "cli_name": "ingest",
+      "mcp_name": "ingest",
+      "mutating": true,
+      "operation": "ingest",
+      "request_schema": "IngestRequest",
+      "rest_path": "/v1/ingest",
+      "result_schema": "SourceResult",
+      "supports_batch": true,
+      "supports_idempotency": true
+    },
+    {
+      "auth_scope": "axon:read",
+      "cli_name": "code-search",
+      "mcp_name": "code_search",
+      "mutating": false,
+      "operation": "code_search",
+      "request_schema": "CodeSearchRequest",
+      "rest_path": "/v1/code-search",
+      "result_schema": "CodeSearchResult",
+      "supports_batch": true,
+      "supports_idempotency": false
+    }
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "fixtures": {
+      "minItems": 10,
+      "type": "array"
+    },
+    "operations": {
+      "minItems": 5,
+      "type": "array"
+    }
+  },
+  "request_schemas": {
+    "CodeSearchRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "input": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "input"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options": {
+          "additionalProperties": false,
+          "default": {
+            "limit": 20,
+            "offset": 0
+          },
+          "properties": {
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "language": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "limit": {
+              "default": 20,
+              "format": "uint",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "offset": {
+              "default": 0,
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path_prefix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "CodeSearchRequest",
+      "type": "object"
+    },
+    "CrawlRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "idempotency_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "input": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "input"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options": {
+          "additionalProperties": false,
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "limits": {},
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          },
+          "properties": {
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "execution": {
+              "additionalProperties": false,
+              "default": {
+                "detached": false,
+                "heartbeat_interval_secs": 5,
+                "mode": "background",
+                "priority": "normal"
+              },
+              "properties": {
+                "detached": {
+                  "type": "boolean"
+                },
+                "heartbeat_interval_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mode": {
+                  "enum": [
+                    "foreground",
+                    "background",
+                    "wait"
+                  ],
+                  "type": "string"
+                },
+                "priority": {
+                  "enum": [
+                    "interactive",
+                    "high",
+                    "normal",
+                    "background",
+                    "maintenance"
+                  ],
+                  "type": "string"
+                },
+                "wait_timeout_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "mode",
+                "priority",
+                "detached",
+                "heartbeat_interval_secs"
+              ],
+              "type": "object"
+            },
+            "limits": {
+              "additionalProperties": false,
+              "default": {},
+              "properties": {
+                "max_bytes_per_item": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_chunks": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_depth": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_items": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_pages": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_total_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "provider_timeout_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "options": {
+              "additionalProperties": false,
+              "default": {
+                "values": {}
+              },
+              "properties": {
+                "values": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "default": {
+                "artifact_mode": "on_large_output",
+                "include_progress": false,
+                "inline_limit_bytes": 65536,
+                "json": false,
+                "response_mode": "auto"
+              },
+              "properties": {
+                "artifact_mode": {
+                  "enum": [
+                    "none",
+                    "on_large_output",
+                    "always"
+                  ],
+                  "type": "string"
+                },
+                "include_progress": {
+                  "type": "boolean"
+                },
+                "inline_limit_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "json": {
+                  "type": "boolean"
+                },
+                "response_mode": {
+                  "enum": [
+                    "auto",
+                    "summary",
+                    "full",
+                    "inline",
+                    "artifact",
+                    "path",
+                    "job_only"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "json",
+                "response_mode",
+                "inline_limit_bytes",
+                "artifact_mode",
+                "include_progress"
+              ],
+              "type": "object"
+            },
+            "refresh": {
+              "default": "if_stale",
+              "enum": [
+                "if_stale",
+                "force",
+                "never"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "CrawlRequest",
+      "type": "object"
+    },
+    "EmbedRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "idempotency_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "input": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "input"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options": {
+          "additionalProperties": false,
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "limits": {},
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          },
+          "properties": {
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "execution": {
+              "additionalProperties": false,
+              "default": {
+                "detached": false,
+                "heartbeat_interval_secs": 5,
+                "mode": "background",
+                "priority": "normal"
+              },
+              "properties": {
+                "detached": {
+                  "type": "boolean"
+                },
+                "heartbeat_interval_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mode": {
+                  "enum": [
+                    "foreground",
+                    "background",
+                    "wait"
+                  ],
+                  "type": "string"
+                },
+                "priority": {
+                  "enum": [
+                    "interactive",
+                    "high",
+                    "normal",
+                    "background",
+                    "maintenance"
+                  ],
+                  "type": "string"
+                },
+                "wait_timeout_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "mode",
+                "priority",
+                "detached",
+                "heartbeat_interval_secs"
+              ],
+              "type": "object"
+            },
+            "limits": {
+              "additionalProperties": false,
+              "default": {},
+              "properties": {
+                "max_bytes_per_item": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_chunks": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_depth": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_items": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_pages": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_total_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "provider_timeout_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "options": {
+              "additionalProperties": false,
+              "default": {
+                "values": {}
+              },
+              "properties": {
+                "values": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "default": {
+                "artifact_mode": "on_large_output",
+                "include_progress": false,
+                "inline_limit_bytes": 65536,
+                "json": false,
+                "response_mode": "auto"
+              },
+              "properties": {
+                "artifact_mode": {
+                  "enum": [
+                    "none",
+                    "on_large_output",
+                    "always"
+                  ],
+                  "type": "string"
+                },
+                "include_progress": {
+                  "type": "boolean"
+                },
+                "inline_limit_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "json": {
+                  "type": "boolean"
+                },
+                "response_mode": {
+                  "enum": [
+                    "auto",
+                    "summary",
+                    "full",
+                    "inline",
+                    "artifact",
+                    "path",
+                    "job_only"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "json",
+                "response_mode",
+                "inline_limit_bytes",
+                "artifact_mode",
+                "include_progress"
+              ],
+              "type": "object"
+            },
+            "refresh": {
+              "default": "if_stale",
+              "enum": [
+                "if_stale",
+                "force",
+                "never"
+              ],
+              "type": "string"
+            },
+            "scope": {
+              "enum": [
+                "page",
+                "site",
+                "docs",
+                "repo",
+                "workspace",
+                "branch",
+                "org",
+                "package",
+                "version",
+                "feed",
+                "subreddit",
+                "thread",
+                "comment",
+                "video",
+                "playlist",
+                "channel",
+                "issue",
+                "pull_request",
+                "merge_request",
+                "release",
+                "wiki",
+                "file",
+                "directory",
+                "map",
+                "tool",
+                "script",
+                "api",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "EmbedRequest",
+      "type": "object"
+    },
+    "IngestRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "idempotency_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "input": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "input"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options": {
+          "additionalProperties": false,
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "limits": {},
+            "no_embed": false,
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          },
+          "properties": {
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "execution": {
+              "additionalProperties": false,
+              "default": {
+                "detached": false,
+                "heartbeat_interval_secs": 5,
+                "mode": "background",
+                "priority": "normal"
+              },
+              "properties": {
+                "detached": {
+                  "type": "boolean"
+                },
+                "heartbeat_interval_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mode": {
+                  "enum": [
+                    "foreground",
+                    "background",
+                    "wait"
+                  ],
+                  "type": "string"
+                },
+                "priority": {
+                  "enum": [
+                    "interactive",
+                    "high",
+                    "normal",
+                    "background",
+                    "maintenance"
+                  ],
+                  "type": "string"
+                },
+                "wait_timeout_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "mode",
+                "priority",
+                "detached",
+                "heartbeat_interval_secs"
+              ],
+              "type": "object"
+            },
+            "limits": {
+              "additionalProperties": false,
+              "default": {},
+              "properties": {
+                "max_bytes_per_item": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_chunks": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_depth": {
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_items": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_pages": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "max_total_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "provider_timeout_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "no_embed": {
+              "default": false,
+              "type": "boolean"
+            },
+            "options": {
+              "additionalProperties": false,
+              "default": {
+                "values": {}
+              },
+              "properties": {
+                "values": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "default": {
+                "artifact_mode": "on_large_output",
+                "include_progress": false,
+                "inline_limit_bytes": 65536,
+                "json": false,
+                "response_mode": "auto"
+              },
+              "properties": {
+                "artifact_mode": {
+                  "enum": [
+                    "none",
+                    "on_large_output",
+                    "always"
+                  ],
+                  "type": "string"
+                },
+                "include_progress": {
+                  "type": "boolean"
+                },
+                "inline_limit_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "json": {
+                  "type": "boolean"
+                },
+                "response_mode": {
+                  "enum": [
+                    "auto",
+                    "summary",
+                    "full",
+                    "inline",
+                    "artifact",
+                    "path",
+                    "job_only"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "json",
+                "response_mode",
+                "inline_limit_bytes",
+                "artifact_mode",
+                "include_progress"
+              ],
+              "type": "object"
+            },
+            "refresh": {
+              "default": "if_stale",
+              "enum": [
+                "if_stale",
+                "force",
+                "never"
+              ],
+              "type": "string"
+            },
+            "scope": {
+              "enum": [
+                "page",
+                "site",
+                "docs",
+                "repo",
+                "workspace",
+                "branch",
+                "org",
+                "package",
+                "version",
+                "feed",
+                "subreddit",
+                "thread",
+                "comment",
+                "video",
+                "playlist",
+                "channel",
+                "issue",
+                "pull_request",
+                "merge_request",
+                "release",
+                "wiki",
+                "file",
+                "directory",
+                "map",
+                "tool",
+                "script",
+                "api",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "IngestRequest",
+      "type": "object"
+    },
+    "ScrapeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "idempotency_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "input": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "input"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options": {
+          "additionalProperties": false,
+          "default": {
+            "execution": {
+              "detached": false,
+              "heartbeat_interval_secs": 5,
+              "mode": "background",
+              "priority": "normal"
+            },
+            "options": {
+              "values": {}
+            },
+            "output": {
+              "artifact_mode": "on_large_output",
+              "include_progress": false,
+              "inline_limit_bytes": 65536,
+              "json": false,
+              "response_mode": "auto"
+            },
+            "refresh": "if_stale"
+          },
+          "properties": {
+            "collection": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "execution": {
+              "additionalProperties": false,
+              "default": {
+                "detached": false,
+                "heartbeat_interval_secs": 5,
+                "mode": "background",
+                "priority": "normal"
+              },
+              "properties": {
+                "detached": {
+                  "type": "boolean"
+                },
+                "heartbeat_interval_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mode": {
+                  "enum": [
+                    "foreground",
+                    "background",
+                    "wait"
+                  ],
+                  "type": "string"
+                },
+                "priority": {
+                  "enum": [
+                    "interactive",
+                    "high",
+                    "normal",
+                    "background",
+                    "maintenance"
+                  ],
+                  "type": "string"
+                },
+                "wait_timeout_secs": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "mode",
+                "priority",
+                "detached",
+                "heartbeat_interval_secs"
+              ],
+              "type": "object"
+            },
+            "options": {
+              "additionalProperties": false,
+              "default": {
+                "values": {}
+              },
+              "properties": {
+                "values": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "default": {
+                "artifact_mode": "on_large_output",
+                "include_progress": false,
+                "inline_limit_bytes": 65536,
+                "json": false,
+                "response_mode": "auto"
+              },
+              "properties": {
+                "artifact_mode": {
+                  "enum": [
+                    "none",
+                    "on_large_output",
+                    "always"
+                  ],
+                  "type": "string"
+                },
+                "include_progress": {
+                  "type": "boolean"
+                },
+                "inline_limit_bytes": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "json": {
+                  "type": "boolean"
+                },
+                "response_mode": {
+                  "enum": [
+                    "auto",
+                    "summary",
+                    "full",
+                    "inline",
+                    "artifact",
+                    "path",
+                    "job_only"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "json",
+                "response_mode",
+                "inline_limit_bytes",
+                "artifact_mode",
+                "include_progress"
+              ],
+              "type": "object"
+            },
+            "refresh": {
+              "default": "if_stale",
+              "enum": [
+                "if_stale",
+                "force",
+                "never"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "inputs"
+      ],
+      "title": "ScrapeRequest",
+      "type": "object"
+    }
+  },
+  "required": [
+    "contract_version",
+    "operations",
+    "fixtures"
+  ],
+  "source_inputs": [
+    {
+      "checksum": "sha256:94a758bdd56f3a04830dfe64e45c51df7ea3aa2ddeeb421e04f2d96449aaf58a",
+      "kind": "rust_module",
+      "path": "crates/axon-api/src/source/projection.rs"
+    },
+    {
+      "checksum": "sha256:7dea163c1a66f9619958e4c60ef48ab6effeaf1993981d1016f83ababb296244",
+      "kind": "rust_module",
+      "path": "crates/axon-api/src/source/projection_registry.rs"
+    },
+    {
+      "checksum": "sha256:1797bc72658b9a101e745efebbf7f1035936050e49f0048c1dbe2df11588ef45",
+      "kind": "rust_directory",
+      "path": "tests/fixtures/source-projections"
+    },
+    {
+      "checksum": "sha256:f47398849a3f55b91509922522051ba012d6ae656e00f47488118f450215f58d",
+      "kind": "rust_module",
+      "path": "xtask/src/schemas/projections.rs"
+    }
+  ],
+  "title": "Axon Restored Source Projections",
+  "type": "object"
+}

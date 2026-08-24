@@ -208,6 +208,8 @@ async fn run_source_request_with_cancellation(
 /// across the runner boundary so the worker can persist them atomically with
 /// its terminal transition.
 fn outcome_from_result(result: SourceResult) -> Result<UnifiedJobOutcome, ApiError> {
+    let result_json = serde_json::to_string(&result)
+        .map_err(|error| source_error(format!("source result serialization failed: {error}")))?;
     let counts = axon_api::source::StageCounts {
         items_total: Some(result.counts.items_total),
         items_done: result.counts.items_total,
@@ -219,8 +221,12 @@ fn outcome_from_result(result: SourceResult) -> Result<UnifiedJobOutcome, ApiErr
         bytes_done: result.counts.bytes_total,
     };
     match result.status {
-        LifecycleStatus::Completed => Ok(UnifiedJobOutcome::completed(counts)),
-        LifecycleStatus::CompletedDegraded => Ok(UnifiedJobOutcome::completed_degraded(counts)),
+        LifecycleStatus::Completed => {
+            Ok(UnifiedJobOutcome::completed(counts).with_result_json(result_json))
+        }
+        LifecycleStatus::CompletedDegraded => {
+            Ok(UnifiedJobOutcome::completed_degraded(counts).with_result_json(result_json))
+        }
         _ => {
             let detail = result
                 .warnings

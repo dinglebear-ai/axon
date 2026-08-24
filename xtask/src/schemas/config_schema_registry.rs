@@ -450,8 +450,12 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
     ),
 ];
 
+#[path = "config_schema_registry/projection_batch.rs"]
+mod projection_batch;
+pub(super) use projection_batch::PROJECTION_BATCH_KEYS;
+
 pub fn config_key_registry() -> Vec<ConfigKeySpec> {
-    RAW_CONFIG_KEYS
+    let mut keys: Vec<_> = RAW_CONFIG_KEYS
         .iter()
         .map(
             |&(
@@ -482,7 +486,23 @@ pub fn config_key_registry() -> Vec<ConfigKeySpec> {
                 }
             },
         )
-        .collect()
+        .collect();
+    keys.extend(
+        PROJECTION_BATCH_KEYS
+            .iter()
+            .map(|&(suffix, default_json, env, description)| ConfigKeySpec {
+                key: Box::leak(format!("server.projection_batch.{suffix}").into_boxed_str()),
+                section: "server",
+                kind: "integer",
+                default_json,
+                owner_crate: "axon-core",
+                env_override: Some(env),
+                secret: false,
+                restart_required: true,
+                description,
+            }),
+    );
+    keys
 }
 
 /// The 15 required top-level `config.toml` sections from the contract.

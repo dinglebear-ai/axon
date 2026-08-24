@@ -11,7 +11,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "7.2.22"
+    "version": "7.2.23"
   },
   "paths": {
     "/healthz": {
@@ -840,6 +840,91 @@
         ]
       }
     },
+    "/v1/code-search": {
+      "post": {
+        "tags": [
+          "projections"
+        ],
+        "operationId": "codeSearch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Committed-state code search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_QueryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid code search request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Code search request exceeds a configured limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/collections": {
       "get": {
         "tags": [
@@ -879,6 +964,121 @@
           },
           "502": {
             "description": "Qdrant collections request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/crawl": {
+      "post": {
+        "tags": [
+          "projections"
+        ],
+        "operationId": "crawlSources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Projection batch admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid projection request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Projection target is not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Projection request exceeds a configured limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Projection admission is saturated",
             "content": {
               "application/json": {
                 "schema": {
@@ -1138,6 +1338,121 @@
           },
           "502": {
             "description": "Upstream vector service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/embed": {
+      "post": {
+        "tags": [
+          "projections"
+        ],
+        "operationId": "embedSources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Projection batch admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid projection request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Projection target is not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Projection request exceeds a configured limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Projection admission is saturated",
             "content": {
               "application/json": {
                 "schema": {
@@ -1963,6 +2278,121 @@
           },
           "502": {
             "description": "Graph storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/ingest": {
+      "post": {
+        "tags": [
+          "projections"
+        ],
+        "operationId": "ingestSources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Projection batch admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid projection request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Projection target is not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Projection request exceeds a configured limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Projection admission is saturated",
             "content": {
               "application/json": {
                 "schema": {
@@ -5504,6 +5934,121 @@
         ]
       }
     },
+    "/v1/scrape": {
+      "post": {
+        "tags": [
+          "projections"
+        ],
+        "operationId": "scrapeSources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Projection batch completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Projection batch admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult_SourceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid projection request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Projection target is not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Projection request exceeds a configured limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Projection admission is saturated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/screenshot": {
       "post": {
         "tags": [
@@ -8184,6 +8729,401 @@
           "unknown"
         ]
       },
+      "BatchId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "BatchItem_QueryResult": {
+        "type": "object",
+        "required": [
+          "index",
+          "outcome"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "input": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/BatchOutcome_QueryResult"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchItem_SourceResult": {
+        "type": "object",
+        "required": [
+          "index",
+          "outcome"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "input": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/BatchOutcome_SourceResult"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchOutcome_QueryResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "status"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "required": [
+                  "results"
+                ],
+                "properties": {
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/QueryHit"
+                    }
+                  }
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "completed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "status"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/JobDescriptor"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "status"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/ApiError"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "canceled"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "BatchOutcome_SourceResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "status"
+            ],
+            "properties": {
+              "data": {
+                "type": "object",
+                "required": [
+                  "job_id",
+                  "source_id",
+                  "canonical_uri",
+                  "source_kind",
+                  "adapter",
+                  "scope",
+                  "status",
+                  "ledger",
+                  "graph",
+                  "counts",
+                  "warnings"
+                ],
+                "properties": {
+                  "adapter": {
+                    "$ref": "#/components/schemas/AdapterRef"
+                  },
+                  "artifacts": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ArtifactRef"
+                    }
+                  },
+                  "canonical_uri": {
+                    "type": "string"
+                  },
+                  "counts": {
+                    "$ref": "#/components/schemas/SourceCounts"
+                  },
+                  "errors": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SourceError"
+                    }
+                  },
+                  "graph": {
+                    "$ref": "#/components/schemas/GraphWriteSummary"
+                  },
+                  "inline": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/InlineSourceResult"
+                      }
+                    ]
+                  },
+                  "job": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/JobDescriptor"
+                      }
+                    ]
+                  },
+                  "job_id": {
+                    "$ref": "#/components/schemas/JobId"
+                  },
+                  "ledger": {
+                    "$ref": "#/components/schemas/LedgerSummary"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/SourceScope"
+                  },
+                  "source_id": {
+                    "$ref": "#/components/schemas/SourceId"
+                  },
+                  "source_kind": {
+                    "$ref": "#/components/schemas/SourceKind"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/LifecycleStatus"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SourceWarning"
+                    }
+                  },
+                  "watch": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/WatchResult"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "completed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "status"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/JobDescriptor"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "status"
+            ],
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/ApiError"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "failed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "canceled"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "BatchResult_QueryResult": {
+        "type": "object",
+        "required": [
+          "batch_id",
+          "status",
+          "items",
+          "summary"
+        ],
+        "properties": {
+          "batch_id": {
+            "$ref": "#/components/schemas/BatchId"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchItem_QueryResult"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/BatchStatus"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BatchSummary"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchResult_SourceResult": {
+        "type": "object",
+        "required": [
+          "batch_id",
+          "status",
+          "items",
+          "summary"
+        ],
+        "properties": {
+          "batch_id": {
+            "$ref": "#/components/schemas/BatchId"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchItem_SourceResult"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/BatchStatus"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BatchSummary"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchStatus": {
+        "type": "string",
+        "enum": [
+          "accepted",
+          "completed",
+          "completed_degraded",
+          "canceled"
+        ]
+      },
+      "BatchSummary": {
+        "type": "object",
+        "required": [
+          "total",
+          "completed",
+          "queued",
+          "failed",
+          "canceled"
+        ],
+        "properties": {
+          "canceled": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "BrandColor": {
         "type": "object",
         "required": [
@@ -8347,6 +9287,62 @@
       "CleanupDebtId": {
         "type": "string"
       },
+      "CodeSearchProjectionOptions": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "path_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CodeSearchRequest": {
+        "type": "object",
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryProjectionInput"
+            }
+          },
+          "options": {
+            "$ref": "#/components/schemas/CodeSearchProjectionOptions"
+          }
+        },
+        "additionalProperties": false
+      },
       "ColorUsage": {
         "type": "string",
         "enum": [
@@ -8443,6 +9439,51 @@
             }
           }
         ]
+      },
+      "CrawlOptions": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution": {
+            "$ref": "#/components/schemas/ExecutionPolicy"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SourceLimits"
+          },
+          "options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputPolicy"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/SourceRefreshPolicy"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CrawlRequest": {
+        "type": "object",
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProjectionInput"
+            }
+          },
+          "options": {
+            "$ref": "#/components/schemas/CrawlOptions"
+          }
+        },
+        "additionalProperties": false
       },
       "CredentialKind": {
         "type": "string",
@@ -8621,6 +9662,61 @@
       },
       "DocumentId": {
         "type": "string"
+      },
+      "EmbedOptions": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution": {
+            "$ref": "#/components/schemas/ExecutionPolicy"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SourceLimits"
+          },
+          "options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputPolicy"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/SourceRefreshPolicy"
+          },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmbedRequest": {
+        "type": "object",
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProjectionInput"
+            }
+          },
+          "options": {
+            "$ref": "#/components/schemas/EmbedOptions"
+          }
+        },
+        "additionalProperties": false
       },
       "EndpointKind": {
         "type": "string",
@@ -9573,6 +10669,64 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "IngestOptions": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution": {
+            "$ref": "#/components/schemas/ExecutionPolicy"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SourceLimits"
+          },
+          "no_embed": {
+            "type": "boolean"
+          },
+          "options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputPolicy"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/SourceRefreshPolicy"
+          },
+          "scope": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceScope"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "IngestRequest": {
+        "type": "object",
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProjectionInput"
+            }
+          },
+          "options": {
+            "$ref": "#/components/schemas/IngestOptions"
           }
         },
         "additionalProperties": false
@@ -12233,6 +13387,18 @@
           }
         }
       },
+      "QueryProjectionInput": {
+        "type": "object",
+        "required": [
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "QueryResult": {
         "type": "object",
         "required": [
@@ -13845,6 +15011,48 @@
           "tool_execution"
         ]
       },
+      "ScrapeOptions": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution": {
+            "$ref": "#/components/schemas/ExecutionPolicy"
+          },
+          "options": {
+            "$ref": "#/components/schemas/AdapterOptions"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputPolicy"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/SourceRefreshPolicy"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScrapeRequest": {
+        "type": "object",
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProjectionInput"
+            }
+          },
+          "options": {
+            "$ref": "#/components/schemas/ScrapeOptions"
+          }
+        },
+        "additionalProperties": false
+      },
       "ScreenshotResult": {
         "type": "object",
         "required": [
@@ -14151,6 +15359,24 @@
             ],
             "format": "int64",
             "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceProjectionInput": {
+        "type": "object",
+        "required": [
+          "input"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input": {
+            "type": "string"
           }
         },
         "additionalProperties": false

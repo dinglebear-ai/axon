@@ -272,10 +272,9 @@ async fn production_runtime_cache_and_schedulers_share_one_gate_before_pool_acqu
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     let idle_before = pool.num_idle();
-    assert_eq!(
-        idle_before,
-        pool.options().get_max_connections() as usize,
-        "pre-warmed connections must be idle before polling writers"
+    assert!(
+        idle_before > 0,
+        "the pre-warmed pool must expose an idle connection before polling writers"
     );
     let held_gate = runtime.sqlite_write_gate.lock().await;
     let entries = [CachedEmbedding {

@@ -25,6 +25,11 @@ impl fmt::Debug for Config {
             .field("exclude_path_prefix", &self.exclude_path_prefix)
             .field("output_dir", &self.output_dir)
             .field("output_path", &self.output_path)
+            .field("projection_output_dir", &self.projection_output_dir)
+            .field(
+                "projection_output_template",
+                &self.projection_output_template,
+            )
             .field("warc_output", &self.warc_output)
             .field("automation_script", &self.automation_script)
             .field("render_mode", &self.render_mode)
@@ -87,6 +92,7 @@ impl fmt::Debug for Config {
                 &self.mcp_embed_max_local_entries,
             )
             .field("batch_concurrency", &self.batch_concurrency)
+            .field("projection_batch", &self.projection_batch)
             .field("wait", &self.wait)
             .field("sqlite_path", &self.sqlite_path)
             .field("yes", &self.yes)

@@ -165,9 +165,7 @@ fn clean_break_reset_and_status_records_are_canonical() {
         .find(|command| command.path == ["status"])
         .expect("unified status command");
     assert!(status.summary.contains("unified jobs"));
-    for removed in [
-        "crawl", "embed", "ingest", "dedupe", "purge", "fresh", "refresh",
-    ] {
+    for removed in ["dedupe", "purge", "fresh", "refresh"] {
         assert!(!records.iter().any(|command| command.path[0] == removed));
     }
 }

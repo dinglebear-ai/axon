@@ -7,4 +7,6 @@ pub(crate) const CONTRACT_INDEXES: &[&str] = &[
     "idx_axon_job_events_job_severity_sequence",
     "idx_axon_job_attempts_job_attempt",
     "idx_axon_job_stages_job_stage",
+    "idx_projection_batch_items_principal_batch",
+    "idx_projection_batch_items_job",
 ];

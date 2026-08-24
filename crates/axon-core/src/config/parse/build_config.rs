@@ -193,6 +193,7 @@ pub(super) fn into_config_with_sources(
         exclude_path_prefix: normalized_excludes.prefixes,
         viewport_width,
         viewport_height,
+        output_dir_was_explicit,
     };
     let mut cfg = config_literal::build(inputs)?;
 

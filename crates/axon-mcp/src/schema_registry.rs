@@ -10,97 +10,139 @@ pub struct McpActionSpec {
     pub async_job: bool,
 }
 
+const ACTION_REGISTRY: &[McpActionSpec] = &[
+    McpActionSpec {
+        action: "scrape",
+        request_dto: "ScrapeRequest",
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        async_job: true,
+    },
+    McpActionSpec {
+        action: "crawl",
+        request_dto: "CrawlRequest",
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        async_job: true,
+    },
+    McpActionSpec {
+        action: "embed",
+        request_dto: "EmbedRequest",
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        async_job: true,
+    },
+    McpActionSpec {
+        action: "ingest",
+        request_dto: "IngestRequest",
+        result_dto: "BatchResult<SourceResult>",
+        required_scope: "write",
+        mutates: true,
+        async_job: true,
+    },
+    McpActionSpec {
+        action: "code_search",
+        request_dto: "CodeSearchRequest",
+        result_dto: "BatchResult<QueryResult>",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "ask",
+        request_dto: "AskRequest",
+        result_dto: "AskResponse",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "query",
+        request_dto: "VectorSearchRequest",
+        result_dto: "VectorSearchResult",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "retrieve",
+        request_dto: "RetrieveRequest",
+        result_dto: "RetrieveResponse",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "search",
+        request_dto: "SearchRequest",
+        result_dto: "SearchResponse",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "research",
+        request_dto: "ResearchRequest",
+        result_dto: "ResearchResponse",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "map",
+        request_dto: "MapRequest",
+        result_dto: "MapResponse",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "extract",
+        request_dto: "ExtractRequest",
+        result_dto: "ExtractResponse",
+        required_scope: "write",
+        mutates: true,
+        async_job: true,
+    },
+    McpActionSpec {
+        action: "config",
+        request_dto: "ConfigProjectionRequest",
+        result_dto: "ConfigProjectionResponse",
+        required_scope: "admin",
+        mutates: true,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "resolve",
+        request_dto: "ResolveRequest",
+        result_dto: "RoutePlan",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "capabilities",
+        request_dto: "CapabilitiesRequest",
+        result_dto: "CapabilityDocument",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+    McpActionSpec {
+        action: "providers",
+        request_dto: "ProvidersRequest",
+        result_dto: "ProviderSummary",
+        required_scope: "read",
+        mutates: false,
+        async_job: false,
+    },
+];
+
 pub fn action_registry() -> &'static [McpActionSpec] {
-    &[
-        McpActionSpec {
-            action: "ask",
-            request_dto: "AskRequest",
-            result_dto: "AskResponse",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "query",
-            request_dto: "VectorSearchRequest",
-            result_dto: "VectorSearchResult",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "retrieve",
-            request_dto: "RetrieveRequest",
-            result_dto: "RetrieveResponse",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "search",
-            request_dto: "SearchRequest",
-            result_dto: "SearchResponse",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "research",
-            request_dto: "ResearchRequest",
-            result_dto: "ResearchResponse",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "map",
-            request_dto: "MapRequest",
-            result_dto: "MapResponse",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "extract",
-            request_dto: "ExtractRequest",
-            result_dto: "ExtractResponse",
-            required_scope: "write",
-            mutates: true,
-            async_job: true,
-        },
-        McpActionSpec {
-            action: "config",
-            request_dto: "ConfigProjectionRequest",
-            result_dto: "ConfigProjectionResponse",
-            required_scope: "admin",
-            mutates: true,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "resolve",
-            request_dto: "ResolveRequest",
-            result_dto: "RoutePlan",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "capabilities",
-            request_dto: "CapabilitiesRequest",
-            result_dto: "CapabilityDocument",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-        McpActionSpec {
-            action: "providers",
-            request_dto: "ProvidersRequest",
-            result_dto: "ProviderSummary",
-            required_scope: "read",
-            mutates: false,
-            async_job: false,
-        },
-    ]
+    ACTION_REGISTRY
 }
 
 #[cfg(test)]
@@ -115,6 +157,7 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert!(actions.contains("map"));
         assert!(actions.contains("extract"));
-        assert!(!actions.contains("crawl"));
+        assert!(actions.contains("crawl"));
+        assert!(actions.contains("code_search"));
     }
 }

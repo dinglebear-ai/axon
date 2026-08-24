@@ -25,12 +25,19 @@
 //! reappear as `$defs` entries in the generated API schema.
 
 pub fn removed_dto_names() -> &'static [&'static str] {
+    &[]
+}
+
+/// Stable schema names owned by the restored projection contract.
+pub fn projection_dto_names() -> &'static [&'static str] {
     &[
+        "ScrapeRequest",
+        "CrawlRequest",
         "EmbedRequest",
         "IngestRequest",
-        "CrawlRequest",
-        "ScrapeRequest",
         "CodeSearchRequest",
+        "BatchOutcome",
+        "BatchResult",
     ]
 }
 

@@ -30,6 +30,8 @@ pub mod jobs_stream;
 pub mod memory;
 #[path = "handlers/mobile_sessions.rs"]
 pub mod mobile_sessions;
+#[path = "handlers/projections.rs"]
+pub mod projections;
 #[path = "handlers/providers.rs"]
 pub(crate) mod providers;
 #[path = "handlers/rag.rs"]

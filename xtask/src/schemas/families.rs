@@ -29,6 +29,8 @@ mod markdown_render;
 mod mcp_action_registry;
 #[path = "families/mcp_markdown.rs"]
 mod mcp_markdown;
+#[path = "projections.rs"]
+mod projections;
 #[path = "provider_capabilities.rs"]
 mod provider_capabilities;
 #[path = "runtime_defs.rs"]
@@ -83,6 +85,7 @@ pub fn all_families() -> Vec<SchemaFamily> {
         SchemaFamily::VectorPayload,
         SchemaFamily::Providers,
         SchemaFamily::Adapters,
+        SchemaFamily::Projections,
     ]
 }
 
@@ -109,6 +112,7 @@ impl FamilyGenerator for Generator {
             SchemaFamily::Graph => graph_artifacts(root),
             SchemaFamily::Providers => provider_capabilities::provider_artifacts(root),
             SchemaFamily::Adapters => adapters::adapter_artifacts(root),
+            SchemaFamily::Projections => projections::projection_artifacts(root),
         }
     }
 }

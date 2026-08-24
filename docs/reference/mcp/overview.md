@@ -24,9 +24,10 @@ All MCP indexing goes through `action=source`.
 ```
 
 `scope=page` is the single-page scrape shape. `scope=site` or `scope=docs` is
-the crawl-like site acquisition shape. The removed MCP actions `scrape`,
-`crawl`, `embed`, `ingest`, `code_search`, `vertical_scrape`, `purge`, and
-`dedupe` are not valid action enum values and are rejected before dispatch.
+the crawl-like site acquisition shape. Focused `scrape`, `crawl`, `embed`, and
+`ingest` actions reuse this pipeline, while `code_search` reads committed code
+vectors. Removed actions such as `vertical_scrape`, `purge`, `dedupe`, and
+`code_search_watch` are rejected before dispatch.
 
 ## Transport
 

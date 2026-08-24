@@ -297,6 +297,7 @@ pub(crate) async fn mark_job_failed_for_tests(
         axon_api::source::LifecycleStatus::Failed,
         PipelinePhase::Complete,
         None,
+        None,
         Some(error),
     )
     .await
@@ -380,6 +381,7 @@ pub(crate) async fn run_unified_claimed(
                 outcome.status,
                 PipelinePhase::Complete,
                 outcome.counts,
+                outcome.result_json,
                 None,
             )
             .await

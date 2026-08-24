@@ -5,12 +5,9 @@ use std::process::Command;
 use axon_api::source::{
     BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
     OperationKind, RedactionMetadata, SourceGenerationId, SourceId, SourceRange,
-    VectorSearchRequest,
 };
 use axon_api::{CanonicalCitation, QueryHit};
 use axon_core::config::Config;
-use axon_vectors::payload::generation_payload_i64;
-use serde_json::json;
 
 use super::provider_execution::ReadExecution;
 use crate::context::ServiceContext;
@@ -21,11 +18,14 @@ pub use self::refresh::{
     CodeSearchProjectResult, CodeSearchRefreshResult, refresh_code_search_index,
     refresh_code_search_index_with_progress, resolve_code_search_project,
 };
+use self::request::target_code_search_request;
 use self::support::{CodeIndexIdentity, CodeSearchAllowedRoots, validate_path_prefix};
 pub use self::support::{FreshnessWarning, ReindexProgress, ReindexProgressSink};
 
 #[path = "code_search_refresh.rs"]
 mod refresh;
+#[path = "code_search_request.rs"]
+mod request;
 #[path = "code_search_support.rs"]
 mod support;
 
@@ -77,7 +77,14 @@ async fn target_code_search(
         refresh_code_search_index_with_progress(ctx, opts.cwd.as_deref(), opts.caller, progress)
             .await?
     } else {
-        refresh::target_code_search_committed_state(ctx, opts.cwd.as_deref(), opts.caller).await?
+        let collection = opts.collection.as_deref().unwrap_or(&ctx.cfg().collection);
+        refresh::target_code_search_committed_state(
+            ctx,
+            opts.cwd.as_deref(),
+            opts.caller,
+            collection,
+        )
+        .await?
     };
     let Some(source_id) = refresh.target_source_id.clone() else {
         return Ok(code_search_missing_index_result(text, refresh.freshness));
@@ -136,13 +143,16 @@ async fn target_code_search(
             .ok_or("target code_search query embedding returned no vector")?;
 
         let request = target_code_search_request(
-            ctx.cfg().collection.clone(),
+            opts.collection
+                .clone()
+                .unwrap_or_else(|| ctx.cfg().collection.clone()),
             text,
             opts.limit.saturating_add(opts.offset).max(1),
             dense_vector,
             &source_id,
             &generation,
             path_prefix,
+            opts.language.as_deref(),
         )?;
         let matches = store
             .search(request)
@@ -169,45 +179,6 @@ async fn target_code_search(
     .await;
     execution.finish(ctx, &result).await;
     result
-}
-
-fn target_code_search_request(
-    collection: String,
-    query: &str,
-    limit: usize,
-    dense_vector: Vec<f32>,
-    source_id: &SourceId,
-    committed_generation: &SourceGenerationId,
-    path_prefix: Option<&str>,
-) -> Result<VectorSearchRequest, Box<dyn Error + Send + Sync>> {
-    let mut filters = MetadataMap::new();
-    filters.insert("source_id".to_string(), json!(source_id.0));
-    filters.insert(
-        "committed_generation".to_string(),
-        json!(generation_payload_i64(
-            committed_generation,
-            "committed_generation"
-        )?),
-    );
-    // Code-search indexes are local/internal data. The refresh path must not
-    // relabel them public merely to make this specialized reader work.
-    filters.insert("visibility".to_string(), json!("internal"));
-    filters.insert("redaction_status".to_string(), json!("clean"));
-    if let Some(prefix) = path_prefix {
-        filters.insert("path_prefix".to_string(), json!(prefix));
-    }
-    Ok(VectorSearchRequest {
-        collection,
-        query: query.to_string(),
-        limit: u32::try_from(limit).unwrap_or(u32::MAX),
-        dense_vector: Some(dense_vector),
-        sparse_vector: None,
-        filters,
-        hybrid: Some(false),
-        generation: None,
-        graph_refs: Vec::new(),
-        metadata: MetadataMap::new(),
-    })
 }
 
 fn target_vector_match_to_query_hit(
@@ -418,13 +389,17 @@ pub(crate) async fn resolve_code_search_root(
         (CodeSearchCaller::Mcp, None) => {
             return Err("code_search MCP requests must provide cwd".into());
         }
+        (CodeSearchCaller::Rest, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Rest, None) => {
+            return Err("code_search REST requests must provide an explicit root".into());
+        }
     };
     let canonical_cwd = tokio::fs::canonicalize(&cwd)
         .await
         .map_err(|_| "code_search cwd could not be resolved")?;
     let git_root = git_toplevel(&canonical_cwd).await?;
     reject_unsafe_code_root(&git_root)?;
-    if matches!(caller, CodeSearchCaller::Mcp) {
+    if matches!(caller, CodeSearchCaller::Mcp | CodeSearchCaller::Rest) {
         let allowed = CodeSearchAllowedRoots::from_env().await?;
         if !allowed.contains(&git_root) {
             return Err(code_search_outside_allowed_roots_message().into());
@@ -477,14 +452,18 @@ fn reject_unsafe_code_root(root: &Path) -> Result<(), Box<dyn Error + Send + Syn
     Ok(())
 }
 
-pub(super) async fn code_search_identity(cfg: &Config, project_root: PathBuf) -> CodeIndexIdentity {
+pub(super) async fn code_search_identity(
+    cfg: &Config,
+    project_root: PathBuf,
+    collection: &str,
+) -> CodeIndexIdentity {
     let origin = code_search_project_origin(&project_root).await;
     let embedder = if cfg.tei_url.trim().is_empty() {
         "tei".to_string()
     } else {
         cfg.tei_url.clone()
     };
-    CodeIndexIdentity::new(project_root, origin, &cfg.collection, &embedder)
+    CodeIndexIdentity::new(project_root, origin, collection, &embedder)
 }
 
 pub(crate) async fn code_search_project_origin(project_root: &Path) -> String {

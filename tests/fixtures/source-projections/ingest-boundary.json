@@ -1,0 +1,1 @@
+{"operation":"ingest","transport_input":{"inputs":[{"input":"https://example.test/feed","idempotency_key":"ingest-001"}],"options":{"scope":"feed","no_embed":true,"limits":{"max_items":200,"max_total_bytes":16777216}}},"canonical_requests":"generated"}

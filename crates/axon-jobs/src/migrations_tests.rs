@@ -105,6 +105,7 @@ async fn fresh_db_migrates_all_namespaces() {
         "jobs",
         "embedding_vector_cache",
         "provider_identity_cache",
+        "projection_batch_items",
         // observe / graph / memory
         "axon_observe_events",
         "axon_observe_provider_health",
@@ -159,6 +160,50 @@ async fn fresh_db_migrates_all_namespaces() {
     .execute(&pool)
     .await
     .expect("insert job with valid FK");
+}
+
+#[tokio::test]
+async fn projection_batch_migration_has_ordered_membership_and_no_event_column() {
+    let pool = open_sqlite_pool(":memory:").await.expect("open pool");
+    let columns: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM pragma_table_info('projection_batch_items') ORDER BY cid",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read projection columns");
+    assert_eq!(
+        columns,
+        [
+            "batch_id",
+            "item_index",
+            "job_id",
+            "operation",
+            "reused",
+            "principal_id",
+            "created_at",
+        ]
+    );
+    let event_columns: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info('job_events') ORDER BY cid")
+            .fetch_all(&pool)
+            .await
+            .expect("read event columns");
+    assert!(!event_columns.iter().any(|column| column == "batch_id"));
+    let foreign_table: String = sqlx::query_scalar(
+        "SELECT `table` FROM pragma_foreign_key_list('projection_batch_items') WHERE `from` = 'job_id'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read projection foreign key");
+    assert_eq!(foreign_table, "jobs");
+    let index_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN
+         ('idx_projection_batch_items_principal_batch', 'idx_projection_batch_items_job')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read projection indexes");
+    assert_eq!(index_count, 2);
 }
 
 /// Re-running the composed runner on an already-migrated pool is a no-op: no
@@ -555,6 +600,43 @@ async fn repeated_run_is_noop() {
         .await
         .expect("count after");
     assert_eq!(before, after, "no duplicate applied-migration rows");
+}
+
+#[tokio::test]
+async fn canonical_jobs_one_through_nine_upgrade_through_ten() {
+    let pool = SqlitePool::connect(":memory:").await.expect("open pool");
+    let sets = composed_sets();
+    let mut tx = pool.begin().await.expect("begin historical schema");
+    ensure_applied_table(&mut tx).await.expect("receipt table");
+    apply_set(&mut tx, sets[0]).await.expect("ledger baseline");
+    apply_set(
+        &mut tx,
+        MigrationSet::new(JOBS_NAMESPACE, &JOBS_MIGRATIONS[..9]),
+    )
+    .await
+    .expect("historical jobs migrations");
+    identity::stamp_schema_epoch(&mut tx)
+        .await
+        .expect("stamp canonical epoch");
+    tx.commit().await.expect("commit historical schema");
+
+    apply_all_migrations(&pool)
+        .await
+        .expect("current migration set upgrades historical canonical store");
+    let result_column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name = 'result_json'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("inspect jobs columns");
+    assert_eq!(result_column, 1);
+    let projection_table: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'projection_batch_items'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("inspect projection table");
+    assert_eq!(projection_table, 1);
 }
 
 #[tokio::test]

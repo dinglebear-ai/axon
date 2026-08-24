@@ -1,7 +1,7 @@
 //! Required `.env` variable registry (contract "Required Env Variables").
 //! Extracted from `config_schema_registry.rs` to stay under the monolith line cap.
 
-use super::EnvVarSpec;
+use super::{EnvVarSpec, PROJECTION_BATCH_KEYS};
 
 type RawEnvVar = (
     &'static str,
@@ -269,7 +269,7 @@ const RAW_ENV_VARS: &[RawEnvVar] = &[
 ];
 
 pub fn env_var_registry() -> Vec<EnvVarSpec> {
-    RAW_ENV_VARS
+    let mut vars: Vec<_> = RAW_ENV_VARS
         .iter()
         .map(
             |&(
@@ -295,5 +295,21 @@ pub fn env_var_registry() -> Vec<EnvVarSpec> {
                 }
             },
         )
-        .collect()
+        .collect();
+    vars.extend(
+        PROJECTION_BATCH_KEYS
+            .iter()
+            .map(|&(_, default, name, description)| EnvVarSpec {
+                name,
+                required: false,
+                secret: false,
+                default: Some(default),
+                owner_crate: "axon-core",
+                compose_usage: false,
+                validation: "positive integer",
+                example_allowed: true,
+                description,
+            }),
+    );
+    vars
 }

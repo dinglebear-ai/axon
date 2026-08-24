@@ -41,6 +41,7 @@ pub fn rest_route_inventory() -> &'static [RestRouteInfo] {
             .iter()
             .chain(WATCH_ROUTES.iter())
             .chain(GRAPH_ROUTES.iter())
+            .chain(PROJECTION_ROUTES.iter())
             .copied()
             .collect()
     });
@@ -55,4 +56,4 @@ pub fn supported_routes() -> Vec<String> {
 }
 
 mod data;
-use data::{GRAPH_ROUTES, REST_ROUTE_INVENTORY, WATCH_ROUTES};
+use data::{GRAPH_ROUTES, PROJECTION_ROUTES, REST_ROUTE_INVENTORY, WATCH_ROUTES};

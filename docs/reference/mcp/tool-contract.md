@@ -50,10 +50,10 @@ no token normalization, and no alias remapping.
 
 ## Source acquisition
 
-All indexing goes through `action=source` with `scope=page`/`site`/`docs`/
-`repo`/`package`/`subreddit`. Page/site/adapter behavior is expressed through
-`SourceRequest` scope, intent, limits, and options — there are no separate
-`scrape`/`crawl`/`embed`/`ingest` MCP actions.
+Universal indexing goes through `action=source` with
+`scope=page`/`site`/`docs`/`repo`/`package`/`subreddit`. Focused `scrape`,
+`crawl`, `embed`, and `ingest` actions project onto the same `SourceRequest`
+pipeline; `code_search` is a committed-state read projection.
 
 ## Response modes
 
@@ -112,10 +112,10 @@ allows tokenless; non-loopback requires `AXON_HTTP_TOKEN` or OAuth
 
 ## Removed actions
 
-Removed legacy actions (`scrape`, `crawl`, `embed`, `ingest`, `code_search`,
-`vertical_scrape`, `purge`, `dedupe`) are **not** valid `action` enum values
-and are rejected before dispatch. Use `source` for indexing and `prune` for
-cleanup.
+Removed legacy actions (`vertical_scrape`, `purge`, `dedupe`, and
+`code_search_watch`) are **not** valid `action` enum values and are rejected
+before dispatch. Use `source` or a focused source projection for indexing and
+`prune` for cleanup.
 
 If the MCP surface changes, update `crates/axon-api/src/mcp_schema.rs` and
 re-run `python3 scripts/generate_mcp_schema_doc.py` in the same PR.

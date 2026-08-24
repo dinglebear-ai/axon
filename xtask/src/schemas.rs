@@ -52,6 +52,8 @@ enum SchemaCommand {
     Providers(SchemaGenerateArgs),
     /// Generate/check only the source adapter capability schema family.
     Adapters(SchemaGenerateArgs),
+    /// Generate/check the restored source projection contract family.
+    Projections(SchemaGenerateArgs),
 }
 
 #[derive(Debug, Args, Clone, Default)]
@@ -97,6 +99,7 @@ pub enum SchemaFamily {
     VectorPayload,
     Providers,
     Adapters,
+    Projections,
 }
 
 impl Serialize for SchemaFamily {
@@ -123,6 +126,7 @@ impl SchemaFamily {
             Self::VectorPayload => "vector-payload",
             Self::Providers => "providers",
             Self::Adapters => "adapters",
+            Self::Projections => "projections",
         }
     }
 }
@@ -144,6 +148,9 @@ pub fn run(root: &Path, args: SchemasArgs) -> Result<()> {
         }
         SchemaCommand::Providers(args) => run_single_family(root, SchemaFamily::Providers, &args),
         SchemaCommand::Adapters(args) => run_single_family(root, SchemaFamily::Adapters, &args),
+        SchemaCommand::Projections(args) => {
+            run_single_family(root, SchemaFamily::Projections, &args)
+        }
     }
 }
 

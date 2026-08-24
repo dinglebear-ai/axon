@@ -91,6 +91,57 @@ async fn v1_ask_auth_layer_rejects_missing_and_wrong_tokens() {
 
 #[tokio::test]
 #[serial]
+async fn focused_projection_routes_share_validation_and_body_limits() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+    for path in ["scrape", "crawl", "embed", "ingest", "code-search"] {
+        let response = client
+            .post(format!("{base}/v1/{path}"))
+            .header("authorization", "Bearer secret")
+            .json(&serde_json::json!({"inputs": [], "options": {}}))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("POST {path}: {error}"));
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{path} should reject the same empty batch contract"
+        );
+    }
+    let oversized = client
+        .post(format!("{base}/v1/crawl"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({
+            "inputs": [{"input": "x".repeat(129 * 1024)}],
+            "options": {}
+        }))
+        .send()
+        .await
+        .expect("oversized projection request");
+    let valid = client
+        .post(format!("{base}/v1/ingest"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({
+            "inputs": [{"input": "https://example.com/rest-projection", "idempotency_key": "rest-valid-request"}],
+            "options": {}
+        }))
+        .send()
+        .await
+        .expect("valid projection request");
+    assert_eq!(valid.status(), StatusCode::ACCEPTED);
+    let valid_body: serde_json::Value = valid.json().await.expect("valid projection JSON");
+    assert_eq!(valid_body["status"], "accepted");
+    assert_eq!(valid_body["items"][0]["index"], 0);
+    assert!(valid_body["items"][0].get("input").is_none());
+    assert_eq!(valid_body["items"][0]["outcome"]["status"], "queued");
+    stop(shutdown, handle).await;
+    assert_eq!(oversized.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+#[serial]
 async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
@@ -742,9 +793,8 @@ async fn v1_ask_rejects_removed_graph_field() {
 // stricter behavior the shadow router never had (it had no destructive-route
 // guard at all).
 
-/// Removed direct verb/family routes must 404 on the live router, and the
-/// unified `POST /v1/sources` replacement must be mounted (never 404/405).
-/// Ported from `rest_tests.rs::legacy_indexing_routes_are_absent_and_sources_present`.
+/// Restored projection routes are mounted while retired cleanup aliases remain
+/// absent, and the canonical source route remains available.
 #[tokio::test]
 #[serial]
 async fn legacy_indexing_routes_are_absent_and_sources_present_on_live_router() {
@@ -754,13 +804,32 @@ async fn legacy_indexing_routes_are_absent_and_sources_present_on_live_router() 
     let client = reqwest::Client::new();
 
     for path in [
-        "/v1/embed",
-        "/v1/ingest",
         "/v1/scrape",
         "/v1/crawl",
-        "/v1/purge",
-        "/v1/dedupe",
+        "/v1/embed",
+        "/v1/ingest",
+        "/v1/code-search",
     ] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header("authorization", "Bearer secret")
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("post {path}: {e}"));
+        assert_ne!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "restored route {path}"
+        );
+        assert_ne!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "restored route {path}"
+        );
+    }
+
+    for path in ["/v1/purge", "/v1/dedupe"] {
         let response = client
             .post(format!("{base}{path}"))
             .json(&serde_json::json!({}))

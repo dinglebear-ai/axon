@@ -183,13 +183,10 @@ fn help_does_not_print_current_env_values() {
 }
 
 #[test]
-fn removed_crawl_help_points_to_the_unified_source_surface() {
-    let stderr = run_error(&["crawl", "--help"]);
-    assert!(
-        stderr.contains("`axon crawl` has been removed from the unified source surface")
-            && stderr.contains("axon <url> --scope site"),
-        "removed crawl help should direct users to the unified source surface:\n{stderr}"
-    );
+fn restored_crawl_help_describes_the_focused_projection() {
+    let stdout = run_help(&["crawl", "--help"]);
+    assert!(stdout.contains("canonical source pipeline"), "{stdout}");
+    assert!(stdout.contains("--item"), "{stdout}");
 }
 
 #[test]

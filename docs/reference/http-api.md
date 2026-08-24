@@ -86,12 +86,12 @@ Start responses use `202 Accepted`, a `Location` header, and:
 }
 ```
 
-The removed indexing routes `POST /v1/embed`, `POST /v1/ingest`,
-`POST /v1/scrape`, `POST /v1/crawl`, the removed admin routes
+Focused projections are available at `POST /v1/scrape`, `/v1/crawl`,
+`/v1/embed`, `/v1/ingest`, and `/v1/code-search`; they share the canonical
+source/query services and batch envelope. The removed admin routes
 `POST /v1/purge`, `POST /v1/dedupe`, and the old `/v1/extract/*` lifecycle
-routes now return `404`. Use `POST /v1/sources` for source
-acquisition/indexing, `/v1/prune/*` for cleanup, and `/v1/jobs` for job
-lifecycle.
+routes return `404`. Use `POST /v1/sources` for the universal source surface,
+`/v1/prune/*` for cleanup, and `/v1/jobs` for job lifecycle.
 
 Admin routes:
 

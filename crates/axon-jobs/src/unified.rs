@@ -72,6 +72,8 @@ mod ops;
 mod ops_helpers;
 #[path = "unified/pagination.rs"]
 pub(crate) mod pagination;
+#[path = "unified/projection_admission.rs"]
+mod projection_admission;
 #[path = "unified/recovery.rs"]
 mod recovery;
 #[path = "unified/request_read.rs"]
@@ -137,12 +139,33 @@ impl JobStore for SqliteUnifiedJobStore {
         retry_job_write("job create", || self.create_job(request.clone())).await
     }
 
+    async fn admit_projection_batch_atomic(
+        &self,
+        admission: ProjectionBatchAdmission,
+    ) -> Result<ProjectionBatchAdmissionResult> {
+        retry_job_write("projection batch admission", || {
+            self.admit_projection_batch(admission.clone())
+        })
+        .await
+    }
+
+    async fn projection_batch(
+        &self,
+        lookup: ProjectionBatchLookup,
+    ) -> Result<Option<ProjectionBatchAdmissionResult>> {
+        self.lookup_projection_batch(lookup).await
+    }
+
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>> {
         self.get_job(job_id).await
     }
 
     async fn request_json(&self, job_id: JobId) -> Result<Option<serde_json::Value>> {
         self.get_job_request_json(job_id).await
+    }
+
+    async fn result_json(&self, job_id: JobId) -> Result<Option<serde_json::Value>> {
+        self.get_job_result_json(job_id).await
     }
 
     async fn attempts(&self, job_id: JobId) -> Result<Vec<JobAttemptSnapshot>> {

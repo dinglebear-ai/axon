@@ -45,6 +45,14 @@ pub(super) enum CliCommand {
     Research(TextArg),
     /// Fetch/render/normalize exactly one web page and embed it by default
     Scrape(ScrapeSourceArgs),
+    /// Crawl one or more source roots through the canonical source pipeline
+    Crawl(FocusedProjectionArgs),
+    /// Embed one or more sources through the canonical source pipeline
+    Embed(FocusedProjectionArgs),
+    /// Ingest one or more sources through the canonical source pipeline
+    Ingest(FocusedProjectionArgs),
+    /// Search committed local-code vectors without refreshing the index
+    CodeSearch(FocusedProjectionArgs),
     /// Analyze a URL's brand identity: colors, fonts, logos, favicon
     Brand(ScrapeArgs),
     /// Run doctor diagnostics plus LLM-assisted troubleshooting
@@ -345,6 +353,28 @@ pub(super) struct ScrapeArgs {
 }
 
 #[derive(Debug, Args)]
+pub(super) struct FocusedProjectionArgs {
+    #[arg(value_name = "INPUT")]
+    pub(super) inputs: Vec<String>,
+
+    /// One canonical JSON item; repeat for a batch.
+    #[arg(long = "item", value_name = "JSON")]
+    pub(super) items: Vec<String>,
+
+    /// Read one canonical focused request from a JSON file.
+    #[arg(long = "request-file", value_name = "PATH")]
+    pub(super) request_file: Option<std::path::PathBuf>,
+
+    /// Filename template containing `{index}` or `{input_hash}`.
+    #[arg(
+        long = "output-template",
+        value_name = "TEMPLATE",
+        requires = "output_dir"
+    )]
+    pub(super) output_template: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub(super) struct SourceArgs {
     /// Source to index: a local path, git URL, feed URL, youtube target, reddit
     /// target, web URL, session selector, or registry target.
@@ -363,9 +393,22 @@ pub(super) struct SourceArgs {
 
 #[derive(Debug, Args)]
 pub(super) struct ScrapeSourceArgs {
-    /// URL to scrape as exactly one page.
+    /// URLs to scrape as exactly one page each.
     #[arg(value_name = "URL")]
-    pub(super) url: String,
+    pub(super) urls: Vec<String>,
+    /// One canonical JSON item; repeat for a batch.
+    #[arg(long = "item", value_name = "JSON")]
+    pub(super) items: Vec<String>,
+    /// Read one canonical scrape request from a JSON file.
+    #[arg(long = "request-file", value_name = "PATH")]
+    pub(super) request_file: Option<std::path::PathBuf>,
+    /// Filename template containing `{index}` or `{input_hash}`.
+    #[arg(
+        long = "output-template",
+        value_name = "TEMPLATE",
+        requires = "output_dir"
+    )]
+    pub(super) output_template: Option<String>,
     /// Skip vector embedding while still returning or saving clean content.
     #[arg(long = "no-embed", action = ArgAction::SetTrue)]
     pub(super) no_embed: bool,

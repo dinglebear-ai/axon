@@ -37,7 +37,7 @@ pub async fn resolve_code_search_project(
     caller: CodeSearchCaller,
 ) -> Result<CodeSearchProjectResult, Box<dyn Error + Send + Sync>> {
     let root = resolve_code_search_root(cwd, caller).await?;
-    let identity = code_search_identity(ctx.cfg(), root).await;
+    let identity = code_search_identity(ctx.cfg(), root, &ctx.cfg().collection).await;
     Ok(CodeSearchProjectResult {
         project_root: identity.project_root,
         project_key: identity.project_key,
@@ -70,7 +70,7 @@ async fn refresh_target_local_code_search_index_with_progress(
     progress: Option<&dyn ReindexProgressSink>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
     let root = resolve_code_search_root(cwd, caller).await?;
-    let identity = code_search_identity(ctx.cfg(), root).await;
+    let identity = code_search_identity(ctx.cfg(), root, &ctx.cfg().collection).await;
     let Some(_) = ctx.target_local_source_runtime() else {
         return Ok(target_refresh_unavailable_result(identity));
     };
@@ -207,9 +207,10 @@ pub(super) async fn target_code_search_committed_state(
     ctx: &ServiceContext,
     cwd: Option<&Path>,
     caller: CodeSearchCaller,
+    collection: &str,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
     let root = resolve_code_search_root(cwd, caller).await?;
-    let identity = code_search_identity(ctx.cfg(), root).await;
+    let identity = code_search_identity(ctx.cfg(), root, collection).await;
     let Some(target) = ctx.target_local_source_runtime() else {
         return Ok(target_refresh_unavailable_result(identity));
     };

@@ -14,6 +14,11 @@ pub use utility::*;
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum AxonRequest {
+    Scrape(crate::source::ScrapeRequest),
+    Crawl(crate::source::CrawlRequest),
+    Embed(crate::source::EmbedRequest),
+    Ingest(crate::source::IngestRequest),
+    CodeSearch(crate::source::CodeSearchRequest),
     Status(StatusRequest),
     Jobs(JobsRequest),
     Extract(ExtractRequest),
@@ -157,10 +162,7 @@ pub fn parse_axon_request(raw: Map<String, Value>) -> Result<AxonRequest, String
 
 fn removed_action_guidance(action: &str) -> Option<&'static str> {
     match action {
-        "crawl" => Some("use action=source with scope=site"),
-        "scrape" => Some("use action=source with scope=page"),
-        "embed" | "ingest" | "vertical_scrape" => Some("use action=source"),
-        "code_search" => Some("use action=query with content_kind=code and source/path filters"),
+        "vertical_scrape" => Some("use action=scrape"),
         "purge" | "dedupe" => Some("use action=prune"),
         _ => None,
     }

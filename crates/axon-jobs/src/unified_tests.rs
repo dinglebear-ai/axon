@@ -298,8 +298,9 @@ async fn unified_job_tables_have_contract_indexes() {
     let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
     let indexes: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_master
-         WHERE type='index' AND name LIKE 'idx_axon_jobs_%'
-            OR type='index' AND name LIKE 'idx_axon_job_%'
+         WHERE (type='index' AND name LIKE 'idx_axon_jobs_%')
+            OR (type='index' AND name LIKE 'idx_axon_job_%')
+            OR (type='index' AND name LIKE 'idx_projection_%')
          ORDER BY name",
     )
     .fetch_all(&pool)

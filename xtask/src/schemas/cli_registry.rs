@@ -9,8 +9,7 @@
 //!
 //! Coverage rule: every entry here must correspond to a real, live clap
 //! variant. Commands the removed-surface contract forbids from CLI docs
-//! (`embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`,
-//! `purge`, `dedupe`, `refresh`, `fresh` — see
+//! (`code-search-watch`, `purge`, `dedupe`, `refresh`, `fresh` — see
 //! `xtask/src/schemas/registry.rs::REMOVED_SURFACE_RULES`) are intentionally
 //! excluded. The #298 resource command groups (`artifacts`, `uploads`,
 //! `collections`, `graph`, `providers`, `capabilities`, `chat`) are live clap
@@ -80,17 +79,7 @@ pub(super) fn command_registry() -> Vec<CliRegistryCommand> {
 /// checkout cannot silently republish them.
 #[allow(dead_code)]
 pub(super) fn excluded_top_level_groups() -> &'static [&'static str] {
-    &[
-        "embed",
-        "ingest",
-        "crawl",
-        "code-search",
-        "code-search-watch",
-        "purge",
-        "dedupe",
-        "refresh",
-        "fresh",
-    ]
+    &["code-search-watch", "purge", "dedupe", "refresh", "fresh"]
 }
 
 pub(super) fn command_records() -> Vec<Value> {
