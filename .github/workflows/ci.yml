@@ -287,10 +287,10 @@ jobs:
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
         run: ./target/debug/xtask check-release-versions --base origin/main --head HEAD --mode pr
       - name: Build auto-tag release plan from the existing xtask binary
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: ./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json
       - name: Upload auto-tag release plan
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-auto-tag-release-plan-${{ github.sha }}

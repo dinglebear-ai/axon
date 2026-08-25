@@ -557,8 +557,8 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     assert!(
         release.contains("Create and push tag")
-            && release.contains("ref: ${{ github.event.workflow_run.head_sha }}")
-            && release.contains("expected_sha=\"${{ github.event.workflow_run.head_sha }}\"")
+            && release.contains("ref: ${{ needs.plan.outputs.target_sha }}")
+            && release.contains("expected_sha=\"${{ needs.plan.outputs.target_sha }}\"")
             && !workflow.contains("gh run list")
             && !workflow.contains("sleep 20"),
         "auto-tag must bind the release to completed CI without polling"
@@ -642,7 +642,7 @@ fn auto_tag_partial_success_rerun_accepts_the_existing_tag_at_the_same_commit() 
 
     let tag = "v99.99.99-test";
     let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
-        "${{ github.event.workflow_run.head_sha }}",
+        "${{ needs.plan.outputs.target_sha }}",
         "$(git rev-parse HEAD)",
     );
     let harness = format!(
@@ -692,7 +692,7 @@ fn auto_tag_partial_success_rerun_accepts_the_existing_tag_after_main_advances()
 
     let tag = "v99.99.97-recovery";
     let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
-        "${{ github.event.workflow_run.head_sha }}",
+        "${{ needs.plan.outputs.target_sha }}",
         "$(git rev-parse HEAD)",
     );
     let harness = format!(
