@@ -38,6 +38,16 @@ on:
     workflows: [CI]
     branches: [main]
     types: [completed]
+  # Reconciler: the workflow_run path only fires when a *green* main CI run
+  # exists for the bumped commit. If CI was red on the bump commit, or the next
+  # pushes touch only paths ci.yml excludes (so no CI run fires at all), a
+  # bumped-but-untagged main can persist indefinitely with no way to recover --
+  # workflow_dispatch of CI cannot help, because both this workflow and the
+  # plan steps require `event == 'push'`. The schedule re-derives the plan from
+  # main directly and still refuses to tag unless CI is green for that commit.
+  schedule:
+    - cron: "37 6 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write   # required to create and push component release tags
@@ -53,17 +63,36 @@ concurrency:
 
 jobs:
   plan:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # The workflow_run path is API-only and finishes in seconds. The reconciler
+    # path builds xtask so the plan comes from the same source of truth CI uses.
+    timeout-minutes: 40
     permissions:
       actions: read
       contents: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix || '{"include":[]}' }}
+      target_sha: ${{ steps.target.outputs.sha }}
     steps:
+      - name: Resolve target commit
+        id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            sha="$(gh api "repos/${{ github.repository }}/commits/main" --jq '.sha')"
+          fi
+          [ -n "$sha" ] || { echo "::error::could not resolve a target commit" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "target commit: $sha"
+
       - name: Check whether CI produced a release plan
         id: probe
+        if: ${{ github.event_name == 'workflow_run' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLAN_NAME: axon-auto-tag-release-plan-${{ github.event.workflow_run.head_sha }}
@@ -87,12 +116,63 @@ jobs:
           path: .
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Validate release plan
-        id: plan
+      - name: Stage the CI-produced plan
         if: ${{ steps.probe.outputs.has_plan == 'true' }}
+        run: mv auto-tag-release-plan.json release-plan.json
+
+      # ---- reconciler path (schedule / workflow_dispatch) ----
+      - name: Checkout main at the target commit
+        if: ${{ github.event_name != 'workflow_run' }}
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Require a green CI run for the target commit
+        if: ${{ github.event_name != 'workflow_run' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
-          mv auto-tag-release-plan.json release-plan.json
+          # The workflow_run path gets this guarantee from its trigger. The
+          # reconciler must prove it explicitly: never tag a commit whose CI is
+          # not green, matching the OPS-M1 release gate above.
+          conclusion="$(gh api --paginate \
+            "repos/${{ github.repository }}/actions/runs?head_sha=$TARGET_SHA" \
+            --jq '[.workflow_runs[] | select(.name == "CI" and .event == "push")] | sort_by(.run_started_at) | last | .conclusion // empty')"
+          if [ "$conclusion" != "success" ]; then
+            echo "::notice::no green push CI run for $TARGET_SHA (conclusion: ${conclusion:-none}); reconciler will not tag"
+            echo "RECONCILE_BLOCKED=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Rust
+        if: ${{ github.event_name != 'workflow_run' && env.RECONCILE_BLOCKED != '1' }}
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Recompute the release plan from main
+        if: ${{ github.event_name != 'workflow_run' && env.RECONCILE_BLOCKED != '1' }}
+        run: |
+          set -euo pipefail
+          cargo build -p xtask --locked
+          ./target/debug/xtask check-release-versions --head HEAD --mode main --json > release-plan.json
+          if [ "$matrix" = '{"include":[]}' ]; then
+            echo "::notice::no axon-native component is bumped-but-untagged; nothing to reconcile"
+          else
+            echo "::notice::reconciler found an untagged bump on main: $matrix"
+          fi
+
+      # Single owner of validation and of the matrix selector. Both paths above
+      # only *produce* release-plan.json; exactly one selector turns it into a
+      # matrix, so a second, broader selector cannot creep in and start tagging
+      # release-please-owned components.
+      - name: Validate release plan
+        id: plan
+        if: ${{ hashFiles('release-plan.json') != '' }}
+        run: |
+          set -euo pipefail
           if ! jq -e 'type == "array" and all(.[]; ((.release_driver | type) == "string") and (.release_driver == "axon-native" or .release_driver == "release-please"))' release-plan.json >/dev/null; then
             echo "::error::release plan must declare release_driver as axon-native or release-please for every component" >&2
             cat release-plan.json >&2
@@ -116,7 +196,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ needs.plan.outputs.target_sha }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -124,7 +204,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ matrix.candidate_tag }}"
-          expected_sha="${{ github.event.workflow_run.head_sha }}"
+          expected_sha="${{ needs.plan.outputs.target_sha }}"
           head_sha="$(git rev-parse --verify "HEAD^{commit}")"
           if [ "$head_sha" != "$expected_sha" ]; then
             echo "::error::checked-out HEAD $head_sha does not match workflow commit $expected_sha" >&2
