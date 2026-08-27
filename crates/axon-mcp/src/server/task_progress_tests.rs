@@ -44,7 +44,7 @@ fn initial_task_progress_is_ready_before_create_task_returns() {
 
     assert_eq!(notification.progress, 1.0);
     assert_eq!(notification.total, Some(4.0));
-    assert_eq!(notification.message.as_deref(), Some("indexing"));
+    assert_eq!(notification.message.as_deref(), Some("fetching"));
     assert!(is_active);
     assert!(!fingerprint.is_empty());
 }
