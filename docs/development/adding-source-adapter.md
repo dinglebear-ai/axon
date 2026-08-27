@@ -1,22 +1,31 @@
 ---
 title: "Adding a Source Adapter"
 created: 2026-07-07
-updated: 2026-07-30
+updated: 2026-08-24
 ---
 
 # Adding a Source Adapter
 
-A source adapter turns a `ResolvedSource` into `SourceDocument` values without
-bypassing the shared pipeline. This guide describes the real pattern used by
-`axon-adapters` (`crates/axon-adapters/src/`) — the source-family matrix,
-the `SourceAdapter` trait, and the onboarding checklist a new family must
-satisfy.
+A source adapter turns a resolved source into `SourceDocument` values without bypassing Axon's shared source pipeline. This guide is the practical companion to `docs/pipeline-unification/sources/new-source-contract.md`.
 
-See also: crate guide `crates/axon-adapters/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/sources/adapter-scopes.md`, onboarding contract
-`docs/pipeline-unification/sources/new-source-contract.md`.
+See also `crates/axon-adapters/src/CLAUDE.md`, `docs/pipeline-unification/sources/adapter-scopes.md`, `docs/pipeline-unification/sources/metadata-payload.md`, and `docs/pipeline-unification/sources/source-graph.md`.
 
-## Where a new family fits in the pipeline
+## First Decision: Do You Need A New Adapter?
+
+A provider name is not, by itself, a reason to add a new source family. Prefer an existing acquisition boundary when it already matches the source shape.
+
+| Input shape | Preferred Axon boundary |
+|---|---|
+| web page/site | `web` / `feed` |
+| package registry | `registry` |
+| local or exported file | `local` / `upload` |
+| CLI-generated data | `cli_tool` |
+| MCP server/tool data | `mcp_tool` |
+| genuinely new acquisition/lifecycle model | new `SourceAdapter` |
+
+Asana and Linear accessed through MCP should therefore start as MCP ingestion profiles, not `AsanaSourceAdapter` / `LinearSourceAdapter`. Promote a provider later only when Axon needs provider-native cursors, webhooks, attachment acquisition, delete/tombstone semantics, or authentication that no longer belongs behind MCP.
+
+## Pipeline Boundary
 
 ```text
 SourceRequest -> SourceResolver -> SourceRouter -> SourceAdapter
@@ -24,149 +33,198 @@ SourceRequest -> SourceResolver -> SourceRouter -> SourceAdapter
   -> DocumentPreparer -> EmbeddingProvider -> VectorStore -> DocumentStatus
 ```
 
-Adapters emit `SourceDocument` **only** — they never write prepared
-documents, vectors, graph rows, jobs, or transport responses directly. Ledger
-persistence, chunking, embedding, and vector writes happen downstream in the
-shared pipeline (`axon-services::source::index_source_with_auth` and
-friends), not inside the adapter.
+Adapters own acquisition and normalization. They do not own ledger persistence, final chunking, embeddings, vector writes, graph persistence, job storage, or transport rendering.
 
-## Step 1: Add a `SourceFamily` variant
+## Prototype Ladder
 
-`crates/axon-adapters/src/spec.rs` defines `SourceFamily` (the enum every
-family variant belongs to — `Local`, `Git`, `Web`, `Feed`, `Youtube`,
-`Reddit`, `Sessions`, `Registry`, `CliTool`, `McpTool`,
-`MemoryIntegration`) and `SourceAdapterSpec`, the struct that fully describes
-one family's declared capabilities:
+### Level 0: File proof of value
 
-```rust
-pub struct SourceAdapterSpec {
-    pub family: SourceFamily,
-    pub adapter: &'static str,
-    pub version: &'static str,
-    pub source_kinds: &'static [SourceKind],
-    pub vector_namespace: &'static str,
-    pub supported_schemes: &'static [&'static str],
-    pub shorthand_patterns: &'static [&'static str],
-    pub default_scope: SourceScope,
-    pub scopes: &'static [SourceScopeCapability],
-    pub credential_requirements: &'static [CredentialRequirement],
-    pub option_schema: &'static str,
-    pub parser_families: &'static [ParserFamily],
-    pub metadata_families: &'static [&'static str],
-    pub watch_supported: bool,
-    pub refresh_supported: bool,
-    pub may_access_local_paths: bool,
-    pub may_perform_network_fetches: bool,
-    pub may_call_render_provider: bool,
-    pub may_execute_tools: bool,
-    pub is_source_adapter: bool,
-    pub degraded_modes: &'static [&'static str],
-    pub required_graph_fact_kinds: &'static [&'static str],
-    pub optional_graph_fact_kinds: &'static [&'static str],
+Export useful data to JSON, NDJSON, or Markdown and ingest it through the local/upload path. This proves retrieval quality quickly, but the source identity remains file-backed and should be treated as disposable.
+
+### Level 1: Contract-shaped export
+
+Even when writing a file, emit deterministic logical record identifiers and canonical external URIs. At minimum preserve `source_item_key`, `canonical_uri`, title, normalized content, update timestamp, provider metadata, and known relationships.
+
+### Level 2: MCP ingestion profile
+
+For data available through MCP, extend the existing `mcp_tool` family so one authorized MCP invocation can return a structured multi-item snapshot. Axon promotes those records into `SourceManifest` items and `SourceDocument` values instead of indexing the entire tool response as one opaque document.
+
+Recommended ownership:
+
+```text
+external SaaS
+  -> upstream MCP server
+  -> Labby gateway
+       - upstream discovery
+       - OAuth/token refresh
+       - route/loadout/tool policy
+       - snippet execution
+  -> axon.mcp-ingest/v1 snapshot
+  -> Axon mcp_tool adapter
+       - stable item identity
+       - manifest + diff
+       - SourceDocument normalization
+  -> shared parse/graph/prepare/embed/publish pipeline
+```
+
+Axon authenticates to Labby, not to Asana/Linear directly. Upstream OAuth credentials remain owned by Labby and never enter Axon source options, metadata, artifacts, graph facts, or vector payloads.
+
+Labby's upstream OAuth state is subject-scoped. A homelab/single-user deployment may use a dedicated Axon ingestion service identity whose Labby subject has authorized the needed upstreams. Multi-user deployments must preserve or explicitly delegate the correct Labby subject instead of silently sharing one user's OAuth state.
+
+### Level 3: Native provider adapter
+
+Promote a provider only when native acquisition semantics materially improve correctness or operations. Preserve the logical item keys and canonical URIs established by the MCP profile so migration is deterministic.
+
+## MCP Ingestion Envelope
+
+The current `mcp_tool` code supports metadata-only behavior and an explicitly authorized call path, but call output is effectively one document. General ingestion needs a multi-record contract. A proposed shape is:
+
+```json
+{
+  "schema": "axon.mcp-ingest/v1",
+  "source": { "provider": "asana", "scope": "project", "external_id": "123" },
+  "complete_snapshot": true,
+  "items": [
+    {
+      "source_item_key": "asana:task:12091234567890",
+      "canonical_uri": "https://app.asana.com/0/PROJECT/TASK",
+      "content_kind": "structured",
+      "title": "Example task",
+      "body": "Normalized task content",
+      "updated_at": "2026-08-24T20:00:00Z",
+      "metadata": { "provider": "asana", "task_id": "12091234567890" },
+      "relationships": []
+    }
+  ],
+  "cursor": null
 }
 ```
 
-Add your new family to `SourceFamily`, then declare a `const <FAMILY>_SCOPES:
-&[SourceScopeCapability]` list (each scope marked `required: bool` with a
-`notes` string) and add a new `SourceAdapterSpec` entry to the `MATRIX` const
-in `crates/axon-adapters/src/family_matrix.rs`, returned by
-`source_family_matrix()`. Model the security-relevant booleans honestly —
-`may_access_local_paths`, `may_perform_network_fetches`,
-`may_call_render_provider`, and `may_execute_tools` gate real security
-policy elsewhere (SSRF checks, local-path trust, tool-exec allowlists), so
-under-declaring them is a security bug, not just a docs gap.
+Required invariants:
 
-## Step 2: Implement `SourceAdapter`
+- item keys and canonical URIs are deterministic and provider-stable;
+- unchanged items hash identically and skip re-embedding;
+- removals are inferred only from an explicitly complete snapshot or explicit tombstones;
+- secrets and authorization material never enter persisted source content;
+- raw provider payloads are optional evidence artifacts, not canonical vector payloads;
+- the Labby provider accepts arguments/input, not only a server/tool name;
+- large sets use pagination/cursors or another bounded mechanism.
 
-`crates/axon-adapters/src/adapter.rs` defines the trait:
+## One-call Materialization For MCP Ingestion
 
-```rust
-#[async_trait]
-pub trait SourceAdapter: Send + Sync {
-    fn name(&self) -> &str;
-    fn version(&self) -> &str;
-    async fn capabilities(&self) -> Result<AdapterCapability>;
-    async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest>;
-    async fn acquire(
-        &self,
-        plan: &SourcePlan,
-        diff: &SourceManifestDiff,
-    ) -> Result<SourceAcquisition>;
-    async fn normalize(
-        &self,
-        plan: &SourcePlan,
-        acquisition: SourceAcquisition,
-    ) -> Result<StageExecutionResult<Vec<SourceDocument>>>;
-}
+`SourceAdapter::materialize` already runs once before `discover` / `acquire` / `normalize`. Existing registry, Reddit, and feed adapters use it to fetch once into a temporary dump. MCP ingestion should follow that pattern:
+
+```text
+materialize: call Labby once -> temporary axon.mcp-ingest/v1 dump
+discover: read dump -> SourceManifest
+ledger: diff against prior generation
+acquire: select added/modified records from the same dump
+normalize: one SourceDocument per selected record
+release: discard temporary materialization
 ```
 
-- **`discover`** builds the full `SourceManifest` for the current state of the
-  source (every item the source currently contains, keyed by
-  `source_item_key`) — this is what the ledger diffs against the previously
-  committed generation.
-- **`acquire`** fetches only the items the manifest diff says changed, given
-  the diff computed from `discover`'s output.
-- **`normalize`** turns acquired raw content into `SourceDocument` values —
-  the shared shape every downstream stage (parsing, chunking, embedding)
-  consumes regardless of source family.
+This gives us the fast 'dump the Asana data and embed it' prototype without a persistent intermediate file and without hitting Asana twice.
 
-Look at an existing family's implementation for the real pattern before
-writing a new one — `crates/axon-adapters/src/local.rs` (filesystem),
-`crates/axon-adapters/src/git.rs` (repository), `crates/axon-adapters/src/
-feed.rs` (RSS/Atom/JSON) are all live, non-stub implementations with sidecar
-test files (`local_tests.rs`, `git_tests.rs`, `feed_tests.rs`).
+## Labby-backed MCP Migration: Code Impact
 
-## Step 3: Register the adapter
+Moving MCP execution behind Labby should remove Axon-specific caller-command plumbing rather than create a second execution path.
 
-`crates/axon-adapters/src/registry.rs` (`AdapterRegistry`) is the
-registration/lookup boundary the router uses to find the right adapter for a
-resolved source. Register your new adapter implementation there.
+### Remove
 
-## Step 4: Satisfy the onboarding checklist
+- `CommandMcpToolCaller` plus its `CliToolSource` / `execute_command` bridge in `crates/axon-adapters/src/mcp_tool.rs`.
+- `command_caller(plan)` and `mcp_caller_command` parsing in `crates/axon-adapters/src/mcp_tool/adapter.rs`.
+- `AXON_MCP_CALLER_COMMAND` and `AXON_MCP_CALLER_ALLOWLIST`, plus corresponding fields/validation in `crates/axon-services/src/source/dispatch/tool_auth.rs`.
+- `mcp_caller_command`, `mcp_caller_allowlist`, and MCP-specific `env_allowlist` route option keys in `crates/axon-route/src/capability.rs`.
+- command-caller tests that only prove `/bin/echo` or another local helper is configured/allowlisted.
+- generated capability/reference fields for those removed options.
 
-`crates/axon-adapters/src/onboarding.rs` derives a `SourceOnboardingStatus`
-from a `SourceAdapterSpec` — 15 rows (`identity`, `resolver`, `router`,
-`adapter`, `scopes`, `ledger`, `parsing`, `graph`, `chunking`, `metadata`,
-`auth_secrets`, `observability`, `error_handling`, `tests`, `docs`), each
-either complete or not based on whether the spec declares the corresponding
-fields non-empty. This is a **derived, mechanical check** — it doesn't
-validate correctness, only that the spec isn't obviously incomplete
-(`source_kinds` non-empty, `parser_families` non-empty, credential
-requirements carry a `reason`, etc.). Run
-`onboarding_status(spec)`/`onboarding_rows(status)` against your new spec
-before considering a family "onboarded"; a family with any incomplete row is
-not ready for the family-matrix contract tests.
+### Keep, with changed semantics
 
-## Step 5: Add fixtures and tests
+- `SourceKind::McpTool`, `SourceFamily::McpTool`, the `mcp_tool` adapter, canonical `mcp://...` identity, and `scope=tool/api`.
+- `axon:execute` and an Axon-side exact MCP target allowlist as defense in depth.
+- authorization audit events, but record Labby identity/route/target rather than a local caller command.
+- timeout and response-size limits, applied to the Labby request/result in addition to Labby's limits.
+- redaction and artifact capture, with artifacts representing bounded/redacted Labby/provider results rather than local stdout/stderr.
+- metadata-only tool-contract indexing, but obtain real tool metadata/schema from Labby rather than manufacturing a placeholder document.
 
-Add a sidecar `<family>_tests.rs` per the repo's test convention (declared
-via `#[path]` in the family's source file). The Phase 9 family-matrix
-contract expects, per family: resolver/adapter/parser/graph/metadata/vector
-payload/source-job/degraded/auth/provider-failure fixtures where applicable.
-Existing families' fixture trees under `crates/axon-adapters/fixtures/
-<family>/` are the concrete pattern to copy.
+### Add or refactor
 
-## Step 6: Update generated docs/schemas
+- Replace `McpToolCaller::call(&target)` with a provider boundary such as `McpSourceProvider` / `McpIngestionProvider` that accepts target + arguments and returns a bounded structured result.
+- Inject the provider into `McpToolSourceAdapter` from `crates/axon-services/src/source/adapter_registry.rs`, following the existing upload/memory provider pattern. `axon-adapters` stays Labby-agnostic.
+- Implement `McpToolSourceAdapter::materialize` and a temporary dump parser for `axon.mcp-ingest/v1`.
+- Change ingestion-mode `discover` from one manifest item per server/tool to one per record.
+- Change ingestion-mode `acquire` to select only added/modified records from the materialized snapshot and never call Labby a second time.
+- Change ingestion-mode `normalize` to emit one `SourceDocument` per selected record.
+- Update `crates/axon-adapters/src/mcp_tool/metadata.rs`: preserve shared MCP/tool provenance while merging approved provider/profile metadata, record an ingestion action distinctly from metadata-only indexing, and keep provider fields bounded/redacted.
+- Remove job-id-based `execution_content_hash` for ingestion records; derive hashes from stable normalized record content.
+- Define the external `axon.mcp-ingest/v1` DTO/schema in a transport-neutral contract layer, normally `axon-api`, because Labby snippets produce it and Axon consumes it.
+- Add Labby endpoint/service-identity configuration in the service/config layer. Secrets belong in environment/credential storage, not source options.
+- Add the concrete Labby provider in `axon-services`. Do not make `axon-services` depend on `axon-mcp`: `axon-mcp` already depends on `axon-services`, so that would form a dependency cycle. Reuse the existing service HTTP stack or a lower-level reusable MCP client dependency.
 
-Adapter capability docs and schemas are generated, not hand-written — run
-`cargo xtask generated-contracts refresh` after adding or changing a
-`SourceAdapterSpec` so the generated capability docs and
-`schemas/provider-capability-schema.md`/`schemas/vector-payload-schema.md`
-stay in sync with the matrix. Finish with `cargo xtask generated-contracts
-check`.
+## Native Adapter Recipe
 
-## Boundary reminders
+When a genuinely new source family is warranted, follow these steps.
 
-- Source id / canonical URI construction belongs to `axon-route`, not the
-  adapter.
-- Ledger persistence, generation publishing, final chunking, embedding,
-  vector writes, and search/RAG do not belong in `axon-adapters`.
-- No direct Qdrant upserts, embedding-provider calls, or job-store ownership
-  from inside an adapter.
-- No CLI/MCP/REST rendering from inside an adapter.
-- Allowed dependencies: `axon-api`, `axon-error`, `axon-core`, `axon-route`,
-  `axon-authz`, `axon-observe`, and acquisition libraries (HTTP/git/feed/
-  transcript/archive/tool clients) hidden behind the adapter implementation.
-  Forbidden: `axon-vectors`/`axon-embedding`/`axon-retrieval`/`axon-services`,
-  direct job store, transport crates — enforced by
-  `cargo xtask check-layering`.
+### 1. Define identity before I/O
+
+Specify `SourceKind` / `SourceFamily`, supported URI schemes, source canonical URI, stable source-id behavior, deterministic `source_item_key`, item canonical URI, and mutable/immutable identity rules before implementing network calls.
+
+### 2. Declare the family contract
+
+`crates/axon-adapters/src/spec.rs` defines `SourceFamily`, `ParserFamily`, and `SourceAdapterSpec`. Scope tables and matrix entries are split under `crates/axon-adapters/src/family_matrix/` (`matrix.rs`, `scopes_content.rs`, and `scopes_tooling.rs`). Add or update the appropriate rows there.
+
+Declare scopes, credentials, parser/metadata families, watch/refresh support, network/local/tool capabilities, degradation modes, and required/optional graph facts honestly. Security capability flags are policy inputs, not decorative documentation.
+
+If a new source or scope enum value is truly required, update the transport-neutral DTOs in `axon-api`; do not create adapter-local shadow enums.
+
+### 3. Add resolver/router behavior
+
+Resolver/router changes belong in `axon-route`. Explicit schemes must be deterministic; ambiguous shorthand must fail instead of silently selecting a family. The router selects adapter/scope/options/parser hints but does not perform acquisition.
+
+### 4. Implement `SourceAdapter`
+
+The live trait includes `materialize`, `discover`, `acquire`, `normalize`, optional progress/prefetch/archive hooks, and `release`. Use `materialize` when acquisition needs one-time prepared state before manifest discovery.
+
+Core sequence:
+
+```rust
+async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest>;
+async fn acquire(
+    &self,
+    plan: &SourcePlan,
+    diff: &SourceManifestDiff,
+) -> Result<SourceAcquisition>;
+async fn normalize(
+    &self,
+    plan: &SourcePlan,
+    acquisition: SourceAcquisition,
+) -> Result<StageExecutionResult<Vec<SourceDocument>>>;
+```
+
+Do not embed, write Qdrant, commit ledger generations, write graph rows, own job storage, or render transport responses from the adapter.
+
+### 5. Wire runtime composition
+
+Concrete source adapters are assembled in `crates/axon-services/src/source/adapter_registry.rs` and validated against the normative family matrix by `SourceAdapterRegistry::validate()`. Add provider dependencies there when an adapter requires an injected runtime service.
+
+### 6. Define parsing, metadata, graph, and chunking
+
+Update `adapter-scopes.md`, `url-normalization.md`, `metadata-payload.md`, and `source-graph.md` before or with the code. Prefer existing parsers and chunk profiles unless new structure materially improves retrieval/graph semantics.
+
+### 7. Add fixture packs and focused tests
+
+Required adapter fixtures live under `crates/axon-adapters/fixtures/<adapter>/` and cover resolution, manifests, source documents, source jobs, auth, degraded behavior, provider failures, and metadata. Add the corresponding parser, graph, and vector-payload fixtures where required.
+
+Prove explicit resolution, ambiguous rejection, added/modified/removed/unchanged diffing, normalization, auth failure, degradation/provider failure, redaction, source-job publication, graph declarations, and payload validity.
+
+### 8. Refresh generated contracts
+
+After changing schema inputs or adapter capabilities, use `cargo xtask generated-contracts refresh`, then `cargo xtask generated-contracts check`. Do not hand-edit generated reference artifacts.
+
+### 9. Verify the smallest sufficient surface
+
+Run focused route/adapter/service/parser/graph/generated-contract checks required by the changed files. Prose-only documentation changes do not require a full Rust build.
+
+## Definition Of Done
+
+A source is online when identity is deterministic, resolver/router behavior is explicit, acquisition/normalization use the shared pipeline, refresh skips unchanged embeddings, removals become durable cleanup work, metadata/graph evidence validate, security fails closed, fixture packs exist, generated capability surfaces match runtime behavior, and user-facing docs describe what is actually supported.

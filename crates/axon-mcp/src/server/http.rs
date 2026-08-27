@@ -67,8 +67,23 @@ pub async fn mcp_http_router(
                 hosts.sort();
                 hosts.dedup();
                 StreamableHttpServerConfig::default()
-                    // Renamed in rmcp 3.x: sessions are legacy-only per SEP-2567.
-                    .with_legacy_session_mode(true)
+                    // Serve every protocol version statelessly, matching what
+                    // SEP-2567 already mandates for `2026-07-28` and later.
+                    //
+                    // With `legacy_session_mode(true)` (rmcp's default), clients
+                    // negotiating an older version get a session id and an SSE
+                    // (`text/event-stream`) response instead. That path is the
+                    // one structural difference between this server and the
+                    // sibling rmcp servers in this fleet that every MCP client
+                    // consumes cleanly, and `json_response` below is only
+                    // honoured when session mode is off.
+                    .with_legacy_session_mode(false)
+                    // Prefer `application/json` for simple request/response
+                    // tool calls; rmcp still falls back to `text/event-stream`
+                    // automatically if a handler emits a notification or a
+                    // server-initiated request before the final response, so
+                    // progress notifications and tasks keep working.
+                    .with_json_response(true)
                     .with_allowed_hosts(hosts)
             },
         );

@@ -1,10 +1,13 @@
 # New Source Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-08-24
 
 ## Contract
 
 This is the implementation contract for bringing a new source online in the
-unified Axon pipeline.
+unified Axon pipeline. For the practical file-by-file authoring workflow,
+including how to decide whether a provider should reuse the MCP ingestion path
+instead of adding a new adapter, see
+[`docs/development/adding-source-adapter.md`](../../development/adding-source-adapter.md).
 
 Every new source enters through the same path:
 
