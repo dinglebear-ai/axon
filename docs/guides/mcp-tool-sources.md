@@ -1,37 +1,62 @@
 ---
 title: "MCP Tool Sources"
 created: 2026-07-15
-updated: 2026-07-30
+updated: 2026-08-24
 ---
 
 # MCP Tool Sources
-Last Modified: 2026-07-15
+Last Modified: 2026-08-24
 
-MCP tool sources let Axon index connected tool contracts as source material.
+MCP tool sources let Axon index MCP tool contracts and, with explicit execution authorization, materialize MCP call results through the shared source pipeline.
 
 ## Source Shape
 
-Use an `mcp:` source identifier for a specific upstream tool, for example
-`mcp:labby/search`. The router canonicalizes the source to
-`mcp://<server>/tools/<tool>`, then the service dispatch layer runs the
-`mcp_tool` adapter.
+Use an `mcp:` source identifier for a specific logical MCP target, for example `mcp:labby/search`. The router canonicalizes the source to `mcp://<server>/tools/<tool>`, then the service dispatch layer runs the `mcp_tool` adapter.
 
-## Behavior
+## Current Behavior
 
-The default dispatch path is metadata-only. It records a ledger generation and
-one adapter-owned schema/metadata document, but it does not call the upstream
-MCP tool and it writes zero vector points.
+The current default path is metadata-only. It records a ledger generation and one adapter-owned schema/metadata document without executing an upstream tool or writing vectors.
 
-Call mode is available only on `scope=api` with `execution_mode=call`. The
-service layer re-checks `axon:execute`, requires an exact `mcp_allowlist` entry
-for `server/tool`, and requires an explicit `mcp_caller_command` plus exact
-`mcp_caller_allowlist`. That caller command is run without a shell, with a
-cleared environment except `env_allowlist`, timeout/output caps, and redacted
-artifact capture. If no caller command is configured, call mode fails closed.
+The current call mode is available only on `scope=api` with `execution_mode=call`. It re-checks `axon:execute`, validates an exact MCP target allowlist, and then uses a configured local caller command. That command-caller bridge is transitional and is being superseded by the Labby-backed provider design below.
+
+## Target: Labby-backed MCP Ingestion
+
+Axon should not own OAuth with each upstream MCP server. Labby is the gateway and auth boundary:
+
+```text
+Axon mcp_tool adapter
+  -> Labby service identity
+  -> Labby gateway / snippet
+  -> OAuth-authenticated upstream MCP server
+  -> axon.mcp-ingest/v1 snapshot
+  -> Axon manifest/diff/SourceDocument pipeline
+```
+
+Labby owns upstream discovery, OAuth authorization/refresh, route/loadout/tool policy, and invocation. Axon owns source identity, durable generations, diffing, normalization, parsing, graphing, embedding, publication, retrieval, and cleanup.
+
+Labby's outbound upstream OAuth credentials are subject-scoped. A single-user or homelab deployment may use a dedicated Axon ingestion service identity whose Labby subject has already authorized the desired upstreams. Multi-user deployments must preserve or explicitly delegate the authorized Labby subject rather than silently sharing one user's upstream OAuth state.
+
+The Labby-backed provider should be injected into `McpToolSourceAdapter` by `axon-services`; `axon-adapters` remains independent of Labby transport/auth details.
+
+## One-call Materialization
+
+For ingestion profiles such as Asana or Linear, the Labby snippet/tool may return a bounded complete snapshot. `McpToolSourceAdapter::materialize` should call Labby once and write the returned `axon.mcp-ingest/v1` envelope to a temporary dump. `discover`, `acquire`, and `normalize` then operate against that same materialized snapshot.
+
+This follows the existing Axon pattern used by registry, Reddit, and feed adapters and preserves the canonical pipeline order:
+
+```text
+materialize once
+  -> discover item manifest
+  -> ledger diff
+  -> acquire only added/modified records from snapshot
+  -> normalize to SourceDocument
+  -> parse / graph / prepare / embed / publish
+```
+
+A complete snapshot may infer removals. Partial or paginated results must not infer removals unless the envelope explicitly carries tombstones or completion semantics.
 
 ## Execution Policy
 
-Tool sources require trusted local execution or the `axon:execute` scope at the
-source routing boundary, then re-check `axon:execute` at dispatch before any
-caller command is spawned. Missing scope, missing target allowlist, missing
-caller allowlist, or absent caller command fail closed before side effects.
+MCP ingestion remains security-sensitive even though Labby performs the upstream call. Axon should retain `axon:execute`, an Axon-side exact target allowlist, durable authorization audit, timeout/result-size bounds, redaction, and artifact capture as defense in depth. Labby independently enforces its own route, loadout, upstream, OAuth, and tool policies.
+
+Axon should remove the local `mcp_caller_command` / `mcp_caller_allowlist` execution path once the Labby provider is implemented. See [Adding a Source Adapter](../development/adding-source-adapter.md#labby-backed-mcp-migration-code-impact) for the code migration map.

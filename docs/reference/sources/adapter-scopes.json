@@ -1652,7 +1652,7 @@
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },
       {
-        "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd",
+        "checksum": "sha256:0468d29d96b581762ceee6f32adb7b3b091d1fa0af4b6d71c33b7c4e2819ac7f",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/new-source-contract.md"
       }
