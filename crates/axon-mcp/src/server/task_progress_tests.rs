@@ -3,12 +3,15 @@ use axon_api::{
     job_status::JobStatus,
     source::{JobKind, PipelinePhase},
 };
+use axon_services::types::ServiceJob;
+use rmcp::model::{NumberOrString, ProgressToken};
 use serde_json::json;
+use uuid::Uuid;
 
-fn service_job(status: &str) -> axon_services::types::ServiceJob {
+fn service_job(status: &str) -> ServiceJob {
     let now = chrono::Utc::now();
-    axon_services::types::ServiceJob {
-        id: uuid::Uuid::new_v4(),
+    ServiceJob {
+        id: Uuid::new_v4(),
         status: status.to_string(),
         phase: PipelinePhase::Fetching,
         created_at: now,
@@ -36,7 +39,7 @@ fn initial_task_progress_is_ready_before_create_task_returns() {
     let (notification, fingerprint, is_active) = initial_progress_notification(
         JobKind::Source,
         &service_job("running"),
-        rmcp::model::ProgressToken(rmcp::model::NumberOrString::Number(7)),
+        ProgressToken(NumberOrString::Number(7)),
     );
 
     assert_eq!(notification.progress, 1.0);

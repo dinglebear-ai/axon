@@ -1,3 +1,5 @@
+use super::streamable_http_config;
+
 fn is_loopback(host: &str) -> bool {
     use std::net::IpAddr;
     use std::str::FromStr;
