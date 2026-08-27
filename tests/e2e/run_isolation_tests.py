@@ -131,6 +131,36 @@ class IsolationTests(unittest.TestCase):
         with self.assertRaisesRegex(isolation.IsolationError, "strong nonce"):
             manifest.register("process", "42", {"start_time": "1"})
 
+    def test_job_and_source_registration_is_bound_to_manifest_run(self):
+        result = isolation.allocate(self.root / "runs", self.root / "manifests")
+        manifest = isolation.Manifest.open(Path(result["manifest"]))
+        metadata = {"run_id": result["run_id"], "scenario_id": "source.inline.happy"}
+        manifest.register("job", "job_1", metadata)
+        manifest.register("source", "source_1", metadata)
+        resources = [record["payload"] for record in manifest.verify() if record["payload"].get("kind") == "resource"]
+        self.assertIn(("job", "job_1"), {(item["resource_type"], item["identity"]) for item in resources})
+        self.assertIn(("source", "source_1"), {(item["resource_type"], item["identity"]) for item in resources})
+        with self.assertRaisesRegex(isolation.IsolationError, "bound to the manifest run"):
+            manifest.register("job", "foreign_job", {"run_id": "axon_e2e_foreign"})
+
+    def test_server_generated_upload_and_artifact_require_registered_parent_binding(self):
+        result = isolation.allocate(self.root / "runs", self.root / "manifests")
+        manifest = isolation.Manifest.open(Path(result["manifest"]))
+        operation = f'{result["run_id"]}_http_upload'
+        manifest.register("operation", operation, {"run_id": result["run_id"]})
+        binding = {"run_id": result["run_id"], "attempt": 1, "scenario_id": "http.upload.create",
+                   "request_id": "request-1", "origin": "server_response",
+                   "parent_resource_type": "operation", "parent_identity": operation}
+        manifest.register("upload", "upl_550e8400-e29b-41d4-a716-446655440000", binding)
+        manifest.register("artifact", "art_550e8400-e29b-41d4-a716-446655440001", binding)
+        with self.assertRaisesRegex(isolation.IsolationError, "trusted server binding"):
+            manifest.register("upload", "upl_550e8400-e29b-41d4-a716-446655440002", {})
+        with self.assertRaisesRegex(isolation.IsolationError, "parent is not registered"):
+            manifest.register("artifact", "art_550e8400-e29b-41d4-a716-446655440003",
+                              {**binding, "parent_identity": f'{result["run_id"]}_missing'})
+        with self.assertRaisesRegex(isolation.IsolationError, "invalid production format"):
+            manifest.register("upload", "production", binding)
+
     def test_owned_process_registration_validates_pid_start_time_and_nonce(self):
         result = isolation.allocate(self.root / "runs", self.root / "manifests")
         manifest = isolation.Manifest.open(Path(result["manifest"]))

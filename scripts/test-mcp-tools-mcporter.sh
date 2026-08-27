@@ -3,6 +3,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_CONFIG_PATH="${MCPORTER_CONFIG:-$REPO_ROOT/config/mcporter.json}"
+CATALOG_PATH="${AXON_E2E_CATALOG:-$REPO_ROOT/tests/e2e/catalog/catalog.json}"
+MCP_ADAPTER="$REPO_ROOT/scripts/e2e/adapters/mcp.py"
 SERVER="${MCP_SERVER:-axon}"
 SELECTOR="${SERVER}.axon"
 
@@ -319,7 +321,8 @@ build_suite_config() {
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/logs/axon.log" \
     --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
-    '.mcpServers[$server].args = ["-lc", ("exec \"" + $repo_root + "/scripts/mcporter-axon\"")]
+    '.mcpServers[$server].command = ($repo_root + "/scripts/mcporter-axon")
+    | .mcpServers[$server].args = []
     | .mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
         AXON_REPO_ROOT: $repo_root,
         AXON_HOME: $axon_home,
@@ -332,6 +335,63 @@ build_suite_config() {
     ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
   printf '%s\n' "$suite_config"
+}
+
+validate_catalog_projection() {
+  local logfile="$OUTDIR/${1}_catalog_projection.log"
+  local projected
+  if ! projected="$(python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" list --tier "${MCP_E2E_TIER:-hermetic}")"; then
+    record_fail "${1}_catalog_projection" "$logfile"
+    return
+  fi
+  printf '%s\n' "$projected" >"$logfile"
+  if jq -e 'length > 0 and all(.[]; (.id | type) == "string" and (.request | type) == "object" and (.envelope_oracles | index("mcp.content_or_task")) != null)' "$logfile" >/dev/null; then
+    record_pass "${1}_catalog_projection"
+  else
+    record_fail "${1}_catalog_projection" "$logfile"
+  fi
+}
+
+run_catalog_scenarios() {
+  local mode="$1"
+  local transport="stdio"
+  [[ "$mode" == "url" ]] && transport="http"
+  local catalog_job_id=""
+  local scenario_id
+  while IFS= read -r scenario_id; do
+    local projection arguments logfile evidence evaluation
+    projection="$(python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" project "$scenario_id" --selector "$SELECTOR")"
+    arguments="$(jq -c '.arguments' <<<"$projection")"
+    arguments="$(jq -c --arg scenario "$scenario_id" --arg source "$REAL_PAGE_URL" --arg job_id "$catalog_job_id" \
+      --arg collection "${MCP_E2E_OWNED_COLLECTION:-axon_e2e_mcporter}" --arg foreign "${MCP_E2E_FOREIGN_COLLECTION:-foreign_collection_never_owned}" '
+        if .action == "source" and $scenario == "source.inline.happy" then .source = $source
+        elif .action == "jobs" and $scenario == "jobs.stream.happy" then .job_id = $job_id
+        elif .action == "prune" and $scenario == "prune.plan.happy" then .target = ("collection:" + $collection)
+        elif .action == "prune" then .target = ("collection:" + $foreign)
+        else . end' <<<"$arguments")"
+    logfile="$OUTDIR/${mode}_catalog_${scenario_id//[^A-Za-z0-9_.-]/_}.log"
+    call_tool_json "$arguments" >"$logfile" 2>&1 || true
+    evidence="$logfile.evidence.json"
+    if ! json_payload "$logfile" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)))' >"$logfile.envelope.json" 2>/dev/null; then
+      record_fail "${mode}_catalog_${scenario_id}" "$logfile"
+      continue
+    fi
+    python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" normalize "$scenario_id" "$transport" "$logfile.envelope.json" >"$evidence"
+    evaluation="$logfile.evaluation.json"
+    if python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" evaluate "$scenario_id" "$evidence" >"$evaluation"; then
+      record_pass "${mode}_catalog_${scenario_id}"
+    else
+      record_fail "${mode}_catalog_${scenario_id}" "$evaluation"
+    fi
+    if [[ "$scenario_id" == "source.inline.happy" ]]; then
+      catalog_job_id="$(jq -r '.data.inline.job.id // .data.inline.job_id // .data.data.job.job_id // empty' "$logfile.envelope.json")"
+    fi
+    if [[ -n "${AXON_E2E_MANIFEST:-}" ]]; then
+      python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" register-evidence "$scenario_id" \
+        "$AXON_E2E_MANIFEST" "$evidence" "$logfile.envelope.json" \
+        --owned-collection "${MCP_E2E_OWNED_COLLECTION:-axon_e2e_mcporter}" >"$logfile.registration.json"
+    fi
+  done < <(python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" list --tier "${MCP_E2E_TIER:-hermetic}" | jq -r '.[].id')
 }
 
 run_suite() {
@@ -348,6 +408,13 @@ run_suite() {
   echo "== Suite: $mode ==" | tee -a "$SUMMARY"
   echo "Config: $CONFIG_PATH" | tee -a "$SUMMARY"
   echo "Server: $SERVER" | tee -a "$SUMMARY"
+  validate_catalog_projection "$prefix"
+  if [[ "$mode" == "url" && "${MCP_E2E_AUTH_MATRIX:-0}" == "1" ]]; then
+    local mcp_url
+    mcp_url="$(jq -er --arg server "$SERVER" '.mcpServers[$server].url' "$CONFIG_PATH")"
+    run_json_case "${prefix}_auth_policy_matrix" '.success == true and (.cases | length) >= 3 and all(.cases[]; .passed == true)' \
+      python3 "$REPO_ROOT/scripts/e2e/adapters/mcp_auth.py" "$mcp_url"
+  fi
 
   run_case "${prefix}_list_schema" "${MCPORTER[@]}" list "$SERVER" --schema --json
   run_case "${prefix}_action_help" call_tool action:help response_mode:inline
@@ -361,22 +428,27 @@ run_suite() {
   run_case "${prefix}_help_routes_match_expected" assert_sorted_equals "$expected_routes" "$(normalize_discovered_routes "$help_file")"
   run_case "${prefix}_tool_description_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_description_actions "$schema_file")"
   run_case "${prefix}_help_top_actions_match_description" assert_sorted_equals "$(normalize_description_actions "$schema_file")" "$(normalize_help_top_actions "$help_file")"
+  echo "== $mode catalog scenarios ==" | tee -a "$SUMMARY"
+  run_catalog_scenarios "$mode"
 
   echo "== $mode direct actions ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and (((.data.data | type) == "object") or (.data.artifact.artifact_id | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
   run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and (.data.data.actions | type == "object")' call_tool action:help
   run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and (((.data.data.all_ok | type) == "boolean") or ((.data.shape.all_ok | type) == "boolean"))' call_tool action:doctor
+  if [[ "${MCP_E2E_REQUIRE_PROVIDERS:-0}" == "1" ]]; then
+    run_case "${prefix}_provider_preflight" assert_ok "$OUTDIR/${prefix}_doctor.log" '.ok == true and (.data.data.all_ok // .data.shape.all_ok) == true'
+  fi
   run_json_case "${prefix}_capabilities" '.ok == true and .action == "capabilities" and .subaction == "capabilities" and (.data.data.actions | type == "array") and (.data.data.providers | type == "array")' call_tool action:capabilities
   run_json_case "${prefix}_providers_list" '.ok == true and .action == "providers" and .subaction == "list" and (.data.data.providers | type == "array")' call_tool action:providers subaction:list
   run_json_case "${prefix}_resolve" '.ok == true and .action == "resolve" and .subaction == "resolve" and .data.data.source == "https://example.com"' call_tool action:resolve source:'https://example.com'
   run_json_case "${prefix}_graph_kinds" '.ok == true and .action == "graph" and .subaction == "kinds" and (((.data.data | type) == "object") or ((.data.inline | type) == "object"))' call_tool action:graph subaction:kinds
-  run_json_case "${prefix}_query" '(.ok == true and .action == "query" and .subaction == "query" and (((.data.data.results | type) == "array" and .data.data.query == "rust mcp sdk") or (.data.shape.query == "rust mcp sdk" and .data.shape.results.total > 0 and (.data.artifact.artifact_id | type) == "string"))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
+  run_json_case "${prefix}_query" '.ok == true and .action == "query" and .subaction == "query" and (((.data.data.results | type) == "array" and .data.data.query == "rust mcp sdk") or (.data.shape.query == "rust mcp sdk" and .data.shape.results.total > 0 and (.data.artifact.artifact_id | type) == "string"))' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
   run_json_case "${prefix}_source_detached" '.ok == true and .action == "source" and .subaction == "source" and (((.data.inline.job.id | type) == "string") or ((.data.inline.job_id | type) == "string") or ((.data.data.job.job_id | type) == "string"))' call_tool action:source source:"$REAL_PAGE_URL" scope:page detached:true response_mode:inline
   run_json_case "${prefix}_map" "(.ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$MAP_URL\" and .data.data.mapped_urls > 0)" call_tool action:map url:"$MAP_URL" limit:5 offset:0
   run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and ((.data.data.content | type) == \"string\" or (.data.data.chunks | type) == \"array\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
   run_envelope_case "${prefix}_search" '(.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language") or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:search query:'rust programming language' limit:3 offset:0
   run_envelope_case "${prefix}_research" '(.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))) or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:research query:'rust async best practices' limit:3 offset:0
-  run_json_case "${prefix}_ask" '(.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
+  run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
   run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and (.error | contains("screenshot requires Chrome")))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
   run_error_case "${prefix}_removed_crawl" "\`crawl\`" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"

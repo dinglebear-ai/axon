@@ -6,10 +6,25 @@ env_file="${AXON_ENV_FILE:-$HOME/.axon/.env}"
 token="${AXON_HTTP_TOKEN:-$(sed -n 's/^AXON_HTTP_TOKEN=//p' "$env_file" | tail -1)}"
 run_dir="${AXON_API_EVIDENCE_DIR:-$HOME/.agents/docs/sessions/axon-api-live/run_$(date +%Y%m%d_%H%M%S)}"
 mutations=false
-[[ "${1:-}" == "--mutations" ]] && mutations=true
+catalog_mode=false
+for arg in "$@"; do
+  [[ "$arg" == "--mutations" ]] && mutations=true
+  [[ "$arg" == "--catalog" ]] && catalog_mode=true
+done
 
 [[ -n "$token" ]] || { echo "AXON_HTTP_TOKEN is required" >&2; exit 2; }
 mkdir -p "$run_dir"
+
+if $catalog_mode; then
+  owned_collection="${E2E_OWNED_COLLECTION:-axon_e2e_api_$(date +%s)}"
+  resource_manifest="${AXON_E2E_RESOURCE_MANIFEST:?AXON_E2E_RESOURCE_MANIFEST is required for catalog mode}"
+  axon_bin="${AXON_BIN:-$(command -v axon)}"
+  [[ -x "$axon_bin" ]] || { echo "AXON_BIN must name an executable Axon binary" >&2; exit 2; }
+  exec "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/e2e/adapters/http.sh" \
+    run --base-url "$base_url" --token "$token" --outdir "$run_dir" \
+    --owned-collection "$owned_collection" --resource-manifest "$resource_manifest" \
+    --axon-bin "$axon_bin" --probes
+fi
 
 request() {
   local name=$1 method=$2 route=$3 body=${4-} expected=${5:-200}

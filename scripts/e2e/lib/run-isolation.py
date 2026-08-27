@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import subprocess
 import socket
@@ -28,8 +29,8 @@ from typing import Any, Iterator
 MANIFEST_VERSION = 1
 RUN_PREFIX = "axon_e2e_"
 RESOURCE_TYPES = {
-    "artifact", "collection", "compose_project", "data_dir", "network",
-    "port", "process", "sqlite", "upload", "watch",
+    "artifact", "collection", "compose_project", "data_dir", "evidence", "job", "network",
+    "operation", "port", "process", "source", "sqlite", "upload", "watch",
 }
 PROVIDER_DEFAULT_CEILINGS = {"chrome": 2, "llm": 2, "qdrant": 4, "tei": 2}
 
@@ -254,11 +255,39 @@ class Manifest:
     def register(self, resource_type: str, identity: str, metadata: dict[str, Any] | None = None) -> None:
         if resource_type not in RESOURCE_TYPES:
             raise IsolationError(f"unsupported resource type: {resource_type}")
-        if resource_type in {"artifact", "collection", "compose_project", "network", "upload", "watch"}:
-            validate_owned_name(identity)
         metadata = metadata or {}
-        header = self.verify()[0]["payload"]
+        records = self.verify()
+        header = records[0]["payload"]
+        namespaced_types = {"collection", "compose_project", "evidence", "network", "operation", "watch"}
+        if resource_type in namespaced_types:
+            validate_owned_name(identity)
+        if resource_type in {"artifact", "upload"} and not identity.startswith(RUN_PREFIX):
+            prefix = "art_" if resource_type == "artifact" else "upl_"
+            required = {"run_id", "attempt", "scenario_id", "request_id", "origin",
+                        "parent_resource_type", "parent_identity"}
+            if not re.fullmatch(rf"{prefix}[A-Za-z0-9_-]{{3,128}}", identity):
+                raise IsolationError(f"opaque {resource_type} identity has an invalid production format")
+            if not required.issubset(metadata) or metadata.get("origin") != "server_response":
+                raise IsolationError(f"opaque {resource_type} registration lacks trusted server binding")
+            if metadata.get("run_id") != header["run_id"] or not isinstance(metadata.get("attempt"), int) or metadata["attempt"] < 1:
+                raise IsolationError(f"opaque {resource_type} registration is not bound to this run attempt")
+            parent_type, parent_identity = metadata["parent_resource_type"], metadata["parent_identity"]
+            if parent_type not in {"operation", "evidence"}:
+                raise IsolationError(f"opaque {resource_type} parent must be an operation or evidence record")
+            parent_found = any(record.get("payload", {}).get("kind") == "resource"
+                               and record["payload"].get("resource_type") == parent_type
+                               and record["payload"].get("identity") == parent_identity
+                               for record in records)
+            if not parent_found:
+                raise IsolationError(f"opaque {resource_type} parent is not registered in this manifest")
+        elif resource_type in {"artifact", "upload"}:
+            validate_owned_name(identity)
         data_dir = Path(header["data_dir"])
+        if resource_type in {"job", "source"}:
+            if not identity or any(char in identity for char in "\r\n\t"):
+                raise IsolationError(f"{resource_type} identity must be non-empty and single-line")
+            if metadata.get("run_id") != header["run_id"]:
+                raise IsolationError(f"{resource_type} registration must be bound to the manifest run")
         if resource_type == "data_dir" and _canonical(Path(identity)) != _canonical(data_dir):
             raise IsolationError("data_dir identity does not match the owned manifest header")
         if resource_type == "sqlite" and not _is_within(Path(identity), data_dir):
@@ -514,6 +543,7 @@ def main() -> int:
     register.add_argument("manifest", type=Path)
     register.add_argument("resource_type", choices=sorted(RESOURCE_TYPES))
     register.add_argument("identity")
+    register.add_argument("--metadata-json", default="{}")
     verify = sub.add_parser("verify")
     verify.add_argument("manifest", type=Path)
     args = parser.parse_args()
@@ -521,7 +551,10 @@ def main() -> int:
         if args.command == "allocate":
             print(json.dumps(allocate(args.run_base, args.manifest_base), sort_keys=True))
         elif args.command == "register":
-            Manifest.open(args.manifest).register(args.resource_type, args.identity)
+            metadata = json.loads(args.metadata_json)
+            if not isinstance(metadata, dict):
+                raise IsolationError("registration metadata must be a JSON object")
+            Manifest.open(args.manifest).register(args.resource_type, args.identity, metadata)
         else:
             records = Manifest.open(args.manifest).verify()
             print(json.dumps({"records": len(records), "valid": True}))

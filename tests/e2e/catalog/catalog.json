@@ -1350,8 +1350,8 @@
         "http": "tests/e2e/catalog/fixtures/source-page.json"
       },
       "semantic_oracles": [
-        "source.accepted",
-        "job.terminal_success"
+        "rejection.source_invalid",
+        "failure.taxonomy"
       ],
       "envelope_oracles": {
         "cli": [
@@ -1489,7 +1489,7 @@
       "lifecycle": "jobs",
       "polarity": "negative",
       "execution_mode": "provider_backed",
-      "setup_dependencies": ["fixture.job", "provider.fake"],
+      "setup_dependencies": ["provider.fake"],
       "surfaces": [
         "cli",
         "mcp",
@@ -1504,8 +1504,8 @@
         "http": "tests/e2e/catalog/fixtures/source-page.json"
       },
       "semantic_oracles": [
-        "job.visible",
-        "job.transition_valid"
+        "rejection.job_missing",
+        "failure.taxonomy"
       ],
       "envelope_oracles": {
         "cli": [
@@ -1658,8 +1658,8 @@
         "http": "tests/e2e/catalog/fixtures/prune-plan.json"
       },
       "semantic_oracles": [
-        "prune.plan_digest_bound",
-        "resource.ownership_checked"
+        "rejection.ownership_guard",
+        "failure.taxonomy"
       ],
       "envelope_oracles": {
         "cli": [
