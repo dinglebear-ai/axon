@@ -5,6 +5,47 @@ use axon_api::{
 };
 use serde_json::json;
 
+fn service_job(status: &str) -> axon_services::types::ServiceJob {
+    let now = chrono::Utc::now();
+    axon_services::types::ServiceJob {
+        id: uuid::Uuid::new_v4(),
+        status: status.to_string(),
+        phase: PipelinePhase::Fetching,
+        created_at: now,
+        updated_at: now,
+        started_at: None,
+        finished_at: None,
+        error_text: None,
+        url: None,
+        source_type: None,
+        source_kind: None,
+        target: None,
+        urls_json: None,
+        progress_json: Some(json!({"items_done": 1, "items_total": 4})),
+        result_json: None,
+        config_json: None,
+        attempt_count: 1,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    }
+}
+
+#[test]
+fn initial_task_progress_is_ready_before_create_task_returns() {
+    let (notification, fingerprint, is_active) = initial_progress_notification(
+        JobKind::Source,
+        &service_job("running"),
+        rmcp::model::ProgressToken(rmcp::model::NumberOrString::Number(7)),
+    );
+
+    assert_eq!(notification.progress, 1.0);
+    assert_eq!(notification.total, Some(4.0));
+    assert_eq!(notification.message.as_deref(), Some("indexing"));
+    assert!(is_active);
+    assert!(!fingerprint.is_empty());
+}
+
 #[test]
 fn maps_source_page_progress_without_leaking_paths() {
     let value = json!({

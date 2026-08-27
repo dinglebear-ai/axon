@@ -36,6 +36,7 @@ pub(super) async fn start_progress_notifier(
     server: &AxonMcpServer,
     kind: JobKind,
     job_id: Uuid,
+    initial_job: &ServiceJob,
     progress_token: Option<ProgressToken>,
     peer: Peer<RoleServer>,
 ) {
@@ -80,10 +81,33 @@ pub(super) async fn start_progress_notifier(
     }
 
     let jobs = ctx.jobs.clone();
+    let (notification, initial_fingerprint, is_active) =
+        initial_progress_notification(kind, initial_job, progress_token.clone());
+    if peer.notify_progress(notification).await.is_err() {
+        tracing::debug!(
+            task_id = %task_id,
+            kind = kind_name(kind),
+            reason = "initial_send_failed",
+            "mcp.task.progress.stop"
+        );
+        return;
+    }
+    if !is_active {
+        return;
+    }
     let progress_notifiers = server.progress_notifiers.clone();
     let cleanup_key = notifier_key.clone();
     let handle = tokio::spawn(async move {
-        run_progress_notifier(kind, job_id, task_id, progress_token, peer, jobs).await;
+        run_progress_notifier(
+            kind,
+            job_id,
+            task_id,
+            progress_token,
+            peer,
+            jobs,
+            initial_fingerprint,
+        )
+        .await;
         progress_notifiers.lock().await.remove(&cleanup_key);
     });
     let mut notifiers = server.progress_notifiers.lock().await;
@@ -97,6 +121,30 @@ pub(super) async fn start_progress_notifier(
     notifiers.insert(notifier_key, handle);
 }
 
+fn initial_progress_notification(
+    kind: JobKind,
+    job: &ServiceJob,
+    progress_token: ProgressToken,
+) -> (ProgressNotificationParam, String, bool) {
+    let status = job.status_enum();
+    let mapped = map_job_progress(
+        kind,
+        &status,
+        job.phase,
+        progress_metrics_for_status(
+            &status,
+            job.progress_json.as_ref(),
+            job.result_json.as_ref(),
+        ),
+    );
+    let fingerprint = progress_fingerprint(&status, job.updated_at, &mapped);
+    (
+        mapped.into_notification(progress_token),
+        fingerprint,
+        status.is_active(),
+    )
+}
+
 async fn run_progress_notifier(
     kind: JobKind,
     job_id: Uuid,
@@ -104,6 +152,7 @@ async fn run_progress_notifier(
     progress_token: ProgressToken,
     peer: Peer<RoleServer>,
     jobs: Arc<dyn ServiceJobRuntime>,
+    mut last_fingerprint: String,
 ) {
     tracing::info!(
         task_id = %task_id,
@@ -111,7 +160,6 @@ async fn run_progress_notifier(
         has_progress_token = true,
         "mcp.task.progress.start"
     );
-    let mut last_fingerprint = String::new();
     loop {
         tokio::time::sleep(NOTIFIER_READ_INTERVAL).await;
         let Some(job) = load_progress_job(jobs.as_ref(), kind, job_id, &task_id).await else {

@@ -115,7 +115,7 @@ Required invariants:
 `SourceAdapter::materialize` already runs once before `discover` / `acquire` / `normalize`. Existing registry, Reddit, and feed adapters use it to fetch once into a temporary dump. MCP ingestion should follow that pattern:
 
 ```text
-materialize: call Labby once -> temporary axon.mcp-ingest/v1 dump
+materialize: call Labby once -> private temporary axon.mcp-ingest/v1 dump
 discover: read dump -> SourceManifest
 ledger: diff against prior generation
 acquire: select added/modified records from the same dump
@@ -124,6 +124,14 @@ release: discard temporary materialization
 ```
 
 This gives us the fast 'dump the Asana data and embed it' prototype without a persistent intermediate file and without hitting Asana twice.
+
+Temporary materialization is sensitive storage, not an ordinary cache. Use an
+OS-created unpredictable directory with mode `0700`, create the dump
+exclusively with mode `0600`, reject/fail rather than follow symlinks, and keep
+raw paths and contents out of logs. Cleanup must be owned by an RAII/scope guard
+that runs after success, error, cancellation, and unwind; `release` remains the
+normal-path lifecycle hook, not the only cleanup mechanism. Tests must verify
+private permissions and removal after both provider failure and cancellation.
 
 ## Labby-backed MCP Migration: Code Impact
 

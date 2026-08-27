@@ -40,7 +40,7 @@ The Labby-backed provider should be injected into `McpToolSourceAdapter` by `axo
 
 ## One-call Materialization
 
-For ingestion profiles such as Asana or Linear, the Labby snippet/tool may return a bounded complete snapshot. `McpToolSourceAdapter::materialize` should call Labby once and write the returned `axon.mcp-ingest/v1` envelope to a temporary dump. `discover`, `acquire`, and `normalize` then operate against that same materialized snapshot.
+For ingestion profiles such as Asana or Linear, the Labby snippet/tool may return a bounded complete snapshot. `McpToolSourceAdapter::materialize` should call Labby once and write the returned `axon.mcp-ingest/v1` envelope to an OS-created, unpredictable temporary directory. Create the directory owner-only (`0700`) and the dump with exclusive creation and owner-only permissions (`0600`); never follow a caller-selected symlink or log the raw path or contents. A scope guard must remove the dump and directory on success, error, cancellation, and unwind. `discover`, `acquire`, and `normalize` then operate against that same materialized snapshot.
 
 This follows the existing Axon pattern used by registry, Reddit, and feed adapters and preserves the canonical pipeline order:
 
