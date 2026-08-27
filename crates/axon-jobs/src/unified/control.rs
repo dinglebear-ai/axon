@@ -121,6 +121,33 @@ impl SqliteUnifiedJobStore {
                 tracing::warn!(job_id = %job_id.0, %error, "failed to parse stored job phase")
             })
             .ok();
+        if is_terminal(current) {
+            let debt_rows = sqlx::query(
+                "SELECT debt_id, kind FROM cleanup_debt
+                 WHERE job_id = ? AND completed_at IS NULL ORDER BY debt_id",
+            )
+            .bind(job_id.0.to_string())
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(sql_error)?;
+            tx.commit().await.map_err(sql_error)?;
+            return Ok(JobCancelResult {
+                job_id,
+                status: current,
+                canceled_at: None,
+                reason: request.reason,
+                canceled_by: request.actor,
+                last_safe_stage,
+                side_effects: debt_rows
+                    .iter()
+                    .map(|row| format!("cleanup_debt:{}", row.get::<String, _>("kind")))
+                    .collect(),
+                cleanup_debt_ids: debt_rows
+                    .iter()
+                    .map(|row| row.get::<String, _>("debt_id"))
+                    .collect(),
+            });
+        }
         validate_transition(job_id, current, LifecycleStatus::Canceling)?;
         let now = now_timestamp();
         let target = if matches!(current, LifecycleStatus::Queued | LifecycleStatus::Pending)
@@ -162,6 +189,25 @@ impl SqliteUnifiedJobStore {
             )
             .await?;
         }
+        // Cleanup debt is durable source-pipeline state in the same canonical
+        // SQLite runtime. Surface only debt already recorded for this exact
+        // job; never infer side effects from phase alone.
+        let debt_rows = sqlx::query(
+            "SELECT debt_id, kind FROM cleanup_debt
+             WHERE job_id = ? AND completed_at IS NULL ORDER BY debt_id",
+        )
+        .bind(job_id.0.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+        let cleanup_debt_ids = debt_rows
+            .iter()
+            .map(|row| row.get::<String, _>("debt_id"))
+            .collect::<Vec<_>>();
+        let side_effects = debt_rows
+            .iter()
+            .map(|row| format!("cleanup_debt:{}", row.get::<String, _>("kind")))
+            .collect::<Vec<_>>();
         tx.commit().await.map_err(sql_error)?;
         if target == LifecycleStatus::Canceling {
             crate::workers::cancel_job(job_id);
@@ -173,11 +219,8 @@ impl SqliteUnifiedJobStore {
             reason: request.reason,
             canceled_by: request.actor,
             last_safe_stage,
-            // No published-partial-side-effect or cleanup-debt tracking wired
-            // into this cooperative cancel path yet; empty is the correct
-            // "none observed" value, not a placeholder.
-            side_effects: Vec::new(),
-            cleanup_debt_ids: Vec::new(),
+            side_effects,
+            cleanup_debt_ids,
         })
     }
 

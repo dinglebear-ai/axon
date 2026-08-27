@@ -3,6 +3,19 @@ use std::fs;
 
 const _: () = assert!(CLI_MAIN_THREAD_STACK_SIZE >= 64 * 1024 * 1024);
 
+#[test]
+fn structured_provider_code_recognizes_only_stable_provider_codes() {
+    assert_eq!(
+        structured_provider_code("provider.timeout: request timed out"),
+        Some("provider.timeout")
+    );
+    assert_eq!(
+        structured_provider_code("provider.scheduler.queue_full: saturated"),
+        Some("provider.scheduler.queue_full")
+    );
+    assert_eq!(structured_provider_code("arbitrary provider failure"), None);
+}
+
 /// Drop guard that restores env vars even if the test body panics.
 /// Without this, an assertion failure leaks mutated env state into
 /// other tests in the same binary.

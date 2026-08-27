@@ -62,6 +62,17 @@ class IsolationTests(unittest.TestCase):
         self.assertEqual(results[0]["network_policy"], "deny-external")
         for result in results: result["reservation"].close()
 
+    def test_local_ci_and_rerun_allocations_cannot_collide(self):
+        allocations = [isolation.allocate(self.root / "runs", self.root / "manifests") for _ in range(3)]
+        self.assertEqual(3, len({item["namespace"] for item in allocations}))
+        self.assertEqual(3, len({item["manifest"] for item in allocations}))
+        for allocation in allocations:
+            records = isolation.Manifest.open(Path(allocation["manifest"])).verify()
+            self.assertEqual(allocation["run_id"], records[0]["payload"]["run_id"])
+        ci_manifest = isolation.Manifest.open(Path(allocations[1]["manifest"]))
+        with self.assertRaisesRegex(isolation.IsolationError, "different local/CI/rerun namespace"):
+            ci_manifest.register("collection", allocations[0]["namespace"], {"ownership_generation": "f" * 64})
+
     def test_port_reservation_holds_socket_until_explicit_handoff(self):
         result = isolation.allocate(self.root / "runs", self.root / "manifests")
         manifest = isolation.Manifest.open(Path(result["manifest"]))
@@ -142,6 +153,24 @@ class IsolationTests(unittest.TestCase):
         self.assertIn(("source", "source_1"), {(item["resource_type"], item["identity"]) for item in resources})
         with self.assertRaisesRegex(isolation.IsolationError, "bound to the manifest run"):
             manifest.register("job", "foreign_job", {"run_id": "axon_e2e_foreign"})
+
+    def test_chat_and_provider_reservation_metadata_are_validated(self):
+        result = isolation.allocate(self.root / "runs", self.root / "manifests")
+        manifest = isolation.Manifest.open(Path(result["manifest"])); run_id = result["run_id"]
+        manifest.register("chat_session", f"{run_id}_chat", {"run_id": run_id, "scenario_id": "retrieval.chat"})
+        manifest.register("provider_reservation", f"{run_id}_provider", {
+            "run_id": run_id, "provider": "llm", "permits": 1, "requests": 3, "retries": 0,
+        })
+        with self.assertRaisesRegex(isolation.IsolationError, "scenario_id"):
+            manifest.register("chat_session", f"{run_id}_bad_chat", {"run_id": run_id})
+        with self.assertRaisesRegex(isolation.IsolationError, "provider is not recognized"):
+            manifest.register("provider_reservation", f"{run_id}_bad_provider", {
+                "run_id": run_id, "provider": "imaginary", "permits": 1,
+            })
+        with self.assertRaisesRegex(isolation.IsolationError, "nonnegative integer"):
+            manifest.register("provider_reservation", f"{run_id}_negative", {
+                "run_id": run_id, "provider": "llm", "permits": -1,
+            })
 
     def test_server_generated_upload_and_artifact_require_registered_parent_binding(self):
         result = isolation.allocate(self.root / "runs", self.root / "manifests")

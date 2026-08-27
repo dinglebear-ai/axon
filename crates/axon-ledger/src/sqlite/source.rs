@@ -56,6 +56,88 @@ pub(super) async fn get_source(
     .transpose()
 }
 
+pub(super) async fn get_source_detail(
+    store: &SqliteLedgerStore,
+    source_id: SourceId,
+) -> Result<Option<LedgerSourceDetail>> {
+    let Some(summary) = get_source(store, source_id.clone()).await? else {
+        return Ok(None);
+    };
+    let committed: Option<String> =
+        sqlx::query_scalar("SELECT committed_generation FROM sources WHERE source_id = ?1")
+            .bind(&source_id.0)
+            .fetch_one(&store.pool)
+            .await
+            .map_err(sqlite_error)?;
+    let committed_generation = committed.map(SourceGenerationId::new);
+    let manifest = if let Some(generation) = committed_generation.as_ref() {
+        let row = sqlx::query(
+            "SELECT manifest_json FROM source_manifests WHERE source_id = ?1 AND generation = ?2",
+        )
+        .bind(&source_id.0)
+        .bind(&generation.0)
+        .fetch_optional(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
+        row.map(|row| -> Result<LedgerManifestState> {
+            let raw: String = row.get("manifest_json");
+            let value: SourceManifest = serde_json::from_str(&raw).map_err(json_error)?;
+            Ok(LedgerManifestState {
+                generation: generation.clone(),
+                status: summary.status.clone(),
+                item_count: value.items.len() as u64,
+                items: value
+                    .items
+                    .into_iter()
+                    .map(|item| LedgerItemState {
+                        source_item_key: item.source_item_key,
+                        canonical_uri: item.canonical_uri,
+                        content_hash: item.content_hash,
+                    })
+                    .collect(),
+            })
+        })
+        .transpose()?
+    } else {
+        None
+    };
+    let rows = sqlx::query(
+        "SELECT status_json FROM document_status WHERE source_id = ?1 ORDER BY document_id",
+    )
+    .bind(&source_id.0)
+    .fetch_all(&store.pool)
+    .await
+    .map_err(sqlite_error)?;
+    let documents = rows
+        .into_iter()
+        .map(|row| -> Result<LedgerDocumentState> {
+            let raw: String = row.get("status_json");
+            let status: DocumentStatus = serde_json::from_str(&raw).map_err(json_error)?;
+            Ok(LedgerDocumentState {
+                document_id: status.document_id,
+                source_item_key: status.source_item_key,
+                generation: status.generation.ok_or_else(|| {
+                    ApiError::new(
+                        "source.ledger.document_generation_missing",
+                        ErrorStage::Publishing,
+                        "document generation missing",
+                    )
+                })?,
+                status: status.status,
+                chunk_count: status.chunk_count,
+                vector_point_count: status.vector_point_count,
+                updated_at: status.updated_at,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some(LedgerSourceDetail {
+        summary,
+        committed_generation,
+        manifest,
+        documents,
+    }))
+}
+
 /// List all registered sources, then filter/paginate via [`crate::listing`] so
 /// this stays in lockstep with `FakeLedgerStore::list_sources`.
 ///

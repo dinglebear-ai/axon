@@ -7,31 +7,26 @@ and stale-run recovery consume its manifest and are owned by the teardown suite.
 
 from __future__ import annotations
 
-import argparse
-import contextlib
-import ctypes
-import getpass
-import hashlib
-import hmac
-import json
-import os
-import re
-import secrets
-import subprocess
-import socket
-import stat
-import sys
-import tempfile
-import time
+import argparse, contextlib, ctypes, getpass, hashlib, hmac, json
+import os, re, secrets, socket, stat, subprocess, sys, tempfile, time
 from pathlib import Path
 from typing import Any, Iterator
 
+_LIB_DIR = str(Path(__file__).resolve().parent)
+_ADDED_LIB_DIR = _LIB_DIR not in sys.path
+if _ADDED_LIB_DIR:
+    sys.path.insert(0, _LIB_DIR)
+try:
+    from axon_e2e_manifest_registration import register_resource
+finally:
+    if _ADDED_LIB_DIR:
+        sys.path.remove(_LIB_DIR)
+
 MANIFEST_VERSION = 1
 RUN_PREFIX = "axon_e2e_"
-RESOURCE_TYPES = {
-    "artifact", "collection", "compose_project", "data_dir", "evidence", "job", "network",
-    "operation", "port", "process", "source", "sqlite", "upload", "watch",
-}
+RESOURCE_TYPES = set("""
+artifact auth_session cache chat_session chrome_diagnostic chrome_profile cleanup_debt collection compose_project container credential_file data_dir download evidence feed_fixture git_fixture http_cache http_stream job job_artifact job_attempt job_event job_heartbeat job_stage lease lock mcp_session network operation output payload_index point port screenshot sqlite_sidecar warc process provider_reservation qdrant_alias qdrant_snapshot socket source source_generation source_manifest source_item document_status source_lease watch_run graph_node graph_alias graph_edge graph_evidence graph_conflict memory_node memory_edge memory_record memory_link memory_reinforcement memory_review observe_event observe_heartbeat observe_provider_health config_snapshot sqlite tailscale_node temp_path token upload volume watch
+""".split())
 PROVIDER_DEFAULT_CEILINGS = {"chrome": 2, "llm": 2, "qdrant": 4, "tei": 2}
 
 
@@ -253,81 +248,12 @@ class Manifest:
                 os.close(descriptor)
 
     def register(self, resource_type: str, identity: str, metadata: dict[str, Any] | None = None) -> None:
-        if resource_type not in RESOURCE_TYPES:
-            raise IsolationError(f"unsupported resource type: {resource_type}")
-        metadata = metadata or {}
-        records = self.verify()
-        header = records[0]["payload"]
-        namespaced_types = {"collection", "compose_project", "evidence", "network", "operation", "watch"}
-        if resource_type in namespaced_types:
-            validate_owned_name(identity)
-        if resource_type in {"artifact", "upload"} and not identity.startswith(RUN_PREFIX):
-            prefix = "art_" if resource_type == "artifact" else "upl_"
-            required = {"run_id", "attempt", "scenario_id", "request_id", "origin",
-                        "parent_resource_type", "parent_identity"}
-            if not re.fullmatch(rf"{prefix}[A-Za-z0-9_-]{{3,128}}", identity):
-                raise IsolationError(f"opaque {resource_type} identity has an invalid production format")
-            if not required.issubset(metadata) or metadata.get("origin") != "server_response":
-                raise IsolationError(f"opaque {resource_type} registration lacks trusted server binding")
-            if metadata.get("run_id") != header["run_id"] or not isinstance(metadata.get("attempt"), int) or metadata["attempt"] < 1:
-                raise IsolationError(f"opaque {resource_type} registration is not bound to this run attempt")
-            parent_type, parent_identity = metadata["parent_resource_type"], metadata["parent_identity"]
-            if parent_type not in {"operation", "evidence"}:
-                raise IsolationError(f"opaque {resource_type} parent must be an operation or evidence record")
-            parent_found = any(record.get("payload", {}).get("kind") == "resource"
-                               and record["payload"].get("resource_type") == parent_type
-                               and record["payload"].get("identity") == parent_identity
-                               for record in records)
-            if not parent_found:
-                raise IsolationError(f"opaque {resource_type} parent is not registered in this manifest")
-        elif resource_type in {"artifact", "upload"}:
-            validate_owned_name(identity)
-        data_dir = Path(header["data_dir"])
-        if resource_type in {"job", "source"}:
-            if not identity or any(char in identity for char in "\r\n\t"):
-                raise IsolationError(f"{resource_type} identity must be non-empty and single-line")
-            if metadata.get("run_id") != header["run_id"]:
-                raise IsolationError(f"{resource_type} registration must be bound to the manifest run")
-        if resource_type == "data_dir" and _canonical(Path(identity)) != _canonical(data_dir):
-            raise IsolationError("data_dir identity does not match the owned manifest header")
-        if resource_type == "sqlite" and not _is_within(Path(identity), data_dir):
-            raise IsolationError("SQLite identity must remain inside the owned AXON_DATA_DIR")
-        if resource_type == "port":
-            try:
-                port = int(identity)
-            except ValueError as error:
-                raise IsolationError("port identity must be an integer") from error
-            if not 1 <= port <= 65535 or metadata.get("host") not in {"127.0.0.1", "::1"}:
-                raise IsolationError("port identity must be an owned loopback endpoint")
-            lease = Path(str(metadata.get("lease", "")))
-            try:
-                lease_owner = json.loads((lease / "owner.json").read_text(encoding="utf-8"))["run_id"]
-            except (OSError, KeyError, json.JSONDecodeError) as error:
-                raise IsolationError("port registration requires a readable cooperative lease") from error
-            if lease_owner != header["run_id"]:
-                raise IsolationError("port lease is not owned by this manifest run")
-        if resource_type == "process":
-            try:
-                pid = int(identity)
-            except ValueError as error:
-                raise IsolationError("process identity must be a PID") from error
-            required = {"start_time", "nonce", "nonce_file"}
-            if pid < 1 or not required.issubset(metadata) or len(str(metadata["nonce"])) < 32:
-                raise IsolationError("process registration requires PID, start time, and strong nonce ownership")
-            nonce_file = Path(str(metadata["nonce_file"]))
-            run_root = data_dir.parent
-            try:
-                nonce_matches = nonce_file.read_text(encoding="utf-8") == metadata["nonce"]
-            except OSError as error:
-                raise IsolationError("process nonce ownership marker is unreadable") from error
-            if not _is_within(nonce_file, run_root) or not nonce_matches:
-                raise IsolationError("process nonce marker is not owned by this run")
-            if _process_start_time(pid) != str(metadata["start_time"]):
-                raise IsolationError("process PID start time does not match the live process")
-        self._append({
-            "kind": "resource", "resource_type": resource_type, "identity": identity,
-            "metadata": metadata, "registered_unix_ms": int(time.time() * 1000),
-        })
+        register_resource(
+            self, resource_type, identity, metadata, resource_types=RESOURCE_TYPES,
+            run_prefix=RUN_PREFIX, provider_ceilings=PROVIDER_DEFAULT_CEILINGS,
+            validate_owned_name=validate_owned_name, canonical=_canonical, is_within=_is_within,
+            process_start_time=_process_start_time, error_type=IsolationError,
+        )
 
 
 @contextlib.contextmanager
@@ -524,8 +450,9 @@ def allocate(run_base: Path, manifest_base: Path) -> dict[str, str]:
     manifest.register("data_dir", str(data_dir))
     manifest.register("sqlite", str(sqlite))
     namespace = run_id
-    for kind in ("collection", "compose_project", "network"):
-        manifest.register(kind, namespace)
+    manifest.register("collection", namespace, {"ownership_generation": secrets.token_hex(32)})
+    for kind in ("compose_project", "network"):
+        manifest.register(kind, namespace, {"ownership_generation": secrets.token_hex(32)})
     return {
         "run_id": run_id, "run_root": str(run_root), "data_dir": str(data_dir),
         "sqlite": str(sqlite), "manifest": str(manifest.path), "namespace": namespace,

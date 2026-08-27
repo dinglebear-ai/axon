@@ -162,6 +162,24 @@ async fn sqlite_scalar_status_columns_use_schema_wire_values() {
             .expect("read document status");
     assert_eq!(document_status, "published");
 
+    let detail = store
+        .get_source_detail(SourceId::new("src_sqlite"))
+        .await
+        .expect("read public ledger detail")
+        .expect("source detail");
+    assert_eq!(detail.committed_generation, Some(gen1.generation.clone()));
+    let public_manifest = detail.manifest.expect("committed manifest");
+    assert_eq!(public_manifest.generation, gen1.generation);
+    assert_eq!(public_manifest.item_count, 1);
+    assert_eq!(public_manifest.items[0].source_item_key.0, "src/lib.rs");
+    assert_eq!(detail.documents.len(), 1);
+    assert_eq!(
+        detail.documents[0].status,
+        DocumentLifecycleStatus::Published
+    );
+    assert_eq!(detail.documents[0].chunk_count, 1);
+    assert_eq!(detail.documents[0].vector_point_count, 1);
+
     store
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-sqlite"),

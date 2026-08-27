@@ -113,7 +113,7 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
         "GET",
         "/v1/sources/{source_id}",
         "get_source",
-        "SourceSummary",
+        "LedgerSourceDetail",
     ),
     RestRouteSpec {
         method: "POST",

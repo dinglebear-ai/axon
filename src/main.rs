@@ -5,6 +5,19 @@ use std::path::PathBuf;
 
 const CLI_MAIN_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 
+fn structured_provider_code(message: &str) -> Option<&'static str> {
+    const CODES: &[&str] = &[
+        "provider.unavailable",
+        "provider.timeout",
+        "provider.scheduler.queue_full",
+        "provider.malformed_response",
+        "provider.schema_mismatch",
+        "provider.token_limit",
+        "embedding.tei.dimension_mismatch",
+    ];
+    CODES.iter().copied().find(|code| message.contains(code))
+}
+
 fn find_dotenv_from_launch_context() -> Option<PathBuf> {
     let mut roots = Vec::new();
 
@@ -177,7 +190,16 @@ fn run_cli() -> std::process::ExitCode {
                 &chain,
                 &axon_core::redact::RedactionContext::transport_response(),
             );
-            eprintln!("Error: {message}");
+            if std::env::args().any(|argument| argument == "--json")
+                && let Some(code) = structured_provider_code(&message)
+            {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({"error": {"code": code, "message": message}, "code": code})
+                );
+            } else {
+                eprintln!("Error: {message}");
+            }
             std::process::ExitCode::FAILURE
         }
     }

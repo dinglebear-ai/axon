@@ -176,6 +176,7 @@ use super::{handlers, routing};
         axon_api::source::SourceRequest,
         axon_api::source::SourceResult,
         axon_api::source::SourceSummary,
+        axon_api::source::LedgerSourceDetail,
         axon_api::source::RoutePlan,
         handlers::providers::ProviderListResponse,
         handlers::providers::ProviderSummary,

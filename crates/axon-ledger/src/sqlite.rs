@@ -141,6 +141,10 @@ impl LedgerStore for SqliteLedgerStore {
         source::get_source(self, source_id).await
     }
 
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>> {
+        source::get_source_detail(self, source_id).await
+    }
+
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
         source::list_sources(self, request).await
     }
