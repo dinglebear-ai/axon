@@ -42,15 +42,16 @@ pub(super) async fn enqueue_task(
     let caller_auth_snapshot = auth.map(caller_auth_snapshot_from_auth_context);
     let (kind, job_id) =
         enqueue_supported_start(server, axon_request, caller_auth_snapshot.as_ref()).await?;
+    let job = load_job(server, kind, job_id).await?;
     task_progress::start_progress_notifier(
         server,
         kind,
         job_id,
+        &job,
         progress_token,
         context.peer.clone(),
     )
     .await;
-    let job = load_job(server, kind, job_id).await?;
     Ok(CreateTaskResult::new(task_from_job(kind, &job)))
 }
 
