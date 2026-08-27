@@ -227,14 +227,11 @@ Add `SchemaFamily::Projections` with source provenance rooted in the Task 1 modu
 
 - [ ] **Step 4: Add bounded canonical fixture cases**
 
-Create one minimal and one boundary projection fixture per operation. Each
-fixture contains `operation`, `transport_input`, and hash-pinned
-`canonical_requests`. Do not put illustrative result claims in these pure
-projection fixtures: tagged outcomes, detached disclosure, effective limits,
-and `409` collisions are exercised by the service and transport integration
-tests that can actually produce those states. Add the semantic
-registry-to-transport bijection harness now; later transport tasks plug their
-pure parsers into it before dispatch wiring.
+Create one minimal and one boundary fixture per operation plus tagged outcome,
+detached disclosure, effective-limit, and `409` collision fixtures. Each fixture
+contains `operation`, `transport_input`, `canonical_requests`, and
+`expected_result`. Add the semantic registry-to-transport bijection harness now;
+later transport tasks plug their pure parsers into it before dispatch wiring.
 Compare canonical semantic fields while excluding principal/cwd/runtime context,
 not byte-for-byte incidental transport state.
 
