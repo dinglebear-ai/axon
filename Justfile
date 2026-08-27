@@ -22,6 +22,11 @@ test:
 test-fast:
     if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --lib; else {{rust_dev_env}}; cargo test -q --lib --locked; fi
 
+# Deterministic, network-free drift and schema gate for the shared E2E catalog.
+e2e-catalog-check:
+    ./scripts/e2e/validate-catalog.py --report
+    python3 -m unittest tests/e2e/catalog/test_validate_catalog.py
+
 test-watch:
     {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo test -q --lib --locked jobs::watch
     {{rust_dev_env}}; cargo test -q --lib --locked cli::commands::watch
