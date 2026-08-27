@@ -27,6 +27,10 @@ e2e-catalog-check:
     ./scripts/e2e/validate-catalog.py --report
     python3 -m unittest tests/e2e/catalog/test_validate_catalog.py
 
+# Portable, network-free contracts for run allocation and provider doubles.
+e2e-isolation-check:
+    python3 tests/e2e/run_isolation_tests.py
+
 test-watch:
     {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo test -q --lib --locked jobs::watch
     {{rust_dev_env}}; cargo test -q --lib --locked cli::commands::watch

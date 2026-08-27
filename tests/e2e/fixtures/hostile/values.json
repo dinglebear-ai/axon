@@ -1,0 +1,11 @@
+{
+  "contract_version": 1,
+  "values": [
+    "space and 'single' and \"double\" quotes",
+    "../outside/../../production",
+    "--flag-looking-value",
+    "unicode-café-東京-🧪",
+    "line-one\nline-two\ttab\rreturn",
+    "shell-$(touch SHOULD_NOT_EXIST)-`id`-;rm -rf nope"
+  ]
+}
