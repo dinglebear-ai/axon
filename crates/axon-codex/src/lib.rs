@@ -4,4 +4,5 @@
 //! The existing synthesis backend may share protocol primitives, but control
 //! runtimes must never share its pool, home, queues, or lifecycle.
 
+pub mod capabilities;
 pub mod protocol;
