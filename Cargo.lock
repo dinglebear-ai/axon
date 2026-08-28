@@ -522,6 +522,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "axon-codex"
+version = "7.2.23"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "axon-core"
 version = "7.3.0"
 dependencies = [
