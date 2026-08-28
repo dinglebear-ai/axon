@@ -22,6 +22,7 @@ mod artifact_candidate_outbox;
 pub mod artifacts;
 pub mod brand;
 pub mod client_contract;
+pub mod codex_control;
 pub mod config;
 pub mod config_snapshot_hash;
 pub mod context;

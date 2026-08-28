@@ -14,6 +14,7 @@ publish = false
 
 [dependencies]
 axon-core = { path = "../axon-core" }
+axon-codex = { path = "../axon-codex" }
 axon-error = { path = "../axon-error" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
