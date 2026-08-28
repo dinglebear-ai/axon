@@ -9,7 +9,7 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
         .mock_async(|when, then| {
             when.method("POST")
                 .path("/embed")
-                .json_body(serde_json::json!({"inputs": ["a", "cc"], "truncate": true}));
+                .json_body(serde_json::json!({"inputs": ["a", "cc"], "truncate": false}));
             then.status(200)
                 .json_body(serde_json::json!([[1.0_f32], [2.0_f32]]));
         })
@@ -18,7 +18,7 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
         .mock_async(|when, then| {
             when.method("POST")
                 .path("/embed")
-                .json_body(serde_json::json!({"inputs": ["ddd", "bbbb"], "truncate": true}));
+                .json_body(serde_json::json!({"inputs": ["ddd", "bbbb"], "truncate": false}));
             then.status(200)
                 .json_body(serde_json::json!([[3.0_f32], [4.0_f32]]));
         })
@@ -47,6 +47,40 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
     );
     short.assert_calls_async(1).await;
     long.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn embed_all_explicitly_disables_truncation_for_long_input() {
+    let server = MockServer::start_async().await;
+    let long_input = "important documentation ".repeat(700);
+    let expected = long_input.clone();
+    let endpoint = server
+        .mock_async(move |when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": [expected], "truncate": false}));
+            then.status(200)
+                .json_body(serde_json::json!([[0.25_f32, 0.75_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 1,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 1,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&[long_input])
+        .await
+        .expect("lossless embed");
+    assert_eq!(outcome.vectors, vec![vec![0.25, 0.75]]);
+    endpoint.assert_calls_async(1).await;
 }
 
 #[tokio::test]

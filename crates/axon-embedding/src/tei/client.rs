@@ -78,7 +78,7 @@ pub struct TeiClientParams {
     pub retry_backoff_base_ms: u64,
 }
 
-/// Wire shape for a TEI `/embed` request body: `{"inputs": [...], "truncate": true}`.
+/// Wire shape for a lossless TEI `/embed` request body.
 #[derive(serde::Serialize)]
 struct EmbedRequest<'a> {
     inputs: &'a [String],
@@ -296,7 +296,7 @@ impl TeiClient {
     async fn send_chunk_with_retries(&self, chunk: &[String]) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
             inputs: chunk,
-            truncate: true,
+            truncate: false,
         };
         let started = Instant::now();
         let mut last: Option<ApiError> = None;
