@@ -27,6 +27,7 @@ use std::error::Error as StdError;
 use std::io;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
@@ -34,7 +35,7 @@ use dashmap::DashMap;
 use tempfile::TempDir;
 use tokio::io::BufReader;
 use tokio::process::{Child, ChildStdin, ChildStdout};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinHandle;
 
 use crate::runtime::CompletionResponse;
@@ -94,6 +95,8 @@ pub(super) struct PoolSlot {
     last_used: Instant,
     /// Incremented on each successfully returned turn (diagnostic only).
     turns_served: u64,
+    /// Capacity reservation held only while a slot is spawning or checked out.
+    permit: Option<OwnedSemaphorePermit>,
 }
 
 impl PoolSlot {
@@ -115,6 +118,9 @@ pub(super) struct CodexPool {
     size: usize,
     idle_ttl: Duration,
     backend: LlmBackendConfig,
+    permits: Arc<Semaphore>,
+    waiting: AtomicUsize,
+    rejected: AtomicUsize,
 }
 
 impl CodexPool {
@@ -124,6 +130,9 @@ impl CodexPool {
             size,
             idle_ttl,
             backend,
+            permits: Arc::new(Semaphore::new(size)),
+            waiting: AtomicUsize::new(0),
+            rejected: AtomicUsize::new(0),
         })
     }
 
@@ -132,6 +141,20 @@ impl CodexPool {
     /// within the timeout, or when the pool is shut down.
     pub(super) async fn checkout(&self, timeout: Duration) -> Result<PoolSlot, BoxError> {
         let deadline = Instant::now() + timeout;
+        let max_waiters = self.size.saturating_mul(8).max(8);
+        let previous = self.waiting.fetch_add(1, Ordering::AcqRel);
+        if previous >= max_waiters {
+            self.waiting.fetch_sub(1, Ordering::AcqRel);
+            self.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err("codex pool: checkout queue is full".into());
+        }
+        let permit = tokio::time::timeout(timeout, self.permits.clone().acquire_owned()).await;
+        self.waiting.fetch_sub(1, Ordering::AcqRel);
+        let permit = match permit {
+            Ok(Ok(permit)) => permit,
+            Ok(Err(_)) => return Err("codex pool: capacity semaphore closed".into()),
+            Err(_) => return Err("codex pool: timed out waiting for capacity".into()),
+        };
         // Single-pass by construction: drain idle (returning the first healthy
         // slot) else spawn one. The `loop` is the retry scaffold for a future
         // contend-and-retry path; today every branch resolves in one iteration.
@@ -150,6 +173,8 @@ impl CodexPool {
                         drop(slot); // drops child + home guard
                         continue;
                     }
+                    let mut slot = slot;
+                    slot.permit = Some(permit);
                     return Ok(slot);
                 }
             }
@@ -159,7 +184,7 @@ impl CodexPool {
             if remaining.is_zero() {
                 return Err("codex pool: timed out waiting for an available slot".into());
             }
-            match tokio::time::timeout(remaining, self.spawn_slot()).await {
+            match tokio::time::timeout(remaining, self.spawn_slot(permit)).await {
                 Ok(Ok(slot)) => return Ok(slot),
                 Ok(Err(err)) => return Err(err),
                 Err(_) => {
@@ -176,13 +201,17 @@ impl CodexPool {
         let mut idle = self.idle.lock().await;
         if idle.len() < self.size {
             slot.on_return();
+            // Release capacity while holding the idle lock, then publish the
+            // slot without an await. A woken checkout cannot observe an empty
+            // queue and spawn a replacement before this slot is visible.
+            slot.permit.take();
             idle.push(slot);
         }
         // else: drop the slot (child is killed on drop via `kill_on_drop`)
     }
 
     /// Spawn and initialise a fresh child slot.
-    async fn spawn_slot(&self) -> Result<PoolSlot, BoxError> {
+    async fn spawn_slot(&self, permit: OwnedSemaphorePermit) -> Result<PoolSlot, BoxError> {
         let cwd = tempfile::Builder::new()
             .prefix("axon-codex-cwd-")
             .tempdir()
@@ -236,6 +265,7 @@ impl CodexPool {
             _home_guard: home_guard,
             last_used: Instant::now(),
             turns_served: 0,
+            permit: Some(permit),
         })
     }
 }
