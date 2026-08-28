@@ -525,6 +525,8 @@ dependencies = [
 name = "axon-codex"
 version = "7.2.23"
 dependencies = [
+ "rand 0.8.6",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",

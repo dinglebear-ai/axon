@@ -9,5 +9,6 @@ pub mod approval;
 pub mod capabilities;
 pub mod control;
 pub mod events;
+pub mod operations;
 pub mod protocol;
 pub mod transport;
