@@ -1,17 +1,20 @@
 use std::collections::HashMap;
 use std::fs;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Monotonic per-process discriminator for classify() temp dirs. The previous
+/// (pid, file-count, timestamp) name collided when two parallel tests started
+/// within the same clock tick, and each classify() begins by removing "its"
+/// directory — deleting the other test's live workspace (flaky failures that
+/// moved between tests from run to run).
+static CLASSIFY_SEQ: AtomicU64 = AtomicU64::new(0);
 
 fn classify(event: &str, files: &[&str]) -> HashMap<String, String> {
     let temp_dir = std::env::temp_dir().join(format!(
-        "axon-ci-paths-{}-{}-{}",
+        "axon-ci-paths-{}-{}",
         std::process::id(),
-        files.len(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time after unix epoch")
-            .as_nanos()
+        CLASSIFY_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).expect("create temp dir");
