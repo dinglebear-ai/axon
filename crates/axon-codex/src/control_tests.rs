@@ -1,0 +1,86 @@
+use super::*;
+
+fn disabled_config() -> ControlConfig {
+    ControlConfig {
+        enabled: false,
+        codex_binary: PathBuf::new(),
+        control_home: PathBuf::new(),
+        request_timeout: Duration::from_millis(50),
+        read_concurrency: 2,
+        max_restart_backoff: Duration::from_secs(30),
+    }
+}
+
+#[tokio::test]
+async fn disabled_runtime_fails_closed_without_touching_paths() {
+    let runtime = ControlRuntime::new(disabled_config()).unwrap();
+    assert_eq!(runtime.status().state, ControlState::Disabled);
+    assert_eq!(
+        runtime
+            .with_read(|| async { Ok::<_, String>(()) })
+            .await
+            .unwrap_err(),
+        "codex control runtime is disabled"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn enabled_runtime_rejects_symlinked_home_and_binary() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path().canonicalize().unwrap();
+    let binary = root_path.join("codex-real");
+    fs::write(&binary, "#!/bin/sh\n").unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+    let binary_link = root_path.join("codex");
+    symlink(&binary, &binary_link).unwrap();
+    let home = root_path.join("home-real");
+    fs::create_dir(&home).unwrap();
+    let home_link = root_path.join("home");
+    symlink(&home, &home_link).unwrap();
+
+    let mut config = disabled_config();
+    config.enabled = true;
+    config.codex_binary = binary_link;
+    config.control_home = home.clone();
+    assert!(
+        validate_config(&config)
+            .unwrap_err()
+            .contains("non-symlink")
+    );
+    config.codex_binary = binary;
+    config.control_home = home_link;
+    assert!(
+        validate_config(&config)
+            .unwrap_err()
+            .contains("non-symlink")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn lanes_are_bounded_and_time_out() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path().canonicalize().unwrap();
+    let binary = root_path.join("codex");
+    fs::write(&binary, "#!/bin/sh\n").unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+    let home = root_path.join("home");
+    fs::create_dir(&home).unwrap();
+    let mut config = disabled_config();
+    config.enabled = true;
+    config.codex_binary = binary;
+    config.control_home = home;
+    config.request_timeout = Duration::from_millis(10);
+    let runtime = ControlRuntime::new(config).unwrap();
+    let error = runtime
+        .with_mutation(|| async {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok::<_, String>(())
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error, "codex control mutation timed out");
+}

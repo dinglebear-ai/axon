@@ -5,4 +5,5 @@
 //! runtimes must never share its pool, home, queues, or lifecycle.
 
 pub mod capabilities;
+pub mod control;
 pub mod protocol;
