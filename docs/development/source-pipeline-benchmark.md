@@ -9,7 +9,9 @@ measured bottleneck.
 The harness creates a mode-0700 temporary state directory, uses a private
 SQLite database, never prints the source URL or subprocess output, rejects URL
 userinfo and command-substitution syntax, and sanitizes failures. MLX metrics
-must come from loopback and remain in one process epoch with exactly one request.
+must come from loopback and remain in one process epoch with an otherwise idle,
+freshly started service. Every request issued by the isolated crawl is validated
+as one uncontaminated aggregate delta.
 
 ```bash
 AXON_BENCH_SOURCE=https://code.claude.com \

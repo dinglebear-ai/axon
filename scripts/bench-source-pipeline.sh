@@ -3,6 +3,13 @@ set -euo pipefail
 umask 077
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+BENCH_WORK_DIR=
+
+cleanup_work_dir() {
+  if [[ -n ${BENCH_WORK_DIR:-} && -d $BENCH_WORK_DIR ]]; then
+    rm -rf -- "$BENCH_WORK_DIR"
+  fi
+}
 
 sanitize_text() {
   sed -E \
@@ -42,7 +49,8 @@ run_benchmark() {
   [[ -x $axon_bin ]] || { echo 'benchmark binary is not executable' >&2; return 2; }
 
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/axon-source-bench.XXXXXX")
-  trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
+  BENCH_WORK_DIR=$work_dir
+  trap cleanup_work_dir EXIT HUP INT TERM
   stdout_file=$work_dir/stdout.json
   stderr_file=$work_dir/stderr.log
   before_file=$work_dir/metrics-before.json
@@ -52,7 +60,10 @@ run_benchmark() {
 
   metrics_get "$before_file"
   local start_ns end_ns status job_id corpus_hash
-  start_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  # Wall-clock nanoseconds are process-independent on every supported macOS
+  # Python runtime; independently launched monotonic clocks have not always
+  # shared an epoch.
+  start_ns=$(python3 -c 'import time; print(time.time_ns())')
   set +e
   AXON_DATA_DIR="$state_dir" AXON_SQLITE_PATH="$state_dir/jobs.db" \
     "$axon_bin" source "$source" --scope site --max-pages 200 --wait true \
@@ -60,7 +71,7 @@ run_benchmark() {
     >"$stdout_file" 2>"$stderr_file"
   status=$?
   set -e
-  end_ns=$(python3 -c 'import time; print(time.monotonic_ns())')
+  end_ns=$(python3 -c 'import time; print(time.time_ns())')
   metrics_get "$after_file"
 
   if [[ $status -ne 0 ]]; then
@@ -107,6 +118,10 @@ print(json.dumps({
     "evidence_reasons": reasons,
 }, sort_keys=True))
 PY
+
+  cleanup_work_dir
+  BENCH_WORK_DIR=
+  trap - EXIT HUP INT TERM
 }
 
 if [[ ${AXON_BENCH_LIBRARY_MODE:-0} != 1 ]]; then
