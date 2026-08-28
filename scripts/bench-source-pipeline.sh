@@ -22,6 +22,22 @@ validate_job_id() {
   [[ ${1-} =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
 }
 
+# `cargo build -p <lib-crate>` compiles a library and its dependencies but never
+# selects the root `axon` package, so it leaves a stale `target/release/axon` in
+# place and still exits zero. A benchmark run against that stale binary silently
+# measures code that is not in the working tree, so refuse to start.
+reject_stale_binary() {
+  local binary=$1 newer
+  newer=$(find crates src build.rs Cargo.toml Cargo.lock \
+    -newer "$binary" \
+    \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) \
+    -print -quit 2>/dev/null)
+  if [[ -n $newer ]]; then
+    echo "benchmark binary is older than $newer; rebuild with 'cargo build --release --bin axon'" >&2
+    return 1
+  fi
+}
+
 validate_safe_source() {
   local source=${1-}
   [[ $source != *'@'* ]] || return 1
@@ -77,6 +93,7 @@ run_benchmark() {
   [[ -n $source ]] || { echo 'AXON_BENCH_SOURCE is required' >&2; return 2; }
   validate_safe_source "$source" || { echo 'source rejected by benchmark safety policy' >&2; return 2; }
   [[ -x $axon_bin ]] || { echo 'benchmark binary is not executable' >&2; return 2; }
+  reject_stale_binary "$axon_bin" || return 2
 
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/axon-source-bench.XXXXXX")
   BENCH_WORK_DIR=$work_dir
