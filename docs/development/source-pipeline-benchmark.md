@@ -44,32 +44,58 @@ tokens and before the TEI client request-capacity knobs were widened. Under
 those corrected settings the pre-scheduler path already runs the accelerator
 essentially saturated, so the underfill the gate detected no longer exists.
 
-A defect invalidated every tuning run recorded between 05:51 and 06:03 UTC:
-the rebuild issued was `cargo build --release -p axon-cli`, which builds the
-library crate and never relinks the root `axon` binary. Those runs therefore
-executed pre-overlap code, and the reported "overlap improved 77.8s to 69.8s"
-was attributable to knob and geometry changes only.
+### The stale-binary defect
 
-Paired runs on one corpus (`1054ec892e0c`), one binary containing the
-cross-pool overlap, and a freshly started loopback MLX process per run:
+Every tuning run recorded between 05:51 and 06:03 UTC is void. The rebuild
+issued was `cargo build --release -p axon-cli`. `axon-cli` is a library package;
+the root `axon` package owns the `axon` bin target and depends on `axon-cli`, so
+`-p axon-cli` builds that library and everything beneath it and never selects
+the bin target. No link step runs and Cargo exits zero, leaving a stale
+`target/release/axon`. Those runs measured pre-overlap code, and the reported
+"overlap improved 77.8s to 69.8s" was attributable to knob and geometry changes
+only. `scripts/bench-source-pipeline.sh` now refuses to start when any Rust
+source or manifest is newer than the binary. Always build with
+`cargo build --release --bin axon`.
 
-| Configuration | Wall | Metal idle | Vectorize span |
+### Measured comparison
+
+Three arms over one committed corpus (`1054ec892e0c`), one harness, and a
+freshly started loopback MLX process per run:
+
+| Arm | Wall | Metal busy | Wall - Metal |
 |---|---|---|---|
-| Scheduler off | 69.02 s | 1.04% | 10.65 s -> 65.97 s |
-| Scheduler on, pool 512, flush 1500 ms | 77.81 s | 0.74% | 14.87 s -> 75.49 s |
+| Scheduler off (sample 1) | 69.02 s | 53.36 s | 15.66 s |
+| Scheduler off (sample 2) | 78.23 s | 58.72 s | 19.51 s |
+| Scheduler on, cross-pool overlap | 77.81 s | 53.36 s | 24.45 s |
+| Scheduler on, serial per-pool | 97.22 s | 59.11 s | 38.11 s |
 
-MLX Metal busy time was 53.36 s in both. Scheduler-off spends 55.3 s in
-vectorization against 53.4 s of Metal work, i.e. 96.5% of the vectorization
-window is accelerator compute. There is no scheduling gap left to recover, and
-pool accumulation plus the flush deadline delay the first pool by 4.2 s and the
-last by 9.5 s.
+The cross-pool overlap is a real improvement to the scheduler path: it removes
+13.7 s of non-accelerator overhead relative to the serial per-pool path. It is
+still worse than not scheduling. Scheduler-off spends 55.3 s in vectorization
+against 53.4 s of Metal work, so 96.5% of that window is already accelerator
+compute; pool accumulation and the flush deadline only add latency.
 
-Task 10 requires at least a 5% median improvement to promote. The measured
-result is a 12.7% regression, so `AXON_EMBED_SCHEDULER_ENABLED` remains `false`
-by default and the scheduler code stays dormant behind it.
+Task 10 requires at least a 5% median improvement to promote. No scheduler arm
+improves on scheduler-off in any thermal epoch, so `AXON_EMBED_SCHEDULER_ENABLED`
+remains `false` by default and the scheduler code stays dormant behind it.
 
-**Measured next bottleneck: acquisition, not embedding.** In the scheduler-off
-run, fetching spans 6.94 s to 63.47 s (56.5 s for 200 pages, ~0.28 s/page)
-while the whole 53.4 s of embedding fits inside that window. Wall time is
-acquisition-bound. Further embedding-side tuning cannot move the total; crawl
-concurrency and per-page fetch latency are where the remaining time is.
+### Run-to-run variance invalidates single-run rankings
+
+Metal busy time varied from 53.36 s to 59.11 s across these runs on a
+byte-identical token count (1,694,770 useful tokens), a 10.8% spread worth about
+9 s of wall time. Rank arms by `wall - metal_busy` within one thermal epoch, or
+take repeated samples.
+
+This band is wider than the gaps that separated most configurations in the
+2026-08-28 sweep. Pool 512 vs 1,024, native batch 16 vs 20, and pipeline depth
+2 vs 3 were each decided on one run apiece with 4-6 s between them. Those
+rankings are **not** established and must not be treated as settled; only
+extremes such as the 5,000 ms flush deadline are distinguishable.
+
+### Measured next bottleneck: acquisition, not embedding
+
+In the scheduler-off samples, fetching spans 6.5 s to 71.9 s (200 pages,
+roughly 0.3 s/page) while the entire 53-59 s of embedding fits inside that
+window. Wall time is acquisition-bound. Further embedding-side tuning cannot
+move the total; crawl concurrency and per-page fetch latency are where the
+remaining time is.
