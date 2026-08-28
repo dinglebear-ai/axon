@@ -30,6 +30,7 @@ impl BridgeClient {
             .timeout(std::time::Duration::from_secs(300))
             .connect_timeout(PALETTE_CONNECT_TIMEOUT)
             .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+            .redirect(reqwest::redirect::Policy::none())
             .build()?;
         Ok(Self(client))
     }
@@ -54,6 +55,7 @@ impl StreamClient {
         let client = reqwest::Client::builder()
             .connect_timeout(PALETTE_CONNECT_TIMEOUT)
             .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+            .redirect(reqwest::redirect::Policy::none())
             .build()?;
         Ok(Self(client))
     }
@@ -251,7 +253,10 @@ where
     read_limited_stream(stream, MAX_ARTIFACT_PREVIEW_BYTES).await
 }
 
-async fn read_limited_stream<S, B, E>(mut stream: S, max_bytes: u64) -> Result<Vec<u8>, String>
+pub(crate) async fn read_limited_stream<S, B, E>(
+    mut stream: S,
+    max_bytes: u64,
+) -> Result<Vec<u8>, String>
 where
     S: Stream<Item = Result<B, E>> + Unpin,
     B: AsRef<[u8]>,

@@ -18,6 +18,7 @@ import { invoke } from "./invoke";
 export interface PaletteConfig {
   serverUrl: string;
   token?: string | null;
+  backendProfiles?: import("./backendProfiles/model").BackendProfile[];
   shortcut: string;
   collection: string;
   resultLimit: number;

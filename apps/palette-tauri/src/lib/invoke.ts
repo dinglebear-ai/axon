@@ -47,6 +47,39 @@ export async function invoke<T = unknown>(
       }
       return { ok: resp.ok, status: resp.status, path: req.path ?? "", method, payload } as T;
     }
+    case "backend_http_request": {
+      const req = (args?.request ?? {}) as {
+        profileId: string;
+        product: string;
+        requestId: string;
+        method: string;
+        path: string;
+        body?: unknown;
+      };
+      const init: RequestInit = { method: req.method, headers: { accept: "application/json" } };
+      if (req.body != null && !["GET", "DELETE"].includes(req.method)) {
+        (init.headers as Record<string, string>)["content-type"] = "application/json";
+        init.body = JSON.stringify(req.body);
+      }
+      const resp = await fetch(req.path, init);
+      const text = await resp.text();
+      let payload: unknown = null;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text;
+      }
+      return {
+        ok: resp.ok,
+        status: resp.status,
+        profileId: req.profileId,
+        product: req.product,
+        requestId: req.requestId,
+        payload,
+      } as T;
+    }
+    case "backend_cancel_request":
+      return false as T;
     case "github_browse": {
       // Dev-only fallback: `api.github.com` sends permissive CORS headers, so a
       // plain browser `fetch` works for design iteration under `pnpm vite:dev`
@@ -69,6 +102,7 @@ export async function invoke<T = unknown>(
       return {
         serverUrl: "http://127.0.0.1:8001",
         token: null,
+        backendProfiles: [],
         shortcut: "Ctrl+Shift+Space",
         collection: "axon",
         resultLimit: 10,

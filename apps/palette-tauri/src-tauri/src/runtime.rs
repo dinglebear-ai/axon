@@ -66,6 +66,8 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|err| format!("failed to build HTTP client for Axon bridge: {err}"))?;
     let stream_client = StreamClient::new()
         .map_err(|err| format!("failed to build HTTP client for streaming: {err}"))?;
+    let backend_transport = BackendTransport::new()
+        .map_err(|err| format!("failed to build multi-backend transport: {err}"))?;
     let github_client = GitHubClient::new()
         .map_err(|err| format!("failed to build HTTP client for GitHub bridge: {err}"))?;
 
@@ -96,6 +98,8 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
             set_blur_dismiss,
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
+            backend_transport::backend_http_request,
+            backend_transport::backend_cancel_request,
             axon_http_stream_request,
             browser::browser_open,
             browser::browser_navigate,
@@ -122,6 +126,7 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
         .manage(bridge_client)
+        .manage(backend_transport)
         .manage(stream_client)
         .manage(github_client)
         .manage(oauth::OauthState::new())
