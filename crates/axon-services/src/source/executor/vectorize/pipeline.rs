@@ -20,7 +20,21 @@ where
     Upsert: Future<Output = anyhow::Result<Write>>,
     Embed: Future<Output = anyhow::Result<Embeddings>>,
 {
-    tokio::join!(upsert, embedding)
+    let overlap = std::env::var("AXON_VECTOR_UPSERT_EMBED_OVERLAP")
+        .ok()
+        .and_then(|value| value.parse::<bool>().ok())
+        .unwrap_or(true);
+    if overlap {
+        tokio::join!(upsert, embedding)
+    } else {
+        // On unified-memory accelerators, Qdrant indexing and Metal inference
+        // can contend for the same memory bandwidth. Keep the discrete-GPU
+        // behavior as the default while allowing those hosts to serialize the
+        // two provider calls.
+        let write = upsert.await;
+        let embeddings = embedding.await;
+        (write, embeddings)
+    }
 }
 
 fn resolve_upsert_completion<Write, Embeddings>(

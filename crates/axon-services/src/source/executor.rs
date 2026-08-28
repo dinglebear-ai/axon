@@ -29,7 +29,29 @@ const PUBLICATION_CONFIG_KEY: &str = "axon_publication_config_snapshot_id";
 /// streaming batch inside `run_created_generation` — matches the batch size
 /// `web_source`/`local_source` already streamed diffs at before their
 /// collapse into this runner (finding C1).
-const ACQUIRE_BATCH_SIZE: usize = 64;
+// Keep web acquisition in small enough waves that fetching the next group can
+// overlap embedding the current one. This is materially faster on local Apple
+// Silicon than erecting a site-wide fetch/embed barrier.
+const ACQUIRE_BATCH_SIZE: usize = 16;
+
+fn acquire_batch_size() -> usize {
+    std::env::var("AXON_ACQUIRE_BATCH_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(ACQUIRE_BATCH_SIZE)
+        .clamp(1, 1024)
+}
+
+/// First acquisition wave size; defaults to the steady-state batch size. A
+/// smaller first wave starts embedding sooner — the first fetch is the only
+/// one that cannot overlap embedding.
+fn first_acquire_batch_size(default_size: usize) -> usize {
+    std::env::var("AXON_FIRST_ACQUIRE_BATCH_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(default_size)
+        .clamp(1, 1024)
+}
 pub(super) struct SourcePipelineInput<'a> {
     pub(super) adapter: &'a dyn SourceAdapter,
     pub(super) plan: SourcePlan,

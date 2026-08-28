@@ -3,6 +3,53 @@ use httpmock::MockServer;
 use std::time::{Duration, Instant};
 
 #[tokio::test]
+async fn embed_all_packs_similar_lengths_and_restores_input_order() {
+    let server = MockServer::start_async().await;
+    let short = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["a", "cc"], "truncate": true}));
+            then.status(200)
+                .json_body(serde_json::json!([[1.0_f32], [2.0_f32]]));
+        })
+        .await;
+    let long = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["ddd", "bbbb"], "truncate": true}));
+            then.status(200)
+                .json_body(serde_json::json!([[3.0_f32], [4.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 2,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 2,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["a".into(), "bbbb".into(), "cc".into(), "ddd".into()])
+        .await
+        .expect("length-aware embed");
+
+    assert_eq!(
+        outcome.vectors,
+        vec![vec![1.0], vec![4.0], vec![2.0], vec![3.0]],
+        "transport packing must not change the provider's input-order contract"
+    );
+    short.assert_calls_async(1).await;
+    long.assert_calls_async(1).await;
+}
+
+#[tokio::test]
 async fn embed_all_overlaps_independent_client_batches() {
     let server = MockServer::start_async().await;
     let endpoint = server
