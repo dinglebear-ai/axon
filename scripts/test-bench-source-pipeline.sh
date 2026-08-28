@@ -12,6 +12,7 @@ validate_job_id '123e4567-e89b-12d3-a456-426614174000' || fail valid-job-id
 validate_safe_source 'https://example.invalid/path with spaces?q="quoted"' || fail safe-source
 ! validate_safe_source 'https://user:password@example.invalid/' || fail userinfo-source
 ! validate_safe_source 'https://example.invalid/$(touch /tmp/nope)' || fail substitution-source
+( export AXON_BENCH_MLX_URL=http://100.64.0.1:8084; ! metrics_get /tmp/axon-forbidden-metrics 2>/dev/null ) || fail non-loopback-metrics
 
 sanitized=$(printf '%s\n' 'Authorization:Bearer-secret https://user:pass@example.test abcdefghijklmnopqrstuvwxyz123456' | sanitize_text)
 [[ $sanitized != *Bearer-secret* ]] || fail bearer-redaction

@@ -24,6 +24,7 @@ validate_safe_source() {
 
 metrics_get() {
   local output=$1
+  [[ ${AXON_BENCH_MLX_URL:-http://127.0.0.1:8084} == http://127.0.0.1:* ]] || return 2
   curl --connect-timeout 2 --max-time 5 --silent --show-error --fail \
     "${AXON_BENCH_MLX_URL:-http://127.0.0.1:8084}/metrics" >"$output"
   jq -e 'type == "object" and (.epoch | type == "string")' "$output" >/dev/null
@@ -85,7 +86,12 @@ with open(before_path, encoding="utf-8") as handle:
     before = json.load(handle)
 with open(after_path, encoding="utf-8") as handle:
     after = json.load(handle)
-delta = metrics_delta(before, after, expected_requests=1)
+if before.get("requests") != 0:
+    raise SystemExit("exclusive MLX benchmark service was already used")
+expected_requests = after.get("requests", 0) - before.get("requests", 0)
+if expected_requests <= 0:
+    raise SystemExit("benchmark issued no MLX requests")
+delta = metrics_delta(before, after, expected_requests=expected_requests)
 passed, reasons = evidence_gate(delta)
 print(json.dumps({
     "job_id": job_id,
