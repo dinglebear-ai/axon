@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use axon_api::source::*;
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_ledger::store::LedgerStore;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::preparation::prepare_documents;
@@ -11,7 +12,7 @@ use super::vector_points::point_batch;
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
 use crate::reserved_call::{self, ProviderCallContext};
 
-mod batching;
+pub(super) mod batching;
 mod pipeline;
 
 use batching::chunk_batches;
@@ -161,6 +162,136 @@ pub(super) async fn prepare_embed_publish(
     }
     write_document_statuses(runtime.ledger.as_ref(), &output.document_statuses).await?;
     Ok(output)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn prepare_generation_documents(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    documents: Vec<SourceDocument>,
+    enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
+    generation: &SourceGenerationId,
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    is_final_generation_batch: bool,
+) -> anyhow::Result<Vec<PreparedDocument>> {
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Preparing,
+            progress.preparing_counts(),
+            "preparing source documents",
+        )
+        .await;
+    let prepared = reserved_call::parse_operation(
+        runtime,
+        ProviderCallContext::for_phase(
+            input.plan.job_id,
+            input.execution.attempt,
+            PipelinePhase::Parsing,
+            input.execution.priority,
+            format!("parse:{}:scheduled", generation.0),
+        ),
+        {
+            let document_preparer = runtime.document_preparer.clone();
+            let generation = generation.clone();
+            let enrichment_graph = enrichment_graph.clone();
+            let concurrency = runtime.document_prepare_concurrency;
+            move || async move {
+                prepare_documents(
+                    documents,
+                    &generation,
+                    &enrichment_graph,
+                    document_preparer,
+                    concurrency,
+                )
+                .await
+            }
+        },
+    )
+    .await?;
+    let chunk_count = prepared
+        .iter()
+        .map(|document| document.chunks.len() as u64)
+        .sum();
+    let counts = progress.prepared(
+        prepared.len() as u64,
+        chunk_count,
+        is_final_generation_batch,
+    );
+    coordinator
+        .checkpoint(
+            PipelinePhase::Preparing,
+            counts,
+            "prepared source documents",
+        )
+        .await;
+    Ok(prepared)
+}
+
+/// Vectorize one already-prepared pool and persist generation-cumulative
+/// document status counts before returning ownership to the scheduler.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn vectorize_prepared_pool(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    _generation: &SourceGenerationId,
+    collection: CollectionSpec,
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    prepared: Vec<PreparedDocument>,
+    cumulative: &mut HashMap<DocumentId, DocumentStatus>,
+    progress: &mut PipelineProgress,
+    cancel: &CancellationToken,
+) -> anyhow::Result<VectorizeResult> {
+    if cancel.is_cancelled() {
+        anyhow::bail!("generation scheduler canceled before vectorization");
+    }
+    let chunks = prepared
+        .iter()
+        .map(|document| document.chunks.len() as u64)
+        .sum();
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Batching,
+            progress.batched(chunks),
+            "batching prepared chunks",
+        )
+        .await;
+    let result = if input.plan.request.embed && chunks > 0 {
+        let built = embed_and_build_batch(
+            runtime,
+            input,
+            prepared,
+            collection,
+            emitter,
+            coordinator,
+            progress,
+            false,
+        )
+        .await?;
+        publish_built_batch(runtime, input, built, emitter, coordinator, progress).await?
+    } else {
+        statuses_only(prepared, DocumentLifecycleStatus::Prepared)
+    };
+    for status in &result.document_statuses {
+        if let Some(existing) = cumulative.get_mut(&status.document_id) {
+            existing.chunk_count = existing.chunk_count.saturating_add(status.chunk_count);
+            existing.vector_point_count = existing
+                .vector_point_count
+                .saturating_add(status.vector_point_count);
+            existing.updated_at = status.updated_at.clone();
+            existing.status = status.status;
+        } else {
+            cumulative.insert(status.document_id.clone(), status.clone());
+        }
+    }
+    let mut statuses = cumulative.values().cloned().collect::<Vec<_>>();
+    statuses.sort_by(|left, right| left.document_id.0.cmp(&right.document_id.0));
+    write_document_statuses(runtime.ledger.as_ref(), &statuses).await?;
+    Ok(result)
 }
 
 async fn report_batching(

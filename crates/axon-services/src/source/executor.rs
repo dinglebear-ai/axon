@@ -2,7 +2,9 @@
 
 pub(super) mod artifact_candidates;
 mod created_generation;
+mod generation_spool;
 mod generation_state;
+mod generation_work;
 mod helpers;
 mod metadata;
 mod preparation;

@@ -1,5 +1,9 @@
 use super::*;
+use crate::source::executor::generation_work::PreparedBatchSideEffects;
 use std::future::Future;
+
+#[path = "batches/scheduled.rs"]
+mod scheduled;
 
 struct ChangedBatch {
     diff: SourceManifestDiff,
@@ -79,6 +83,23 @@ pub(super) async fn process_generation_batches(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
+    if scheduled::enabled() {
+        return scheduled::process(
+            runtime,
+            input,
+            emitter,
+            generation,
+            collection,
+            diff,
+            archive_requested,
+            changed_total,
+            coordinator,
+            stage,
+            accumulated,
+            artifact_cleanup,
+        )
+        .await;
+    }
     let acquire_batch_size = acquire_batch_size();
     let first_batch_size = first_acquire_batch_size(acquire_batch_size);
     let changed = usize::try_from(changed_total).unwrap_or(usize::MAX);
@@ -146,7 +167,9 @@ pub(super) async fn process_generation_batches(
                 artifact_cleanup.track(&prefetched.acquisition.artifacts);
             }
             acquired = resolve_batch_step(processed, prefetched, |processed| {
-                accumulated.absorb(artifact_cleanup, processed);
+                let (side_effects, vectorized) = processed;
+                accumulated.absorb_pretracked_side_effects(side_effects);
+                accumulated.absorb_vectorized(vectorized);
             })?;
             continue;
         }
@@ -164,7 +187,9 @@ pub(super) async fn process_generation_batches(
             artifact_cleanup,
         )
         .await?;
-        accumulated.absorb(artifact_cleanup, processed);
+        let (side_effects, vectorized) = processed;
+        accumulated.absorb_pretracked_side_effects(side_effects);
+        accumulated.absorb_vectorized(vectorized);
         break;
     }
     Ok(())
@@ -209,19 +234,25 @@ async fn acquire_changed_batch(
     })
 }
 
+struct PreparedAcquiredComponents {
+    documents: Vec<SourceDocument>,
+    enrichment_graph: std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
+    side_effects: PreparedBatchSideEffects,
+    is_final: bool,
+}
+
 #[allow(clippy::too_many_arguments)]
-async fn process_acquired_batch(
+async fn prepare_acquired_components(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     generation: &SourceGenerationId,
-    collection: &CollectionSpec,
     acquired: AcquiredChangedBatch,
     archive_requested: bool,
     coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
     artifact_cleanup: &mut ArtifactCleanupGuard,
-) -> anyhow::Result<ProcessedBatch> {
+) -> anyhow::Result<PreparedAcquiredComponents> {
     let AcquiredChangedBatch {
         batch, acquisition, ..
     } = acquired;
@@ -307,30 +338,61 @@ async fn process_acquired_batch(
     artifact_cleanup.track(&clean_output.artifacts);
     warnings.extend(candidate_collection.warnings);
     let enrichment_graph = take_enrichment_graph_candidates(&mut enrichments);
+    let enrichment_artifacts = collect_enrichment_outputs(enrichments, &mut warnings);
+    Ok(PreparedAcquiredComponents {
+        documents,
+        enrichment_graph,
+        side_effects: PreparedBatchSideEffects {
+            acquisition_artifacts,
+            enrichment_artifacts,
+            clean_output,
+            archive_items,
+            artifact_candidates: candidate_collection.candidates,
+            warnings,
+            reused_item_keys: resolved.reused_item_keys,
+            refreshed_manifest_items,
+        },
+        is_final: is_final_batch,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_acquired_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    generation: &SourceGenerationId,
+    collection: &CollectionSpec,
+    acquired: AcquiredChangedBatch,
+    archive_requested: bool,
+    coordinator: &ProgressCoordinator,
+    stage: &mut GenerationStageProgress,
+    artifact_cleanup: &mut ArtifactCleanupGuard,
+) -> anyhow::Result<(PreparedBatchSideEffects, vectorize::VectorizeResult)> {
+    let components = prepare_acquired_components(
+        runtime,
+        input,
+        emitter,
+        generation,
+        acquired,
+        archive_requested,
+        coordinator,
+        stage,
+        artifact_cleanup,
+    )
+    .await?;
     let vectorized = vectorize::prepare_embed_publish(
         runtime,
         input,
-        documents,
-        &enrichment_graph,
+        components.documents,
+        &components.enrichment_graph,
         generation,
         collection.clone(),
         emitter,
         coordinator,
         &mut stage.pipeline,
-        is_final_batch,
+        components.is_final,
     )
     .await?;
-
-    let enrichment_artifacts = collect_enrichment_outputs(enrichments, &mut warnings);
-    Ok(ProcessedBatch {
-        vectorized,
-        acquisition_artifacts,
-        enrichment_artifacts,
-        clean_output,
-        archive_items,
-        artifact_candidates: candidate_collection.candidates,
-        warnings,
-        reused_item_keys: resolved.reused_item_keys,
-        refreshed_manifest_items,
-    })
+    Ok((components.side_effects, vectorized))
 }

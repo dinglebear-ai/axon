@@ -1,6 +1,6 @@
 use axon_api::source::PreparedDocument;
 
-pub(super) fn chunk_batches(
+pub(in crate::source::executor) fn chunk_batches(
     documents: Vec<PreparedDocument>,
     max_chunks: usize,
 ) -> Vec<Vec<PreparedDocument>> {
@@ -26,7 +26,7 @@ pub(super) fn chunk_batches(
     batches
 }
 
-pub(super) fn split_oversized_document(
+pub(in crate::source::executor) fn split_oversized_document(
     mut document: PreparedDocument,
     max_chunks: usize,
 ) -> Vec<PreparedDocument> {
