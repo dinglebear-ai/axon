@@ -68,6 +68,20 @@ pub async fn run_unified_server(
 }
 
 fn open_setup_browser(host: &str, port: u16) {
+    // Only open a desktop browser for an interactive operator. Test harnesses,
+    // launchd/systemd services, and CI boot `axon serve` with fresh data dirs
+    // and would otherwise spam the user's browser with setup-wizard tabs.
+    let suppressed = std::env::var_os("AXON_SETUP_NO_BROWSER").is_some()
+        || std::env::var_os("CI").is_some()
+        || !std::io::IsTerminal::is_terminal(&std::io::stderr());
+    if suppressed {
+        tracing::info!(
+            host,
+            port,
+            "serve: setup required; skipping browser open (non-interactive)"
+        );
+        return;
+    }
     let host = match host.trim() {
         "0.0.0.0" | "::" | "[::]" => "127.0.0.1",
         "" => "127.0.0.1",

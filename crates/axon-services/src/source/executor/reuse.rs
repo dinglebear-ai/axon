@@ -24,6 +24,9 @@ pub(super) async fn overlay_trusted_validators(
     input: &SourcePipelineInput<'_>,
     mut diff: SourceManifestDiff,
 ) -> anyhow::Result<SourceManifestDiff> {
+    if input.plan.request.refresh == SourceRefreshPolicy::Force {
+        return Ok(diff);
+    }
     if input.adapter.reuse_policy() != ReusePolicy::ConditionalRequest {
         return Ok(diff);
     }
@@ -61,6 +64,16 @@ pub(super) async fn resolve_acquisition(
     diff: &SourceManifestDiff,
     mut acquisition: SourceAcquisition,
 ) -> anyhow::Result<ResolvedAcquisition> {
+    // A forced refresh is also the canonical cold-run path: refetch,
+    // renormalize, rechunk, and re-embed even when the bytes match the prior
+    // generation. Reusing cached documents here made `refresh=force` only a
+    // network refresh and produced misleading end-to-end benchmarks.
+    if input.plan.request.refresh == SourceRefreshPolicy::Force {
+        return Ok(ResolvedAcquisition {
+            acquisition,
+            reused_item_keys: Vec::new(),
+        });
+    }
     if input.adapter.reuse_policy() != ReusePolicy::ConditionalRequest {
         return Ok(ResolvedAcquisition {
             acquisition,

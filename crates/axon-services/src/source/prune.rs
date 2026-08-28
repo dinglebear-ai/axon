@@ -61,6 +61,7 @@ use axon_prune::{
     PruneAuthz, PruneExecutor, PruneStep, PruneTarget, PruneTargetKind, StepExecution,
 };
 use axon_vectors::store::VectorStore;
+use std::collections::BTreeMap;
 
 use super::result_map::IndexCounts;
 
@@ -226,7 +227,37 @@ pub async fn drain_cleanup_debt_full_with_boundaries(
     let authz = PruneAuthz::admin();
 
     let mut summary = DebtDrainSummary::default();
+    let mut vector_groups: BTreeMap<(String, String), Vec<CleanupDebt>> = BTreeMap::new();
+    let mut other_debts = Vec::new();
     for debt in pending {
+        if debt.kind == CleanupDebtKind::VectorDelete {
+            if let Some((source_id, generation)) = vector_debt_scope(&debt) {
+                vector_groups
+                    .entry((source_id.0, generation.0))
+                    .or_default()
+                    .push(debt);
+                continue;
+            }
+        }
+        other_debts.push(debt);
+    }
+
+    // Publishing records item-scoped vector debt, but vector cleanup is
+    // deliberately generation-wide. Retain one representative per generation
+    // for execution and remember the sibling rows that delete also covers.
+    let mut debts_to_drain = Vec::new();
+    let mut vector_siblings: BTreeMap<String, Vec<CleanupDebt>> = BTreeMap::new();
+    for debts in vector_groups.into_values() {
+        let mut debts = debts.into_iter();
+        let Some(representative) = debts.next() else {
+            continue;
+        };
+        vector_siblings.insert(representative.debt_id.0.clone(), debts.collect());
+        debts_to_drain.push(representative);
+    }
+    debts_to_drain.extend(other_debts);
+
+    for debt in debts_to_drain {
         let target = LedgerPruneTarget {
             vector_store,
             ledger,
@@ -239,17 +270,27 @@ pub async fn drain_cleanup_debt_full_with_boundaries(
             job_ids: job_ids_for_debt(&debt),
         };
         let executor = PruneExecutor::new(target);
-        drain_one_debt(
-            ledger,
-            &executor,
-            &authz,
-            &debt,
-            collection,
-            artifact_store,
-            document_cache,
-            &mut summary,
-        )
-        .await;
+        if let Some(siblings) = vector_siblings.remove(&debt.debt_id.0) {
+            let resolved_before = summary.resolved;
+            drain_via_executor(ledger, &executor, &authz, &debt, collection, &mut summary).await;
+            if summary.resolved > resolved_before {
+                for sibling in &siblings {
+                    resolve_debt(ledger, sibling, &mut summary).await;
+                }
+            }
+        } else {
+            drain_one_debt(
+                ledger,
+                &executor,
+                &authz,
+                &debt,
+                collection,
+                artifact_store,
+                document_cache,
+                &mut summary,
+            )
+            .await;
+        }
     }
 
     tracing::debug!(
@@ -260,6 +301,25 @@ pub async fn drain_cleanup_debt_full_with_boundaries(
         "cleanup debt drain complete"
     );
     summary
+}
+
+fn vector_debt_scope(debt: &CleanupDebt) -> Option<(SourceId, SourceGenerationId)> {
+    match &debt.selector {
+        CleanupSelector::SourceItem {
+            source_id,
+            generation,
+            ..
+        }
+        | CleanupSelector::Generation {
+            source_id,
+            generation,
+        } => Some((source_id.clone(), generation.clone())),
+        CleanupSelector::Source { source_id } => debt
+            .generation
+            .clone()
+            .map(|generation| (source_id.clone(), generation)),
+        _ => None,
+    }
 }
 
 /// Execute one debt entry and, on clean success, mark it resolved. Every

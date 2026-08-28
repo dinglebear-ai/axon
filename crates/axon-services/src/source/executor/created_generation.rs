@@ -12,7 +12,8 @@ use super::helpers::*;
 use super::progress::{ProgressCoordinator, stage_counts};
 use super::{
     ACQUIRE_BATCH_SIZE, SOURCE_LEASE_TTL_SECONDS, SourceEventEmitter, SourcePipelineInput,
-    artifact_candidates, metadata, publish, reuse, vectorize,
+    acquire_batch_size, artifact_candidates, first_acquire_batch_size, metadata, publish, reuse,
+    vectorize,
 };
 use crate::context::TargetLocalSourceRuntime;
 use crate::reserved_call::ArtifactCleanupGuard;
@@ -32,7 +33,7 @@ use setup::ensure_generation_collection;
 /// bounded batches (`ACQUIRE_BATCH_SIZE`) rather than a single
 /// `adapter.acquire(&plan, &diff)` call for the whole changed corpus.
 ///
-/// The executor streams each changed generation in ~64-item diff batches
+/// The executor streams each changed generation in bounded diff batches
 /// instead of materializing the entire fetched and normalized corpus before
 /// prepare/embed/publish. This keeps large git repositories, session
 /// directories, and web collections on one bounded-memory execution shape.

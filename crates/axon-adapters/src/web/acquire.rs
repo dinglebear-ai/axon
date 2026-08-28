@@ -73,6 +73,14 @@ use super::vertical::{VerticalAcquire, VerticalOptions};
 /// adding one is a larger follow-up than this fix's scope.
 const ACQUIRE_CONCURRENCY: usize = 16;
 
+fn acquire_concurrency() -> usize {
+    std::env::var("AXON_WEB_ACQUIRE_CONCURRENCY")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(ACQUIRE_CONCURRENCY)
+        .clamp(1, 128)
+}
+
 /// Options resolved once per [`acquire_changed_items`] call from
 /// `plan.route.validated_options`, then threaded through every item so
 /// per-item helpers stay free of `MetadataMap` lookups.
@@ -206,7 +214,7 @@ async fn acquire_concurrent(
                 (source_item_key, canonical_uri, outcome)
             }
         })
-        .buffer_unordered(ACQUIRE_CONCURRENCY);
+        .buffer_unordered(acquire_concurrency());
 
     let mut items = Vec::new();
     let mut warnings = Vec::new();

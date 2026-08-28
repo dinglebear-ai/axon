@@ -79,10 +79,15 @@ pub(super) async fn process_generation_batches(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
-    let batch_count = usize::try_from(changed_total)
-        .unwrap_or(usize::MAX)
-        .div_ceil(ACQUIRE_BATCH_SIZE);
-    let mut batches = batch_changed_diff(diff, ACQUIRE_BATCH_SIZE)
+    let acquire_batch_size = acquire_batch_size();
+    let first_batch_size = first_acquire_batch_size(acquire_batch_size);
+    let changed = usize::try_from(changed_total).unwrap_or(usize::MAX);
+    let batch_count = if changed <= first_batch_size {
+        usize::from(changed > 0)
+    } else {
+        1 + (changed - first_batch_size).div_ceil(acquire_batch_size)
+    };
+    let mut batches = batch_changed_diff_ramped(diff, first_batch_size, acquire_batch_size)
         .enumerate()
         .map(|(index, diff)| ChangedBatch {
             diff,
