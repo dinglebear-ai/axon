@@ -9,7 +9,20 @@ use super::*;
 use crate::source::executor::generation_work::{PreparedBatchReceiver, PreparedWorkEnvelope};
 use crate::source::executor::progress::PipelineProgress;
 
-const FLUSH_DELAY: Duration = Duration::from_millis(2);
+// The producer's web acquisition waves are intentionally small and commonly
+// arrive hundreds of milliseconds apart. A sub-millisecond microbatch timer
+// simply recreates the old one-request-per-wave behavior; this bounded oldest-
+// item deadline lets several waves fill one native TEI request while capping
+// first-batch latency.
+const DEFAULT_FLUSH_DELAY: Duration = Duration::from_millis(1_500);
+
+fn flush_delay() -> Duration {
+    std::env::var("AXON_EMBED_SCHEDULER_FLUSH_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(|milliseconds| Duration::from_millis(milliseconds.min(5_000)))
+        .unwrap_or(DEFAULT_FLUSH_DELAY)
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_generation_scheduler(
@@ -25,6 +38,7 @@ pub(super) async fn run_generation_scheduler(
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
     let pool_size = runtime.embed_pool_max_inputs.max(1);
+    let flush_delay = flush_delay();
     let mut pending = Vec::<PreparedWorkEnvelope>::new();
     let mut pending_chunks = 0_usize;
     let mut pending_bytes = 0_usize;
@@ -92,7 +106,7 @@ pub(super) async fn run_generation_scheduler(
                 pending_chunks = pending_chunks.saturating_add(chunks);
                 pending_bytes = pending_bytes.saturating_add(envelope.estimated_bytes);
                 pending.push(envelope);
-                deadline.get_or_insert_with(|| Instant::now() + FLUSH_DELAY);
+                deadline.get_or_insert_with(|| Instant::now() + flush_delay);
             }
             None if pending.is_empty() => break,
             None => {
