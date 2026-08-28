@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
 use axon_api::source::*;
@@ -30,7 +29,6 @@ pub(super) async fn run_generation_scheduler(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
-    generation: &SourceGenerationId,
     collection: CollectionSpec,
     mut receiver: PreparedBatchReceiver,
     accumulator: &mut GenerationAccumulator,
@@ -43,7 +41,8 @@ pub(super) async fn run_generation_scheduler(
     let mut pending_chunks = 0_usize;
     let mut pending_bytes = 0_usize;
     let mut deadline = None;
-    let mut cumulative = HashMap::<DocumentId, DocumentStatus>::new();
+    let mut vectorizer = vectorize::PreparedPoolVectorizer::default();
+    let mut held = Vec::<PreparedWorkEnvelope>::new();
     let mut next_sequence = 0_u64;
 
     loop {
@@ -53,11 +52,11 @@ pub(super) async fn run_generation_scheduler(
                 input,
                 emitter,
                 coordinator,
-                generation,
                 collection.clone(),
                 &mut pending,
                 accumulator,
-                &mut cumulative,
+                &mut vectorizer,
+                &mut held,
                 progress,
                 cancel,
             )
@@ -115,11 +114,11 @@ pub(super) async fn run_generation_scheduler(
                     input,
                     emitter,
                     coordinator,
-                    generation,
                     collection.clone(),
                     &mut pending,
                     accumulator,
-                    &mut cumulative,
+                    &mut vectorizer,
+                    &mut held,
                     progress,
                     cancel,
                 )
@@ -133,6 +132,13 @@ pub(super) async fn run_generation_scheduler(
             }
         }
     }
+    if let Some(result) = vectorizer
+        .finish(runtime, input, emitter, coordinator, progress)
+        .await?
+    {
+        accumulator.absorb_vectorized(result);
+    }
+    held.clear();
     tracing::debug!(pending_bytes, "generation scheduler drained prepared work");
     Ok(())
 }
@@ -143,11 +149,11 @@ async fn flush_pending(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
-    generation: &SourceGenerationId,
     collection: CollectionSpec,
     pending: &mut Vec<PreparedWorkEnvelope>,
     accumulator: &mut GenerationAccumulator,
-    cumulative: &mut HashMap<DocumentId, DocumentStatus>,
+    vectorizer: &mut vectorize::PreparedPoolVectorizer,
+    held: &mut Vec<PreparedWorkEnvelope>,
     progress: &mut PipelineProgress,
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
@@ -156,24 +162,32 @@ async fn flush_pending(
         prepared.append(&mut envelope.prepared);
     }
     for pool in vectorize::batching::chunk_batches(prepared, runtime.embed_pool_max_inputs) {
-        let result = vectorize::vectorize_prepared_pool(
-            runtime,
-            input,
-            generation,
-            collection.clone(),
-            emitter,
-            coordinator,
-            pool,
-            cumulative,
-            progress,
-            cancel,
-        )
-        .await?;
-        accumulator.absorb_vectorized(result);
+        if let Some(result) = vectorizer
+            .push(
+                runtime,
+                input,
+                collection.clone(),
+                emitter,
+                coordinator,
+                pool,
+                progress,
+                cancel,
+            )
+            .await?
+        {
+            accumulator.absorb_vectorized(result);
+            // The previously built pool has now been durably published and
+            // checkpointed. Its source-work permits may be released.
+            held.clear();
+        }
     }
-    // Dropping envelopes only after vector upsert, cumulative status writes,
-    // and accumulator absorption releases their chunk/byte permits.
-    pending.clear();
+    if vectorizer.has_pending_publication() {
+        // Conservatively retain every envelope from this flush until the last
+        // built pool is published by the next push (or scheduler finish).
+        held.append(pending);
+    } else {
+        pending.clear();
+    }
     Ok(())
 }
 

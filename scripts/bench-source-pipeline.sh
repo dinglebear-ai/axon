@@ -114,12 +114,14 @@ run_benchmark() {
   corpus_hash=$(corpus_hash_from_sqlite "$state_dir/jobs.db" "$job_id")
 
   PYTHONPATH="$SCRIPT_DIR" python3 - "$before_file" "$after_file" "$job_id" \
-    "$corpus_hash" "$start_ns" "$end_ns" >"$output" <<'PY'
+    "$corpus_hash" "$start_ns" "$end_ns" "$state_dir/jobs.db" >"$output" <<'PY'
+from datetime import datetime
 import json
+import sqlite3
 import sys
 from mlx_metrics import evidence_gate, metrics_delta
 
-before_path, after_path, job_id, corpus_hash, start_ns, end_ns = sys.argv[1:]
+before_path, after_path, job_id, corpus_hash, start_ns, end_ns, database = sys.argv[1:]
 with open(before_path, encoding="utf-8") as handle:
     before = json.load(handle)
 with open(after_path, encoding="utf-8") as handle:
@@ -131,6 +133,41 @@ if expected_requests <= 0:
     raise SystemExit("benchmark issued no MLX requests")
 delta = metrics_delta(before, after, expected_requests=expected_requests)
 passed, reasons = evidence_gate(delta)
+with sqlite3.connect(database) as connection:
+    rows = connection.execute(
+        """
+        SELECT phase, started_at, completed_at
+        FROM job_stages
+        WHERE job_id = ? AND started_at IS NOT NULL AND completed_at IS NOT NULL
+        ORDER BY phase
+        """,
+        (job_id,),
+    ).fetchall()
+    event_rows = connection.execute(
+        """
+        SELECT phase, MIN(timestamp), MAX(timestamp), COUNT(*)
+        FROM job_events
+        WHERE job_id = ?
+        GROUP BY phase
+        ORDER BY phase
+        """,
+        (job_id,),
+    ).fetchall()
+stage_seconds = {}
+for phase, started_at, completed_at in rows:
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    stage_seconds[phase] = round((completed - started).total_seconds(), 6)
+benchmark_started = datetime.fromtimestamp(int(start_ns) / 1_000_000_000).astimezone()
+phase_windows = {}
+for phase, first_at, last_at, count in event_rows:
+    first = datetime.fromisoformat(first_at.replace("Z", "+00:00"))
+    last = datetime.fromisoformat(last_at.replace("Z", "+00:00"))
+    phase_windows[phase] = {
+        "first_offset_seconds": round((first - benchmark_started).total_seconds(), 6),
+        "last_offset_seconds": round((last - benchmark_started).total_seconds(), 6),
+        "events": count,
+    }
 print(json.dumps({
     "job_id": job_id,
     "wall_seconds": (int(end_ns) - int(start_ns)) / 1_000_000_000,
@@ -143,6 +180,8 @@ print(json.dumps({
     "metal_idle_ratio": delta.metal_idle_ratio,
     "evidence_gate": passed,
     "evidence_reasons": reasons,
+    "stage_seconds": stage_seconds,
+    "phase_windows": phase_windows,
 }, sort_keys=True))
 PY
 

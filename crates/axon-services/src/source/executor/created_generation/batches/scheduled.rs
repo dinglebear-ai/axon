@@ -56,7 +56,6 @@ pub(super) async fn process(
         input,
         emitter,
         coordinator,
-        generation,
         collection.clone(),
         receiver,
         accumulated,
