@@ -398,7 +398,10 @@ jobs:
 
   android:
     name: android
-    runs-on: ci-pool-system
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): long Gradle builds keep losing their farm
+    # runner mid-step. Revert to ci-pool-system once the farm stabilizes.
+    runs-on: ubuntu-latest
     # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
     # main runs, but both timed out at exactly 30m once the per-runner cargo
     # registries were isolated and had to repopulate from cold. GitHub reports a
