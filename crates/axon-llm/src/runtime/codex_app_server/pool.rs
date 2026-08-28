@@ -121,6 +121,16 @@ pub(super) struct CodexPool {
     permits: Arc<Semaphore>,
     waiting: AtomicUsize,
     rejected: AtomicUsize,
+    spawning: AtomicUsize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PoolMetrics {
+    pub active_or_spawning: usize,
+    pub spawning: usize,
+    pub idle: usize,
+    pub waiting: usize,
+    pub rejected: usize,
 }
 
 impl CodexPool {
@@ -133,6 +143,7 @@ impl CodexPool {
             permits: Arc::new(Semaphore::new(size)),
             waiting: AtomicUsize::new(0),
             rejected: AtomicUsize::new(0),
+            spawning: AtomicUsize::new(0),
         })
     }
 
@@ -212,6 +223,13 @@ impl CodexPool {
 
     /// Spawn and initialise a fresh child slot.
     async fn spawn_slot(&self, permit: OwnedSemaphorePermit) -> Result<PoolSlot, BoxError> {
+        self.spawning.fetch_add(1, Ordering::AcqRel);
+        let result = self.spawn_slot_inner(permit).await;
+        self.spawning.fetch_sub(1, Ordering::AcqRel);
+        result
+    }
+
+    async fn spawn_slot_inner(&self, permit: OwnedSemaphorePermit) -> Result<PoolSlot, BoxError> {
         let cwd = tempfile::Builder::new()
             .prefix("axon-codex-cwd-")
             .tempdir()
@@ -267,6 +285,16 @@ impl CodexPool {
             turns_served: 0,
             permit: Some(permit),
         })
+    }
+
+    pub async fn metrics(&self) -> PoolMetrics {
+        PoolMetrics {
+            active_or_spawning: self.size - self.permits.available_permits(),
+            spawning: self.spawning.load(Ordering::Acquire),
+            idle: self.idle.lock().await.len(),
+            waiting: self.waiting.load(Ordering::Acquire),
+            rejected: self.rejected.load(Ordering::Acquire),
+        }
     }
 }
 
