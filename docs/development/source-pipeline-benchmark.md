@@ -79,6 +79,38 @@ Task 10 requires at least a 5% median improvement to promote. No scheduler arm
 improves on scheduler-off in any thermal epoch, so `AXON_EMBED_SCHEDULER_ENABLED`
 remains `false` by default and the scheduler code stays dormant behind it.
 
+### The 2026-08-28 02:23-02:26 results are the best recorded, at about 50 s
+
+Three consecutive full cold crawls on the persistent `~/.axon` state finished in
+49.53 s, 49.81 s, and 50.24 s (jobs `d8b07e91`, `22f5e96d`, `e6490380`), beating
+the 59 s reference. Those runs used the main checkout's binary with the
+cleanup-debt drain fix, length-aware packing, and `AXON_DOCUMENT_BATCH_SIZE=80`,
+against the launchd MLX service on port 8084. The persistent embedding cache was
+off (`providers.embedding.cache-enabled = false`, no env override, and no cache
+row written since 2026-08-27T13:45Z), so those runs embedded the corpus for real.
+
+Every number in the tables above is from 2026-08-28 07:00-11:45Z and lands at 69
+to 80 s. The cause is not configuration. It is the crawl:
+
+| Run | Fetch phase | Wall |
+|---|---|---|
+| `22f5e96d` (02:24Z) | 42.66 s | 49.81 s |
+| `e6490380` (02:25Z) | 42.88 s | 50.24 s |
+| scheduler-off reproduction (07:0xZ) | 56.5 s | 69.02 s |
+| warm-state reproduction (11:39Z) | 65.28 s | 79.56 s |
+
+The fetch phase swings from 42.7 s to 65.3 s, a 53% spread, and embedding fits
+inside that window in every case. Wall time tracks the crawl almost exactly.
+
+Reproduction attempts ruled out the other candidates: both MLX servers run
+`LiquidAI/LFM2.5-Embedding-350M` at 1,024 dimensions, a warm persistent state
+directory still embedded the full 1,694,770-token corpus (70.11 s), and the
+older v2 server was slower, not faster (79.56 s).
+
+**Absolute wall times are not comparable across sessions.** Only paired runs
+taken back to back under the same network and thermal conditions support a
+ranking. Rank by `wall - metal_busy` when the accelerator time is available.
+
 ### Run-to-run variance invalidates single-run rankings
 
 Metal busy time varied from 53.36 s to 59.11 s across these runs on a
