@@ -181,7 +181,7 @@ fn resolve_batch_size_clamps_to_valid_range() {
     // Env var is not set in this test, so config value is used and clamped.
     assert_eq!(resolve_batch_size(64), 64);
     assert_eq!(resolve_batch_size(0), 1);
-    assert_eq!(resolve_batch_size(10_000), 256);
+    assert_eq!(resolve_batch_size(10_000), 4096);
 }
 
 #[test]
