@@ -181,7 +181,10 @@ jobs:
   # and transport contracts before starting the expensive clippy/test fanout.
   rust-contracts:
     name: rust-contracts
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): the farm reaped this job's runner mid-build
+    # on consecutive attempts, and it gates the entire clippy/test fanout.
+    runs-on: ubuntu-latest
     # 240, not 60. Measured across the last 40 ci.yml runs, this job's SUCCESSFUL
     # durations are: 14 15 16 16 22 29 32 34 36 40 42 43 58 59 62 70 75 88 93 96
     # 109 114 186 (minutes). 9 of 23 green runs (39%) exceed 60 minutes, and the
@@ -358,7 +361,10 @@ jobs:
   # workspace for a YAML-only change.
   ci-contracts:
     name: ci-contracts
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): this job drew defective farm runners
+    # (broken rustup dirs / no toolchain) on consecutive attempts.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.run_ci_contracts == 'true' }}
