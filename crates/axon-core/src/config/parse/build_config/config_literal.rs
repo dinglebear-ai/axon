@@ -369,6 +369,13 @@ fn populate_services_and_ask_basics(
     cfg.codex_completion_concurrency =
         parse_positive_usize_env("AXON_CODEX_COMPLETION_CONCURRENCY", 4)?;
     cfg.codex_load_user_config = env_bool("AXON_CODEX_LOAD_USER_CONFIG", false);
+    cfg.codex_control_enabled = env_bool("AXON_CODEX_CONTROL_ENABLED", false);
+    cfg.codex_control_home = non_empty_env("AXON_CODEX_CONTROL_HOME").map(std::path::PathBuf::from);
+    cfg.codex_control_account_writes = env_bool("AXON_CODEX_CONTROL_ACCOUNT_WRITES", false);
+    cfg.codex_control_config_writes = env_bool("AXON_CODEX_CONTROL_CONFIG_WRITES", false);
+    cfg.codex_control_mcp_writes = env_bool("AXON_CODEX_CONTROL_MCP_WRITES", false);
+    cfg.codex_control_plugin_writes = env_bool("AXON_CODEX_CONTROL_PLUGIN_WRITES", false);
+    cfg.codex_control_skill_writes = env_bool("AXON_CODEX_CONTROL_SKILL_WRITES", false);
     // llm_completion_concurrency / llm_completion_timeout_secs / codex_pool_idle_ttl_secs
     // get their real env-over-toml-over-default value in
     // `tuning::apply_env_toml_tuning` (config.toml keys `llm.completion-concurrency`,

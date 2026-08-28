@@ -348,6 +348,17 @@
 # AXON_CODEX_CMD, AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL,
 # AXON_CODEX_COMPLETION_CONCURRENCY.
 
+# Codex Palette management is a distinct, default-off runtime. It never uses
+# the synthesis pool or its isolated homes. AXON_CODEX_CONTROL_HOME must be an
+# existing absolute, non-symlink directory managed by the server host.
+# AXON_CODEX_CONTROL_ENABLED=false
+# AXON_CODEX_CONTROL_HOME=/absolute/path/to/stable/codex-control-home
+# AXON_CODEX_CONTROL_ACCOUNT_WRITES=false
+# AXON_CODEX_CONTROL_CONFIG_WRITES=false
+# AXON_CODEX_CONTROL_MCP_WRITES=false
+# AXON_CODEX_CONTROL_PLUGIN_WRITES=false
+# AXON_CODEX_CONTROL_SKILL_WRITES=false
+
 [providers.search]
 # `research` fetches each top source's full page and synthesizes over it by
 # default; set false for snippet-only/fast synthesis.
