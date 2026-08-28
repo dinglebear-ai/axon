@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.24] - 2026-08-28
+
+### Changed
+
+- Source pipeline throughput work for Apple Silicon: env-tunable
+  acquisition/document/status wave sizes, a ramped first acquisition wave,
+  a real cold path for `refresh=force`, an embed/upsert overlap toggle,
+  and length-sorted TEI client request packing.
+- Prune: vector-delete cleanup debt is grouped into one delete per
+  source generation.
+- `axon serve` only opens the setup-wizard browser tab for interactive
+  operators.
+
 ## [7.2.23] - 2026-08-24
 
 ### Fixed
