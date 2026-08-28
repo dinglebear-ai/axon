@@ -807,7 +807,10 @@ jobs:
   # The fast contract job must pass before either expensive Rust lane starts.
   clippy:
     name: clippy
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): every current farm runner fails Rust
+    # toolchain setup (missing rustup / unwritable toolchain dirs).
+    runs-on: ubuntu-latest
     # 60, not 30: slowest green run measured at 34.9 min, so a 30-minute cap
     # would hard-fail a build that passes.
     timeout-minutes: 60
@@ -827,7 +830,10 @@ jobs:
 
   test:
     name: test
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): every current farm runner fails Rust
+    # toolchain setup (missing rustup / unwritable toolchain dirs).
+    runs-on: ubuntu-latest
     # 90, not 30: slowest green run measured at 53.3 min, and 4 of 15 green runs
     # exceed 30 min. A 30-minute cap would hard-fail builds that pass.
     timeout-minutes: 90
@@ -974,7 +980,10 @@ jobs:
 
   security:
     name: security
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): every current farm runner fails Rust
+    # toolchain setup (missing rustup / unwritable toolchain dirs).
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes, rust-contracts]
     # The weekly cron routes the security audit while intentionally skipping
