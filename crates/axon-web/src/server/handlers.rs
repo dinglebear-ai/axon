@@ -14,6 +14,8 @@ pub mod auth;
 pub mod chat;
 #[path = "handlers/chat_stream.rs"]
 pub mod chat_stream;
+#[path = "handlers/codex_control.rs"]
+pub mod codex_control;
 #[path = "handlers/config.rs"]
 pub mod config;
 #[path = "handlers/discovery.rs"]

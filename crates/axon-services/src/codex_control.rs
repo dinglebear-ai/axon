@@ -26,6 +26,7 @@ pub struct CodexControlSnapshot {
 }
 
 pub struct CodexControlService {
+    config: ControlConfig,
     runtime: Arc<ControlRuntime>,
     transport: Mutex<Option<Arc<ControlTransport>>>,
     operations: OperationStore,
@@ -39,6 +40,7 @@ impl CodexControlService {
         database: &Path,
     ) -> Result<Self, String> {
         Ok(Self {
+            config: config.clone(),
             runtime: Arc::new(ControlRuntime::new(config)?),
             transport: Mutex::new(None),
             operations: OperationStore::open(database)?,
@@ -137,11 +139,18 @@ impl CodexControlService {
     }
 
     async fn transport(&self) -> Result<Arc<ControlTransport>, String> {
-        self.transport
-            .lock()
-            .await
-            .clone()
-            .ok_or_else(|| "Codex control runtime is not started".to_string())
+        let mut slot = self.transport.lock().await;
+        if let Some(transport) = slot.as_ref() {
+            return Ok(Arc::clone(transport));
+        }
+        let boot_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("system clock before epoch: {error}"))?
+            .as_millis() as u64;
+        let transport =
+            Arc::new(ControlTransport::start(&self.config, RuntimeEpoch(boot_id)).await?);
+        *slot = Some(Arc::clone(&transport));
+        Ok(transport)
     }
 }
 

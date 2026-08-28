@@ -15,6 +15,7 @@ build = "build.rs"
 [dependencies]
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
+axon-codex = { path = "../axon-codex" }
 axon-error = { path = "../axon-error" }
 axon-jobs = { path = "../axon-jobs" }
 axon-services = { path = "../axon-services" }
