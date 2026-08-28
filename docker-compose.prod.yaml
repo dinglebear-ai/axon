@@ -3,7 +3,7 @@ name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
 # Full axon stack: axon (HTTP), tei, chrome, and a mandatory bundled qdrant
 # service — qdrant is NOT optional in this file; every `up -d` starts all 4.
 #   docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
-# For this deployment's specific override (qdrant lives on nashost for RAM
+# For this deployment's specific override (qdrant lives on tootie for RAM
 # reasons, not devhost), apply docker-compose.external-qdrant.yaml on top:
 #   docker compose --env-file ~/.axon/.env \
 #     -f docker-compose.prod.yaml -f docker-compose.external-qdrant.yaml up -d
@@ -58,7 +58,7 @@ services:
       # Pin service URLs so the axon container does not inherit host-loopback
       # values from ~/.axon/.env. Bundled qdrant is the default (mandatory,
       # always started below); docker-compose.external-qdrant.yaml overrides
-      # this to point at an external instance (e.g. nashost) instead.
+      # this to point at an external instance (e.g. tootie) instead.
       QDRANT_URL: ${AXON_QDRANT_URL:-http://axon-qdrant:6333}
       TEI_URL: http://axon-tei:80
       AXON_CHROME_REMOTE_URL: http://axon-chrome:6000

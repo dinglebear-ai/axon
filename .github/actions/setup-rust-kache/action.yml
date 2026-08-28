@@ -229,7 +229,7 @@ runs:
         prefix = "rust"
         profile = "kache"
         TOML
-          echo "kache remote: s3://kache/rust via Nashost MinIO"
+          echo "kache remote: s3://kache/rust via Tootie MinIO"
         else
           cat > "$config_file" <<TOML
         [cache]
