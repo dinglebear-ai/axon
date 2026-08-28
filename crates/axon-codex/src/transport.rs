@@ -1,6 +1,7 @@
 //! Supervised JSONL transport for the dedicated Codex control process.
 
 use crate::control::ControlConfig;
+use crate::events::{EventKind, EventRecorder, RecordedEvent};
 use crate::protocol::{
     ClientRequest, IncomingMessage, PendingRequests, ProtocolError, RpcError, RuntimeEpoch,
     parse_frame,
@@ -16,27 +17,13 @@ use tokio::task::JoinHandle;
 
 const EVENT_CAPACITY: usize = 256;
 
-#[derive(Debug, Clone)]
-pub enum ControlEvent {
-    Notification {
-        method: String,
-        params: Value,
-    },
-    ServerRequest {
-        id: u64,
-        method: String,
-        params: Value,
-    },
-    ProtocolFailure(String),
-    Exited,
-}
-
 pub struct ControlTransport {
     epoch: RuntimeEpoch,
     pending: PendingRequests,
     stdin: Arc<Mutex<ChildStdin>>,
     child: Arc<Mutex<Child>>,
-    events: broadcast::Sender<ControlEvent>,
+    events: broadcast::Sender<RecordedEvent>,
+    event_recorder: EventRecorder,
     reader_task: JoinHandle<()>,
     timeout: std::time::Duration,
 }
@@ -71,13 +58,21 @@ impl ControlTransport {
         let child = Arc::new(Mutex::new(child));
         let pending = PendingRequests::new(epoch);
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
-        let reader_task = spawn_reader(stdout, epoch, pending.clone(), events.clone());
+        let event_recorder = EventRecorder::new(epoch);
+        let reader_task = spawn_reader(
+            stdout,
+            epoch,
+            pending.clone(),
+            events.clone(),
+            event_recorder.clone(),
+        );
         let transport = Self {
             epoch,
             pending,
             stdin,
             child,
             events,
+            event_recorder,
             reader_task,
             timeout: config.request_timeout,
         };
@@ -85,8 +80,16 @@ impl ControlTransport {
         Ok(transport)
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<ControlEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<RecordedEvent> {
         self.events.subscribe()
+    }
+
+    pub fn events_after(
+        &self,
+        cursor: Option<crate::events::EventCursor>,
+        limit: usize,
+    ) -> Result<Vec<RecordedEvent>, String> {
+        self.event_recorder.after(cursor, limit)
     }
 
     pub fn epoch(&self) -> RuntimeEpoch {
@@ -154,7 +157,8 @@ fn spawn_reader(
     stdout: tokio::process::ChildStdout,
     epoch: RuntimeEpoch,
     pending: PendingRequests,
-    events: broadcast::Sender<ControlEvent>,
+    events: broadcast::Sender<RecordedEvent>,
+    recorder: EventRecorder,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).split(b'\n');
@@ -166,26 +170,31 @@ fn spawn_reader(
                         let _ = pending.resolve(id, result);
                     }
                     Ok(IncomingMessage::Notification { method, params }) => {
-                        let _ = events.send(ControlEvent::Notification { method, params });
+                        let _ = events
+                            .send(recorder.record(EventKind::Notification { method, params }));
                     }
                     Ok(IncomingMessage::ServerRequest { id, method, params }) => {
-                        let _ = events.send(ControlEvent::ServerRequest {
-                            id: id.sequence,
+                        let _ = events.send(recorder.record(EventKind::ServerRequest {
+                            request_id: id.sequence,
                             method,
                             params,
-                        });
+                        }));
                     }
                     Ok(IncomingMessage::Unknown(_)) => {}
                     Err(error) => {
-                        let _ = events.send(ControlEvent::ProtocolFailure(error.to_string()));
+                        let _ = events.send(recorder.record(EventKind::ProtocolFailure {
+                            detail: error.to_string(),
+                        }));
                     }
                 },
                 Ok(None) => {
-                    let _ = events.send(ControlEvent::Exited);
+                    let _ = events.send(recorder.record(EventKind::Exited));
                     break;
                 }
                 Err(error) => {
-                    let _ = events.send(ControlEvent::ProtocolFailure(error.to_string()));
+                    let _ = events.send(recorder.record(EventKind::ProtocolFailure {
+                        detail: error.to_string(),
+                    }));
                     break;
                 }
             }
