@@ -23,3 +23,15 @@ The final scheduler comparison, if earned by this gate, separately measures a
 pinned fresh-corpus/warm-service run, cold-service startup, and a live full
 crawl. It adds corpus/vector equivalence, RSS, thermal state, SQLite admission,
 and Qdrant publication diagnostics.
+
+## 2026-08-28 evidence gate
+
+A fresh live `code.claude.com` baseline used an empty Axon state, a unique
+Qdrant collection, and a freshly started loopback MLX process. It completed in
+72.992 seconds. The same-process aggregate reported 7.21% padding, 93.56% row
+occupancy, 46.21% token occupancy, and 46.10% synchronized Metal idle time.
+
+The gate passed on both token occupancy below 85% and Metal idle above 5%.
+This authorizes the scheduler implementation. These values are hypothesis
+evidence, not cutover evidence; the Task 10 pinned comparison must use the
+SQLite-derived committed-corpus hash and exact vector/ID parity checks.

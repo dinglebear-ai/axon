@@ -29,6 +29,36 @@ validate_safe_source() {
   [[ $source != *'`'* ]] || return 1
 }
 
+corpus_hash_from_sqlite() {
+  local database=$1
+  local job_id=$2
+  python3 - "$database" "$job_id" <<'PY'
+import hashlib
+import json
+import sqlite3
+import sys
+
+database, job_id = sys.argv[1:]
+with sqlite3.connect(database) as connection:
+    rows = connection.execute(
+        """
+        SELECT i.source_item_key, i.content_hash
+        FROM source_items AS i
+        JOIN sources AS s
+          ON s.source_id = i.source_id
+         AND s.committed_generation = i.generation
+        WHERE i.source_id = (SELECT source_id FROM jobs WHERE job_id = ?)
+        ORDER BY i.source_item_key
+        """,
+        (job_id,),
+    ).fetchall()
+if not rows:
+    raise SystemExit("completed benchmark has no committed corpus rows")
+payload = json.dumps(rows, separators=(",", ":"), ensure_ascii=False).encode()
+print(hashlib.sha256(payload).hexdigest())
+PY
+}
+
 metrics_get() {
   local output=$1
   [[ ${AXON_BENCH_MLX_URL:-http://127.0.0.1:8084} == http://127.0.0.1:* ]] || return 2
@@ -81,10 +111,7 @@ run_benchmark() {
   job_id=$(jq -r '.job_id // .data.job_id // .id // empty' "$stdout_file")
   validate_job_id "$job_id" || { echo 'benchmark output did not contain a valid job id' >&2; return 3; }
 
-  corpus_hash=$(jq -cS '
-      [.. | objects | select(has("document_id") and has("chunk_id")) |
-       [.document_id, .chunk_id, (.content_hash // "")]] | sort
-    ' "$stdout_file" | shasum -a 256 | awk '{print $1}')
+  corpus_hash=$(corpus_hash_from_sqlite "$state_dir/jobs.db" "$job_id")
 
   PYTHONPATH="$SCRIPT_DIR" python3 - "$before_file" "$after_file" "$job_id" \
     "$corpus_hash" "$start_ns" "$end_ns" >"$output" <<'PY'
