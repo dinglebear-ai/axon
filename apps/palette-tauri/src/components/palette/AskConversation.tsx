@@ -1,4 +1,4 @@
-import { Paperclip, Send, X } from "lucide-react";
+import { Download, GitBranch, Layers3, Paperclip, Quote, Send, X } from "lucide-react";
 import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { Message, MessageContent } from "@/components/aurora/ai/message";
@@ -234,7 +234,25 @@ export const AskConversation = memo(function AskConversation({
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [selectedSlashAction, setSelectedSlashAction] = useState<PaletteAction | null>(null);
   const [suggestionsByTurn, setSuggestionsByTurn] = useState<Record<string, SuggestionState>>({});
+  const [contextOpen, setContextOpen] = useState(false);
+  const [branches, setBranches] = useState<Array<{ id: string; label: string; turns: AskTurn[] }>>(
+    [],
+  );
+  const [activeBranch, setActiveBranch] = useState("main");
   const canSend = draft.trim().length > 0 && !pending;
+  const visibleTranscript =
+    activeBranch === "main"
+      ? transcript
+      : (branches.find((branch) => branch.id === activeBranch)?.turns ?? transcript);
+  const contextSources = useMemo(
+    () => visibleTranscript?.flatMap((turn) => turn.sources ?? []) ?? [],
+    [visibleTranscript],
+  );
+  const activityCount = useMemo(
+    () =>
+      visibleTranscript?.reduce((total, turn) => total + (turn.activities?.length ?? 0), 0) ?? 0,
+    [visibleTranscript],
+  );
   const slashQuery =
     !selectedSlashAction && draft.startsWith("/") ? draft.slice(1).trimStart() : null;
   const slashMenuOpen = slashQuery !== null && !pending && Boolean(onRunAction);
@@ -273,6 +291,15 @@ export const AskConversation = memo(function AskConversation({
   useEffect(() => {
     setSelectedCommand(0);
   }, [slashQuery]);
+
+  useEffect(() => {
+    if (activeBranch === "main" || !transcript) return;
+    setBranches((current) =>
+      current.map((branch) =>
+        branch.id === activeBranch ? { ...branch, turns: [...transcript] } : branch,
+      ),
+    );
+  }, [activeBranch, transcript]);
 
   function resetSlashAction() {
     setSelectedSlashAction(null);
@@ -351,12 +378,100 @@ export const AskConversation = memo(function AskConversation({
     onFollowUp(value);
   }
 
+  function downloadConversation() {
+    const markdown = (visibleTranscript ?? [])
+      .map((turn) => `## ${turn.role === "user" ? "You" : "Axon"}\n\n${turn.content}`)
+      .join("\n\n---\n\n");
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `axon-conversation-${new Date().toISOString().slice(0, 10)}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function forkConversation() {
+    const id = `branch-${branches.length + 1}`;
+    setBranches((current) => [
+      ...current,
+      { id, label: `Branch ${current.length + 1}`, turns: [...(visibleTranscript ?? [])] },
+    ]);
+    setActiveBranch(id);
+  }
+
+  function quoteSelection() {
+    const selection = window.getSelection()?.toString().trim();
+    if (!selection) return;
+    setDraft(
+      (current) => `${current}${current ? "\n\n" : ""}> ${selection.replace(/\n/g, "\n> ")}\n\n`,
+    );
+  }
+
   return (
     <div className="ask-body">
+      <div className="ask-workspace-toolbar">
+        <div className="ask-branch-control">
+          <GitBranch size={13} />
+          <select
+            value={activeBranch}
+            onChange={(event) => setActiveBranch(event.target.value)}
+            aria-label="Conversation branch"
+          >
+            <option value="main">Main</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.label}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={forkConversation}>
+            Branch
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setContextOpen((value) => !value)}
+          className={contextOpen ? "is-active" : ""}
+        >
+          <Layers3 size={13} /> Context <span>{contextSources.length}</span>
+        </button>
+        <button type="button" onClick={quoteSelection} title="Quote selected answer text">
+          <Quote size={13} /> Quote
+        </button>
+        <button
+          type="button"
+          onClick={downloadConversation}
+          disabled={!visibleTranscript?.length}
+          title="Save conversation as Markdown"
+        >
+          <Download size={13} /> Save
+        </button>
+      </div>
+      {contextOpen ? (
+        <aside className="ask-context-panel">
+          <header>
+            <strong>Context used</strong>
+            <span>
+              {contextSources.length} sources · {activityCount} activity steps
+            </span>
+          </header>
+          {contextSources.length ? (
+            <div>
+              {contextSources.map((source) => (
+                <span key={`${source.url ?? source.label}:${source.title ?? "source"}`}>
+                  {source.title ?? source.label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p>No retrieval sources were attached to this answer.</p>
+          )}
+        </aside>
+      ) : null}
       <ConversationThread
         prompt={prompt}
         answer={answer ?? ""}
-        turns={transcript}
+        turns={visibleTranscript}
         suggestionsEnabled={suggestionsEnabled && Boolean(onSuggestMessage)}
         suggestionsByTurn={suggestionsByTurn}
         onSuggestTurn={suggestTurn}

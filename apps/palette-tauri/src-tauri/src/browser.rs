@@ -1,39 +1,29 @@
-// Real in-app "Browser" tool: a dedicated native `WebviewWindow`, separate
-// from the main palette window, that navigates to real external URLs.
+// Real in-app "Browser" tool: an embedded native `Webview` child attached
+// directly inside the main palette window (Tauri v2 multiwebview), rendering
+// live external web pages inside the `.browser-surface` area.
 //
-// Why a separate native window instead of an embedded child webview:
-// - The main window's CSP (`tauri.conf.json` -> app.security.csp) is locked
-//   to `default-src 'self'` with no `frame-src` allowance, so a plain
-//   `<iframe src="https://...">` inside the main webview cannot load
-//   third-party sites.
-// - Tauri v2 does support embedding a child `Webview` inside an existing
-//   window (multiwebview), but that requires manually keeping the child
-//   webview's bounds in sync with the main window's geometry, which is
-//   already tightly hand-managed for the compact/expanded palette states
-//   (see `resize_palette` in `lib.rs` and `useWindowChrome.ts` on the
-//   frontend). A second bounds-tracking system for a browser pane adds
-//   fragility for comparatively little visual benefit.
-// - A dedicated `WebviewWindow` is a fully real, independently-navigable
-//   webview with its own security context (not bound by the main window's
-//   CSP), and it is trivial to create, show, resize, and destroy without
-//   touching the main window's carefully-tuned geometry code at all.
-//
-// Tauri v2 does not expose a first-class "go back"/"go forward" API on
-// `WebviewWindow`, so those two commands drive the loaded page's own
-// session history via `eval("history.back()")` / `eval("history.forward()")`
-// — which is a real navigation of whatever real page is currently loaded,
-// not a simulation.
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+// Benefits of a native child webview vs an iframe or separate window:
+// - Arbitrary external sites (Google, Unraid, GitHub, etc.) load natively
+//   without being blocked by X-Frame-Options: DENY or CSP frame-ancestors.
+// - The browser renders seamlessly inside the palette window underneath the
+//   custom tabstrip and address bar without opening a disconnected OS window.
+// - The child webview position and size track `.browser-surface` via
+//   `browser_set_bounds` dynamically.
+use serde::Deserialize;
+use tauri::{
+    AppHandle, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewBuilder, WebviewUrl,
+};
 
-/// Label of the dedicated browser window. Distinct from the main palette
-/// window's `"main"` label.
-pub(crate) const BROWSER_WINDOW_LABEL: &str = "browser";
+/// Label of the embedded child browser webview attached to the main window.
+pub(crate) const BROWSER_WEBVIEW_LABEL: &str = "browser_content";
 
-const BROWSER_WINDOW_TITLE: &str = "Axon Browser";
-#[cfg(desktop)]
-const DEFAULT_WIDTH: f64 = 1100.0;
-#[cfg(desktop)]
-const DEFAULT_HEIGHT: f64 = 760.0;
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub(crate) struct BrowserBounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
 
 /// Validate and normalize a URL for the browser window. Rejects anything
 /// that isn't `http`/`https`/`about:blank` so the browser command surface
@@ -64,53 +54,90 @@ fn webview_url_for(raw: &str) -> Result<WebviewUrl, String> {
     Ok(WebviewUrl::External(parsed))
 }
 
-/// Open the browser window at `url`, creating it if it doesn't exist yet, or
-/// focusing + navigating the existing one.
-///
-/// Tauri v2 documents a Windows-specific deadlock when creating a
-/// `WebviewWindow` synchronously inside a command handler, so this command
-/// is `async` (Tauri runs async commands on a separate thread pool).
+/// Open or navigate the embedded child browser webview inside the main palette
+/// window at `url`.
 #[tauri::command]
-pub(crate) async fn browser_open(app: AppHandle, url: String) -> Result<(), String> {
+pub(crate) async fn browser_open(
+    app: AppHandle,
+    url: String,
+    bounds: Option<BrowserBounds>,
+) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
     let validated = validate_browser_url(&url)?;
-    if let Some(window) = app.get_webview_window(BROWSER_WINDOW_LABEL) {
-        window
-            .navigate(
-                url::Url::parse(&validated).map_err(|err| format!("invalid browser URL: {err}"))?,
-            )
-            .map_err(|err| err.to_string())?;
-        window.show().map_err(|err| err.to_string())?;
-        window.set_focus().map_err(|err| err.to_string())?;
+    let parsed_url =
+        url::Url::parse(&validated).map_err(|err| format!("invalid browser URL: {err}"))?;
+
+    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+        if let Some(b) = bounds {
+            let _ = webview.set_position(Position::Logical(LogicalPosition::new(b.x, b.y)));
+            let _ = webview.set_size(Size::Logical(LogicalSize::new(b.width, b.height)));
+        }
+        let _ = webview.show();
+        webview.navigate(parsed_url).map_err(|err| err.to_string())?;
+        let _ = webview.set_focus();
         return Ok(());
     }
 
+    let main_window = app.get_window("main").ok_or("main window not found")?;
     let webview_url = webview_url_for(&validated)?;
-    let builder = WebviewWindowBuilder::new(&app, BROWSER_WINDOW_LABEL, webview_url)
-        .title(BROWSER_WINDOW_TITLE);
-    #[cfg(desktop)]
-    let builder = builder
-        .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-        .center()
-        .resizable(true);
-    builder.build().map_err(|err| err.to_string())?;
+    let builder = WebviewBuilder::new(BROWSER_WEBVIEW_LABEL, webview_url).auto_resize();
+
+    let (pos, size) = if let Some(b) = bounds {
+        (
+            LogicalPosition::new(b.x, b.y),
+            LogicalSize::new(b.width, b.height),
+        )
+    } else {
+        (
+            LogicalPosition::new(0.0, 92.0),
+            LogicalSize::new(720.0, 400.0),
+        )
+    };
+
+    main_window
+        .add_child(builder, pos, size)
+        .map_err(|err| err.to_string())?;
+
+    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+        let _ = webview.set_focus();
+    }
     Ok(())
 }
 
-/// Navigate the existing browser window to a new URL. Opens the window first
-/// if it isn't already open (same behavior as `browser_open`).
+/// Navigate the existing embedded browser to a new URL. Opens/attaches it
+/// first if it isn't already attached.
 #[tauri::command]
-pub(crate) async fn browser_navigate(app: AppHandle, url: String) -> Result<(), String> {
-    browser_open(app, url).await
+pub(crate) async fn browser_navigate(
+    app: AppHandle,
+    url: String,
+    bounds: Option<BrowserBounds>,
+) -> Result<(), String> {
+    browser_open(app, url, bounds).await
+}
+
+/// Update the bounds (position and size in logical pixels relative to main window)
+/// of the embedded browser child webview.
+#[tauri::command]
+pub(crate) fn browser_set_bounds(app: AppHandle, bounds: BrowserBounds) -> Result<(), String> {
+    crate::require_desktop_feature("Browser")?;
+    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+        webview
+            .set_position(Position::Logical(LogicalPosition::new(bounds.x, bounds.y)))
+            .map_err(|err| err.to_string())?;
+        webview
+            .set_size(Size::Logical(LogicalSize::new(bounds.width, bounds.height)))
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
 }
 
 /// Drive the loaded page's own back-navigation. A no-op (not an error) if
-/// the browser window isn't currently open.
+/// the browser isn't currently open.
 #[tauri::command]
 pub(crate) fn browser_back(app: AppHandle) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    with_browser_window(&app, |window| {
-        window.eval("history.back()").map_err(|err| err.to_string())
+    with_browser_webview(&app, |webview| {
+        webview.eval("history.back()").map_err(|err| err.to_string())
     })
 }
 
@@ -118,8 +145,8 @@ pub(crate) fn browser_back(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub(crate) fn browser_forward(app: AppHandle) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    with_browser_window(&app, |window| {
-        window
+    with_browser_webview(&app, |webview| {
+        webview
             .eval("history.forward()")
             .map_err(|err| err.to_string())
     })
@@ -129,29 +156,29 @@ pub(crate) fn browser_forward(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub(crate) fn browser_reload(app: AppHandle) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    with_browser_window(&app, |window| {
-        window
+    with_browser_webview(&app, |webview| {
+        webview
             .eval("location.reload()")
             .map_err(|err| err.to_string())
     })
 }
 
-/// Close (destroy) the browser window if it exists.
+/// Close (destroy) the embedded child browser webview if it exists.
 #[tauri::command]
 pub(crate) fn browser_close(app: AppHandle) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    if let Some(window) = app.get_webview_window(BROWSER_WINDOW_LABEL) {
-        window.close().map_err(|err| err.to_string())?;
+    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+        webview.close().map_err(|err| err.to_string())?;
     }
     Ok(())
 }
 
-fn with_browser_window(
+fn with_browser_webview(
     app: &AppHandle,
-    f: impl FnOnce(&tauri::WebviewWindow) -> Result<(), String>,
+    f: impl FnOnce(&tauri::Webview) -> Result<(), String>,
 ) -> Result<(), String> {
-    match app.get_webview_window(BROWSER_WINDOW_LABEL) {
-        Some(window) => f(&window),
+    match app.get_webview(BROWSER_WEBVIEW_LABEL) {
+        Some(webview) => f(&webview),
         None => Ok(()),
     }
 }

@@ -1,6 +1,8 @@
+import { ChartNoAxesCombined } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 
 import { Sparkline } from "@/components/palette/Sparkline";
+import { WorkspaceHeader, WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
 import { arrField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
 
 function fmtDelta(value: number): string {
@@ -74,7 +76,13 @@ export const StatsView = memo(function StatsView({ payload }: { payload: unknown
     .sort((a, b) => b[1] - a[1]);
 
   return (
-    <div className="output-body stats-view aurora-scrollbar">
+    <WorkspaceSurface className="output-body stats-view">
+      <WorkspaceHeader
+        icon={ChartNoAxesCombined}
+        eyebrow="Collection Analytics"
+        title={strField(stats, "collection") ?? "Axon"}
+        description="Index volume, freshness, timing, and recent collection growth."
+      />
       <section className="stats-section">
         <h3 className="stats-heading">Collection · {strField(stats, "collection") ?? "axon"}</h3>
         <div className="metric-grid">
@@ -143,6 +151,6 @@ export const StatsView = memo(function StatsView({ payload }: { payload: unknown
           </div>
         </section>
       )}
-    </div>
+    </WorkspaceSurface>
   );
 });

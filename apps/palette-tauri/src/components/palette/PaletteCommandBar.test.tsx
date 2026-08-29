@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { actionDisplayMeta } from "@/lib/actionMeta";
 import { ACTIONS, MOBILE_ACTIONS, type PaletteAction } from "@/lib/actions";
+import { appWindow } from "@/lib/invoke";
 
 const config = {
   serverUrl: "http://127.0.0.1:9999",
@@ -64,6 +65,17 @@ afterEach(() => {
 });
 
 describe("PaletteCommandBar combobox ARIA (A11Y-C1)", () => {
+  it("drags the desktop window from non-interactive command-bar space", () => {
+    const startDragging = vi.spyOn(appWindow, "startDragging").mockResolvedValue();
+    const { container } = renderBar();
+
+    fireEvent.mouseDown(container.querySelector(".command-bar") as HTMLElement, { button: 0 });
+    expect(startDragging).toHaveBeenCalledTimes(1);
+
+    fireEvent.mouseDown(screen.getByRole("combobox"), { button: 0 });
+    expect(startDragging).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes the input as a combobox wired to the listbox", () => {
     renderBar();
     const input = screen.getByRole("combobox");

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
 use tauri::{
-    LogicalSize, Size,
+    LogicalSize, PhysicalPosition, Position, Size,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
@@ -196,6 +196,45 @@ fn show_palette(app: AppHandle) -> Result<(), String> {
 }
 
 #[cfg(desktop)]
+fn center_position(
+    monitor_position: (i32, i32),
+    monitor_size: (u32, u32),
+    scale_factor: f64,
+    window_size: (f64, f64),
+) -> (i32, i32) {
+    let window_width = window_size.0 * scale_factor;
+    let window_height = window_size.1 * scale_factor;
+    (
+        monitor_position.0 + ((monitor_size.0 as f64 - window_width) / 2.0).round() as i32,
+        monitor_position.1 + ((monitor_size.1 as f64 - window_height) / 2.0).round() as i32,
+    )
+}
+
+#[cfg(desktop)]
+fn resize_and_center(window: &tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+    let monitor = window.current_monitor().map_err(|err| err.to_string())?;
+    window
+        .set_size(Size::Logical(LogicalSize { width, height }))
+        .map_err(|err| err.to_string())?;
+
+    if let Some(monitor) = monitor {
+        let position = monitor.position();
+        let size = monitor.size();
+        let (x, y) = center_position(
+            (position.x, position.y),
+            (size.width, size.height),
+            monitor.scale_factor(),
+            (width, height),
+        );
+        window
+            .set_position(Position::Physical(PhysicalPosition::new(x, y)))
+            .map_err(|err| err.to_string())
+    } else {
+        window.center().map_err(|err| err.to_string())
+    }
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Result<(), String> {
     let window = app
@@ -206,12 +245,10 @@ fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Resu
     if window.is_maximized().unwrap_or(false) {
         let _ = window.unmaximize();
     }
-    window
-        .set_size(Size::Logical(LogicalSize { width, height }))
-        .map_err(|err| err.to_string())?;
+    resize_and_center(&window, width, height)?;
     // Per-view native shadow toggle (see useWindowChrome.ts for the policy).
     let _ = window.set_shadow(shadow);
-    window.center().map_err(|err| err.to_string())
+    Ok(())
 }
 
 #[cfg(mobile)]
@@ -376,9 +413,11 @@ fn normalize_shortcut_label(shortcut: &str) -> String {
     match shortcut.trim().to_ascii_lowercase().as_str() {
         "alt+space" | "option+space" => "Alt+Space".to_string(),
         "ctrl+space" | "control+space" => "Ctrl+Space".to_string(),
+        "cmd+space" | "command+space" | "super+space" => "Cmd+Space".to_string(),
         "cmd+shift+space" | "command+shift+space" | "super+shift+space" => {
             "Cmd+Shift+Space".to_string()
         }
+        "ctrl+shift+space" | "control+shift+space" => "Ctrl+Shift+Space".to_string(),
         _ => DEFAULT_SHORTCUT.to_string(),
     }
 }
@@ -408,9 +447,14 @@ fn shortcut_for_label(label: &str) -> Shortcut {
     match normalize_shortcut_label(label).as_str() {
         "Alt+Space" => Shortcut::new(Some(Modifiers::ALT), Code::Space),
         "Ctrl+Space" => Shortcut::new(Some(Modifiers::CONTROL), Code::Space),
+        "Cmd+Space" => Shortcut::new(Some(Modifiers::SUPER), Code::Space),
         "Cmd+Shift+Space" => Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space),
         _ => Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space),
     }
+}
+
+fn shortcut_needs_registration(active_label: Option<&str>, new_label: &str) -> bool {
+    active_label != Some(new_label)
 }
 
 #[cfg(desktop)]
@@ -422,6 +466,9 @@ fn register_configured_shortcut(app: &AppHandle, settings: &PaletteSettings) -> 
     // rather than calling `unregister_all` which would also unregister shortcuts
     // registered by other parts of the app.
     if let Ok(mut guard) = app.state::<ActiveShortcut>().0.lock() {
+        if !shortcut_needs_registration(guard.as_deref(), &new_label) {
+            return Ok(());
+        }
         if let Some(old_label) = guard.take().filter(|l| l != &new_label) {
             let old_shortcut = shortcut_for_label(&old_label);
             if let Err(err) = app.global_shortcut().unregister(old_shortcut) {
@@ -454,17 +501,14 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     if window.is_maximized().unwrap_or(false) {
         let _ = window.unmaximize();
     }
-    window
-        .set_size(Size::Logical(LogicalSize {
-            // Compact launcher — matches COMPACT in useWindowChrome.ts (bar + inset).
-            width: 720.0,
-            height: 92.0,
-        }))
-        .map_err(|err| err.to_string())?;
+    // Compact launcher — matches COMPACT in useWindowChrome.ts (bar + inset).
+    resize_and_center(&window, 720.0, 92.0)?;
     // Compact floats a CSS-glowing bar; keep the native shadow off (JS re-asserts).
     let _ = window.set_shadow(false);
-    window.center().map_err(|err| err.to_string())?;
     window.show().map_err(|err| err.to_string())?;
+    if let Ok(true) = window.is_minimized() {
+        window.unminimize().map_err(|err| err.to_string())?;
+    }
     window.set_focus().map_err(|err| err.to_string())?;
     if let Err(err) = window.emit("palette://shown", ()) {
         diag::warn_with_context("failed to emit shown event", err);
@@ -489,16 +533,15 @@ fn toggle_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
-    match window.is_visible() {
-        Ok(true) => {
-            if let Err(err) = window.hide() {
-                diag::warn_with_context("failed to hide main window", err);
-            }
+    let is_visible = window.is_visible().unwrap_or(false);
+    let is_focused = window.is_focused().unwrap_or(false);
+    if is_visible && is_focused {
+        if let Err(err) = window.hide() {
+            diag::warn_with_context("failed to hide main window", err);
         }
-        _ => {
-            if let Err(err) = show_main_window(app) {
-                diag::warn_with_context("failed to show main window", err);
-            }
+    } else {
+        if let Err(err) = show_main_window(app) {
+            diag::warn_with_context("failed to show main window", err);
         }
     }
 }

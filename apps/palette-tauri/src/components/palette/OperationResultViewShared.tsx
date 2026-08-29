@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { CSSProperties, ReactNode } from "react";
+import { Check, Copy, ExternalLink } from "lucide-react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 
 import { StatusIndicator, type StatusTone } from "@/components/ui/aurora/status-indicator";
 import { isTauriRuntime } from "@/lib/invoke";
@@ -28,35 +29,62 @@ export function UrlListView({
   payload: Record<string, unknown>;
   keys: string[];
 }) {
+  const [copied, setCopied] = useState<string | null>(null);
   const urls = arrayByKeys(payload, keys).filter(
     (item): item is string => typeof item === "string",
   );
   const count = numField(payload, "count") ?? numField(payload, "total") ?? urls.length;
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary
-        metrics={[
-          ["Total", count],
-          ["View", title],
-        ]}
-      />
+      <header className="operation-collection-header">
+        <div>
+          <span className="operation-section-eyebrow">Collection</span>
+          <h3>{title}</h3>
+        </div>
+        <strong>{count.toLocaleString()} total</strong>
+      </header>
       {urls.length === 0 ? (
         <EmptyResult kind={title.toLowerCase().includes("indexed") ? "sources" : "urls"} />
       ) : (
         <section className="operation-section">
-          <div className="operation-url-grid">
-            {urls.slice(0, LIST_LIMIT * 2).map((url) => (
-              <a
-                key={url}
-                className="operation-url-card"
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <span>{hostLabel(url)}</span>
-                <code>{url}</code>
-              </a>
-            ))}
+          <div className="operation-url-grid operation-url-grid-polished">
+            {urls.slice(0, LIST_LIMIT * 2).map((url, index) => {
+              const parsed = safeUrl(url);
+              const path = parsed ? `${parsed.pathname}${parsed.search}` || "/" : url;
+              return (
+                <article key={url} className="operation-url-card operation-url-card-polished">
+                  <span className="operation-url-card-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div className="operation-url-card-main">
+                    <span>{hostLabel(url)}</span>
+                    <code title={url}>{path}</code>
+                  </div>
+                  <div className="operation-url-card-actions">
+                    <button
+                      type="button"
+                      aria-label={`Copy ${url}`}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(url).then(() => {
+                          setCopied(url);
+                          window.setTimeout(() => setCopied(null), 1400);
+                        });
+                      }}
+                    >
+                      {copied === url ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open ${url}`}
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
@@ -64,10 +92,23 @@ export function UrlListView({
   );
 }
 
+function safeUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 export function JobRows({ rows, title = "Jobs" }: { rows: unknown[]; title?: string }) {
   return (
-    <section className="operation-section">
-      <h3 className="stats-heading">{title}</h3>
+    <section className="operation-section operation-jobs-section">
+      <header className="operation-section-header">
+        <div>
+          <span className="operation-section-eyebrow">{title}</span>
+          <strong>{rows.length.toLocaleString()} items</strong>
+        </div>
+      </header>
       <div className="operation-list">
         {rows.slice(0, LIST_LIMIT).map((row, index) => {
           const job = isRecord(row) ? row : {};
@@ -75,7 +116,7 @@ export function JobRows({ rows, title = "Jobs" }: { rows: unknown[]; title?: str
           const status = strField(job, "status") ?? strField(job, "state") ?? "unknown";
           const target = strField(job, "target") ?? strField(job, "url");
           return (
-            <article key={`${id ?? index}`} className="operation-row">
+            <article key={`${id ?? index}`} className="operation-row operation-job-row">
               <StatusDot status={status} />
               <div className="operation-row-main">
                 <div className="operation-row-title">

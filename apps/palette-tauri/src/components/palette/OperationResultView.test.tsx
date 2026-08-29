@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildHelpRun } from "@/lib/actionHelp";
@@ -282,7 +282,7 @@ describe("OperationResultView structured rendering", () => {
       />,
     );
     expect(screen.getByText("hit one")).toBeInTheDocument();
-    expect(screen.getByText("0.910")).toBeInTheDocument();
+    expect(screen.getByText("91%")).toBeInTheDocument();
   });
 
   it("renders web search results with queued source jobs", () => {
@@ -298,7 +298,7 @@ describe("OperationResultView structured rendering", () => {
       />,
     );
     expect(screen.getByText("Result A")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Queued source jobs" })).toBeInTheDocument();
+    expect(screen.getByText("Queued source jobs")).toBeInTheDocument();
     expect(document.querySelector(".operation-status-dot")).toBeInTheDocument();
     expect(document.querySelector(".operation-dot")).not.toBeInTheDocument();
   });
@@ -310,7 +310,15 @@ describe("OperationResultView structured rendering", () => {
         payload={{ urls: ["https://example.com/x"], count: 1 }}
       />,
     );
+    const row = screen.getByRole("button", { name: /01.*\/x.*example\.com/ });
+    fireEvent.click(row);
     expect(screen.getByText("https://example.com/x")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in browser" })).toHaveAttribute(
+      "href",
+      "https://example.com/x",
+    );
+    expect(screen.getByText("Web page")).toBeInTheDocument();
+    expect(screen.getByText("Depth 1")).toBeInTheDocument();
   });
 
   it("renders retrieved document content", () => {
@@ -341,7 +349,7 @@ describe("OperationResultView structured rendering", () => {
       />,
     );
     expect(screen.getByText("Indexed sources")).toBeInTheDocument();
-    expect(screen.getByText("https://example.com/source")).toBeInTheDocument();
+    expect(screen.getByTitle("https://example.com/source")).toHaveTextContent("/source");
 
     render(
       <OperationResultView
@@ -402,7 +410,7 @@ describe("OperationResultView structured rendering", () => {
         payload={{ jobs: [{ job_id: "j1", status: "running", url: "https://example.com" }] }}
       />,
     );
-    expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
+    expect(screen.getAllByText("Jobs").length).toBeGreaterThan(0);
   });
 
   it("renders endpoint, brand, and diff detail views", () => {

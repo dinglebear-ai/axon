@@ -166,8 +166,9 @@ export default function App() {
     jobExpanded,
     jobMinimized,
     settingsOpen,
-    historyOpen: historyOpen || browserOpen,
-    showResultsLayout,
+    historyOpen,
+    browserOpen,
+    showResultsLayout: showResultsLayout || workspace !== "axon",
     showContent,
     filteredLength: filtered.length,
     shownTick,
@@ -234,7 +235,10 @@ export default function App() {
       } else if (pendingConfirmation) {
         setPendingConfirmation(null);
       }
-      void submit(action, argumentOverride);
+      // Keep the argument validated above as the authoritative snapshot. If we
+      // ask the runner to derive it again from render state, a fast first Enter
+      // can observe the previous query and only the second Enter will execute.
+      void submit(action, argument);
     },
     [modeAction, parsed, pendingConfirmation, query, submit],
   );
@@ -380,6 +384,20 @@ export default function App() {
   }, [clearSourcesFilter]);
   const onToggleSettings = useCallback(() => dispatchView({ type: "toggleSettings" }), []);
   const onToggleMaximize = useCallback(() => void invoke("toggle_maximize"), []);
+  const onQueryChange = useCallback(
+    (value: string) => {
+      // Typing over any completed/running result starts a fresh command search.
+      // Keeping an argument-taking action mode alive here made the new text run
+      // against stale action state, unlike no-input actions which already reset.
+      if (run.kind !== "idle") {
+        setRun({ kind: "idle" });
+        setPendingConfirmation(null);
+        dispatchView({ type: "goToBrowse" });
+      }
+      setQuery(value);
+    },
+    [run.kind],
+  );
   const onCopy = copyOutput;
   const onRetry = useCallback(() => active && void submit(active), [active, submit]);
   const onFollowUp = useCallback(
@@ -480,6 +498,7 @@ export default function App() {
           onHistory,
           onInputKeyDown,
           onOpenJob,
+          onQueryChange,
           onReset,
           onResumeAskSession,
           onRetry,

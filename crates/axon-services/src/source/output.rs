@@ -2,12 +2,14 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use axon_adapters::SourceAdapter;
 use axon_api::source::*;
 use axon_core::boundary::ArtifactBytesWriteRequest;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
+use tokio::io::AsyncWriteExt as _;
 
 use crate::context::TargetLocalSourceRuntime;
 use crate::reserved_call::{self, ProviderCallContext};
@@ -55,6 +57,112 @@ pub(crate) struct SourceOutput {
     pub(crate) artifact_index: SourceArtifactIndex,
 }
 
+#[derive(serde::Serialize)]
+struct DurableManifestEntry<'a> {
+    url: &'a str,
+    relative_path: String,
+    markdown_chars: usize,
+    content_hash: String,
+    changed: bool,
+    source_item_key: &'a str,
+    document_id: &'a str,
+}
+
+/// Prepare the caller-requested filesystem export before processing a new
+/// generation. The manifest is deliberately created before acquisition so it
+/// remains a usable (possibly empty) checkpoint when later pipeline stages
+/// fail. Existing markdown files are content-addressed by URL and overwritten
+/// atomically as their documents complete; truncating only the manifest avoids
+/// a destructive directory-wide reset.
+pub(crate) async fn initialize_durable_export(plan: &SourcePlan) -> anyhow::Result<()> {
+    let Some(output_dir) = durable_output_dir(plan) else {
+        return Ok(());
+    };
+    initialize_durable_export_dir(&output_dir).await
+}
+
+async fn initialize_durable_export_dir(output_dir: &Path) -> anyhow::Result<()> {
+    tokio::fs::create_dir_all(output_dir.join("markdown")).await?;
+    sync_replace(&output_dir.join("manifest.jsonl"), b"").await
+}
+
+/// Materialize normalized documents independently of generation publication.
+/// Each content file is atomically renamed into place, then its JSONL record is
+/// appended and `sync_data`'d. Consequently every visible manifest line names
+/// a fully written document, even if the process exits or loses its lease
+/// before the source generation is published.
+pub(crate) async fn checkpoint_durable_export(
+    plan: &SourcePlan,
+    documents: &[SourceDocument],
+) -> anyhow::Result<()> {
+    let Some(output_dir) = durable_output_dir(plan) else {
+        return Ok(());
+    };
+    checkpoint_durable_export_dir(&output_dir, documents).await
+}
+
+async fn checkpoint_durable_export_dir(
+    output_dir: &Path,
+    documents: &[SourceDocument],
+) -> anyhow::Result<()> {
+    let markdown_dir = output_dir.join("markdown");
+    tokio::fs::create_dir_all(&markdown_dir).await?;
+    let manifest_path = output_dir.join("manifest.jsonl");
+    let mut manifest = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&manifest_path)
+        .await?;
+
+    for document in documents {
+        let bytes = content_bytes(&document.content)?;
+        let filename = axon_core::content::url_to_stable_filename(&document.canonical_uri);
+        let relative_path = Path::new("markdown").join(&filename);
+        sync_replace(&markdown_dir.join(filename), &bytes).await?;
+        let entry = DurableManifestEntry {
+            url: &document.canonical_uri,
+            relative_path: relative_path.to_string_lossy().into_owned(),
+            markdown_chars: String::from_utf8_lossy(&bytes).chars().count(),
+            content_hash: sha256_prefixed(&bytes),
+            changed: true,
+            source_item_key: &document.source_item_key.0,
+            document_id: &document.document_id.0,
+        };
+        let mut line = serde_json::to_vec(&entry)?;
+        line.push(b'\n');
+        manifest.write_all(&line).await?;
+        manifest.sync_data().await?;
+    }
+    Ok(())
+}
+
+fn durable_output_dir(plan: &SourcePlan) -> Option<PathBuf> {
+    plan.route
+        .validated_options
+        .values
+        .get("output_dir")
+        .and_then(serde_json::Value::as_str)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+async fn sync_replace(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("output path has no parent: {}", path.display()))?;
+    tokio::fs::create_dir_all(parent).await?;
+    let temp = tempfile::Builder::new()
+        .prefix(".axon-checkpoint-")
+        .tempfile_in(parent)?;
+    let temp_path = temp.into_temp_path();
+    let mut file = tokio::fs::File::create(&temp_path).await?;
+    file.write_all(bytes).await?;
+    file.sync_all().await?;
+    drop(file);
+    tokio::fs::rename(&temp_path, path).await?;
+    Ok(())
+}
+
 impl SourceOutput {
     pub(crate) fn merge(&mut self, mut other: Self) {
         self.artifacts.append(&mut other.artifacts);
@@ -70,6 +178,7 @@ pub(crate) async fn store_clean_outputs(
     plan: &SourcePlan,
     documents: &[SourceDocument],
 ) -> anyhow::Result<SourceOutput> {
+    checkpoint_durable_export(plan, documents).await?;
     let mut output = SourceOutput::default();
     for document in documents {
         let bytes = content_bytes(&document.content)?;

@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch, type SetStateAction } from "react";
 
-import { appWindow, invoke } from "@/lib/invoke";
+import { appWindow } from "@/lib/invoke";
 import { focusInput } from "@/lib/paletteView";
 import type { ViewIntent } from "@/lib/paletteViewState";
 
@@ -23,10 +23,4 @@ export function usePaletteLifecycle(
       });
     };
   }, [dispatchView, setShownTick]);
-
-  useEffect(() => {
-    const onBlur = () => void invoke("hide_palette");
-    window.addEventListener("blur", onBlur);
-    return () => window.removeEventListener("blur", onBlur);
-  }, []);
 }

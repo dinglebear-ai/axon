@@ -1,5 +1,19 @@
-import { AlertTriangle, CheckCircle2, Clock3, FileImage, FileText } from "lucide-react";
-import { memo, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  Clock3,
+  Copy,
+  Download,
+  ExternalLink,
+  FileImage,
+  FileText,
+  Map as MapIcon,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { memo, type ReactNode, useState } from "react";
 
 import { AuthenticatedArtifactImage } from "@/components/palette/AuthenticatedArtifactImage";
 import { FilesView } from "@/components/palette/FilesView";
@@ -25,6 +39,8 @@ import {
   UrlListView,
 } from "@/components/palette/OperationResultViewShared";
 import { RankedResultView, SearchResultView } from "@/components/palette/SearchResultViews";
+import { WorkspaceHeader, WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
+import { Button } from "@/components/ui/aurora/button";
 import { actionBehavior, maybeActionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
 import type { Client, PaletteConfig } from "@/lib/axonClient";
 import {
@@ -82,7 +98,7 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   retrieve: ({ data }) => <ReadingView payload={data} mode="retrieve" />,
   search: ({ data }) => <SearchResultView payload={data} title="Web search" />,
   research: ({ data }) => <SearchResultView payload={data} title="Research brief" includeSummary />,
-  map: ({ data }) => <UrlListView title="Discovered URLs" payload={data} keys={["urls"]} />,
+  map: ({ data }) => <MapResultView payload={data} />,
   suggest: ({ data }) => <SuggestionView payload={data} />,
   sources: ({ data }) => (
     <UrlListView title="Indexed sources" payload={data} keys={["urls", "sources"]} />
@@ -135,6 +151,115 @@ export const OperationResultView = memo(function OperationResultView({
   return <GenericResultView payload={data} />;
 });
 
+function MapResultView({ payload }: { payload: Record<string, unknown> }) {
+  const [expandedUrl, setExpandedUrl] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const urls = arrayByKeys(payload, ["urls"]).filter(
+    (item): item is string => typeof item === "string",
+  );
+  const count = numField(payload, "count") ?? numField(payload, "total") ?? urls.length;
+  const origin = urls[0] ? new URL(urls[0]).host : "Site map";
+  return (
+    <WorkspaceSurface className="output-body operation-view operation-map-view">
+      <WorkspaceHeader
+        icon={MapIcon}
+        eyebrow="Site Inventory"
+        title={origin}
+        description="Discovered routes organized into an expandable URL inventory."
+        metrics={[{ label: "URLs", value: count.toLocaleString() }]}
+      />
+      {urls.length === 0 ? (
+        <EmptyResult kind="urls" />
+      ) : (
+        <section className="operation-map-list" aria-label="Discovered URLs">
+          {urls.slice(0, LIST_LIMIT * 3).map((url, index) => {
+            const parsedUrl = new URL(url);
+            const path = `${parsedUrl.pathname}${parsedUrl.search}` || "/";
+            const metadata = mapUrlMetadata(parsedUrl);
+            const expanded = expandedUrl === url;
+            return (
+              <div key={url} className={`operation-map-item${expanded ? " is-expanded" : ""}`}>
+                <button
+                  type="button"
+                  className="operation-map-row"
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedUrl(expanded ? null : url)}
+                >
+                  <span className="operation-map-index">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="operation-map-path">{path}</span>
+                  <span className="operation-map-host">{parsedUrl.host}</span>
+                  <ChevronDown className="operation-map-chevron" size={14} aria-hidden="true" />
+                </button>
+                {expanded && (
+                  <div className="operation-map-inline">
+                    <div className="operation-map-inline-main">
+                      <span className="operation-map-full-url">{url}</span>
+                      <span className="operation-map-details">
+                        {metadata.map((detail) => (
+                          <span key={detail}>{detail}</span>
+                        ))}
+                      </span>
+                    </div>
+                    <div className="operation-map-actions">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(url).then(() => {
+                            setCopiedUrl(url);
+                            window.setTimeout(() => setCopiedUrl(null), 1400);
+                          });
+                        }}
+                      >
+                        <Copy size={13} aria-hidden="true" />
+                        {copiedUrl === url ? "Copied" : "Copy URL"}
+                      </Button>
+                      <Button variant="ghost" size="sm" asChild>
+                        <a href={url} target="_blank" rel="noreferrer" aria-label="Open in browser">
+                          <ExternalLink size={13} aria-hidden="true" />
+                          Open in Browser
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+    </WorkspaceSurface>
+  );
+}
+
+function mapUrlMetadata(url: URL): string[] {
+  const segments = url.pathname.split("/").filter(Boolean);
+  const filename = segments.at(-1) ?? "";
+  const extension = filename.includes(".") ? filename.split(".").at(-1)?.toLowerCase() : undefined;
+  const type =
+    extension === "md"
+      ? "Markdown"
+      : extension === "json"
+        ? "JSON"
+        : extension === "xml"
+          ? "XML"
+          : extension === "pdf"
+            ? "PDF"
+            : extension
+              ? extension.toUpperCase()
+              : "Web page";
+  const locale = segments.find((segment) => /^[a-z]{2}(?:-[A-Z]{2})?$/.test(segment));
+  const section = segments.length > 1 ? segments.slice(0, -1).join(" / ") : undefined;
+  return [
+    type,
+    `Depth ${segments.length}`,
+    locale ? `Locale ${locale}` : undefined,
+    section ? `Section ${section}` : undefined,
+    url.searchParams.size ? `${url.searchParams.size} query params` : undefined,
+  ].filter((value): value is string => Boolean(value));
+}
+
 function ReadingView({
   payload,
   mode,
@@ -160,7 +285,11 @@ function ReadingView({
           </div>
         </section>
       ) : chunks.length > 0 ? (
-        <ResultRows rows={chunks} preferSnippet />
+        <ResultRows
+          rows={chunks}
+          preferSnippet
+          title={mode === "retrieve" ? "Stored passages" : "Page content"}
+        />
       ) : (
         <EmptyResult kind={mode} />
       )}
@@ -172,13 +301,7 @@ function SuggestionView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "suggestions");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary
-        metrics={[
-          ["Suggestions", rows.length],
-          ["View", "Suggested URLs"],
-        ]}
-      />
-      <ResultRows rows={rows} />
+      <ResultRows rows={rows} preferSnippet title="Suggested URLs" />
     </div>
   );
 }
@@ -187,12 +310,13 @@ function DomainView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "domains");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary
-        metrics={[
-          ["Domains", rows.length],
-          ["View", "Indexed domains"],
-        ]}
-      />
+      <header className="operation-collection-header">
+        <div>
+          <span className="operation-section-eyebrow">Collection</span>
+          <h3>Indexed domains</h3>
+        </div>
+        <strong>{rows.length.toLocaleString()} total</strong>
+      </header>
       <section className="operation-section">
         <div className="operation-table">
           {rows.slice(0, LIST_LIMIT).map((row, index) => {
@@ -334,13 +458,8 @@ function EndpointView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrayByKeys(payload, ["endpoints", "candidates", "urls"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary
-        metrics={[
-          ["Candidates", numField(payload, "total") ?? rows.length],
-          ["View", "Endpoint discovery"],
-        ]}
-      />
       <ResultRows
+        title="Endpoint discovery"
         rows={rows.map((item) => (typeof item === "string" ? { url: item, title: item } : item))}
       />
     </div>
@@ -377,7 +496,7 @@ function BrandView({ payload }: { payload: Record<string, unknown> }) {
         </section>
       ) : null}
       {fonts.length > 0 ? <ChipSection title="Fonts" values={fonts} /> : null}
-      {assets.length > 0 ? <ResultRows rows={assets} /> : null}
+      {assets.length > 0 ? <ResultRows rows={assets} title="Brand assets" /> : null}
     </div>
   );
 }
@@ -405,12 +524,14 @@ function DiffView({ payload }: { payload: Record<string, unknown> }) {
           <DetailLine label="After" value={strField(payload, "url_b") ?? "-"} mono />
         </div>
       </section>
-      {metadata.length > 0 ? <ResultRows rows={metadata} /> : null}
+      {metadata.length > 0 ? <ResultRows rows={metadata} title="Metadata changes" /> : null}
     </div>
   );
 }
 
 function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
+  const [zoom, setZoom] = useState(100);
+  const [fullscreen, setFullscreen] = useState(false);
   const artifact = isRecord(payload.artifact_handle) ? payload.artifact_handle : {};
   const artifactId = strField(payload, "artifact_id") ?? strField(artifact, "artifact_id");
   const previewSrc =
@@ -419,21 +540,69 @@ function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
     imagePreviewSrc(strField(payload, "data_url")) ??
     imagePreviewSrc(strField(artifact, "url"));
   const alt = "Captured screenshot";
+  const width = numField(payload, "width") ?? 0;
+  const height = numField(payload, "height") ?? 0;
   return (
-    <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero
-        icon={<FileImage size={16} />}
-        title="Screenshot captured"
-        tone="violet"
+    <WorkspaceSurface
+      className={`output-body operation-view screenshot-workspace${fullscreen ? " is-fullscreen" : ""}`}
+    >
+      <WorkspaceHeader
+        icon={FileImage}
+        eyebrow="Visual Artifact"
+        title="Screenshot Captured"
+        description="Inspect, zoom, and export the rendered page capture."
         metrics={[
-          ["Width", numField(payload, "width") ?? 0],
-          ["Height", numField(payload, "height") ?? 0],
+          { label: "Width", value: width.toLocaleString() },
+          { label: "Height", value: height.toLocaleString() },
         ]}
+        actions={
+          previewSrc ? (
+            <>
+              <Button
+                variant="plain"
+                size="unstyled"
+                type="button"
+                onClick={() => setZoom((value) => Math.max(25, value - 25))}
+                aria-label="Zoom out"
+              >
+                <ZoomOut size={14} />
+              </Button>
+              <span className="screenshot-zoom-value">{zoom}%</span>
+              <Button
+                variant="plain"
+                size="unstyled"
+                type="button"
+                onClick={() => setZoom((value) => Math.min(200, value + 25))}
+                aria-label="Zoom in"
+              >
+                <ZoomIn size={14} />
+              </Button>
+              <Button
+                variant="plain"
+                size="unstyled"
+                type="button"
+                onClick={() => setFullscreen((value) => !value)}
+                aria-label="Toggle screenshot fullscreen"
+              >
+                <Maximize2 size={14} />
+              </Button>
+              <Button variant="plain" size="unstyled" asChild>
+                <a
+                  href={previewSrc}
+                  download="axon-screenshot.png"
+                  aria-label="Download screenshot"
+                >
+                  <Download size={14} />
+                </a>
+              </Button>
+            </>
+          ) : undefined
+        }
       />
       {previewSrc ? (
         <section className="operation-section">
           <figure className="operation-screenshot-preview">
-            <img src={previewSrc} alt={alt} />
+            <img src={previewSrc} alt={alt} style={{ width: `${zoom}%` }} />
           </figure>
         </section>
       ) : artifactId ? (
@@ -441,11 +610,11 @@ function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
       ) : null}
       <section className="operation-section">
         <div className="operation-detail-card">
-          <DetailLine label="Artifact" value={artifactId ?? "-"} mono />
-          <DetailLine label="Captured" value={strField(payload, "captured_at") ?? "-"} mono />
+          <DetailLine label="Artifact" value={artifactId ?? "-"} />
+          <DetailLine label="Captured" value={strField(payload, "captured_at") ?? "-"} />
         </div>
       </section>
-    </div>
+    </WorkspaceSurface>
   );
 }
 
@@ -453,13 +622,11 @@ function WatchListView({ payload }: { payload: Record<string, unknown> }) {
   const rows = arrField(payload, "watches");
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary
-        metrics={[
-          ["Watches", rows.length],
-          ["View", "Watch schedules"],
-        ]}
-      />
-      {rows.length > 0 ? <ResultRows rows={rows} /> : <EmptyResult kind="watches" />}
+      {rows.length > 0 ? (
+        <ResultRows rows={rows} title="Watch schedules" />
+      ) : (
+        <EmptyResult kind="watches" />
+      )}
     </div>
   );
 }

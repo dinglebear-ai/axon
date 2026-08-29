@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Compass, Plus, RotateCw, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { BROWSER_HOME_URL, hostLabel, isHomeUrl, normalizeBrowserUrl } from "@/lib/browserUrl";
@@ -18,16 +18,17 @@ function makeTab(url: string = BROWSER_HOME_URL): BrowserTab {
   return { id: `tab-${nextTabId++}`, url, addressText: isHomeUrl(url) ? "" : url };
 }
 
+interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
- * Real in-app "Browser" tool: an address bar + tab strip that drives a
- * dedicated native Tauri `WebviewWindow` (see `src-tauri/src/browser.rs`).
- * The window itself renders the real page content; this component is the
- * control surface living inside the main palette window.
- *
- * In a plain browser (dev/vite, no Tauri runtime) there is no equivalent —
- * a second real OS-level webview can't be created from a web page — so this
- * renders a clear "requires the desktop app" message instead of faking
- * anything with an iframe.
+ * Real in-app "Browser" tool: an address bar + tab strip that drives an
+ * embedded native Tauri child `Webview` attached to the main window
+ * (see `src-tauri/src/browser.rs`).
  */
 export function BrowserView({
   initialTarget,
@@ -39,23 +40,47 @@ export function BrowserView({
   const initialUrl = initialTarget ? normalizeBrowserUrl(initialTarget) : BROWSER_HOME_URL;
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [makeTab(initialUrl)]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
-  const openedRef = useRef(false);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 
-  // Open (or navigate) the real browser window once on mount, and close it
-  // when this view unmounts (the user closed the Browser overlay).
-  // Intentionally mount/unmount-only: subsequent navigation is driven by
-  // explicit user actions (address bar, tab switches), not by re-running
-  // this effect on every tab-state change.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount/unmount-only open+close of the native browser window
+  const getBounds = useCallback((): BrowserBounds | undefined => {
+    if (!surfaceRef.current) return undefined;
+    const rect = surfaceRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return undefined;
+    return {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    };
+  }, []);
+
+  const updateBounds = useCallback(() => {
+    if (!isTauriRuntime) return;
+    const bounds = getBounds();
+    if (bounds) {
+      void invoke("browser_set_bounds", { bounds });
+    }
+  }, [getBounds]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount/unmount-only open+close of the native child webview
   useEffect(() => {
     if (!isTauriRuntime) return;
-    if (!openedRef.current) {
-      openedRef.current = true;
-      void invoke("browser_open", { url: activeTab.url });
+    const bounds = getBounds();
+    void invoke("browser_open", { url: activeTab.url, bounds });
+
+    const observer = new ResizeObserver(() => {
+      updateBounds();
+    });
+    if (surfaceRef.current) {
+      observer.observe(surfaceRef.current);
     }
+    window.addEventListener("resize", updateBounds);
+
     return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateBounds);
       void invoke("browser_close");
     };
   }, []);
@@ -67,20 +92,20 @@ export function BrowserView({
   function navigate(raw: string) {
     const url = normalizeBrowserUrl(raw);
     updateActiveTab({ url, addressText: isHomeUrl(url) ? "" : url });
-    if (isTauriRuntime) void invoke("browser_navigate", { url });
+    if (isTauriRuntime) void invoke("browser_navigate", { url, bounds: getBounds() });
   }
 
   function selectTab(id: string) {
     setActiveTabId(id);
     const tab = tabs.find((candidate) => candidate.id === id);
-    if (tab && isTauriRuntime) void invoke("browser_navigate", { url: tab.url });
+    if (tab && isTauriRuntime) void invoke("browser_navigate", { url: tab.url, bounds: getBounds() });
   }
 
   function newTab() {
     const tab = makeTab();
     setTabs((current) => [...current, tab]);
     setActiveTabId(tab.id);
-    if (isTauriRuntime) void invoke("browser_navigate", { url: tab.url });
+    if (isTauriRuntime) void invoke("browser_navigate", { url: tab.url, bounds: getBounds() });
   }
 
   function closeTab(id: string) {
@@ -89,13 +114,14 @@ export function BrowserView({
       if (remaining.length === 0) {
         const fresh = makeTab();
         setActiveTabId(fresh.id);
+        if (isTauriRuntime) void invoke("browser_navigate", { url: fresh.url, bounds: getBounds() });
         return [fresh];
       }
       if (id === activeTabId) {
         const closedIndex = current.findIndex((tab) => tab.id === id);
         const next = remaining[Math.max(0, closedIndex - 1)];
         setActiveTabId(next.id);
-        if (isTauriRuntime) void invoke("browser_navigate", { url: next.url });
+        if (isTauriRuntime) void invoke("browser_navigate", { url: next.url, bounds: getBounds() });
       }
       return remaining;
     });
@@ -200,17 +226,12 @@ export function BrowserView({
         </form>
       </div>
 
-      <div className="browser-surface">
-        {isTauriRuntime ? (
-          <div className="browser-surface-hint">
-            <Compass size={22} />
-            <p>The live page is rendering in the Axon Browser window.</p>
-          </div>
-        ) : (
+      <div className="browser-surface" ref={surfaceRef}>
+        {!isTauriRuntime && (
           <div className="browser-surface-hint browser-surface-unavailable">
             <Compass size={22} />
             <strong>Browser tool requires the desktop app</strong>
-            <p>Real in-app browsing runs in a native window that only the Tauri desktop build can create.</p>
+            <p>Real in-app browsing runs in a native webview that only the Tauri desktop build can create.</p>
           </div>
         )}
       </div>
