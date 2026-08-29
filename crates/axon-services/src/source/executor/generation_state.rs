@@ -22,6 +22,7 @@ pub(super) struct GenerationStageProgress {
     pub(super) normalized_documents: u64,
 }
 
+#[derive(Default)]
 pub(super) struct GenerationAccumulator {
     vectorized: vectorize::VectorizeResult,
     document_ids: HashSet<DocumentId>,
@@ -44,24 +45,6 @@ pub(super) struct FinalizedGeneration {
     pub(super) inline: Option<InlineSourceResult>,
 }
 
-impl Default for GenerationAccumulator {
-    fn default() -> Self {
-        Self {
-            vectorized: vectorize::VectorizeResult::default(),
-            document_ids: HashSet::new(),
-            artifacts: Vec::new(),
-            output: SourceOutput::default(),
-            archive_items: Vec::new(),
-            artifact_candidates: Vec::new(),
-            warnings: Vec::new(),
-            reused_item_keys: BTreeSet::new(),
-            refreshed_manifest_items: Vec::new(),
-            spool: None,
-            spool_sequence: 0,
-        }
-    }
-}
-
 impl GenerationAccumulator {
     pub(super) fn new(generation: &SourceGenerationId) -> Self {
         let spool = match GenerationSpool::temporary(&generation.0) {
@@ -72,17 +55,8 @@ impl GenerationAccumulator {
             }
         };
         Self {
-            vectorized: vectorize::VectorizeResult::default(),
-            document_ids: HashSet::new(),
-            artifacts: Vec::new(),
-            output: SourceOutput::default(),
-            archive_items: Vec::new(),
-            artifact_candidates: Vec::new(),
-            warnings: Vec::new(),
-            reused_item_keys: BTreeSet::new(),
-            refreshed_manifest_items: Vec::new(),
             spool,
-            spool_sequence: 0,
+            ..Self::default()
         }
     }
 
