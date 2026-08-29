@@ -108,7 +108,7 @@ export async function readCodexSnapshot(client: Client): Promise<CodexSnapshot> 
 
 export async function readCodexAction(
   client: Client,
-  action: components["schemas"]["ControlAction"],
+  action: components["schemas"]["ReadAction"],
   params: Record<string, unknown>,
 ): Promise<unknown> {
   const response = payload<{ resource: string; value: unknown }>(

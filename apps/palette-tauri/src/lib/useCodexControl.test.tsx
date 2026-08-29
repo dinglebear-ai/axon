@@ -42,10 +42,13 @@ describe("useCodexControl", () => {
 
   it("keeps the previous error visible until a refresh succeeds", async () => {
     readCodexEvents.mockRejectedValueOnce(new Error("event service unavailable"));
-    const pending = Promise.withResolvers<typeof snapshot>();
+    let resolveSnapshot!: (value: typeof snapshot) => void;
+    const pendingSnapshot = new Promise<typeof snapshot>((resolve) => {
+      resolveSnapshot = resolve;
+    });
     const { result } = renderHook(() => useCodexControl(client, true));
     await waitFor(() => expect(result.current.error).toContain("event service unavailable"));
-    readCodexSnapshot.mockReturnValueOnce(pending.promise);
+    readCodexSnapshot.mockReturnValueOnce(pendingSnapshot);
 
     let refresh: Promise<void>;
     act(() => {
@@ -53,7 +56,7 @@ describe("useCodexControl", () => {
     });
     expect(result.current.error).toContain("event service unavailable");
 
-    pending.resolve(snapshot);
+    resolveSnapshot(snapshot);
     await act(async () => refresh);
     expect(result.current.error).toBeNull();
   });
