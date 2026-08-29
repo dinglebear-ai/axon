@@ -1895,6 +1895,7 @@ export interface components {
         ControlOperation: {
             actor: string;
             approver?: string | null;
+            execution_attempt_id?: string | null;
             expected_revision?: string | null;
             /** Format: int64 */
             id: number;
@@ -1905,6 +1906,7 @@ export interface components {
             /** @description Secret-free request retained so recovery can prove the intended effect. */
             redacted_request: unknown;
             request_digest: string;
+            response_evidence?: string | null;
             scope: string;
         };
         /** @enum {string} */
@@ -2679,7 +2681,6 @@ export interface components {
         };
         /**
          * @description Write-only actions accepted by the approved mutation workflow.
-         *
          *     Keeping this separate from [`ControlAction`] prevents callers from preparing
          *     or executing a read method through the mutation endpoints.
          * @enum {string}
@@ -2994,6 +2995,11 @@ export interface components {
             qdrant: string;
             sqlite: string;
             tei: string;
+        };
+        ReconcileOperationBody: {
+            disposition_note?: string | null;
+            effect_applied?: boolean | null;
+            without_replay?: boolean;
         };
         ReconcileOperationResponse: {
             /** Format: int64 */
@@ -4719,7 +4725,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileOperationBody"];
+            };
+        };
         responses: {
             /** @description Ambiguous operation reconciled */
             200: {

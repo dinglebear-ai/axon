@@ -15,8 +15,6 @@ interface CodexMutationEditorProps {
   setValue: StringSetter;
   source: string;
   setSource: StringSetter;
-  sha256: string;
-  setSha256: StringSetter;
   mcpCommand: string;
   setMcpCommand: StringSetter;
   mcpArgs: string;
@@ -75,9 +73,9 @@ export function CodexMutationEditor(props: CodexMutationEditorProps) {
           <option value="importHistory">Record external import history</option>
         </select>
       </label>
-      {kind !== "configBatch" && (
+      {kind !== "configBatch" && kind !== "marketplaceAdd" && (
         <label>
-          Target
+          {kind === "skillImport" ? "Migration source (optional)" : "Target"}
           <input
             value={props.target}
             onChange={(event) => props.setTarget(event.target.value)}
@@ -100,11 +98,17 @@ export function CodexMutationEditor(props: CodexMutationEditorProps) {
         </label>
       ) : (
         <label>
-          {kind === "config" ? "Value (JSON)" : "Value"}
+          {kind === "config"
+            ? "Value (JSON)"
+            : kind === "mcpOauth"
+              ? "OAuth options (JSON, optional)"
+              : kind === "skillImport"
+                ? "Migration items (JSON array)"
+                : "Value"}
           <input
             value={props.value}
             onChange={(event) => props.setValue(event.target.value)}
-            placeholder="Value, enabled state, or OAuth provider"
+            placeholder={kind === "mcpOauth" ? '{"scopes":["read"]}' : "Value or enabled state"}
           />
         </label>
       )}
@@ -113,25 +117,15 @@ export function CodexMutationEditor(props: CodexMutationEditorProps) {
           {props.validationError}
         </p>
       )}
-      {(kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport") && (
-        <>
-          <label>
-            Pinned HTTPS source
-            <input
-              value={props.source}
-              onChange={(event) => props.setSource(event.target.value)}
-              placeholder="https://…"
-            />
-          </label>
-          <label>
-            SHA-256 digest
-            <input
-              value={props.sha256}
-              onChange={(event) => props.setSha256(event.target.value)}
-              maxLength={64}
-            />
-          </label>
-        </>
+      {kind === "marketplaceAdd" && (
+        <label>
+          Marketplace HTTPS source
+          <input
+            value={props.source}
+            onChange={(event) => props.setSource(event.target.value)}
+            placeholder="https://…"
+          />
+        </label>
       )}
       <div className="codex-control-actions">
         <Button disabled={props.busy || !props.canPrepare} onClick={() => void props.onPrepare()}>

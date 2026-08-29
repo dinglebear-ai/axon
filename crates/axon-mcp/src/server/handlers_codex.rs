@@ -1,9 +1,11 @@
 use super::AxonMcpServer;
 use super::common::{invalid_params, logged_internal_error};
-use crate::schema::{AxonToolResponse, CodexRequest, CodexSubaction};
+use crate::schema::{
+    AxonToolResponse, CodexMutationAction, CodexRequest, CodexResource, CodexSubaction,
+};
 use axon_services::codex_control::{ControlAction, EventCursor, MutationAction, OperationIntent};
 use rmcp::ErrorData;
-use serde_json::{Value, json};
+use serde_json::json;
 
 impl AxonMcpServer {
     pub(super) async fn handle_codex(
@@ -91,13 +93,14 @@ impl AxonMcpServer {
                     .await
                     .map_err(codex_error)?
             }
-            CodexSubaction::Reconcile => {
+            CodexSubaction::Cancel => {
+                let operation_id = required(req.operation_id, "operation_id")?;
                 service
-                    .resolve_recovery(required(req.operation_id, "operation_id")?)
-                    .await
+                    .cancel_operation(operation_id)
                     .map_err(codex_error)?;
-                json!({"reconciled": true})
+                json!({"operation_id": operation_id, "cancelled": true})
             }
+            CodexSubaction::Reconcile => reconcile_operation(&service, &req).await?,
             CodexSubaction::Respond => {
                 service
                     .respond_to_server_request(
@@ -115,43 +118,77 @@ impl AxonMcpServer {
     }
 }
 
+async fn reconcile_operation(
+    service: &axon_services::codex_control::CodexControlService,
+    req: &CodexRequest,
+) -> Result<serde_json::Value, ErrorData> {
+    let operation_id = required(req.operation_id, "operation_id")?;
+    if req.without_replay.unwrap_or(false) {
+        service
+            .resolve_recovery_without_replay(
+                operation_id,
+                required(req.effect_applied, "effect_applied")?,
+                req.disposition_note
+                    .as_deref()
+                    .ok_or_else(|| invalid_params("codex request requires disposition_note"))?,
+            )
+            .map_err(codex_error)?;
+    } else {
+        service
+            .resolve_recovery(operation_id)
+            .await
+            .map_err(codex_error)?;
+    }
+    Ok(
+        json!({"operation_id": operation_id, "reconciled": true, "without_replay": req.without_replay.unwrap_or(false), "effect_applied": req.effect_applied}),
+    )
+}
+
 fn required<T>(value: Option<T>, name: &str) -> Result<T, ErrorData> {
     value.ok_or_else(|| invalid_params(format!("codex request requires {name}")))
 }
 
-fn mutation_action(value: String) -> Result<MutationAction, ErrorData> {
-    serde_json::from_value(Value::String(value))
-        .map_err(|error| invalid_params(format!("invalid Codex mutation action: {error}")))
+fn mutation_action(value: CodexMutationAction) -> Result<MutationAction, ErrorData> {
+    serde_json::from_value(
+        serde_json::to_value(value)
+            .map_err(|error| invalid_params(format!("invalid Codex mutation action: {error}")))?,
+    )
+    .map_err(|error| invalid_params(format!("invalid Codex mutation action: {error}")))
 }
 
-fn resource_action(resource: &str) -> Result<ControlAction, ErrorData> {
+fn resource_action(resource: &CodexResource) -> Result<ControlAction, ErrorData> {
     match resource {
-        "account" => Ok(ControlAction::AccountRead),
-        "models" => Ok(ControlAction::ModelsList),
-        "config" => Ok(ControlAction::ConfigRead),
-        "mcp_servers" => Ok(ControlAction::McpServersList),
-        "mcp_resource" => Ok(ControlAction::McpServerResourceRead),
-        "plugins" => Ok(ControlAction::PluginsList),
-        "plugins_installed" => Ok(ControlAction::PluginsInstalled),
-        "plugin_search" => Ok(ControlAction::PluginSearch),
-        "plugin" => Ok(ControlAction::PluginRead),
-        "plugin_skill" => Ok(ControlAction::PluginSkillRead),
-        "plugin_shares" => Ok(ControlAction::PluginShareList),
-        "skills" => Ok(ControlAction::SkillsList),
-        "external_agent_config" => Ok(ControlAction::ExternalAgentConfigDetect),
-        "external_agent_import_histories" => {
+        CodexResource::Account => Ok(ControlAction::AccountRead),
+        CodexResource::RateLimits => Ok(ControlAction::RateLimitsRead),
+        CodexResource::Models => Ok(ControlAction::ModelsList),
+        CodexResource::ModelProviderCapabilities => {
+            Ok(ControlAction::ModelProviderCapabilitiesRead)
+        }
+        CodexResource::Config => Ok(ControlAction::ConfigRead),
+        CodexResource::McpServers => Ok(ControlAction::McpServersList),
+        CodexResource::McpResource => Ok(ControlAction::McpServerResourceRead),
+        CodexResource::Plugins => Ok(ControlAction::PluginsList),
+        CodexResource::PluginsInstalled => Ok(ControlAction::PluginsInstalled),
+        CodexResource::PluginSearch => Ok(ControlAction::PluginSearch),
+        CodexResource::Plugin => Ok(ControlAction::PluginRead),
+        CodexResource::PluginSkill => Ok(ControlAction::PluginSkillRead),
+        CodexResource::PluginShares => Ok(ControlAction::PluginShareList),
+        CodexResource::Skills => Ok(ControlAction::SkillsList),
+        CodexResource::ExternalAgentConfig => Ok(ControlAction::ExternalAgentConfigDetect),
+        CodexResource::ExternalAgentImportHistories => {
             Ok(ControlAction::ExternalAgentConfigImportReadHistories)
         }
-        "hooks" => Ok(ControlAction::HooksList),
-        "apps" => Ok(ControlAction::AppsList),
-        "apps_installed" => Ok(ControlAction::AppsInstalled),
-        "app" => Ok(ControlAction::AppRead),
-        _ => Err(invalid_params(format!(
-            "unknown Codex resource: {resource}"
-        ))),
+        CodexResource::Hooks => Ok(ControlAction::HooksList),
+        CodexResource::Apps => Ok(ControlAction::AppsList),
+        CodexResource::AppsInstalled => Ok(ControlAction::AppsInstalled),
+        CodexResource::App => Ok(ControlAction::AppRead),
     }
 }
 
 fn codex_error(error: String) -> ErrorData {
     invalid_params(format!("Codex control request failed: {error}"))
 }
+
+#[cfg(test)]
+#[path = "handlers_codex_tests.rs"]
+mod tests;

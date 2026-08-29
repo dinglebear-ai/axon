@@ -149,3 +149,45 @@ fn exact_recovery_lookup_is_not_limited_by_the_unfinished_page() {
     assert_eq!(recovery.runtime_boot_id, 1);
     assert_eq!(recovery.policy_version, "v1");
 }
+
+#[test]
+fn response_evidence_and_non_replay_disposition_are_durable() {
+    let store = OperationStore::open_memory().unwrap();
+    let operation = store.create(&intent("one-shot", "a")).unwrap();
+    let capability = store.approve(operation.id, "admin:1").unwrap();
+    let executing = store
+        .begin_execution(
+            operation.id,
+            &capability,
+            "plugin/install",
+            &json!({"plugin":"a"}),
+            Some("r1"),
+            "dev:1:ino:2",
+            1,
+            "v1",
+        )
+        .unwrap();
+    assert!(executing.execution_attempt_id.is_some());
+    let evidence = store
+        .record_response_evidence(operation.id, &json!({"accepted":true}))
+        .unwrap();
+    assert_eq!(
+        store
+            .get_for_recovery(operation.id)
+            .unwrap()
+            .unwrap()
+            .operation
+            .response_evidence
+            .as_deref(),
+        Some(evidence.as_str())
+    );
+    store
+        .resolve_without_replay(operation.id, false, "confirmed absent")
+        .unwrap();
+    let resolved = store.get(operation.id).unwrap().unwrap();
+    assert_eq!(resolved.phase, OperationPhase::Failed);
+    assert_eq!(
+        resolved.recovery_state.as_deref(),
+        Some("operator_disposition_without_replay:confirmed absent")
+    );
+}

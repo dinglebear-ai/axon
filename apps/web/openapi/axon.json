@@ -1257,6 +1257,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileOperationBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Ambiguous operation reconciled",
@@ -10084,6 +10094,12 @@
               "null"
             ]
           },
+          "execution_attempt_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "expected_revision": {
             "type": [
               "string",
@@ -10117,6 +10133,12 @@
           },
           "request_digest": {
             "type": "string"
+          },
+          "response_evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scope": {
             "type": "string"
@@ -13121,7 +13143,7 @@
       },
       "MutationAction": {
         "type": "string",
-        "description": "Write-only actions accepted by the approved mutation workflow.\n\nKeeping this separate from [`ControlAction`] prevents callers from preparing\nor executing a read method through the mutation endpoints.",
+        "description": "Write-only actions accepted by the approved mutation workflow.\nKeeping this separate from [`ControlAction`] prevents callers from preparing\nor executing a read method through the mutation endpoints.",
         "enum": [
           "account_login_start",
           "account_login_cancel",
@@ -14351,6 +14373,26 @@
           },
           "tei": {
             "type": "string"
+          }
+        }
+      },
+      "ReconcileOperationBody": {
+        "type": "object",
+        "properties": {
+          "disposition_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effect_applied": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "without_replay": {
+            "type": "boolean"
           }
         }
       },

@@ -2,6 +2,7 @@
   "$defs": {
     "Action": {
       "enum": [
+        "codex",
         "scrape",
         "crawl",
         "embed",
@@ -42,6 +43,31 @@
     "ActionDiscriminatorRules": {
       "description": "One if/then branch per live MCP action; constrains subaction requirement and the effective request DTO.",
       "oneOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "codex"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/CodexRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/CodexSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
         {
           "if": {
             "properties": {
@@ -1297,6 +1323,208 @@
         "input"
       ],
       "type": "object"
+    },
+    "CodexRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "after_sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "approved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "boot_id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor_boot_id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "disposition_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effect_applied": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "idempotency_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mutation_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexRequest_CodexMutationAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_id": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "params": true,
+        "request_id": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "resource": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodexRequest_CodexResource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subaction": {
+          "$ref": "#/$defs/CodexRequest_CodexSubaction"
+        },
+        "without_replay": {
+          "description": "Explicitly close an unprovable recovery without replaying the mutation.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "subaction"
+      ],
+      "title": "CodexRequest",
+      "type": "object"
+    },
+    "CodexRequest_CodexMutationAction": {
+      "enum": [
+        "account_login_start",
+        "account_login_cancel",
+        "account_logout",
+        "config_value_write",
+        "config_batch_write",
+        "mcp_server_reload",
+        "mcp_server_oauth_login",
+        "mcp_server_tool_call",
+        "mcp_server_event_stream_start",
+        "mcp_server_event_stream_stop",
+        "plugin_install",
+        "plugin_uninstall",
+        "plugin_share_checkout",
+        "plugin_share_save",
+        "plugin_share_delete",
+        "plugin_share_update_targets",
+        "marketplace_add",
+        "marketplace_remove",
+        "marketplace_upgrade",
+        "skill_config_write",
+        "skills_extra_roots_set",
+        "external_agent_config_import",
+        "external_agent_config_import_record_history"
+      ],
+      "type": "string"
+    },
+    "CodexRequest_CodexResource": {
+      "enum": [
+        "account",
+        "rate_limits",
+        "models",
+        "model_provider_capabilities",
+        "config",
+        "mcp_servers",
+        "mcp_resource",
+        "plugins",
+        "plugins_installed",
+        "plugin_search",
+        "plugin",
+        "plugin_skill",
+        "plugin_shares",
+        "skills",
+        "external_agent_config",
+        "external_agent_import_histories",
+        "hooks",
+        "apps",
+        "apps_installed",
+        "app"
+      ],
+      "type": "string"
+    },
+    "CodexRequest_CodexSubaction": {
+      "enum": [
+        "snapshot",
+        "resource",
+        "events",
+        "operations",
+        "prepare",
+        "approve",
+        "execute",
+        "cancel",
+        "reconcile",
+        "respond"
+      ],
+      "type": "string"
+    },
+    "CodexSubaction": {
+      "enum": [
+        "snapshot",
+        "resource",
+        "events",
+        "operations",
+        "prepare",
+        "approve",
+        "execute",
+        "cancel",
+        "reconcile",
+        "respond"
+      ],
+      "type": "string"
     },
     "CollectionsMcpRequest": {
       "additionalProperties": false,
@@ -5410,7 +5638,7 @@
       }
     ],
     "generated_by": "cargo xtask schemas mcp",
-    "live_action_count": 34,
+    "live_action_count": 35,
     "owner_crates": [
       "axon-mcp",
       "axon-api"
@@ -5427,7 +5655,7 @@
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:af94e32acef5ea92b024c3508c62f5f2d75bd6563ac2b35b08a0058b8f3bb411",
+        "checksum": "sha256:dbf0d5c5c3b580c05083f6062ccb82a70a901eed2ca71e1e51c97d8bd9ef45a6",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
@@ -5452,7 +5680,7 @@
         "path": "crates/axon-api/src/mcp_schema/utility.rs"
       },
       {
-        "checksum": "sha256:70e1b74aef0cd2496658f0b8ffa1b9ebc35fa5acb5cdb6c001c80f442ce0bbde",
+        "checksum": "sha256:035319b6947e58f23490e85eed25d3d1abdb87b2954eaa8e943ad40b516a6cb1",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
@@ -5472,7 +5700,7 @@
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:6cde7e3336c9d6619a447ffde77dff93782ac1c4bfd2e397f3a56938af467f5a",
+        "checksum": "sha256:c1f983a8fe02ec10747e7deb25b71e03d901012710e2834f0abdc82ff331bedd",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

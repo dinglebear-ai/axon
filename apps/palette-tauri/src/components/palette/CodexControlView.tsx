@@ -10,16 +10,15 @@ import {
   type CodexMutation,
   type CodexOperation,
   type CodexResource,
-  cancelCodexOperation,
   executeCodexOperation,
   parseConfigValue,
   prepareCodexOperation,
   readCodexAction,
-  reconcileCodexOperation,
   respondToCodexServerRequest,
 } from "@/lib/codexControl";
 import { useCodexControl } from "@/lib/useCodexControl";
 import { CodexMutationEditor } from "./CodexMutationEditor";
+import { CodexOperationList } from "./CodexOperationList";
 
 const resources: CodexResource[] = [
   "account",
@@ -34,14 +33,25 @@ const resources: CodexResource[] = [
 export type MutationKind = keyof typeof CODEX_MUTATIONS | "mcpConfig";
 type ReadAction = Parameters<typeof readCodexAction>[1];
 const advancedReads: ReadonlyArray<{ label: string; action: ReadAction }> = [
+  { label: "Account rate limits", action: "rate_limits_read" },
+  {
+    label: "Model provider capabilities",
+    action: "model_provider_capabilities_read",
+  },
   { label: "MCP resource", action: "mcp_server_resource_read" },
   { label: "Installed plugins", action: "plugins_installed" },
   { label: "Search plugins", action: "plugin_search" },
   { label: "Plugin detail", action: "plugin_read" },
   { label: "Plugin skill", action: "plugin_skill_read" },
   { label: "Plugin shares", action: "plugin_share_list" },
-  { label: "External config detection", action: "external_agent_config_detect" },
-  { label: "External import histories", action: "external_agent_config_import_read_histories" },
+  {
+    label: "External config detection",
+    action: "external_agent_config_detect",
+  },
+  {
+    label: "External import histories",
+    action: "external_agent_config_import_read_histories",
+  },
   { label: "Installed apps", action: "apps_installed" },
   { label: "App detail", action: "app_read" },
 ];
@@ -65,7 +75,6 @@ export function CodexControlView({
   const [target, setTarget] = useState("");
   const [value, setValue] = useState("");
   const [source, setSource] = useState("");
-  const [sha256, setSha256] = useState("");
   const [mcpCommand, setMcpCommand] = useState("");
   const [mcpArgs, setMcpArgs] = useState("[]");
   const [mcpUrl, setMcpUrl] = useState("");
@@ -77,7 +86,10 @@ export function CodexControlView({
   const [busy, setBusy] = useState(false);
   const [respondingRequest, setRespondingRequest] = useState<number | null>(null);
   const [serverResponses, setServerResponses] = useState<Record<number, string>>({});
-  const mutationState = useMemo<{ mutation: CodexMutation | null; error: string | null }>(() => {
+  const mutationState = useMemo<{
+    mutation: CodexMutation | null;
+    error: string | null;
+  }>(() => {
     try {
       const params =
         kind === "mcpConfig"
@@ -89,24 +101,29 @@ export function CodexControlView({
               env: mcpEnv,
               remove: mcpRemove,
             })
-          : mutationParams(kind, target.trim(), value.trim(), source.trim(), sha256.trim());
+          : mutationParams(kind, target.trim(), value.trim(), source.trim());
       return {
         mutation: params
-          ? { ...(kind === "mcpConfig" ? CODEX_MUTATIONS.config : CODEX_MUTATIONS[kind]), params }
+          ? {
+              ...(kind === "mcpConfig" ? CODEX_MUTATIONS.config : CODEX_MUTATIONS[kind]),
+              params,
+            }
           : null,
         error: params ? null : mutationValidationMessage(kind),
       };
     } catch (cause) {
-      return { mutation: null, error: cause instanceof Error ? cause.message : String(cause) };
+      return {
+        mutation: null,
+        error: cause instanceof Error ? cause.message : String(cause),
+      };
     }
-  }, [kind, target, value, source, sha256, mcpCommand, mcpArgs, mcpUrl, mcpEnv, mcpRemove]);
+  }, [kind, target, value, source, mcpCommand, mcpArgs, mcpUrl, mcpEnv, mcpRemove]);
   const mutation = mutationState.mutation;
   const inputRevision = JSON.stringify([
     kind,
     target,
     value,
     source,
-    sha256,
     mcpCommand,
     mcpArgs,
     mcpUrl,
@@ -231,52 +248,13 @@ export function CodexControlView({
           ))}
         </section>
       )}
-      {operations.length > 0 && (
-        <section className="codex-mutation">
-          <h3>Unfinished operations</h3>
-          {operations.map((item) => (
-            <article key={item.id}>
-              <strong>
-                #{item.id} {item.phase}
-              </strong>
-              <code>{item.request_digest}</code>
-              <p>{item.method}</p>
-              <p>
-                Actor: {item.actor} · Scope: {item.scope}
-              </p>
-              {item.approver && <p>Approver: {item.approver}</p>}
-              {item.recovery_state && <p>Recovery: {item.recovery_state}</p>}
-              <pre>{JSON.stringify(item.redacted_request, null, 2)}</pre>
-              {["pending", "approved"].includes(item.phase) && (
-                <Button
-                  disabled={busy || !client}
-                  onClick={() =>
-                    void run(async () => {
-                      if (client) await cancelCodexOperation(client, item.id);
-                      await refresh();
-                    })
-                  }
-                >
-                  Cancel operation
-                </Button>
-              )}
-              {["ambiguous", "recovery_required", "rollback_required"].includes(item.phase) && (
-                <Button
-                  disabled={busy || !client}
-                  onClick={() =>
-                    void run(async () => {
-                      if (client) await reconcileCodexOperation(client, item.id);
-                      await refresh();
-                    })
-                  }
-                >
-                  Mark reconciled
-                </Button>
-              )}
-            </article>
-          ))}
-        </section>
-      )}
+      <CodexOperationList
+        operations={operations}
+        client={client}
+        busy={busy}
+        run={run}
+        refresh={refresh}
+      />
       <nav className="codex-tabs" aria-label="Codex resources">
         {resources.map((item) => (
           <Button
@@ -339,8 +317,6 @@ export function CodexControlView({
         setValue={setValue}
         source={source}
         setSource={setSource}
-        sha256={sha256}
-        setSha256={setSha256}
         mcpCommand={mcpCommand}
         setMcpCommand={setMcpCommand}
         mcpArgs={mcpArgs}
@@ -397,12 +373,11 @@ function typedResponsePlaceholder(method?: string): string {
     : '{"action":"accept","content":{"field":"value"}}';
 }
 
-function mutationParams(
+export function mutationParams(
   kind: Exclude<MutationKind, "mcpConfig">,
   target: string,
   value: string,
   source: string,
-  _sha256: string,
 ): Record<string, unknown> | null {
   if (
     kind === "accountLogin" ||
@@ -428,9 +403,6 @@ function mutationParams(
       throw new Error("This workflow requires a JSON object value");
     return parsed as Record<string, unknown>;
   }
-  if (!target) return null;
-  if (kind === "pluginInstall") return { pluginName: target };
-  if (kind === "pluginUninstall") return { pluginId: target };
   if (kind === "marketplaceAdd") {
     if (!source.startsWith("https://")) return null;
     return { source };
@@ -438,11 +410,28 @@ function mutationParams(
   if (kind === "skillImport") {
     const migrationItems = parseConfigValue(value);
     if (!Array.isArray(migrationItems)) throw new Error("Migration items must be a JSON array");
-    return { migrationItems, source: target || undefined };
+    return { migrationItems, ...(target ? { source: target } : {}) };
   }
+  if (!target) return null;
+  if (kind === "pluginInstall") return { pluginName: target };
+  if (kind === "pluginUninstall") return { pluginId: target };
   if (kind === "config")
-    return { keyPath: target, value: parseConfigValue(value), mergeStrategy: "upsert" };
-  if (kind === "mcpOauth") return { name: target, provider: value || undefined };
+    return {
+      keyPath: target,
+      value: parseConfigValue(value),
+      mergeStrategy: "upsert",
+    };
+  if (kind === "mcpOauth") {
+    if (!value) return { name: target };
+    const options = parseConfigValue(value);
+    if (!options || typeof options !== "object" || Array.isArray(options)) {
+      throw new Error("MCP OAuth options must be a JSON object");
+    }
+    const supported = new Set(["clientRegistration", "scopes", "threadId", "timeoutSecs"]);
+    const unsupported = Object.keys(options).find((key) => !supported.has(key));
+    if (unsupported) throw new Error(`Unsupported MCP OAuth option: ${unsupported}`);
+    return { ...(options as Record<string, unknown>), name: target };
+  }
   if (kind === "marketplaceRemove" || kind === "marketplaceUpgrade") {
     return { marketplaceName: target };
   }
@@ -471,8 +460,8 @@ function mutationValidationMessage(kind: MutationKind): string | null {
   )
     return "Enter the method-specific JSON object from the Codex capability schema";
   if (kind === "mcpConfig") return "Enter a valid MCP name and exactly one transport";
-  if (kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport")
-    return "Enter a target, pinned HTTPS source, and 64-character SHA-256 digest";
+  if (kind === "marketplaceAdd") return "Enter an HTTPS marketplace source";
+  if (kind === "skillImport") return "Enter migration items as a JSON array";
   if (
     kind === "accountLogin" ||
     kind === "accountLoginCancel" ||

@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 pub(crate) fn request_schema_for(request_dto: &str) -> Value {
     use axon_api::mcp_schema as m;
     match request_dto {
+        "CodexRequest" => schemars::schema_for!(m::CodexRequest).into(),
         "ScrapeRequest" => schemars::schema_for!(axon_api::ScrapeRequest).into(),
         "CrawlRequest" => schemars::schema_for!(axon_api::CrawlRequest).into(),
         "EmbedRequest" => schemars::schema_for!(axon_api::EmbedRequest).into(),
@@ -73,6 +74,7 @@ pub(crate) fn request_schema_for(request_dto: &str) -> Value {
 pub(crate) fn typed_subaction_variants(action: &str) -> Vec<String> {
     use axon_api::mcp_schema as m;
     let schema: Value = match action {
+        "codex" => schemars::schema_for!(m::CodexSubaction).into(),
         "jobs" => schemars::schema_for!(m::JobsSubaction).into(),
         "extract" => schemars::schema_for!(m::ExtractSubaction).into(),
         "memory" => schemars::schema_for!(m::MemorySubaction).into(),

@@ -223,20 +223,31 @@ impl CodexControlService {
             return Err("Codex operation is not awaiting recovery".to_string());
         }
         let current_home = home_identity(&self.config.control_home)?;
-        let current_boot = self.runtime_boot_id.load(Ordering::Acquire);
         if recovery.target_home_identity != current_home
-            || recovery.runtime_boot_id != current_boot
             || recovery.policy_version != self.policy_version
         {
             self.operations.retain_recovery(
                 id,
-                "control target, runtime boot, or write policy changed; automatic recovery is unsafe",
+                "control target or write policy changed; automatic recovery is unsafe",
             )?;
             return Err(
-                "Codex recovery remains unresolved: control trust anchors changed".to_string(),
+                "Codex recovery remains unresolved: control home or write policy changed"
+                    .to_string(),
             );
         }
         let action = action_from_method(&operation.method)?;
+        if completion_strategy(&action) == CompletionStrategy::ResponseAcknowledged {
+            if let Some(evidence) = operation.response_evidence.as_deref() {
+                return self.operations.resolve_recovery(id, evidence);
+            }
+            self.operations.retain_recovery(
+                id,
+                "one-shot response was not durably observed; explicit operator disposition required without replay",
+            )?;
+            return Err(
+                "Codex recovery requires explicit non-replay operator disposition".to_string(),
+            );
+        }
         let transport = self.transport().await?;
         let state = canonical_state(&action, &transport).await?;
         match verify_intended_effect(
@@ -253,6 +264,18 @@ impl CodexControlService {
                 Err(format!("Codex recovery remains unresolved: {reason}"))
             }
         }
+    }
+
+    pub fn resolve_recovery_without_replay(
+        &self,
+        id: i64,
+        applied: bool,
+        note: &str,
+    ) -> Result<(), String> {
+        if note.trim().is_empty() {
+            return Err("operator disposition note is required".to_string());
+        }
+        self.operations.resolve_without_replay(id, applied, note)
     }
 
     pub async fn execute_operation(
@@ -288,9 +311,11 @@ impl CodexControlService {
                 )?;
                 started_in_lane.store(true, Ordering::Release);
                 let value = transport.request(action.method(), params.clone()).await?;
+                let response_evidence = self
+                    .operations
+                    .record_response_evidence(id, &sanitize_value(value.clone()))?;
                 if completion_strategy(&action) == CompletionStrategy::ResponseAcknowledged {
-                    let revision = state_revision(&sanitize_value(value.clone()))?;
-                    return Ok::<_, String>((value, revision));
+                    return Ok::<_, String>((value, response_evidence));
                 }
                 let after = canonical_state(&action, &transport)
                     .await

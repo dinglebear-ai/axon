@@ -117,8 +117,18 @@ export async function readCodexOperations(client: Client): Promise<CodexOperatio
   return payload<CodexOperation[]>(await executeAxonRequest(client, "GET", "/v1/codex/operations"));
 }
 
-export async function reconcileCodexOperation(client: Client, id: number): Promise<void> {
-  await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/reconcile`, {});
+export async function reconcileCodexOperation(
+  client: Client,
+  id: number,
+  withoutReplay = false,
+  effectApplied?: boolean,
+  dispositionNote?: string,
+): Promise<void> {
+  await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/reconcile`, {
+    without_replay: withoutReplay,
+    effect_applied: effectApplied,
+    disposition_note: dispositionNote,
+  });
 }
 
 export async function cancelCodexOperation(client: Client, id: number): Promise<void> {

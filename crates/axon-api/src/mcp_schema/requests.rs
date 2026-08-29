@@ -15,23 +15,81 @@ pub enum CodexSubaction {
     Prepare,
     Approve,
     Execute,
+    Cancel,
     Reconcile,
     Respond,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexResource {
+    Account,
+    RateLimits,
+    Models,
+    ModelProviderCapabilities,
+    Config,
+    McpServers,
+    McpResource,
+    Plugins,
+    PluginsInstalled,
+    PluginSearch,
+    Plugin,
+    PluginSkill,
+    PluginShares,
+    Skills,
+    ExternalAgentConfig,
+    ExternalAgentImportHistories,
+    Hooks,
+    Apps,
+    AppsInstalled,
+    App,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexMutationAction {
+    AccountLoginStart,
+    AccountLoginCancel,
+    AccountLogout,
+    ConfigValueWrite,
+    ConfigBatchWrite,
+    McpServerReload,
+    McpServerOauthLogin,
+    McpServerToolCall,
+    McpServerEventStreamStart,
+    McpServerEventStreamStop,
+    PluginInstall,
+    PluginUninstall,
+    PluginShareCheckout,
+    PluginShareSave,
+    PluginShareDelete,
+    PluginShareUpdateTargets,
+    MarketplaceAdd,
+    MarketplaceRemove,
+    MarketplaceUpgrade,
+    SkillConfigWrite,
+    SkillsExtraRootsSet,
+    ExternalAgentConfigImport,
+    ExternalAgentConfigImportRecordHistory,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CodexRequest {
     pub subaction: CodexSubaction,
-    pub resource: Option<String>,
+    pub resource: Option<CodexResource>,
     pub params: Option<serde_json::Value>,
-    pub mutation_action: Option<String>,
+    pub mutation_action: Option<CodexMutationAction>,
     pub operation_id: Option<i64>,
     pub idempotency_key: Option<String>,
     pub capability: Option<String>,
     pub boot_id: Option<u64>,
     pub request_id: Option<u64>,
     pub approved: Option<bool>,
+    /// Explicitly close an unprovable recovery without replaying the mutation.
+    pub without_replay: Option<bool>,
+    pub effect_applied: Option<bool>,
+    pub disposition_note: Option<String>,
     pub cursor_boot_id: Option<u64>,
     pub after_sequence: Option<u64>,
     pub limit: Option<usize>,

@@ -246,15 +246,36 @@ pub struct ServerRequestRespondedResponse {
 pub async fn reconcile_operation(
     State((state, _)): State<WebState>,
     Path(id): Path<i64>,
+    Json(body): Json<ReconcileOperationBody>,
 ) -> Result<Json<ReconcileOperationResponse>, HttpError> {
-    service(&state)?
-        .resolve_recovery(id)
-        .await
-        .map_err(bad_request)?;
+    if body.without_replay {
+        service(&state)?
+            .resolve_recovery_without_replay(
+                id,
+                body.effect_applied.ok_or_else(|| {
+                    bad_request("effect_applied is required for non-replay disposition".into())
+                })?,
+                body.disposition_note.as_deref().unwrap_or_default(),
+            )
+            .map_err(bad_request)?;
+    } else {
+        service(&state)?
+            .resolve_recovery(id)
+            .await
+            .map_err(bad_request)?;
+    }
     Ok(Json(ReconcileOperationResponse {
         operation_id: id,
         phase: OperationPhase::Reconciled,
     }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ReconcileOperationBody {
+    #[serde(default)]
+    without_replay: bool,
+    effect_applied: Option<bool>,
+    disposition_note: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -310,6 +331,6 @@ pub async fn execute_operation_openapi_marker() {}
 #[allow(dead_code)]
 pub async fn respond_to_server_request_openapi_marker() {}
 
-#[utoipa::path(post, path = "/v1/codex/operations/{id}/reconcile", params(("id" = i64, Path, description = "Operation identifier")), responses((status = 200, description = "Ambiguous operation reconciled", body = ReconcileOperationResponse), (status = 400, description = "Operation cannot be reconciled", body = super::super::error::ErrorBody)), tag = "codex-control")]
+#[utoipa::path(post, path = "/v1/codex/operations/{id}/reconcile", params(("id" = i64, Path, description = "Operation identifier")), request_body = ReconcileOperationBody, responses((status = 200, description = "Ambiguous operation reconciled", body = ReconcileOperationResponse), (status = 400, description = "Operation cannot be reconciled", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]
 pub async fn reconcile_operation_openapi_marker() {}

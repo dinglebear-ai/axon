@@ -244,6 +244,7 @@ export type components = {
         "ControlOperation": {
             "actor": string;
             "approver"?: string | null;
+            "execution_attempt_id"?: string | null;
             "expected_revision"?: string | null;
             "id": number;
             "method": string;
@@ -252,6 +253,7 @@ export type components = {
             "recovery_state"?: string | null;
             "redacted_request": unknown;
             "request_digest": string;
+            "response_evidence"?: string | null;
             "scope": string;
         };
         "ControlState": "disabled" | "starting" | "ready" | "degraded" | "incompatible" | "circuit_open" | "stopped";
@@ -1013,6 +1015,11 @@ export type components = {
             "qdrant": string;
             "sqlite": string;
             "tei": string;
+        };
+        "ReconcileOperationBody": {
+            "disposition_note"?: string | null;
+            "effect_applied"?: boolean | null;
+            "without_replay"?: boolean;
         };
         "ReconcileOperationResponse": {
             "operation_id": number;
@@ -1800,7 +1807,7 @@ export type operations = {
     "approve_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/approve"; operationId: "approve_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ApproveOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
     "cancel_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/cancel"; operationId: "cancel_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
     "execute_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/execute"; operationId: "execute_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ExecuteBody']; responses: { "200": components['schemas']['ExecuteOperationResponse']; "502": components['schemas']['ErrorBody'] }; security: never };
-    "reconcile_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/reconcile"; operationId: "reconcile_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
+    "reconcile_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/reconcile"; operationId: "reconcile_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ReconcileOperationBody']; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
     "read_action_openapi_marker": { method: "post"; path: "/v1/codex/read"; operationId: "read_action_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CodexReadBody']; responses: { "200": components['schemas']['CodexResourceResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
     "respond_to_server_request_openapi_marker": { method: "post"; path: "/v1/codex/server-requests/{id}/respond"; operationId: "respond_to_server_request_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ServerRequestResponseBody']; responses: { "200": components['schemas']['ServerRequestRespondedResponse']; "502": components['schemas']['ErrorBody'] }; security: never };
     "resource_openapi_marker": { method: "get"; path: "/v1/codex/{resource}"; operationId: "resource_openapi_marker"; parameters: { query: Record<string, never>; path: { "resource": string } }; requestBody: never; responses: { "200": components['schemas']['CodexResourceResponse']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: never };

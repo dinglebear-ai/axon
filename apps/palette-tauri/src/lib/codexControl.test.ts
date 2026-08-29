@@ -74,7 +74,11 @@ describe("Codex control client", () => {
     await reconcileCodexOperation(client, 9);
     expect(invoke.mock.calls[0][1].request).toMatchObject({
       path: "/v1/codex/operations/9/reconcile",
-      body: {},
+      body: {
+        without_replay: false,
+        effect_applied: undefined,
+        disposition_note: undefined,
+      },
     });
   });
 });
