@@ -1,6 +1,6 @@
 import { platform } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-
+import { CortexWorkspace } from "@/components/palette/cortex/CortexWorkspace";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { LabbyExactToolRunner } from "@/components/palette/labby/LabbyExactToolRunner";
 import { PaletteShell } from "@/components/palette/PaletteShell";
@@ -182,6 +182,8 @@ export default function App() {
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
   const labbyProfile =
     config?.backendProfiles?.find((profile) => profile.product === "labby") ?? null;
+  const cortexProfile =
+    config?.backendProfiles?.find((profile) => profile.product === "cortex") ?? null;
 
   useEffect(() => {
     if (modeAction?.subcommand !== "ask") setAskSessionsOpen(false);
@@ -426,6 +428,9 @@ export default function App() {
   }, []);
   if (new URLSearchParams(window.location.search).get("workspace") === "labby" && labbyProfile) {
     return <LabbyExactToolRunner profile={labbyProfile} />;
+  }
+  if (new URLSearchParams(window.location.search).get("workspace") === "cortex" && cortexProfile) {
+    return <CortexWorkspace profile={cortexProfile} />;
   }
   return (
     <PaletteShell
