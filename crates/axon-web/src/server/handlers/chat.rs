@@ -3,6 +3,7 @@ use axon_services::client_contract::{RestChatRequest, RestChatResponse};
 use axon_services::context::ServiceContext;
 use axon_services::service_traits::{AskService, AskServiceImpl};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
+use lab_auth::AuthContext;
 use std::sync::Arc;
 
 pub(super) fn validate_chat_message(message: &str) -> Result<(), HttpError> {
@@ -33,6 +34,7 @@ pub(super) fn validate_chat_message(message: &str) -> Result<(), HttpError> {
 )]
 pub async fn v1_chat(
     Extension(context): Extension<Arc<ServiceContext>>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<RestChatRequest>,
 ) -> impl IntoResponse {
     if let Err(err) = validate_chat_message(&req.message) {
@@ -63,6 +65,13 @@ pub async fn v1_chat(
             resolved.metadata.effective_revision,
             &format!("{}\n\n{}", resolved.prompt_context, req.message),
             options,
+            axon_services::agent_runtime::AgentTurnOwner {
+                principal: auth
+                    .as_ref()
+                    .map(|v| v.sub.clone())
+                    .unwrap_or_else(|| "loopback-local".into()),
+                profile_id: binding.integration_id.clone(),
+            },
             completion,
         )
         .await

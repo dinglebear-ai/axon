@@ -10,7 +10,7 @@ const MAX_CONTEXT_CHARS: usize = 16_384;
 #[serde(rename_all = "camelCase")]
 struct Preview {
     loadout_id: String,
-    draft_revision: u64,
+    active_revision: u64,
     catalog_generation: String,
     runtime_identity: String,
     effective: Vec<CapabilityRef>,
@@ -102,11 +102,11 @@ pub async fn resolve(
     if preview.loadout_id != binding.loadout_id || preview.runtime_identity != runtime_identity {
         anyhow::bail!("loadout_contract_invalid: Labby preview identity mismatch");
     }
-    if preview.draft_revision != binding.expected_revision {
+    if preview.active_revision != binding.expected_revision {
         anyhow::bail!(
             "loadout_revision_conflict: expected revision {}, current revision {}",
             binding.expected_revision,
-            preview.draft_revision
+            preview.active_revision
         );
     }
     if !preview.conflicts.is_empty() {
@@ -121,7 +121,7 @@ pub async fn resolve(
             integration_id: binding.integration_id.clone(),
             loadout_id: binding.loadout_id.clone(),
             requested_revision: binding.expected_revision,
-            effective_revision: preview.draft_revision,
+            effective_revision: preview.active_revision,
             catalog_generation: preview.catalog_generation,
             execution_context_id,
             correlation_id,

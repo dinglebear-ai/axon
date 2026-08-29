@@ -129,6 +129,13 @@ pub async fn v1_ask(
             resolution.metadata.effective_revision,
             &prompt,
             options,
+            axon_services::agent_runtime::AgentTurnOwner {
+                principal: auth
+                    .as_ref()
+                    .map(|v| v.sub.clone())
+                    .unwrap_or_else(|| "loopback-local".into()),
+                profile_id: binding.integration_id.clone(),
+            },
             axon_services::agent_runtime::configured_completion(req_cfg.clone()),
         )
         .await

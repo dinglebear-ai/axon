@@ -38,7 +38,7 @@ fn binding_limits_fail_closed() {
 fn execution_context_id_is_revision_and_generation_bound() {
     let preview = Preview {
         loadout_id: "loadout".into(),
-        draft_revision: 2,
+        active_revision: 2,
         catalog_generation: "catalog-a".into(),
         runtime_identity: "axon".into(),
         effective: vec![],

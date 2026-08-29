@@ -51,7 +51,7 @@ pub(crate) mod sources_resource;
 #[path = "handlers/uploads.rs"]
 pub mod uploads;
 
-pub use agent::{v1_agent_cancel, v1_agent_events, v1_agent_status};
+pub use agent::{v1_agent_cancel, v1_agent_events, v1_agent_resume, v1_agent_status};
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;
 pub use auth::{login, panel_state};

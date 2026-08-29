@@ -12,6 +12,10 @@ pub struct LabbyContextReceipt {
     pub service: String,
     pub loadout_id: String,
     pub loadout_revision: u64,
+    pub expires_at_unix_ms: i64,
+    pub catalog_generation: String,
+    pub exact_execution: bool,
+    pub llm_invoked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +31,8 @@ pub struct LabbyExecutionReceipt {
     pub loadout_revision: u64,
     pub actor: String,
     pub service: String,
+    pub execution_context_id: String,
+    pub idempotency_key: String,
     #[serde(default)]
     pub result: Option<Value>,
     #[serde(default)]
@@ -92,7 +98,16 @@ impl LabbyAgentClient {
     ) -> anyhow::Result<LabbyContextReceipt> {
         let response = self.client.post(self.url("/v1/palette/agent/contexts")?).bearer_auth(&self.token).json(&serde_json::json!({"delegationToken":delegation,"loadoutId":loadout,"loadoutRevision":revision,"expiresAtUnixMs":expires})).send().await?;
         let receipt: LabbyContextReceipt = self.decode(response).await?;
-        if receipt.loadout_id != loadout || receipt.loadout_revision != revision {
+        if receipt.loadout_id != loadout
+            || receipt.loadout_revision != revision
+            || receipt.expires_at_unix_ms != expires
+            || receipt.execution_context_id.is_empty()
+            || receipt.actor.is_empty()
+            || receipt.service.is_empty()
+            || receipt.catalog_generation.is_empty()
+            || !receipt.exact_execution
+            || receipt.llm_invoked
+        {
             anyhow::bail!("labby_context_binding_mismatch");
         }
         Ok(receipt)

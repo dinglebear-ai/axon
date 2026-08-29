@@ -15,6 +15,7 @@ pub enum AgentTurnStatus {
     Cancelled,
     TimedOut,
     Interrupted,
+    CancelUnconfirmed,
 }
 
 impl AgentTurnStatus {
@@ -24,6 +25,13 @@ impl AgentTurnStatus {
             Self::Succeeded | Self::Failed | Self::Cancelled | Self::TimedOut
         )
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentResumeRequest {
+    #[serde(default)]
+    pub approval_tokens: Vec<AgentApprovalToken>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema, ToSchema)]

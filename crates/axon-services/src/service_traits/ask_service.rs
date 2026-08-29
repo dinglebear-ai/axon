@@ -155,6 +155,10 @@ impl AskService for AskServiceImpl {
                 resolved.metadata.effective_revision,
                 &prompt,
                 options,
+                crate::agent_runtime::AgentTurnOwner {
+                    principal: "internal-service".into(),
+                    profile_id: binding.integration_id.clone(),
+                },
                 crate::agent_runtime::configured_completion(self.ctx.cfg().clone()),
             )
             .await?;

@@ -198,6 +198,7 @@ async fn apply_stream_agent(
     request: &AskRequestBody,
     resolved: Option<&axon_services::loadout_context::ResolvedLoadoutContext>,
     mut result: axon_services::types::AskResult,
+    owner: axon_services::agent_runtime::AgentTurnOwner,
 ) -> Result<axon_services::types::AskResult, String> {
     let Some(options) = request.agent.clone() else {
         return Ok(result);
@@ -214,6 +215,7 @@ async fn apply_stream_agent(
         resolution.metadata.effective_revision,
         &prompt,
         options,
+        owner,
         axon_services::agent_runtime::configured_completion(cfg.clone()),
     )
     .await
@@ -239,10 +241,10 @@ async fn apply_stream_agent(
 pub async fn v1_ask_stream(
     Extension(cfg): Extension<Arc<Config>>,
     Extension(ctx): Extension<Arc<ServiceContext>>,
+    auth: Option<Extension<lab_auth::AuthContext>>,
     Json(req): Json<AskRequestBody>,
 ) -> Response {
     use super::super::types::ASK_QUERY_MAX_CHARS;
-
     if req.query.trim().is_empty() {
         return HttpError::bad_request("query is required").into_response();
     }
@@ -273,6 +275,7 @@ pub async fn v1_ask_stream(
     req_cfg.json_output = false;
 
     let service_context = Arc::clone(&ctx);
+    let owner_principal = stream_owner(auth.as_ref());
     let job_id = JobId::new(uuid::Uuid::new_v4());
     let sequence = Arc::new(SequenceCounter::default());
     let handle = tokio::spawn(async move {
@@ -332,7 +335,15 @@ pub async fn v1_ask_stream(
         let _ = delta_task.await;
 
         result.query = original_query;
-        result = match apply_stream_agent(&req_cfg, &req, resolved.as_ref(), result).await {
+        let owner = axon_services::agent_runtime::AgentTurnOwner {
+            principal: owner_principal,
+            profile_id: req
+                .loadout
+                .as_ref()
+                .map(|v| v.integration_id.clone())
+                .unwrap_or_default(),
+        };
+        result = match apply_stream_agent(&req_cfg, &req, resolved.as_ref(), result, owner).await {
             Ok(result) => result,
             Err(message) => {
                 emit_ask_stream_result(&tx, &disconnected, &sequence, job_id, Err(message)).await;
@@ -351,6 +362,11 @@ pub async fn v1_ask_stream(
 
     let event_stream = AbortOnDropStream { rx, handle };
     Sse::new(event_stream).into_response()
+}
+
+fn stream_owner(auth: Option<&Extension<lab_auth::AuthContext>>) -> String {
+    auth.map(|value| value.sub.clone())
+        .unwrap_or_else(|| "loopback-local".into())
 }
 
 #[cfg(test)]

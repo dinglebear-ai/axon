@@ -23,10 +23,39 @@ pub struct StoredTurn {
     pub pending_proposal: Option<AgentToolProposal>,
     pub tool_results: Vec<Value>,
     pub active_request_id: Option<String>,
+    pub owner: String,
+    pub profile_id: String,
+    pub max_tool_calls: u32,
+    pub model: String,
+    pub version: u64,
+    pub cancel_requested: bool,
 }
 
 impl StoredTurn {
-    pub fn verify_resume(&self, loadout: &str, revision: u64, prompt: &str) -> anyhow::Result<()> {
+    pub fn verify_resume(&self, owner: &str) -> anyhow::Result<()> {
+        if self.owner != owner {
+            anyhow::bail!("agent_turn_not_found");
+        }
+        if self.status.is_terminal() {
+            anyhow::bail!("agent_turn_terminal");
+        }
+        if self.cancel_requested {
+            anyhow::bail!("agent_turn_cancelled");
+        }
+        Ok(())
+    }
+
+    pub fn verify_create_replay(
+        &self,
+        owner: &str,
+        profile: &str,
+        loadout: &str,
+        revision: u64,
+        prompt: &str,
+    ) -> anyhow::Result<()> {
+        if self.owner != owner || self.profile_id != profile {
+            anyhow::bail!("agent_turn_not_found");
+        }
         if self.loadout_id != loadout
             || self.loadout_revision != revision
             || self.prompt_hash != digest(prompt)
@@ -53,15 +82,18 @@ impl AgentTurnStore {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
         }
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.execute_batch(SCHEMA)?;
-        Ok(Self {
+        conn.pragma_update(None, "foreign_keys", true)?;
+        migrate(&conn)?;
+        let store = Self {
             conn: Mutex::new(conn),
-        })
+        };
+        store.maintain(now_ms(), 30 * 24 * 60 * 60 * 1000)?;
+        Ok(store)
     }
     #[cfg(test)]
     pub fn memory() -> anyhow::Result<Self> {
         let conn = Connection::open_in_memory()?;
-        conn.execute_batch(SCHEMA)?;
+        migrate(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -74,17 +106,67 @@ impl AgentTurnStore {
         revision: u64,
         prompt: &str,
         deadline: i64,
+        owner: &str,
+        profile: &str,
+        max_tool_calls: u32,
+        model: &str,
         context: &LabbyContextReceipt,
     ) -> anyhow::Result<StoredTurn> {
-        self.conn.lock().unwrap().execute("INSERT INTO agent_turns(id,loadout_id,loadout_revision,prompt,prompt_hash,execution_context_id,actor,service,status,deadline_at_ms,tool_call_count,tool_results_json,sequence) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'pending',?9,0,'[]',0)",params![id,loadout,revision as i64,prompt,digest(prompt),context.execution_context_id,context.actor,context.service,deadline])?;
+        self.conn.lock().unwrap().execute("INSERT INTO agent_turns(id,loadout_id,loadout_revision,prompt,prompt_hash,execution_context_id,actor,service,status,deadline_at_ms,tool_call_count,tool_results_json,sequence,owner,profile_id,max_tool_calls,model,version,cancel_requested) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'pending',?9,0,'[]',0,?10,?11,?12,?13,0,0)",params![id,loadout,revision as i64,prompt,digest(prompt),context.execution_context_id,context.actor,context.service,deadline,owner,profile,max_tool_calls,model])?;
         self.load(id)?
             .ok_or_else(|| anyhow::anyhow!("agent_turn_create_failed"))
     }
     pub fn load(&self, id: &str) -> anyhow::Result<Option<StoredTurn>> {
-        self.conn.lock().unwrap().query_row("SELECT id,loadout_id,loadout_revision,prompt,prompt_hash,execution_context_id,actor,service,status,deadline_at_ms,tool_call_count,pending_proposal_json,tool_results_json,active_request_id FROM agent_turns WHERE id=?1",[id],|r|{
+        self.conn.lock().unwrap().query_row("SELECT id,loadout_id,loadout_revision,prompt,prompt_hash,execution_context_id,actor,service,status,deadline_at_ms,tool_call_count,pending_proposal_json,tool_results_json,active_request_id,owner,profile_id,max_tool_calls,model,version,cancel_requested FROM agent_turns WHERE id=?1",[id],|r|{
             let status:String=r.get(8)?; let proposal:Option<String>=r.get(11)?; let results:String=r.get(12)?;
-            Ok(StoredTurn{id:r.get(0)?,loadout_id:r.get(1)?,loadout_revision:r.get::<_,i64>(2)? as u64,prompt:r.get(3)?,prompt_hash:r.get(4)?,execution_context_id:r.get(5)?,actor:r.get(6)?,service:r.get(7)?,status:parse_status(&status),deadline_at_ms:r.get(9)?,tool_call_count:r.get::<_,i64>(10)? as u32,pending_proposal:proposal.and_then(|v|serde_json::from_str(&v).ok()),tool_results:serde_json::from_str(&results).unwrap_or_default(),active_request_id:r.get(13)?})
+            Ok(StoredTurn{id:r.get(0)?,loadout_id:r.get(1)?,loadout_revision:r.get::<_,i64>(2)? as u64,prompt:r.get(3)?,prompt_hash:r.get(4)?,execution_context_id:r.get(5)?,actor:r.get(6)?,service:r.get(7)?,status:parse_status(&status),deadline_at_ms:r.get(9)?,tool_call_count:r.get::<_,i64>(10)? as u32,pending_proposal:proposal.and_then(|v|serde_json::from_str(&v).ok()),tool_results:serde_json::from_str(&results).unwrap_or_default(),active_request_id:r.get(13)?,owner:r.get(14)?,profile_id:r.get(15)?,max_tool_calls:r.get::<_,i64>(16)? as u32,model:r.get(17)?,version:r.get::<_,i64>(18)? as u64,cancel_requested:r.get::<_,i64>(19)? != 0})
         }).optional().map_err(Into::into)
+    }
+    pub fn load_owned(&self, id: &str, owner: &str) -> anyhow::Result<StoredTurn> {
+        let turn = self
+            .load(id)?
+            .ok_or_else(|| anyhow::anyhow!("agent_turn_not_found"))?;
+        if turn.owner != owner {
+            anyhow::bail!("agent_turn_not_found");
+        }
+        Ok(turn)
+    }
+    pub fn acquire_lease(
+        &self,
+        id: &str,
+        owner: &str,
+        expected: u64,
+        now: i64,
+    ) -> anyhow::Result<u64> {
+        let changed=self.conn.lock().unwrap().execute("UPDATE agent_turns SET lease_until_ms=?1,version=version+1 WHERE id=?2 AND owner=?3 AND version=?4 AND cancel_requested=0 AND status NOT IN ('succeeded','failed','cancelled','timed_out') AND lease_until_ms<=?5",params![now+30_000,id,owner,expected as i64,now])?;
+        if changed != 1 {
+            anyhow::bail!("agent_turn_resume_conflict");
+        }
+        Ok(expected + 1)
+    }
+    pub fn release_lease(&self, id: &str, version: u64) -> anyhow::Result<()> {
+        self.conn.lock().unwrap().execute(
+            "UPDATE agent_turns SET lease_until_ms=0 WHERE id=?1 AND version=?2",
+            params![id, version as i64],
+        )?;
+        Ok(())
+    }
+    pub fn request_cancel(&self, id: &str, owner: &str) -> anyhow::Result<StoredTurn> {
+        let changed=self.conn.lock().unwrap().execute("UPDATE agent_turns SET cancel_requested=1,status=CASE WHEN active_request_id IS NULL THEN 'cancelled' ELSE 'cancel_unconfirmed' END,version=version+1 WHERE id=?1 AND owner=?2 AND status NOT IN ('succeeded','failed','cancelled','timed_out')",params![id,owner])?;
+        if changed == 0 {
+            return self.load_owned(id, owner);
+        }
+        self.load_owned(id, owner)
+    }
+    pub fn confirm_cancel(&self, id: &str, owner: &str) -> anyhow::Result<()> {
+        self.conn.lock().unwrap().execute("UPDATE agent_turns SET status='cancelled',active_request_id=NULL WHERE id=?1 AND owner=?2 AND cancel_requested=1",params![id,owner])?;
+        Ok(())
+    }
+    pub fn maintain(&self, now_ms: i64, retention_ms: i64) -> anyhow::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE agent_turns SET status='interrupted',lease_until_ms=0,version=version+1 WHERE lease_until_ms>0 AND lease_until_ms<=?1 AND cancel_requested=0",[now_ms])?;
+        conn.execute("DELETE FROM agent_turns WHERE status IN ('succeeded','failed','cancelled','timed_out') AND deadline_at_ms<?1",[now_ms.saturating_sub(retention_ms)])?;
+        Ok(())
     }
     pub fn transition(
         &self,
@@ -92,7 +174,10 @@ impl AgentTurnStore {
         status: AgentTurnStatus,
         value: Option<&str>,
     ) -> anyhow::Result<()> {
-        self.conn.lock().unwrap().execute("UPDATE agent_turns SET status=?1,answer=CASE WHEN ?2 IS NULL THEN answer ELSE ?2 END,error_kind=CASE WHEN ?3 THEN ?2 ELSE error_kind END WHERE id=?4",params![status_str(&status),value,!matches!(status,AgentTurnStatus::Succeeded),id])?;
+        let changed=self.conn.lock().unwrap().execute("UPDATE agent_turns SET status=?1,answer=CASE WHEN ?2 IS NULL THEN answer ELSE ?2 END,error_kind=CASE WHEN ?3 THEN ?2 ELSE error_kind END WHERE id=?4 AND cancel_requested=0",params![status_str(&status),value,!matches!(status,AgentTurnStatus::Succeeded),id])?;
+        if changed == 0 {
+            return Ok(());
+        }
         self.append_event(
             id,
             AgentEvent::State {
@@ -125,11 +210,12 @@ impl AgentTurnStore {
             .lock()
             .unwrap()
             .query_row(
-                "SELECT idempotency_key FROM agent_tool_calls WHERE turn_id=?1 AND tool_call_id=?2",
+                "SELECT request_id FROM agent_tool_calls WHERE turn_id=?1 AND tool_call_id=?2",
                 params![id, call],
-                |r| r.get(0),
+                |r| r.get::<_, Option<String>>(0),
             )
-            .optional()?)
+            .optional()?
+            .flatten())
     }
     pub fn record_receipt(
         &self,
@@ -137,6 +223,28 @@ impl AgentTurnStore {
         p: &AgentToolProposal,
         r: &LabbyExecutionReceipt,
     ) -> anyhow::Result<()> {
+        let turn = self
+            .load(id)?
+            .ok_or_else(|| anyhow::anyhow!("agent_turn_not_found"))?;
+        let key: String = self.conn.lock().unwrap().query_row(
+            "SELECT idempotency_key FROM agent_tool_calls WHERE turn_id=?1 AND tool_call_id=?2",
+            params![id, p.tool_call_id],
+            |row| row.get(0),
+        )?;
+        if r.execution_context_id != turn.execution_context_id
+            || r.idempotency_key != key
+            || r.tool_id != p.tool_id
+            || r.contract_hash != p.contract_hash
+            || r.loadout_id != turn.loadout_id
+            || r.loadout_revision != turn.loadout_revision
+            || r.actor != turn.actor
+            || r.service != turn.service
+            || r.request_id.is_empty()
+            || r.receipt_id.is_empty()
+            || r.audit_id.is_empty()
+        {
+            anyhow::bail!("labby_receipt_binding_mismatch");
+        }
         self.conn.lock().unwrap().execute("UPDATE agent_tool_calls SET request_id=?1,receipt_id=?2,audit_id=?3,status=?4 WHERE turn_id=?5 AND tool_call_id=?6",params![r.request_id,r.receipt_id,r.audit_id,r.status,id,p.tool_call_id])?;
         self.append_event(
             id,
@@ -229,6 +337,14 @@ impl AgentTurnStore {
 fn digest(v: &str) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(v.as_bytes())))
 }
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(i64::MAX)
+}
 fn status_str(s: &AgentTurnStatus) -> &'static str {
     match s {
         AgentTurnStatus::Pending => "pending",
@@ -241,6 +357,7 @@ fn status_str(s: &AgentTurnStatus) -> &'static str {
         AgentTurnStatus::Cancelled => "cancelled",
         AgentTurnStatus::TimedOut => "timed_out",
         AgentTurnStatus::Interrupted => "interrupted",
+        AgentTurnStatus::CancelUnconfirmed => "cancel_unconfirmed",
     }
 }
 fn parse_status(s: &str) -> AgentTurnStatus {
@@ -254,6 +371,7 @@ fn parse_status(s: &str) -> AgentTurnStatus {
         "cancelled" => AgentTurnStatus::Cancelled,
         "timed_out" => AgentTurnStatus::TimedOut,
         "interrupted" => AgentTurnStatus::Interrupted,
+        "cancel_unconfirmed" => AgentTurnStatus::CancelUnconfirmed,
         _ => AgentTurnStatus::Failed,
     }
 }
@@ -300,4 +418,20 @@ fn with_sequence(e: AgentEvent, s: u64) -> AgentEvent {
     }
 }
 
-const SCHEMA: &str = r#"CREATE TABLE IF NOT EXISTS agent_turns(id TEXT PRIMARY KEY,loadout_id TEXT NOT NULL,loadout_revision INTEGER NOT NULL,prompt TEXT NOT NULL,prompt_hash TEXT NOT NULL,execution_context_id TEXT NOT NULL,actor TEXT NOT NULL,service TEXT NOT NULL,status TEXT NOT NULL,deadline_at_ms INTEGER NOT NULL,tool_call_count INTEGER NOT NULL,pending_proposal_json TEXT,tool_results_json TEXT NOT NULL,active_request_id TEXT,answer TEXT,error_kind TEXT,sequence INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS agent_tool_calls(turn_id TEXT NOT NULL,tool_call_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_id TEXT,receipt_id TEXT,audit_id TEXT,status TEXT NOT NULL,PRIMARY KEY(turn_id,tool_call_id),UNIQUE(idempotency_key));CREATE TABLE IF NOT EXISTS agent_turn_events(turn_id TEXT NOT NULL,sequence INTEGER NOT NULL,event_json TEXT NOT NULL,PRIMARY KEY(turn_id,sequence));"#;
+fn migrate(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute_batch(SCHEMA)?;
+    for sql in [
+        "ALTER TABLE agent_turns ADD COLUMN owner TEXT NOT NULL DEFAULT 'legacy'",
+        "ALTER TABLE agent_turns ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'legacy'",
+        "ALTER TABLE agent_turns ADD COLUMN max_tool_calls INTEGER NOT NULL DEFAULT 8",
+        "ALTER TABLE agent_turns ADD COLUMN model TEXT NOT NULL DEFAULT 'legacy'",
+        "ALTER TABLE agent_turns ADD COLUMN version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE agent_turns ADD COLUMN lease_until_ms INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE agent_turns ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0",
+    ] {
+        let _ = conn.execute(sql, []);
+    }
+    conn.pragma_update(None, "user_version", 1)?;
+    Ok(())
+}
+const SCHEMA: &str = r#"CREATE TABLE IF NOT EXISTS agent_turns(id TEXT PRIMARY KEY,loadout_id TEXT NOT NULL,loadout_revision INTEGER NOT NULL,prompt TEXT NOT NULL,prompt_hash TEXT NOT NULL,execution_context_id TEXT NOT NULL,actor TEXT NOT NULL,service TEXT NOT NULL,status TEXT NOT NULL,deadline_at_ms INTEGER NOT NULL,tool_call_count INTEGER NOT NULL,pending_proposal_json TEXT,tool_results_json TEXT NOT NULL,active_request_id TEXT,answer TEXT,error_kind TEXT,sequence INTEGER NOT NULL,owner TEXT NOT NULL,profile_id TEXT NOT NULL,max_tool_calls INTEGER NOT NULL,model TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 0,lease_until_ms INTEGER NOT NULL DEFAULT 0,cancel_requested INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS agent_tool_calls(turn_id TEXT NOT NULL REFERENCES agent_turns(id) ON DELETE CASCADE,tool_call_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_id TEXT,receipt_id TEXT,audit_id TEXT,status TEXT NOT NULL,PRIMARY KEY(turn_id,tool_call_id),UNIQUE(idempotency_key));CREATE TABLE IF NOT EXISTS agent_turn_events(turn_id TEXT NOT NULL REFERENCES agent_turns(id) ON DELETE CASCADE,sequence INTEGER NOT NULL,event_json TEXT NOT NULL,PRIMARY KEY(turn_id,sequence));"#;
