@@ -13,6 +13,7 @@ fn request(product: BackendProduct, path: &str) -> BackendRequest {
 fn product_routes_fail_closed() {
     assert!(validate_request(&request(BackendProduct::Axon, "/v1/doctor")).is_ok());
     assert!(validate_request(&request(BackendProduct::Labby, "/v1/integration/identity")).is_ok());
+    assert!(validate_request(&request(BackendProduct::Labby, "/v1/gateway")).is_ok());
     assert!(
         validate_request(&request(
             BackendProduct::Labby,

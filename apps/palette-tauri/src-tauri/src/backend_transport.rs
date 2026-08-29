@@ -384,7 +384,9 @@ fn upstream_path(product: BackendProduct, path_and_query: &str) -> Result<&str, 
     let allowed = match product {
         BackendProduct::Axon => path.starts_with("/v1/"),
         BackendProduct::Labby => {
-            path == "/v1/integration/identity" || path.starts_with("/v1/palette/")
+            path == "/v1/integration/identity"
+                || path == "/v1/gateway"
+                || path.starts_with("/v1/palette/")
         }
         BackendProduct::Cortex => path == "/v1/integration/identity" || path.starts_with("/api/"),
     };

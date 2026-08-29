@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/aurora/button";
 import type { BackendProfile } from "@/lib/backendProfiles/model";
+import { ArtifactWorkspace } from "./ArtifactWorkspace";
+import { GatewayWorkspace } from "./GatewayWorkspace";
 import { LabbyExactToolRunner } from "./LabbyExactToolRunner";
 import { LabbySnippetWorkspace } from "./LabbySnippetWorkspace";
 import { LoadoutWorkspace } from "./LoadoutWorkspace";
-import { ArtifactWorkspace } from "./ArtifactWorkspace";
 
 export function LabbyWorkspace({ profile }: { profile: BackendProfile }) {
-  const [tab, setTab] = useState<"tools" | "snippets" | "loadouts" | "artifacts">("loadouts");
+  const [tab, setTab] = useState<"tools" | "snippets" | "loadouts" | "artifacts" | "gateway">(
+    "loadouts",
+  );
   return (
     <div className="labby-workspace">
       <nav className="labby-workspace-tabs" aria-label="Labby workspace">
@@ -32,8 +35,13 @@ export function LabbyWorkspace({ profile }: { profile: BackendProfile }) {
         >
           Artifacts
         </Button>
+        <Button variant={tab === "gateway" ? "aurora" : "plain"} onClick={() => setTab("gateway")}>
+          Gateway
+        </Button>
       </nav>
-      {tab === "artifacts" ? (
+      {tab === "gateway" ? (
+        <GatewayWorkspace profile={profile} />
+      ) : tab === "artifacts" ? (
         <ArtifactWorkspace profile={profile} />
       ) : tab === "loadouts" ? (
         <LoadoutWorkspace profile={profile} />
