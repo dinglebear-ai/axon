@@ -84,6 +84,14 @@ pub async fn v1_agent_resume(
     Path(id): Path<String>,
     Json(request): Json<axon_api::agent::AgentResumeRequest>,
 ) -> impl IntoResponse {
+    if !resume_scope_allowed(&auth.scopes) {
+        return HttpError::new(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "requires explicit scope: axon:write",
+        )
+        .into_response();
+    }
     let completion = axon_services::agent_runtime::configured_completion((*cfg).clone());
     let owner = axon_services::agent_runtime::AgentTurnOwner {
         principal: auth.sub,
@@ -107,3 +115,11 @@ pub async fn v1_agent_resume(
         .into_response(),
     }
 }
+
+fn resume_scope_allowed(scopes: &[String]) -> bool {
+    axon_authz::has_explicit_scope(scopes, axon_authz::AXON_WRITE_SCOPE)
+}
+
+#[cfg(test)]
+#[path = "agent_tests.rs"]
+mod tests;

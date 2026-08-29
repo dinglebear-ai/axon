@@ -80,6 +80,9 @@ pub(crate) fn save_backend_credential(
     }
     let vault_path = path(&app)?;
     let mut entries = read(&vault_path)?;
+    entries.retain(|handle, entry| {
+        handle == &credential.handle || entry.profile_id != credential.profile_id
+    });
     entries.insert(
         credential.handle,
         VaultEntry {
@@ -101,7 +104,7 @@ pub(crate) fn save_backend_credential(
 pub(crate) fn delete_backend_credential(app: AppHandle, profile_id: String) -> Result<(), String> {
     let vault_path = path(&app)?;
     let mut entries = read(&vault_path)?;
-    entries.remove(&profile_id);
+    entries.retain(|_, entry| entry.profile_id != profile_id);
     atomic_write(
         &vault_path,
         &serde_json::to_vec(&entries).map_err(|e| e.to_string())?,

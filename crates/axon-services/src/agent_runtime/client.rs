@@ -13,9 +13,6 @@ pub struct LabbyContextReceipt {
     pub loadout_id: String,
     pub loadout_revision: u64,
     pub expires_at_unix_ms: i64,
-    pub catalog_generation: String,
-    pub exact_execution: bool,
-    pub llm_invoked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,8 +28,8 @@ pub struct LabbyExecutionReceipt {
     pub loadout_revision: u64,
     pub actor: String,
     pub service: String,
-    pub execution_context_id: String,
-    pub idempotency_key: String,
+    pub execution_mode: String,
+    pub llm_invocations: u8,
     #[serde(default)]
     pub result: Option<Value>,
     #[serde(default)]
@@ -104,13 +101,19 @@ impl LabbyAgentClient {
             || receipt.execution_context_id.is_empty()
             || receipt.actor.is_empty()
             || receipt.service.is_empty()
-            || receipt.catalog_generation.is_empty()
-            || !receipt.exact_execution
-            || receipt.llm_invoked
         {
             anyhow::bail!("labby_context_binding_mismatch");
         }
         Ok(receipt)
+    }
+
+    pub async fn request_approval(
+        &self,
+        context: &str,
+        proposal: &AgentToolProposal,
+    ) -> anyhow::Result<LabbyApprovalChallenge> {
+        let response = self.client.post(self.url("/v1/palette/agent/approvals")?).bearer_auth(&self.token).json(&serde_json::json!({"executionContextId":context,"id":proposal.tool_id,"params":proposal.arguments,"expectedContractHash":proposal.contract_hash})).send().await?;
+        self.decode(response).await
     }
 
     pub async fn execute(
@@ -146,4 +149,12 @@ impl LabbyAgentClient {
             .await?;
         self.decode(response).await
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LabbyApprovalChallenge {
+    pub approval_token: String,
+    pub approval_id: String,
+    pub expires_at_unix_ms: i64,
 }

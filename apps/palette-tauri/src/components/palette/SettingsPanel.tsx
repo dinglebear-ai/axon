@@ -12,6 +12,8 @@ import {
   type PaletteResult,
 } from "@/lib/axonClient";
 import { isRecord, strField, unwrapPayload } from "@/lib/payload";
+import { invoke } from "@/lib/invoke";
+import type { BackendProfile, BackendProduct } from "@/lib/backendProfiles/model";
 
 interface SettingsPanelProps {
   configError: string | null;
@@ -149,6 +151,7 @@ export function SettingsPanel({
           shortcutOptions={shortcutOptions}
           updateConfig={updateConfig}
         />
+        <BackendProfilesSettings draftConfig={draftConfig} onChange={onChange} />
       </div>
 
       <SettingsFooter
@@ -160,6 +163,106 @@ export function SettingsPanel({
         onSave={onSave}
       />
     </section>
+  );
+}
+
+export function BackendProfilesSettings({
+  draftConfig,
+  onChange,
+}: {
+  draftConfig: PaletteConfig;
+  onChange: (config: PaletteConfig) => void;
+}) {
+  const [tokens, setTokens] = useState<Record<string, string>>({});
+  const profiles = draftConfig.backendProfiles ?? [];
+  const updateProfile = (id: string, patch: Partial<BackendProfile>) =>
+    onChange({
+      ...draftConfig,
+      backendProfiles: profiles.map((profile) =>
+        profile.id === id ? { ...profile, ...patch } : profile,
+      ),
+    });
+  const saveCredential = async (profile: BackendProfile) => {
+    const token = tokens[profile.id]?.trim() ?? "";
+    if (!token) throw new Error("Enter a credential before saving or rotating it.");
+    const handle = profile.credentialHandle ?? `${profile.product}:${profile.id}`;
+    const generation = String(Date.now());
+    await invoke("save_backend_credential", {
+      credential: {
+        handle,
+        profileId: profile.id,
+        product: profile.product,
+        origin: profile.origin,
+        serverId: profile.pinnedServerId ?? "unverified",
+        generation,
+        token,
+      },
+    });
+    updateProfile(profile.id, { credentialHandle: handle, credentialGeneration: generation });
+    setTokens((current) => ({ ...current, [profile.id]: "" }));
+  };
+  const removeCredential = async (profile: BackendProfile) => {
+    await invoke("delete_backend_credential", { profileId: profile.id });
+    updateProfile(profile.id, { credentialHandle: null, credentialGeneration: null });
+    setTokens((current) => ({ ...current, [profile.id]: "" }));
+  };
+  const deleteProfile = async (profile: BackendProfile) => {
+    await invoke("delete_backend_credential", { profileId: profile.id });
+    const active = { ...draftConfig.activeBackendProfiles };
+    if (active[profile.product] === profile.id) delete active[profile.product];
+    onChange({
+      ...draftConfig,
+      backendProfiles: profiles.filter((value) => value.id !== profile.id),
+      activeBackendProfiles: active,
+    });
+  };
+  const addProfile = (product: BackendProduct) => {
+    const id = `${product}-${crypto.randomUUID()}`;
+    onChange({
+      ...draftConfig,
+      backendProfiles: [
+        ...profiles,
+        {
+          id,
+          label: `${product[0].toUpperCase()}${product.slice(1)}`,
+          product,
+          origin: "https://",
+          credentialHandle: null,
+          pinnedServerId: null,
+          acceptedApiMajor: 1,
+        },
+      ],
+    });
+  };
+  return (
+    <div className="settings-stack" aria-label="Backend profiles">
+      <span className="settings-section-label">Product backends</span>
+      {profiles.map((profile) => (
+        <div className="settings-stack" key={profile.id} data-testid={`backend-profile-${profile.id}`}>
+          <Field label={`${profile.product} profile label`}>
+            <TextInput value={profile.label} onChange={(label) => updateProfile(profile.id, { label })} />
+          </Field>
+          <Field label="Origin">
+            <TextInput value={profile.origin} onChange={(origin) => updateProfile(profile.id, { origin })} mono />
+          </Field>
+          <Field label="Credential" hint={profile.credentialHandle ? "saved" : "not saved"}>
+            <SecretInput value={tokens[profile.id] ?? ""} onChange={(token) => setTokens((current) => ({ ...current, [profile.id]: token }))} />
+          </Field>
+          <div className="settings-footer-actions">
+            <Button size="sm" variant="neutral" onClick={() => void saveCredential(profile)}>
+              {profile.credentialHandle ? "Rotate credential" : "Save credential"}
+            </Button>
+            <Button size="sm" variant="neutral" disabled={!profile.credentialHandle} onClick={() => void removeCredential(profile)}>Remove credential</Button>
+            <Button size="sm" variant="neutral" onClick={() => void deleteProfile(profile)}>Delete profile</Button>
+          </div>
+        </div>
+      ))}
+      <div className="settings-footer-actions">
+        {(["axon", "labby", "cortex"] as const).map((product) => (
+          <Button key={product} size="sm" variant="neutral" onClick={() => addProfile(product)}>Add {product}</Button>
+        ))}
+      </div>
+    </div>
   );
 }
 

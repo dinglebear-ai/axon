@@ -47,4 +47,19 @@ describe("followCortexStream", () => {
     expect(ids).toEqual(["cursor-1", "cursor-2"]);
     expect(fetch.mock.calls[1]?.[0].toString()).toContain("cursor=cursor-1");
   });
+
+  it("reconnects retryable thrown stream errors from the last committed cursor", async () => {
+    const controller = new AbortController();
+    const fetch = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(response("cursor-1"))
+      .mockRejectedValueOnce(new TypeError("connection reset"))
+      .mockImplementationOnce(async (input) => {
+        expect(input.toString()).toContain("cursor=cursor-1");
+        controller.abort();
+        return response("cursor-2");
+      });
+    fetch.mockClear();
+    await followCortexStream(profile, "logs", {}, 4, () => undefined, controller.signal);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
 });

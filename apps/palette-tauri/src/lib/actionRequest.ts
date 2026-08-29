@@ -5,6 +5,7 @@
 // thin. No network calls or JSX here — pure shaping only.
 
 import type { components } from "./axon-api";
+import { activeProfile } from "./backendProfiles/model";
 import type { PaletteConfig } from "./axonClient";
 import { loadoutRequestFields } from "./labby/loadoutSelection";
 import { splitShellWords } from "./shellWords";
@@ -111,13 +112,13 @@ export const askBody: BodyBuilder<Req["RestAskRequest"]> = (ctx) => ({
   diagnostics: false,
   ...ctx.collectionBody,
   ...loadoutRequestFields(
-    ctx.config.backendProfiles?.find((profile) => profile.product === "labby"),
+    activeProfile(ctx.config.backendProfiles, ctx.config.activeBackendProfiles, "labby"),
   ),
 });
 export const chatBody: BodyBuilder<Req["RestChatRequest"]> = (ctx) => ({
   message: first(ctx.words, "message"),
   ...loadoutRequestFields(
-    ctx.config.backendProfiles?.find((profile) => profile.product === "labby"),
+    activeProfile(ctx.config.backendProfiles, ctx.config.activeBackendProfiles, "labby"),
   ),
 });
 export const queryBody: BodyBuilder<Req["RestQueryRequest"]> = (ctx) => ({

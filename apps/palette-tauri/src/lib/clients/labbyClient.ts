@@ -42,9 +42,8 @@ export interface LabbyExactResult {
 }
 export interface LabbyApprovalChallenge {
   approvalToken: string;
+  approvalId: string;
   expiresAtUnixMs: number;
-  executionContextId: string;
-  toolCallId: string;
 }
 export interface LabbySnippetInfo {
   name: string;
@@ -228,7 +227,6 @@ export class LabbyClient {
   async requestApproval(
     input: {
       executionContextId: string;
-      turnId: string;
       proposal: { toolCallId: string; toolId: string; contractHash: string; arguments: unknown };
     },
     signal?: AbortSignal,
@@ -236,7 +234,12 @@ export class LabbyClient {
     const response = await this.request<LabbyApprovalChallenge>(
       "POST",
       "/v1/palette/agent/approvals",
-      input,
+      {
+        executionContextId: input.executionContextId,
+        id: input.proposal.toolId,
+        params: input.proposal.arguments,
+        expectedContractHash: input.proposal.contractHash,
+      },
       signal,
     );
     if (!response.ok)

@@ -38,7 +38,6 @@ export const ConversationThread = memo(function ConversationThread({
   agentBubbles = false,
   client = null,
   config = null,
-  action = "ask",
 }: {
   prompt?: string;
   answer: string;
@@ -188,8 +187,6 @@ export const ConversationThread = memo(function ConversationThread({
                       <AgentTurnControls
                         agent={turn.agent}
                         loadout={turn.loadout}
-                        prompt={previousUserTurn(turnIndex)?.content ?? ""}
-                        action={action}
                         client={client}
                         config={config}
                       />
@@ -219,7 +216,6 @@ export const AskConversation = memo(function AskConversation({
   agentBubbles = false,
   client = null,
   config = null,
-  action = "ask",
 }: {
   prompt?: string;
   answer?: string;
@@ -369,7 +365,6 @@ export const AskConversation = memo(function AskConversation({
         agentBubbles={agentBubbles}
         client={client}
         config={config}
-        action={action}
       />
       <form
         className="ask-compose"

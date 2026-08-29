@@ -9,10 +9,14 @@ fn context() -> LabbyContextReceipt {
         loadout_id: "loadout-a".into(),
         loadout_revision: 7,
         expires_at_unix_ms: i64::MAX,
-        catalog_generation: "catalog-1".into(),
-        exact_execution: true,
-        llm_invoked: false,
     }
+}
+
+fn lease(store: &AgentTurnStore, id: &str) -> u64 {
+    let turn = store.load(id).unwrap().unwrap();
+    store
+        .acquire_lease(id, &turn.owner, turn.version, now_ms())
+        .unwrap()
 }
 
 #[test]
@@ -72,13 +76,17 @@ fn proposal_and_receipt_preserve_attribution_and_correlation() {
         arguments: serde_json::json!({"id": 1}),
         destructive: false,
     };
-    store.set_proposal("turn-a", &proposal).unwrap();
+    let version = lease(&store, "turn-a");
     store
-        .reserve_execution("turn-a", "turn-a:1", "axon-agent:turn-a:turn-a:1")
+        .set_proposal_fenced("turn-a", version, &proposal)
         .unwrap();
     store
-        .record_receipt(
+        .reserve_execution_fenced("turn-a", version, "turn-a:1", "axon-agent:turn-a:turn-a:1")
+        .unwrap();
+    store
+        .record_receipt_fenced(
             "turn-a",
+            version,
             &proposal,
             &LabbyExecutionReceipt {
                 request_id: "axon-agent:turn-a:turn-a:1".into(),
@@ -91,15 +99,20 @@ fn proposal_and_receipt_preserve_attribution_and_correlation() {
                 loadout_revision: 7,
                 actor: "actor@example.com".into(),
                 service: "axon".into(),
-                execution_context_id: "ctx_opaque".into(),
-                idempotency_key: "axon-agent:turn-a:turn-a:1".into(),
+                execution_mode: "exact".into(),
+                llm_invocations: 0,
                 result: Some(serde_json::json!({"ok":true})),
                 error_kind: None,
             },
         )
         .unwrap();
     store
-        .complete_tool("turn-a", "turn-a:1", serde_json::json!({"ok":true}))
+        .complete_tool_fenced(
+            "turn-a",
+            version,
+            "turn-a:1",
+            serde_json::json!({"ok":true}),
+        )
         .unwrap();
     let result = store.result("turn-a").unwrap();
     assert_eq!(result.correlation.actor, "actor@example.com");
@@ -153,11 +166,17 @@ fn events_are_ordered_and_replayable_after_cursor() {
             &context(),
         )
         .unwrap();
+    let version = lease(&store, "turn-a");
     store
-        .transition("turn-a", AgentTurnStatus::Proposing, None)
+        .transition_fenced("turn-a", version, AgentTurnStatus::Proposing, None)
         .unwrap();
     store
-        .transition("turn-a", AgentTurnStatus::Cancelled, Some("cancelled"))
+        .transition_fenced(
+            "turn-a",
+            version,
+            AgentTurnStatus::Cancelled,
+            Some("cancelled"),
+        )
         .unwrap();
     assert_eq!(store.events("turn-a", 0).unwrap().len(), 2);
     assert_eq!(store.events("turn-a", 1).unwrap().len(), 1);
@@ -191,6 +210,9 @@ fn concurrent_resume_uses_versioned_lease() {
             .acquire_lease("turn-a", "owner-a", turn.version, 1)
             .is_err()
     );
+    store.renew_lease("turn-a", turn.version + 1, 2).unwrap();
+    assert!(store.assert_lease("turn-a", turn.version + 1, 2).is_ok());
+    assert!(store.assert_lease("turn-a", turn.version, 2).is_err());
 }
 
 #[test]
@@ -212,9 +234,11 @@ fn cancellation_is_monotonic_and_owner_private() {
         .unwrap();
     assert!(store.load_owned("turn-a", "owner-b").is_err());
     store.request_cancel("turn-a", "owner-a").unwrap();
-    store
-        .transition("turn-a", AgentTurnStatus::Succeeded, Some("late"))
-        .unwrap();
+    assert!(
+        store
+            .transition_fenced("turn-a", 1, AgentTurnStatus::Succeeded, Some("late"))
+            .is_err()
+    );
     let turn = store.load("turn-a").unwrap().unwrap();
     assert!(turn.cancel_requested);
     assert_ne!(turn.status, AgentTurnStatus::Succeeded);
@@ -244,9 +268,12 @@ fn request_id_is_not_the_idempotency_key_and_swapped_receipts_fail() {
         arguments: serde_json::json!({}),
         destructive: false,
     };
-    store.set_proposal("turn-a", &proposal).unwrap();
+    let version = lease(&store, "turn-a");
     store
-        .reserve_execution("turn-a", "call-a", "idem-a")
+        .set_proposal_fenced("turn-a", version, &proposal)
+        .unwrap();
+    store
+        .reserve_execution_fenced("turn-a", version, "call-a", "idem-a")
         .unwrap();
     assert_eq!(
         store.execution_request_id("turn-a", "call-a").unwrap(),
@@ -263,12 +290,16 @@ fn request_id_is_not_the_idempotency_key_and_swapped_receipts_fail() {
         loadout_revision: 7,
         actor: "actor@example.com".into(),
         service: "axon".into(),
-        execution_context_id: "ctx_opaque".into(),
-        idempotency_key: "idem-a".into(),
+        execution_mode: "exact".into(),
+        llm_invocations: 0,
         result: None,
         error_kind: None,
     };
-    assert!(store.record_receipt("turn-a", &proposal, &receipt).is_err());
+    assert!(
+        store
+            .record_receipt_fenced("turn-a", version, &proposal, &receipt)
+            .is_err()
+    );
 }
 
 #[test]
@@ -306,13 +337,14 @@ fn persisted_budget_deadline_model_and_profile_are_immutable() {
 #[test]
 fn lifecycle_maintenance_recovers_leases_and_prunes_terminal_turns() {
     let store = AgentTurnStore::memory().unwrap();
+    let base = now_ms();
     let active = store
         .create(
             "active",
             "loadout-a",
             7,
             "hello",
-            100,
+            base + 100,
             "owner-a",
             "profile-a",
             8,
@@ -321,7 +353,7 @@ fn lifecycle_maintenance_recovers_leases_and_prunes_terminal_turns() {
         )
         .unwrap();
     store
-        .acquire_lease("active", "owner-a", active.version, 1)
+        .acquire_lease("active", "owner-a", active.version, base)
         .unwrap();
     store
         .create(
@@ -329,7 +361,7 @@ fn lifecycle_maintenance_recovers_leases_and_prunes_terminal_turns() {
             "loadout-a",
             7,
             "hello",
-            1,
+            base - 20_000,
             "owner-a",
             "profile-a",
             8,
@@ -337,13 +369,104 @@ fn lifecycle_maintenance_recovers_leases_and_prunes_terminal_turns() {
             &context(),
         )
         .unwrap();
+    let old_version = lease(&store, "old");
     store
-        .transition("old", AgentTurnStatus::Failed, Some("failed"))
+        .transition_fenced("old", old_version, AgentTurnStatus::Failed, Some("failed"))
         .unwrap();
-    store.maintain(40_000, 10_000).unwrap();
+    store.release_lease("old", old_version).unwrap();
+    store.maintain(base + 40_000, 10_000).unwrap();
     assert_eq!(
         store.load("active").unwrap().unwrap().status,
         AgentTurnStatus::Interrupted
     );
     assert!(store.load("old").unwrap().is_none());
+}
+
+#[test]
+fn every_worker_mutation_rejects_a_stale_fence() {
+    let store = AgentTurnStore::memory().unwrap();
+    let turn = store
+        .create(
+            "turn-a",
+            "loadout-a",
+            7,
+            "hello",
+            i64::MAX,
+            "owner-a",
+            "profile-a",
+            8,
+            "model-a",
+            &context(),
+        )
+        .unwrap();
+    let version = store
+        .acquire_lease("turn-a", "owner-a", turn.version, now_ms())
+        .unwrap();
+    store.request_cancel("turn-a", "owner-a").unwrap();
+    assert!(
+        store
+            .transition_fenced("turn-a", version, AgentTurnStatus::Succeeded, Some("late"))
+            .is_err()
+    );
+    assert!(
+        store
+            .append_event_fenced(
+                "turn-a",
+                version,
+                AgentEvent::Final {
+                    sequence: 0,
+                    answer: "late".into()
+                }
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn dispatch_reconciliation_persists_real_request_id_after_cancel() {
+    let store = AgentTurnStore::memory().unwrap();
+    store
+        .create(
+            "turn-a",
+            "loadout-a",
+            7,
+            "hello",
+            i64::MAX,
+            "owner-a",
+            "profile-a",
+            8,
+            "model-a",
+            &context(),
+        )
+        .unwrap();
+    let proposal = AgentToolProposal {
+        tool_call_id: "call-a".into(),
+        tool_id: "tool-a".into(),
+        contract_hash: "hash-a".into(),
+        arguments: serde_json::json!({}),
+        destructive: false,
+    };
+    let version = lease(&store, "turn-a");
+    store
+        .set_proposal_fenced("turn-a", version, &proposal)
+        .unwrap();
+    store
+        .reserve_execution_fenced("turn-a", version, "call-a", "idem-a")
+        .unwrap();
+    store.request_cancel("turn-a", "owner-a").unwrap();
+    assert!(
+        store
+            .reconcile_dispatched_request("turn-a", "call-a", "idem-a", "req-real")
+            .unwrap()
+    );
+    let turn = store.load("turn-a").unwrap().unwrap();
+    assert_eq!(turn.active_request_id.as_deref(), Some("req-real"));
+    assert_eq!(turn.status, AgentTurnStatus::CancelUnconfirmed);
+    assert_eq!(
+        store
+            .execution_request_id("turn-a", "call-a")
+            .unwrap()
+            .as_deref(),
+        Some("req-real")
+    );
 }

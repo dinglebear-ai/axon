@@ -13,15 +13,11 @@ const MAX_EVENT_BYTES = 32_768;
 export function AgentTurnControls({
   agent,
   loadout,
-  prompt,
-  action,
   client,
   config,
 }: {
   agent: AskAgentTurn;
   loadout?: AskLoadoutProvenance;
-  prompt: string;
-  action: "ask" | "chat";
   client: Client | null;
   config: PaletteConfig | null;
 }) {
@@ -101,34 +97,19 @@ export function AgentTurnControls({
         throw new Error("The Labby execution context is missing or stale.");
       const challenge = await new LabbyClient(profile).requestApproval({
         executionContextId: loadout.executionContextId,
-        turnId: agent.turnId,
         proposal: agent.pendingApproval,
       });
       validateApprovalChallenge(
         challenge,
-        loadout.executionContextId,
-        agent.pendingApproval.toolCallId,
         Date.now(),
       );
       const body = {
-        [action === "ask" ? "query" : "message"]: prompt,
-        loadout: {
-          integrationId: loadout.integrationId,
-          loadoutId: loadout.loadoutId,
-          expectedRevision: loadout.requestedRevision,
-        },
-        agent: {
-          delegationToken,
-          turnId: agent.turnId,
-          approvalTokens: [
-            { toolCallId: agent.pendingApproval.toolCallId, token: challenge.approvalToken },
-          ],
-          maxToolCalls: 8,
-          timeoutMs: 120_000,
-        },
+        approvalTokens: [
+          { toolCallId: agent.pendingApproval.toolCallId, token: challenge.approvalToken },
+        ],
       };
       const result = asRecord(
-        await request("POST", action === "ask" ? "/v1/ask" : "/v1/chat", body),
+        await request("POST", `/v1/agent/turns/${encodeURIComponent(agent.turnId)}/resume`, body),
       );
       const next = asRecord(result.agent);
       setStatus(typeof next.status === "string" ? next.status : status);
@@ -179,13 +160,11 @@ export function AgentTurnControls({
 }
 
 export function validateApprovalChallenge(
-  challenge: { executionContextId: string; toolCallId: string; expiresAtUnixMs: number },
-  executionContextId: string,
-  toolCallId: string,
+  challenge: { approvalToken: string; approvalId: string; expiresAtUnixMs: number },
   now: number,
 ) {
-  if (challenge.executionContextId !== executionContextId || challenge.toolCallId !== toolCallId)
-    throw new Error("Labby returned an approval for a different execution context or proposal.");
+  if (!challenge.approvalToken || !challenge.approvalId)
+    throw new Error("Labby returned an incomplete approval challenge.");
   if (challenge.expiresAtUnixMs <= now)
     throw new Error("Labby approval expired before resume; request it again.");
 }

@@ -1,22 +1,25 @@
 //! Durable Axon-owned orchestration for Labby-executed agent tool calls.
 
 mod client;
+mod lease;
 mod store;
+mod support;
 
 use axon_api::agent::{
     AgentApprovalToken, AgentCorrelation, AgentEvent, AgentToolProposal, AgentTurnOptions,
     AgentTurnResult, AgentTurnStatus,
 };
 use axon_core::config::Config;
+use lease::await_with_renewal;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    future::Future,
     pin::Pin,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use support::{build_model_prompt, now_ms, parse_action, store_path, validate_options};
 
 pub use client::{LabbyAgentClient, LabbyExecutionReceipt};
 pub use store::AgentTurnStore;
@@ -127,19 +130,21 @@ async fn run_loop(
     completion: CompletionFn,
 ) -> anyhow::Result<AgentTurnResult> {
     loop {
+        store.assert_lease(turn_id, lease_version, now_ms())?;
         let mut turn = store.load(turn_id)?.expect("persisted turn");
         if turn.cancel_requested || turn.status == AgentTurnStatus::Cancelled {
             store.release_lease(turn_id, lease_version)?;
             return store.result(turn_id);
         }
         if now_ms() >= turn.deadline_at_ms {
-            store.transition(turn_id, AgentTurnStatus::TimedOut, None)?;
+            store.transition_fenced(turn_id, lease_version, AgentTurnStatus::TimedOut, None)?;
             store.release_lease(turn_id, lease_version)?;
             return store.result(turn_id);
         }
         if turn.tool_call_count >= turn.max_tool_calls {
-            store.transition(
+            store.transition_fenced(
                 turn_id,
+                lease_version,
                 AgentTurnStatus::Failed,
                 Some("tool_budget_exceeded"),
             )?;
@@ -155,8 +160,9 @@ async fn run_loop(
             execute_proposal(&store, &client, &mut turn, pending, approval).await?;
             continue;
         }
-        store.transition(
+        store.transition_fenced(
             turn_id,
+            lease_version,
             if turn.tool_call_count == 0 {
                 AgentTurnStatus::Proposing
             } else {
@@ -165,12 +171,18 @@ async fn run_loop(
             None,
         )?;
         let model_prompt = build_model_prompt(&turn)?;
-        let output = tokio::time::timeout(
-            Duration::from_millis((turn.deadline_at_ms - now_ms()).max(1) as u64),
-            completion(model_prompt),
+        let output = await_with_renewal(
+            store,
+            turn_id,
+            lease_version,
+            tokio::time::timeout(
+                Duration::from_millis((turn.deadline_at_ms - now_ms()).max(1) as u64),
+                completion(model_prompt),
+            ),
         )
         .await
         .map_err(|_| anyhow::anyhow!("agent_deadline_exceeded"))??;
+        store.assert_lease(turn_id, lease_version, now_ms())?;
         if store
             .load(turn_id)?
             .is_some_and(|value| value.cancel_requested)
@@ -183,14 +195,20 @@ async fn run_loop(
         }
         match parse_action(&output)? {
             ModelAction::Final { answer } => {
-                store.append_event(
+                store.append_event_fenced(
                     turn_id,
+                    lease_version,
                     AgentEvent::Final {
                         sequence: 0,
                         answer: answer.clone(),
                     },
                 )?;
-                store.transition(turn_id, AgentTurnStatus::Succeeded, Some(&answer))?;
+                store.transition_fenced(
+                    turn_id,
+                    lease_version,
+                    AgentTurnStatus::Succeeded,
+                    Some(&answer),
+                )?;
                 store.release_lease(turn_id, lease_version)?;
                 return store.result(turn_id);
             }
@@ -207,9 +225,14 @@ async fn run_loop(
                     arguments,
                     destructive,
                 };
-                store.set_proposal(turn_id, &proposal)?;
+                store.set_proposal_fenced(turn_id, lease_version, &proposal)?;
                 if destructive && !approvals.contains_key(&proposal.tool_call_id) {
-                    store.transition(turn_id, AgentTurnStatus::AwaitingApproval, None)?;
+                    store.transition_fenced(
+                        turn_id,
+                        lease_version,
+                        AgentTurnStatus::AwaitingApproval,
+                        None,
+                    )?;
                     store.release_lease(turn_id, lease_version)?;
                     return store.result(turn_id);
                 }
@@ -266,27 +289,48 @@ async fn execute_proposal(
     proposal: AgentToolProposal,
     approval: Option<&str>,
 ) -> anyhow::Result<()> {
-    store.transition(&turn.id, AgentTurnStatus::Executing, None)?;
+    let lease_version = turn.version;
+    store.assert_lease(&turn.id, lease_version, now_ms())?;
+    store.transition_fenced(&turn.id, lease_version, AgentTurnStatus::Executing, None)?;
     let key = format!("axon-agent:{}:{}", turn.id, proposal.tool_call_id);
     let mut receipt = match store.execution_request_id(&turn.id, &proposal.tool_call_id)? {
-        Some(request_id) => client.status(&request_id).await?,
+        Some(request_id) => {
+            await_with_renewal(store, &turn.id, lease_version, client.status(&request_id)).await?
+        }
         None => {
-            store.reserve_execution(&turn.id, &proposal.tool_call_id, &key)?;
-            client
-                .execute(
+            store.reserve_execution_fenced(
+                &turn.id,
+                lease_version,
+                &proposal.tool_call_id,
+                &key,
+            )?;
+            await_with_renewal(
+                store,
+                &turn.id,
+                lease_version,
+                client.execute(
                     &turn.execution_context_id,
                     &key,
                     &proposal,
                     approval,
                     turn.deadline_at_ms,
-                )
-                .await?
+                ),
+            )
+            .await?
         }
     };
     // Persist Labby's request identity before any cancellation check or status await.
     // A crash after dispatch therefore resumes through status, while a crash before
     // this write safely replays the distinct idempotency key through Labby.
-    store.record_receipt(&turn.id, &proposal, &receipt)?;
+    let reconciled = store.reconcile_dispatched_request(
+        &turn.id,
+        &proposal.tool_call_id,
+        &key,
+        &receipt.request_id,
+    )?;
+    if !reconciled {
+        anyhow::bail!("labby_request_reconciliation_failed");
+    }
     if store
         .load(&turn.id)?
         .is_some_and(|value| value.cancel_requested)
@@ -301,86 +345,62 @@ async fn execute_proposal(
         };
     }
     while receipt.status == "running" && now_ms() < turn.deadline_at_ms {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        await_with_renewal(
+            store,
+            &turn.id,
+            lease_version,
+            tokio::time::sleep(Duration::from_millis(100)),
+        )
+        .await;
         if store
             .load(&turn.id)?
-            .is_some_and(|value| value.status == AgentTurnStatus::Cancelled)
+            .is_some_and(|value| value.cancel_requested)
         {
             receipt = client.cancel(&receipt.request_id).await?;
             break;
         }
-        receipt = client.status(&receipt.request_id).await?;
-    }
-    store.record_receipt(&turn.id, &proposal, &receipt)?;
-    match receipt.status.as_str() {
-        "succeeded" => store.complete_tool(
+        receipt = await_with_renewal(
+            store,
             &turn.id,
+            lease_version,
+            client.status(&receipt.request_id),
+        )
+        .await?;
+    }
+    store.record_receipt_fenced(&turn.id, lease_version, &proposal, &receipt)?;
+    match receipt.status.as_str() {
+        "succeeded" => store.complete_tool_fenced(
+            &turn.id,
+            lease_version,
             &proposal.tool_call_id,
             receipt.result.unwrap_or(Value::Null),
         )?,
-        "running" => store.transition(
+        "running" => store.transition_fenced(
             &turn.id,
+            lease_version,
             AgentTurnStatus::TimedOut,
             Some("labby_status_deadline"),
         )?,
-        "cancelled" => store.transition(
+        "cancelled" => store.transition_fenced(
             &turn.id,
+            lease_version,
             AgentTurnStatus::Cancelled,
             Some("labby_cancelled"),
         )?,
-        "timed_out" => {
-            store.transition(&turn.id, AgentTurnStatus::TimedOut, Some("labby_timed_out"))?
-        }
-        _ => store.transition(
+        "timed_out" => store.transition_fenced(
             &turn.id,
+            lease_version,
+            AgentTurnStatus::TimedOut,
+            Some("labby_timed_out"),
+        )?,
+        _ => store.transition_fenced(
+            &turn.id,
+            lease_version,
             AgentTurnStatus::Failed,
             receipt.error_kind.as_deref(),
         )?,
     }
     Ok(())
-}
-
-fn build_model_prompt(turn: &store::StoredTurn) -> anyhow::Result<String> {
-    Ok(format!(
-        "You are Axon's bounded agent. Return exactly one JSON object: {{\"type\":\"final\",\"answer\":string}} or {{\"type\":\"tool\",\"tool_id\":string,\"contract_hash\":string,\"arguments\":object,\"destructive\":bool}}. Never invent tools outside the revision-bound loadout.\n\nUSER:\n{}\n\nTOOL RESULTS:\n{}",
-        turn.prompt,
-        serde_json::to_string(&turn.tool_results)?
-    ))
-}
-
-fn parse_action(text: &str) -> anyhow::Result<ModelAction> {
-    let value = text
-        .trim()
-        .strip_prefix("```json")
-        .and_then(|v| v.strip_suffix("```"))
-        .unwrap_or(text.trim())
-        .trim();
-    serde_json::from_str(value).map_err(|_| anyhow::anyhow!("agent_model_contract_invalid"))
-}
-
-fn validate_options(options: &AgentTurnOptions) -> anyhow::Result<()> {
-    if options.delegation_token.is_empty()
-        || options.delegation_token.len() > 512
-        || options.max_tool_calls == 0
-        || options.max_tool_calls > MAX_TOOL_CALLS
-        || options.timeout_ms == 0
-        || options.timeout_ms > MAX_TIMEOUT_MS
-    {
-        anyhow::bail!("agent_bounds_invalid");
-    }
-    Ok(())
-}
-
-fn store_path(cfg: &Config) -> std::path::PathBuf {
-    cfg.sqlite_path.with_file_name("agent-turns.sqlite3")
-}
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .try_into()
-        .unwrap_or(i64::MAX)
 }
 
 pub async fn cancel(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<AgentTurnResult> {

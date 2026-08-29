@@ -92,7 +92,6 @@ describe("LabbyClient exact calls", () => {
     });
     await new LabbyClient(profile).requestApproval({
       executionContextId: "ctx-1",
-      turnId: "turn-1",
       proposal: {
         toolCallId: "call-1",
         toolId: "mcp:host::delete",
@@ -106,7 +105,12 @@ describe("LabbyClient exact calls", () => {
         product: "labby",
         method: "POST",
         path: "/v1/palette/agent/approvals",
-        body: expect.objectContaining({ executionContextId: "ctx-1", turnId: "turn-1" }),
+        body: {
+          executionContextId: "ctx-1",
+          id: "mcp:host::delete",
+          params: { id: 7 },
+          expectedContractHash: "sha256:x",
+        },
       }),
     });
   });

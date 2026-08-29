@@ -62,6 +62,9 @@ export async function followCortexStream(
           onEvent(event);
         });
       }
+    } catch (error) {
+      if (signal.aborted) return;
+      if (!committedCursor || reconnects >= maxReconnects) throw error;
     } finally {
       signal.removeEventListener("abort", cancel);
       unlisten();
