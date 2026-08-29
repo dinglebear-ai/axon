@@ -1974,6 +1974,7 @@ textarea {
 .palette-grid {
   display: grid;
   grid-template-columns: minmax(270px, 340px) 1fr;
+  grid-template-rows: 1fr;
   height: 100%;
   min-height: 0;
   flex: 1;
@@ -1982,6 +1983,7 @@ textarea {
 
 .palette-grid-output-only {
   grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
 }
 
 .palette-suggestions {
@@ -8632,6 +8634,8 @@ textarea {
   display: flex;
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   flex: 1;
   flex-direction: column;
   background: var(--aurora-nav-bg);
@@ -8743,10 +8747,14 @@ textarea {
 .browser-surface {
   display: flex;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   flex: 1;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: transparent;
+  position: relative;
 }
 
 .browser-surface-hint {

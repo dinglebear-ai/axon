@@ -78,7 +78,16 @@ export function BrowserView({
     }
     window.addEventListener("resize", updateBounds);
 
+    const rafId = requestAnimationFrame(() => {
+      updateBounds();
+    });
+    const timerId = setTimeout(() => {
+      updateBounds();
+    }, 100);
+
     return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timerId);
       observer.disconnect();
       window.removeEventListener("resize", updateBounds);
       void invoke("browser_close");

@@ -424,7 +424,7 @@ function OutputRegion(props: PaletteShellProps) {
 }
 
 function FooterRegion(props: PaletteShellProps) {
-  if (!props.showContent || props.settingsOpen) return null;
+  if (!props.showContent || props.settingsOpen || props.browserOpen) return null;
   return (
     <PaletteFooter
       config={props.config}

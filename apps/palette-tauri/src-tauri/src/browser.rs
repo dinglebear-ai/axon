@@ -73,24 +73,26 @@ pub(crate) async fn browser_open(
             let _ = webview.set_size(Size::Logical(LogicalSize::new(b.width, b.height)));
         }
         let _ = webview.show();
-        webview.navigate(parsed_url).map_err(|err| err.to_string())?;
+        webview
+            .navigate(parsed_url)
+            .map_err(|err| err.to_string())?;
         let _ = webview.set_focus();
         return Ok(());
     }
 
     let main_window = app.get_window("main").ok_or("main window not found")?;
     let webview_url = webview_url_for(&validated)?;
-    let builder = WebviewBuilder::new(BROWSER_WEBVIEW_LABEL, webview_url).auto_resize();
+    let builder = WebviewBuilder::new(BROWSER_WEBVIEW_LABEL, webview_url);
 
-    let (pos, size) = if let Some(b) = bounds {
+    let (pos, size) = if let Some(b) = bounds.filter(|b| b.width > 0.0 && b.height > 0.0) {
         (
             LogicalPosition::new(b.x, b.y),
             LogicalSize::new(b.width, b.height),
         )
     } else {
         (
-            LogicalPosition::new(0.0, 92.0),
-            LogicalSize::new(720.0, 400.0),
+            LogicalPosition::new(0.0, 80.0),
+            LogicalSize::new(1280.0, 780.0),
         )
     };
 
@@ -120,6 +122,9 @@ pub(crate) async fn browser_navigate(
 #[tauri::command]
 pub(crate) fn browser_set_bounds(app: AppHandle, bounds: BrowserBounds) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
+    if bounds.width <= 0.0 || bounds.height <= 0.0 {
+        return Ok(());
+    }
     if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
         webview
             .set_position(Position::Logical(LogicalPosition::new(bounds.x, bounds.y)))
@@ -137,7 +142,9 @@ pub(crate) fn browser_set_bounds(app: AppHandle, bounds: BrowserBounds) -> Resul
 pub(crate) fn browser_back(app: AppHandle) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
     with_browser_webview(&app, |webview| {
-        webview.eval("history.back()").map_err(|err| err.to_string())
+        webview
+            .eval("history.back()")
+            .map_err(|err| err.to_string())
     })
 }
 
