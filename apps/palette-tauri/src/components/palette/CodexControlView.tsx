@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/aurora/button";
 import type { Client } from "@/lib/axonClient";
 import {
   approveCodexOperation,
+  buildConfigBatchMutation,
   buildMcpConfigMutation,
   CODEX_MUTATIONS,
   type CodexMutation,
   type CodexOperation,
   type CodexResource,
   executeCodexOperation,
+  parseConfigValue,
   prepareCodexOperation,
   reconcileCodexOperation,
   respondToCodexServerRequest,
@@ -54,7 +56,7 @@ export function CodexControlView({
   const [capability, setCapability] = useState("");
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const mutation = useMemo<CodexMutation | null>(() => {
+  const mutationState = useMemo<{ mutation: CodexMutation | null; error: string | null }>(() => {
     try {
       const params =
         kind === "mcpConfig"
@@ -67,13 +69,17 @@ export function CodexControlView({
               remove: mcpRemove,
             })
           : mutationParams(kind, target.trim(), value.trim(), source.trim(), sha256.trim());
-      return params
-        ? { ...(kind === "mcpConfig" ? CODEX_MUTATIONS.config : CODEX_MUTATIONS[kind]), params }
-        : null;
-    } catch {
-      return null;
+      return {
+        mutation: params
+          ? { ...(kind === "mcpConfig" ? CODEX_MUTATIONS.config : CODEX_MUTATIONS[kind]), params }
+          : null,
+        error: params ? null : mutationValidationMessage(kind),
+      };
+    } catch (cause) {
+      return { mutation: null, error: cause instanceof Error ? cause.message : String(cause) };
     }
   }, [kind, target, value, source, sha256, mcpCommand, mcpArgs, mcpUrl, mcpEnv, mcpRemove]);
+  const mutation = mutationState.mutation;
   const inputRevision = JSON.stringify([
     kind,
     target,
@@ -257,14 +263,16 @@ export function CodexControlView({
             <option value="skillImport">Import standalone skill or agent config</option>
           </select>
         </label>
-        <label>
-          Target
-          <input
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-            placeholder="Config key, MCP server, plugin, marketplace, or skill"
-          />
-        </label>
+        {kind !== "configBatch" && (
+          <label>
+            Target
+            <input
+              value={target}
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="Config key, MCP server, plugin, marketplace, or skill"
+            />
+          </label>
+        )}
         {kind === "mcpConfig" ? (
           <>
             <label>
@@ -311,15 +319,31 @@ export function CodexControlView({
               Remove this MCP definition
             </label>
           </>
+        ) : kind === "configBatch" ? (
+          <label>
+            Batch writes (JSON array or object)
+            <textarea
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder={
+                '[{"keyPath":"model","value":"gpt-5"},{"keyPath":"approval_policy","value":"on-request"}]'
+              }
+            />
+          </label>
         ) : (
           <label>
-            Value
+            {kind === "config" ? "Value (JSON)" : "Value"}
             <input
               value={value}
               onChange={(event) => setValue(event.target.value)}
               placeholder="Value, enabled state, or OAuth provider"
             />
           </label>
+        )}
+        {mutationState.error && (
+          <p className="settings-error" role="alert">
+            {mutationState.error}
+          </p>
         )}
         {(kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport") && (
           <>
@@ -372,14 +396,40 @@ function mutationParams(
     kind === "mcpReload"
   )
     return {};
+  if (kind === "configBatch") return buildConfigBatchMutation(value);
   if (!target) return null;
   if (kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport") {
     if (!source.startsWith("https://") || !/^[a-fA-F0-9]{64}$/.test(sha256)) return null;
     return { target, source, sha256 };
   }
-  if (kind === "config") return { keyPath: target, value };
-  if (kind === "configBatch") return { edits: [{ keyPath: target, value }] };
-  if (kind === "mcpOauth") return { name: target, provider: value || undefined };
-  if (kind === "skillConfig") return { name: target, enabled: value !== "false" };
+  if (kind === "config") return { keyPath: target, value: parseConfigValue(value) };
+  if (kind === "mcpOauth") return { target, provider: value || undefined };
+  if (kind === "marketplaceUpgrade") {
+    if (!value) return null;
+    return { target, version: value };
+  }
+  if (kind === "skillConfig") {
+    const requested = parseConfigValue(value);
+    if (typeof requested === "boolean") return { target, enabled: requested };
+    if (requested && typeof requested === "object" && !Array.isArray(requested)) {
+      return { target, ...(requested as Record<string, unknown>) };
+    }
+    throw new Error('Skill value must be true, false, or a JSON object with "enabled"/"config"');
+  }
   return { target };
+}
+
+function mutationValidationMessage(kind: MutationKind): string | null {
+  if (kind === "configBatch") return "Enter a JSON batch containing at least two config writes";
+  if (kind === "mcpConfig") return "Enter a valid MCP name and exactly one transport";
+  if (kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport")
+    return "Enter a target, pinned HTTPS source, and 64-character SHA-256 digest";
+  if (
+    kind === "accountLogin" ||
+    kind === "accountLoginCancel" ||
+    kind === "accountLogout" ||
+    kind === "mcpReload"
+  )
+    return null;
+  return "Enter a target and valid value";
 }

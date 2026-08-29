@@ -31,6 +31,8 @@ export type McpConfigInput = {
   remove: boolean;
 };
 
+type ConfigWrite = { keyPath: string | string[]; value: unknown };
+
 export const CODEX_MUTATIONS = {
   accountLogin: {
     action: "account_login_start",
@@ -84,10 +86,7 @@ export async function readCodexOperations(client: Client): Promise<CodexOperatio
   return payload<CodexOperation[]>(await executeAxonRequest(client, "GET", "/v1/codex/operations"));
 }
 
-export async function reconcileCodexOperation(
-  client: Client,
-  id: number,
-): Promise<void> {
+export async function reconcileCodexOperation(client: Client, id: number): Promise<void> {
   await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/reconcile`, {});
 }
 
@@ -201,6 +200,52 @@ export function buildMcpConfigMutation(input: McpConfigInput): Record<string, un
         return { url };
       })();
   return { keyPath: `mcp_servers.${name}`, value };
+}
+
+export function parseConfigValue(input: string): unknown {
+  try {
+    return JSON.parse(input);
+  } catch {
+    throw new Error('Config value must be valid JSON (for example: true, 42, "text", or {})');
+  }
+}
+
+export function buildConfigBatchMutation(input: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    throw new Error("Config batch must be valid JSON");
+  }
+
+  const container = Array.isArray(parsed) ? { edits: parsed } : parsed;
+  if (!isRecord(container))
+    throw new Error("Config batch must be an array of writes or an object containing edits");
+  const field = ["edits", "writes", "changes"].find((key) => key in container);
+  if (!field || !Array.isArray(container[field]))
+    throw new Error("Config batch must contain an edits, writes, or changes array");
+  if (container[field].length < 2)
+    throw new Error(
+      "Config batch must contain at least two writes; use Write config value for one",
+    );
+  for (const edit of container[field]) validateConfigWrite(edit);
+  return container;
+}
+
+function validateConfigWrite(value: unknown): asserts value is ConfigWrite {
+  if (!isRecord(value) || !("value" in value))
+    throw new Error("Each config batch write must contain keyPath and value");
+  const keyPath = value.keyPath ?? value.key_path ?? value.key;
+  const validPath =
+    (typeof keyPath === "string" && keyPath.trim().length > 0) ||
+    (Array.isArray(keyPath) &&
+      keyPath.length > 0 &&
+      keyPath.every((part) => typeof part === "string" && part.trim().length > 0));
+  if (!validPath) throw new Error("Each config batch write needs a non-empty keyPath");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function payload<T = unknown>(result: PaletteResult): T {

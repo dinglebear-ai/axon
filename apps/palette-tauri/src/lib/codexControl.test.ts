@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "./axonClient";
 import {
   approveCodexOperation,
+  buildConfigBatchMutation,
   buildMcpConfigMutation,
   CODEX_MUTATIONS,
   executeCodexOperation,
+  parseConfigValue,
   prepareCodexOperation,
   readCodexSnapshot,
   reconcileCodexOperation,
@@ -74,6 +76,48 @@ describe("Codex control client", () => {
       path: "/v1/codex/operations/9/reconcile",
       body: {},
     });
+  });
+});
+
+describe("config mutation inputs", () => {
+  it("parses config values as typed JSON", () => {
+    expect(parseConfigValue("true")).toBe(true);
+    expect(parseConfigValue("42")).toBe(42);
+    expect(parseConfigValue('"gpt-test"')).toBe("gpt-test");
+    expect(parseConfigValue('{"nested": [1]}')).toEqual({ nested: [1] });
+    expect(() => parseConfigValue("gpt-test")).toThrow("valid JSON");
+  });
+
+  it("builds a genuine multi-write config batch from an array", () => {
+    expect(
+      buildConfigBatchMutation(
+        '[{"keyPath":"model","value":"gpt-test"},{"keyPath":["features","fast"],"value":true}]',
+      ),
+    ).toEqual({
+      edits: [
+        { keyPath: "model", value: "gpt-test" },
+        { keyPath: ["features", "fast"], value: true },
+      ],
+    });
+  });
+
+  it("accepts the backend batch object aliases and validates every write", () => {
+    expect(
+      buildConfigBatchMutation(
+        '{"writes":[{"keyPath":"model","value":null},{"key_path":"approval","value":"ask"}]}',
+      ),
+    ).toEqual({
+      writes: [
+        { keyPath: "model", value: null },
+        { key_path: "approval", value: "ask" },
+      ],
+    });
+    expect(() => buildConfigBatchMutation('[{"keyPath":"model","value":"only-one"}]')).toThrow(
+      "at least two writes",
+    );
+    expect(() =>
+      buildConfigBatchMutation('[{"keyPath":"model","value":"ok"},{"keyPath":"","value":false}]'),
+    ).toThrow("non-empty keyPath");
   });
 });
 

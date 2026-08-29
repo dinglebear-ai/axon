@@ -17,6 +17,7 @@ intends to manage:
 
 ```text
 AXON_CODEX_CONTROL_ENABLED=true
+AXON_CODEX_CMD=/usr/local/bin/codex
 AXON_CODEX_CONTROL_HOME=/var/lib/axon/codex-control
 AXON_CODEX_CONTROL_ACCOUNT_WRITES=false
 AXON_CODEX_CONTROL_CONFIG_WRITES=false
@@ -25,10 +26,14 @@ AXON_CODEX_CONTROL_PLUGIN_WRITES=false
 AXON_CODEX_CONTROL_SKILL_WRITES=false
 ```
 
-The Codex binary and every control-home ancestor must pass the runtime's
-non-symlink and permissions checks. The binary must be executable. Axon binds
-approved operations to the canonical home identity, app-server boot, active
-policy, method, exact parameter digest, and optional config revision.
+`AXON_CODEX_CMD` must be an absolute path to the executable used by both bounded
+synthesis and Palette control. It does not select separate binaries for those
+runtimes. The binary, the control home, and every control-home ancestor must be
+owned by the Axon server account (or root), must not be group- or world-writable,
+and must pass the runtime's non-symlink checks. The binary must be executable;
+symlinked binary or home paths are rejected. Axon binds approved operations to
+the canonical home identity, app-server boot, active policy, method, exact
+parameter digest, and optional config revision.
 
 ## Palette workflows
 
@@ -42,6 +47,12 @@ Changes use three explicit stages:
 1. Prepare records an idempotent durable operation with a redacted request.
 2. Approve issues a random, single-use capability for that exact digest.
 3. Execute revalidates the home, boot, policy, revision, method, and parameters.
+
+Config values are entered as JSON so booleans, numbers, strings, arrays, objects,
+and `null` retain their types. Batch writes accept a JSON array of at least two
+`{"keyPath": ..., "value": ...}` entries, or an object containing an `edits`,
+`writes`, or `changes` array with that shape. Invalid JSON and malformed writes
+are shown inline before Prepare is enabled.
 
 Lost responses after a side effect become `ambiguous`; interrupted executions
 become `recovery_required` on restart and are not retried blindly. Server-initiated
