@@ -1,11 +1,16 @@
 use super::*;
 
 #[cfg(unix)]
+fn trusted_tempdir() -> tempfile::TempDir {
+    tempfile::tempdir_in(std::env::var_os("HOME").unwrap()).unwrap()
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn starts_initializes_requests_and_stops_fake_server() {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let root_path = root.path().canonicalize().unwrap();
     let binary = root_path.join("codex");
     fs::write(
@@ -45,7 +50,7 @@ for line in sys.stdin:
 async fn records_redacted_stderr_unknown_frames_and_response_correlation_failures() {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let root_path = root.path().canonicalize().unwrap();
     let binary = root_path.join("codex");
     fs::write(

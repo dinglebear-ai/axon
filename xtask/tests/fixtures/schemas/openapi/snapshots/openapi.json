@@ -1787,6 +1787,221 @@
     {
       "method": "GET",
       "mutates": false,
+      "operation_id": "codex_snapshot",
+      "path": "/v1/codex",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "CodexControlSnapshot",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "codex_events",
+      "path": "/v1/codex/events",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "Vec<RecordedEvent>",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "codex_resource",
+      "path": "/v1/codex/{resource}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "CodexResourceResponse",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "codex_operations",
+      "path": "/v1/codex/operations",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "Vec<ControlOperation>",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": false,
+      "operation_id": "codex_read",
+      "path": "/v1/codex/read",
+      "request_dto": "CodexReadBody",
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "CodexResourceResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "codex_operation_create",
+      "path": "/v1/codex/operations",
+      "request_dto": "CreateOperationBody",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ControlOperation",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "codex_operation_approve",
+      "path": "/v1/codex/operations/{id}/approve",
+      "request_dto": null,
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ApproveOperationResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "codex_operation_cancel",
+      "path": "/v1/codex/operations/{id}/cancel",
+      "request_dto": null,
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ReconcileOperationResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "codex_operation_execute",
+      "path": "/v1/codex/operations/{id}/execute",
+      "request_dto": "ExecuteBody",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ExecuteOperationResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "codex_operation_reconcile",
+      "path": "/v1/codex/operations/{id}/reconcile",
+      "request_dto": "ReconcileOperationBody",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ReconcileOperationResponse",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "codex_server_request_respond",
+      "path": "/v1/codex/server-requests/{id}/respond",
+      "request_dto": "ServerRequestResponseBody",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ServerRequestRespondedResponse",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
       "operation_id": "graph_kinds",
       "path": "/v1/graph/kinds",
       "request_dto": null,
@@ -1932,7 +2147,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:e1310a80469c6e3f614a9ebaa7837d90e822b690d6389abca2cab76bf8919ab9",
+        "checksum": "sha256:7deafb1c3ef2e0c489d160b3187850a93d4efe4ff756cf5c1a0a6f19fad6ea33",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },
@@ -1940,6 +2155,11 @@
         "checksum": "sha256:e76c07f91410786b0e79ad2c32aaa2ac9486d21a6baea3739f2c7d1ca8d68059",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry/admin_watch_routes.rs"
+      },
+      {
+        "checksum": "sha256:ebcfe554161e465811c11a3afa630f3fc651df0f1c3eeed04adbd486d53de26b",
+        "kind": "rust_module",
+        "path": "crates/axon-web/src/schema_registry/codex_routes.rs"
       },
       {
         "checksum": "sha256:ed5a2623857d813b13af1785ea4a5e49b97b0241092b94dbf58f39a6a24cc3b6",

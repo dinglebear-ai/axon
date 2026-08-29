@@ -1,5 +1,10 @@
 use super::*;
 
+#[cfg(unix)]
+fn trusted_tempdir() -> tempfile::TempDir {
+    tempfile::tempdir_in(std::env::var_os("HOME").unwrap()).unwrap()
+}
+
 fn disabled_config() -> ControlConfig {
     ControlConfig {
         enabled: false,
@@ -28,7 +33,7 @@ async fn disabled_runtime_fails_closed_without_touching_paths() {
 #[test]
 fn enabled_runtime_rejects_symlinked_home_and_binary() {
     use std::os::unix::fs::{PermissionsExt, symlink};
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let root_path = root.path().canonicalize().unwrap();
     let binary = root_path.join("codex-real");
     fs::write(&binary, "#!/bin/sh\n").unwrap();
@@ -62,7 +67,7 @@ fn enabled_runtime_rejects_symlinked_home_and_binary() {
 #[tokio::test]
 async fn lanes_are_bounded_and_time_out() {
     use std::os::unix::fs::PermissionsExt;
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let root_path = root.path().canonicalize().unwrap();
     let binary = root_path.join("codex");
     fs::write(&binary, "#!/bin/sh\n").unwrap();
@@ -88,7 +93,7 @@ async fn lanes_are_bounded_and_time_out() {
 #[cfg(unix)]
 #[tokio::test]
 async fn mutation_lock_serializes_distinct_runtime_instances() {
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let path = root.path().join("mutation.lock");
     let first = acquire_process_mutation_lock(path.clone(), Duration::from_secs(1))
         .await
@@ -108,7 +113,7 @@ async fn mutation_lock_serializes_distinct_runtime_instances() {
 #[tokio::test]
 async fn restart_backoff_is_bounded_counted_and_opens_circuit() {
     use std::os::unix::fs::PermissionsExt;
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let root_path = root.path().canonicalize().unwrap();
     let binary = root_path.join("codex");
     fs::write(&binary, "#!/bin/sh\n").unwrap();
@@ -145,7 +150,7 @@ async fn restart_backoff_is_bounded_counted_and_opens_circuit() {
 #[tokio::test]
 async fn successful_restart_resets_backoff_and_consecutive_failure_circuit() {
     use std::os::unix::fs::PermissionsExt;
-    let root = tempfile::tempdir().unwrap();
+    let root = trusted_tempdir();
     let root_path = root.path().canonicalize().unwrap();
     let binary = root_path.join("codex");
     fs::write(&binary, "#!/bin/sh\n").unwrap();
