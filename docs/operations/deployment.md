@@ -66,7 +66,7 @@ It is idempotent — safe to re-run. What it does:
 7. Runs `npm ci` for `apps/web` using `apps/web/package-lock.json`.
 8. Creates `~/.axon/.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
 9. **Prompts for `AXON_HOME`** (default `~/.axon`, flat layout — no nested `axon/` subdir), derives `AXON_DATA_DIR="$AXON_HOME"`, and pre-creates all container volume directories under it.
-10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome`). Qdrant is expected at `AXON_QDRANT_URL`/`QDRANT_URL`, defaulting to nashost.
+10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome`). Qdrant is expected at `AXON_QDRANT_URL`/`QDRANT_URL`, defaulting to tootie.
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
 **Optional flags:**
@@ -85,7 +85,7 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 ### Required for all features
 
 - `AXON_DATA_DIR` — root for all persistent volume data
-- `QDRANT_URL` — Qdrant vector store URL. On devhost this normally points to nashost: `http://198.51.100.5:53333`.
+- `QDRANT_URL` — Qdrant vector store URL. On devhost this normally points to tootie: `http://198.51.100.5:53333`.
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.prod.yaml`)
 - Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` for the default LLM synthesis
   path, or `AXON_LLM_BACKEND=openai-compat` plus `AXON_OPENAI_BASE_URL` and
@@ -157,7 +157,7 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build
 
 1. Start the stack:
 
-**Infrastructure only** (TEI and Chrome local in Docker, Qdrant remote on nashost; `axon serve` run locally):
+**Infrastructure only** (TEI and Chrome local in Docker, Qdrant remote on tootie; `axon serve` run locally):
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
@@ -184,7 +184,7 @@ The default value `8001` is a bare port, which Docker binds on **all interfaces*
 loopback, and ensure `AXON_HTTP_TOKEN` is set (or OAuth mode enabled)
 whenever the port is exposed beyond loopback.
 
-**Local dev mode** (TEI/Chrome in Docker, Qdrant on nashost, Axon server run locally):
+**Local dev mode** (TEI/Chrome in Docker, Qdrant on tootie, Axon server run locally):
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
@@ -221,7 +221,7 @@ Workers run in-process locally — output is in the terminal directly. For infra
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs --tail=200 axon-tei axon-chrome
-ssh nashost 'docker logs --tail=200 axon-qdrant'
+ssh tootie 'docker logs --tail=200 axon-qdrant'
 ```
 
 ## Validation Checklist

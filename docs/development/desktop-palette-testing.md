@@ -16,7 +16,7 @@ This document covers how to validate the Tauri palette
 > older versions of this document was never committed to the repository. Use the
 > Windows-MCP approach below instead.
 
-Palette testing runs on **agent-os** (Claude's Windows 11 VM on nashost,
+Palette testing runs on **agent-os** (Claude's Windows 11 VM on tootie,
 reachable via `ssh agent-os`). Use the `vibin:desktop-app-testing` skill or
 drive agent-os directly via the Windows-MCP tool available through Labby.
 
