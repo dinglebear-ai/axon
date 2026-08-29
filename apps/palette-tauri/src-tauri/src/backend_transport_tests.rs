@@ -13,8 +13,16 @@ fn request(product: BackendProduct, path: &str) -> BackendRequest {
 fn product_routes_fail_closed() {
     assert!(validate_request(&request(BackendProduct::Axon, "/v1/doctor")).is_ok());
     assert!(validate_request(&request(BackendProduct::Labby, "/v1/labby/profile")).is_ok());
+    assert!(
+        validate_request(&request(
+            BackendProduct::Labby,
+            "/v1/palette/descriptor?id=mcp%3Agithub%3A%3Asearch"
+        ))
+        .is_ok()
+    );
     assert!(validate_request(&request(BackendProduct::Cortex, "/v1/cortex/profile")).is_ok());
     assert!(validate_request(&request(BackendProduct::Labby, "/v1/cortex/logs")).is_err());
+    assert!(validate_request(&request(BackendProduct::Cortex, "/v1/palette/catalog")).is_err());
 }
 #[test]
 fn rejects_origin_confusion_and_unsupported_major() {

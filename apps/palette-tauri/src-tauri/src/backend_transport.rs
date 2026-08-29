@@ -170,16 +170,17 @@ pub(crate) fn backend_cancel_request(
 
 fn validate_request(request: &BackendRequest) -> Result<(), String> {
     validate_request_id(&request.request_id)?;
-    if request.path.contains(['?', '#', '\\'])
+    if request.path.contains(['#', '\\'])
         || !request.path.starts_with("/v1/")
         || request.path.contains("..")
     {
         return Err("backend path must be a product-qualified /v1 route".into());
     }
+    let path = request.path.split('?').next().unwrap_or(&request.path);
     match request.product {
         BackendProduct::Axon => true,
-        BackendProduct::Labby => request.path.starts_with("/v1/labby/"),
-        BackendProduct::Cortex => request.path.starts_with("/v1/cortex/"),
+        BackendProduct::Labby => path.starts_with("/v1/labby/") || path.starts_with("/v1/palette/"),
+        BackendProduct::Cortex => path.starts_with("/v1/cortex/"),
     }
     .then_some(())
     .ok_or_else(|| "backend route does not belong to the selected product".into())

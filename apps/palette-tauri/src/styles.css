@@ -7582,3 +7582,20 @@ textarea {
   border-radius: var(--aurora-radius-md);
   padding: var(--aurora-space-3);
 }
+.labby-runner { padding: var(--aurora-space-5); color: var(--aurora-text-primary); min-height: 100vh; background: var(--aurora-bg-primary); }
+.labby-runner-header { display: flex; justify-content: space-between; margin-bottom: var(--aurora-space-4); }
+.labby-runner-header div { display: grid; gap: var(--aurora-space-1); }
+.labby-runner-header span, .labby-tool-row span, .labby-schema-form label span, .labby-result span { color: var(--aurora-text-muted); font-size: 12px; }
+.labby-runner-grid { display: grid; grid-template-columns: minmax(240px, 34%) 1fr; gap: var(--aurora-space-4); }
+.labby-catalog, .labby-tool-detail { border: 1px solid var(--aurora-border-subtle); border-radius: var(--aurora-radius-lg); padding: var(--aurora-space-3); background: var(--aurora-surface-primary); }
+.labby-catalog > input, .labby-tool-detail input:not([type="checkbox"]), .labby-tool-detail select, .labby-tool-detail textarea { width: 100%; box-sizing: border-box; color: var(--aurora-text-primary); background: var(--aurora-control-surface); border: 1px solid var(--aurora-border-strong); border-radius: var(--aurora-radius-sm); padding: var(--aurora-space-2); }
+.labby-tool-viewport { height: 522px; overflow: auto; margin-top: var(--aurora-space-2); }
+.labby-tool-row { position: absolute; left: 0; right: 0; height: 54px; padding: var(--aurora-space-2); display: grid; text-align: left; justify-content: start; white-space: normal; border-bottom: 1px solid var(--aurora-border-subtle); }
+.labby-tool-detail { display: grid; align-content: start; gap: var(--aurora-space-3); min-width: 0; }
+.labby-tool-detail textarea { min-height: 180px; font-family: var(--aurora-font-mono); }
+.labby-schema-form { display: grid; gap: var(--aurora-space-3); }
+.labby-schema-form label { display: grid; gap: var(--aurora-space-1); }
+.labby-raw-toggle, .labby-confirm { display: flex; gap: var(--aurora-space-2); align-items: center; }
+.labby-schema-warning, .labby-error { color: var(--aurora-warning); }
+.labby-result { display: grid; gap: var(--aurora-space-2); border-top: 1px solid var(--aurora-border-subtle); padding-top: var(--aurora-space-3); }
+.labby-result pre { max-height: 300px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--aurora-bg-secondary); padding: var(--aurora-space-3); }

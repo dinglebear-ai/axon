@@ -2,6 +2,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
+import { LabbyExactToolRunner } from "@/components/palette/labby/LabbyExactToolRunner";
 import { PaletteShell } from "@/components/palette/PaletteShell";
 import {
   actionConfirmationArmed,
@@ -179,6 +180,8 @@ export default function App() {
   });
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
+  const labbyProfile =
+    config?.backendProfiles?.find((profile) => profile.product === "labby") ?? null;
 
   useEffect(() => {
     if (modeAction?.subcommand !== "ask") setAskSessionsOpen(false);
@@ -421,6 +424,9 @@ export default function App() {
     setQuery("");
     dispatchView({ type: "collapse" });
   }, []);
+  if (new URLSearchParams(window.location.search).get("workspace") === "labby" && labbyProfile) {
+    return <LabbyExactToolRunner profile={labbyProfile} />;
+  }
   return (
     <PaletteShell
       {...{
