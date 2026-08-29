@@ -58,6 +58,31 @@ export interface CortexGraphResult {
   source_watermark?: string;
   degraded_reason?: string | null;
 }
+export const CORTEX_GRAPH_ENTITY_TYPES = [
+  "host",
+  "container",
+  "logical_service",
+  "service_instance",
+  "app",
+  "source_ip",
+  "ai_project",
+  "ai_session",
+  "error_signature",
+  "compose_project",
+  "config_artifact",
+  "domain",
+  "network",
+  "reverse_proxy",
+  "storage",
+  "git_commit",
+  "user",
+  "device",
+] as const;
+export type CortexGraphEntityType = (typeof CORTEX_GRAPH_ENTITY_TYPES)[number];
+export interface CortexGraphSelector {
+  entityType: CortexGraphEntityType;
+  key: string;
+}
 export interface CortexCorrelationResult {
   reference_time?: string;
   logs: CortexLog[];
@@ -143,7 +168,7 @@ export class CortexClient {
   }
 
   logs(
-    params: { q?: string; host?: string; severity?: string; cursor?: string; limit?: number },
+    params: { query?: string; host?: string; severity?: string; cursor?: string; limit?: number },
     signal?: AbortSignal,
   ) {
     return this.request<CortexLogPage>("GET", query("/api/search", params), undefined, signal);
@@ -151,11 +176,12 @@ export class CortexClient {
   fleet(signal?: AbortSignal) {
     return this.request<CortexFleetState>("GET", "/api/fleet-state", undefined, signal);
   }
-  graph(key: string, signal?: AbortSignal) {
+  graph(selector: CortexGraphSelector, signal?: AbortSignal) {
     return this.request<CortexGraphResult>(
       "GET",
       query("/api/graph/around", {
-        key,
+        entity_type: selector.entityType,
+        key: selector.key,
         depth: 1,
         limit: 100,
         evidence_sample_limit: 3,

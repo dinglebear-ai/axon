@@ -5,14 +5,17 @@ import {
   type ProductIdentity,
 } from "@/lib/backendProfiles/model";
 import {
+  CORTEX_GRAPH_ENTITY_TYPES,
   CortexClient,
   type CortexFleetHost,
+  type CortexGraphEntityType,
   type CortexGraphResult,
   type CortexLog,
   type CortexSessionEvent,
   type CortexSessionIdentity,
   type CortexSessionSearchEntry,
 } from "@/lib/clients/cortexClient";
+import { followCortexStream } from "@/lib/cortex/streams/nativeStream";
 import {
   boundedAppend,
   boundedByItemsAndBytes,
@@ -22,7 +25,6 @@ import {
   safeText,
   visibleWindow,
 } from "@/lib/cortex/viewModel";
-import { followCortexStream } from "@/lib/cortex/streams/nativeStream";
 import { SessionViewer } from "./SessionViewer";
 import { TailControls } from "./TailControls";
 
@@ -33,6 +35,7 @@ export function CortexWorkspace({ profile }: { profile: BackendProfile }) {
   const [tab, setTab] = useState<CortexTab>("logs");
   const [identity, setIdentity] = useState<ProductIdentity | null>(null);
   const [query, setQuery] = useState("");
+  const [graphEntityType, setGraphEntityType] = useState<CortexGraphEntityType>("host");
   const [rows, setRows] = useState<CortexLog[]>([]);
   const [fleet, setFleet] = useState<CortexFleetHost[]>([]);
   const [graph, setGraph] = useState<CortexGraphResult | null>(null);
@@ -99,7 +102,7 @@ export function CortexWorkspace({ profile }: { profile: BackendProfile }) {
     try {
       if (tab === "logs") {
         const result = await client.logs(
-          { q: query, cursor: append ? (cursor ?? undefined) : undefined, limit: 100 },
+          { query, cursor: append ? (cursor ?? undefined) : undefined, limit: 100 },
           abort.signal,
         );
         if (mine !== generation.current) return;
@@ -143,7 +146,10 @@ export function CortexWorkspace({ profile }: { profile: BackendProfile }) {
         const result = await client.fleet(abort.signal);
         if (mine === generation.current) setFleet(result.payload.hosts);
       } else if (tab === "graph") {
-        const result = await client.graph(query, abort.signal);
+        const result = await client.graph(
+          { entityType: graphEntityType, key: query },
+          abort.signal,
+        );
         if (mine === generation.current) setGraph(result.payload);
       } else {
         const result = await client.correlate(
@@ -319,6 +325,28 @@ export function CortexWorkspace({ profile }: { profile: BackendProfile }) {
                       required={!query.trim()}
                     />
                   ))}
+                </div>
+              ) : tab === "graph" ? (
+                <div className="cortex-session-fields">
+                  <select
+                    aria-label="Graph entity type"
+                    value={graphEntityType}
+                    onChange={(event) =>
+                      setGraphEntityType(event.target.value as CortexGraphEntityType)
+                    }
+                  >
+                    {CORTEX_GRAPH_ENTITY_TYPES.map((entityType) => (
+                      <option key={entityType} value={entityType}>
+                        {entityType.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    id="cortex-query"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    autoComplete="off"
+                  />
                 </div>
               ) : (
                 <input

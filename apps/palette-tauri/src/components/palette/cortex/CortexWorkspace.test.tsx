@@ -80,4 +80,35 @@ describe("CortexWorkspace", () => {
       ).toHaveLength(0),
     );
   });
+
+  it("submits an explicit graph entity type with the canonical key", async () => {
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (command !== "backend_http_request") return undefined;
+      const path = (args as { request: { path: string } }).request.path;
+      if (path === "/v1/integration/identity")
+        return {
+          ok: true,
+          status: 200,
+          payload: { ...identity, capabilities: ["graph.read"] },
+        };
+      return { ok: true, status: 200, payload: { relationships: [] } };
+    });
+    render(<CortexWorkspace profile={profile} />);
+    await screen.findByText("cortex_abcdefghijklmnop");
+    fireEvent.click(screen.getByRole("button", { name: "graph" }));
+    fireEvent.change(await screen.findByLabelText("Graph entity type"), {
+      target: { value: "logical_service" },
+    });
+    fireEvent.change(screen.getByLabelText("Cortex-qualified entity key"), {
+      target: { value: "plex" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("backend_http_request", {
+        request: expect.objectContaining({
+          path: expect.stringContaining("/api/graph/around?entity_type=logical_service&key=plex&"),
+        }),
+      }),
+    );
+  });
 });
