@@ -12,10 +12,9 @@ use axon_api::source::*;
 use qdrant_client::qdrant::{
     CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
     FieldType, Filter, HnswConfigDiff, Match, NamedVectors, OptimizersConfigDiff, PointStruct,
-    QuantizationConfig, QuantizationType, ScalarQuantization, SparseVector as QdrantSparseVector,
-    SparseVectorConfig as QdrantSparseVectorConfig, SparseVectorParams, Value,
-    Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors, VectorsConfig, condition,
-    r#match, quantization_config, vector, vectors, vectors_config,
+    SparseVector as QdrantSparseVector, SparseVectorConfig as QdrantSparseVectorConfig,
+    SparseVectorParams, Value, Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors,
+    VectorsConfig, condition, r#match, vector, vectors, vectors_config,
 };
 
 use crate::collection::{normalize_collection_spec, validate_collection_spec};
@@ -91,15 +90,10 @@ pub fn qdrant_collection_request(spec: &CollectionSpec) -> Result<CreateCollecti
         timeout: None,
         replication_factor: None,
         write_consistency_factor: None,
-        quantization_config: Some(QuantizationConfig {
-            quantization: Some(quantization_config::Quantization::Scalar(
-                ScalarQuantization {
-                    r#type: QuantizationType::Int8 as i32,
-                    quantile: Some(settings.quantization_quantile),
-                    always_ram: Some(settings.quantization_always_ram),
-                },
-            )),
-        }),
+        // Preserve the original floating-point vectors. Scalar INT8
+        // quantization is an optional latency/space tradeoff and must not be
+        // silently enabled for collections that require exact retrieval.
+        quantization_config: None,
         sharding_method: None,
         strict_mode_config: None,
         metadata: HashMap::new(),

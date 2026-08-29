@@ -1618,7 +1618,10 @@ fn palette_android_ci_builds_arm64_apk_with_pinned_mobile_toolchain() {
         include_str!("../.github/workflows/ci.yml"),
         "palette-tauri-android",
     );
-    assert!(ci.contains("runs-on: ci-pool-system"));
+    // GitHub-hosted while the ci-runner-farm standalone migration is in
+    // flight (see the matching comment in ci.yml); restore the
+    // `runs-on: ci-pool-system` assertion when the job moves back.
+    assert!(ci.contains("runs-on: ubuntu-latest"));
     assert!(ci.contains("targets: aarch64-linux-android"));
     assert!(ci.contains("java-version: \"21\""));
     assert!(ci.contains(r#""ndk;28.2.13676358""#));

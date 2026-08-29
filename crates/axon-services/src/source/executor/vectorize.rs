@@ -17,8 +17,18 @@ mod pipeline;
 use batching::chunk_batches;
 use pipeline::{embed_and_build_batch, publish_and_build_next, publish_built_batch};
 
-const DOCUMENT_BATCH_SIZE: usize = 64;
+// Match the acquisition wave so the next web fetch overlaps this batch's
+// prepare/embed/upsert work.
+const DOCUMENT_BATCH_SIZE: usize = 16;
 const DOCUMENT_STATUS_BATCH_SIZE: usize = 64;
+
+fn env_batch_size(name: &str, default: usize, maximum: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(default)
+        .clamp(1, maximum)
+}
 
 #[derive(Debug, Default)]
 pub(super) struct VectorizeResult {
@@ -45,12 +55,13 @@ pub(super) async fn prepare_embed_publish(
     is_final_generation_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
-    let source_batch_count = documents.len().div_ceil(DOCUMENT_BATCH_SIZE);
+    let document_batch_size = env_batch_size("AXON_DOCUMENT_BATCH_SIZE", DOCUMENT_BATCH_SIZE, 1024);
+    let source_batch_count = documents.len().div_ceil(document_batch_size);
     let mut documents = documents.into_iter();
     for source_index in 0..source_batch_count {
         let source_batch = documents
             .by_ref()
-            .take(DOCUMENT_BATCH_SIZE)
+            .take(document_batch_size)
             .collect::<Vec<_>>();
         let is_final_source_batch =
             is_final_generation_batch && source_index + 1 == source_batch_count;
@@ -287,7 +298,12 @@ pub(super) async fn write_document_statuses(
     ledger: &dyn LedgerStore,
     statuses: &[DocumentStatus],
 ) -> anyhow::Result<()> {
-    for batch in statuses.chunks(DOCUMENT_STATUS_BATCH_SIZE) {
+    let status_batch_size = env_batch_size(
+        "AXON_DOCUMENT_STATUS_BATCH_SIZE",
+        DOCUMENT_STATUS_BATCH_SIZE,
+        4096,
+    );
+    for batch in statuses.chunks(status_batch_size) {
         ledger.update_document_statuses(batch.to_vec()).await?;
     }
     Ok(())

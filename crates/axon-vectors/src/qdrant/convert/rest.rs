@@ -63,13 +63,6 @@ pub fn collection_create_json(spec: &CollectionSpec) -> serde_json::Value {
             "ef_construct": settings.hnsw_ef_construct,
             "on_disk": settings.hnsw_on_disk,
         },
-        "quantization_config": {
-            "scalar": {
-                "type": "int8",
-                "quantile": settings.quantization_quantile,
-                "always_ram": settings.quantization_always_ram,
-            }
-        },
         "optimizers_config": { "indexing_threshold": settings.indexing_threshold },
     });
     if let Some(sparse) = &spec.sparse {

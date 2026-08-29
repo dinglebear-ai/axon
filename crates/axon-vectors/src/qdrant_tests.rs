@@ -1,6 +1,6 @@
 use axon_api::source::*;
 use qdrant_client::qdrant::{
-    FieldType, condition, r#match, point_id, quantization_config, vector, vectors, vectors_config,
+    FieldType, condition, r#match, point_id, vector, vectors, vectors_config,
 };
 use serde_json::json;
 
@@ -43,16 +43,7 @@ fn collection_spec_converts_to_named_dense_and_optional_sparse_config() {
     assert_eq!(hnsw.m, Some(32));
     assert_eq!(hnsw.ef_construct, Some(256));
     assert_eq!(hnsw.on_disk, Some(false));
-    let quantization = request.quantization_config.unwrap().quantization.unwrap();
-    let quantization_config::Quantization::Scalar(scalar) = quantization else {
-        panic!("expected scalar quantization");
-    };
-    assert_eq!(
-        scalar.r#type,
-        qdrant_client::qdrant::QuantizationType::Int8 as i32
-    );
-    assert_eq!(scalar.quantile, Some(0.99));
-    assert_eq!(scalar.always_ram, Some(true));
+    assert!(request.quantization_config.is_none());
 
     let sparse = request.sparse_vectors_config.unwrap();
     assert_eq!(

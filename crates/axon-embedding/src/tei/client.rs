@@ -220,22 +220,31 @@ impl TeiClient {
         // Pre-size output so out-of-order splits can index directly by position.
         let mut slots: Vec<Vec<f32>> = vec![Vec::new(); inputs.len()];
 
-        // Work queue of (absolute-offset, sub-slice) pairs still to embed.
-        let mut pending: Vec<(usize, &[String])> = Vec::new();
-        let mut start = 0usize;
-        for chunk in inputs.chunks(self.max_batch_inputs) {
-            pending.push((start, chunk));
-            start += chunk.len();
-        }
+        // Pack similarly-sized inputs together before forming HTTP requests.
+        // Transformer cost follows the longest padded sequence in a request,
+        // so arrival-order slicing can waste most of a Metal dispatch on
+        // padding. Keep original indices beside the reordered text so response
+        // vectors still satisfy this method's input-order contract.
+        let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
+        ordered.sort_by_key(|(index, text)| (text.chars().count(), *index));
+        let mut pending: Vec<(Vec<usize>, Vec<String>)> = ordered
+            .chunks(self.max_batch_inputs)
+            .map(|chunk| {
+                chunk
+                    .iter()
+                    .map(|(index, text)| (*index, (*text).clone()))
+                    .unzip()
+            })
+            .collect();
 
         while !pending.is_empty() {
             let wave = std::mem::take(&mut pending);
             for group in wave.chunks(self.max_concurrent_requests) {
                 let mut requests = Vec::with_capacity(group.len());
-                for &(offset, chunk) in group {
-                    requests.push(self.send_indexed_chunk(offset, chunk));
+                for (indices, chunk) in group {
+                    requests.push(self.send_indexed_chunk(indices, chunk));
                 }
-                for (offset, chunk, outcome) in join_all(requests).await {
+                for (indices, chunk, outcome) in join_all(requests).await {
                     match outcome? {
                         ChunkOutcome::Vectors(batch) => {
                             if batch.len() != chunk.len() {
@@ -248,15 +257,14 @@ impl TeiClient {
                                     ),
                                 ));
                             }
-                            for (i, vec) in batch.into_iter().enumerate() {
-                                slots[offset + i] = vec;
+                            for (index, vector) in indices.iter().copied().zip(batch) {
+                                slots[index] = vector;
                             }
                         }
                         ChunkOutcome::Split => {
                             let mid = chunk.len() / 2;
-                            let (left, right) = chunk.split_at(mid);
-                            pending.push((offset, left));
-                            pending.push((offset + mid, right));
+                            pending.push((indices[..mid].to_vec(), chunk[..mid].to_vec()));
+                            pending.push((indices[mid..].to_vec(), chunk[mid..].to_vec()));
                         }
                     }
                 }
@@ -271,10 +279,10 @@ impl TeiClient {
 
     async fn send_indexed_chunk<'a>(
         &'a self,
-        offset: usize,
+        indices: &'a [usize],
         chunk: &'a [String],
-    ) -> (usize, &'a [String], Result<ChunkOutcome, ApiError>) {
-        (offset, chunk, self.send_chunk_with_retries(chunk).await)
+    ) -> (&'a [usize], &'a [String], Result<ChunkOutcome, ApiError>) {
+        (indices, chunk, self.send_chunk_with_retries(chunk).await)
     }
 
     /// Send one chunk, retrying transport errors and 429/5xx, and signalling a

@@ -150,6 +150,36 @@ async fn seed_two_generations(
     (gen1.generation, published.generation)
 }
 
+/// Seed one published generation with several items, then publish a generation
+/// that removes all of them. The ledger records one item-scoped vector debt per
+/// removed item even though every debt targets the same retired generation.
+async fn seed_generation_with_multiple_vector_debts(
+    ledger: &FakeLedgerStore,
+) -> (SourceGenerationId, SourceGenerationId) {
+    ledger.upsert_source(source()).await.unwrap();
+    let gen1 = ledger.create_generation(SourceId::new(SRC)).await.unwrap();
+    ledger
+        .put_manifest(manifest(
+            &gen1.generation.0,
+            vec![
+                ("one", "old-one"),
+                ("two", "old-two"),
+                ("three", "old-three"),
+            ],
+        ))
+        .await
+        .unwrap();
+    publish(ledger, completed(gen1.clone())).await;
+
+    let gen2 = ledger.create_generation(SourceId::new(SRC)).await.unwrap();
+    ledger
+        .put_manifest(manifest(&gen2.generation.0, Vec::new()))
+        .await
+        .unwrap();
+    let published = publish(ledger, completed(gen2)).await;
+    (gen1.generation, published.generation)
+}
+
 fn index_counts(committed: &SourceGenerationId) -> IndexCounts {
     IndexCounts {
         job_id: JobId::new(Uuid::from_u128(1)),
@@ -316,6 +346,51 @@ async fn source_prune_cleanup_debt_uses_configured_collection() {
             .iter()
             .any(|debt| debt.kind == CleanupDebtKind::GraphPrune)
     );
+}
+
+#[tokio::test]
+async fn vector_debts_for_one_generation_share_one_store_delete() {
+    let ledger = FakeLedgerStore::new();
+    let (previous, committed) = seed_generation_with_multiple_vector_debts(&ledger).await;
+    let vector = RecordingVectorStore::default();
+
+    let before = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert_eq!(
+        before
+            .iter()
+            .filter(|debt| debt.kind == CleanupDebtKind::VectorDelete)
+            .count(),
+        3
+    );
+
+    let summary = drain_cleanup_debt(&ledger, &vector, COLLECTION, &index_counts(&committed)).await;
+
+    let deletes = vector.deletes.lock().unwrap();
+    assert_eq!(
+        deletes.len(),
+        1,
+        "item debts for the same retired generation must coalesce"
+    );
+    assert!(matches!(
+        &deletes[0],
+        VectorDeleteSelector::Generation { generation, .. } if generation == &previous
+    ));
+    drop(deletes);
+
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert!(
+        !pending
+            .iter()
+            .any(|debt| debt.kind == CleanupDebtKind::VectorDelete),
+        "one successful grouped delete must resolve every covered vector debt"
+    );
+    assert_eq!(summary.points_deleted, 3);
 }
 
 #[tokio::test]

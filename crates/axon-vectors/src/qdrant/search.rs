@@ -164,7 +164,7 @@ fn named_dense_body(
 fn dense_params() -> serde_json::Value {
     serde_json::json!({
         "hnsw_ef": HNSW_EF_SEARCH,
-        "quantization": { "rescore": true, "oversampling": 1.5 },
+        "exact": true,
     })
 }
 

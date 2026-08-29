@@ -181,7 +181,10 @@ jobs:
   # and transport contracts before starting the expensive clippy/test fanout.
   rust-contracts:
     name: rust-contracts
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): the farm reaped this job's runner mid-build
+    # on consecutive attempts, and it gates the entire clippy/test fanout.
+    runs-on: ubuntu-latest
     # 240, not 60. Measured across the last 40 ci.yml runs, this job's SUCCESSFUL
     # durations are: 14 15 16 16 22 29 32 34 36 40 42 43 58 59 62 70 75 88 93 96
     # 109 114 186 (minutes). 9 of 23 green runs (39%) exceed 60 minutes, and the
@@ -358,7 +361,10 @@ jobs:
   # workspace for a YAML-only change.
   ci-contracts:
     name: ci-contracts
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): this job drew defective farm runners
+    # (broken rustup dirs / no toolchain) on consecutive attempts.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.run_ci_contracts == 'true' }}
@@ -398,7 +404,10 @@ jobs:
 
   android:
     name: android
-    runs-on: ci-pool-system
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): long Gradle builds keep losing their farm
+    # runner mid-step. Revert to ci-pool-system once the farm stabilizes.
+    runs-on: ubuntu-latest
     # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
     # main runs, but both timed out at exactly 30m once the per-runner cargo
     # registries were isolated and had to repopulate from cold. GitHub reports a
@@ -535,7 +544,12 @@ jobs:
 
   palette-tauri:
     name: palette-tauri
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight: the current farm runner image is hardened (no usable sudo) and
+    # lacks the Tauri GTK/webkit dev stack, so this job cannot provision
+    # itself there. Revert to ci-pool-rust once the farm image ships the
+    # tauri prerequisites again.
+    runs-on: ubuntu-latest
     # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
     # main runs, but both timed out at exactly 30m once the per-runner cargo
     # registries were isolated and had to repopulate from cold. GitHub reports a
@@ -616,7 +630,9 @@ jobs:
 
   palette-tauri-android:
     name: palette-tauri-android
-    runs-on: ci-pool-system
+    # GitHub-hosted for the same farm-migration reason as palette-tauri
+    # (runner reaped mid-build by the flapping farm controller).
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.run_palette == 'true' }}
@@ -791,7 +807,10 @@ jobs:
   # The fast contract job must pass before either expensive Rust lane starts.
   clippy:
     name: clippy
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): every current farm runner fails Rust
+    # toolchain setup (missing rustup / unwritable toolchain dirs).
+    runs-on: ubuntu-latest
     # 60, not 30: slowest green run measured at 34.9 min, so a 30-minute cap
     # would hard-fail a build that passes.
     timeout-minutes: 60
@@ -811,7 +830,10 @@ jobs:
 
   test:
     name: test
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): every current farm runner fails Rust
+    # toolchain setup (missing rustup / unwritable toolchain dirs).
+    runs-on: ubuntu-latest
     # 90, not 30: slowest green run measured at 53.3 min, and 4 of 15 green runs
     # exceed 30 min. A 30-minute cap would hard-fail builds that pass.
     timeout-minutes: 90
@@ -958,7 +980,10 @@ jobs:
 
   security:
     name: security
-    runs-on: ci-pool-rust
+    # GitHub-hosted while the ci-runner-farm standalone migration is in
+    # flight (see palette-tauri): every current farm runner fails Rust
+    # toolchain setup (missing rustup / unwritable toolchain dirs).
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes, rust-contracts]
     # The weekly cron routes the security audit while intentionally skipping

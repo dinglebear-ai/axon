@@ -113,18 +113,30 @@ pub(super) fn apply_max_items(manifest: &mut SourceManifest, max_items: Option<u
 /// (including local) streams acquisition through (finding C1: `executor` used
 /// to be the only pipeline that acquired an entire changed generation in one
 /// unbounded call).
-pub(super) fn batch_changed_diff(
+/// Batch a diff's added+modified items with a distinct size for the first batch. A small
+/// first wave shortens the serial fetch head before the embed/fetch overlap
+/// steady state starts; every later batch uses `batch_size` unchanged.
+pub(super) fn batch_changed_diff_ramped(
     diff: &SourceManifestDiff,
+    first_batch_size: usize,
     batch_size: usize,
 ) -> impl Iterator<Item = SourceManifestDiff> + '_ {
+    let first_batch_size = first_batch_size.max(1);
     let batch_size = batch_size.max(1);
     let mut added = diff.added.iter();
     let mut modified = diff.modified.iter();
     let mut added_exhausted = false;
+    let mut is_first = true;
 
     std::iter::from_fn(move || {
+        let target = if is_first {
+            first_batch_size
+        } else {
+            batch_size
+        };
+        is_first = false;
         let mut batch = empty_diff_like(diff);
-        while batch.added.len() + batch.modified.len() < batch_size {
+        while batch.added.len() + batch.modified.len() < target {
             if !added_exhausted {
                 if let Some(item) = added.next() {
                     batch.added.push(item.clone());

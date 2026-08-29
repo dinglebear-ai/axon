@@ -9,6 +9,14 @@ use tokio::sync::Semaphore;
 
 const MAX_IN_FLIGHT_BYTES: usize = 64 * 1024 * 1024;
 
+fn max_in_flight_bytes() -> usize {
+    std::env::var("AXON_PREP_MAX_IN_FLIGHT_BYTES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(MAX_IN_FLIGHT_BYTES)
+        .clamp(1024 * 1024, u32::MAX as usize)
+}
+
 pub(super) async fn prepare_documents(
     documents: Vec<SourceDocument>,
     generation: &SourceGenerationId,
@@ -30,7 +38,7 @@ pub(super) async fn prepare_documents(
     bounded_blocking_map_in_order(
         work_items,
         concurrency,
-        MAX_IN_FLIGHT_BYTES,
+        max_in_flight_bytes(),
         |(document, _)| source_document_bytes(document),
         move |(document, graph_candidates)| {
             let item_key = document.source_item_key.0.clone();
