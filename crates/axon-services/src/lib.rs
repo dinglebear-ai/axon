@@ -36,6 +36,7 @@ pub mod feed_target;
 pub mod graph;
 pub use feed_target::{is_feed_target, normalize_feed_target};
 pub mod jobs;
+pub mod loadout_context;
 pub mod map;
 pub mod memory;
 pub mod migrate;

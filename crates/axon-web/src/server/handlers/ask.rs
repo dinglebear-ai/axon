@@ -77,17 +77,39 @@ pub async fn v1_ask(
 
     let want_diagnostics = req_cfg.ask_diagnostics;
 
+    let resolved = match req.loadout.as_ref() {
+        Some(binding) => match axon_services::loadout_context::resolve(&req_cfg, binding).await {
+            Ok(value) => Some(value),
+            Err(error) => {
+                return HttpError::new(
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "loadout_resolution_failed",
+                    error.to_string(),
+                )
+                .into_response();
+            }
+        },
+        None => None,
+    };
+    let question = resolved.as_ref().map_or_else(
+        || req.query.clone(),
+        |context| format!("{}\n\n{}", context.prompt_context, req.query),
+    );
     match query_svc::ask_with_auth(
         &ctx,
         &req_cfg,
-        &req.query,
+        &question,
         None,
         auth.as_ref()
             .map(|extension| auth_snapshot_from_auth(&extension.0)),
     )
     .await
     {
-        Ok(result) => Json(result).into_response(),
+        Ok(mut result) => {
+            result.query = req.query;
+            result.loadout = resolved.map(|value| value.metadata);
+            Json(result).into_response()
+        }
         Err(err) => {
             HttpError::from_error_with_diagnostics(err.as_ref(), want_diagnostics).into_response()
         }

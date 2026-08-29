@@ -41,8 +41,9 @@ pub async fn v1_chat(
 
     match AskServiceImpl::new(context)
         .chat(axon_services::service_traits::ask_service::ChatRequest {
-            session_id: None,
+            session_id: req.session_id.clone(),
             message: req.message.clone(),
+            loadout: req.loadout.clone(),
         })
         .await
     {
@@ -50,6 +51,7 @@ pub async fn v1_chat(
             message: req.message,
             answer: completion.reply,
             model: completion.model,
+            loadout: completion.loadout,
         })
         .into_response(),
         Err(err) => {

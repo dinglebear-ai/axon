@@ -32,6 +32,7 @@ use crate::transport::{AskTransportOverrides, apply_ask_overrides};
 pub struct ChatRequest {
     pub session_id: Option<String>,
     pub message: String,
+    pub loadout: Option<axon_api::loadout::LoadoutBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -39,6 +40,7 @@ pub struct ChatResult {
     pub session_id: String,
     pub reply: String,
     pub model: Option<String>,
+    pub loadout: Option<axon_api::loadout::LoadoutResolution>,
 }
 
 /// Error returned by a chat delta consumer.
@@ -138,7 +140,15 @@ impl AskService for AskServiceImpl {
         if message.is_empty() {
             anyhow::bail!("chat message is required");
         }
-        let completion_request = chat_completion_request(self.ctx.cfg(), message, false);
+        let resolved = match request.loadout.as_ref() {
+            Some(binding) => Some(crate::loadout_context::resolve(self.ctx.cfg(), binding).await?),
+            None => None,
+        };
+        let prompt = resolved.as_ref().map_or_else(
+            || message.to_string(),
+            |context| format!("{}\n\n{}", context.prompt_context, message),
+        );
+        let completion_request = chat_completion_request(self.ctx.cfg(), &prompt, false);
         let model = completion_request.model.clone();
         let completion = axon_llm::complete_text(completion_request)
             .await
@@ -149,6 +159,7 @@ impl AskService for AskServiceImpl {
                 .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
             reply: completion.text,
             model,
+            loadout: resolved.map(|value| value.metadata),
         })
     }
 
@@ -163,7 +174,15 @@ impl AskService for AskServiceImpl {
         // The streaming REST route historically validated with `trim()` but
         // passed the original message bytes to the provider. Preserve that
         // behavior at the service boundary.
-        let completion_request = chat_completion_request(self.ctx.cfg(), &request.message, true);
+        let resolved = match request.loadout.as_ref() {
+            Some(binding) => Some(crate::loadout_context::resolve(self.ctx.cfg(), binding).await?),
+            None => None,
+        };
+        let prompt = resolved.as_ref().map_or_else(
+            || request.message.clone(),
+            |context| format!("{}\n\n{}", context.prompt_context, request.message),
+        );
+        let completion_request = chat_completion_request(self.ctx.cfg(), &prompt, true);
         let model = completion_request.model.clone();
         let completion = axon_llm::complete_streaming(completion_request, on_delta)
             .await
@@ -174,6 +193,7 @@ impl AskService for AskServiceImpl {
                 .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
             reply: completion.text,
             model,
+            loadout: resolved.map(|value| value.metadata),
         })
     }
 
@@ -253,6 +273,7 @@ impl AskService for FakeAskService {
                 streamed: None,
                 normalize_ms: None,
             },
+            loadout: None,
         })
     }
 
@@ -263,6 +284,7 @@ impl AskService for FakeAskService {
                 .unwrap_or_else(|| "fake-session".to_string()),
             reply: format!("fake reply to: {}", request.message),
             model: Some("fake-chat-model".to_string()),
+            loadout: None,
         })
     }
 

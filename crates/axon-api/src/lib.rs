@@ -17,6 +17,7 @@ pub mod explain;
 pub mod job_dto;
 pub mod job_progress;
 pub mod job_status;
+pub mod loadout;
 pub mod mcp_schema;
 pub mod migration;
 pub mod reset;

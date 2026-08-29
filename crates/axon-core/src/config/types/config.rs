@@ -153,6 +153,13 @@ impl Default for ProjectionBatchConfig {
 
 #[derive(Clone)]
 pub struct Config {
+    /// Server-owned Labby integration used to resolve revision-bound ask/chat context.
+    pub labby_url: Option<String>,
+    pub labby_service_token: Option<String>,
+    pub labby_integration_id: Option<String>,
+    pub labby_runtime_identity: Option<String>,
+    pub labby_resolution_timeout_ms: u64,
+    pub labby_resolution_max_bytes: usize,
     /// The subcommand being executed (scrape, crawl, ask, etc.).
     pub command: CommandKind,
 

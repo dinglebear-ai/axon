@@ -50,6 +50,24 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     let projection_batch = resolve_projection_batch(inputs.toml)?;
 
     let mut cfg = Config::default();
+    cfg.labby_url = env::var("AXON_LABBY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    cfg.labby_service_token = env::var("AXON_LABBY_SERVICE_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty());
+    cfg.labby_integration_id = env::var("AXON_LABBY_INTEGRATION_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    cfg.labby_runtime_identity = env::var("AXON_LABBY_RUNTIME_IDENTITY")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    cfg.labby_resolution_timeout_ms = parse_projection_env("AXON_LABBY_RESOLUTION_TIMEOUT_MS")?
+        .unwrap_or(2_000)
+        .clamp(100, 30_000);
+    cfg.labby_resolution_max_bytes = parse_projection_env("AXON_LABBY_RESOLUTION_MAX_BYTES")?
+        .unwrap_or(256 * 1024)
+        .clamp(1_024, 1024 * 1024);
     populate_identity_and_crawl(&mut cfg, &inputs);
     populate_chrome_and_filtering(&mut cfg, &inputs);
     populate_perf_and_credentials(&mut cfg, &inputs)?;

@@ -45,6 +45,7 @@ impl AxonMcpServer {
             .chat(axon_services::service_traits::ask_service::ChatRequest {
                 session_id: req.session_id,
                 message: message.to_string(),
+                loadout: None,
             })
             .await
             .map_err(|error| logged_internal_error("chat.complete", error.as_ref()))?;

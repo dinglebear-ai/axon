@@ -43,6 +43,7 @@ async fn v1_chat_stream_emits_meta_delta_done_sequence() {
                     session_id: "session-1".to_string(),
                     reply: "hello".to_string(),
                     model: Some(format!("model-for-{}", request.message)),
+                    loadout: None,
                 })
             })
         }),
@@ -77,6 +78,7 @@ async fn chat_stream_preserves_raw_message_and_final_payload() {
                     session_id: "session-raw".to_string(),
                     reply: "answer".to_string(),
                     model: Some("chat-model".to_string()),
+                    loadout: None,
                 })
             })
         }),

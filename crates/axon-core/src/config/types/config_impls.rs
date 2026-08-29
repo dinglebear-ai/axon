@@ -13,6 +13,12 @@ use std::path::PathBuf;
 impl Default for Config {
     fn default() -> Self {
         Self {
+            labby_url: None,
+            labby_service_token: None,
+            labby_integration_id: None,
+            labby_runtime_identity: None,
+            labby_resolution_timeout_ms: 2_000,
+            labby_resolution_max_bytes: 256 * 1024,
             command: CommandKind::Status,
             start_url: String::new(),
             positional: Vec::new(),

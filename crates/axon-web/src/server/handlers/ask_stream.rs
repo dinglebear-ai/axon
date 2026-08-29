@@ -251,6 +251,29 @@ pub async fn v1_ask_stream(
             return;
         }
 
+        let resolved = match req.loadout.as_ref() {
+            Some(binding) => match axon_services::loadout_context::resolve(&req_cfg, binding).await
+            {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    emit_ask_stream_result(
+                        &tx,
+                        &disconnected,
+                        &sequence,
+                        job_id,
+                        Err(error.to_string()),
+                    )
+                    .await;
+                    return;
+                }
+            },
+            None => None,
+        };
+        let question = resolved.as_ref().map_or_else(
+            || req.query.clone(),
+            |context| format!("{}\n\n{}", context.prompt_context, req.query),
+        );
+        let original_query = req.query.clone();
         let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_task = spawn_service_event_forwarder(
             event_rx,
@@ -259,8 +282,13 @@ pub async fn v1_ask_stream(
             Arc::clone(&sequence),
             job_id,
         );
-        let result = query_svc::ask(&service_context, &req_cfg, &req.query, Some(event_tx))
+        let result = query_svc::ask(&service_context, &req_cfg, &question, Some(event_tx))
             .await
+            .map(|mut result| {
+                result.query = original_query;
+                result.loadout = resolved.map(|value| value.metadata);
+                result
+            })
             .map_err(|err| err.to_string());
         let _ = delta_task.await;
 

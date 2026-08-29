@@ -108,6 +108,7 @@ fn ask_result_serializes_absent_explain_as_null() {
             streamed: None,
             normalize_ms: None,
         },
+        loadout: None,
     };
 
     let value = serde_json::to_value(result).expect("ask result serializes");

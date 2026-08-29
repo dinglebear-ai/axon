@@ -172,8 +172,9 @@ fn v1_chat_stream_response(req: RestChatRequest, chat_streaming: ChatStreamingFn
         });
         let result = chat_streaming(
             ChatRequest {
-                session_id: None,
+                session_id: req.session_id,
                 message: req.message,
+                loadout: req.loadout,
             },
             on_delta,
         )
@@ -189,6 +190,7 @@ fn v1_chat_stream_response(req: RestChatRequest, chat_streaming: ChatStreamingFn
                     message,
                     answer: completion.reply,
                     model: completion.model,
+                    loadout: completion.loadout,
                 };
                 let event =
                     StreamEvent::final_event(sequence.next(), &response).with_job_id(job_id);
@@ -237,6 +239,7 @@ pub(super) async fn v1_chat_stream_test_response(body: serde_json::Value) -> Res
                     session_id: "test-session".to_string(),
                     reply: request.message,
                     model: Some("test-model".to_string()),
+                    loadout: None,
                 })
             })
         }),
