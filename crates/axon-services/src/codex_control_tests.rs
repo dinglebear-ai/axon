@@ -119,7 +119,7 @@ fn marketplace_upgrade_uses_native_selector_but_remains_unprovable() {
             Some(&current),
             &current,
             Some("r1"),
-            Some("r2"),
+            Some("r1"),
         ),
         EffectProof::Unknown(_)
     ));

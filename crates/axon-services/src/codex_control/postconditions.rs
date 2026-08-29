@@ -16,6 +16,9 @@ pub(super) fn verify_intended_effect(
     expected_revision: Option<&str>,
     current_revision: Option<&str>,
 ) -> EffectProof {
+    if matches!(action, ControlAction::MarketplaceUpgrade) {
+        return verify_marketplace_upgrade(request, after);
+    }
     if expected_revision.is_some() && expected_revision == current_revision {
         return EffectProof::Absent("canonical state is unchanged".to_string());
     }
@@ -38,7 +41,7 @@ pub(super) fn verify_intended_effect(
         ControlAction::ExternalAgentConfigImport => {
             verify_entity(request, before, after, EntityKind::Skill, true)
         }
-        ControlAction::MarketplaceUpgrade => verify_marketplace_upgrade(request, after),
+        ControlAction::MarketplaceUpgrade => unreachable!("handled before revision comparison"),
         ControlAction::SkillConfigWrite => verify_skill_config(request, after),
         ControlAction::AccountLoginStart | ControlAction::AccountLoginCancel => {
             EffectProof::Unknown("action has no durable action-specific canonical readback".into())

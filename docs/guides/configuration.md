@@ -472,8 +472,6 @@ Use `-v` for operational detail, `-vv` for timestamped debug diagnostics, and
 | `AXON_ENDPOINT_BUNDLE_CONCURRENCY` | `8` | Concurrent JS-bundle fetches during `endpoints` discovery |
 | `AXON_ENDPOINT_CHROME_CONCURRENCY` | `1` | Concurrent Chrome probes during `endpoints` discovery (Chrome is scarce) |
 | `AXON_ENDPOINT_VERIFY_CONCURRENCY` | `16` | Concurrent endpoint verification requests |
-| `AXON_CODEX_CMD` | -- | Host-only path to the Codex CLI binary for the codex LLM backend (non-symlink executable) |
-| `AXON_CODEX_HOME` | -- | Host-only source HOME dir holding Codex auth files (non-symlink directory) |
 
 ### Webclaw port (axon_rust-zehr)
 
