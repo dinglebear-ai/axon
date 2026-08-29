@@ -181,6 +181,7 @@ impl PreparedBatchSender {
         is_final: bool,
         cancel: &CancellationToken,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(!cancel.is_cancelled(), "prepared work send canceled");
         let charged_chunks = prepared
             .iter()
             .map(|document| document.chunks.len().max(1))
