@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add a process-wide embedding scheduler that streams bounded generation work
+- Add a generation-scoped embedding scheduler that streams bounded work
   across acquisition waves and exposes provider-aware TEI request capacity.
 - Add hardened Apple MLX and source-pipeline benchmark tooling, including
   acquisition batch timing telemetry for separating crawl variance from

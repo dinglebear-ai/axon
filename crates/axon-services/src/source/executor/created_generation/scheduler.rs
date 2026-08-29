@@ -16,8 +16,12 @@ use crate::source::executor::progress::PipelineProgress;
 const DEFAULT_FLUSH_DELAY: Duration = Duration::from_millis(1_500);
 
 fn flush_delay() -> Duration {
-    std::env::var("AXON_EMBED_SCHEDULER_FLUSH_MS")
-        .ok()
+    let configured = std::env::var("AXON_EMBED_SCHEDULER_FLUSH_MS").ok();
+    flush_delay_from_value(configured.as_deref())
+}
+
+fn flush_delay_from_value(value: Option<&str>) -> Duration {
+    value
         .and_then(|value| value.parse::<u64>().ok())
         .map(|milliseconds| Duration::from_millis(milliseconds.min(5_000)))
         .unwrap_or(DEFAULT_FLUSH_DELAY)
@@ -101,7 +105,7 @@ pub(super) async fn run_generation_scheduler(
                 accumulator.absorb_pretracked_side_effects(std::mem::replace(
                     &mut envelope.side_effects,
                     crate::source::executor::generation_work::PreparedBatchSideEffects::empty(),
-                ));
+                ))?;
                 pending_chunks = pending_chunks.saturating_add(chunks);
                 pending_bytes = pending_bytes.saturating_add(envelope.estimated_bytes);
                 pending.push(envelope);

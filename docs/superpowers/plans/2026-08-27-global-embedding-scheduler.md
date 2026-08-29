@@ -1,5 +1,15 @@
 # Global Embedding Scheduler Implementation Plan
 
+> **Implementation note (2026-08-29):** This is the original delivery plan,
+> not a statement that every aspirational bound landed. The implemented spool
+> covers archive items, artifact candidates, warnings, reused keys, and
+> refreshed manifest items in a mode-0600 process-lifetime tempfile with a
+> 64-MiB per-record cap. Other accumulator/index state remains in memory, no
+> 1,216-MiB aggregate bound or spool cleanup debt is claimed, and cancellation
+> is cooperative without a hard timeout for non-cooperative provider futures.
+> The runtime also exposes `AXON_EMBED_SCHEDULER_FLUSH_MS` as an experimental
+> bounded tuning knob.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:subagent-driven-development` or `superpowers:executing-plans`.
 > Track every checkbox and preserve unrelated dirty-worktree changes.
@@ -159,11 +169,11 @@ Commit: `fix(embedding): enforce lossless TEI requests`
   exactly at current production boundaries.
 - [ ] Add `absorb_vectorized` and equivalence tests using private child-module
   access—no production test-only getters.
-- [ ] Implement a mode-0600 generation-scoped `GenerationSpool` for bulky side
-  effects, archive/output data, graph candidates, refreshed manifests, and
-  cumulative ID/status state. Cap its in-memory read/write window at 64 MiB and
-  use its indexed table for deduplication. Finalization streams it in source
-  order; failure removes it or records cleanup debt.
+- [x] Implement a mode-0600 generation-scoped `GenerationSpool` for archive
+  items, artifact candidates, warnings, reused keys, and refreshed manifests.
+  Cap each record at 64 MiB and stream finalization in source order. The key
+  index and remaining accumulator state stay in memory; the tempfile is not a
+  durable cleanup-debt mechanism.
 - [ ] Put `PreparedGenerationBatch` and neutral split/message types in
   `generation_work.rs`. Neither `created_generation` nor `vectorize` imports
   orchestration types from the other.
@@ -201,12 +211,11 @@ pub(super) async fn send(
 - [ ] For pool size `P`, set channel capacity to two and chunk permits to
   `3 * P`, covering exactly one active plus two queued pools. Reject overflow.
   Split each message losslessly to at most one pool before permits.
-- [ ] Charge owned prepared text plus metadata/payload bytes in ceiling 1-KiB
+- [x] Charge owned prepared text plus metadata/payload bytes in ceiling 1-KiB
   units against an internal 1-GiB M5/48-GB profile budget (`1_048_576` permits),
   including the overlapped built vector/payload batch and validated against
-  `u32`. Log effective capacities once. Together with the 64-MiB spool window
-  and 128-MiB fixed runtime/index allowance, scheduler-owned memory is capped at
-  1,216 MiB.
+  `u32`. Log effective capacities once. This bounds admitted prepared work; it
+  does not establish an aggregate bound for all accumulator and index state.
 - [ ] Acquire chunk and estimated-owned-byte permits with `tokio::select!`
   against cancellation; do the same for channel send.
 - [ ] Move permits into the active pool and release only after upsert, durable
@@ -219,10 +228,9 @@ pub(super) async fn send(
 - [ ] At pool sizes 512, 1,024, and 2,048, assert exact capacities, at most two
   resident queued envelopes, active-pool progress, and permit release only after
   durable completion/absorption.
-- [ ] Run a sustained many-wave test and allocator/RSS sampling test. Assert
-  transient charged bytes <=1 GiB, spool window <=64 MiB, fixed allowance
-  <=128 MiB, total scheduler-owned live bytes <=1,216 MiB, and permits release
-  only after spool durability.
+- [ ] Run a sustained many-wave allocator/RSS sampling test and establish an
+  aggregate bound that includes the in-memory deduplication/index and retained
+  accumulator state. This remains future evidence work.
 - [ ] Log only sequence/chunk/byte aggregates and cancellation reason.
 
 Run: `OPENSSL_DIR=/Users/jmagar/.local/opt/openssl-3.5.2 cargo test -p axon-services generation_work`

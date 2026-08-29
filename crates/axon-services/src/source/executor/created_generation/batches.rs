@@ -40,18 +40,18 @@ where
 fn resolve_batch_step<P, A>(
     processed: anyhow::Result<P>,
     prefetched: Option<anyhow::Result<A>>,
-    mut absorb: impl FnMut(P),
+    mut absorb: impl FnMut(P) -> anyhow::Result<()>,
 ) -> anyhow::Result<A> {
     match (processed, prefetched) {
         (Ok(processed), Some(prefetched)) => {
             // Current-batch accounting is durable even when the speculative
             // next acquisition fails. This preserves the completed work in
             // the eventual failure summary instead of silently dropping it.
-            absorb(processed);
+            absorb(processed)?;
             prefetched
         }
         (Ok(processed), None) => {
-            absorb(processed);
+            absorb(processed)?;
             anyhow::bail!("next acquisition was not attempted after successful batch processing")
         }
         (Err(primary), Some(Err(secondary))) => {
@@ -168,8 +168,9 @@ pub(super) async fn process_generation_batches(
             }
             acquired = resolve_batch_step(processed, prefetched, |processed| {
                 let (side_effects, vectorized) = processed;
-                accumulated.absorb_pretracked_side_effects(side_effects);
+                accumulated.absorb_pretracked_side_effects(side_effects)?;
                 accumulated.absorb_vectorized(vectorized);
+                Ok(())
             })?;
             continue;
         }
@@ -188,7 +189,7 @@ pub(super) async fn process_generation_batches(
         )
         .await?;
         let (side_effects, vectorized) = processed;
-        accumulated.absorb_pretracked_side_effects(side_effects);
+        accumulated.absorb_pretracked_side_effects(side_effects)?;
         accumulated.absorb_vectorized(vectorized);
         break;
     }

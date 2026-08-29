@@ -1,4 +1,5 @@
 use super::*;
+use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
 use crate::source::executor::generation_work::{
@@ -28,7 +29,7 @@ pub(super) async fn process(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
-    let (sender, receiver) = prepared_work_channel(runtime.embed_pool_max_inputs)?;
+    let (mut sender, receiver) = prepared_work_channel(runtime.embed_pool_max_inputs)?;
     tracing::info!(
         chunk_capacity = runtime.embed_pool_max_inputs.saturating_mul(3),
         queue_capacity = 2,
@@ -47,7 +48,7 @@ pub(super) async fn process(
         coordinator,
         stage,
         artifact_cleanup,
-        sender,
+        &mut sender,
         &cancel,
     );
     let mut scheduler_progress = PipelineProgress::default();
@@ -62,13 +63,50 @@ pub(super) async fn process(
         &mut scheduler_progress,
         &cancel,
     );
-    let (produced, consumed) = tokio::join!(producer, consumer);
-    match (produced, consumed) {
+    join_cancel_on_error(producer, consumer, &cancel).await
+}
+
+async fn join_cancel_on_error<Producer, Consumer>(
+    producer: Producer,
+    consumer: Consumer,
+    cancel: &CancellationToken,
+) -> anyhow::Result<()>
+where
+    Producer: Future<Output = anyhow::Result<()>>,
+    Consumer: Future<Output = anyhow::Result<()>>,
+{
+    tokio::pin!(producer);
+    tokio::pin!(consumer);
+    tokio::select! {
+        produced = &mut producer => {
+            if produced.is_err() {
+                cancel.cancel();
+            }
+            let consumed = consumer.await;
+            resolve_scheduler_results("producer", produced, "consumer", consumed)
+        }
+        consumed = &mut consumer => {
+            if consumed.is_err() {
+                cancel.cancel();
+            }
+            let produced = producer.await;
+            resolve_scheduler_results("consumer", consumed, "producer", produced)
+        }
+    }
+}
+
+fn resolve_scheduler_results(
+    first_name: &str,
+    first: anyhow::Result<()>,
+    counterpart_name: &str,
+    counterpart: anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    match (first, counterpart) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(primary), Ok(())) | (Ok(()), Err(primary)) => Err(primary),
-        (Err(primary), Err(secondary)) => Err(primary.context(format!(
-            "generation scheduler counterpart also failed: {secondary:#}"
-        ))),
+        (Err(primary), Err(secondary)) => Err(anyhow::anyhow!(
+            "{primary:#}; generation scheduler {counterpart_name} also failed after {first_name} failure: {secondary:#}"
+        )),
     }
 }
 
@@ -84,7 +122,7 @@ async fn produce(
     coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
     artifact_cleanup: &mut ArtifactCleanupGuard,
-    sender: PreparedBatchSender,
+    sender: &mut PreparedBatchSender,
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
     let acquire_batch_size = acquire_batch_size();
@@ -104,6 +142,13 @@ async fn produce(
     let Some(first) = batches.next() else {
         return Ok(());
     };
+    anyhow::ensure!(
+        !cancel.is_cancelled(),
+        "generation scheduler producer canceled"
+    );
+    // Once acquisition starts, let it settle so any returned artifacts can be
+    // registered with the cleanup guard. Cancellation prevents new admission
+    // and channel sends; it must not drop a mutation-bearing provider future.
     let mut acquired = acquire_changed_batch(
         input,
         first,
@@ -118,6 +163,10 @@ async fn produce(
         stage.acquired_items = stage.acquired_items.saturating_add(acquired.items);
         stage.acquired_documents = stage.acquired_documents.saturating_add(acquired.documents);
         let Some(next_batch) = batches.next() else {
+            anyhow::ensure!(
+                !cancel.is_cancelled(),
+                "generation scheduler producer canceled"
+            );
             let prepared = prepare(
                 runtime,
                 input,
@@ -130,7 +179,7 @@ async fn produce(
                 artifact_cleanup,
             )
             .await?;
-            send_prepared(&sender, prepared, cancel).await?;
+            send_prepared(sender, prepared, cancel).await?;
             break;
         };
         let next_acquisition = acquire_changed_batch(
@@ -141,6 +190,10 @@ async fn produce(
             stage.acquired_documents,
             coordinator,
             !input.adapter.supports_acquisition_prefetch(),
+        );
+        anyhow::ensure!(
+            !cancel.is_cancelled(),
+            "generation scheduler producer canceled"
         );
         let (prepared, prefetched) = process_and_acquire_next(
             input.adapter,
@@ -162,7 +215,7 @@ async fn produce(
             artifact_cleanup.track(&prefetched.acquisition.artifacts);
         }
         let (prepared, next_acquired) = resolve_prepared_step(prepared, prefetched)?;
-        send_prepared(&sender, prepared, cancel).await?;
+        send_prepared(sender, prepared, cancel).await?;
         acquired = next_acquired;
     }
     Ok(())
@@ -184,7 +237,7 @@ fn resolve_prepared_step(
 }
 
 async fn send_prepared(
-    sender: &PreparedBatchSender,
+    sender: &mut PreparedBatchSender,
     prepared: SchedulerPreparedBatch,
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
@@ -204,6 +257,10 @@ struct SchedulerPreparedBatch {
     side_effects: PreparedBatchSideEffects,
     is_final: bool,
 }
+
+#[cfg(test)]
+#[path = "scheduled_tests.rs"]
+mod tests;
 
 #[allow(clippy::too_many_arguments)]
 async fn prepare(

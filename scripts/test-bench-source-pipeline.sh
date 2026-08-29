@@ -51,6 +51,16 @@ timings=$(acquisition_timings_from_log "$fixture_dir/axon.log")
 [[ $(jq -r '.[0].item_p95_ms' <<<"$timings") == 390 ]] || fail acquisition-timing-p95
 [[ $(jq -r '.[0].slot_occupancy' <<<"$timings") == 0.44 ]] || fail acquisition-slot-occupancy
 
+! acquisition_timings_from_log "$fixture_dir/missing.log" >/dev/null 2>&1 \
+  || fail missing-acquisition-log
+printf '%s\n' '{"message":"unrelated"}' >"$fixture_dir/no-timings.log"
+! acquisition_timings_from_log "$fixture_dir/no-timings.log" >/dev/null 2>&1 \
+  || fail missing-acquisition-timings
+printf '%s\n' '{"message":"web acquisition batch timing","item_count":"invalid"}' \
+  >"$fixture_dir/malformed-timings.log"
+! acquisition_timings_from_log "$fixture_dir/malformed-timings.log" >/dev/null 2>&1 \
+  || fail malformed-acquisition-timings
+
 grep -q 'umask 077' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail umask
 grep -q 'mktemp -d' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail private-temp
 ! grep -Eq '(^|[[:space:]])set -x([[:space:]]|$)' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail xtrace

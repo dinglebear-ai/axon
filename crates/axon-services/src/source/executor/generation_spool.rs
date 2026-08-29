@@ -15,9 +15,10 @@ use serde::de::DeserializeOwned;
 
 const MAX_WINDOW_BYTES: usize = 64 * 1024 * 1024;
 
-/// Append-only JSONL storage with an in-memory deduplication index. Individual
-/// records are bounded so replay never materializes more than the documented
-/// 64 MiB scheduler spool window.
+/// Append-only JSONL storage with an in-memory deduplication index. Each
+/// serialized record is capped at 64 MiB and replay is streaming, but the key
+/// index and the current serialized/deserialized values are not an aggregate
+/// 64-MiB memory bound.
 pub(super) struct GenerationSpool {
     file: File,
     keys: HashSet<String>,
@@ -79,8 +80,10 @@ impl GenerationSpool {
         Ok(true)
     }
 
-    pub(super) fn replay<T: DeserializeOwned>(&self) -> anyhow::Result<Vec<(String, T)>> {
-        let mut output = Vec::new();
+    pub(super) fn replay_each<T: DeserializeOwned>(
+        &self,
+        mut absorb: impl FnMut(String, T) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
         let mut replay = self.file.try_clone()?;
         replay.seek(std::io::SeekFrom::Start(0))?;
         let mut reader = BufReader::new(replay);
@@ -95,9 +98,10 @@ impl GenerationSpool {
                 line.len() <= MAX_WINDOW_BYTES + 1,
                 "generation spool record exceeds 64 MiB window"
             );
-            output.push(serde_json::from_slice(&line)?);
+            let (key, value) = serde_json::from_slice(&line)?;
+            absorb(key, value)?;
         }
-        Ok(output)
+        Ok(())
     }
 }
 

@@ -1,5 +1,14 @@
 # Engineering Review: Global Embedding Scheduler Epic
 
+> **Implementation status (2026-08-29):** The recommendation audit below
+> records the revised design intent, not complete runtime proof. The landed
+> implementation uses a per-record-capped process-lifetime tempfile for a
+> subset of side effects; other accumulator/index state remains in memory.
+> Cancellation is cooperative and has no hard timeout for non-cooperative
+> providers. Spool durability, cleanup debt, remote-mutation quiescence, and a
+> 1,216-MiB aggregate scheduler bound remain unproven and are not release
+> guarantees.
+
 Date: 2026-08-27
 Review mode: Lavra engineering review, full/default
 Reviewers: architecture, simplicity, security, performance
@@ -64,7 +73,7 @@ explicit lossless TEI contract.
 | Benchmark | secret-bearing subprocess output escapes | Yes, sanitization/private temp | Yes | Redacted failure | Sanitized |
 | Producer artifacts | later preparation step fails | Yes, immediate tracking | Yes, every boundary | Job failure | Sanitized |
 | Queue permit | consumer fails while producer waits | Yes, cancellation select | Yes | Job failure | Aggregate |
-| Queue/accumulator memory | retained state or long inputs exceed bound | Yes, byte permits + durable spool | Yes, sustained/oversized | Clear limit/stability rejection | Metrics |
+| Queue/accumulator memory | admitted prepared work exceeds byte budget | Yes, byte permits + per-record-capped tempfile spool | Partial; aggregate RSS proof remains | Clear admission error | Metrics |
 | Scheduler timer | trickle arrivals reset deadline | Yes, absolute deadline | Yes | Bounded latency | Metrics |
 | Split document | later pool overwrites total status | Yes, cumulative map | Yes, SQLite-backed | Correct cumulative state | Status |
 | Progress | old producer write lands late | Yes, epoch/write mutex | Yes, reversed completion | Monotonic | Progress |
@@ -93,13 +102,13 @@ Applied:
 - [x] 1. Stream accumulation; remove generation-wide scheduled results.
 - [x] 2. Preserve immediate artifact registration.
 - [x] 3. Fence provider work before failed-generation deletion.
-- [x] 4. Replace naïve join semantics with bounded cancellation orchestration.
+- [x] 4. Replace naïve join semantics with cooperative cancellation orchestration.
 - [x] 5. Make permit and send waits cancellation-aware.
 - [x] 6. Move neutral work contract out of sibling modules.
 - [x] 7. Persist cumulative split-document statuses.
 - [x] 8. Serialize progress and make late producer updates count-only.
 - [x] 9. Inventory, batch, instrument, and contention-test SQLite writes.
-- [x] 10. Hold permits through completion; add byte and peak-RSS bounds.
+- [x] 10. Hold permits through completion; add byte admission accounting.
 - [x] 11. Remove redundant document-median ordering.
 - [x] 12. Anchor the absolute oldest-item flush deadline.
 - [x] 13. Preserve and test acquisition prefetch.
@@ -108,12 +117,15 @@ Applied:
 - [x] 16. Harden and separate benchmark states; verify corpus/vector equality.
 - [x] 17. Enforce and test no truncation on the wire.
 - [x] 18. Defer duplicate telemetry and premature public knobs explicitly.
-- [x] 19. Durably spool retained accumulator state and quantify the complete
-  scheduler-owned memory bound.
+- [ ] 19. Durably spool all retained accumulator state and quantify the
+  complete scheduler-owned memory bound. The landed tempfile spool covers only
+  selected side effects and has a per-record cap.
 
-Skipped: none.
+Deferred: complete accumulator spooling, aggregate RSS proof, durable spool
+recovery/cleanup debt, and bounded non-cooperative provider shutdown.
 
-Total: 19 applied, 0 skipped.
+Total: 18 substantially applied, 1 partially implemented, with the deferred
+runtime guarantees listed above.
 
 ## Completion Summary
 

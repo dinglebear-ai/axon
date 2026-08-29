@@ -1,3 +1,9 @@
+---
+title: "Source Pipeline Scheduler Benchmark"
+created: 2026-08-28
+updated: 2026-08-29
+---
+
 # Source pipeline scheduler benchmark
 
 The evidence phase uses a pinned local replay and aggregate MLX metric deltas.
@@ -124,10 +130,11 @@ This band is wider than the gaps that separated most configurations in the
 rankings are **not** established and must not be treated as settled; only
 extremes such as the 5,000 ms flush deadline are distinguishable.
 
-### Measured next bottleneck: acquisition, not embedding
+### Current hypothesis: acquisition variance dominates observed wall time
 
 In the scheduler-off samples, fetching spans 6.5 s to 71.9 s (200 pages,
 roughly 0.3 s/page) while the entire 53-59 s of embedding fits inside that
-window. Wall time is acquisition-bound. Further embedding-side tuning cannot
-move the total; crawl concurrency and per-page fetch latency are where the
-remaining time is.
+window. Live crawl variance therefore dominated the observed wall time in
+these runs. This is a hypothesis, not a causal bottleneck result: paired
+back-to-back trials using the new acquisition timing and occupancy records are
+required before ranking further acquisition or embedding changes.

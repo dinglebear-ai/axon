@@ -370,8 +370,12 @@ const MAX_INPUT_TOKENS: u32 = 8192;
 const MAX_BATCH_TOKENS: u32 = 65_536;
 
 fn tei_client_max_batch_tokens() -> u32 {
-    std::env::var("AXON_TEI_CLIENT_MAX_BATCH_TOKENS")
-        .ok()
+    let configured = std::env::var("AXON_TEI_CLIENT_MAX_BATCH_TOKENS").ok();
+    tei_client_max_batch_tokens_from_value(configured.as_deref())
+}
+
+fn tei_client_max_batch_tokens_from_value(value: Option<&str>) -> u32 {
+    value
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(MAX_BATCH_TOKENS)
         .clamp(MAX_INPUT_TOKENS, 1_048_576)

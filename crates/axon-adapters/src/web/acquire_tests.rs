@@ -38,6 +38,54 @@ fn acquisition_timing_summary_exposes_tail_gaps_and_slot_occupancy() {
     assert_eq!(summary.slot_occupancy_permille, 550);
 }
 
+#[test]
+fn acquisition_timing_summary_handles_empty_and_zero_capacity_batches() {
+    let empty = summarize_acquisition_timings(Duration::ZERO, 0, &[]);
+    assert_eq!(
+        empty,
+        AcquisitionTimingSummary {
+            wall_ms: 0,
+            first_completion_ms: 0,
+            item_p50_ms: 0,
+            item_p95_ms: 0,
+            item_max_ms: 0,
+            max_completion_gap_ms: 0,
+            slot_occupancy_permille: 0,
+        }
+    );
+
+    let zero_capacity = summarize_acquisition_timings(
+        Duration::from_millis(10),
+        0,
+        &[ItemTiming {
+            elapsed: Duration::from_millis(7),
+            completed_at: Duration::from_millis(8),
+        }],
+    );
+    assert_eq!(zero_capacity.first_completion_ms, 8);
+    assert_eq!(zero_capacity.item_p50_ms, 7);
+    assert_eq!(zero_capacity.item_p95_ms, 7);
+    assert_eq!(zero_capacity.max_completion_gap_ms, 0);
+    assert_eq!(zero_capacity.slot_occupancy_permille, 0);
+}
+
+#[test]
+fn acquisition_timing_summary_does_not_invent_milliseconds() {
+    let summary = summarize_acquisition_timings(
+        Duration::from_micros(900),
+        4,
+        &[ItemTiming {
+            elapsed: Duration::from_micros(600),
+            completed_at: Duration::from_micros(700),
+        }],
+    );
+
+    assert_eq!(summary.wall_ms, 0);
+    assert_eq!(summary.first_completion_ms, 0);
+    assert_eq!(summary.item_p95_ms, 0);
+    assert_eq!(summary.slot_occupancy_permille, 0);
+}
+
 fn item(uri: &str) -> ManifestItem {
     ManifestItem {
         source_id: SourceId::from("src_web_acquire_test"),

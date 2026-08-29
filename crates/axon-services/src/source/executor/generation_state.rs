@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeSet, HashSet};
 
+use anyhow::Context as _;
 use axon_api::source::*;
 
 use super::generation_spool::{GenerationSpool, SideEffectsSpoolRecord};
@@ -66,7 +67,7 @@ impl GenerationAccumulator {
         let spool = match GenerationSpool::temporary(&generation.0) {
             Ok(spool) => Some(spool),
             Err(error) => {
-                tracing::warn!(error = %error, "generation spool unavailable; using bounded in-memory fallback");
+                tracing::warn!(error = %error, "generation spool unavailable; retaining side effects in memory");
                 None
             }
         };
@@ -85,7 +86,10 @@ impl GenerationAccumulator {
         }
     }
 
-    pub(super) fn absorb_pretracked_side_effects(&mut self, batch: PreparedBatchSideEffects) {
+    pub(super) fn absorb_pretracked_side_effects(
+        &mut self,
+        batch: PreparedBatchSideEffects,
+    ) -> anyhow::Result<()> {
         self.artifacts.extend(batch.acquisition_artifacts);
         self.artifacts.extend(batch.enrichment_artifacts);
         self.output.merge(batch.clean_output);
@@ -105,22 +109,23 @@ impl GenerationAccumulator {
         if let Some(error) = append_error {
             tracing::warn!(error = %error, "generation spool append failed; retaining side effects in memory");
             if let Some(spool) = self.spool.take() {
-                match spool.replay::<SideEffectsSpoolRecord>() {
-                    Ok(records) => {
-                        for (_, prior) in records {
+                spool
+                    .replay_each::<SideEffectsSpoolRecord>(|prior_key, prior| {
+                        // A flush error can be ambiguous: the current record
+                        // may already be readable. Absorb it exactly once via
+                        // the authoritative in-memory value below.
+                        if prior_key != key {
                             self.absorb_side_effect_record(prior);
                         }
-                    }
-                    Err(replay_error) => tracing::error!(
-                        error = %replay_error,
-                        "generation spool replay failed after append error"
-                    ),
-                }
+                        Ok(())
+                    })
+                    .context("generation spool replay failed after append error")?;
             }
             self.absorb_side_effect_record(record);
         } else if self.spool.is_none() {
             self.absorb_side_effect_record(record);
         }
+        Ok(())
     }
 
     fn absorb_side_effect_record(&mut self, record: SideEffectsSpoolRecord) {
@@ -163,15 +168,11 @@ impl GenerationAccumulator {
         manifest: &mut SourceManifest,
         diff: SourceManifestDiff,
     ) -> anyhow::Result<FinalizedGeneration> {
-        if let Some(spool) = &self.spool {
-            for (_, record) in spool.replay::<SideEffectsSpoolRecord>()? {
-                self.archive_items.extend(record.archive_items);
-                self.artifact_candidates.extend(record.artifact_candidates);
-                self.warnings.extend(record.warnings);
-                self.reused_item_keys.extend(record.reused_item_keys);
-                self.refreshed_manifest_items
-                    .extend(record.refreshed_manifest_items);
-            }
+        if let Some(spool) = self.spool.take() {
+            spool.replay_each::<SideEffectsSpoolRecord>(|_, record| {
+                self.absorb_side_effect_record(record);
+                Ok(())
+            })?;
         }
         self.vectorized.warnings.splice(0..0, self.warnings);
         let archive =

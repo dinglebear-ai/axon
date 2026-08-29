@@ -78,10 +78,10 @@ PY
 acquisition_timings_from_log() {
   local log_file=$1
   if [[ ! -f $log_file ]]; then
-    printf '[]\n'
-    return
+    echo "benchmark acquisition telemetry log is missing" >&2
+    return 1
   fi
-  jq -s '[
+  jq -e -s '[
     .[]
     | select(.message == "web acquisition batch timing")
     | {
@@ -97,7 +97,11 @@ acquisition_timings_from_log() {
         max_completion_gap_ms: (.max_completion_gap_ms | tonumber),
         slot_occupancy: ((.slot_occupancy_permille | tonumber) / 1000)
       }
-  ]' "$log_file"
+  ]
+  | if length == 0
+    then error("benchmark log contains no web acquisition batch timing records")
+    else .
+    end' "$log_file"
 }
 
 metrics_get() {

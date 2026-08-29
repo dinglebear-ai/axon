@@ -2,7 +2,6 @@
 
 use axon_api::source::*;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 
@@ -85,13 +84,12 @@ pub(super) struct PreparedWorkEnvelope {
     _byte_permit: OwnedSemaphorePermit,
 }
 
-#[derive(Clone)]
 pub(super) struct PreparedBatchSender {
     sender: mpsc::Sender<PreparedWorkEnvelope>,
     chunk_permits: Arc<Semaphore>,
     byte_permits: Arc<Semaphore>,
     pool_size: usize,
-    sequence: Arc<AtomicU64>,
+    sequence: u64,
 }
 
 pub(super) struct PreparedBatchReceiver {
@@ -116,7 +114,7 @@ pub(super) fn prepared_work_channel(
             chunk_permits: Arc::new(Semaphore::new(chunk_capacity)),
             byte_permits: Arc::new(Semaphore::new(BYTE_BUDGET_KIB as usize)),
             pool_size,
-            sequence: Arc::new(AtomicU64::new(0)),
+            sequence: 0,
         },
         PreparedBatchReceiver { receiver },
     ))
@@ -124,7 +122,7 @@ pub(super) fn prepared_work_channel(
 
 impl PreparedBatchSender {
     pub(super) async fn send(
-        &self,
+        &mut self,
         prepared: Vec<PreparedDocument>,
         side_effects: PreparedBatchSideEffects,
         cancel: &CancellationToken,
@@ -133,14 +131,14 @@ impl PreparedBatchSender {
     }
 
     pub(super) async fn send_final(
-        &self,
+        &mut self,
         prepared: Vec<PreparedDocument>,
         side_effects: PreparedBatchSideEffects,
         is_final: bool,
         cancel: &CancellationToken,
     ) -> anyhow::Result<()> {
         let batch = PreparedGenerationBatch {
-            sequence: self.sequence.load(Ordering::Relaxed),
+            sequence: self.sequence,
             prepared,
             side_effects,
             is_final,
@@ -177,7 +175,7 @@ impl PreparedBatchSender {
     }
 
     async fn send_pool(
-        &self,
+        &mut self,
         prepared: Vec<PreparedDocument>,
         side_effects: PreparedBatchSideEffects,
         is_final: bool,
@@ -211,7 +209,7 @@ impl PreparedBatchSender {
             permit = Arc::clone(&self.byte_permits).acquire_many_owned(byte_units) => permit?,
         };
         let envelope = PreparedWorkEnvelope {
-            sequence: self.sequence.fetch_add(1, Ordering::Relaxed),
+            sequence: self.sequence,
             prepared,
             side_effects,
             is_final,
@@ -222,7 +220,9 @@ impl PreparedBatchSender {
         tokio::select! {
             _ = cancel.cancelled() => anyhow::bail!("prepared work send canceled"),
             result = self.sender.send(envelope) => result.map_err(|_| anyhow::anyhow!("prepared work receiver closed")),
-        }
+        }?;
+        self.sequence = self.sequence.saturating_add(1);
+        Ok(())
     }
 }
 

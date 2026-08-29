@@ -108,13 +108,12 @@ Permits remain held through embed, the overlapped built/upsert batch, durable
 status write, and absorption; those vector/payload allocations are included in
 the charged owned-byte estimate rather than treated as free overlap.
 
-Variable generation-accumulator state is appended to a private, generation-
-scoped durable spool and read back as a stream during finalization. Its in-memory
-write/read window is capped at 64 MiB; document/status deduplication uses the
-spool's indexed table rather than an unbounded in-memory ID set. Absorption may
-release byte permits only after the corresponding state is durable in the spool.
-The declared scheduler-owned bound is therefore 1 GiB transient work + 64 MiB
-spool window + a quantified 128 MiB fixed runtime/index allowance = 1,216 MiB.
+Selected generation side effects are appended to a private, process-lifetime
+temporary spool and read back one record at a time during finalization. The
+64-MiB limit is a per-record serialization/replay cap, not a total-memory bound:
+the deduplication key set, document IDs, artifacts, output, graph candidates,
+warnings, and counters remain in memory. If spool creation fails, side effects
+remain in memory; an append plus replay failure aborts the generation.
 
 A single materialized work item has an absolute 1-GiB owned-byte ceiling. The
 exclusive path waits for all ordinary byte permits and streams non-embedding
@@ -137,7 +136,11 @@ The evidence build supports only:
 
 - `AXON_EMBED_SCHEDULER_ENABLED`, default `false`;
 - `AXON_EMBED_SCHEDULER_POOL_INPUTS`, defaulting to the effective provider pool
-  limit and validated against TEI request/in-flight limits.
+  limit and validated against TEI request/in-flight limits;
+- `AXON_EMBED_SCHEDULER_FLUSH_MS`, default `25`, clamped to 5,000 ms.
+
+Acquisition wave-size controls are separate source-pipeline experiment knobs;
+they are not scheduler pool limits.
 
 The initial gather delay is an internal measured constant. A pool flushes at
 its input target, producer close, or one absolute deadline derived from the
@@ -154,11 +157,11 @@ The producer registers acquisition, enrichment, and clean-output artifacts
 immediately at each creation boundary. `PreparedBatchSideEffects` transfers
 accumulation ownership; it is not the cleanup-registration trigger.
 
-Bulky side effects, archive items, artifact indexes, warnings, refreshed
-manifest items, inline output, graph candidates, and cumulative ID/status state
-are durably streamed through `GenerationSpool`. Final publication folds that
-spool in source order. Spool creation uses mode 0600, cleanup is tracked at
-creation, and failure/cancellation removes it or records cleanup debt.
+Archive items, artifact candidates, warnings, reused keys, and refreshed
+manifest items are written to `GenerationSpool`. Final publication streams
+those records in source order. The spool is a mode-0600 tempfile removed with
+its process-lifetime temporary directory; it is not fsync-backed durable state
+and does not create cleanup debt. Other accumulator state remains in memory.
 
 The consumer absorbs side effects as FIFO messages arrive. It absorbs each
 `VectorizeResult` immediately after its durable status write and returns
@@ -181,24 +184,20 @@ after newer ones.
 Pinned producer and consumer futures are driven by `tokio::select!`, not a
 fail-fast claim around `tokio::join!`.
 
-- Consumer failure cancels producer permits/sends and closes input. A producer
-  may be dropped after a bounded cooperative exit only when no artifact-store
-  mutation is in flight; issued artifact writes reach a terminal state or
-  create durable cleanup debt before generation cleanup completes.
+- Consumer failure cancels producer permits/sends and closes input. The
+  supervisor then awaits cooperative producer shutdown; there is currently no
+  hard timeout for a non-cooperative provider future.
 - Producer failure closes the sender and lets already-prepared provider work
   reach a terminal/quiescent state so completed accounting is retained.
-- Caller cancellation stops admitting new provider work but continues driving
-  issued embedding/upsert mutations to a terminal state.
-- Failed-generation deletion starts only after reservations and issued vector
-  mutations settle. If a remote upsert ignores local future cancellation, the
-  final generation delete runs afterward.
+- Caller cancellation stops admitting new scheduler work. Already-started
+  operations are awaited where their provider futures cooperate.
 - Both errors use existing source redaction before persistence; the
   consumer/provider error remains primary.
 
-Failpoint tests cover every artifact boundary, an artifact put completing after
-cancellation, blocked permit, blocked send,
-non-cooperative acquisition, producer failure during upsert, consumer failure,
-simultaneous failures, and a remote upsert completing after cancellation.
+Focused tests cover producer-first and consumer-first scheduler failures,
+blocked permit/send cancellation, and durable current-publication accounting
+when speculative next embedding fails. Non-cooperative provider shutdown and
+remote-mutation quiescence remain future hardening work.
 
 ## MLX Service and Telemetry Security
 

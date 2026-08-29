@@ -84,6 +84,40 @@ async fn embed_all_explicitly_disables_truncation_for_long_input() {
 }
 
 #[tokio::test]
+async fn embed_all_surfaces_single_input_413_without_retrying_or_truncating() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["oversized"], "truncate": false}));
+            then.status(413);
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 1,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 1,
+        max_attempts: 3,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let error = client
+        .embed_all(&["oversized".to_string()])
+        .await
+        .expect_err("a singleton cannot be split without losing content");
+
+    assert_eq!(error.code.0, "embedding.tei.status");
+    assert!(error.message.contains("413"));
+    assert!(error.provider_cooling().is_none());
+    endpoint.assert_calls_async(1).await;
+}
+
+#[tokio::test]
 async fn embed_all_overlaps_independent_client_batches() {
     let server = MockServer::start_async().await;
     let endpoint = server
