@@ -261,6 +261,22 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_CODEX_CONTROL_REQUEST_TIMEOUT_SECS",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
+        "AXON_CODEX_CONTROL_READ_CONCURRENCY",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_CODEX_CONTROL_ACCOUNT_WRITES",
         TrustedOperatorBootstrap,
         HostOnly,

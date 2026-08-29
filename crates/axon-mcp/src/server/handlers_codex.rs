@@ -15,6 +15,12 @@ impl AxonMcpServer {
             .await
             .map_err(|error| invalid_params(format!("codex.initialize: {error}")))?;
         let subaction = format!("{:?}", req.subaction).to_ascii_lowercase();
+        let caller = super::common::CURRENT_CODEX_CALLER
+            .try_with(Clone::clone)
+            .unwrap_or(super::common::CodexCaller {
+                actor: "trusted-loopback".to_string(),
+                scopes: "local-trusted".to_string(),
+            });
         let data = match req.subaction {
             CodexSubaction::Snapshot => {
                 serde_json::to_value(service.snapshot().await.map_err(codex_error)?)
@@ -51,8 +57,8 @@ impl AxonMcpServer {
                     .params
                     .ok_or_else(|| invalid_params("codex prepare requires params"))?;
                 let intent = OperationIntent {
-                    actor: "mcp-admin".to_string(),
-                    scope: "axon:admin".to_string(),
+                    actor: caller.actor.clone(),
+                    scope: caller.scopes,
                     method: mutation.method().to_string(),
                     target_home_identity: String::new(),
                     runtime_boot_id: 0,
@@ -70,7 +76,7 @@ impl AxonMcpServer {
                 .map_err(|error| logged_internal_error("codex.prepare", &error))?
             }
             CodexSubaction::Approve => json!({
-                "approval_capability": service.approve_operation(required(req.operation_id, "operation_id")?, "mcp-admin").map_err(codex_error)?
+                "approval_capability": service.approve_operation(required(req.operation_id, "operation_id")?, &caller.actor).map_err(codex_error)?
             }),
             CodexSubaction::Execute => {
                 let mutation = mutation_action(required(req.mutation_action, "mutation_action")?)?;

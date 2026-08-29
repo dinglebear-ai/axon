@@ -1,5 +1,6 @@
 //! Bounded, cursor-addressable, secret-safe control event history.
 
+use crate::api::{contains_sensitive_url, is_sensitive_identifier};
 use crate::protocol::RuntimeEpoch;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -153,10 +154,7 @@ pub fn sanitize_value(value: Value) -> Value {
                 .into_iter()
                 .take(100)
                 .map(|(key, value)| {
-                    let lowered = key.to_ascii_lowercase();
-                    let secret = ["token", "secret", "password", "authorization", "cookie"]
-                        .iter()
-                        .any(|needle| lowered.contains(needle));
+                    let secret = is_sensitive_identifier(&key);
                     (
                         key,
                         if secret {
@@ -170,6 +168,9 @@ pub fn sanitize_value(value: Value) -> Value {
         ),
         Value::Array(values) => {
             Value::Array(values.into_iter().take(100).map(sanitize_value).collect())
+        }
+        Value::String(value) if contains_sensitive_url(&value) => {
+            Value::String("[REDACTED]".to_string())
         }
         Value::String(value) => Value::String(truncate(value.replace(['\r', '\0'], ""))),
         other => other,

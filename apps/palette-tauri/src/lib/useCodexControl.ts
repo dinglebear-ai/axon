@@ -17,7 +17,7 @@ export function useCodexControl(client: Client | null, active: boolean) {
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState<CodexEvent[]>([]);
   const [operations, setOperations] = useState<CodexOperation[]>([]);
-  const refresh = useCallback(async () => {
+  const refreshData = useCallback(async (includeSnapshot: boolean) => {
     if (!client) return;
     const current = ++generation.current;
     setLoading(true);
@@ -39,10 +39,12 @@ export function useCodexControl(client: Client | null, active: boolean) {
           setEvents([]);
           nextEvents = await readCodexEvents(client, undefined);
         }
-        const snapshotResult = await Promise.resolve(readCodexSnapshot(client)).then(
-          (value) => ({ status: "fulfilled" as const, value }),
-          (reason) => ({ status: "rejected" as const, reason }),
-        );
+        const snapshotResult = includeSnapshot
+          ? await Promise.resolve(readCodexSnapshot(client)).then(
+              (value) => ({ status: "fulfilled" as const, value }),
+              (reason) => ({ status: "rejected" as const, reason }),
+            )
+          : ({ status: "skipped" as const });
         if (generation.current !== current) return;
         if (snapshotResult.status === "fulfilled") setSnapshot(snapshotResult.value);
         if (nextEvents || snapshotResult.status === "fulfilled") {
@@ -81,7 +83,7 @@ export function useCodexControl(client: Client | null, active: boolean) {
             ? eventsResult
             : undefined;
         const failure = [
-          snapshotResult,
+          ...(snapshotResult.status === "skipped" ? [] : [snapshotResult]),
           operationsResult,
           ...(eventFailure ? [eventFailure] : []),
         ].find((result) => result.status === "rejected");
@@ -97,6 +99,7 @@ export function useCodexControl(client: Client | null, active: boolean) {
       if (generation.current === current) setLoading(false);
     }
   }, [client]);
+  const refresh = useCallback(() => refreshData(true), [refreshData]);
   const dismissEvent = useCallback((event: CodexEvent) => {
     setEvents((previous) =>
       previous.filter(
@@ -115,21 +118,25 @@ export function useCodexControl(client: Client | null, active: boolean) {
     setError(null);
     if (!active || !client) return;
     let polling = false;
-    const poll = async () => {
+    let pollCount = 0;
+    const poll = async (includeSnapshot = false) => {
       if (polling) return;
       polling = true;
       try {
-        await refresh();
+        await refreshData(includeSnapshot);
       } finally {
         polling = false;
       }
     };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 1_500);
+    void poll(true);
+    const timer = window.setInterval(() => {
+      pollCount += 1;
+      void poll(pollCount % 10 === 0);
+    }, 1_500);
     return () => {
       window.clearInterval(timer);
       generation.current += 1;
     };
-  }, [active, client, refresh]);
+  }, [active, client, refreshData]);
   return { snapshot, events, operations, error, loading, refresh, dismissEvent };
 }

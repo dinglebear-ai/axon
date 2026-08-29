@@ -92,4 +92,37 @@ fn native_plugin_and_config_mutations_reject_plaintext_secrets() {
         .is_err()
     );
     assert!(validate_mutation_params(&config, &json!({"keyPath":"providers.openai.api_key","mergeStrategy":"upsert","value":"env:OPENAI_API_KEY"})).is_ok());
+    assert!(validate_mutation_params(&config, &json!({"keyPath":"providers.openai.apiKey","mergeStrategy":"upsert","value":"sk-plaintext"})).is_err());
+    assert!(
+        validate_mutation_params(
+            &action,
+            &json!({"pluginName":"example","apiKey":{"plaintext":"secret"}})
+        )
+        .is_err()
+    );
+    assert!(validate_mutation_params(&action, &json!({"pluginName":"example","downloadUrl":"https://example.com/archive?access_token=secret"})).is_err());
+}
+
+#[test]
+fn marketplace_sources_are_restricted_to_stable_public_forges() {
+    let action = ControlAction::MarketplaceAdd;
+    assert!(
+        validate_mutation_params(
+            &action,
+            &json!({"source":"https://github.com/acme/plugins"})
+        )
+        .is_ok()
+    );
+    for source in [
+        "https://127.0.0.1/plugins",
+        "https://[::1]/plugins",
+        "https://metadata.internal/plugins",
+        "https://attacker.example/plugins",
+        "https://github.com/acme/plugins?token=secret",
+    ] {
+        assert!(
+            validate_mutation_params(&action, &json!({"source":source})).is_err(),
+            "accepted {source}"
+        );
+    }
 }

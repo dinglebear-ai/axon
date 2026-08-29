@@ -87,6 +87,25 @@ async fn lanes_are_bounded_and_time_out() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn mutation_lock_serializes_distinct_runtime_instances() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("mutation.lock");
+    let first = acquire_process_mutation_lock(path.clone(), Duration::from_secs(1))
+        .await
+        .unwrap();
+    let error = acquire_process_mutation_lock(path.clone(), Duration::from_millis(30))
+        .await
+        .err()
+        .expect("second file descriptor must not acquire the held lock");
+    assert_eq!(error, "codex control cross-process mutation lock timed out");
+    drop(first);
+    acquire_process_mutation_lock(path, Duration::from_secs(1))
+        .await
+        .unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn restart_backoff_is_bounded_counted_and_opens_circuit() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();

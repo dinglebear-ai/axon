@@ -78,6 +78,7 @@ impl ControlTransport {
             event_recorder.clone(),
             Arc::clone(&alive),
             Arc::clone(&server_requests),
+            Arc::clone(&stdin),
         );
         let transport = Self {
             epoch,
@@ -107,19 +108,50 @@ impl ControlTransport {
         self.event_recorder.after(cursor, limit)
     }
 
-    pub fn pending_server_requests(&self) -> Result<Vec<RecordedEvent>, String> {
-        let mut registry = self
+    pub async fn pending_server_requests(&self) -> Result<Vec<RecordedEvent>, String> {
+        self.reject_expired_server_requests().await?;
+        let registry = self
             .server_requests
             .lock()
             .map_err(|_| "server request registry lock poisoned".to_string())?;
-        let now = Instant::now();
-        registry.retain(|_, request| request.expires_at > now);
         let mut pending = registry
             .values()
             .map(|request| request.event.clone())
             .collect::<Vec<_>>();
         pending.sort_by_key(|event| event.cursor.sequence);
         Ok(pending)
+    }
+
+    async fn reject_expired_server_requests(&self) -> Result<(), String> {
+        let expired = {
+            let mut registry = self
+                .server_requests
+                .lock()
+                .map_err(|_| "server request registry lock poisoned".to_string())?;
+            let now = Instant::now();
+            let expired = registry
+                .iter()
+                .filter(|(_, request)| request.expires_at <= now && !request.claimed)
+                .map(|(id, request)| (*id, request.method.clone()))
+                .collect::<Vec<_>>();
+            for (id, _) in &expired {
+                registry.remove(id);
+            }
+            expired
+        };
+        for (id, method) in expired {
+            let result = server_request_result(&method, false, None)?;
+            if let Err(error) = write_json_to(
+                &self.stdin,
+                &json!({"jsonrpc":"2.0","id":id,"result":result}),
+            )
+            .await
+            {
+                self.alive.store(false, Ordering::Release);
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 
     pub fn epoch(&self) -> RuntimeEpoch {
@@ -215,19 +247,26 @@ impl ControlTransport {
     }
 
     async fn write_json<T: Serialize>(&self, value: &T) -> Result<(), String> {
-        let mut bytes = serde_json::to_vec(value)
-            .map_err(|error| format!("failed to encode Codex request: {error}"))?;
-        bytes.push(b'\n');
-        let mut stdin = self.stdin.lock().await;
-        stdin
-            .write_all(&bytes)
-            .await
-            .map_err(|error| format!("failed to write Codex request: {error}"))?;
-        stdin
-            .flush()
-            .await
-            .map_err(|error| format!("failed to flush Codex request: {error}"))
+        write_json_to(&self.stdin, value).await
     }
+}
+
+async fn write_json_to<T: Serialize>(
+    stdin: &Arc<Mutex<ChildStdin>>,
+    value: &T,
+) -> Result<(), String> {
+    let mut bytes = serde_json::to_vec(value)
+        .map_err(|error| format!("failed to encode Codex request: {error}"))?;
+    bytes.push(b'\n');
+    let mut stdin = stdin.lock().await;
+    stdin
+        .write_all(&bytes)
+        .await
+        .map_err(|error| format!("failed to write Codex request: {error}"))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|error| format!("failed to flush Codex request: {error}"))
 }
 
 fn spawn_reader(
@@ -238,6 +277,7 @@ fn spawn_reader(
     recorder: EventRecorder,
     alive: Arc<AtomicBool>,
     server_requests: Arc<StdMutex<HashMap<u64, PendingServerRequest>>>,
+    stdin: Arc<Mutex<ChildStdin>>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut reader = BufReader::new(stdout);
@@ -286,6 +326,22 @@ fn spawn_reader(
                                 let _ = events.send(recorder.record(EventKind::ProtocolFailure {
                                     detail: "Codex server request capacity exceeded".to_string(),
                                 }));
+                                drop(registry);
+                                let rejection_stdin = Arc::clone(&stdin);
+                                let rejection_alive = Arc::clone(&alive);
+                                tokio::spawn(async move {
+                                    let result = server_request_result(&method, false, None)
+                                        .unwrap_or_else(|_| json!({"decision":"decline"}));
+                                    if write_json_to(
+                                        &rejection_stdin,
+                                        &json!({"jsonrpc":"2.0","id":id.sequence,"result":result}),
+                                    )
+                                    .await
+                                    .is_err()
+                                    {
+                                        rejection_alive.store(false, Ordering::Release);
+                                    }
+                                });
                                 continue;
                             }
                             registry.insert(

@@ -57,8 +57,10 @@ impl CodexControlService {
             enabled: true,
             codex_binary: std::path::PathBuf::from(&cfg.codex_cmd),
             control_home: home,
-            request_timeout: std::time::Duration::from_secs(cfg.llm_completion_timeout_secs.max(1)),
-            read_concurrency: cfg.codex_completion_concurrency.max(1),
+            request_timeout: std::time::Duration::from_secs(
+                cfg.codex_control_request_timeout_secs.max(1),
+            ),
+            read_concurrency: cfg.codex_control_read_concurrency.max(1),
             max_restart_backoff: std::time::Duration::from_secs(60),
         };
         let policy = WritePolicy {
@@ -117,21 +119,39 @@ impl CodexControlService {
 
     pub async fn snapshot(&self) -> Result<CodexControlSnapshot, String> {
         let transport = self.transport().await?;
-        self.runtime.with_read(|| async {
-            let (account, models, config, mcp_servers, plugins, skills, hooks, apps) = tokio::join!(
-                transport.request(ControlAction::AccountRead.method(), json!({"refreshToken": false})),
-                transport.request(ControlAction::ModelsList.method(), json!({})),
-                transport.request(ControlAction::ConfigRead.method(), json!({"includeLayers": true})),
-                transport.request(ControlAction::McpServersList.method(), json!({})),
-                transport.request(ControlAction::PluginsList.method(), json!({})),
-                transport.request(ControlAction::SkillsList.method(), json!({})),
-                transport.request(ControlAction::HooksList.method(), json!({})),
-                transport.request(ControlAction::AppsList.method(), json!({})),
-            );
-            let account = serde_json::to_value(account_summary(&account?)).map_err(|error| error.to_string())?;
-            let pending_server_requests = transport.pending_server_requests()?;
-            Ok(CodexControlSnapshot { status: self.runtime.status(), account, models: sanitize_value(models?), config: sanitize_value(config?), mcp_servers: sanitize_value(mcp_servers?), plugins: sanitize_value(plugins?), skills: sanitize_value(skills?), hooks: sanitize_value(hooks?), apps: sanitize_value(apps?), pending_server_requests })
-        }).await
+        let (account, models, config, mcp_servers, plugins, skills, hooks, apps) = tokio::join!(
+            self.read_transport(
+                &transport,
+                ControlAction::AccountRead,
+                json!({"refreshToken": false})
+            ),
+            self.read_transport(&transport, ControlAction::ModelsList, json!({})),
+            self.read_transport(
+                &transport,
+                ControlAction::ConfigRead,
+                json!({"includeLayers": true})
+            ),
+            self.read_transport(&transport, ControlAction::McpServersList, json!({})),
+            self.read_transport(&transport, ControlAction::PluginsList, json!({})),
+            self.read_transport(&transport, ControlAction::SkillsList, json!({})),
+            self.read_transport(&transport, ControlAction::HooksList, json!({})),
+            self.read_transport(&transport, ControlAction::AppsList, json!({})),
+        );
+        let account =
+            serde_json::to_value(account_summary(&account?)).map_err(|error| error.to_string())?;
+        let pending_server_requests = transport.pending_server_requests().await?;
+        Ok(CodexControlSnapshot {
+            status: self.runtime.status(),
+            account,
+            models: sanitize_value(models?),
+            config: sanitize_value(config?),
+            mcp_servers: sanitize_value(mcp_servers?),
+            plugins: sanitize_value(plugins?),
+            skills: sanitize_value(skills?),
+            hooks: sanitize_value(hooks?),
+            apps: sanitize_value(apps?),
+            pending_server_requests,
+        })
     }
 
     pub async fn read(&self, action: ControlAction, params: Value) -> Result<Value, String> {
@@ -139,10 +159,20 @@ impl CodexControlService {
             return Err("mutation action sent to read path".to_string());
         }
         let transport = self.transport().await?;
+        self.read_transport(&transport, action, params)
+            .await
+            .map(sanitize_value)
+    }
+
+    async fn read_transport(
+        &self,
+        transport: &ControlTransport,
+        action: ControlAction,
+        params: Value,
+    ) -> Result<Value, String> {
         self.runtime
             .with_read(|| transport.request(action.method(), params))
             .await
-            .map(sanitize_value)
     }
 
     pub async fn create_operation(
@@ -258,7 +288,7 @@ impl CodexControlService {
                 )?;
                 started_in_lane.store(true, Ordering::Release);
                 let value = transport.request(action.method(), params.clone()).await?;
-                if response_acknowledges_completion(&action) {
+                if completion_strategy(&action) == CompletionStrategy::ResponseAcknowledged {
                     let revision = state_revision(&sanitize_value(value.clone()))?;
                     return Ok::<_, String>((value, revision));
                 }
@@ -402,18 +432,34 @@ async fn canonical_state(
     Ok(CanonicalState { value, revision })
 }
 
-fn response_acknowledges_completion(action: &ControlAction) -> bool {
-    matches!(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CompletionStrategy {
+    CanonicalReadback,
+    ResponseAcknowledged,
+}
+
+fn completion_strategy(action: &ControlAction) -> CompletionStrategy {
+    if matches!(
         action,
-        ControlAction::McpServerToolCall
+        ControlAction::AccountLoginStart
+            | ControlAction::AccountLoginCancel
+            | ControlAction::McpServerReload
+            | ControlAction::McpServerOauthLogin
+            | ControlAction::McpServerToolCall
             | ControlAction::McpServerEventStreamStart
             | ControlAction::McpServerEventStreamStop
             | ControlAction::PluginShareCheckout
             | ControlAction::PluginShareSave
             | ControlAction::PluginShareDelete
             | ControlAction::PluginShareUpdateTargets
+            | ControlAction::MarketplaceUpgrade
+            | ControlAction::SkillsExtraRootsSet
             | ControlAction::ExternalAgentConfigImportRecordHistory
-    )
+    ) {
+        CompletionStrategy::ResponseAcknowledged
+    } else {
+        CompletionStrategy::CanonicalReadback
+    }
 }
 
 fn action_from_method(method: &str) -> Result<ControlAction, String> {

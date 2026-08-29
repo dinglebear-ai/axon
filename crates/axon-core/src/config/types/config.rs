@@ -561,6 +561,10 @@ pub struct Config {
     pub codex_control_enabled: bool,
     /// Stable CODEX_HOME used only by the control runtime.
     pub codex_control_home: Option<PathBuf>,
+    /// Timeout for each Codex control-plane request.
+    pub codex_control_request_timeout_secs: u64,
+    /// Maximum concurrent Codex control-plane reads.
+    pub codex_control_read_concurrency: usize,
     /// Allows account login/logout mutations through Codex control.
     pub codex_control_account_writes: bool,
     /// Allows config mutations through Codex control.

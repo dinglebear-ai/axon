@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::net::IpAddr;
+use url::Url;
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -54,7 +56,6 @@ pub enum ControlAction {
 }
 
 /// Write-only actions accepted by the approved mutation workflow.
-///
 /// Keeping this separate from [`ControlAction`] prevents callers from preparing
 /// or executing a read method through the mutation endpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -356,39 +357,45 @@ fn validate_config_edit(edit: &Value) -> Result<(), String> {
         return Err("config edit mergeStrategy must be replace or upsert".to_string());
     }
     let value = edit.get("value").ok_or("config edit value missing")?;
-    let normalized = key_path.to_ascii_lowercase().replace('-', "_");
-    let secret_target = [
-        "api_key",
-        "token",
-        "secret",
-        "password",
-        "authorization",
-        "cookie",
-        "private_key",
-        "access_key",
-        "credential",
-    ]
-    .iter()
-    .any(|needle| normalized.split('.').any(|part| part.contains(needle)));
-    if secret_target && !value.as_str().is_some_and(|text| text.starts_with("env:")) {
+    let secret_target = key_path.split('.').any(is_sensitive_identifier);
+    if secret_target && !value.as_str().is_some_and(is_env_reference) {
         return Err(format!("{key_path} must use an env: secret reference"));
     }
     Ok(())
 }
 
 fn validate_public_source(source: &str) -> Result<(), String> {
-    let Some(remainder) = source.strip_prefix("https://") else {
+    let parsed = Url::parse(source).map_err(|_| "marketplace source is not a valid URL")?;
+    if parsed.scheme() != "https" {
         return Err("marketplace source must use HTTPS".to_string());
-    };
-    let authority = remainder.split('/').next().unwrap_or_default();
-    if authority.is_empty()
-        || authority.contains('@')
-        || source.contains('?')
-        || source.contains('#')
+    }
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
     {
         return Err(
             "marketplace source must not contain credentials or a query string".to_string(),
         );
+    }
+    let host = parsed
+        .host_str()
+        .ok_or("marketplace source host is missing")?
+        .to_ascii_lowercase();
+    if host.parse::<IpAddr>().is_ok()
+        || host == "localhost"
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host.ends_with(".internal")
+    {
+        return Err("marketplace source host is not public".to_string());
+    }
+    // The Codex subprocess performs the network request, so Axon's guarded
+    // resolver cannot protect its connection from DNS rebinding. Restrict the
+    // hand-off to stable public forge authorities instead of pretending a
+    // preflight DNS lookup closes that TOCTOU window.
+    if !matches!(host.as_str(), "github.com" | "gitlab.com" | "bitbucket.org") {
+        return Err("marketplace source must use an approved public forge".to_string());
     }
     Ok(())
 }
@@ -402,11 +409,8 @@ fn reject_plaintext_secrets(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(values) => {
             for (key, value) in values {
-                let lowered = key.to_ascii_lowercase();
-                let secret_key = ["token", "secret", "password", "authorization", "cookie"]
-                    .iter()
-                    .any(|needle| lowered.contains(needle));
-                if secret_key && value.as_str().is_some_and(|text| !text.starts_with("env:")) {
+                let secret_key = is_sensitive_identifier(key);
+                if secret_key && !value.as_str().is_some_and(is_env_reference) {
                     return Err(format!("{key} must use an env: secret reference"));
                 }
                 reject_plaintext_secrets(value)?;
@@ -417,9 +421,53 @@ fn reject_plaintext_secrets(value: &Value) -> Result<(), String> {
                 reject_plaintext_secrets(value)?;
             }
         }
+        Value::String(text) if contains_sensitive_url(text) => {
+            return Err("signed or credential-bearing URLs are not accepted".to_string());
+        }
         _ => {}
     }
     Ok(())
+}
+
+pub(crate) fn is_sensitive_identifier(value: &str) -> bool {
+    let canonical = value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    [
+        "apikey",
+        "token",
+        "secret",
+        "password",
+        "authorization",
+        "cookie",
+        "privatekey",
+        "accesskey",
+        "credential",
+        "clientsecret",
+        "bearer",
+    ]
+    .iter()
+    .any(|needle| canonical.contains(needle))
+}
+
+fn is_env_reference(value: &str) -> bool {
+    value.strip_prefix("env:").is_some_and(|name| {
+        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+pub(crate) fn contains_sensitive_url(value: &str) -> bool {
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    !url.username().is_empty()
+        || url.password().is_some()
+        || url.query_pairs().any(|(key, _)| {
+            is_sensitive_identifier(&key)
+                || matches!(key.as_ref(), "X-Amz-Signature" | "X-Goog-Signature")
+        })
 }
 
 /// Decode an account response without retaining tokens or raw auth payloads.

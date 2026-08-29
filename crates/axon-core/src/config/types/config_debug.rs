@@ -162,6 +162,14 @@ impl fmt::Debug for Config {
             .field("codex_control_enabled", &self.codex_control_enabled)
             .field("codex_control_home", &self.codex_control_home)
             .field(
+                "codex_control_request_timeout_secs",
+                &self.codex_control_request_timeout_secs,
+            )
+            .field(
+                "codex_control_read_concurrency",
+                &self.codex_control_read_concurrency,
+            )
+            .field(
                 "codex_control_account_writes",
                 &self.codex_control_account_writes,
             )

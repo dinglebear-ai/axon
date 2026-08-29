@@ -37,6 +37,22 @@ fn redacts_secret_fields_and_bounds_strings() {
 }
 
 #[test]
+fn redacts_camel_case_keys_nested_secret_objects_and_signed_urls() {
+    let sanitized = sanitize_value(json!({
+        "apiKey": "sk-live",
+        "clientSecret": {"plaintext":"nested-secret"},
+        "downloadUrl": "https://example.com/file?X-Amz-Signature=signature"
+    }));
+    let encoded = serde_json::to_string(&sanitized).unwrap();
+    assert!(!encoded.contains("sk-live"));
+    assert!(!encoded.contains("nested-secret"));
+    assert!(!encoded.contains("signature"));
+    assert_eq!(sanitized["apiKey"], "[REDACTED]");
+    assert_eq!(sanitized["clientSecret"], "[REDACTED]");
+    assert_eq!(sanitized["downloadUrl"], "[REDACTED]");
+}
+
+#[test]
 fn wide_event_payloads_are_bounded_by_encoded_size() {
     let recorder = EventRecorder::new(RuntimeEpoch(1));
     let wide = (0..100)

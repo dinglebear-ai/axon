@@ -140,6 +140,8 @@ impl Default for Config {
             codex_load_user_config: false,
             codex_control_enabled: false,
             codex_control_home: None,
+            codex_control_request_timeout_secs: 30,
+            codex_control_read_concurrency: 4,
             codex_control_account_writes: false,
             codex_control_config_writes: false,
             codex_control_mcp_writes: false,

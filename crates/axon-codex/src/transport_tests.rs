@@ -90,3 +90,19 @@ fn typed_server_request_results_are_method_correct() {
         json!({"action":"accept","content":{"name":"value"}})
     );
 }
+
+#[test]
+fn overflow_rejections_are_method_correct_for_interactive_requests() {
+    assert_eq!(
+        server_request_result("item/tool/requestUserInput", false, None).unwrap(),
+        json!({"answers": {}})
+    );
+    assert_eq!(
+        server_request_result("mcpServer/elicitation/request", false, None).unwrap(),
+        json!({"action": "decline"})
+    );
+    assert_eq!(
+        server_request_result("execCommandApproval", false, None).unwrap(),
+        json!({"decision": "decline"})
+    );
+}

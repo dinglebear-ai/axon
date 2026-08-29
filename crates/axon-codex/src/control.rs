@@ -1,7 +1,9 @@
 //! Separately configured and supervised Codex control runtime.
 
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::{File, OpenOptions};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -196,6 +198,11 @@ impl ControlRuntime {
         let guard = tokio::time::timeout(self.config.request_timeout, self.mutation_lane.lock())
             .await
             .map_err(|_| "codex control mutation queue timed out".to_string())?;
+        let _process_guard = acquire_process_mutation_lock(
+            self.config.control_home.join(".axon-control-mutation.lock"),
+            self.config.request_timeout,
+        )
+        .await?;
         let result = tokio::time::timeout(self.config.request_timeout, operation())
             .await
             .map_err(|_| "codex control mutation timed out".to_string())?;
@@ -210,6 +217,55 @@ impl ControlRuntime {
             Err("codex control runtime is disabled".to_string())
         }
     }
+}
+
+struct ProcessMutationGuard(File);
+
+impl Drop for ProcessMutationGuard {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+async fn acquire_process_mutation_lock(
+    path: PathBuf,
+    timeout: Duration,
+) -> Result<ProcessMutationGuard, String> {
+    tokio::task::spawn_blocking(move || {
+        let deadline = std::time::Instant::now() + timeout;
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| {
+                format!(
+                    "cannot open Codex mutation lock {}: {error}",
+                    path.display()
+                )
+            })?;
+        loop {
+            match file.try_lock_exclusive() {
+                Ok(()) => return Ok(ProcessMutationGuard(file)),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() >= deadline {
+                        return Err(
+                            "codex control cross-process mutation lock timed out".to_string()
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "cannot lock Codex control home {}: {error}",
+                        path.display()
+                    ));
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|error| format!("Codex mutation lock task failed: {error}"))?
 }
 
 pub fn home_identity(path: &Path) -> Result<String, String> {

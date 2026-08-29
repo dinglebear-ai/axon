@@ -1,6 +1,17 @@
 use super::*;
 
 #[test]
+fn every_mutation_has_an_explicit_completion_strategy() {
+    for mutation in MutationAction::ALL {
+        let action = ControlAction::from(mutation);
+        assert!(matches!(
+            completion_strategy(&action),
+            CompletionStrategy::CanonicalReadback | CompletionStrategy::ResponseAcknowledged
+        ));
+    }
+}
+
+#[test]
 fn config_postcondition_rejects_unchanged_and_wrong_state() {
     let request = json!({"keyPath": "model.default", "value": "gpt-5"});
     let before = json!({"persisted": {"model": {"default": "gpt-4"}}});

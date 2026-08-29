@@ -371,6 +371,10 @@ fn populate_services_and_ask_basics(
     cfg.codex_load_user_config = env_bool("AXON_CODEX_LOAD_USER_CONFIG", false);
     cfg.codex_control_enabled = env_bool("AXON_CODEX_CONTROL_ENABLED", false);
     cfg.codex_control_home = non_empty_env("AXON_CODEX_CONTROL_HOME").map(std::path::PathBuf::from);
+    cfg.codex_control_request_timeout_secs =
+        parse_positive_usize_env("AXON_CODEX_CONTROL_REQUEST_TIMEOUT_SECS", 30)? as u64;
+    cfg.codex_control_read_concurrency =
+        parse_positive_usize_env("AXON_CODEX_CONTROL_READ_CONCURRENCY", 4)?;
     cfg.codex_control_account_writes = env_bool("AXON_CODEX_CONTROL_ACCOUNT_WRITES", false);
     cfg.codex_control_config_writes = env_bool("AXON_CODEX_CONTROL_CONFIG_WRITES", false);
     cfg.codex_control_mcp_writes = env_bool("AXON_CODEX_CONTROL_MCP_WRITES", false);

@@ -358,6 +358,8 @@
 # account (or root), not group/world writable, and must not traverse symlinks.
 # AXON_CODEX_CONTROL_ENABLED=false
 # AXON_CODEX_CONTROL_HOME=/absolute/path/to/stable/codex-control-home
+# AXON_CODEX_CONTROL_REQUEST_TIMEOUT_SECS=30
+# AXON_CODEX_CONTROL_READ_CONCURRENCY=4
 # AXON_CODEX_CONTROL_ACCOUNT_WRITES=false
 # AXON_CODEX_CONTROL_CONFIG_WRITES=false
 # AXON_CODEX_CONTROL_MCP_WRITES=false

@@ -113,11 +113,14 @@ impl AxonMcpServer {
     fn new_with_service_context_cell(
         cfg: Config,
         service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+        codex_control: Arc<
+            OnceCell<Option<Arc<axon_services::codex_control::CodexControlService>>>,
+        >,
     ) -> Self {
         Self {
             cfg: Arc::new(cfg),
             service_context,
-            codex_control: Arc::new(OnceCell::new()),
+            codex_control,
             progress_notifiers: Arc::new(Mutex::new(HashMap::new())),
             auth_policy: AuthPolicy::LoopbackDev,
         }
@@ -441,6 +444,16 @@ impl ServerHandler for AxonMcpServer {
                     }
                 },
         };
+        let codex_caller = auth.map_or_else(
+            || common::CodexCaller {
+                actor: "trusted-loopback".to_string(),
+                scopes: "local-trusted".to_string(),
+            },
+            |auth_ctx| common::CodexCaller {
+                actor: auth_ctx.sub.clone(),
+                scopes: auth_ctx.scopes.join(" "),
+            },
+        );
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         common::CURRENT_PRUNE_AUTHZ
             .scope(
@@ -449,8 +462,11 @@ impl ServerHandler for AxonMcpServer {
                     reset_authz,
                     common::CURRENT_MEMORY_AUTHZ.scope(
                         memory_authz,
-                        common::CURRENT_CALLER_AUTH_SNAPSHOT
-                            .scope(caller_auth_snapshot, Self::tool_router().call(tcc)),
+                        common::CURRENT_CALLER_AUTH_SNAPSHOT.scope(
+                            caller_auth_snapshot,
+                            common::CURRENT_CODEX_CALLER
+                                .scope(codex_caller, Self::tool_router().call(tcc)),
+                        ),
                     ),
                 ),
             )
