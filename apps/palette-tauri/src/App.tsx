@@ -4,6 +4,7 @@ import { CortexWorkspace } from "@/components/palette/cortex/CortexWorkspace";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { LabbyWorkspace } from "@/components/palette/labby/LabbyWorkspace";
 import { PaletteShell } from "@/components/palette/PaletteShell";
+import { ProductNavigation } from "@/components/palette/ProductNavigation";
 import {
   actionConfirmationArmed,
   actionNeedsConfirmation,
@@ -13,6 +14,7 @@ import {
 import { ACTIONS, actionMatches, MOBILE_ACTIONS, type PaletteAction } from "@/lib/actions";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient } from "@/lib/axonClient";
+import type { BackendProduct } from "@/lib/backendProfiles/model";
 import { outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
@@ -23,7 +25,6 @@ import {
   INITIAL_VIEW,
   isBrowseOpen,
   isBrowserOpen,
-  isCodexOpen,
   isHistoryOpen,
   isSettingsOpen,
   modeOf,
@@ -64,6 +65,10 @@ document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime || mob
 document.documentElement.classList.toggle("tauri-mobile-runtime", mobileRuntime);
 
 export default function App() {
+  const requestedWorkspace = new URLSearchParams(window.location.search).get("workspace");
+  const [workspace, setWorkspace] = useState<BackendProduct>(
+    requestedWorkspace === "labby" || requestedWorkspace === "cortex" ? requestedWorkspace : "axon",
+  );
   const [view, dispatchView] = useReducer(viewReducer, INITIAL_VIEW);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -84,7 +89,6 @@ export default function App() {
   const historyOpen = isHistoryOpen(view);
   const browseOpen = isBrowseOpen(view);
   const browserOpen = isBrowserOpen(view);
-  const codexOpen = isCodexOpen(view);
   const browserInitialTargetValue = browserInitialTarget(view);
   usePaletteLifecycle(dispatchView, setShownTick);
 
@@ -184,6 +188,23 @@ export default function App() {
     config?.backendProfiles?.find((profile) => profile.product === "labby") ?? null;
   const cortexProfile =
     config?.backendProfiles?.find((profile) => profile.product === "cortex") ?? null;
+
+  const availableProducts = useMemo(
+    () =>
+      new Set<BackendProduct>([
+        "axon",
+        ...(labbyProfile ? (["labby"] as const) : []),
+        ...(cortexProfile ? (["cortex"] as const) : []),
+      ]),
+    [cortexProfile, labbyProfile],
+  );
+  const selectWorkspace = useCallback((product: BackendProduct) => {
+    const url = new URL(window.location.href);
+    if (product === "axon") url.searchParams.delete("workspace");
+    else url.searchParams.set("workspace", product);
+    window.history.replaceState(null, "", url);
+    setWorkspace(product);
+  }, []);
 
   useEffect(() => {
     if (modeAction?.subcommand !== "ask") setAskSessionsOpen(false);
@@ -349,7 +370,7 @@ export default function App() {
       ? "Config error"
       : "Loading";
   const endpointTone = configError ? "error" : "syncing";
-  const showBackButton = settingsOpen || historyOpen || browserOpen || codexOpen || showOutput;
+  const showBackButton = settingsOpen || historyOpen || browserOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
   const { pinnedTargets, togglePin: onTogglePin } = usePalettePins(setHistory, currentTarget);
   const commandRunning = run.kind === "running" || run.kind === "streaming";
@@ -426,112 +447,146 @@ export default function App() {
     setQuery("");
     dispatchView({ type: "collapse" });
   }, []);
-  if (new URLSearchParams(window.location.search).get("workspace") === "labby" && labbyProfile) {
-    return <LabbyWorkspace profile={labbyProfile} />;
+  const productNavigation = (
+    <ProductNavigation
+      active={workspace}
+      available={availableProducts}
+      onSelect={selectWorkspace}
+    />
+  );
+  if (workspace === "labby") {
+    return (
+      <div className="product-workspace-shell">
+        {productNavigation}
+        {labbyProfile ? (
+          <LabbyWorkspace profile={labbyProfile} />
+        ) : (
+          <MissingProductProfile product="Labby" />
+        )}
+      </div>
+    );
   }
-  if (new URLSearchParams(window.location.search).get("workspace") === "cortex" && cortexProfile) {
-    return <CortexWorkspace profile={cortexProfile} />;
+  if (workspace === "cortex") {
+    return (
+      <div className="product-workspace-shell">
+        {productNavigation}
+        {cortexProfile ? (
+          <CortexWorkspace profile={cortexProfile} />
+        ) : (
+          <MissingProductProfile product="Cortex" />
+        )}
+      </div>
+    );
   }
   return (
-    <PaletteShell
-      {...{
-        active,
-        actions: runtimeActions,
-        activeDescendantId,
-        browserFocusRef,
-        browserInitialTarget: browserInitialTargetValue,
-        browserOpen,
-        codexOpen,
-        cancelAsyncJob,
-        client,
-        commandRunning,
-        compact,
-        config,
-        configError,
-        copied,
-        dispatchView,
-        draftConfig,
-        endpointLabel,
-        endpointTone,
-        enterActionMode,
-        expandAsyncJob,
-        filtered,
-        guardMessage,
-        hasQuery,
-        hideCommandBar,
-        history,
-        historyFocusRef,
-        historyOpen,
-        askSessions,
-        askSessionsOpen,
-        jobCanceling,
-        jobExpanded,
-        jobMinimized,
-        jobNowMs,
-        listboxOpen,
-        liveRefresh,
-        modeAction,
-        mobileRuntime,
-        onCloseBrowser,
-        onCloseCodex: () => dispatchView({ type: "closeCodex" }),
-        onCollapse,
-        onCopy,
-        onDrillDomain,
-        onFollowUp,
-        onHistory,
-        onInputKeyDown,
-        onOpenJob,
-        onReset,
-        onResumeAskSession,
-        onRetry,
-        onSubmitAction,
-        onSuggestMessage,
-        onToggleMaximize,
-        onTogglePin,
-        onToggleSettings,
-        onToggleCodex: () => dispatchView({ type: "openCodex" }),
-        outputFocusRef,
-        outputKind,
-        parsed,
-        query,
-        requestSubmit,
-        run,
-        selected,
-        setDraftConfig,
-        setHistory,
-        setQuery,
-        setRun,
-        setSelected,
-        settingsFocusRef,
-        settingsOpen,
-        shortcutOptions,
-        showActionPanel,
-        showBackButton,
-        showContent,
-        showResultsLayout,
-        sourcesGrouped,
-        sourcesSort,
-        submitDisabled,
-        switchActionMode,
-        validation,
-        showHelpFor,
-        minimizeAsyncJob,
-        closeAsyncJob,
-        setSourcesFilter,
-        setSourcesSort,
-        setSourcesGrouped,
-      }}
-      onBack={goBackToBrowse}
-      onAskSessionsOpenChange={setAskSessionsOpen}
-      onRunAction={onConversationRunAction}
-      onSaveSettings={() => {
-        setPendingConfirmation(null);
-        void saveSettings();
-      }}
-      onSwitcherOpenChange={setActionSwitcherOpen}
-      onToggleLivePause={() => setLivePaused((paused) => !paused)}
-      pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
-      sourcesFilter={sourcesFilter || sourcesDrillFilter}
-    />
+    <div className="product-workspace-shell">
+      {productNavigation}
+      <PaletteShell
+        {...{
+          active,
+          actions: runtimeActions,
+          activeDescendantId,
+          browserFocusRef,
+          browserInitialTarget: browserInitialTargetValue,
+          browserOpen,
+          cancelAsyncJob,
+          client,
+          commandRunning,
+          compact,
+          config,
+          configError,
+          copied,
+          dispatchView,
+          draftConfig,
+          endpointLabel,
+          endpointTone,
+          enterActionMode,
+          expandAsyncJob,
+          filtered,
+          guardMessage,
+          hasQuery,
+          hideCommandBar,
+          history,
+          historyFocusRef,
+          historyOpen,
+          askSessions,
+          askSessionsOpen,
+          jobCanceling,
+          jobExpanded,
+          jobMinimized,
+          jobNowMs,
+          listboxOpen,
+          liveRefresh,
+          modeAction,
+          mobileRuntime,
+          onCloseBrowser,
+          onCollapse,
+          onCopy,
+          onDrillDomain,
+          onFollowUp,
+          onHistory,
+          onInputKeyDown,
+          onOpenJob,
+          onReset,
+          onResumeAskSession,
+          onRetry,
+          onSubmitAction,
+          onSuggestMessage,
+          onToggleMaximize,
+          onTogglePin,
+          onToggleSettings,
+          outputFocusRef,
+          outputKind,
+          parsed,
+          query,
+          requestSubmit,
+          run,
+          selected,
+          setDraftConfig,
+          setHistory,
+          setQuery,
+          setRun,
+          setSelected,
+          settingsFocusRef,
+          settingsOpen,
+          shortcutOptions,
+          showActionPanel,
+          showBackButton,
+          showContent,
+          showResultsLayout,
+          sourcesGrouped,
+          sourcesSort,
+          submitDisabled,
+          switchActionMode,
+          validation,
+          showHelpFor,
+          minimizeAsyncJob,
+          closeAsyncJob,
+          setSourcesFilter,
+          setSourcesSort,
+          setSourcesGrouped,
+        }}
+        onBack={goBackToBrowse}
+        onAskSessionsOpenChange={setAskSessionsOpen}
+        onRunAction={onConversationRunAction}
+        onSaveSettings={() => {
+          setPendingConfirmation(null);
+          void saveSettings();
+        }}
+        onSwitcherOpenChange={setActionSwitcherOpen}
+        onToggleLivePause={() => setLivePaused((paused) => !paused)}
+        pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
+        sourcesFilter={sourcesFilter || sourcesDrillFilter}
+      />
+    </div>
+  );
+}
+
+function MissingProductProfile({ product }: { product: "Labby" | "Cortex" }) {
+  return (
+    <main className="missing-product-profile" aria-labelledby="missing-product-profile-title">
+      <h1 id="missing-product-profile-title">{product} needs a backend profile</h1>
+      <p>Open Settings to add its independent endpoint, credential, and trusted server identity.</p>
+    </main>
   );
 }
