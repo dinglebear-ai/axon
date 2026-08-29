@@ -22,6 +22,7 @@ import {
   INITIAL_VIEW,
   isBrowseOpen,
   isBrowserOpen,
+  isCodexOpen,
   isHistoryOpen,
   isSettingsOpen,
   modeOf,
@@ -82,6 +83,7 @@ export default function App() {
   const historyOpen = isHistoryOpen(view);
   const browseOpen = isBrowseOpen(view);
   const browserOpen = isBrowserOpen(view);
+  const codexOpen = isCodexOpen(view);
   const browserInitialTargetValue = browserInitialTarget(view);
   usePaletteLifecycle(dispatchView, setShownTick);
 
@@ -342,7 +344,7 @@ export default function App() {
       ? "Config error"
       : "Loading";
   const endpointTone = configError ? "error" : "syncing";
-  const showBackButton = settingsOpen || historyOpen || browserOpen || showOutput;
+  const showBackButton = settingsOpen || historyOpen || browserOpen || codexOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
   const { pinnedTargets, togglePin: onTogglePin } = usePalettePins(setHistory, currentTarget);
   const commandRunning = run.kind === "running" || run.kind === "streaming";
@@ -428,6 +430,7 @@ export default function App() {
         browserFocusRef,
         browserInitialTarget: browserInitialTargetValue,
         browserOpen,
+        codexOpen,
         cancelAsyncJob,
         client,
         commandRunning,
@@ -459,6 +462,7 @@ export default function App() {
         modeAction,
         mobileRuntime,
         onCloseBrowser,
+        onCloseCodex: () => dispatchView({ type: "closeCodex" }),
         onCollapse,
         onCopy,
         onDrillDomain,
@@ -474,6 +478,7 @@ export default function App() {
         onToggleMaximize,
         onTogglePin,
         onToggleSettings,
+        onToggleCodex: () => dispatchView({ type: "openCodex" }),
         outputFocusRef,
         outputKind,
         parsed,

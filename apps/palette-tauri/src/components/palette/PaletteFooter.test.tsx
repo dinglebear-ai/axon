@@ -15,6 +15,7 @@ describe("PaletteFooter", () => {
         configError={null}
         onRecent={vi.fn()}
         onSettings={vi.fn()}
+        onCodex={vi.fn()}
         onHide={vi.fn()}
         onHome={vi.fn()}
         mobile

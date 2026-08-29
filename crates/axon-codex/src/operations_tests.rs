@@ -38,20 +38,41 @@ fn approval_is_single_use_and_queue_head_is_revalidated() {
             .begin_execution(
                 operation.id,
                 &capability,
+                "plugin/install",
+                &json!({"plugin":"a"}),
                 Some("stale"),
                 "dev:1:ino:2",
+                1,
                 "v1"
             )
             .unwrap_err()
             .contains("stale")
     );
     let executing = store
-        .begin_execution(operation.id, &capability, Some("r1"), "dev:1:ino:2", "v1")
+        .begin_execution(
+            operation.id,
+            &capability,
+            "plugin/install",
+            &json!({"plugin":"a"}),
+            Some("r1"),
+            "dev:1:ino:2",
+            1,
+            "v1",
+        )
         .unwrap();
     assert_eq!(executing.phase, OperationPhase::Executing);
     assert!(
         store
-            .begin_execution(operation.id, &capability, Some("r1"), "dev:1:ino:2", "v1")
+            .begin_execution(
+                operation.id,
+                &capability,
+                "plugin/install",
+                &json!({"plugin":"a"}),
+                Some("r1"),
+                "dev:1:ino:2",
+                1,
+                "v1"
+            )
             .is_err()
     );
     store.reconcile(operation.id, "r2").unwrap();
@@ -67,7 +88,16 @@ fn interrupted_execution_requires_recovery_not_blind_retry() {
     let operation = store.create(&intent("recover", "a")).unwrap();
     let capability = store.approve(operation.id, "admin:1").unwrap();
     store
-        .begin_execution(operation.id, &capability, Some("r1"), "dev:1:ino:2", "v1")
+        .begin_execution(
+            operation.id,
+            &capability,
+            "plugin/install",
+            &json!({"plugin":"a"}),
+            Some("r1"),
+            "dev:1:ino:2",
+            1,
+            "v1",
+        )
         .unwrap();
     assert_eq!(store.recover_interrupted().unwrap(), 1);
     assert_eq!(

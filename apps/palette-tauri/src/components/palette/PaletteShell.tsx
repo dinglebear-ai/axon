@@ -5,6 +5,7 @@ import { ActionIcon } from "@/components/palette/ActionIcon";
 import { ActionList } from "@/components/palette/ActionList";
 import { AuthNotice } from "@/components/palette/AuthNotice";
 import { BrowserView } from "@/components/palette/BrowserView";
+import { CodexControlView } from "@/components/palette/CodexControlView";
 import { type HistoryItem, HistoryPanel } from "@/components/palette/HistoryPanel";
 import { JobProgressView } from "@/components/palette/JobProgressView";
 import { OutputPanel } from "@/components/palette/OutputPanel";
@@ -32,7 +33,9 @@ interface PaletteShellProps {
   browserFocusRef: RefObject<HTMLDivElement | null>;
   browserInitialTarget: string | null;
   browserOpen: boolean;
+  codexOpen: boolean;
   onCloseBrowser: () => void;
+  onCloseCodex: () => void;
   cancelAsyncJob: () => Promise<void>;
   client: Client | null;
   commandRunning: boolean;
@@ -84,6 +87,7 @@ interface PaletteShellProps {
   onToggleMaximize: () => void;
   onTogglePin: () => void;
   onToggleSettings: () => void;
+  onToggleCodex: () => void;
   outputFocusRef: RefObject<HTMLDivElement | null>;
   outputKind: "markdown" | "code";
   parsed: ParsedCommand;
@@ -270,6 +274,9 @@ function SettingsRegion(props: PaletteShellProps) {
 
 function MainContent(props: PaletteShellProps) {
   if (!props.showContent || props.settingsOpen) return null;
+  if (props.codexOpen) {
+    return <CodexControlView client={props.client} onClose={props.onCloseCodex} />;
+  }
   if (props.browserOpen) {
     return (
       <main className="palette-grid palette-grid-output-only">
@@ -426,6 +433,7 @@ function FooterRegion(props: PaletteShellProps) {
         props.dispatchView({ type: "toggleHistory" });
       }}
       onSettings={() => props.dispatchView({ type: "toggleSettings" })}
+      onCodex={props.onToggleCodex}
       onHide={() => void invoke("hide_palette")}
       onHome={props.onReset}
       mobile={props.mobileRuntime}

@@ -1,4 +1,4 @@
-import { Clock3, Home, Settings, X } from "lucide-react";
+import { Bot, Clock3, Home, Settings, X } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Kbd } from "@/components/ui/aurora/kbd";
@@ -11,6 +11,7 @@ interface PaletteFooterProps {
   configError: string | null;
   onRecent: () => void;
   onSettings: () => void;
+  onCodex: () => void;
   onHide: () => void;
   onHome?: () => void;
   mobile?: boolean;
@@ -25,6 +26,7 @@ export function PaletteFooter({
   configError,
   onRecent,
   onSettings,
+  onCodex,
   onHide,
   onHome,
   mobile = false,
@@ -41,11 +43,32 @@ export function PaletteFooter({
           size="unstyled"
           className="mobile-nav-item"
           type="button"
+          onClick={onCodex}
+          aria-label="Codex"
+        >
+          <Bot size={19} strokeWidth={1.9} />
+          <span>Codex</span>
+        </Button>
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="mobile-nav-item"
+          type="button"
           onClick={onHome}
           aria-label="Home"
         >
           <Home size={19} strokeWidth={1.9} />
           <span>Home</span>
+        </Button>
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="titlebar-button"
+          type="button"
+          onClick={onCodex}
+          aria-label="Codex app-server"
+        >
+          <Bot size={14} />
         </Button>
         <Button
           variant="plain"

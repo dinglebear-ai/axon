@@ -1,7 +1,7 @@
 //! Services-first facade for the dedicated Codex app-server control plane.
 
 use axon_codex::api::{ControlAction, WritePolicy, account_summary};
-use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus};
+use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus, home_identity};
 use axon_codex::events::{EventCursor, RecordedEvent};
 use axon_codex::operations::{ControlOperation, OperationIntent, OperationStore};
 use axon_codex::protocol::RuntimeEpoch;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +32,9 @@ pub struct CodexControlService {
     transport: Mutex<Option<Arc<ControlTransport>>>,
     operations: OperationStore,
     policy: WritePolicy,
+    home_identity: String,
+    runtime_boot_id: AtomicU64,
+    policy_version: String,
 }
 
 impl CodexControlService {
@@ -39,18 +43,33 @@ impl CodexControlService {
         policy: WritePolicy,
         database: &Path,
     ) -> Result<Self, String> {
+        let home_identity = home_identity(&config.control_home)?;
+        let policy_version = format!(
+            "v1:a{}c{}m{}p{}s{}i{}",
+            policy.account as u8,
+            policy.config as u8,
+            policy.mcp as u8,
+            policy.plugins as u8,
+            policy.skills as u8,
+            policy.imports as u8
+        );
         Ok(Self {
             config: config.clone(),
             runtime: Arc::new(ControlRuntime::new(config)?),
             transport: Mutex::new(None),
             operations: OperationStore::open(database)?,
             policy,
+            home_identity,
+            runtime_boot_id: AtomicU64::new(0),
+            policy_version,
         })
     }
 
     pub async fn start(&self, config: &ControlConfig, epoch: RuntimeEpoch) -> Result<(), String> {
         let transport = Arc::new(ControlTransport::start(config, epoch).await?);
         *self.transport.lock().await = Some(transport);
+        self.runtime_boot_id.store(epoch.0, Ordering::Release);
+        self.runtime.mark_ready();
         Ok(())
     }
 
@@ -86,10 +105,18 @@ impl CodexControlService {
             .await
     }
 
-    pub fn create_operation(&self, intent: &OperationIntent) -> Result<ControlOperation, String> {
+    pub async fn create_operation(
+        &self,
+        intent: &OperationIntent,
+    ) -> Result<ControlOperation, String> {
         self.policy
             .authorize(&action_from_method(&intent.method)?)?;
-        self.operations.create(intent)
+        self.transport().await?;
+        let mut trusted_intent = intent.clone();
+        trusted_intent.target_home_identity = self.home_identity.clone();
+        trusted_intent.runtime_boot_id = self.runtime_boot_id.load(Ordering::Acquire);
+        trusted_intent.policy_version = self.policy_version.clone();
+        self.operations.create(&trusted_intent)
     }
 
     pub fn approve_operation(&self, id: i64, approver: &str) -> Result<String, String> {
@@ -103,12 +130,18 @@ impl CodexControlService {
         action: ControlAction,
         params: Value,
         revision: Option<&str>,
-        home_identity: &str,
-        policy_version: &str,
     ) -> Result<Value, String> {
         self.policy.authorize(&action)?;
-        self.operations
-            .begin_execution(id, capability, revision, home_identity, policy_version)?;
+        self.operations.begin_execution(
+            id,
+            capability,
+            action.method(),
+            &params,
+            revision,
+            &self.home_identity,
+            self.runtime_boot_id.load(Ordering::Acquire),
+            &self.policy_version,
+        )?;
         let transport = self.transport().await?;
         let result = self
             .runtime
@@ -147,8 +180,15 @@ impl CodexControlService {
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| format!("system clock before epoch: {error}"))?
             .as_millis() as u64;
-        let transport =
-            Arc::new(ControlTransport::start(&self.config, RuntimeEpoch(boot_id)).await?);
+        let transport = match ControlTransport::start(&self.config, RuntimeEpoch(boot_id)).await {
+            Ok(transport) => Arc::new(transport),
+            Err(error) => {
+                self.runtime.mark_degraded(error.clone());
+                return Err(error);
+            }
+        };
+        self.runtime_boot_id.store(boot_id, Ordering::Release);
+        self.runtime.mark_ready();
         *slot = Some(Arc::clone(&transport));
         Ok(transport)
     }
@@ -165,6 +205,9 @@ fn action_from_method(method: &str) -> Result<ControlAction, String> {
         ControlAction::McpServerOauthLogin,
         ControlAction::PluginInstall,
         ControlAction::PluginUninstall,
+        ControlAction::MarketplaceAdd,
+        ControlAction::MarketplaceRemove,
+        ControlAction::MarketplaceUpgrade,
         ControlAction::SkillConfigWrite,
         ControlAction::ExternalAgentConfigImport,
     ]

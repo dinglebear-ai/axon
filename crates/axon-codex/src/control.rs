@@ -83,6 +83,21 @@ impl ControlRuntime {
         self.status_tx.subscribe()
     }
 
+    pub fn mark_ready(&self) {
+        self.update_status(ControlState::Ready, None);
+    }
+
+    pub fn mark_degraded(&self, detail: impl Into<String>) {
+        self.update_status(ControlState::Degraded, Some(detail.into()));
+    }
+
+    fn update_status(&self, state: ControlState, detail: Option<String>) {
+        let mut status = self.status();
+        status.state = state;
+        status.detail = detail;
+        self.status_tx.send_replace(status);
+    }
+
     pub async fn with_read<T, F, Fut>(&self, operation: F) -> Result<T, String>
     where
         F: FnOnce() -> Fut,
@@ -128,6 +143,35 @@ impl ControlRuntime {
     }
 }
 
+pub fn home_identity(path: &Path) -> Result<String, String> {
+    let canonical = path.canonicalize().map_err(|error| {
+        format!(
+            "cannot resolve Codex control home {}: {error}",
+            path.display()
+        )
+    })?;
+    let metadata = fs::metadata(&canonical).map_err(|error| {
+        format!(
+            "cannot inspect Codex control home {}: {error}",
+            canonical.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        return Ok(format!(
+            "path={};dev={};ino={};uid={};mode={:o}",
+            canonical.display(),
+            metadata.dev(),
+            metadata.ino(),
+            metadata.uid(),
+            metadata.mode() & 0o7777
+        ));
+    }
+    #[cfg(not(unix))]
+    Ok(format!("path={}", canonical.display()))
+}
+
 pub fn validate_config(config: &ControlConfig) -> Result<(), String> {
     if !config.enabled {
         return Ok(());
@@ -160,6 +204,13 @@ fn validate_binary(path: &Path) -> Result<(), String> {
         .map_err(|error| format!("cannot inspect Codex binary {}: {error}", path.display()))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("Codex control binary must be a regular non-symlink file".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err("Codex control binary must be executable".to_string());
+        }
     }
     validate_ancestors(path.parent().unwrap_or(Path::new("/")))
 }

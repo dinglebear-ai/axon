@@ -147,8 +147,11 @@ impl OperationStore {
         &self,
         id: i64,
         capability: &str,
+        method: &str,
+        request: &serde_json::Value,
         current_revision: Option<&str>,
         home_identity: &str,
+        runtime_boot_id: u64,
         policy_version: &str,
     ) -> Result<ControlOperation, String> {
         let digest = request_digest(&serde_json::Value::String(capability.to_string()))?;
@@ -159,12 +162,21 @@ impl OperationStore {
         let transaction = connection.transaction().map_err(db_error)?;
         let row = get_operation_guard(&transaction, id)?
             .ok_or_else(|| "operation not found".to_string())?;
+        let supplied_request_digest = request_digest(request)?;
         if row.phase != OperationPhase::Approved || row.approval_digest.as_deref() != Some(&digest)
         {
             return Err("approval capability is invalid or already consumed".to_string());
         }
-        if row.target_home_identity != home_identity || row.policy_version != policy_version {
-            return Err("operation target or policy changed; reapproval required".to_string());
+        if row.method != method || row.request_digest != supplied_request_digest {
+            return Err("operation method or parameters changed; reapproval required".to_string());
+        }
+        if row.target_home_identity != home_identity
+            || row.runtime_boot_id != runtime_boot_id
+            || row.policy_version != policy_version
+        {
+            return Err(
+                "operation target, runtime, or policy changed; reapproval required".to_string(),
+            );
         }
         if row.expected_revision.as_deref() != current_revision {
             return Err("operation revision is stale; refresh and reapprove".to_string());
@@ -238,11 +250,14 @@ struct GuardRow {
     phase: OperationPhase,
     approval_digest: Option<String>,
     target_home_identity: String,
+    runtime_boot_id: u64,
     policy_version: String,
     expected_revision: Option<String>,
+    method: String,
+    request_digest: String,
 }
 fn get_operation_guard(connection: &Connection, id: i64) -> Result<Option<GuardRow>, String> {
-    connection.query_row("SELECT phase,approval_digest,target_home_identity,policy_version,expected_revision FROM codex_control_operations WHERE id=?1", [id], |row| Ok(GuardRow { phase: OperationPhase::parse(&row.get::<_,String>(0)?).map_err(|_| rusqlite::Error::InvalidQuery)?, approval_digest: row.get(1)?, target_home_identity: row.get(2)?, policy_version: row.get(3)?, expected_revision: row.get(4)? })).optional().map_err(db_error)
+    connection.query_row("SELECT phase,approval_digest,target_home_identity,runtime_boot_id,policy_version,expected_revision,method,request_digest FROM codex_control_operations WHERE id=?1", [id], |row| Ok(GuardRow { phase: OperationPhase::parse(&row.get::<_,String>(0)?).map_err(|_| rusqlite::Error::InvalidQuery)?, approval_digest: row.get(1)?, target_home_identity: row.get(2)?, runtime_boot_id: row.get(3)?, policy_version: row.get(4)?, expected_revision: row.get(5)?, method: row.get(6)?, request_digest: row.get(7)? })).optional().map_err(db_error)
 }
 fn get_operation(connection: &Connection, id: i64) -> Result<Option<ControlOperation>, String> {
     connection.query_row("SELECT id,actor,scope,method,request_digest,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE id=?1", [id], row_to_operation).optional().map_err(db_error)

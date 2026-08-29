@@ -23,6 +23,9 @@ pub enum ControlAction {
     PluginRead,
     PluginInstall,
     PluginUninstall,
+    MarketplaceAdd,
+    MarketplaceRemove,
+    MarketplaceUpgrade,
     SkillsList,
     SkillConfigWrite,
     ExternalAgentConfigDetect,
@@ -51,6 +54,9 @@ impl ControlAction {
             Self::PluginRead => "plugin/read",
             Self::PluginInstall => "plugin/install",
             Self::PluginUninstall => "plugin/uninstall",
+            Self::MarketplaceAdd => "marketplace/add",
+            Self::MarketplaceRemove => "marketplace/remove",
+            Self::MarketplaceUpgrade => "marketplace/upgrade",
             Self::SkillsList => "skills/list",
             Self::SkillConfigWrite => "skills/config/write",
             Self::ExternalAgentConfigDetect => "externalAgentConfig/detect",
@@ -133,7 +139,11 @@ impl WritePolicy {
             | ControlAction::AccountLogout => self.account,
             ControlAction::ConfigValueWrite | ControlAction::ConfigBatchWrite => self.config,
             ControlAction::McpServerReload | ControlAction::McpServerOauthLogin => self.mcp,
-            ControlAction::PluginInstall | ControlAction::PluginUninstall => self.plugins,
+            ControlAction::PluginInstall
+            | ControlAction::PluginUninstall
+            | ControlAction::MarketplaceAdd
+            | ControlAction::MarketplaceRemove
+            | ControlAction::MarketplaceUpgrade => self.plugins,
             ControlAction::SkillConfigWrite => self.skills,
             ControlAction::ExternalAgentConfigImport => self.imports,
             _ => false,

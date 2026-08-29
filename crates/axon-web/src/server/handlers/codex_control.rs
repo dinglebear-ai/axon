@@ -93,12 +93,34 @@ pub async fn resource(
 
 pub async fn create_operation(
     State((state, _)): State<WebState>,
-    Json(intent): Json<OperationIntent>,
+    Json(body): Json<CreateOperationBody>,
 ) -> Result<Json<axon_codex::operations::ControlOperation>, HttpError> {
+    let intent = OperationIntent {
+        actor: body.actor,
+        scope: body.scope,
+        method: body.method,
+        target_home_identity: String::new(),
+        runtime_boot_id: 0,
+        policy_version: String::new(),
+        expected_revision: body.expected_revision,
+        idempotency_key: body.idempotency_key,
+        redacted_request: body.redacted_request,
+    };
     service(&state)?
         .create_operation(&intent)
+        .await
         .map(Json)
         .map_err(bad_request)
+}
+
+#[derive(Deserialize)]
+pub struct CreateOperationBody {
+    actor: String,
+    scope: String,
+    method: String,
+    expected_revision: Option<String>,
+    idempotency_key: String,
+    redacted_request: Value,
 }
 
 #[derive(Deserialize)]
@@ -124,8 +146,6 @@ pub struct ExecuteBody {
     action: ControlAction,
     params: Value,
     revision: Option<String>,
-    home_identity: String,
-    policy_version: String,
 }
 pub async fn execute_operation(
     State((state, _)): State<WebState>,
@@ -139,8 +159,6 @@ pub async fn execute_operation(
             body.action,
             body.params,
             body.revision.as_deref(),
-            &body.home_identity,
-            &body.policy_version,
         )
         .await
         .map(Json)
