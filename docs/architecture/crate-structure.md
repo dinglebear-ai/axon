@@ -1,15 +1,15 @@
 ---
 title: "Crate Structure"
 created: 2026-07-15
-updated: 2026-07-30
+updated: 2026-08-28
 ---
 
 # Crate Structure
 
-Last Modified: 2026-07-26
+Last Modified: 2026-08-28
 
 Axon is a Cargo workspace: a thin root `axon` binary that delegates to
-`axon-cli`, plus 23 focused crates under `crates/`. All crates inherit the
+`axon-cli`, plus 24 focused crates under `crates/`. All crates inherit the
 product version via `version.workspace = true` (currently 7.2.2, edition 2024,
 rust-version 1.94.0).
 
@@ -33,7 +33,7 @@ axon-error  ──┐
    axon-ledger   ─→ axon-graph              ├→ axon-document
    axon-memory                              │
    axon-embedding ─→ axon-vectors ─→ axon-retrieval
-   axon-llm                                 │
+   axon-llm          axon-codex             │
    axon-prune                               │
               ↓                             │
            axon-jobs ───────────────────────┘
@@ -81,6 +81,7 @@ edges, read from each crate's `Cargo.toml`.
 | `axon-vectors` | VectorStore trait + Qdrant impl (named dense + BM42 sparse) | `axon-api`, `axon-core`, `axon-error`, `axon-observe` |
 | `axon-retrieval` | RetrievalEngine: query/retrieve/ask context, ranking/fusion | `axon-api`, `axon-embedding`, `axon-error`, `axon-vectors` |
 | `axon-llm` | LlmProvider trait + Gemini-headless / OpenAI-compat / Codex app-server / fake | `axon-api`, `axon-core`, `axon-error`, `axon-observe` |
+| `axon-codex` | typed Codex app-server protocol, isolated trusted-control runtime, event/approval bounds, and durable mutation ledger | (leaf outside shared serialization/runtime crates) |
 | `axon-prune` | cleanup, purge, dedupe, cleanup-debt executor | `axon-api` |
 
 ### Composition + runtime
@@ -88,7 +89,7 @@ edges, read from each crate's `Cargo.toml`.
 | Crate | Purpose | Axon deps |
 |---|---|---|
 | `axon-jobs` | JobStore, workers, events, scheduler, heartbeats, watch store | `axon-api`, `axon-adapters`, `axon-core`, `axon-error`, `axon-graph`, `axon-ledger`, `axon-llm`, `axon-memory`, `axon-observe` |
-| `axon-services` | orchestration facade + ServiceContext (the source runner keeps one job id across all stages) | all 17 lower crates |
+| `axon-services` | orchestration facade + ServiceContext; owns construction, policy binding, and transport-neutral re-exports for Codex control | lower domain crates including `axon-codex` |
 
 ### Transports (thin projections over `axon-services`)
 

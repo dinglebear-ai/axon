@@ -49,7 +49,8 @@ describe("CodexControlView mutation validation", () => {
     await user.selectOptions(screen.getByLabelText("Workflow"), "configBatch");
     fireEvent.change(screen.getByLabelText("Batch writes (JSON array or object)"), {
       target: {
-        value: '[{"keyPath":"model","value":"gpt-test"},{"keyPath":"features.fast","value":true}]',
+        value:
+          '[{"keyPath":"model","mergeStrategy":"upsert","value":"gpt-test"},{"keyPath":"features.fast","mergeStrategy":"replace","value":true}]',
       },
     });
 

@@ -4,6 +4,8 @@ pub(super) mod artifacts;
 pub mod common;
 #[path = "server/handler_meta.rs"]
 mod handler_meta;
+#[path = "server/handlers_codex.rs"]
+mod handlers_codex;
 #[path = "server/handlers_discovery.rs"]
 mod handlers_discovery;
 #[path = "server/handlers_extract.rs"]
@@ -84,6 +86,7 @@ use tokio::{
 pub struct AxonMcpServer {
     cfg: Arc<Config>,
     service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    codex_control: Arc<OnceCell<Option<Arc<axon_services::codex_control::CodexControlService>>>>,
     progress_notifiers: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
     /// Authentication policy for this server instance.
     ///
@@ -101,6 +104,7 @@ impl AxonMcpServer {
         Self {
             cfg: Arc::new(cfg),
             service_context: Arc::new(OnceCell::new()),
+            codex_control: Arc::new(OnceCell::new()),
             progress_notifiers: Arc::new(Mutex::new(HashMap::new())),
             auth_policy: AuthPolicy::LoopbackDev,
         }
@@ -113,9 +117,23 @@ impl AxonMcpServer {
         Self {
             cfg: Arc::new(cfg),
             service_context,
+            codex_control: Arc::new(OnceCell::new()),
             progress_notifiers: Arc::new(Mutex::new(HashMap::new())),
             auth_policy: AuthPolicy::LoopbackDev,
         }
+    }
+
+    async fn codex_control_service(
+        &self,
+    ) -> Result<Arc<axon_services::codex_control::CodexControlService>, String> {
+        self.codex_control
+            .get_or_try_init(|| async {
+                axon_services::codex_control::CodexControlService::from_config(&self.cfg)
+            })
+            .await?
+            .as_ref()
+            .map(Arc::clone)
+            .ok_or_else(|| "Codex control is disabled".to_string())
     }
 
     pub(super) fn with_auth_policy(mut self, auth_policy: AuthPolicy) -> Self {
@@ -141,7 +159,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, scrape, crawl, embed, ingest, code_search, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, chat, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads, artifacts. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Focused source actions share the canonical source/job pipeline; code_search reads committed vectors only.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: artifacts, ask, brand, capabilities, chat, code_search, codex, collections, crawl, diff, doctor, embed, endpoints, evaluate, extract, graph, help, ingest, jobs, map, memory, providers, prune, query, research, reset, resolve, retrieve, scrape, screenshot, search, source, status, suggest, summarize, uploads, watch. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool.",
         input_schema = tool_schema::axon_tool_input_schema()
     )]
     async fn axon<'a>(
@@ -243,6 +261,7 @@ impl AxonMcpServer {
                 }
                 AxonRequest::Graph(req) => self.handle_graph(req).await?,
                 AxonRequest::Chat(req) => self.handle_chat(req).await?,
+                AxonRequest::Codex(req) => self.handle_codex(req).await?,
                 AxonRequest::Debug(_) | AxonRequest::Migrate(_) | AxonRequest::Setup(_) => {
                     return Err(invalid_params(
                         "this action is available through the HTTP API, not MCP",

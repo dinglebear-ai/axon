@@ -85,6 +85,14 @@ pub struct ControlOperation {
 }
 
 #[derive(Debug, Clone)]
+pub struct RecoveryOperation {
+    pub operation: ControlOperation,
+    pub target_home_identity: String,
+    pub runtime_boot_id: u64,
+    pub policy_version: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct OperationStore {
     connection: Arc<Mutex<Connection>>,
 }
@@ -150,6 +158,20 @@ impl OperationStore {
             return Err("operation is not pending approval".to_string());
         }
         Ok(capability)
+    }
+
+    pub fn cancel(&self, id: i64) -> Result<(), String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| "operation store lock poisoned".to_string())?;
+        let changed = connection.execute(
+            "UPDATE codex_control_operations SET phase='denied',approval_digest=NULL,recovery_state='operator_cancelled',updated_at=unixepoch() WHERE id=?1 AND phase IN ('pending','approved')",
+            [id],
+        ).map_err(db_error)?;
+        (changed == 1)
+            .then_some(())
+            .ok_or_else(|| "operation cannot be cancelled".to_string())
     }
 
     pub fn begin_execution(
@@ -239,11 +261,34 @@ impl OperationStore {
         get_operation(&connection, id)
     }
 
+    pub fn get_for_recovery(&self, id: i64) -> Result<Option<RecoveryOperation>, String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| "operation store lock poisoned".to_string())?;
+        let operation = get_operation(&connection, id)?;
+        let Some(operation) = operation else {
+            return Ok(None);
+        };
+        let guard = get_operation_guard(&connection, id)?
+            .ok_or_else(|| "operation recovery guard missing".to_string())?;
+        Ok(Some(RecoveryOperation {
+            operation,
+            target_home_identity: guard.target_home_identity,
+            runtime_boot_id: guard.runtime_boot_id,
+            policy_version: guard.policy_version,
+        }))
+    }
+
     pub fn unfinished(&self, limit: usize) -> Result<Vec<ControlOperation>, String> {
         let connection = self
             .connection
             .lock()
             .map_err(|_| "operation store lock poisoned".to_string())?;
+        connection.execute(
+            "UPDATE codex_control_operations SET phase='expired',approval_digest=NULL,updated_at=unixepoch() WHERE phase='approved' AND expires_at <= unixepoch()",
+            [],
+        ).map_err(db_error)?;
         let mut statement = connection.prepare("SELECT id,actor,scope,method,request_digest,redacted_request,expected_revision,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE phase NOT IN ('reconciled','failed','denied','expired') ORDER BY updated_at DESC LIMIT ?1").map_err(db_error)?;
         statement
             .query_map([limit.min(100) as i64], row_to_operation)
@@ -257,7 +302,7 @@ impl OperationStore {
             .connection
             .lock()
             .map_err(|_| "operation store lock poisoned".to_string())?;
-        let changed = connection.execute("UPDATE codex_control_operations SET phase='reconciled',post_state_revision=?2,recovery_state='operator_reconciled',updated_at=unixepoch() WHERE id=?1 AND phase IN ('ambiguous','recovery_required','rollback_required')", params![id,revision]).map_err(db_error)?;
+        let changed = connection.execute("UPDATE codex_control_operations SET phase='reconciled',post_state_revision=?2,recovery_state='operator_reconciled',updated_at=unixepoch() WHERE id=?1 AND phase IN ('executing','ambiguous','recovery_required','rollback_required')", params![id,revision]).map_err(db_error)?;
         (changed == 1)
             .then_some(())
             .ok_or_else(|| "operation is not awaiting recovery".to_string())
@@ -270,7 +315,7 @@ impl OperationStore {
             .lock()
             .map_err(|_| "operation store lock poisoned".to_string())?;
         let changed = connection.execute(
-            "UPDATE codex_control_operations SET phase='recovery_required',recovery_state=?2,updated_at=unixepoch() WHERE id=?1 AND phase IN ('ambiguous','recovery_required','rollback_required')",
+            "UPDATE codex_control_operations SET phase='recovery_required',recovery_state=?2,updated_at=unixepoch() WHERE id=?1 AND phase IN ('executing','ambiguous','recovery_required','rollback_required')",
             params![id, reason],
         ).map_err(db_error)?;
         (changed == 1)

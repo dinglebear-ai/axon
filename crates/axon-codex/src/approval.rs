@@ -114,14 +114,16 @@ impl ApprovalService {
             .lock()
             .map_err(|_| "approval store lock poisoned".to_string())?;
         let approval = pending
-            .remove(&id)
+            .get(&id)
             .ok_or_else(|| "approval is unknown or already consumed".to_string())?;
         if approval.expires_at <= Instant::now() {
+            pending.remove(&id);
             return Err("approval expired".to_string());
         }
         if approval.prompt.digest != expected_digest {
             return Err("approval digest mismatch".to_string());
         }
+        pending.remove(&id);
         Ok(decision)
     }
 

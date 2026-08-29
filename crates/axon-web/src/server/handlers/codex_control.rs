@@ -1,6 +1,6 @@
-use axon_codex::api::{ControlAction, MutationAction};
-use axon_codex::events::EventCursor;
-use axon_codex::operations::{OperationIntent, OperationPhase};
+use axon_services::codex_control::{
+    ControlAction, EventCursor, MutationAction, OperationIntent, OperationPhase, RecordedEvent,
+};
 use axum::Extension;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -54,7 +54,7 @@ pub struct EventsQuery {
 pub async fn events(
     State((state, _)): State<WebState>,
     Query(query): Query<EventsQuery>,
-) -> Result<Json<Vec<axon_codex::events::RecordedEvent>>, HttpError> {
+) -> Result<Json<Vec<RecordedEvent>>, HttpError> {
     let cursor = match (query.boot_id, query.after) {
         (Some(boot_id), Some(sequence)) => Some(EventCursor { boot_id, sequence }),
         _ => None,
@@ -94,6 +94,28 @@ pub async fn resource(
     Ok(Json(CodexResourceResponse { resource, value }))
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct CodexReadBody {
+    action: ControlAction,
+    #[serde(default)]
+    params: Value,
+}
+
+pub async fn read_action(
+    State((state, _)): State<WebState>,
+    Json(body): Json<CodexReadBody>,
+) -> Result<Json<CodexResourceResponse>, HttpError> {
+    let method = body.action.method().to_string();
+    let value = service(&state)?
+        .read(body.action, body.params)
+        .await
+        .map_err(bad_request)?;
+    Ok(Json(CodexResourceResponse {
+        resource: method,
+        value,
+    }))
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct CodexResourceResponse {
     resource: String,
@@ -104,7 +126,7 @@ pub async fn create_operation(
     State((state, _)): State<WebState>,
     Extension(auth): Extension<AuthContext>,
     Json(body): Json<CreateOperationBody>,
-) -> Result<Json<axon_codex::operations::ControlOperation>, HttpError> {
+) -> Result<Json<axon_services::codex_control::ControlOperation>, HttpError> {
     let intent = OperationIntent {
         actor: auth.sub.clone(),
         scope: auth.scopes.join(" "),
@@ -125,7 +147,7 @@ pub async fn create_operation(
 
 pub async fn list_operations(
     State((state, _)): State<WebState>,
-) -> Result<Json<Vec<axon_codex::operations::ControlOperation>>, HttpError> {
+) -> Result<Json<Vec<axon_services::codex_control::ControlOperation>>, HttpError> {
     service(&state)?
         .unfinished_operations()
         .map(Json)
@@ -150,6 +172,17 @@ pub async fn approve_operation(
     Ok(Json(ApproveOperationResponse {
         operation_id: id,
         approval_capability: capability,
+    }))
+}
+
+pub async fn cancel_operation(
+    State((state, _)): State<WebState>,
+    Path(id): Path<i64>,
+) -> Result<Json<ReconcileOperationResponse>, HttpError> {
+    service(&state)?.cancel_operation(id).map_err(bad_request)?;
+    Ok(Json(ReconcileOperationResponse {
+        operation_id: id,
+        phase: OperationPhase::Denied,
     }))
 }
 
@@ -186,6 +219,7 @@ pub struct ExecuteOperationResponse {
 pub struct ServerRequestResponseBody {
     boot_id: u64,
     approved: bool,
+    response: Option<Value>,
 }
 
 pub async fn respond_to_server_request(
@@ -194,7 +228,7 @@ pub async fn respond_to_server_request(
     Json(body): Json<ServerRequestResponseBody>,
 ) -> Result<Json<ServerRequestRespondedResponse>, HttpError> {
     service(&state)?
-        .respond_to_server_request(body.boot_id, id, body.approved)
+        .respond_to_server_request(body.boot_id, id, body.approved, body.response)
         .await
         .map_err(upstream)?;
     Ok(Json(ServerRequestRespondedResponse {
@@ -240,7 +274,7 @@ fn bad_request(error: String) -> HttpError {
 #[allow(dead_code)]
 pub async fn snapshot_openapi_marker() {}
 
-#[utoipa::path(get, path = "/v1/codex/events", params(("boot_id" = Option<u64>, Query, description = "Runtime boot identifier"), ("after" = Option<u64>, Query, description = "Last observed sequence"), ("limit" = Option<usize>, Query, description = "Maximum events")), responses((status = 200, description = "Bounded, redacted Codex event page", body = Vec<axon_codex::events::RecordedEvent>), (status = 502, description = "Codex app-server request failed", body = super::super::error::ErrorBody)), tag = "codex-control")]
+#[utoipa::path(get, path = "/v1/codex/events", params(("boot_id" = Option<u64>, Query, description = "Runtime boot identifier"), ("after" = Option<u64>, Query, description = "Last observed sequence"), ("limit" = Option<usize>, Query, description = "Maximum events")), responses((status = 200, description = "Bounded, redacted Codex event page", body = Vec<RecordedEvent>), (status = 502, description = "Codex app-server request failed", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]
 pub async fn events_openapi_marker() {}
 
@@ -248,17 +282,25 @@ pub async fn events_openapi_marker() {}
 #[allow(dead_code)]
 pub async fn resource_openapi_marker() {}
 
-#[utoipa::path(get, path = "/v1/codex/operations", responses((status = 200, description = "Unfinished Codex control operations", body = Vec<axon_codex::operations::ControlOperation>), (status = 502, description = "Codex operation store unavailable", body = super::super::error::ErrorBody)), tag = "codex-control")]
+#[utoipa::path(post, path = "/v1/codex/read", request_body = CodexReadBody, responses((status = 200, description = "Typed redacted Codex read result", body = CodexResourceResponse), (status = 400, description = "Unsupported read action or invalid parameters", body = super::super::error::ErrorBody)), tag = "codex-control")]
+#[allow(dead_code)]
+pub async fn read_action_openapi_marker() {}
+
+#[utoipa::path(get, path = "/v1/codex/operations", responses((status = 200, description = "Unfinished Codex control operations", body = Vec<axon_services::codex_control::ControlOperation>), (status = 502, description = "Codex operation store unavailable", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]
 pub async fn list_operations_openapi_marker() {}
 
-#[utoipa::path(post, path = "/v1/codex/operations", request_body = CreateOperationBody, responses((status = 200, description = "Prepared Codex control operation", body = axon_codex::operations::ControlOperation), (status = 400, description = "Invalid operation intent", body = super::super::error::ErrorBody)), tag = "codex-control")]
+#[utoipa::path(post, path = "/v1/codex/operations", request_body = CreateOperationBody, responses((status = 200, description = "Prepared Codex control operation", body = axon_services::codex_control::ControlOperation), (status = 400, description = "Invalid operation intent", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]
 pub async fn create_operation_openapi_marker() {}
 
 #[utoipa::path(post, path = "/v1/codex/operations/{id}/approve", params(("id" = i64, Path, description = "Operation identifier")), responses((status = 200, description = "Short-lived approval capability", body = ApproveOperationResponse), (status = 400, description = "Operation cannot be approved", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]
 pub async fn approve_operation_openapi_marker() {}
+
+#[utoipa::path(post, path = "/v1/codex/operations/{id}/cancel", params(("id" = i64, Path, description = "Operation identifier")), responses((status = 200, description = "Pending or approved operation cancelled", body = ReconcileOperationResponse), (status = 400, description = "Operation cannot be cancelled", body = super::super::error::ErrorBody)), tag = "codex-control")]
+#[allow(dead_code)]
+pub async fn cancel_operation_openapi_marker() {}
 
 #[utoipa::path(post, path = "/v1/codex/operations/{id}/execute", params(("id" = i64, Path, description = "Operation identifier")), request_body = ExecuteBody, responses((status = 200, description = "Sanitized Codex mutation result", body = ExecuteOperationResponse), (status = 502, description = "Codex app-server request failed", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]

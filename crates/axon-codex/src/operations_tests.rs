@@ -135,3 +135,17 @@ fn interrupted_execution_requires_recovery_not_blind_retry() {
         Some("intended effect is absent")
     );
 }
+
+#[test]
+fn exact_recovery_lookup_is_not_limited_by_the_unfinished_page() {
+    let store = OperationStore::open_memory().unwrap();
+    let oldest = store.create(&intent("oldest", "a")).unwrap();
+    for index in 0..101 {
+        store.create(&intent(&format!("new-{index}"), "a")).unwrap();
+    }
+    let recovery = store.get_for_recovery(oldest.id).unwrap().unwrap();
+    assert_eq!(recovery.operation.id, oldest.id);
+    assert_eq!(recovery.target_home_identity, "dev:1:ino:2");
+    assert_eq!(recovery.runtime_boot_id, 1);
+    assert_eq!(recovery.policy_version, "v1");
+}

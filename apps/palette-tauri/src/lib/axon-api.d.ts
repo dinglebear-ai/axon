@@ -260,6 +260,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/codex/operations/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/codex/operations/{id}/execute": {
         parameters: {
             query?: never;
@@ -286,6 +302,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["reconcile_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["read_action_openapi_marker"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1829,6 +1861,10 @@ export interface components {
             skills: unknown;
             status: components["schemas"]["ControlStatus"];
         };
+        CodexReadBody: {
+            action: components["schemas"]["ControlAction"];
+            params?: unknown;
+        };
         CodexResourceResponse: {
             resource: string;
             value: unknown;
@@ -1854,6 +1890,8 @@ export interface components {
             kind: "external";
             uri: string;
         };
+        /** @enum {string} */
+        ControlAction: "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "models_list" | "model_provider_capabilities_read" | "config_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_resource_read" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skills_extra_roots_set" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "external_agent_config_import_read_histories" | "external_agent_config_import_record_history" | "hooks_list" | "apps_list" | "apps_installed" | "app_read";
         ControlOperation: {
             actor: string;
             approver?: string | null;
@@ -2646,7 +2684,7 @@ export interface components {
          *     or executing a read method through the mutation endpoints.
          * @enum {string}
          */
-        MutationAction: "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "external_agent_config_import";
+        MutationAction: "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "plugin_install" | "plugin_uninstall" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "skills_extra_roots_set" | "external_agent_config_import" | "external_agent_config_import_record_history";
         /** @enum {string} */
         OperationPhase: "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         OutputPolicy: {
@@ -3392,6 +3430,7 @@ export interface components {
             approved: boolean;
             /** Format: int64 */
             boot_id: number;
+            response?: unknown;
         };
         ServiceRetrieveVariantError: {
             error: string;
@@ -4602,6 +4641,38 @@ export interface operations {
             };
         };
     };
+    cancel_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending or approved operation cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileOperationResponse"];
+                };
+            };
+            /** @description Operation cannot be cancelled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     execute_operation_openapi_marker: {
         parameters: {
             query?: never;
@@ -4660,6 +4731,39 @@ export interface operations {
                 };
             };
             /** @description Operation cannot be reconciled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_action_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexReadBody"];
+            };
+        };
+        responses: {
+            /** @description Typed redacted Codex read result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexResourceResponse"];
+                };
+            };
+            /** @description Unsupported read action or invalid parameters */
             400: {
                 headers: {
                     [name: string]: unknown;

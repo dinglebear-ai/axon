@@ -27,10 +27,11 @@ fn approval_is_digest_bound_and_single_use() {
             .unwrap_err()
             .contains("digest mismatch")
     );
-    assert!(
+    assert_eq!(
         service
             .decide(prompt.id, &prompt.digest, ApprovalDecision::Approve)
-            .is_err()
+            .unwrap(),
+        ApprovalDecision::Approve
     );
 }
 

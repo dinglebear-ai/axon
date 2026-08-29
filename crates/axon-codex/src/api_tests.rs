@@ -60,22 +60,14 @@ fn account_projection_drops_tokens_and_masks_email() {
 }
 
 #[test]
-fn artifact_mutations_require_https_digest_and_secret_references() {
+fn native_plugin_and_config_mutations_reject_plaintext_secrets() {
     let action = ControlAction::PluginInstall;
-    assert!(validate_mutation_params(&action, &json!({"source":"file:///tmp/plugin"})).is_err());
-    assert!(
-        validate_mutation_params(
-            &action,
-            &json!({"source":"https://example.test/plugin.zip"})
-        )
-        .is_err()
-    );
+    assert!(validate_mutation_params(&action, &json!({"pluginName":"example"})).is_ok());
     assert!(
         validate_mutation_params(
             &action,
             &json!({
-                "source":"https://example.test/plugin.zip",
-                "sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "pluginName":"example",
                 "api_token":"plain-text"
             })
         )
@@ -85,11 +77,19 @@ fn artifact_mutations_require_https_digest_and_secret_references() {
         validate_mutation_params(
             &action,
             &json!({
-                "source":"https://example.test/plugin.zip",
-                "sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "pluginName":"example",
                 "api_token":"env:PLUGIN_TOKEN"
             })
         )
         .is_ok()
     );
+    let config = ControlAction::ConfigValueWrite;
+    assert!(
+        validate_mutation_params(
+            &config,
+            &json!({"keyPath":"providers.openai.api_key","mergeStrategy":"upsert","value":"plain"})
+        )
+        .is_err()
+    );
+    assert!(validate_mutation_params(&config, &json!({"keyPath":"providers.openai.api_key","mergeStrategy":"upsert","value":"env:OPENAI_API_KEY"})).is_ok());
 }

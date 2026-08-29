@@ -19,21 +19,38 @@ pub enum ControlAction {
     ConfigValueWrite,
     ConfigBatchWrite,
     McpServersList,
+    McpServerResourceRead,
+    McpServerToolCall,
+    McpServerEventStreamStart,
+    McpServerEventStreamStop,
     McpServerReload,
     McpServerOauthLogin,
     PluginsList,
+    PluginsInstalled,
+    PluginSearch,
     PluginRead,
+    PluginSkillRead,
+    PluginShareList,
+    PluginShareCheckout,
+    PluginShareSave,
+    PluginShareDelete,
+    PluginShareUpdateTargets,
     PluginInstall,
     PluginUninstall,
     MarketplaceAdd,
     MarketplaceRemove,
     MarketplaceUpgrade,
     SkillsList,
+    SkillsExtraRootsSet,
     SkillConfigWrite,
     ExternalAgentConfigDetect,
     ExternalAgentConfigImport,
+    ExternalAgentConfigImportReadHistories,
+    ExternalAgentConfigImportRecordHistory,
     HooksList,
     AppsList,
+    AppsInstalled,
+    AppRead,
 }
 
 /// Write-only actions accepted by the approved mutation workflow.
@@ -50,54 +67,100 @@ pub enum MutationAction {
     ConfigBatchWrite,
     McpServerReload,
     McpServerOauthLogin,
+    McpServerToolCall,
+    McpServerEventStreamStart,
+    McpServerEventStreamStop,
     PluginInstall,
     PluginUninstall,
+    PluginShareCheckout,
+    PluginShareSave,
+    PluginShareDelete,
+    PluginShareUpdateTargets,
     MarketplaceAdd,
     MarketplaceRemove,
     MarketplaceUpgrade,
     SkillConfigWrite,
+    SkillsExtraRootsSet,
     ExternalAgentConfigImport,
+    ExternalAgentConfigImportRecordHistory,
 }
 
 impl MutationAction {
+    pub const ALL: [Self; 23] = [
+        Self::AccountLoginStart,
+        Self::AccountLoginCancel,
+        Self::AccountLogout,
+        Self::ConfigValueWrite,
+        Self::ConfigBatchWrite,
+        Self::McpServerReload,
+        Self::McpServerOauthLogin,
+        Self::McpServerToolCall,
+        Self::McpServerEventStreamStart,
+        Self::McpServerEventStreamStop,
+        Self::PluginInstall,
+        Self::PluginUninstall,
+        Self::PluginShareCheckout,
+        Self::PluginShareSave,
+        Self::PluginShareDelete,
+        Self::PluginShareUpdateTargets,
+        Self::MarketplaceAdd,
+        Self::MarketplaceRemove,
+        Self::MarketplaceUpgrade,
+        Self::SkillConfigWrite,
+        Self::SkillsExtraRootsSet,
+        Self::ExternalAgentConfigImport,
+        Self::ExternalAgentConfigImportRecordHistory,
+    ];
+
     pub const fn method(self) -> &'static str {
+        self.control_action().method()
+    }
+
+    pub const fn control_action(self) -> ControlAction {
         match self {
-            Self::AccountLoginStart => "account/login/start",
-            Self::AccountLoginCancel => "account/login/cancel",
-            Self::AccountLogout => "account/logout",
-            Self::ConfigValueWrite => "config/value/write",
-            Self::ConfigBatchWrite => "config/batchWrite",
-            Self::McpServerReload => "config/mcpServer/reload",
-            Self::McpServerOauthLogin => "mcpServer/oauth/login",
-            Self::PluginInstall => "plugin/install",
-            Self::PluginUninstall => "plugin/uninstall",
-            Self::MarketplaceAdd => "marketplace/add",
-            Self::MarketplaceRemove => "marketplace/remove",
-            Self::MarketplaceUpgrade => "marketplace/upgrade",
-            Self::SkillConfigWrite => "skills/config/write",
-            Self::ExternalAgentConfigImport => "externalAgentConfig/import",
+            Self::AccountLoginStart => ControlAction::AccountLoginStart,
+            Self::AccountLoginCancel => ControlAction::AccountLoginCancel,
+            Self::AccountLogout => ControlAction::AccountLogout,
+            Self::ConfigValueWrite => ControlAction::ConfigValueWrite,
+            Self::ConfigBatchWrite => ControlAction::ConfigBatchWrite,
+            Self::McpServerReload => ControlAction::McpServerReload,
+            Self::McpServerOauthLogin => ControlAction::McpServerOauthLogin,
+            Self::McpServerToolCall => ControlAction::McpServerToolCall,
+            Self::McpServerEventStreamStart => ControlAction::McpServerEventStreamStart,
+            Self::McpServerEventStreamStop => ControlAction::McpServerEventStreamStop,
+            Self::PluginInstall => ControlAction::PluginInstall,
+            Self::PluginUninstall => ControlAction::PluginUninstall,
+            Self::PluginShareCheckout => ControlAction::PluginShareCheckout,
+            Self::PluginShareSave => ControlAction::PluginShareSave,
+            Self::PluginShareDelete => ControlAction::PluginShareDelete,
+            Self::PluginShareUpdateTargets => ControlAction::PluginShareUpdateTargets,
+            Self::MarketplaceAdd => ControlAction::MarketplaceAdd,
+            Self::MarketplaceRemove => ControlAction::MarketplaceRemove,
+            Self::MarketplaceUpgrade => ControlAction::MarketplaceUpgrade,
+            Self::SkillConfigWrite => ControlAction::SkillConfigWrite,
+            Self::SkillsExtraRootsSet => ControlAction::SkillsExtraRootsSet,
+            Self::ExternalAgentConfigImport => ControlAction::ExternalAgentConfigImport,
+            Self::ExternalAgentConfigImportRecordHistory => {
+                ControlAction::ExternalAgentConfigImportRecordHistory
+            }
         }
+    }
+}
+
+impl TryFrom<&str> for MutationAction {
+    type Error = String;
+
+    fn try_from(method: &str) -> Result<Self, Self::Error> {
+        Self::ALL
+            .into_iter()
+            .find(|action| action.method() == method)
+            .ok_or_else(|| format!("unsupported Codex control mutation: {method}"))
     }
 }
 
 impl From<MutationAction> for ControlAction {
     fn from(action: MutationAction) -> Self {
-        match action {
-            MutationAction::AccountLoginStart => Self::AccountLoginStart,
-            MutationAction::AccountLoginCancel => Self::AccountLoginCancel,
-            MutationAction::AccountLogout => Self::AccountLogout,
-            MutationAction::ConfigValueWrite => Self::ConfigValueWrite,
-            MutationAction::ConfigBatchWrite => Self::ConfigBatchWrite,
-            MutationAction::McpServerReload => Self::McpServerReload,
-            MutationAction::McpServerOauthLogin => Self::McpServerOauthLogin,
-            MutationAction::PluginInstall => Self::PluginInstall,
-            MutationAction::PluginUninstall => Self::PluginUninstall,
-            MutationAction::MarketplaceAdd => Self::MarketplaceAdd,
-            MutationAction::MarketplaceRemove => Self::MarketplaceRemove,
-            MutationAction::MarketplaceUpgrade => Self::MarketplaceUpgrade,
-            MutationAction::SkillConfigWrite => Self::SkillConfigWrite,
-            MutationAction::ExternalAgentConfigImport => Self::ExternalAgentConfigImport,
-        }
+        action.control_action()
     }
 }
 
@@ -115,21 +178,42 @@ impl ControlAction {
             Self::ConfigValueWrite => "config/value/write",
             Self::ConfigBatchWrite => "config/batchWrite",
             Self::McpServersList => "mcpServerStatus/list",
+            Self::McpServerResourceRead => "mcpServer/resource/read",
+            Self::McpServerToolCall => "mcpServer/tool/call",
+            Self::McpServerEventStreamStart => "mcpServer/event/stream/start",
+            Self::McpServerEventStreamStop => "mcpServer/event/stream/stop",
             Self::McpServerReload => "config/mcpServer/reload",
             Self::McpServerOauthLogin => "mcpServer/oauth/login",
             Self::PluginsList => "plugin/list",
+            Self::PluginsInstalled => "plugin/installed",
+            Self::PluginSearch => "plugin/search",
             Self::PluginRead => "plugin/read",
+            Self::PluginSkillRead => "plugin/skill/read",
+            Self::PluginShareList => "plugin/share/list",
+            Self::PluginShareCheckout => "plugin/share/checkout",
+            Self::PluginShareSave => "plugin/share/save",
+            Self::PluginShareDelete => "plugin/share/delete",
+            Self::PluginShareUpdateTargets => "plugin/share/updateTargets",
             Self::PluginInstall => "plugin/install",
             Self::PluginUninstall => "plugin/uninstall",
             Self::MarketplaceAdd => "marketplace/add",
             Self::MarketplaceRemove => "marketplace/remove",
             Self::MarketplaceUpgrade => "marketplace/upgrade",
             Self::SkillsList => "skills/list",
+            Self::SkillsExtraRootsSet => "skills/extraRoots/set",
             Self::SkillConfigWrite => "skills/config/write",
             Self::ExternalAgentConfigDetect => "externalAgentConfig/detect",
             Self::ExternalAgentConfigImport => "externalAgentConfig/import",
+            Self::ExternalAgentConfigImportReadHistories => {
+                "externalAgentConfig/import/readHistories"
+            }
+            Self::ExternalAgentConfigImportRecordHistory => {
+                "externalAgentConfig/import/recordHistory"
+            }
             Self::HooksList => "hooks/list",
             Self::AppsList => "app/list",
+            Self::AppsInstalled => "app/installed",
+            Self::AppRead => "app/read",
         }
     }
 
@@ -142,12 +226,20 @@ impl ControlAction {
                 | Self::ModelProviderCapabilitiesRead
                 | Self::ConfigRead
                 | Self::McpServersList
+                | Self::McpServerResourceRead
                 | Self::PluginsList
+                | Self::PluginsInstalled
+                | Self::PluginSearch
                 | Self::PluginRead
+                | Self::PluginSkillRead
+                | Self::PluginShareList
                 | Self::SkillsList
                 | Self::ExternalAgentConfigDetect
+                | Self::ExternalAgentConfigImportReadHistories
                 | Self::HooksList
                 | Self::AppsList
+                | Self::AppsInstalled
+                | Self::AppRead
         )
     }
 }
@@ -158,20 +250,6 @@ pub struct AccountSummary {
     pub account_type: Option<String>,
     pub email_hint: Option<String>,
     pub plan: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ConfigSnapshot {
-    pub revision: String,
-    pub persisted: Value,
-    pub active: Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ConfigWrite {
-    pub key_path: String,
-    pub value: Value,
-    pub expected_revision: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -205,14 +283,23 @@ impl WritePolicy {
             | ControlAction::AccountLoginCancel
             | ControlAction::AccountLogout => self.account,
             ControlAction::ConfigValueWrite | ControlAction::ConfigBatchWrite => self.config,
-            ControlAction::McpServerReload | ControlAction::McpServerOauthLogin => self.mcp,
+            ControlAction::McpServerReload
+            | ControlAction::McpServerOauthLogin
+            | ControlAction::McpServerToolCall
+            | ControlAction::McpServerEventStreamStart
+            | ControlAction::McpServerEventStreamStop => self.mcp,
             ControlAction::PluginInstall
             | ControlAction::PluginUninstall
+            | ControlAction::PluginShareCheckout
+            | ControlAction::PluginShareSave
+            | ControlAction::PluginShareDelete
+            | ControlAction::PluginShareUpdateTargets
             | ControlAction::MarketplaceAdd
             | ControlAction::MarketplaceRemove
             | ControlAction::MarketplaceUpgrade => self.plugins,
-            ControlAction::SkillConfigWrite => self.skills,
-            ControlAction::ExternalAgentConfigImport => self.imports,
+            ControlAction::SkillConfigWrite | ControlAction::SkillsExtraRootsSet => self.skills,
+            ControlAction::ExternalAgentConfigImport
+            | ControlAction::ExternalAgentConfigImportRecordHistory => self.imports,
             _ => false,
         };
         allowed
@@ -230,28 +317,78 @@ pub fn validate_mutation_params(action: &ControlAction, params: &Value) -> Resul
         return Err("Codex mutation parameters must be a JSON object".to_string());
     }
     reject_plaintext_secrets(params)?;
-    if matches!(
-        action,
-        ControlAction::PluginInstall
-            | ControlAction::MarketplaceAdd
-            | ControlAction::ExternalAgentConfigImport
-    ) {
-        let source = params
-            .get("source")
-            .and_then(Value::as_str)
-            .ok_or("artifact mutation requires a pinned HTTPS source")?;
-        if !source.starts_with("https://") {
-            return Err(
-                "artifact sources must use HTTPS; local and file sources are disabled".to_string(),
-            );
+    if matches!(action, ControlAction::ConfigValueWrite) {
+        validate_config_edit(params)?;
+    }
+    if matches!(action, ControlAction::ConfigBatchWrite) {
+        let edits = params
+            .get("edits")
+            .and_then(Value::as_array)
+            .ok_or("config batch requires an edits array")?;
+        if edits.is_empty() {
+            return Err("config batch requires at least one edit".to_string());
         }
-        let digest = params
-            .get("sha256")
-            .and_then(Value::as_str)
-            .ok_or("artifact source requires an immutable sha256 digest")?;
-        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err("artifact sha256 must be exactly 64 hexadecimal characters".to_string());
+        for edit in edits {
+            validate_config_edit(edit)?;
         }
+    }
+    if matches!(action, ControlAction::MarketplaceAdd) {
+        validate_public_source(
+            params
+                .get("source")
+                .and_then(Value::as_str)
+                .ok_or("marketplace source missing")?,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_config_edit(edit: &Value) -> Result<(), String> {
+    let key_path = edit
+        .get("keyPath")
+        .and_then(Value::as_str)
+        .ok_or("config edit keyPath missing")?;
+    let strategy = edit
+        .get("mergeStrategy")
+        .and_then(Value::as_str)
+        .ok_or("config edit mergeStrategy missing")?;
+    if !matches!(strategy, "replace" | "upsert") {
+        return Err("config edit mergeStrategy must be replace or upsert".to_string());
+    }
+    let value = edit.get("value").ok_or("config edit value missing")?;
+    let normalized = key_path.to_ascii_lowercase().replace('-', "_");
+    let secret_target = [
+        "api_key",
+        "token",
+        "secret",
+        "password",
+        "authorization",
+        "cookie",
+        "private_key",
+        "access_key",
+        "credential",
+    ]
+    .iter()
+    .any(|needle| normalized.split('.').any(|part| part.contains(needle)));
+    if secret_target && !value.as_str().is_some_and(|text| text.starts_with("env:")) {
+        return Err(format!("{key_path} must use an env: secret reference"));
+    }
+    Ok(())
+}
+
+fn validate_public_source(source: &str) -> Result<(), String> {
+    let Some(remainder) = source.strip_prefix("https://") else {
+        return Err("marketplace source must use HTTPS".to_string());
+    };
+    let authority = remainder.split('/').next().unwrap_or_default();
+    if authority.is_empty()
+        || authority.contains('@')
+        || source.contains('?')
+        || source.contains('#')
+    {
+        return Err(
+            "marketplace source must not contain credentials or a query string".to_string(),
+        );
     }
     Ok(())
 }

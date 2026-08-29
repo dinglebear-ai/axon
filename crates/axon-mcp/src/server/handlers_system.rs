@@ -367,6 +367,7 @@ fn help_payload() -> Value {
             "extract": ["start"],
             "artifacts": ["list", "get", "content"],
             "chat": ["chat"],
+            "codex": ["snapshot", "resource", "events", "operations", "prepare", "approve", "execute", "reconcile", "respond"],
             "jobs": ["list", "get", "status", "events", "stream", "cancel", "retry", "recover", "cleanup", "clear"],
             "memory": ["remember", "list", "search", "show", "link", "supersede", "context", "reinforce", "contradict", "pin", "archive", "forget", "review", "compact", "import", "export"],
             "query": ["query"],

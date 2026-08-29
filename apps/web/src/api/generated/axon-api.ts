@@ -216,6 +216,10 @@ export type components = {
             "skills": unknown;
             "status": components['schemas']['ControlStatus'];
         };
+        "CodexReadBody": {
+            "action": components['schemas']['ControlAction'];
+            "params"?: unknown;
+        };
         "CodexResourceResponse": {
             "resource": string;
             "value": unknown;
@@ -236,6 +240,7 @@ export type components = {
             "kind": "external";
             "uri": string;
         };
+        "ControlAction": "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "models_list" | "model_provider_capabilities_read" | "config_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_resource_read" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skills_extra_roots_set" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "external_agent_config_import_read_histories" | "external_agent_config_import_record_history" | "hooks_list" | "apps_list" | "apps_installed" | "app_read";
         "ControlOperation": {
             "actor": string;
             "approver"?: string | null;
@@ -801,7 +806,7 @@ export type components = {
             "turn_count": number;
             "updated_at": number;
         };
-        "MutationAction": "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "external_agent_config_import";
+        "MutationAction": "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "plugin_install" | "plugin_uninstall" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "skills_extra_roots_set" | "external_agent_config_import" | "external_agent_config_import_record_history";
         "OperationPhase": "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         "OutputPolicy": {
             "artifact_mode": components['schemas']['ArtifactMode'];
@@ -1337,6 +1342,7 @@ export type components = {
         "ServerRequestResponseBody": {
             "approved": boolean;
             "boot_id": number;
+            "response"?: unknown;
         };
         "ServiceRetrieveVariantError": {
             "error": string;
@@ -1690,8 +1696,10 @@ export type paths = {
     "/v1/codex/events": { get: operations["events_openapi_marker"] };
     "/v1/codex/operations": { get: operations["list_operations_openapi_marker"]; post: operations["create_operation_openapi_marker"] };
     "/v1/codex/operations/{id}/approve": { post: operations["approve_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/cancel": { post: operations["cancel_operation_openapi_marker"] };
     "/v1/codex/operations/{id}/execute": { post: operations["execute_operation_openapi_marker"] };
     "/v1/codex/operations/{id}/reconcile": { post: operations["reconcile_operation_openapi_marker"] };
+    "/v1/codex/read": { post: operations["read_action_openapi_marker"] };
     "/v1/codex/server-requests/{id}/respond": { post: operations["respond_to_server_request_openapi_marker"] };
     "/v1/codex/{resource}": { get: operations["resource_openapi_marker"] };
     "/v1/collections": { get: operations["collections_openapi_marker"] };
@@ -1790,8 +1798,10 @@ export type operations = {
     "list_operations_openapi_marker": { method: "get"; path: "/v1/codex/operations"; operationId: "list_operations_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['ControlOperation'][]; "502": components['schemas']['ErrorBody'] }; security: never };
     "create_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations"; operationId: "create_operation_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CreateOperationBody']; responses: { "200": components['schemas']['ControlOperation']; "400": components['schemas']['ErrorBody'] }; security: never };
     "approve_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/approve"; operationId: "approve_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ApproveOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
+    "cancel_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/cancel"; operationId: "cancel_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
     "execute_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/execute"; operationId: "execute_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ExecuteBody']; responses: { "200": components['schemas']['ExecuteOperationResponse']; "502": components['schemas']['ErrorBody'] }; security: never };
     "reconcile_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/reconcile"; operationId: "reconcile_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
+    "read_action_openapi_marker": { method: "post"; path: "/v1/codex/read"; operationId: "read_action_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CodexReadBody']; responses: { "200": components['schemas']['CodexResourceResponse']; "400": components['schemas']['ErrorBody'] }; security: never };
     "respond_to_server_request_openapi_marker": { method: "post"; path: "/v1/codex/server-requests/{id}/respond"; operationId: "respond_to_server_request_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ServerRequestResponseBody']; responses: { "200": components['schemas']['ServerRequestRespondedResponse']; "502": components['schemas']['ErrorBody'] }; security: never };
     "resource_openapi_marker": { method: "get"; path: "/v1/codex/{resource}"; operationId: "resource_openapi_marker"; parameters: { query: Record<string, never>; path: { "resource": string } }; requestBody: never; responses: { "200": components['schemas']['CodexResourceResponse']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: never };
     "collections_openapi_marker": { method: "get"; path: "/v1/collections"; operationId: "collections_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['PanelCollectionsResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

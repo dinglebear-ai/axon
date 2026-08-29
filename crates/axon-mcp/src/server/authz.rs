@@ -44,6 +44,12 @@ pub(super) struct McpActionSpec {
 
 pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
+        name: "codex",
+        scope: ActionScope::Admin,
+        description: "Inspect and operate the approval-gated Codex app-server control plane",
+        cost: "write",
+    },
+    McpActionSpec {
         name: "scrape",
         scope: ActionScope::Write,
         description: "Project one or more page acquisitions onto the canonical source pipeline",

@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 
 pub const MAX_EVENT_HISTORY: usize = 512;
 const MAX_EVENT_STRING: usize = 4096;
+const MAX_EVENT_PAYLOAD_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EventCursor {
@@ -118,7 +119,7 @@ fn sanitize_event(event: EventKind) -> EventKind {
     match event {
         EventKind::Notification { method, params } => EventKind::Notification {
             method,
-            params: sanitize_value(params),
+            params: sanitize_event_payload(params),
         },
         EventKind::ServerRequest {
             request_id,
@@ -127,7 +128,7 @@ fn sanitize_event(event: EventKind) -> EventKind {
         } => EventKind::ServerRequest {
             request_id,
             method,
-            params: sanitize_value(params),
+            params: sanitize_event_payload(params),
         },
         EventKind::ProtocolFailure { detail } => EventKind::ProtocolFailure {
             detail: truncate(detail),
@@ -136,11 +137,21 @@ fn sanitize_event(event: EventKind) -> EventKind {
     }
 }
 
+fn sanitize_event_payload(value: Value) -> Value {
+    let sanitized = sanitize_value(value);
+    if serde_json::to_vec(&sanitized).is_ok_and(|bytes| bytes.len() <= MAX_EVENT_PAYLOAD_BYTES) {
+        sanitized
+    } else {
+        serde_json::json!({"truncated": true, "reason": "event payload exceeded 64 KiB"})
+    }
+}
+
 pub fn sanitize_value(value: Value) -> Value {
     match value {
         Value::Object(values) => Value::Object(
             values
                 .into_iter()
+                .take(100)
                 .map(|(key, value)| {
                     let lowered = key.to_ascii_lowercase();
                     let secret = ["token", "secret", "password", "authorization", "cookie"]

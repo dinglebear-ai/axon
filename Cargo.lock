@@ -961,7 +961,6 @@ dependencies = [
  "async-trait",
  "axon-api",
  "axon-authz",
- "axon-codex",
  "axon-core",
  "axon-error",
  "axon-jobs",

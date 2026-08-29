@@ -124,9 +124,11 @@ use super::{handlers, routing};
         handlers::codex_control::snapshot_openapi_marker,
         handlers::codex_control::events_openapi_marker,
         handlers::codex_control::resource_openapi_marker,
+        handlers::codex_control::read_action_openapi_marker,
         handlers::codex_control::list_operations_openapi_marker,
         handlers::codex_control::create_operation_openapi_marker,
         handlers::codex_control::approve_operation_openapi_marker,
+        handlers::codex_control::cancel_operation_openapi_marker,
         handlers::codex_control::execute_operation_openapi_marker,
         handlers::codex_control::respond_to_server_request_openapi_marker,
         handlers::codex_control::reconcile_operation_openapi_marker

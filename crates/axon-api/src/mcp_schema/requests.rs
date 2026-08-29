@@ -5,6 +5,38 @@ use crate::source::{
     Timestamp, Visibility, WatchId,
 };
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexSubaction {
+    Snapshot,
+    Resource,
+    Events,
+    Operations,
+    Prepare,
+    Approve,
+    Execute,
+    Reconcile,
+    Respond,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CodexRequest {
+    pub subaction: CodexSubaction,
+    pub resource: Option<String>,
+    pub params: Option<serde_json::Value>,
+    pub mutation_action: Option<String>,
+    pub operation_id: Option<i64>,
+    pub idempotency_key: Option<String>,
+    pub capability: Option<String>,
+    pub boot_id: Option<u64>,
+    pub request_id: Option<u64>,
+    pub approved: Option<bool>,
+    pub cursor_boot_id: Option<u64>,
+    pub after_sequence: Option<u64>,
+    pub limit: Option<usize>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseMode {

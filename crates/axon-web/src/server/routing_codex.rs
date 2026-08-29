@@ -13,6 +13,7 @@ pub(super) fn read_routes() -> Router<ServeState> {
     Router::new()
         .route("/v1/codex", get(handlers::codex_control::snapshot))
         .route("/v1/codex/events", get(handlers::codex_control::events))
+        .route("/v1/codex/read", post(handlers::codex_control::read_action))
         .route(
             "/v1/codex/{resource}",
             get(handlers::codex_control::resource),
@@ -29,6 +30,10 @@ pub(super) fn admin_routes() -> Router<ServeState> {
         .route(
             "/v1/codex/operations/{id}/approve",
             post(handlers::codex_control::approve_operation),
+        )
+        .route(
+            "/v1/codex/operations/{id}/cancel",
+            post(handlers::codex_control::cancel_operation),
         )
         .route(
             "/v1/codex/operations/{id}/execute",

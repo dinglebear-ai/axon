@@ -107,10 +107,29 @@ export function useCodexControl(client: Client | null, active: boolean) {
     );
   }, []);
   useEffect(() => {
-    if (active) void refresh();
+    generation.current += 1;
+    cursor.current = undefined;
+    setSnapshot(null);
+    setEvents([]);
+    setOperations([]);
+    setError(null);
+    if (!active || !client) return;
+    let polling = false;
+    const poll = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        await refresh();
+      } finally {
+        polling = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1_500);
     return () => {
+      window.clearInterval(timer);
       generation.current += 1;
     };
-  }, [active, refresh]);
+  }, [active, client, refresh]);
   return { snapshot, events, operations, error, loading, refresh, dismissEvent };
 }

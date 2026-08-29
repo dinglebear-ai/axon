@@ -91,32 +91,25 @@ describe("config mutation inputs", () => {
   it("builds a genuine multi-write config batch from an array", () => {
     expect(
       buildConfigBatchMutation(
-        '[{"keyPath":"model","value":"gpt-test"},{"keyPath":["features","fast"],"value":true}]',
+        '[{"keyPath":"model","mergeStrategy":"upsert","value":"gpt-test"},{"keyPath":"features.fast","mergeStrategy":"replace","value":true}]',
       ),
     ).toEqual({
       edits: [
-        { keyPath: "model", value: "gpt-test" },
-        { keyPath: ["features", "fast"], value: true },
+        { keyPath: "model", mergeStrategy: "upsert", value: "gpt-test" },
+        { keyPath: "features.fast", mergeStrategy: "replace", value: true },
       ],
     });
   });
 
-  it("accepts the backend batch object aliases and validates every write", () => {
-    expect(
-      buildConfigBatchMutation(
-        '{"writes":[{"keyPath":"model","value":null},{"key_path":"approval","value":"ask"}]}',
-      ),
-    ).toEqual({
-      writes: [
-        { keyPath: "model", value: null },
-        { key_path: "approval", value: "ask" },
-      ],
-    });
-    expect(() => buildConfigBatchMutation('[{"keyPath":"model","value":"only-one"}]')).toThrow(
-      "at least two writes",
-    );
+  it("requires the native edits shape and validates every write", () => {
+    expect(() => buildConfigBatchMutation('{"writes":[]}')).toThrow("edits array");
     expect(() =>
-      buildConfigBatchMutation('[{"keyPath":"model","value":"ok"},{"keyPath":"","value":false}]'),
+      buildConfigBatchMutation('[{"keyPath":"model","mergeStrategy":"upsert","value":"only-one"}]'),
+    ).toThrow("at least two writes");
+    expect(() =>
+      buildConfigBatchMutation(
+        '[{"keyPath":"model","mergeStrategy":"upsert","value":"ok"},{"keyPath":"","mergeStrategy":"replace","value":false}]',
+      ),
     ).toThrow("non-empty keyPath");
   });
 });
@@ -134,6 +127,7 @@ describe("MCP config mutations", () => {
       }),
     ).toEqual({
       keyPath: "mcp_servers.local",
+      mergeStrategy: "upsert",
       value: { command: "node", args: ["server.js", "--stdio"], env: { TOKEN: "env:MY_TOKEN" } },
     });
   });
@@ -150,6 +144,7 @@ describe("MCP config mutations", () => {
       }),
     ).toEqual({
       keyPath: "mcp_servers.remote",
+      mergeStrategy: "upsert",
       value: { url: "https://mcp.example.test" },
     });
     expect(
@@ -163,6 +158,7 @@ describe("MCP config mutations", () => {
       }),
     ).toEqual({
       keyPath: "mcp_servers.remote",
+      mergeStrategy: "replace",
       value: null,
     });
   });
@@ -180,6 +176,7 @@ describe("MCP config mutations", () => {
       action: "config_value_write",
       params: {
         keyPath: "mcp_servers.recovered",
+        mergeStrategy: "upsert",
         value: {
           command: "codex",
           args: ["mcp", "serve"],

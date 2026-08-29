@@ -62,13 +62,31 @@ fn server_request_claim_is_concurrency_safe_and_write_failure_is_retryable() {
         },
     )]);
 
-    claim_server_request(&mut registry, 77, true).unwrap();
+    claim_server_request(&mut registry, 77).unwrap();
     assert_eq!(
-        claim_server_request(&mut registry, 77, true).unwrap_err(),
+        claim_server_request(&mut registry, 77).unwrap_err(),
         "server request response is already in progress"
     );
     finish_server_request(&mut registry, 77, false);
-    claim_server_request(&mut registry, 77, true).unwrap();
+    claim_server_request(&mut registry, 77).unwrap();
     finish_server_request(&mut registry, 77, true);
     assert!(!registry.contains_key(&77));
+}
+
+#[test]
+fn typed_server_request_results_are_method_correct() {
+    assert_eq!(
+        server_request_result("item/tool/requestUserInput", false, None).unwrap(),
+        json!({"answers": {}})
+    );
+    assert!(server_request_result("item/tool/requestUserInput", true, None).is_err());
+    assert_eq!(
+        server_request_result(
+            "mcpServer/elicitation/request",
+            true,
+            Some(json!({"action":"accept","content":{"name":"value"}})),
+        )
+        .unwrap(),
+        json!({"action":"accept","content":{"name":"value"}})
+    );
 }

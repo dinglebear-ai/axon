@@ -1,5 +1,5 @@
 import { Bot, RefreshCw, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/aurora/button";
 import type { Client } from "@/lib/axonClient";
 import {
@@ -10,13 +10,16 @@ import {
   type CodexMutation,
   type CodexOperation,
   type CodexResource,
+  cancelCodexOperation,
   executeCodexOperation,
   parseConfigValue,
   prepareCodexOperation,
+  readCodexAction,
   reconcileCodexOperation,
   respondToCodexServerRequest,
 } from "@/lib/codexControl";
 import { useCodexControl } from "@/lib/useCodexControl";
+import { CodexMutationEditor } from "./CodexMutationEditor";
 
 const resources: CodexResource[] = [
   "account",
@@ -28,7 +31,20 @@ const resources: CodexResource[] = [
   "hooks",
   "apps",
 ];
-type MutationKind = keyof typeof CODEX_MUTATIONS | "mcpConfig";
+export type MutationKind = keyof typeof CODEX_MUTATIONS | "mcpConfig";
+type ReadAction = Parameters<typeof readCodexAction>[1];
+const advancedReads: ReadonlyArray<{ label: string; action: ReadAction }> = [
+  { label: "MCP resource", action: "mcp_server_resource_read" },
+  { label: "Installed plugins", action: "plugins_installed" },
+  { label: "Search plugins", action: "plugin_search" },
+  { label: "Plugin detail", action: "plugin_read" },
+  { label: "Plugin skill", action: "plugin_skill_read" },
+  { label: "Plugin shares", action: "plugin_share_list" },
+  { label: "External config detection", action: "external_agent_config_detect" },
+  { label: "External import histories", action: "external_agent_config_import_read_histories" },
+  { label: "Installed apps", action: "apps_installed" },
+  { label: "App detail", action: "app_read" },
+];
 
 export function CodexControlView({
   client,
@@ -42,6 +58,9 @@ export function CodexControlView({
     true,
   );
   const [resource, setResource] = useState<CodexResource>("account");
+  const [readAction, setReadAction] = useState<ReadAction>(advancedReads[0].action);
+  const [readParams, setReadParams] = useState("{}");
+  const [readResult, setReadResult] = useState<unknown>(null);
   const [kind, setKind] = useState<MutationKind>("pluginInstall");
   const [target, setTarget] = useState("");
   const [value, setValue] = useState("");
@@ -56,6 +75,8 @@ export function CodexControlView({
   const [capability, setCapability] = useState("");
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [respondingRequest, setRespondingRequest] = useState<number | null>(null);
+  const [serverResponses, setServerResponses] = useState<Record<number, string>>({});
   const mutationState = useMemo<{ mutation: CodexMutation | null; error: string | null }>(() => {
     try {
       const params =
@@ -92,17 +113,26 @@ export function CodexControlView({
     mcpEnv,
     mcpRemove,
   ]);
+  const revisionRef = useRef(inputRevision);
+  revisionRef.current = inputRevision;
   useEffect(() => {
     if (!inputRevision) return;
     setOperation(null);
     setCapability("");
   }, [inputRevision]);
+  useEffect(() => {
+    setOperation(null);
+    setCapability("");
+  }, [client]);
   const pendingRequests = events.filter((event) => event.event.kind === "server_request");
 
   async function prepare() {
     if (!client || !mutation) return;
+    const preparedRevision = inputRevision;
     await run(async () => {
-      setOperation(await prepareCodexOperation(client, mutation));
+      const prepared = await prepareCodexOperation(client, mutation);
+      if (revisionRef.current !== preparedRevision) return;
+      setOperation(prepared);
       setCapability("");
     });
   }
@@ -168,26 +198,31 @@ export function CodexControlView({
             <article key={`${event.cursor.boot_id}:${event.event.request_id}`}>
               <strong>{event.event.method}</strong>
               <pre>{JSON.stringify(event.event.params, null, 2)}</pre>
+              {requiresTypedResponse(event.event.method) && event.event.request_id != null && (
+                <label>
+                  Typed response (JSON)
+                  <textarea
+                    value={serverResponses[event.event.request_id] ?? ""}
+                    onChange={(change) =>
+                      setServerResponses((previous) => ({
+                        ...previous,
+                        [event.event.request_id!]: change.target.value,
+                      }))
+                    }
+                    placeholder={typedResponsePlaceholder(event.event.method)}
+                  />
+                </label>
+              )}
               <div className="codex-control-actions">
                 <Button
-                  disabled={busy || !client}
-                  onClick={() =>
-                    void run(async () => {
-                      if (client) await respondToCodexServerRequest(client, event, false);
-                      dismissEvent(event);
-                    })
-                  }
+                  disabled={respondingRequest === event.event.request_id || !client}
+                  onClick={() => void respond(event, false)}
                 >
                   Deny
                 </Button>
                 <Button
-                  disabled={busy || !client}
-                  onClick={() =>
-                    void run(async () => {
-                      if (client) await respondToCodexServerRequest(client, event, true);
-                      dismissEvent(event);
-                    })
-                  }
+                  disabled={respondingRequest === event.event.request_id || !client}
+                  onClick={() => void respond(event, true)}
                 >
                   Approve
                 </Button>
@@ -205,6 +240,26 @@ export function CodexControlView({
                 #{item.id} {item.phase}
               </strong>
               <code>{item.request_digest}</code>
+              <p>{item.method}</p>
+              <p>
+                Actor: {item.actor} · Scope: {item.scope}
+              </p>
+              {item.approver && <p>Approver: {item.approver}</p>}
+              {item.recovery_state && <p>Recovery: {item.recovery_state}</p>}
+              <pre>{JSON.stringify(item.redacted_request, null, 2)}</pre>
+              {["pending", "approved"].includes(item.phase) && (
+                <Button
+                  disabled={busy || !client}
+                  onClick={() =>
+                    void run(async () => {
+                      if (client) await cancelCodexOperation(client, item.id);
+                      await refresh();
+                    })
+                  }
+                >
+                  Cancel operation
+                </Button>
+              )}
               {["ambiguous", "recovery_required", "rollback_required"].includes(item.phase) && (
                 <Button
                   disabled={busy || !client}
@@ -239,147 +294,107 @@ export function CodexControlView({
         <pre>{JSON.stringify(snapshot?.[resource] ?? null, null, 2)}</pre>
       </section>
       <section className="codex-mutation">
-        <h3>Approved change</h3>
-        <p>
-          Prepare the exact request, approve its digest, then execute the single-use capability.
-        </p>
+        <h3>Detailed resources</h3>
         <label>
-          Workflow
-          <select value={kind} onChange={(event) => setKind(event.target.value as MutationKind)}>
-            <option value="accountLogin">Start account login</option>
-            <option value="accountLoginCancel">Cancel account login</option>
-            <option value="accountLogout">Log out account</option>
-            <option value="config">Write config value</option>
-            <option value="mcpConfig">Add, edit, or remove MCP definition</option>
-            <option value="configBatch">Write config batch</option>
-            <option value="mcpReload">Reload MCP servers</option>
-            <option value="mcpOauth">Start MCP OAuth</option>
-            <option value="pluginInstall">Install plugin</option>
-            <option value="pluginUninstall">Uninstall plugin</option>
-            <option value="marketplaceAdd">Add marketplace</option>
-            <option value="marketplaceRemove">Remove marketplace</option>
-            <option value="marketplaceUpgrade">Upgrade marketplace</option>
-            <option value="skillConfig">Enable, disable, or configure skill</option>
-            <option value="skillImport">Import standalone skill or agent config</option>
+          Read action
+          <select
+            value={readAction}
+            onChange={(event) => setReadAction(event.target.value as ReadAction)}
+          >
+            {advancedReads.map((item) => (
+              <option key={item.action} value={item.action}>
+                {item.label}
+              </option>
+            ))}
           </select>
         </label>
-        {kind !== "configBatch" && (
-          <label>
-            Target
-            <input
-              value={target}
-              onChange={(event) => setTarget(event.target.value)}
-              placeholder="Config key, MCP server, plugin, marketplace, or skill"
-            />
-          </label>
-        )}
-        {kind === "mcpConfig" ? (
-          <>
-            <label>
-              Command
-              <input
-                value={mcpCommand}
-                onChange={(event) => setMcpCommand(event.target.value)}
-                placeholder="Executable only"
-                disabled={mcpRemove}
-              />
-            </label>
-            <label>
-              Arguments (JSON array)
-              <input
-                value={mcpArgs}
-                onChange={(event) => setMcpArgs(event.target.value)}
-                disabled={mcpRemove}
-              />
-            </label>
-            <label>
-              HTTPS URL
-              <input
-                value={mcpUrl}
-                onChange={(event) => setMcpUrl(event.target.value)}
-                placeholder="https://…"
-                disabled={mcpRemove}
-              />
-            </label>
-            <label>
-              Environment secret references
-              <textarea
-                value={mcpEnv}
-                onChange={(event) => setMcpEnv(event.target.value)}
-                placeholder="TOKEN=env:MY_TOKEN"
-                disabled={mcpRemove}
-              />
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={mcpRemove}
-                onChange={(event) => setMcpRemove(event.target.checked)}
-              />{" "}
-              Remove this MCP definition
-            </label>
-          </>
-        ) : kind === "configBatch" ? (
-          <label>
-            Batch writes (JSON array or object)
-            <textarea
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder={
-                '[{"keyPath":"model","value":"gpt-5"},{"keyPath":"approval_policy","value":"on-request"}]'
-              }
-            />
-          </label>
-        ) : (
-          <label>
-            {kind === "config" ? "Value (JSON)" : "Value"}
-            <input
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder="Value, enabled state, or OAuth provider"
-            />
-          </label>
-        )}
-        {mutationState.error && (
-          <p className="settings-error" role="alert">
-            {mutationState.error}
-          </p>
-        )}
-        {(kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport") && (
-          <>
-            <label>
-              Pinned HTTPS source
-              <input
-                value={source}
-                onChange={(event) => setSource(event.target.value)}
-                placeholder="https://…"
-              />
-            </label>
-            <label>
-              SHA-256 digest
-              <input
-                value={sha256}
-                onChange={(event) => setSha256(event.target.value)}
-                maxLength={64}
-              />
-            </label>
-          </>
-        )}
-        <div className="codex-control-actions">
-          <Button disabled={busy || !mutation || !client} onClick={() => void prepare()}>
-            1 Prepare
-          </Button>
-          <Button disabled={busy || !operation} onClick={() => void approve()}>
-            2 Approve
-          </Button>
-          <Button disabled={busy || !capability} onClick={() => void execute()}>
-            3 Execute
-          </Button>
-        </div>
-        {operation && <pre>{JSON.stringify(operation, null, 2)}</pre>}
+        <label>
+          Method parameters (JSON)
+          <textarea value={readParams} onChange={(event) => setReadParams(event.target.value)} />
+        </label>
+        <Button
+          disabled={busy || !client}
+          onClick={() =>
+            void run(async () => {
+              const parsed = parseConfigValue(readParams);
+              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+                throw new Error("Read parameters must be a JSON object");
+              if (client)
+                setReadResult(
+                  await readCodexAction(client, readAction, parsed as Record<string, unknown>),
+                );
+            })
+          }
+        >
+          Read resource
+        </Button>
+        {readResult !== null && <pre>{JSON.stringify(readResult, null, 2)}</pre>}
       </section>
+      <CodexMutationEditor
+        kind={kind}
+        setKind={setKind}
+        target={target}
+        setTarget={setTarget}
+        value={value}
+        setValue={setValue}
+        source={source}
+        setSource={setSource}
+        sha256={sha256}
+        setSha256={setSha256}
+        mcpCommand={mcpCommand}
+        setMcpCommand={setMcpCommand}
+        mcpArgs={mcpArgs}
+        setMcpArgs={setMcpArgs}
+        mcpUrl={mcpUrl}
+        setMcpUrl={setMcpUrl}
+        mcpEnv={mcpEnv}
+        setMcpEnv={setMcpEnv}
+        mcpRemove={mcpRemove}
+        setMcpRemove={setMcpRemove}
+        validationError={mutationState.error}
+        busy={busy}
+        canPrepare={Boolean(mutation && client)}
+        operation={operation}
+        capability={capability}
+        onPrepare={prepare}
+        onApprove={approve}
+        onExecute={execute}
+      />
     </main>
   );
+
+  async function respond(event: import("@/lib/codexControl").CodexEvent, approved: boolean) {
+    if (!client || event.event.request_id == null) return;
+    setRespondingRequest(event.event.request_id);
+    setMutationError(null);
+    try {
+      let response: Record<string, unknown> | undefined;
+      if (approved && requiresTypedResponse(event.event.method)) {
+        const raw = serverResponses[event.event.request_id] ?? "";
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Typed server response must be a JSON object");
+        }
+        response = parsed as Record<string, unknown>;
+      }
+      await respondToCodexServerRequest(client, event, approved, response);
+      dismissEvent(event);
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setRespondingRequest(null);
+    }
+  }
+}
+
+function requiresTypedResponse(method?: string): boolean {
+  return method === "item/tool/requestUserInput" || method === "mcpServer/elicitation/request";
+}
+
+function typedResponsePlaceholder(method?: string): string {
+  return method === "item/tool/requestUserInput"
+    ? '{"answers":{"question_id":["answer"]}}'
+    : '{"action":"accept","content":{"field":"value"}}';
 }
 
 function mutationParams(
@@ -387,7 +402,7 @@ function mutationParams(
   target: string,
   value: string,
   source: string,
-  sha256: string,
+  _sha256: string,
 ): Record<string, unknown> | null {
   if (
     kind === "accountLogin" ||
@@ -397,12 +412,36 @@ function mutationParams(
   )
     return {};
   if (kind === "configBatch") return buildConfigBatchMutation(value);
-  if (!target) return null;
-  if (kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport") {
-    if (!source.startsWith("https://") || !/^[a-fA-F0-9]{64}$/.test(sha256)) return null;
-    return { target, source, sha256 };
+  if (
+    kind === "mcpTool" ||
+    kind === "mcpStreamStart" ||
+    kind === "mcpStreamStop" ||
+    kind === "pluginShareCheckout" ||
+    kind === "pluginShareSave" ||
+    kind === "pluginShareDelete" ||
+    kind === "pluginShareTargets" ||
+    kind === "skillRoots" ||
+    kind === "importHistory"
+  ) {
+    const parsed = parseConfigValue(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Error("This workflow requires a JSON object value");
+    return parsed as Record<string, unknown>;
   }
-  if (kind === "config") return { keyPath: target, value: parseConfigValue(value) };
+  if (!target) return null;
+  if (kind === "pluginInstall") return { pluginName: target };
+  if (kind === "pluginUninstall") return { pluginId: target };
+  if (kind === "marketplaceAdd") {
+    if (!source.startsWith("https://")) return null;
+    return { source };
+  }
+  if (kind === "skillImport") {
+    const migrationItems = parseConfigValue(value);
+    if (!Array.isArray(migrationItems)) throw new Error("Migration items must be a JSON array");
+    return { migrationItems, source: target || undefined };
+  }
+  if (kind === "config")
+    return { keyPath: target, value: parseConfigValue(value), mergeStrategy: "upsert" };
   if (kind === "mcpOauth") return { name: target, provider: value || undefined };
   if (kind === "marketplaceRemove" || kind === "marketplaceUpgrade") {
     return { marketplaceName: target };
@@ -417,6 +456,20 @@ function mutationParams(
 
 function mutationValidationMessage(kind: MutationKind): string | null {
   if (kind === "configBatch") return "Enter a JSON batch containing at least two config writes";
+  if (
+    [
+      "mcpTool",
+      "mcpStreamStart",
+      "mcpStreamStop",
+      "pluginShareCheckout",
+      "pluginShareSave",
+      "pluginShareDelete",
+      "pluginShareTargets",
+      "skillRoots",
+      "importHistory",
+    ].includes(kind)
+  )
+    return "Enter the method-specific JSON object from the Codex capability schema";
   if (kind === "mcpConfig") return "Enter a valid MCP name and exactly one transport";
   if (kind === "pluginInstall" || kind === "marketplaceAdd" || kind === "skillImport")
     return "Enter a target, pinned HTTPS source, and 64-character SHA-256 digest";

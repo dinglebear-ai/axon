@@ -1,4 +1,5 @@
 import { type Client, executeAxonRequest, type PaletteResult } from "./axonClient";
+import type { components } from "./axon-api";
 
 export type CodexResource =
   | "account"
@@ -13,13 +14,23 @@ export type CodexSnapshot = Record<CodexResource, unknown> & {
   status: { state: string; detail?: string | null; home?: string | null; binary?: string | null };
   pending_server_requests: CodexEvent[];
 };
-export type CodexOperation = { id: number; phase: string; request_digest: string };
+export type CodexOperation = {
+  id: number;
+  phase: string;
+  request_digest: string;
+  method: string;
+  actor: string;
+  scope: string;
+  approver?: string | null;
+  redacted_request: unknown;
+  recovery_state?: string | null;
+};
 export type CodexEvent = {
   cursor: { boot_id: number; sequence: number };
   event: { kind: string; request_id?: number; method?: string; params?: unknown };
 };
 export type CodexMutation = {
-  action: string;
+  action: components["schemas"]["MutationAction"];
   params: Record<string, unknown>;
 };
 export type McpConfigInput = {
@@ -31,7 +42,7 @@ export type McpConfigInput = {
   remove: boolean;
 };
 
-type ConfigWrite = { keyPath: string | string[]; value: unknown };
+type ConfigWrite = { keyPath: string; value: unknown; mergeStrategy: "replace" | "upsert" };
 
 export const CODEX_MUTATIONS = {
   accountLogin: {
@@ -55,12 +66,19 @@ export const CODEX_MUTATIONS = {
   mcpOauth: {
     action: "mcp_server_oauth_login",
   },
+  mcpTool: { action: "mcp_server_tool_call" },
+  mcpStreamStart: { action: "mcp_server_event_stream_start" },
+  mcpStreamStop: { action: "mcp_server_event_stream_stop" },
   pluginInstall: {
     action: "plugin_install",
   },
   pluginUninstall: {
     action: "plugin_uninstall",
   },
+  pluginShareCheckout: { action: "plugin_share_checkout" },
+  pluginShareSave: { action: "plugin_share_save" },
+  pluginShareDelete: { action: "plugin_share_delete" },
+  pluginShareTargets: { action: "plugin_share_update_targets" },
   marketplaceAdd: {
     action: "marketplace_add",
   },
@@ -73,13 +91,26 @@ export const CODEX_MUTATIONS = {
   skillConfig: {
     action: "skill_config_write",
   },
+  skillRoots: { action: "skills_extra_roots_set" },
   skillImport: {
     action: "external_agent_config_import",
   },
+  importHistory: { action: "external_agent_config_import_record_history" },
 } as const;
 
 export async function readCodexSnapshot(client: Client): Promise<CodexSnapshot> {
   return payload<CodexSnapshot>(await executeAxonRequest(client, "GET", "/v1/codex"));
+}
+
+export async function readCodexAction(
+  client: Client,
+  action: components["schemas"]["ControlAction"],
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  const response = payload<{ resource: string; value: unknown }>(
+    await executeAxonRequest(client, "POST", "/v1/codex/read", { action, params }),
+  );
+  return response.value;
 }
 
 export async function readCodexOperations(client: Client): Promise<CodexOperation[]> {
@@ -88,6 +119,10 @@ export async function readCodexOperations(client: Client): Promise<CodexOperatio
 
 export async function reconcileCodexOperation(client: Client, id: number): Promise<void> {
   await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/reconcile`, {});
+}
+
+export async function cancelCodexOperation(client: Client, id: number): Promise<void> {
+  await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/cancel`, {});
 }
 
 export async function readCodexEvents(
@@ -104,12 +139,14 @@ export async function respondToCodexServerRequest(
   client: Client,
   event: CodexEvent,
   approved: boolean,
+  response?: Record<string, unknown>,
 ): Promise<void> {
   const requestId = event.event.request_id;
   if (requestId == null) throw new Error("Codex event has no server request id");
   await executeAxonRequest(client, "POST", `/v1/codex/server-requests/${requestId}/respond`, {
     boot_id: event.cursor.boot_id,
     approved,
+    response,
   });
 }
 
@@ -150,7 +187,8 @@ export function buildMcpConfigMutation(input: McpConfigInput): Record<string, un
   const name = input.name.trim();
   if (!/^[A-Za-z0-9_-]+$/.test(name))
     throw new Error("MCP name may contain only letters, numbers, underscores, and hyphens");
-  if (input.remove) return { keyPath: `mcp_servers.${name}`, value: null };
+  if (input.remove)
+    return { keyPath: `mcp_servers.${name}`, value: null, mergeStrategy: "replace" };
 
   const command = input.command.trim();
   const url = input.url.trim();
@@ -199,7 +237,7 @@ export function buildMcpConfigMutation(input: McpConfigInput): Record<string, un
           throw new Error("URL MCP transports do not accept environment entries");
         return { url };
       })();
-  return { keyPath: `mcp_servers.${name}`, value };
+  return { keyPath: `mcp_servers.${name}`, value, mergeStrategy: "upsert" };
 }
 
 export function parseConfigValue(input: string): unknown {
@@ -221,27 +259,23 @@ export function buildConfigBatchMutation(input: string): Record<string, unknown>
   const container = Array.isArray(parsed) ? { edits: parsed } : parsed;
   if (!isRecord(container))
     throw new Error("Config batch must be an array of writes or an object containing edits");
-  const field = ["edits", "writes", "changes"].find((key) => key in container);
-  if (!field || !Array.isArray(container[field]))
-    throw new Error("Config batch must contain an edits, writes, or changes array");
-  if (container[field].length < 2)
+  if (!Array.isArray(container.edits)) throw new Error("Config batch must contain an edits array");
+  if (container.edits.length < 2)
     throw new Error(
       "Config batch must contain at least two writes; use Write config value for one",
     );
-  for (const edit of container[field]) validateConfigWrite(edit);
-  return container;
+  for (const edit of container.edits) validateConfigWrite(edit);
+  return { ...container, edits: container.edits };
 }
 
 function validateConfigWrite(value: unknown): asserts value is ConfigWrite {
   if (!isRecord(value) || !("value" in value))
     throw new Error("Each config batch write must contain keyPath and value");
-  const keyPath = value.keyPath ?? value.key_path ?? value.key;
-  const validPath =
-    (typeof keyPath === "string" && keyPath.trim().length > 0) ||
-    (Array.isArray(keyPath) &&
-      keyPath.length > 0 &&
-      keyPath.every((part) => typeof part === "string" && part.trim().length > 0));
+  const keyPath = value.keyPath;
+  const validPath = typeof keyPath === "string" && keyPath.trim().length > 0;
   if (!validPath) throw new Error("Each config batch write needs a non-empty keyPath");
+  if (value.mergeStrategy !== "replace" && value.mergeStrategy !== "upsert")
+    throw new Error("Each config batch write needs mergeStrategy replace or upsert");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -250,10 +284,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function payload<T = unknown>(result: PaletteResult): T {
   if (!result.ok) {
+    const body = isRecord(result.payload) ? result.payload : null;
     const message =
-      typeof result.payload === "object" && result.payload && "error" in result.payload
-        ? String((result.payload as { error: unknown }).error)
-        : `Axon request failed (${result.status})`;
+      body && "message" in body
+        ? String(body.message)
+        : body && "error" in body
+          ? String(body.error)
+          : `Axon request failed (${result.status})`;
     throw new Error(message);
   }
   return result.payload as T;

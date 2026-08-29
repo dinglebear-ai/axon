@@ -19,6 +19,7 @@ use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
 
 const EVENT_CAPACITY: usize = 256;
+const MAX_PENDING_SERVER_REQUESTS: usize = 128;
 
 pub struct ControlTransport {
     epoch: RuntimeEpoch,
@@ -139,9 +140,14 @@ impl ControlTransport {
         let request = ClientRequest::new(id, method, params);
         if let Err(error) = self.write_json(&request).await {
             let _ = pending.cancel();
+            self.alive.store(false, Ordering::Release);
             return Err(error);
         }
-        match pending.wait(self.timeout).await.map_err(protocol_error)? {
+        let response = pending.wait(self.timeout).await.map_err(|error| {
+            self.alive.store(false, Ordering::Release);
+            protocol_error(error)
+        })?;
+        match response {
             Ok(value) => Ok(value),
             Err(error) => Err(rpc_error(error)),
         }
@@ -152,22 +158,21 @@ impl ControlTransport {
         boot_id: u64,
         request_id: u64,
         approved: bool,
+        typed_response: Option<Value>,
     ) -> Result<(), String> {
         if boot_id != self.epoch.0 {
             return Err("server request belongs to a previous runtime".to_string());
         }
+        let method = self.server_request_method(request_id)?;
+        let result = server_request_result(&method, approved, typed_response)?;
         {
             let mut registry = self
                 .server_requests
                 .lock()
                 .map_err(|_| "server request registry lock poisoned".to_string())?;
-            claim_server_request(&mut registry, request_id, approved)?;
+            claim_server_request(&mut registry, request_id)?;
         }
-        let response = if approved {
-            json!({"jsonrpc":"2.0","id":request_id,"result":{"decision":"accept"}})
-        } else {
-            json!({"jsonrpc":"2.0","id":request_id,"result":{"decision":"decline"}})
-        };
+        let response = json!({"jsonrpc":"2.0","id":request_id,"result":result});
         let write_result = self.write_json(&response).await;
         let mut registry = self
             .server_requests
@@ -175,6 +180,15 @@ impl ControlTransport {
             .map_err(|_| "server request registry lock poisoned".to_string())?;
         finish_server_request(&mut registry, request_id, write_result.is_ok());
         write_result
+    }
+
+    fn server_request_method(&self, request_id: u64) -> Result<String, String> {
+        self.server_requests
+            .lock()
+            .map_err(|_| "server request registry lock poisoned".to_string())?
+            .get(&request_id)
+            .map(|request| request.method.clone())
+            .ok_or_else(|| "server request is unknown or already answered".to_string())
     }
 
     pub async fn stop(self) -> Result<(), String> {
@@ -266,6 +280,14 @@ fn spawn_reader(
                             let mut registry = server_requests
                                 .lock()
                                 .unwrap_or_else(|value| value.into_inner());
+                            let now = Instant::now();
+                            registry.retain(|_, request| request.expires_at > now);
+                            if registry.len() >= MAX_PENDING_SERVER_REQUESTS {
+                                let _ = events.send(recorder.record(EventKind::ProtocolFailure {
+                                    detail: "Codex server request capacity exceeded".to_string(),
+                                }));
+                                continue;
+                            }
                             registry.insert(
                                 id.sequence,
                                 PendingServerRequest {
@@ -308,6 +330,46 @@ fn approval_decision_supported(method: &str) -> bool {
         || method.ends_with("requestApproval")
 }
 
+fn server_request_result(
+    method: &str,
+    approved: bool,
+    typed_response: Option<Value>,
+) -> Result<Value, String> {
+    if approval_decision_supported(method) {
+        return Ok(json!({"decision": if approved { "accept" } else { "decline" }}));
+    }
+    if method == "item/tool/requestUserInput" {
+        if !approved {
+            return Ok(json!({"answers": {}}));
+        }
+        let response = typed_response.ok_or("requestUserInput approval requires typed answers")?;
+        if !response.get("answers").is_some_and(Value::is_object) {
+            return Err("requestUserInput response requires an answers object".to_string());
+        }
+        return Ok(response);
+    }
+    if method == "mcpServer/elicitation/request" {
+        if !approved {
+            return Ok(json!({"action": "decline"}));
+        }
+        let response = typed_response.ok_or("MCP elicitation approval requires typed content")?;
+        if response.get("action").and_then(Value::as_str) != Some("accept")
+            || !response.get("content").is_some_and(Value::is_object)
+        {
+            return Err(
+                "MCP elicitation response requires action=accept and object content".to_string(),
+            );
+        }
+        return Ok(response);
+    }
+    if approved {
+        return Err(format!(
+            "server request {method} cannot be generically approved"
+        ));
+    }
+    Ok(json!({"decision":"decline"}))
+}
+
 #[derive(Clone)]
 struct PendingServerRequest {
     method: String,
@@ -319,7 +381,6 @@ struct PendingServerRequest {
 fn claim_server_request(
     registry: &mut HashMap<u64, PendingServerRequest>,
     request_id: u64,
-    approved: bool,
 ) -> Result<(), String> {
     let pending_request = registry
         .get_mut(&request_id)
@@ -327,12 +388,6 @@ fn claim_server_request(
     if pending_request.expires_at <= Instant::now() {
         registry.remove(&request_id);
         return Err("server request approval expired".to_string());
-    }
-    if approved && !approval_decision_supported(&pending_request.method) {
-        return Err(format!(
-            "server request {} requires a typed response and cannot be generically approved",
-            pending_request.method
-        ));
     }
     if pending_request.claimed {
         return Err("server request response is already in progress".to_string());

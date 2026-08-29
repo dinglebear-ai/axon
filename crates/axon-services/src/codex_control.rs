@@ -1,19 +1,16 @@
 //! Services-first facade for the dedicated Codex app-server control plane.
 
-use axon_codex::api::{
-    ControlAction, MutationAction, WritePolicy, account_summary, state_revision,
-    validate_mutation_params,
-};
+pub use axon_codex::api::{ControlAction, MutationAction};
+use axon_codex::api::{WritePolicy, account_summary, state_revision, validate_mutation_params};
 use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus, home_identity};
 use axon_codex::events::sanitize_value;
-use axon_codex::events::{EventCursor, RecordedEvent};
-use axon_codex::operations::{ControlOperation, OperationIntent, OperationStore};
+pub use axon_codex::events::{EventCursor, RecordedEvent};
+use axon_codex::operations::OperationStore;
+pub use axon_codex::operations::{ControlOperation, OperationIntent, OperationPhase};
 use axon_codex::protocol::RuntimeEpoch;
 use axon_codex::transport::ControlTransport;
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -49,6 +46,35 @@ pub struct CodexControlService {
 }
 
 impl CodexControlService {
+    pub fn from_config(cfg: &axon_core::config::Config) -> Result<Option<Arc<Self>>, String> {
+        if !cfg.codex_control_enabled {
+            return Ok(None);
+        }
+        let home = cfg.codex_control_home.clone().ok_or_else(|| {
+            "AXON_CODEX_CONTROL_HOME is required when Codex control is enabled".to_string()
+        })?;
+        let control = ControlConfig {
+            enabled: true,
+            codex_binary: std::path::PathBuf::from(&cfg.codex_cmd),
+            control_home: home,
+            request_timeout: std::time::Duration::from_secs(cfg.llm_completion_timeout_secs.max(1)),
+            read_concurrency: cfg.codex_completion_concurrency.max(1),
+            max_restart_backoff: std::time::Duration::from_secs(60),
+        };
+        let policy = WritePolicy {
+            account: cfg.codex_control_account_writes,
+            config: cfg.codex_control_config_writes,
+            mcp: cfg.codex_control_mcp_writes,
+            plugins: cfg.codex_control_plugin_writes,
+            skills: cfg.codex_control_skill_writes,
+            imports: cfg.codex_control_skill_writes,
+        };
+        let database = cfg.sqlite_path.with_file_name("codex-control.db");
+        Self::new(control, policy, &database)
+            .map(Arc::new)
+            .map(Some)
+    }
+
     pub fn new(
         config: ControlConfig,
         policy: WritePolicy,
@@ -65,7 +91,6 @@ impl CodexControlService {
             policy.imports as u8
         );
         let operations = OperationStore::open(database)?;
-        operations.recover_interrupted()?;
         Ok(Self {
             config: config.clone(),
             runtime: Arc::new(ControlRuntime::new(config)?),
@@ -131,7 +156,6 @@ impl CodexControlService {
         }
         self.policy.authorize(&action)?;
         validate_mutation_params(&action, &intent.redacted_request)?;
-        verify_artifact_source(&action, &intent.redacted_request).await?;
         let transport = self.transport().await?;
         let mut trusted_intent = intent.clone();
         trusted_intent.target_home_identity = self.home_identity.clone();
@@ -145,17 +169,43 @@ impl CodexControlService {
         self.operations.approve(id, approver)
     }
 
+    pub fn cancel_operation(&self, id: i64) -> Result<(), String> {
+        self.operations.cancel(id)
+    }
+
     pub fn unfinished_operations(&self) -> Result<Vec<ControlOperation>, String> {
         self.operations.unfinished(100)
     }
 
     pub async fn resolve_recovery(&self, id: i64) -> Result<(), String> {
-        let operation = self
+        let recovery = self
             .operations
-            .unfinished(100)?
-            .into_iter()
-            .find(|operation| operation.id == id)
+            .get_for_recovery(id)?
             .ok_or_else(|| "Codex operation is not awaiting recovery".to_string())?;
+        let operation = recovery.operation;
+        if !matches!(
+            operation.phase,
+            axon_codex::operations::OperationPhase::Executing
+                | axon_codex::operations::OperationPhase::Ambiguous
+                | axon_codex::operations::OperationPhase::RecoveryRequired
+                | axon_codex::operations::OperationPhase::RollbackRequired
+        ) {
+            return Err("Codex operation is not awaiting recovery".to_string());
+        }
+        let current_home = home_identity(&self.config.control_home)?;
+        let current_boot = self.runtime_boot_id.load(Ordering::Acquire);
+        if recovery.target_home_identity != current_home
+            || recovery.runtime_boot_id != current_boot
+            || recovery.policy_version != self.policy_version
+        {
+            self.operations.retain_recovery(
+                id,
+                "control target, runtime boot, or write policy changed; automatic recovery is unsafe",
+            )?;
+            return Err(
+                "Codex recovery remains unresolved: control trust anchors changed".to_string(),
+            );
+        }
         let action = action_from_method(&operation.method)?;
         let transport = self.transport().await?;
         let state = canonical_state(&action, &transport).await?;
@@ -185,7 +235,6 @@ impl CodexControlService {
         let action = ControlAction::from(mutation);
         self.policy.authorize(&action)?;
         validate_mutation_params(&action, &params)?;
-        verify_artifact_source(&action, &params).await?;
         let transport = self.transport().await?;
         let started = Arc::new(AtomicBool::new(false));
         let started_in_lane = Arc::clone(&started);
@@ -209,6 +258,10 @@ impl CodexControlService {
                 )?;
                 started_in_lane.store(true, Ordering::Release);
                 let value = transport.request(action.method(), params.clone()).await?;
+                if response_acknowledges_completion(&action) {
+                    let revision = state_revision(&sanitize_value(value.clone()))?;
+                    return Ok::<_, String>((value, revision));
+                }
                 let after = canonical_state(&action, &transport)
                     .await
                     .map_err(|error| format!("post-state readback failed: {error}"))?;
@@ -254,10 +307,11 @@ impl CodexControlService {
         boot_id: u64,
         request_id: u64,
         approved: bool,
+        typed_response: Option<Value>,
     ) -> Result<(), String> {
         self.transport()
             .await?
-            .respond_to_server_request(boot_id, request_id, approved)
+            .respond_to_server_request(boot_id, request_id, approved, typed_response)
             .await
     }
 
@@ -316,12 +370,26 @@ async fn canonical_state(
         ControlAction::McpServerReload | ControlAction::McpServerOauthLogin => {
             (ControlAction::McpServersList.method(), json!({}))
         }
+        ControlAction::McpServerToolCall
+        | ControlAction::McpServerEventStreamStart
+        | ControlAction::McpServerEventStreamStop => {
+            (ControlAction::McpServersList.method(), json!({}))
+        }
         ControlAction::PluginInstall
         | ControlAction::PluginUninstall
         | ControlAction::MarketplaceAdd
         | ControlAction::MarketplaceRemove
-        | ControlAction::MarketplaceUpgrade => (ControlAction::PluginsList.method(), json!({})),
-        ControlAction::SkillConfigWrite | ControlAction::ExternalAgentConfigImport => {
+        | ControlAction::MarketplaceUpgrade
+        | ControlAction::PluginShareCheckout
+        | ControlAction::PluginShareSave
+        | ControlAction::PluginShareDelete
+        | ControlAction::PluginShareUpdateTargets => {
+            (ControlAction::PluginsList.method(), json!({}))
+        }
+        ControlAction::SkillConfigWrite
+        | ControlAction::SkillsExtraRootsSet
+        | ControlAction::ExternalAgentConfigImport
+        | ControlAction::ExternalAgentConfigImportRecordHistory => {
             (ControlAction::SkillsList.method(), json!({}))
         }
         _ => (
@@ -334,72 +402,22 @@ async fn canonical_state(
     Ok(CanonicalState { value, revision })
 }
 
-async fn verify_artifact_source(action: &ControlAction, params: &Value) -> Result<(), String> {
-    if !matches!(
+fn response_acknowledges_completion(action: &ControlAction) -> bool {
+    matches!(
         action,
-        ControlAction::PluginInstall
-            | ControlAction::MarketplaceAdd
-            | ControlAction::ExternalAgentConfigImport
-    ) {
-        return Ok(());
-    }
-    let source = params
-        .get("source")
-        .and_then(Value::as_str)
-        .ok_or("artifact source missing")?;
-    let expected = params
-        .get("sha256")
-        .and_then(Value::as_str)
-        .ok_or("artifact digest missing")?;
-    axon_core::http::validate_url_with_dns(source)
-        .await
-        .map_err(|error| format!("artifact source rejected: {error}"))?;
-    let response = axon_core::http::http_client()
-        .map_err(|error| error.to_string())?
-        .get(source)
-        .send()
-        .await
-        .map_err(|error| format!("artifact fetch failed: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("artifact fetch failed: {error}"))?;
-    let mut stream = response.bytes_stream();
-    let mut hasher = Sha256::new();
-    let mut size = 0_u64;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| format!("artifact fetch failed: {error}"))?;
-        size = size.saturating_add(chunk.len() as u64);
-        if size > axon_codex::artifacts::MAX_EXPANDED_BYTES {
-            return Err("artifact download exceeds size limit".to_string());
-        }
-        hasher.update(&chunk);
-    }
-    let actual = format!("{:x}", hasher.finalize());
-    if !actual.eq_ignore_ascii_case(expected) {
-        return Err("artifact SHA-256 does not match approved digest".to_string());
-    }
-    Ok(())
+        ControlAction::McpServerToolCall
+            | ControlAction::McpServerEventStreamStart
+            | ControlAction::McpServerEventStreamStop
+            | ControlAction::PluginShareCheckout
+            | ControlAction::PluginShareSave
+            | ControlAction::PluginShareDelete
+            | ControlAction::PluginShareUpdateTargets
+            | ControlAction::ExternalAgentConfigImportRecordHistory
+    )
 }
 
 fn action_from_method(method: &str) -> Result<ControlAction, String> {
-    [
-        ControlAction::AccountLoginStart,
-        ControlAction::AccountLoginCancel,
-        ControlAction::AccountLogout,
-        ControlAction::ConfigValueWrite,
-        ControlAction::ConfigBatchWrite,
-        ControlAction::McpServerReload,
-        ControlAction::McpServerOauthLogin,
-        ControlAction::PluginInstall,
-        ControlAction::PluginUninstall,
-        ControlAction::MarketplaceAdd,
-        ControlAction::MarketplaceRemove,
-        ControlAction::MarketplaceUpgrade,
-        ControlAction::SkillConfigWrite,
-        ControlAction::ExternalAgentConfigImport,
-    ]
-    .into_iter()
-    .find(|action| action.method() == method)
-    .ok_or_else(|| format!("unsupported Codex control mutation: {method}"))
+    MutationAction::try_from(method).map(ControlAction::from)
 }
 
 #[cfg(test)]

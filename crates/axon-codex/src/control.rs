@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
-use tokio::sync::{Mutex, Semaphore, watch};
+use tokio::sync::{Mutex, Semaphore};
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +45,7 @@ pub struct ControlRuntime {
     config: ControlConfig,
     mutation_lane: Mutex<()>,
     read_permits: Arc<Semaphore>,
-    status_tx: watch::Sender<ControlStatus>,
+    status: StdMutex<ControlStatus>,
     restart: StdMutex<RestartState>,
 }
 
@@ -81,22 +81,20 @@ impl ControlRuntime {
                 home: None,
             }
         };
-        let (status_tx, _) = watch::channel(status);
         Ok(Self {
             read_permits: Arc::new(Semaphore::new(config.read_concurrency.max(1))),
             config,
             mutation_lane: Mutex::new(()),
-            status_tx,
+            status: StdMutex::new(status),
             restart: StdMutex::new(RestartState::default()),
         })
     }
 
     pub fn status(&self) -> ControlStatus {
-        self.status_tx.borrow().clone()
-    }
-
-    pub fn subscribe_status(&self) -> watch::Receiver<ControlStatus> {
-        self.status_tx.subscribe()
+        self.status
+            .lock()
+            .unwrap_or_else(|value| value.into_inner())
+            .clone()
     }
 
     pub fn mark_ready(&self) {
@@ -108,10 +106,6 @@ impl ControlRuntime {
         restart.retry_not_before = None;
         drop(restart);
         self.update_status(ControlState::Ready, None);
-    }
-
-    pub fn mark_degraded(&self, detail: impl Into<String>) {
-        self.update_status(ControlState::Degraded, Some(detail.into()));
     }
 
     /// Record an observed process/start failure and schedule the next bounded retry.
@@ -156,7 +150,10 @@ impl ControlRuntime {
         status.restart_count = status.restart_count.saturating_add(1);
         status.state = ControlState::Starting;
         status.detail = None;
-        self.status_tx.send_replace(status);
+        *self
+            .status
+            .lock()
+            .unwrap_or_else(|value| value.into_inner()) = status;
         Ok(())
     }
 
@@ -164,7 +161,10 @@ impl ControlRuntime {
         let mut status = self.status();
         status.state = state;
         status.detail = detail;
-        self.status_tx.send_replace(status);
+        *self
+            .status
+            .lock()
+            .unwrap_or_else(|value| value.into_inner()) = status;
     }
 
     pub async fn with_read<T, F, Fut>(&self, operation: F) -> Result<T, String>

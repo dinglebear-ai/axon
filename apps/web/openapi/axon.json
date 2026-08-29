@@ -1145,6 +1145,48 @@
         }
       }
     },
+    "/v1/codex/operations/{id}/cancel": {
+      "post": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "cancel_operation_openapi_marker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Operation identifier",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending or approved operation cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconcileOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Operation cannot be cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/codex/operations/{id}/execute": {
       "post": {
         "tags": [
@@ -1228,6 +1270,46 @@
           },
           "400": {
             "description": "Operation cannot be reconciled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/codex/read": {
+      "post": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "read_action_openapi_marker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodexReadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Typed redacted Codex read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexResourceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported read action or invalid parameters",
             "content": {
               "application/json": {
                 "schema": {
@@ -9811,6 +9893,18 @@
           }
         }
       },
+      "CodexReadBody": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ControlAction"
+          },
+          "params": {}
+        }
+      },
       "CodexResourceResponse": {
         "type": "object",
         "required": [
@@ -9919,6 +10013,54 @@
               }
             }
           }
+        ]
+      },
+      "ControlAction": {
+        "type": "string",
+        "enum": [
+          "account_read",
+          "account_login_start",
+          "account_login_cancel",
+          "account_logout",
+          "rate_limits_read",
+          "models_list",
+          "model_provider_capabilities_read",
+          "config_read",
+          "config_value_write",
+          "config_batch_write",
+          "mcp_servers_list",
+          "mcp_server_resource_read",
+          "mcp_server_tool_call",
+          "mcp_server_event_stream_start",
+          "mcp_server_event_stream_stop",
+          "mcp_server_reload",
+          "mcp_server_oauth_login",
+          "plugins_list",
+          "plugins_installed",
+          "plugin_search",
+          "plugin_read",
+          "plugin_skill_read",
+          "plugin_share_list",
+          "plugin_share_checkout",
+          "plugin_share_save",
+          "plugin_share_delete",
+          "plugin_share_update_targets",
+          "plugin_install",
+          "plugin_uninstall",
+          "marketplace_add",
+          "marketplace_remove",
+          "marketplace_upgrade",
+          "skills_list",
+          "skills_extra_roots_set",
+          "skill_config_write",
+          "external_agent_config_detect",
+          "external_agent_config_import",
+          "external_agent_config_import_read_histories",
+          "external_agent_config_import_record_history",
+          "hooks_list",
+          "apps_list",
+          "apps_installed",
+          "app_read"
         ]
       },
       "ControlOperation": {
@@ -12988,13 +13130,22 @@
           "config_batch_write",
           "mcp_server_reload",
           "mcp_server_oauth_login",
+          "mcp_server_tool_call",
+          "mcp_server_event_stream_start",
+          "mcp_server_event_stream_stop",
           "plugin_install",
           "plugin_uninstall",
+          "plugin_share_checkout",
+          "plugin_share_save",
+          "plugin_share_delete",
+          "plugin_share_update_targets",
           "marketplace_add",
           "marketplace_remove",
           "marketplace_upgrade",
           "skill_config_write",
-          "external_agent_config_import"
+          "skills_extra_roots_set",
+          "external_agent_config_import",
+          "external_agent_config_import_record_history"
         ]
       },
       "OperationPhase": {
@@ -15975,7 +16126,8 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
-          }
+          },
+          "response": {}
         }
       },
       "ServiceRetrieveVariantError": {
