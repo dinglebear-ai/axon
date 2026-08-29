@@ -54,6 +54,88 @@ export interface LabbySnippetReceipt<T = unknown> {
   value: T;
   receipt: LabbyExactReceipt;
 }
+export type ArtifactFamily = "skill" | "prompt" | "agent" | "hook";
+export type ArtifactAction =
+  | "list"
+  | "get"
+  | "read"
+  | "history"
+  | "diff"
+  | "validate"
+  | "preview"
+  | "create"
+  | "save"
+  | "activate"
+  | "deactivate"
+  | "archive"
+  | "restore"
+  | "rollback";
+export interface ArtifactFile {
+  path: string;
+  content: string;
+}
+export interface ArtifactFileSummary {
+  path: string;
+  digest: string;
+  size: number;
+  media_type?: string | null;
+}
+export interface ArtifactSummary {
+  artifact_id: string;
+  name: string;
+  archived: boolean;
+  active_revision_id: string | null;
+  latest_revision_id: string;
+  visibility: "private" | "shared";
+  access_label: string;
+  can_mutate: boolean;
+  current_generation: number;
+  published_library_version: number;
+  allowed_actions: string[];
+  latest_revision_files: ArtifactFileSummary[];
+}
+export interface ArtifactPage {
+  library_version: number;
+  published_library_version: number;
+  can_create: boolean;
+  create_visibilities: Array<"private" | "shared">;
+  allowed_actions: string[];
+  items: ArtifactSummary[];
+  next_cursor?: string;
+}
+export interface ArtifactDetail extends ArtifactSummary {
+  library_version: number;
+}
+export interface ArtifactRevision {
+  revision_id: string;
+  created_at?: string | null;
+}
+export interface ArtifactHistoryPage {
+  library_version: number;
+  items: ArtifactRevision[];
+  next_cursor?: string;
+}
+export interface ArtifactValidation {
+  valid: boolean;
+  artifact_id: string | null;
+  revision_id: string | null;
+  rejections: Array<{ field: string; code: string; path?: string }>;
+}
+export interface ArtifactPreview {
+  artifact_id: string;
+  revision_id: string;
+  render_mode: "inert_text";
+  files: Array<{ path: string; media_type: string; text: string }>;
+}
+export interface ArtifactMutationReceipt {
+  outcome: string;
+  artifact_id: string;
+  active_revision_id: string | null;
+  committed_library_version: number;
+  published_library_version: number;
+  relist_required: boolean;
+  relist_guidance: string;
+}
 export type CapabilityFamily =
   | "tool"
   | "prompt"
@@ -286,6 +368,22 @@ export class LabbyClient {
     const catalog = await this.search(id, signal);
     const entry = catalog.entries.find((candidate) => candidate.id === id);
     if (!entry) throw new Error(`Labby does not expose ${action} for this principal`);
+    const descriptor = await this.descriptor(entry.id, signal);
+    const result = await this.execute(descriptor, params, descriptor.destructive, signal);
+    return { value: result.result as T, receipt: result.receipt };
+  }
+
+  async artifactAction<T>(
+    family: ArtifactFamily,
+    action: ArtifactAction,
+    params: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<LabbySnippetReceipt<T>> {
+    const actionName = `${family}_library.${action}`;
+    const id = `labby:skills::${actionName}`;
+    const catalog = await this.search(id, signal);
+    const entry = catalog.entries.find((candidate) => candidate.id === id);
+    if (!entry) throw new Error(`Labby does not expose ${actionName} for this principal`);
     const descriptor = await this.descriptor(entry.id, signal);
     const result = await this.execute(descriptor, params, descriptor.destructive, signal);
     return { value: result.result as T, receipt: result.receipt };
