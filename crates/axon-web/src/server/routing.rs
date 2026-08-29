@@ -416,6 +416,15 @@ where
         .route("/v1/ask/stream", post(handlers::v1_ask_stream))
         .route("/v1/chat", post(handlers::v1_chat))
         .route("/v1/chat/stream", post(handlers::v1_chat_stream))
+        .route("/v1/agent/turns/{id}", get(handlers::v1_agent_status))
+        .route(
+            "/v1/agent/turns/{id}/events",
+            get(handlers::v1_agent_events),
+        )
+        .route(
+            "/v1/agent/turns/{id}/cancel",
+            post(handlers::v1_agent_cancel),
+        )
         .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
         // RAG and direct-chat handlers share the same service context.
         .layer(Extension(service_context))

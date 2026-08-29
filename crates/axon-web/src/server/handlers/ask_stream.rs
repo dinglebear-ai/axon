@@ -193,6 +193,38 @@ async fn emit_ask_stream_result(
     }
 }
 
+async fn apply_stream_agent(
+    cfg: &Config,
+    request: &AskRequestBody,
+    resolved: Option<&axon_services::loadout_context::ResolvedLoadoutContext>,
+    mut result: axon_services::types::AskResult,
+) -> Result<axon_services::types::AskResult, String> {
+    let Some(options) = request.agent.clone() else {
+        return Ok(result);
+    };
+    let binding = request.loadout.as_ref().expect("agent loadout validated");
+    let resolution = resolved.expect("agent loadout resolved");
+    let prompt = format!(
+        "{}\n\nUSER QUESTION:\n{}\n\nINITIAL RAG ANSWER:\n{}",
+        resolution.prompt_context, result.query, result.answer
+    );
+    let agent = axon_services::agent_runtime::run(
+        cfg,
+        &binding.loadout_id,
+        resolution.metadata.effective_revision,
+        &prompt,
+        options,
+        axon_services::agent_runtime::configured_completion(cfg.clone()),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    if let Some(answer) = agent.answer.clone() {
+        result.answer = answer;
+    }
+    result.agent = Some(agent);
+    Ok(result)
+}
+
 #[utoipa::path(
     post,
     path = "/v1/ask/stream",
@@ -220,6 +252,10 @@ pub async fn v1_ask_stream(
     }
     if req.explain == Some(true) {
         return HttpError::bad_request("explain is not supported for streaming ask")
+            .into_response();
+    }
+    if req.agent.is_some() && req.loadout.is_none() {
+        return HttpError::bad_request("agent mode requires a revision-bound loadout")
             .into_response();
     }
 
@@ -282,15 +318,29 @@ pub async fn v1_ask_stream(
             Arc::clone(&sequence),
             job_id,
         );
-        let result = query_svc::ask(&service_context, &req_cfg, &question, Some(event_tx))
+        let ask_result = query_svc::ask(&service_context, &req_cfg, &question, Some(event_tx))
             .await
-            .map(|mut result| {
-                result.query = original_query;
-                result.loadout = resolved.map(|value| value.metadata);
-                result
-            })
-            .map_err(|err| err.to_string());
+            .map_err(|error| error.to_string());
+        let mut result = match ask_result {
+            Ok(result) => result,
+            Err(message) => {
+                let _ = delta_task.await;
+                emit_ask_stream_result(&tx, &disconnected, &sequence, job_id, Err(message)).await;
+                return;
+            }
+        };
         let _ = delta_task.await;
+
+        result.query = original_query;
+        result = match apply_stream_agent(&req_cfg, &req, resolved.as_ref(), result).await {
+            Ok(result) => result,
+            Err(message) => {
+                emit_ask_stream_result(&tx, &disconnected, &sequence, job_id, Err(message)).await;
+                return;
+            }
+        };
+        result.loadout = resolved.map(|value| value.metadata);
+        let result = Ok(result);
 
         if disconnected.load(Ordering::Relaxed) {
             return;

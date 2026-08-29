@@ -40,6 +40,7 @@ psl = "2"
 futures-util = "0.3"
 hex = "0.4"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
+rusqlite = "0.32"
 percent-encoding = "2"
 sha2 = "0.10"
 rand_core = { version = "0.9", features = ["os_rng", "std"] }

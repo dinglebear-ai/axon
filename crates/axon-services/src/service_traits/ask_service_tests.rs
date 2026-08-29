@@ -55,6 +55,7 @@ async fn fake_ask_service_chat_echoes_message() {
             session_id: None,
             message: "hello".to_string(),
             loadout: None,
+            agent: None,
         })
         .await
         .expect("chat should succeed");
@@ -73,6 +74,7 @@ async fn fake_ask_service_chat_stream_emits_delta_and_returns_result() {
                 session_id: Some("session-1".to_string()),
                 message: "hello".to_string(),
                 loadout: None,
+                agent: None,
             },
             Box::new(move |delta| {
                 observed.lock().unwrap().push(delta.to_string());

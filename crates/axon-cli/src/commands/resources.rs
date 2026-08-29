@@ -45,6 +45,7 @@ pub async fn run_chat(cfg: &Config, context: &ServiceContext) -> Result<(), Box<
             session_id: None,
             message,
             loadout: None,
+            agent: None,
         })
         .await?;
     if cfg.json_output {

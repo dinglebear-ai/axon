@@ -18,6 +18,7 @@
 )]
 
 pub mod action_api;
+pub mod agent_runtime;
 mod artifact_candidate_outbox;
 pub mod artifacts;
 pub mod brand;

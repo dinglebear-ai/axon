@@ -46,6 +46,7 @@ impl AxonMcpServer {
                 session_id: req.session_id,
                 message: message.to_string(),
                 loadout: None,
+                agent: None,
             })
             .await
             .map_err(|error| logged_internal_error("chat.complete", error.as_ref()))?;

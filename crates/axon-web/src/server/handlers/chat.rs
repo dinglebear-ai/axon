@@ -39,11 +39,57 @@ pub async fn v1_chat(
         return err.into_response();
     }
 
+    if let Some(options) = req.agent.clone() {
+        let Some(binding) = req.loadout.as_ref() else {
+            return HttpError::bad_request("agent mode requires a revision-bound loadout")
+                .into_response();
+        };
+        let resolved = match axon_services::loadout_context::resolve(context.cfg(), binding).await {
+            Ok(value) => value,
+            Err(error) => {
+                return HttpError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "loadout_resolution_failed",
+                    error.to_string(),
+                )
+                .into_response();
+            }
+        };
+        let cfg = context.cfg().clone();
+        let completion = axon_services::agent_runtime::configured_completion(cfg.clone());
+        return match axon_services::agent_runtime::run(
+            &cfg,
+            &binding.loadout_id,
+            resolved.metadata.effective_revision,
+            &format!("{}\n\n{}", resolved.prompt_context, req.message),
+            options,
+            completion,
+        )
+        .await
+        {
+            Ok(agent) => Json(RestChatResponse {
+                message: req.message,
+                answer: agent.answer.clone().unwrap_or_default(),
+                model: axon_core::llm::configured_chat_model_from_config(&cfg),
+                loadout: Some(resolved.metadata),
+                agent: Some(agent),
+            })
+            .into_response(),
+            Err(error) => HttpError::new(
+                StatusCode::BAD_GATEWAY,
+                "agent_runtime_failed",
+                error.to_string(),
+            )
+            .into_response(),
+        };
+    }
+
     match AskServiceImpl::new(context)
         .chat(axon_services::service_traits::ask_service::ChatRequest {
             session_id: req.session_id.clone(),
             message: req.message.clone(),
             loadout: req.loadout.clone(),
+            agent: req.agent.clone(),
         })
         .await
     {
@@ -52,6 +98,7 @@ pub async fn v1_chat(
             answer: completion.reply,
             model: completion.model,
             loadout: completion.loadout,
+            agent: completion.agent,
         })
         .into_response(),
         Err(err) => {

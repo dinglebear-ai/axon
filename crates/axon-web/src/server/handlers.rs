@@ -1,5 +1,7 @@
 #[path = "handlers/admin.rs"]
 pub mod admin;
+#[path = "handlers/agent.rs"]
+pub mod agent;
 #[path = "handlers/artifacts.rs"]
 pub mod artifacts;
 #[path = "handlers/ask.rs"]
@@ -49,6 +51,7 @@ pub(crate) mod sources_resource;
 #[path = "handlers/uploads.rs"]
 pub mod uploads;
 
+pub use agent::{v1_agent_cancel, v1_agent_events, v1_agent_status};
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;
 pub use auth::{login, panel_state};

@@ -239,6 +239,8 @@ pub struct RestAskRequest {
     pub ask_authoritative_boost: Option<f64>,
     #[serde(default)]
     pub loadout: Option<axon_api::loadout::LoadoutBinding>,
+    #[serde(default)]
+    pub agent: Option<axon_api::agent::AgentTurnOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -249,6 +251,8 @@ pub struct RestChatRequest {
     pub session_id: Option<String>,
     #[serde(default)]
     pub loadout: Option<axon_api::loadout::LoadoutBinding>,
+    #[serde(default)]
+    pub agent: Option<axon_api::agent::AgentTurnOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -260,6 +264,8 @@ pub struct RestChatResponse {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loadout: Option<axon_api::loadout::LoadoutResolution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<axon_api::agent::AgentTurnResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
