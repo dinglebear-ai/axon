@@ -24,20 +24,20 @@ export interface LabbyToolDescriptor extends LabbyCatalogEntry {
   outputSchema: JsonSchema | null;
   annotations: Record<string, boolean | null>;
 }
-export interface LabbyExactReceipt {
+export interface LabbyExecutionReceipt {
   requestId: string;
   auditId: string;
   toolId: string;
   contractHash: string;
   catalogRevision: string;
-  executionMode: "exact";
+  executionMode: "exact" | "labby_action";
   llmInvocations: 0;
   truncated: boolean;
 }
 export interface LabbyExactResult {
   id: string;
   result: unknown;
-  receipt: LabbyExactReceipt;
+  receipt: LabbyExecutionReceipt;
   ui?: unknown;
 }
 export interface LabbyApprovalChallenge {
@@ -57,7 +57,7 @@ export interface LabbyResolvedSnippet extends LabbySnippetInfo {
 }
 export interface LabbySnippetReceipt<T = unknown> {
   value: T;
-  receipt: LabbyExactReceipt;
+  receipt: LabbyExecutionReceipt;
 }
 export type ArtifactFamily = "skill" | "prompt" | "agent" | "hook";
 export type ArtifactAction =
@@ -178,6 +178,7 @@ export interface ResolvedCapability {
 export interface ExecutionLoadoutPreview {
   loadoutId: string;
   draftRevision: number;
+  activeRevision: number | null;
   catalogGeneration: string;
   principal: string;
   runtimeIdentity: string;
@@ -379,11 +380,14 @@ export class LabbyClient {
       signal,
     );
     if (!response.ok) throw new Error(`Labby exact call failed (${response.status})`);
-    if (
-      response.payload.receipt.executionMode !== "exact" ||
-      response.payload.receipt.llmInvocations !== 0
-    ) {
-      throw new Error("Labby did not confirm an exact no-LLM execution");
+    if (response.payload.receipt.llmInvocations !== 0) {
+      throw new Error("Labby did not confirm a no-LLM execution");
+    }
+    const expectedMode = descriptor.kind === "mcpTool" ? "exact" : "labby_action";
+    if (response.payload.receipt.executionMode !== expectedMode) {
+      throw new Error(
+        `Labby returned ${response.payload.receipt.executionMode}, expected ${expectedMode}`,
+      );
     }
     return response.payload;
   }
@@ -407,15 +411,21 @@ export class LabbyClient {
     action: ArtifactAction,
     params: Record<string, unknown>,
     signal?: AbortSignal,
-  ): Promise<LabbySnippetReceipt<T>> {
+  ): Promise<{ value: T }> {
     const actionName = `${family}_library.${action}`;
-    const id = `labby:skills::${actionName}`;
-    const catalog = await this.search(id, signal);
-    const entry = catalog.entries.find((candidate) => candidate.id === id);
-    if (!entry) throw new Error(`Labby does not expose ${actionName} for this principal`);
-    const descriptor = await this.descriptor(entry.id, signal);
-    const result = await this.execute(descriptor, params, descriptor.destructive, signal);
-    return { value: result.result as T, receipt: result.receipt };
+    const response = await backendRequest<T>(
+      this.profile,
+      "POST",
+      "/v1/skills",
+      { action: actionName, params },
+      signal,
+    );
+    if (!response.ok) {
+      throw Object.assign(new Error(`Labby artifact request failed (${response.status})`), {
+        detail: response.payload,
+      });
+    }
+    return { value: response.payload };
   }
 
   listSnippets(signal?: AbortSignal) {

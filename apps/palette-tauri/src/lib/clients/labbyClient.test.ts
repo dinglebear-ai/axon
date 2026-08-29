@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendProfile } from "../backendProfiles/model";
-import { LabbyClient, type ArtifactPreview, type LabbyToolDescriptor } from "./labbyClient";
+import { type ArtifactPreview, LabbyClient, type LabbyToolDescriptor } from "./labbyClient";
 
 const profile: BackendProfile = {
   id: "labby-1",
@@ -165,7 +165,7 @@ describe("LabbyClient exact calls", () => {
             toolId: action.id,
             contractHash: action.contractHash,
             catalogRevision: action.catalogRevision,
-            executionMode: "exact",
+            executionMode: "labby_action",
             llmInvocations: 0,
             truncated: false,
           },
@@ -181,55 +181,19 @@ describe("LabbyClient exact calls", () => {
     });
   });
   it("binds artifact lifecycle calls to the authorized Skills service descriptor", async () => {
-    const action = {
-      ...descriptor,
-      kind: "labbyAction" as const,
-      id: "labby:skills::agent_library.preview",
-    };
-    const invoke = vi
-      .spyOn(await import("../invoke"), "invoke")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        profileId: profile.id,
-        product: "labby",
-        requestId: "search",
-        payload: { fingerprint: "f", entries: [action] },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        profileId: profile.id,
-        product: "labby",
-        requestId: "describe",
-        payload: action,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        profileId: profile.id,
-        product: "labby",
-        requestId: "execute",
-        payload: {
-          id: action.id,
-          result: {
-            artifact_id: "agent-demo",
-            revision_id: "sha256:x",
-            render_mode: "inert_text",
-            files: [],
-          },
-          receipt: {
-            requestId: "execute",
-            auditId: "audit",
-            toolId: action.id,
-            contractHash: action.contractHash,
-            catalogRevision: action.catalogRevision,
-            executionMode: "exact",
-            llmInvocations: 0,
-            truncated: false,
-          },
-        },
-      });
+    const invoke = vi.spyOn(await import("../invoke"), "invoke").mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      profileId: profile.id,
+      product: "labby",
+      requestId: "execute",
+      payload: {
+        artifact_id: "agent-demo",
+        revision_id: "sha256:x",
+        render_mode: "inert_text",
+        files: [],
+      },
+    });
     const result = await new LabbyClient(profile).artifactAction<ArtifactPreview>(
       "agent",
       "preview",
@@ -239,8 +203,11 @@ describe("LabbyClient exact calls", () => {
       },
     );
     expect(result.value.render_mode).toBe("inert_text");
-    expect(invoke.mock.calls[2]?.[1]).toMatchObject({
-      request: { body: { id: action.id, expectedContractHash: "hash-1" } },
+    expect(invoke.mock.calls[0]?.[1]).toMatchObject({
+      request: {
+        path: "/v1/skills",
+        body: { action: "agent_library.preview", params: { name: "demo", files: [] } },
+      },
     });
   });
 });
