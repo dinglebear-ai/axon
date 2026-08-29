@@ -404,7 +404,9 @@ function mutationParams(
   }
   if (kind === "config") return { keyPath: target, value: parseConfigValue(value) };
   if (kind === "mcpOauth") return { name: target, provider: value || undefined };
-  if (kind === "marketplaceUpgrade") return { marketplaceName: target };
+  if (kind === "marketplaceRemove" || kind === "marketplaceUpgrade") {
+    return { marketplaceName: target };
+  }
   if (kind === "skillConfig") {
     const requested = parseConfigValue(value);
     if (typeof requested === "boolean") return { name: target, enabled: requested };
