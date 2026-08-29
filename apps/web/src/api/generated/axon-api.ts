@@ -34,6 +34,10 @@ export type components = {
             "stage": components['schemas']['ErrorStage'];
             "visibility": components['schemas']['ErrorVisibility'];
         };
+        "ApproveOperationResponse": {
+            "approval_capability": string;
+            "operation_id": number;
+        };
         "ArtifactContentDescriptor": {
             "artifact_id": components['schemas']['ArtifactId'];
             "bytes": number[];
@@ -200,6 +204,27 @@ export type components = {
             "inputs": components['schemas']['QueryProjectionInput'][];
             "options"?: components['schemas']['CodeSearchProjectionOptions'];
         };
+        "CodexControlSnapshot": {
+            "account": unknown;
+            "apps": unknown;
+            "config": unknown;
+            "hooks": unknown;
+            "mcp_servers": unknown;
+            "method_inventory": unknown;
+            "models": unknown;
+            "pending_server_requests": components['schemas']['RecordedEvent'][];
+            "plugins": unknown;
+            "skills": unknown;
+            "status": components['schemas']['ControlStatus'];
+        };
+        "CodexReadBody": {
+            "action": components['schemas']['ReadAction'];
+            "params"?: unknown;
+        };
+        "CodexResourceResponse": {
+            "resource": string;
+            "value": unknown;
+        };
         "ColorUsage": "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         "ContentRef": {
             "kind": "inline_text";
@@ -216,6 +241,29 @@ export type components = {
             "kind": "external";
             "uri": string;
         };
+        "ControlOperation": {
+            "actor": string;
+            "approver"?: string | null;
+            "execution_attempt_id"?: string | null;
+            "expected_revision"?: string | null;
+            "id": number;
+            "method": string;
+            "phase": components['schemas']['OperationPhase'];
+            "post_state_revision"?: string | null;
+            "recovery_state"?: string | null;
+            "redacted_request": unknown;
+            "request_digest": string;
+            "response_evidence"?: string | null;
+            "scope": string;
+        };
+        "ControlState": "disabled" | "starting" | "ready" | "degraded" | "incompatible" | "circuit_open" | "stopped";
+        "ControlStatus": {
+            "binary"?: string | null;
+            "detail"?: string | null;
+            "home"?: string | null;
+            "restart_count": number;
+            "state": components['schemas']['ControlState'];
+        };
         "CrawlOptions": {
             "collection"?: string | null;
             "execution"?: components['schemas']['ExecutionPolicy'];
@@ -227,6 +275,11 @@ export type components = {
         "CrawlRequest": {
             "inputs": components['schemas']['SourceProjectionInput'][];
             "options"?: components['schemas']['CrawlOptions'];
+        };
+        "CreateOperationBody": {
+            "action": components['schemas']['MutationAction'];
+            "idempotency_key": string;
+            "redacted_request": unknown;
         };
         "CredentialKind": "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
         "CredentialRequirement": {
@@ -327,6 +380,33 @@ export type components = {
         "ErrorSeverity": "info" | "warning" | "degraded" | "failed" | "fatal";
         "ErrorStage": "parsing" | "validation" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "enriching" | "normalizing" | "parsing_content" | "graphing" | "preparing" | "batching" | "embedding" | "vectorizing" | "upserting" | "publishing" | "cleaning" | "retrieving" | "synthesizing" | "evaluating" | "observing" | "storage" | "provider" | "transport" | "internal";
         "ErrorVisibility": "public" | "internal" | "sensitive";
+        "EventCursor": {
+            "boot_id": number;
+            "sequence": number;
+        };
+        "EventKind": {
+            "kind": "notification";
+            "method": string;
+            "params": unknown;
+        } | {
+            "kind": "server_request";
+            "method": string;
+            "params": unknown;
+            "request_id": number;
+        } | {
+            "detail": string;
+            "kind": "protocol_failure";
+        } | {
+            "kind": "exited";
+        };
+        "ExecuteBody": {
+            "action": components['schemas']['MutationAction'];
+            "capability": string;
+            "params": unknown;
+        };
+        "ExecuteOperationResponse": {
+            "result": unknown;
+        };
         "ExecutionAffinity": "inline" | "worker" | "scheduler" | "provider_bound";
         "ExecutionMode": "foreground" | "background" | "wait";
         "ExecutionPolicy": {
@@ -728,6 +808,8 @@ export type components = {
             "turn_count": number;
             "updated_at": number;
         };
+        "MutationAction": "account_login_start" | "account_login_cancel" | "account_logout" | "account_rate_limit_reset_credit_consume" | "account_bedrock_setup" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "plugin_install" | "plugin_uninstall" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "skills_extra_roots_set" | "external_agent_config_import" | "external_agent_config_import_record_history" | "experimental_feature_enablement_set";
+        "OperationPhase": "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         "OutputPolicy": {
             "artifact_mode": components['schemas']['ArtifactMode'];
             "include_progress": boolean;
@@ -928,11 +1010,25 @@ export type components = {
         "QueryResult": {
             "results": components['schemas']['QueryHit'][];
         };
+        "ReadAction": "account_read" | "rate_limits_read" | "account_usage_read" | "account_workspace_messages_read" | "account_bedrock_discover" | "models_list" | "model_provider_capabilities_read" | "collaboration_modes_list" | "permission_profiles_list" | "config_read" | "config_requirements_read" | "mcp_servers_list" | "mcp_server_resource_read" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "skills_list" | "external_agent_config_detect" | "external_agent_config_import_read_histories" | "hooks_list" | "apps_list" | "apps_installed" | "app_read" | "experimental_features_list";
         "ReadinessBody": {
             "ok": boolean;
             "qdrant": string;
             "sqlite": string;
             "tei": string;
+        };
+        "ReconcileOperationBody": {
+            "disposition_note"?: string | null;
+            "effect_applied"?: boolean | null;
+            "without_replay"?: boolean;
+        };
+        "ReconcileOperationResponse": {
+            "operation_id": number;
+            "phase": components['schemas']['OperationPhase'];
+        };
+        "RecordedEvent": {
+            "cursor": components['schemas']['EventCursor'];
+            "event": components['schemas']['EventKind'];
         };
         "RedactionMetadata": {
             "detector_count": number;
@@ -1246,6 +1342,15 @@ export type components = {
             "supported_actions"?: string[];
             "supported_routes": string[];
             "version": string;
+        };
+        "ServerRequestRespondedResponse": {
+            "request_id": number;
+            "responded": boolean;
+        };
+        "ServerRequestResponseBody": {
+            "approved": boolean;
+            "boot_id": number;
+            "response"?: unknown;
         };
         "ServiceRetrieveVariantError": {
             "error": string;
@@ -1595,6 +1700,16 @@ export type paths = {
     "/v1/chat": { post: operations["v1_chat"] };
     "/v1/chat/stream": { post: operations["v1_chat_stream"] };
     "/v1/code-search": { post: operations["codeSearch"] };
+    "/v1/codex": { get: operations["snapshot_openapi_marker"] };
+    "/v1/codex/events": { get: operations["events_openapi_marker"] };
+    "/v1/codex/operations": { get: operations["list_operations_openapi_marker"]; post: operations["create_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/approve": { post: operations["approve_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/cancel": { post: operations["cancel_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/execute": { post: operations["execute_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/reconcile": { post: operations["reconcile_operation_openapi_marker"] };
+    "/v1/codex/read": { post: operations["read_action_openapi_marker"] };
+    "/v1/codex/server-requests/{id}/respond": { post: operations["respond_to_server_request_openapi_marker"] };
+    "/v1/codex/{resource}": { get: operations["resource_openapi_marker"] };
     "/v1/collections": { get: operations["collections_openapi_marker"] };
     "/v1/crawl": { post: operations["crawlSources"] };
     "/v1/diff": { post: operations["diff"] };
@@ -1686,6 +1801,17 @@ export type operations = {
     "v1_chat": { method: "post"; path: "/v1/chat"; operationId: "v1_chat"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": components['schemas']['RestChatResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "v1_chat_stream": { method: "post"; path: "/v1/chat/stream"; operationId: "v1_chat_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "codeSearch": { method: "post"; path: "/v1/code-search"; operationId: "codeSearch"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CodeSearchRequest']; responses: { "200": components['schemas']['BatchResult_QueryResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "snapshot_openapi_marker": { method: "get"; path: "/v1/codex"; operationId: "snapshot_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['CodexControlSnapshot']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "503": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "events_openapi_marker": { method: "get"; path: "/v1/codex/events"; operationId: "events_openapi_marker"; parameters: { query: { "boot_id"?: number; "after"?: number; "limit"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['RecordedEvent'][]; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "list_operations_openapi_marker": { method: "get"; path: "/v1/codex/operations"; operationId: "list_operations_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['ControlOperation'][]; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "create_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations"; operationId: "create_operation_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CreateOperationBody']; responses: { "200": components['schemas']['ControlOperation']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "approve_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/approve"; operationId: "approve_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ApproveOperationResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "cancel_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/cancel"; operationId: "cancel_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "execute_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/execute"; operationId: "execute_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ExecuteBody']; responses: { "200": components['schemas']['ExecuteOperationResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "reconcile_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/reconcile"; operationId: "reconcile_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ReconcileOperationBody']; responses: { "200": components['schemas']['ReconcileOperationResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "read_action_openapi_marker": { method: "post"; path: "/v1/codex/read"; operationId: "read_action_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CodexReadBody']; responses: { "200": components['schemas']['CodexResourceResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "respond_to_server_request_openapi_marker": { method: "post"; path: "/v1/codex/server-requests/{id}/respond"; operationId: "respond_to_server_request_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ServerRequestResponseBody']; responses: { "200": components['schemas']['ServerRequestRespondedResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "resource_openapi_marker": { method: "get"; path: "/v1/codex/{resource}"; operationId: "resource_openapi_marker"; parameters: { query: Record<string, never>; path: { "resource": string } }; requestBody: never; responses: { "200": components['schemas']['CodexResourceResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "collections_openapi_marker": { method: "get"; path: "/v1/collections"; operationId: "collections_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['PanelCollectionsResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "crawlSources": { method: "post"; path: "/v1/crawl"; operationId: "crawlSources"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CrawlRequest']; responses: { "200": components['schemas']['BatchResult_SourceResult']; "202": components['schemas']['BatchResult_SourceResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "429": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "diff": { method: "post"; path: "/v1/diff"; operationId: "diff"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestDiffRequest']; responses: { "200": components['schemas']['DiffResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

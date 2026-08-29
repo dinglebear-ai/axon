@@ -12,6 +12,14 @@ pub struct McpActionSpec {
 
 const ACTION_REGISTRY: &[McpActionSpec] = &[
     McpActionSpec {
+        action: "codex",
+        request_dto: "CodexRequest",
+        result_dto: "AxonToolResponse",
+        required_scope: "admin",
+        mutates: true,
+        async_job: false,
+    },
+    McpActionSpec {
         action: "scrape",
         request_dto: "ScrapeRequest",
         result_dto: "BatchResult<SourceResult>",
@@ -159,5 +167,6 @@ mod tests {
         assert!(actions.contains("extract"));
         assert!(actions.contains("crawl"));
         assert!(actions.contains("code_search"));
+        assert!(actions.contains("codex"));
     }
 }

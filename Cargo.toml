@@ -17,6 +17,7 @@ members = [
     "crates/axon-embedding",
     "crates/axon-vectors",
     "crates/axon-retrieval",
+    "crates/axon-codex",
     "crates/axon-llm",
     "crates/axon-prune",
     "crates/axon-jobs",

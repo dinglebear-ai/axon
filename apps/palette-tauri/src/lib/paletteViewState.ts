@@ -22,7 +22,8 @@ import type { PaletteAction } from "@/lib/actions";
 // `history` are full-screen overlays — mutually exclusive with each other and
 // with the launcher, which is exactly what makes "settings + history" or
 // "browse while in settings" unrepresentable.
-// `browser` is a third full-screen overlay, alongside `settings`/`history`:
+// `browser` and `codex` are additional full-screen overlays alongside
+// `settings`/`history`:
 // mutually exclusive with them and with the launcher. It carries the initial
 // URL/query argument the user typed before invoking the `browser` action (or
 // `null` for a bare invocation, which opens to the browser's home page).
@@ -30,6 +31,7 @@ export type View =
   | { kind: "launcher"; mode: PaletteAction | null; browse: boolean }
   | { kind: "settings" }
   | { kind: "history" }
+  | { kind: "codex" }
   | { kind: "browser"; initialTarget: string | null };
 
 export const INITIAL_VIEW: View = { kind: "launcher", mode: null, browse: false };
@@ -57,6 +59,8 @@ export type ViewIntent =
   | { type: "openHistory" }
   | { type: "closeHistoryToBrowse" } //             Escape out of history → browse list
   | { type: "toggleHistory" }
+  | { type: "openCodex" }
+  | { type: "closeCodex" }
   | { type: "openHistoryItem"; action: PaletteAction } // run a stored item → launcher in that mode
   | { type: "openBrowser"; initialTarget: string | null } // invoke the Browser action
   | { type: "closeBrowser" } //                     close the browser window/overlay → browse list
@@ -106,6 +110,10 @@ export function viewReducer(view: View, intent: ViewIntent): View {
         : { kind: "settings" };
     case "openHistory":
       return { kind: "history" };
+    case "openCodex":
+      return { kind: "codex" };
+    case "closeCodex":
+      return { kind: "launcher", mode: null, browse: true };
     case "toggleHistory":
       return view.kind === "history"
         ? { kind: "launcher", mode: null, browse: false }
@@ -133,6 +141,10 @@ export function isSettingsOpen(view: View): boolean {
 
 export function isHistoryOpen(view: View): boolean {
   return view.kind === "history";
+}
+
+export function isCodexOpen(view: View): boolean {
+  return view.kind === "codex";
 }
 
 export function isBrowseOpen(view: View): boolean {

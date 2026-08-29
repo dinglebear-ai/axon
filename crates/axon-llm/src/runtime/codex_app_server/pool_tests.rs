@@ -63,6 +63,16 @@ import time; time.sleep(30)
     let pool = pool_for(&backend);
     let timeout = backend.completion_timeout();
     let mut slot = pool.checkout(timeout).await.unwrap();
+    assert_eq!(
+        pool.metrics().await,
+        PoolMetrics {
+            active_or_spawning: 1,
+            spawning: 0,
+            idle: 0,
+            waiting: 0,
+            rejected: 0,
+        }
+    );
     let mut collected = String::new();
     let r1 = run_turn(&mut slot, "prompt1", None, None, &backend, &mut |d| {
         collected.push_str(d);
@@ -72,6 +82,8 @@ import time; time.sleep(30)
     .unwrap();
     assert_eq!(r1.text, "turn1");
     pool.checkin(slot).await;
+    assert_eq!(pool.metrics().await.idle, 1);
+    assert_eq!(pool.metrics().await.active_or_spawning, 0);
 
     // Second completion — must reuse the same child (thread_id stays "thr_reuse").
     let mut slot2 = pool.checkout(timeout).await.unwrap();

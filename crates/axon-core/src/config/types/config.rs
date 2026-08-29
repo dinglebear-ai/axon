@@ -557,6 +557,25 @@ pub struct Config {
     /// Default `false` — opt-in escape hatch that surrenders synthesis isolation.
     pub codex_load_user_config: bool,
 
+    /// Enables the separately supervised Codex management runtime.
+    pub codex_control_enabled: bool,
+    /// Stable CODEX_HOME used only by the control runtime.
+    pub codex_control_home: Option<PathBuf>,
+    /// Timeout for each Codex control-plane request.
+    pub codex_control_request_timeout_secs: u64,
+    /// Maximum concurrent Codex control-plane reads.
+    pub codex_control_read_concurrency: usize,
+    /// Allows account login/logout mutations through Codex control.
+    pub codex_control_account_writes: bool,
+    /// Allows config mutations through Codex control.
+    pub codex_control_config_writes: bool,
+    /// Allows MCP server configuration/reload/OAuth mutations.
+    pub codex_control_mcp_writes: bool,
+    /// Allows plugin install/uninstall mutations.
+    pub codex_control_plugin_writes: bool,
+    /// Allows skill configuration and external-agent imports.
+    pub codex_control_skill_writes: bool,
+
     /// Max concurrent LLM completion requests across the selected backend. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
     pub llm_completion_concurrency: usize,
 

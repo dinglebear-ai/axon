@@ -7540,3 +7540,45 @@ textarea {
 .tauri-mobile-runtime .settings-footer-actions button {
   min-height: 44px;
 }
+.codex-control {
+  display: grid;
+  gap: var(--aurora-space-4);
+  padding: var(--aurora-space-5);
+  overflow: auto;
+}
+
+.codex-control-header,
+.codex-control-actions,
+.codex-status-card,
+.codex-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--aurora-space-3);
+}
+
+.codex-control-header { justify-content: space-between; }
+.codex-control-header h2 { display: flex; align-items: center; gap: var(--aurora-space-2); }
+.codex-status-card,
+.codex-resource,
+.codex-mutation {
+  border: 1px solid var(--aurora-border-subtle);
+  border-radius: var(--aurora-radius-lg);
+  padding: var(--aurora-space-4);
+  background: var(--aurora-surface-raised);
+}
+.codex-status-card { justify-content: space-between; }
+.codex-tabs { flex-wrap: wrap; }
+.codex-tab-active { background: var(--aurora-surface-selected); }
+.codex-resource pre,
+.codex-mutation pre { max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.codex-mutation { display: grid; gap: var(--aurora-space-3); }
+.codex-mutation label { display: grid; gap: var(--aurora-space-2); }
+.codex-mutation select,
+.codex-mutation textarea {
+  width: 100%;
+  color: var(--aurora-text-primary);
+  background: var(--aurora-surface-base);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: var(--aurora-radius-md);
+  padding: var(--aurora-space-3);
+}

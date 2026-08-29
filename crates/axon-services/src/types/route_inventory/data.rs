@@ -493,3 +493,7 @@ pub(super) use graph_routes::GRAPH_ROUTES;
 #[path = "data/projection_routes.rs"]
 mod projection_routes;
 pub(super) use projection_routes::PROJECTION_ROUTES;
+
+#[path = "data/codex_routes.rs"]
+mod codex_routes;
+pub(super) use codex_routes::CODEX_ROUTES;

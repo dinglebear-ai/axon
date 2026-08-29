@@ -1,0 +1,30 @@
+[package]
+name = "axon-codex"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Typed Codex app-server protocol and trusted-control domain for Axon."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rand = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+nix = { version = "0.30", features = ["user"] }
+utoipa = "5"
+url = "2"
+fs2 = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

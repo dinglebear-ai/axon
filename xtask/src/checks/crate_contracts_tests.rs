@@ -197,7 +197,7 @@ fn every_contract_crate_exists_in_the_real_workspace() {
 }
 
 #[test]
-fn contract_table_exactly_covers_all_23_live_crates() {
+fn contract_table_exactly_covers_all_24_live_crates() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let expected = LIVE_CRATE_NAMES
         .iter()
@@ -230,7 +230,7 @@ fn contract_table_exactly_covers_all_23_live_crates() {
         "root workspace member inventory drift"
     );
     assert!(inventory_violations.is_empty(), "{inventory_violations:?}");
-    assert_eq!(expected.len(), 23);
+    assert_eq!(expected.len(), 24);
 }
 
 #[test]

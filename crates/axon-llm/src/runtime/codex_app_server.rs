@@ -228,6 +228,11 @@ pub async fn probe_codex_capabilities(backend: &LlmBackendConfig) -> CodexCapabi
     }
 }
 
+/// Snapshot synthesis-pool pressure for diagnostics and capacity monitoring.
+pub async fn synthesis_pool_metrics(backend: &LlmBackendConfig) -> pool::PoolMetrics {
+    pool::pool_for(backend).metrics().await
+}
+
 pub(super) fn read_bounded_stderr_spawn(
     stderr: tokio::process::ChildStderr,
 ) -> JoinHandle<Result<Vec<u8>, io::Error>> {

@@ -151,6 +151,56 @@ fn clean_break_system_actions_have_only_canonical_subactions() {
 }
 
 #[test]
+fn codex_action_publishes_its_typed_control_contract() {
+    let spec = LIVE_ACTIONS
+        .iter()
+        .find(|spec| spec.name == "codex")
+        .expect("codex must be a live MCP action");
+    assert_eq!(spec.scope, "admin");
+    assert_eq!(spec.request_dto, "CodexRequest");
+    assert_eq!(
+        typed_subaction_variants("codex"),
+        [
+            "snapshot",
+            "resource",
+            "events",
+            "operations",
+            "prepare",
+            "approve",
+            "execute",
+            "cancel",
+            "reconcile",
+            "respond",
+        ]
+    );
+
+    let schema = request_schema_for("CodexRequest");
+    let properties = schema["properties"]
+        .as_object()
+        .expect("CodexRequest properties");
+    for field in [
+        "subaction",
+        "resource",
+        "params",
+        "mutation_action",
+        "operation_id",
+        "idempotency_key",
+        "capability",
+        "boot_id",
+        "request_id",
+        "approved",
+        "cursor_boot_id",
+        "after_sequence",
+        "limit",
+    ] {
+        assert!(
+            properties.contains_key(field),
+            "missing CodexRequest field {field}"
+        );
+    }
+}
+
+#[test]
 fn only_unimplemented_contract_actions_are_deferred() {
     let names = deferred_actions()
         .into_iter()

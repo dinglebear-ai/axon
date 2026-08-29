@@ -13,6 +13,14 @@ pub struct PanelRuntimeState {
 pub struct AppState {
     pub(crate) panel: Arc<PanelRuntimeState>,
     pub(crate) service_context: Arc<ServiceContext>,
+    pub(crate) codex_control:
+        Result<Option<Arc<axon_services::codex_control::CodexControlService>>, String>,
+}
+
+pub(crate) fn build_codex_control(
+    cfg: &axon_core::config::Config,
+) -> Result<Option<Arc<axon_services::codex_control::CodexControlService>>, String> {
+    axon_services::codex_control::CodexControlService::from_config(cfg)
 }
 
 impl PanelRuntimeState {

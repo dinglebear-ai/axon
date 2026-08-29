@@ -6,6 +6,7 @@ pub const REQUIRED_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/axon-error",
     "crates/axon-api",
     "crates/axon-authz",
+    "crates/axon-codex",
     "crates/axon-core",
     // Phase 3 / PR4 observability crate graduated from PR0 skeleton status:
     // it now owns shared provider reservation/cooling state and sidecar tests.

@@ -493,5 +493,60 @@
     "method": "POST",
     "path": "/v1/code-search",
     "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/codex",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/codex/events",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/read",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/codex/{resource}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/codex/operations",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/operations",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/operations/{id}/approve",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/operations/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/operations/{id}/execute",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/server-requests/{id}/respond",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/codex/operations/{id}/reconcile",
+    "requiresAuth": true
   }
 ]

@@ -196,6 +196,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/codex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["snapshot_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["events_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_operations_openapi_marker"];
+        put?: never;
+        post: operations["create_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["execute_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reconcile_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["read_action_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/server-requests/{id}/respond": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["respond_to_server_request_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/{resource}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["resource_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections": {
         parameters: {
             query?: never;
@@ -1494,6 +1654,11 @@ export interface components {
             /** @description Where this error may be surfaced. */
             visibility: components["schemas"]["ErrorVisibility"];
         };
+        ApproveOperationResponse: {
+            approval_capability: string;
+            /** Format: int64 */
+            operation_id: number;
+        };
         ArtifactContentDescriptor: {
             artifact_id: components["schemas"]["ArtifactId"];
             bytes: number[];
@@ -1684,6 +1849,31 @@ export interface components {
             inputs: components["schemas"]["QueryProjectionInput"][];
             options?: components["schemas"]["CodeSearchProjectionOptions"];
         };
+        CodexControlSnapshot: {
+            account: unknown;
+            apps: unknown;
+            config: unknown;
+            hooks: unknown;
+            mcp_servers: unknown;
+            /**
+             * @description Complete method inventory generated from the pinned Codex app-server
+             *     schema, including methods outside Axon's approved management surface.
+             */
+            method_inventory: unknown;
+            models: unknown;
+            pending_server_requests: components["schemas"]["RecordedEvent"][];
+            plugins: unknown;
+            skills: unknown;
+            status: components["schemas"]["ControlStatus"];
+        };
+        CodexReadBody: {
+            action: components["schemas"]["ReadAction"];
+            params?: unknown;
+        };
+        CodexResourceResponse: {
+            resource: string;
+            value: unknown;
+        };
         /** @enum {string} */
         ColorUsage: "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         ContentRef: {
@@ -1705,6 +1895,33 @@ export interface components {
             kind: "external";
             uri: string;
         };
+        ControlOperation: {
+            actor: string;
+            approver?: string | null;
+            execution_attempt_id?: string | null;
+            expected_revision?: string | null;
+            /** Format: int64 */
+            id: number;
+            method: string;
+            phase: components["schemas"]["OperationPhase"];
+            post_state_revision?: string | null;
+            recovery_state?: string | null;
+            /** @description Secret-free request retained so recovery can prove the intended effect. */
+            redacted_request: unknown;
+            request_digest: string;
+            response_evidence?: string | null;
+            scope: string;
+        };
+        /** @enum {string} */
+        ControlState: "disabled" | "starting" | "ready" | "degraded" | "incompatible" | "circuit_open" | "stopped";
+        ControlStatus: {
+            binary?: string | null;
+            detail?: string | null;
+            home?: string | null;
+            /** Format: int32 */
+            restart_count: number;
+            state: components["schemas"]["ControlState"];
+        };
         CrawlOptions: {
             collection?: string | null;
             execution?: components["schemas"]["ExecutionPolicy"];
@@ -1716,6 +1933,11 @@ export interface components {
         CrawlRequest: {
             inputs: components["schemas"]["SourceProjectionInput"][];
             options?: components["schemas"]["CrawlOptions"];
+        };
+        CreateOperationBody: {
+            action: components["schemas"]["MutationAction"];
+            idempotency_key: string;
+            redacted_request: unknown;
         };
         /** @enum {string} */
         CredentialKind: "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
@@ -1843,6 +2065,40 @@ export interface components {
          * @enum {string}
          */
         ErrorVisibility: "public" | "internal" | "sensitive";
+        EventCursor: {
+            /** Format: int64 */
+            boot_id: number;
+            /** Format: int64 */
+            sequence: number;
+        };
+        EventKind: {
+            /** @enum {string} */
+            kind: "notification";
+            method: string;
+            params: unknown;
+        } | {
+            /** @enum {string} */
+            kind: "server_request";
+            method: string;
+            params: unknown;
+            /** Format: int64 */
+            request_id: number;
+        } | {
+            detail: string;
+            /** @enum {string} */
+            kind: "protocol_failure";
+        } | {
+            /** @enum {string} */
+            kind: "exited";
+        };
+        ExecuteBody: {
+            action: components["schemas"]["MutationAction"];
+            capability: string;
+            params: unknown;
+        };
+        ExecuteOperationResponse: {
+            result: unknown;
+        };
         /** @enum {string} */
         ExecutionAffinity: "inline" | "worker" | "scheduler" | "provider_bound";
         /** @enum {string} */
@@ -2426,6 +2682,15 @@ export interface components {
             /** Format: int64 */
             updated_at: number;
         };
+        /**
+         * @description Write-only actions accepted by the approved mutation workflow.
+         *     Keeping this separate from [`ControlAction`] prevents callers from preparing
+         *     or executing a read method through the mutation endpoints.
+         * @enum {string}
+         */
+        MutationAction: "account_login_start" | "account_login_cancel" | "account_logout" | "account_rate_limit_reset_credit_consume" | "account_bedrock_setup" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "plugin_install" | "plugin_uninstall" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "skills_extra_roots_set" | "external_agent_config_import" | "external_agent_config_import_record_history" | "experimental_feature_enablement_set";
+        /** @enum {string} */
+        OperationPhase: "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         OutputPolicy: {
             artifact_mode: components["schemas"]["ArtifactMode"];
             include_progress: boolean;
@@ -2728,11 +2993,33 @@ export interface components {
         QueryResult: {
             results: components["schemas"]["QueryHit"][];
         };
+        /**
+         * @description Read-only actions accepted by direct control-plane read endpoints.
+         *
+         *     This type deliberately cannot represent a mutation, so deserialization at
+         *     the transport boundary cannot accidentally route writes through a read API.
+         * @enum {string}
+         */
+        ReadAction: "account_read" | "rate_limits_read" | "account_usage_read" | "account_workspace_messages_read" | "account_bedrock_discover" | "models_list" | "model_provider_capabilities_read" | "collaboration_modes_list" | "permission_profiles_list" | "config_read" | "config_requirements_read" | "mcp_servers_list" | "mcp_server_resource_read" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "skills_list" | "external_agent_config_detect" | "external_agent_config_import_read_histories" | "hooks_list" | "apps_list" | "apps_installed" | "app_read" | "experimental_features_list";
         ReadinessBody: {
             ok: boolean;
             qdrant: string;
             sqlite: string;
             tei: string;
+        };
+        ReconcileOperationBody: {
+            disposition_note?: string | null;
+            effect_applied?: boolean | null;
+            without_replay?: boolean;
+        };
+        ReconcileOperationResponse: {
+            /** Format: int64 */
+            operation_id: number;
+            phase: components["schemas"]["OperationPhase"];
+        };
+        RecordedEvent: {
+            cursor: components["schemas"]["EventCursor"];
+            event: components["schemas"]["EventKind"];
         };
         /** @description Bounded redaction provenance carried beside a public write. */
         RedactionMetadata: {
@@ -3150,6 +3437,17 @@ export interface components {
             supported_actions?: string[];
             supported_routes: string[];
             version: string;
+        };
+        ServerRequestRespondedResponse: {
+            /** Format: int64 */
+            request_id: number;
+            responded: boolean;
+        };
+        ServerRequestResponseBody: {
+            approved: boolean;
+            /** Format: int64 */
+            boot_id: number;
+            response?: unknown;
         };
         ServiceRetrieveVariantError: {
             error: string;
@@ -4183,6 +4481,586 @@ export interface operations {
             };
             /** @description Code search request exceeds a configured limit */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    snapshot_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Codex control runtime snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexControlSnapshot"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex control disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex control unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    events_openapi_marker: {
+        parameters: {
+            query?: {
+                /** @description Runtime boot identifier */
+                boot_id?: number;
+                /** @description Last observed sequence */
+                after?: number;
+                /** @description Maximum events */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded, redacted Codex event page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordedEvent"][];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex app-server request failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_operations_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unfinished Codex control operations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlOperation"][];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex operation store unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOperationBody"];
+            };
+        };
+        responses: {
+            /** @description Prepared Codex control operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlOperation"];
+                };
+            };
+            /** @description Invalid operation intent */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    approve_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Short-lived approval capability */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveOperationResponse"];
+                };
+            };
+            /** @description Operation cannot be approved */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending or approved operation cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileOperationResponse"];
+                };
+            };
+            /** @description Operation cannot be cancelled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    execute_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecuteBody"];
+            };
+        };
+        responses: {
+            /** @description Sanitized Codex mutation result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecuteOperationResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex app-server request failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reconcile_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileOperationBody"];
+            };
+        };
+        responses: {
+            /** @description Ambiguous operation reconciled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileOperationResponse"];
+                };
+            };
+            /** @description Operation cannot be reconciled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_action_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexReadBody"];
+            };
+        };
+        responses: {
+            /** @description Typed redacted Codex read result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexResourceResponse"];
+                };
+            };
+            /** @description Unsupported read action or invalid parameters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    respond_to_server_request_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Pending server-request identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerRequestResponseBody"];
+            };
+        };
+        responses: {
+            /** @description Single-use response accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerRequestRespondedResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unknown, expired, or incompatible request */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resource_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description account, models, config, mcp, plugins, skills, hooks, or apps */
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redacted Codex resource projection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexResourceResponse"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unknown resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex app-server request failed */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

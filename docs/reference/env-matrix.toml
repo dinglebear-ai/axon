@@ -3599,6 +3599,114 @@ compatibility = "advanced"
 reason = "Operator-supplied Codex auth home copied into an isolated app-server home."
 
 [[env]]
+key = "AXON_CODEX_CONTROL_ENABLED"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Explicit opt-in for the trusted Codex app-server management runtime used by Palette."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_HOME"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Absolute service-owned non-symlink home for the trusted Codex control runtime."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_REQUEST_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Bounded request timeout for Codex control app-server calls."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_READ_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Maximum concurrent read-only Codex control calls."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_ACCOUNT_WRITES"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fine-grained opt-in for Codex account mutations."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_CONFIG_WRITES"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fine-grained opt-in for Codex configuration mutations."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_MCP_WRITES"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fine-grained opt-in for Codex MCP server mutations."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_PLUGIN_WRITES"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fine-grained opt-in for Codex plugin mutations."
+
+[[env]]
+key = "AXON_CODEX_CONTROL_SKILL_WRITES"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Fine-grained opt-in for Codex skill mutations."
+
+[[env]]
 key = "AXON_WATCH_TICK_SECS"
 classification = "keep-env"
 runtime_placement = "both"

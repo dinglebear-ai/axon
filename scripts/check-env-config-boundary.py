@@ -46,6 +46,12 @@ IGNORED_TOKENS = {
     "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
+    "AXON_BENCH_AXON_BIN",  # source-pipeline benchmark harness control
+    "AXON_BENCH_COLLECTION",  # source-pipeline benchmark fixture state
+    "AXON_BENCH_LIBRARY_MODE",  # source-pipeline benchmark harness control
+    "AXON_BENCH_MLX_URL",  # source-pipeline benchmark fixture endpoint
+    "AXON_BENCH_OUTPUT",  # source-pipeline benchmark report destination
+    "AXON_BENCH_SOURCE",  # source-pipeline benchmark fixture input
     "AXON_ALLOW_FALLBACK_WEB_ASSETS",  # local/CI build escape hatch, not runtime config
     "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
     "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
@@ -64,6 +70,7 @@ IGNORED_TOKENS = {
     "AXON_LIVE_PORT_BASE",  # live-harness per-run port allocation
     "AXON_LIVE_TEST_ROOT",  # live-harness isolated output root
     "AXON_LIVE_USE_PRODUCTION_STATE",  # live-harness opt-in control
+    "AXON_MLX_TEST_MODE",  # Apple MLX script test-harness control
     "AXON_LIVE_HARNESS_SET",  # live-harness config mutation fixture
     "AXON_LIVE_HARNESS_TOKEN",  # live-harness config secret fixture
     "AXON_ARTIFACT_ROOT",  # isolated live/stress harness artifact root

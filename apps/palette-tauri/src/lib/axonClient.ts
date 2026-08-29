@@ -114,6 +114,26 @@ export async function executeAction(
   }
 }
 
+export async function executeAxonRequest(
+  client: Client,
+  method: HttpMethod,
+  path: string,
+  body: Record<string, unknown> | null = null,
+): Promise<PaletteResult> {
+  const request: PaletteHttpRequest = {
+    baseUrl: client.baseUrl,
+    token: tokenFromHeaders(client.headers),
+    method,
+    path,
+    body,
+  };
+  try {
+    return await invoke<PaletteResult>("axon_http_request", { request });
+  } catch (error) {
+    return failedResult(method, path, error);
+  }
+}
+
 async function executeGitHubBrowse(
   action: RemotePaletteAction,
   arg: string,

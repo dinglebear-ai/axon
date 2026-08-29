@@ -148,6 +148,21 @@ fn render_services_section(report: &serde_json::Value) {
             &report_text(report, &["services", "openai", "detail"], "not configured"),
         );
     }
+    if report_has(report, &["services", "codex_capabilities"]) {
+        let count = report_value(report, &["services", "codex_capabilities", "models"])
+            .as_array()
+            .map_or(0, Vec::len);
+        let effective = report_text(
+            report,
+            &["services", "llm", "effective_model_source"],
+            "not_exposed",
+        );
+        render_status_line(
+            "codex_app_server",
+            report_bool(report, &["services", "codex_capabilities", "ok"]),
+            &format!("models={count} effective_model={effective}"),
+        );
+    }
 }
 
 fn render_pipeline_row(report: &serde_json::Value, name: &str) {

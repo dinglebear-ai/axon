@@ -159,8 +159,9 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         // subaction (kinds/resolve/query/node/edge/source) is a pure read —
         // graph writes stay parser/source-job owned.
         AxonRequest::Graph(_) => Some("axon:read"), // NOTE: no wildcard arm — the match must be exhaustive.
-                                                    // Adding a new AxonRequest variant without a required_scope arm is a compile error,
-                                                    // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
+        AxonRequest::Codex(_) => Some("axon:admin"),
+        // Adding a new AxonRequest variant without a required_scope arm is a compile error,
+        // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
     }
 }
 
@@ -217,5 +218,6 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Providers(_) => "providers",
         AxonRequest::Graph(_) => "graph",
         AxonRequest::Chat(_) => "chat",
+        AxonRequest::Codex(_) => "codex",
     }
 }

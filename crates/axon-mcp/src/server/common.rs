@@ -13,6 +13,12 @@ pub(super) use super::artifacts::respond_with_mode;
 
 pub(super) const MCP_TOOL_SCHEMA_URI: &str = "axon://schema/mcp-tool";
 
+#[derive(Clone)]
+pub(super) struct CodexCaller {
+    pub actor: String,
+    pub scopes: String,
+}
+
 tokio::task_local! {
     /// The [`axon_services::prune::PruneAuthz`] resolved for the in-flight
     /// `axon` tool call, when the action is `prune`.
@@ -55,6 +61,10 @@ tokio::task_local! {
     /// so the `auth_snapshot` recorded on the unified job row reflects the
     /// real MCP caller instead of an unconditional `trusted_system` fallback.
     pub(super) static CURRENT_CALLER_AUTH_SNAPSHOT: Option<axon_api::source::AuthSnapshot>;
+
+    /// Authenticated principal retained for Codex mutation audit and
+    /// actor-bound idempotency. Loopback calls use an explicit local identity.
+    pub(super) static CURRENT_CODEX_CALLER: CodexCaller;
 }
 
 // --- Error constructors ---

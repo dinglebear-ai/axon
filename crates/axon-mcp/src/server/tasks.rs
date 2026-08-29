@@ -308,6 +308,7 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Providers(req) => ("providers", format!("{:?}", req.subaction)),
         AxonRequest::Graph(req) => ("graph", format!("{:?}", req.subaction)),
         AxonRequest::Chat(_) => ("chat", "None".to_string()),
+        AxonRequest::Codex(req) => ("codex", format!("{:?}", req.subaction)),
     };
     invalid_params(format!(
         "task execution is supported only for extract.start; got {action}.{subaction}"

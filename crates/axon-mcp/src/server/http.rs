@@ -22,21 +22,28 @@ pub async fn mcp_http_router(
 ) -> Result<Router, Box<dyn std::error::Error>> {
     // Wrap cfg in Arc once; share via clone of the Arc rather than cloning Config.
     let cfg_arc = Arc::new(cfg);
-    AxonMcpServer::new_with_service_context_cell((*cfg_arc).clone(), Arc::clone(&service_context))
-        .base_service_context()
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
+    let codex_control = Arc::new(OnceCell::new());
+    AxonMcpServer::new_with_service_context_cell(
+        (*cfg_arc).clone(),
+        Arc::clone(&service_context),
+        Arc::clone(&codex_control),
+    )
+    .base_service_context()
+    .await
+    .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
 
     // Clone auth_policy into the factory closure so each server instance
     // created by StreamableHttpService carries the correct policy.
     let auth_policy_for_factory = auth_policy.clone();
     let cfg_arc_for_factory = Arc::clone(&cfg_arc);
+    let codex_control_for_factory = Arc::clone(&codex_control);
     let mcp_service: StreamableHttpService<AxonMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
             move || {
                 Ok(AxonMcpServer::new_with_service_context_cell(
                     (*cfg_arc_for_factory).clone(),
                     Arc::clone(&service_context),
+                    Arc::clone(&codex_control_for_factory),
                 )
                 .with_auth_policy(auth_policy_for_factory.clone()))
             },

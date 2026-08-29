@@ -64,6 +64,15 @@ pub(super) struct ActionSpec {
 /// file from this generator).
 pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     ActionSpec {
+        name: "codex",
+        description: "Inspect and operate the approval-gated Codex app-server control plane",
+        scope: "admin",
+        mutates: true,
+        async_job: false,
+        request_dto: "CodexRequest",
+        subaction: SubactionKind::TypedEnum,
+    },
+    ActionSpec {
         name: "scrape",
         description: "Project page acquisition onto the canonical source pipeline",
         scope: "write",
@@ -401,6 +410,7 @@ pub(super) const KNOWN_NON_LIVE_ACTIONS: &[&str] = &[
 /// hardcoded here for the deferred-action delta. That doc is read-only
 /// reference material; this list is this generator's own copy.
 pub(super) const CONTRACT_ACTIONS: &[&str] = &[
+    "codex",
     "source",
     "resolve",
     "map",
