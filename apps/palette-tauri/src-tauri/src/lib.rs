@@ -15,6 +15,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod backend_credentials;
 mod backend_transport;
 mod browser;
 mod date_math;
@@ -33,6 +34,7 @@ mod terminal;
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
+use backend_credentials::{delete_backend_credential, save_backend_credential};
 use backend_transport::BackendTransport;
 use github_bridge::GitHubClient;
 use persistence::*;
@@ -46,6 +48,8 @@ struct PaletteSettings {
     token: Option<String>,
     #[serde(default)]
     backend_profiles: Vec<BackendProfile>,
+    #[serde(default)]
+    active_backend_profiles: std::collections::HashMap<BackendProduct, String>,
     shortcut: String,
     collection: String,
     result_limit: u16,
@@ -72,11 +76,13 @@ pub(crate) struct BackendProfile {
     pub product: BackendProduct,
     pub origin: String,
     pub credential_handle: Option<String>,
+    #[serde(default)]
+    pub credential_generation: Option<String>,
     pub pinned_server_id: Option<String>,
     pub accepted_api_major: u16,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum BackendProduct {
     Axon,
@@ -266,6 +272,9 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
         backend_profiles: persisted
             .backend_profiles
             .unwrap_or(defaults.backend_profiles),
+        active_backend_profiles: persisted
+            .active_backend_profiles
+            .unwrap_or(defaults.active_backend_profiles),
         shortcut: persisted
             .shortcut
             .unwrap_or_else(|| DEFAULT_SHORTCUT.to_string()),
@@ -290,9 +299,13 @@ fn default_settings() -> PaletteSettings {
             product: BackendProduct::Axon,
             origin: DEFAULT_SERVER_URL.to_string(),
             credential_handle: Some("legacy-axon".to_string()),
+            credential_generation: None,
             pinned_server_id: None,
             accepted_api_major: 1,
         }],
+        active_backend_profiles: [(BackendProduct::Axon, "axon-default".to_string())]
+            .into_iter()
+            .collect(),
         shortcut: DEFAULT_SHORTCUT.to_string(),
         collection: "axon".to_string(),
         result_limit: 10,
@@ -311,6 +324,7 @@ struct PartialPaletteSettings {
     server_url: Option<String>,
     token: Option<Option<String>>,
     backend_profiles: Option<Vec<BackendProfile>>,
+    active_backend_profiles: Option<std::collections::HashMap<BackendProduct, String>>,
     shortcut: Option<String>,
     collection: Option<String>,
     result_limit: Option<u16>,
@@ -332,6 +346,12 @@ fn normalize_settings(mut settings: PaletteSettings) -> PaletteSettings {
         .map(|token| token.trim().to_string())
         .filter(|token| !token.is_empty());
     settings.backend_profiles = backend_transport::normalize_profiles(settings.backend_profiles);
+    settings.active_backend_profiles.retain(|product, id| {
+        settings
+            .backend_profiles
+            .iter()
+            .any(|profile| profile.product == *product && profile.id == *id)
+    });
     settings.shortcut = normalize_shortcut_label(&settings.shortcut);
     settings.collection = settings.collection.trim().to_string();
     if settings.collection.is_empty() {

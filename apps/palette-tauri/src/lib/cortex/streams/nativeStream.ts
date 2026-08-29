@@ -18,34 +18,74 @@ export async function followCortexStream(
   onEvent: (event: NativeStreamEvent) => void,
   signal: AbortSignal,
 ) {
-  const requestId = crypto.randomUUID();
-  const path = `/v1/cortex/api/streams/${kind}`;
-  const unlisten = await appWindow.listen<NativeStreamEvent>(
-    "palette://backend-stream",
-    ({ payload }) => {
-      if (payload.requestId === requestId && payload.generation === generation) onEvent(payload);
-    },
-  );
-  const cancel = () => void invoke("backend_cancel_request", { requestId });
-  signal.addEventListener("abort", cancel, { once: true });
-  try {
-    if (isTauriRuntime) {
-      await invoke("backend_http_stream", {
-        request: { profileId: profile.id, product: "cortex", requestId, generation, path, params },
-      });
-    } else {
-      const response = await fetch(`${path}?${new URLSearchParams(params)}`, {
-        headers: { accept: "text/event-stream" },
-        signal,
-      });
-      if (!response.ok || !response.body)
-        throw new Error(`stream failed with HTTP ${response.status}`);
-      await parseBrowserSse(response.body, requestId, generation, onEvent);
+  const path = `/api/streams/${kind}`;
+  let cursor = params.cursor;
+  let reconnects = 0;
+  const maxReconnects = 5;
+  for (;;) {
+    if (signal.aborted) return;
+    const requestId = crypto.randomUUID();
+    const attemptParams = { ...params, ...(cursor ? { cursor } : {}) };
+    let committedCursor = cursor;
+    const unlisten = await appWindow.listen<NativeStreamEvent>(
+      "palette://backend-stream",
+      ({ payload }) => {
+        if (payload.requestId === requestId && payload.generation === generation) {
+          if (payload.id) committedCursor = payload.id;
+          onEvent(payload);
+        }
+      },
+    );
+    const cancel = () => void invoke("backend_cancel_request", { requestId });
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      if (isTauriRuntime) {
+        await invoke("backend_http_stream", {
+          request: {
+            profileId: profile.id,
+            product: "cortex",
+            requestId,
+            generation,
+            path,
+            params: attemptParams,
+          },
+        });
+      } else {
+        const response = await fetch(`${path}?${new URLSearchParams(attemptParams)}`, {
+          headers: { accept: "text/event-stream" },
+          signal,
+        });
+        if (!response.ok || !response.body)
+          throw new Error(`stream failed with HTTP ${response.status}`);
+        await parseBrowserSse(response.body, requestId, generation, (event) => {
+          if (event.id) committedCursor = event.id;
+          onEvent(event);
+        });
+      }
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      unlisten();
     }
-  } finally {
-    signal.removeEventListener("abort", cancel);
-    unlisten();
+    if (signal.aborted) return;
+    if (!committedCursor || reconnects++ >= maxReconnects)
+      throw new Error("stream ended before it could resume from a committed cursor");
+    cursor = committedCursor;
+    await abortableDelay(Math.min(250 * 2 ** (reconnects - 1), 4_000), signal);
   }
+}
+
+function abortableDelay(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(timer);
+        reject(new DOMException("Request cancelled", "AbortError"));
+      },
+      { once: true },
+    );
+  });
 }
 
 async function parseBrowserSse(

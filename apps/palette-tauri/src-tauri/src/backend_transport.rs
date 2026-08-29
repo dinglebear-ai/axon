@@ -10,6 +10,7 @@ const MAX_RESPONSE_BODY_BYTES: u64 = 8 * 1024 * 1024;
 
 pub(crate) struct BackendTransport {
     client: reqwest::Client,
+    stream_client: reqwest::Client,
     cancellations: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
@@ -19,6 +20,11 @@ impl BackendTransport {
             client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(10))
                 .timeout(Duration::from_secs(60))
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+                .build()?,
+            stream_client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
                 .redirect(reqwest::redirect::Policy::none())
                 .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
                 .build()?,
@@ -103,17 +109,8 @@ pub(crate) async fn backend_http_request(
     {
         return Err("backend request body exceeds the 1 MiB limit".into());
     }
-    let (cancel_tx, cancel_rx) = oneshot::channel();
-    {
-        let mut map = transport
-            .cancellations
-            .lock()
-            .map_err(|_| "request registry unavailable")?;
-        if map.insert(request.request_id.clone(), cancel_tx).is_some() {
-            return Err("request ID is already active".into());
-        }
-    }
-    let url = format!("{origin}{}", request.path);
+    let upstream_path = upstream_path(request.product, &request.path)?;
+    let url = format!("{origin}{upstream_path}");
     let mut builder = match request.method {
         BackendMethod::Get => transport.client.get(url),
         BackendMethod::Post => transport.client.post(url),
@@ -132,6 +129,24 @@ pub(crate) async fn backend_http_request(
         && let Some(token) = settings.token.as_deref().filter(|token| !token.is_empty())
     {
         builder = builder.bearer_auth(token).header("x-api-key", token);
+    } else if let Some(handle) = profile.credential_handle.as_deref() {
+        let credential = crate::backend_credentials::load(&app, handle)?
+            .ok_or("backend credential is unavailable")?;
+        validate_credential_binding(profile, &origin, &credential)?;
+        builder = builder
+            .bearer_auth(&credential.token)
+            .header("x-api-key", &credential.token)
+            .header("x-palette-credential-generation", &credential.generation);
+    }
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    {
+        let mut map = transport
+            .cancellations
+            .lock()
+            .map_err(|_| "request registry unavailable")?;
+        if map.insert(request.request_id.clone(), cancel_tx).is_some() {
+            return Err("request ID is already active".into());
+        }
     }
     let response = tokio::select! { _ = cancel_rx => Err("backend request cancelled".into()), result = builder.send() => result.map_err(redact) };
     transport
@@ -219,7 +234,7 @@ pub(crate) async fn backend_http_stream(
     if request.product != BackendProduct::Cortex
         || !matches!(
             request.path.as_str(),
-            "/v1/cortex/api/streams/logs" | "/v1/cortex/api/streams/sessions"
+            "/api/streams/logs" | "/api/streams/sessions"
         )
     {
         return Err("backend stream route is not allowed".into());
@@ -235,23 +250,47 @@ pub(crate) async fn backend_http_stream(
     let settings = merged_settings(&app)?;
     let profile = resolve_profile(&settings.backend_profiles, &ordinary)?;
     let origin = validate_profile_origin(profile)?;
-    let upstream_path = request
-        .path
-        .strip_prefix("/v1/cortex")
-        .ok_or("invalid Cortex stream route")?;
+    let upstream_path = upstream_path(request.product, &request.path)?;
     let mut url = reqwest::Url::parse(&format!("{origin}{upstream_path}")).map_err(redact)?;
     url.query_pairs_mut().extend_pairs(request.params.iter());
     let (cancel_tx, mut cancel_rx) = oneshot::channel();
-    transport
+    let mut builder = transport
+        .stream_client
+        .get(url)
+        .header(reqwest::header::ACCEPT, "text/event-stream");
+    if let Some(handle) = profile.credential_handle.as_deref() {
+        let credential = crate::backend_credentials::load(&app, handle)?
+            .ok_or("backend credential is unavailable")?;
+        validate_credential_binding(profile, &origin, &credential)?;
+        builder = builder
+            .bearer_auth(&credential.token)
+            .header("x-api-key", &credential.token)
+            .header("x-palette-credential-generation", &credential.generation);
+    }
+    if transport
         .cancellations
         .lock()
         .map_err(|_| "request registry unavailable")?
-        .insert(request.request_id.clone(), cancel_tx);
+        .insert(request.request_id.clone(), cancel_tx)
+        .is_some()
+    {
+        return Err("request ID is already active".into());
+    }
     let response = tokio::select! {
         _ = &mut cancel_rx => Err("backend request cancelled".into()),
-        result = transport.client.get(url).header(reqwest::header::ACCEPT, "text/event-stream").send() => result.map_err(redact),
+        result = builder.send() => result.map_err(redact),
     };
-    let response = response?;
+    let response = match response {
+        Ok(response) => response,
+        Err(error) => {
+            transport
+                .cancellations
+                .lock()
+                .map_err(|_| "request registry unavailable")?
+                .remove(&request.request_id);
+            return Err(error);
+        }
+    };
     if !response.status().is_success() {
         transport
             .cancellations
@@ -332,19 +371,26 @@ fn emit_sse_frame(
 fn validate_request(request: &BackendRequest) -> Result<(), String> {
     validate_request_id(&request.request_id)?;
     if request.path.contains(['#', '\\'])
-        || !request.path.starts_with("/v1/")
+        || !(request.path.starts_with("/v1/") || request.path.starts_with("/api/"))
         || request.path.contains("..")
     {
-        return Err("backend path must be a product-qualified /v1 route".into());
+        return Err("backend path must be an allowed product route".into());
     }
-    let path = request.path.split('?').next().unwrap_or(&request.path);
-    match request.product {
-        BackendProduct::Axon => true,
-        BackendProduct::Labby => path.starts_with("/v1/labby/") || path.starts_with("/v1/palette/"),
-        BackendProduct::Cortex => path.starts_with("/v1/cortex/"),
-    }
-    .then_some(())
-    .ok_or_else(|| "backend route does not belong to the selected product".into())
+    upstream_path(request.product, &request.path).map(|_| ())
+}
+
+fn upstream_path(product: BackendProduct, path_and_query: &str) -> Result<&str, String> {
+    let path = path_and_query.split('?').next().unwrap_or(path_and_query);
+    let allowed = match product {
+        BackendProduct::Axon => path.starts_with("/v1/"),
+        BackendProduct::Labby => {
+            path == "/v1/integration/identity" || path.starts_with("/v1/palette/")
+        }
+        BackendProduct::Cortex => path == "/v1/integration/identity" || path.starts_with("/api/"),
+    };
+    allowed
+        .then_some(path_and_query)
+        .ok_or_else(|| "backend route does not belong to the selected product".into())
 }
 fn validate_request_id(value: &str) -> Result<(), String> {
     ((16..=128).contains(&value.len())
@@ -369,7 +415,21 @@ fn validate_profile_origin(profile: &BackendProfile) -> Result<String, String> {
     }
     validate_saved_server_url(&profile.origin)
 }
+fn validate_credential_binding(
+    profile: &BackendProfile,
+    origin: &str,
+    credential: &crate::backend_credentials::StoredBackendCredential,
+) -> Result<(), String> {
+    (credential.profile_id == profile.id
+        && credential.product == profile.product
+        && credential.origin == origin
+        && profile.pinned_server_id.as_deref() == Some(credential.server_id.as_str())
+        && profile.credential_generation.as_deref() == Some(credential.generation.as_str()))
+    .then_some(())
+    .ok_or_else(|| "backend credential trust binding does not match this profile".into())
+}
 pub(crate) fn normalize_profiles(profiles: Vec<BackendProfile>) -> Vec<BackendProfile> {
+    let mut ids = std::collections::HashSet::new();
     profiles
         .into_iter()
         .filter_map(|mut p| {
@@ -377,6 +437,7 @@ pub(crate) fn normalize_profiles(profiles: Vec<BackendProfile>) -> Vec<BackendPr
             p.label = p.label.trim().into();
             p.origin = validate_saved_server_url(&p.origin).ok()?;
             ((!p.id.is_empty())
+                && ids.insert(p.id.clone())
                 && p.id.len() <= 128
                 && p.id
                     .chars()

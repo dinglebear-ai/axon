@@ -1,23 +1,28 @@
-import { platform } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { CortexWorkspace } from "@/components/palette/cortex/CortexWorkspace";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
-import { LabbyWorkspace } from "@/components/palette/labby/LabbyWorkspace";
 import { PaletteShell } from "@/components/palette/PaletteShell";
-import { ProductNavigation } from "@/components/palette/ProductNavigation";
+import { ProductWorkspaceFrame } from "@/components/palette/ProductWorkspaceFrame";
 import {
   actionConfirmationArmed,
   actionNeedsConfirmation,
   confirmationFor,
   type PendingActionConfirmation,
 } from "@/lib/actionGuard";
-import { ACTIONS, actionMatches, MOBILE_ACTIONS, type PaletteAction } from "@/lib/actions";
+import { actionMatches, type PaletteAction } from "@/lib/actions";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient } from "@/lib/axonClient";
+import { useProductWorkspace } from "@/lib/backendProfiles/useProductWorkspace";
+import {
+  androidRuntime,
+  initialWorkspace,
+  mobileRuntime,
+  runtimeActions,
+  shortcutOptions,
+} from "@/lib/runtimeUi";
 import type { BackendProduct } from "@/lib/backendProfiles/model";
 import { outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
-import { invoke, isTauriRuntime } from "@/lib/invoke";
+import { invoke } from "@/lib/invoke";
 import { loadPaletteHistory, persistPaletteHistory } from "@/lib/paletteHistoryStorage";
 import { argumentFor, focusInput, validationMessage } from "@/lib/paletteView";
 import {
@@ -50,25 +55,8 @@ import { useSourcesNavigation } from "@/lib/useSourcesNavigation";
 import { useSuggestMessage } from "@/lib/useSuggestMessage";
 import { useWindowChrome } from "@/lib/useWindowChrome";
 
-const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
-
-const runtimePlatform = isTauriRuntime ? platform() : null;
-const androidRuntime = runtimePlatform === "android";
-const mobilePreview =
-  !isTauriRuntime &&
-  (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true &&
-  new URLSearchParams(window.location.search).get("mobile-preview") === "1";
-const mobileRuntime = androidRuntime || runtimePlatform === "ios" || mobilePreview;
-const runtimeActions = mobileRuntime ? MOBILE_ACTIONS : ACTIONS;
-
-document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime || mobilePreview);
-document.documentElement.classList.toggle("tauri-mobile-runtime", mobileRuntime);
-
 export default function App() {
-  const requestedWorkspace = new URLSearchParams(window.location.search).get("workspace");
-  const [workspace, setWorkspace] = useState<BackendProduct>(
-    requestedWorkspace === "labby" || requestedWorkspace === "cortex" ? requestedWorkspace : "axon",
-  );
+  const [workspace, setWorkspace] = useState<BackendProduct>(initialWorkspace);
   const [view, dispatchView] = useReducer(viewReducer, INITIAL_VIEW);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -184,27 +172,11 @@ export default function App() {
   });
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
-  const labbyProfile =
-    config?.backendProfiles?.find((profile) => profile.product === "labby") ?? null;
-  const cortexProfile =
-    config?.backendProfiles?.find((profile) => profile.product === "cortex") ?? null;
-
-  const availableProducts = useMemo(
-    () =>
-      new Set<BackendProduct>([
-        "axon",
-        ...(labbyProfile ? (["labby"] as const) : []),
-        ...(cortexProfile ? (["cortex"] as const) : []),
-      ]),
-    [cortexProfile, labbyProfile],
-  );
-  const selectWorkspace = useCallback((product: BackendProduct) => {
-    const url = new URL(window.location.href);
-    if (product === "axon") url.searchParams.delete("workspace");
-    else url.searchParams.set("workspace", product);
-    window.history.replaceState(null, "", url);
-    setWorkspace(product);
+  const invalidateProductState = useCallback(() => {
+    setPendingConfirmation(null); setRun({ kind: "idle" }); setQuery("");
   }, []);
+  const { availableProducts, cortexProfile, labbyProfile, selectBackendProfile, selectWorkspace } =
+    useProductWorkspace(config, setDraftConfig, invalidateProductState, setWorkspace);
 
   useEffect(() => {
     if (modeAction?.subcommand !== "ask") setAskSessionsOpen(false);
@@ -447,40 +419,17 @@ export default function App() {
     setQuery("");
     dispatchView({ type: "collapse" });
   }, []);
-  const productNavigation = (
-    <ProductNavigation
-      active={workspace}
-      available={availableProducts}
-      onSelect={selectWorkspace}
-    />
-  );
-  if (workspace === "labby") {
-    return (
-      <div className="product-workspace-shell">
-        {productNavigation}
-        {labbyProfile ? (
-          <LabbyWorkspace profile={labbyProfile} />
-        ) : (
-          <MissingProductProfile product="Labby" />
-        )}
-      </div>
-    );
-  }
-  if (workspace === "cortex") {
-    return (
-      <div className="product-workspace-shell">
-        {productNavigation}
-        {cortexProfile ? (
-          <CortexWorkspace profile={cortexProfile} />
-        ) : (
-          <MissingProductProfile product="Cortex" />
-        )}
-      </div>
-    );
-  }
   return (
-    <div className="product-workspace-shell">
-      {productNavigation}
+    <ProductWorkspaceFrame
+      workspace={workspace}
+      profiles={config?.backendProfiles ?? []}
+      activeProfileIds={config?.activeBackendProfiles ?? {}}
+      available={availableProducts}
+      labbyProfile={labbyProfile}
+      cortexProfile={cortexProfile}
+      onSelect={selectWorkspace}
+      onSelectProfile={(product, id) => void selectBackendProfile(product, id)}
+    >
       <PaletteShell
         {...{
           active,
@@ -578,15 +527,6 @@ export default function App() {
         pinned={currentTarget ? pinnedTargets.has(currentTarget) : false}
         sourcesFilter={sourcesFilter || sourcesDrillFilter}
       />
-    </div>
-  );
-}
-
-function MissingProductProfile({ product }: { product: "Labby" | "Cortex" }) {
-  return (
-    <main className="missing-product-profile" aria-labelledby="missing-product-profile-title">
-      <h1 id="missing-product-profile-title">{product} needs a backend profile</h1>
-      <p>Open Settings to add its independent endpoint, credential, and trusted server identity.</p>
-    </main>
+    </ProductWorkspaceFrame>
   );
 }

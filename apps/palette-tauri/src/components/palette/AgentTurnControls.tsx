@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/aurora/button";
 import type { Client, PaletteConfig, PaletteHttpRequest, PaletteResult } from "@/lib/axonClient";
 import { invoke } from "@/lib/invoke";
 import { readDelegation } from "@/lib/labby/loadoutSelection";
+import { activeProfile } from "@/lib/backendProfiles/model";
+import { LabbyClient } from "@/lib/clients/labbyClient";
 import type { AskAgentTurn, AskLoadoutProvenance } from "@/lib/runState";
 
 const MAX_EVENTS = 100;
@@ -25,7 +27,8 @@ export function AgentTurnControls({
 }) {
   const [status, setStatus] = useState(agent.status);
   const [events, setEvents] = useState<{ key: string; text: string }[]>([]);
-  const [approval, setApproval] = useState("");
+  const [approving, setApproving] = useState(false);
+  const approvalInFlight = useRef(false);
   const [notice, setNotice] = useState("");
   const terminal = ["succeeded", "failed", "cancelled", "timed_out"].includes(status);
 
@@ -83,14 +86,30 @@ export function AgentTurnControls({
     }
   }
   async function resume() {
+    if (approvalInFlight.current) return;
+    approvalInFlight.current = true;
+    setApproving(true);
     try {
       if (!agent.pendingApproval || !loadout || !config)
         throw new Error("Approval provenance is incomplete; reload status instead of guessing.");
-      const profile = config.backendProfiles?.find((candidate) => candidate.product === "labby");
+      const profile = activeProfile(config.backendProfiles, config.activeBackendProfiles, "labby");
+      if (!profile) throw new Error("Select the Labby profile that owns this execution context.");
       const delegationToken = profile ? readDelegation(profile.id) : null;
       if (!delegationToken)
         throw new Error("The profile-scoped Labby delegation is missing or expired.");
-      if (!approval.trim()) throw new Error("Paste the single-use Labby approval token.");
+      if (!loadout.executionContextId)
+        throw new Error("The Labby execution context is missing or stale.");
+      const challenge = await new LabbyClient(profile).requestApproval({
+        executionContextId: loadout.executionContextId,
+        turnId: agent.turnId,
+        proposal: agent.pendingApproval,
+      });
+      validateApprovalChallenge(
+        challenge,
+        loadout.executionContextId,
+        agent.pendingApproval.toolCallId,
+        Date.now(),
+      );
       const body = {
         [action === "ask" ? "query" : "message"]: prompt,
         loadout: {
@@ -102,7 +121,7 @@ export function AgentTurnControls({
           delegationToken,
           turnId: agent.turnId,
           approvalTokens: [
-            { toolCallId: agent.pendingApproval.toolCallId, token: approval.trim() },
+            { toolCallId: agent.pendingApproval.toolCallId, token: challenge.approvalToken },
           ],
           maxToolCalls: 8,
           timeoutMs: 120_000,
@@ -113,10 +132,12 @@ export function AgentTurnControls({
       );
       const next = asRecord(result.agent);
       setStatus(typeof next.status === "string" ? next.status : status);
-      setApproval("");
       await refresh();
     } catch (reason) {
       setNotice(String(reason));
+    } finally {
+      approvalInFlight.current = false;
+      setApproving(false);
     }
   }
   return (
@@ -132,18 +153,15 @@ export function AgentTurnControls({
           </Button>
         ) : null}
         {agent.pendingApproval && status === "awaiting_approval" ? (
-          <>
-            <input
-              type="password"
-              aria-label="Single-use Labby approval token"
-              value={approval}
-              onChange={(event) => setApproval(event.target.value)}
-              placeholder="Single-use approval token"
-            />
-            <Button type="button" variant="plain" size="unstyled" onClick={() => void resume()}>
-              Approve & resume
-            </Button>
-          </>
+          <Button
+            type="button"
+            variant="plain"
+            size="unstyled"
+            disabled={approving}
+            onClick={() => void resume()}
+          >
+            {approving ? "Requesting approval…" : "Approve & resume"}
+          </Button>
         ) : null}
       </div>
       {notice ? <p role="alert">{notice}</p> : null}
@@ -158,6 +176,18 @@ export function AgentTurnControls({
       ) : null}
     </details>
   );
+}
+
+export function validateApprovalChallenge(
+  challenge: { executionContextId: string; toolCallId: string; expiresAtUnixMs: number },
+  executionContextId: string,
+  toolCallId: string,
+  now: number,
+) {
+  if (challenge.executionContextId !== executionContextId || challenge.toolCallId !== toolCallId)
+    throw new Error("Labby returned an approval for a different execution context or proposal.");
+  if (challenge.expiresAtUnixMs <= now)
+    throw new Error("Labby approval expired before resume; request it again.");
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

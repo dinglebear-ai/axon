@@ -72,6 +72,8 @@ export function responseTurnMetadata(payload: unknown): {
                 toolCallId: bounded(proposal.toolCallId),
                 toolId: bounded(proposal.toolId),
                 destructive: proposal.destructive === true,
+                contractHash: bounded(proposal.contractHash),
+                arguments: proposal.arguments,
               }
             : undefined,
         }

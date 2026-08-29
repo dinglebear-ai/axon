@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assertCompatibleIdentity, type BackendProfile, type ProductIdentity } from "./model";
+import {
+  activeProfile,
+  assertCompatibleIdentity,
+  type BackendProfile,
+  type ProductIdentity,
+} from "./model";
 
 const profile: BackendProfile = {
   id: "axon-default",
@@ -36,4 +41,13 @@ describe("assertCompatibleIdentity", () => {
     expect(() =>
       assertCompatibleIdentity(profile, { ...identity, server_id: "axon_abcdefghijklmnop" }),
     ).toThrow(/re-trust/));
+});
+
+describe("activeProfile", () => {
+  it("never falls back to the first profile", () => {
+    const second = { ...profile, id: "second", label: "Second" };
+    expect(activeProfile([profile, second], {}, "axon")).toBeNull();
+    expect(activeProfile([profile, second], { axon: "second" }, "axon")).toEqual(second);
+    expect(activeProfile([profile], { labby: profile.id }, "labby")).toBeNull();
+  });
 });

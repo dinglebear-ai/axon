@@ -29,7 +29,13 @@ export interface AskLoadoutProvenance {
 export interface AskAgentTurn {
   turnId: string;
   status: string;
-  pendingApproval?: { toolCallId: string; toolId: string; destructive: boolean };
+  pendingApproval?: {
+    toolCallId: string;
+    toolId: string;
+    destructive: boolean;
+    contractHash: string;
+    arguments: unknown;
+  };
 }
 
 export interface ChatSuggestion {

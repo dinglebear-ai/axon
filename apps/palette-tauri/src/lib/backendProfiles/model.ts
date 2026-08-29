@@ -6,6 +6,7 @@ export interface BackendProfile {
   product: BackendProduct;
   origin: string;
   credentialHandle: string | null;
+  credentialGeneration?: string | null;
   pinnedServerId: string | null;
   acceptedApiMajor: 1;
 }
@@ -35,4 +36,14 @@ export function assertCompatibleIdentity(
     throw new Error("Backend server identity changed; explicit re-trust is required");
   }
   return identity;
+}
+
+export function activeProfile(
+  profiles: BackendProfile[] | undefined,
+  active: Partial<Record<BackendProduct, string>> | undefined,
+  product: BackendProduct,
+): BackendProfile | null {
+  const id = active?.[product];
+  if (!id) return null;
+  return profiles?.find((profile) => profile.product === product && profile.id === id) ?? null;
 }

@@ -101,6 +101,8 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
             backend_transport::backend_http_request,
             backend_transport::backend_http_stream,
             backend_transport::backend_cancel_request,
+            save_backend_credential,
+            delete_backend_credential,
             axon_http_stream_request,
             browser::browser_open,
             browser::browser_navigate,

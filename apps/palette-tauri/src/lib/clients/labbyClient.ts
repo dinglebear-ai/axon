@@ -40,6 +40,12 @@ export interface LabbyExactResult {
   receipt: LabbyExactReceipt;
   ui?: unknown;
 }
+export interface LabbyApprovalChallenge {
+  approvalToken: string;
+  expiresAtUnixMs: number;
+  executionContextId: string;
+  toolCallId: string;
+}
 export interface LabbySnippetInfo {
   name: string;
   description?: string | null;
@@ -218,6 +224,26 @@ export class LabbyClient {
       null,
       signal,
     );
+  }
+  async requestApproval(
+    input: {
+      executionContextId: string;
+      turnId: string;
+      proposal: { toolCallId: string; toolId: string; contractHash: string; arguments: unknown };
+    },
+    signal?: AbortSignal,
+  ): Promise<LabbyApprovalChallenge> {
+    const response = await this.request<LabbyApprovalChallenge>(
+      "POST",
+      "/v1/palette/agent/approvals",
+      input,
+      signal,
+    );
+    if (!response.ok)
+      throw Object.assign(new Error(`Labby rejected approval (${response.status})`), {
+        detail: response.payload,
+      });
+    return response.payload;
   }
 
   private async loadoutRequest<T>(

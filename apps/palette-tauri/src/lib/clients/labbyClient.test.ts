@@ -76,6 +76,40 @@ describe("LabbyClient exact calls", () => {
     });
     await expect(new LabbyClient(profile).execute(descriptor, {}, false)).rejects.toThrow("no-LLM");
   });
+  it("requests an actor-authenticated approval for the exact execution context and proposal", async () => {
+    const invoke = vi.spyOn(await import("../invoke"), "invoke").mockResolvedValue({
+      ok: true,
+      status: 200,
+      profileId: profile.id,
+      product: "labby",
+      requestId: "r",
+      payload: {
+        approvalToken: "single-use",
+        expiresAtUnixMs: Date.now() + 30_000,
+        executionContextId: "ctx-1",
+        toolCallId: "call-1",
+      },
+    });
+    await new LabbyClient(profile).requestApproval({
+      executionContextId: "ctx-1",
+      turnId: "turn-1",
+      proposal: {
+        toolCallId: "call-1",
+        toolId: "mcp:host::delete",
+        contractHash: "sha256:x",
+        arguments: { id: 7 },
+      },
+    });
+    expect(invoke).toHaveBeenCalledWith("backend_http_request", {
+      request: expect.objectContaining({
+        profileId: "labby-1",
+        product: "labby",
+        method: "POST",
+        path: "/v1/palette/agent/approvals",
+        body: expect.objectContaining({ executionContextId: "ctx-1", turnId: "turn-1" }),
+      }),
+    });
+  });
   it("fails closed when the authenticated live catalog does not expose admin snippet actions", async () => {
     const invoke = vi.spyOn(await import("../invoke"), "invoke").mockResolvedValue({
       ok: true,
