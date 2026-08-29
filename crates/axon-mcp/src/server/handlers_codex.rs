@@ -37,10 +37,7 @@ impl AxonMcpServer {
                     .map_err(codex_error)?
             }
             CodexSubaction::Events => {
-                let cursor = match (req.cursor_boot_id, req.after_sequence) {
-                    (Some(boot_id), Some(sequence)) => Some(EventCursor { boot_id, sequence }),
-                    _ => None,
-                };
+                let cursor = event_cursor(req.cursor_boot_id, req.after_sequence)?;
                 serde_json::to_value(
                     service
                         .events_after(cursor, req.limit.unwrap_or(100))
@@ -148,6 +145,19 @@ fn required<T>(value: Option<T>, name: &str) -> Result<T, ErrorData> {
     value.ok_or_else(|| invalid_params(format!("codex request requires {name}")))
 }
 
+fn event_cursor(
+    boot_id: Option<u64>,
+    sequence: Option<u64>,
+) -> Result<Option<EventCursor>, ErrorData> {
+    match (boot_id, sequence) {
+        (Some(boot_id), Some(sequence)) => Ok(Some(EventCursor { boot_id, sequence })),
+        (None, None) => Ok(None),
+        _ => Err(invalid_params(
+            "codex events requires cursor_boot_id and after_sequence together",
+        )),
+    }
+}
+
 fn mutation_action(value: CodexMutationAction) -> Result<MutationAction, ErrorData> {
     serde_json::from_value(
         serde_json::to_value(value)
@@ -193,7 +203,8 @@ fn resource_action(resource: &CodexResource) -> Result<ControlAction, ErrorData>
 }
 
 fn codex_error(error: String) -> ErrorData {
-    invalid_params(format!("Codex control request failed: {error}"))
+    tracing::error!(error = %error, "Codex control request failed");
+    ErrorData::internal_error("Codex control request failed".to_string(), None)
 }
 
 #[cfg(test)]

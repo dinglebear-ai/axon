@@ -354,8 +354,9 @@
 # Codex Palette management is a distinct, default-off runtime. It never uses
 # the synthesis pool or its isolated homes. AXON_CODEX_CONTROL_HOME must be an
 # existing absolute, non-symlink directory managed by the server host. The
-# binary, control home, and every home ancestor must be owned by the Axon server
-# account (or root), not group/world writable, and must not traverse symlinks.
+# binary and control home must be owned by the effective Axon server user (root
+# only when Axon runs as root). Ancestors need not share that owner, but they
+# must not be group/world writable, and no checked path may traverse symlinks.
 # AXON_CODEX_CONTROL_ENABLED=false
 # AXON_CODEX_CONTROL_HOME=/absolute/path/to/stable/codex-control-home
 # AXON_CODEX_CONTROL_REQUEST_TIMEOUT_SECS=30

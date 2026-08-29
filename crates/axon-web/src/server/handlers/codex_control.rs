@@ -1,5 +1,6 @@
 use axon_services::codex_control::{
-    ControlAction, EventCursor, MutationAction, OperationIntent, OperationPhase, RecordedEvent,
+    ControlAction, EventCursor, MutationAction, OperationIntent, OperationPhase, ReadAction,
+    RecordedEvent,
 };
 use axum::Extension;
 use axum::extract::{Path, Query, State};
@@ -55,10 +56,7 @@ pub async fn events(
     State((state, _)): State<WebState>,
     Query(query): Query<EventsQuery>,
 ) -> Result<Json<Vec<RecordedEvent>>, HttpError> {
-    let cursor = match (query.boot_id, query.after) {
-        (Some(boot_id), Some(sequence)) => Some(EventCursor { boot_id, sequence }),
-        _ => None,
-    };
+    let cursor = event_cursor(query.boot_id, query.after)?;
     service(&state)?
         .events_after(cursor, query.limit.unwrap_or(100))
         .await
@@ -96,7 +94,7 @@ pub async fn resource(
 
 #[derive(Deserialize, ToSchema)]
 pub struct CodexReadBody {
-    action: ControlAction,
+    action: ReadAction,
     #[serde(default)]
     params: Value,
 }
@@ -105,15 +103,31 @@ pub async fn read_action(
     State((state, _)): State<WebState>,
     Json(body): Json<CodexReadBody>,
 ) -> Result<Json<CodexResourceResponse>, HttpError> {
-    let method = body.action.method().to_string();
+    let action = ControlAction::from(body.action);
+    let method = action.method().to_string();
     let value = service(&state)?
-        .read(body.action, body.params)
+        .read(action, body.params)
         .await
         .map_err(bad_request)?;
     Ok(Json(CodexResourceResponse {
         resource: method,
         value,
     }))
+}
+
+fn event_cursor(
+    boot_id: Option<u64>,
+    sequence: Option<u64>,
+) -> Result<Option<EventCursor>, HttpError> {
+    match (boot_id, sequence) {
+        (Some(boot_id), Some(sequence)) => Ok(Some(EventCursor { boot_id, sequence })),
+        (None, None) => Ok(None),
+        _ => Err(HttpError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "boot_id and after must be provided together",
+        )),
+    }
 }
 
 #[derive(Serialize, ToSchema)]
@@ -151,7 +165,7 @@ pub async fn list_operations(
     service(&state)?
         .unfinished_operations()
         .map(Json)
-        .map_err(upstream)
+        .map_err(internal)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -257,12 +271,12 @@ pub async fn reconcile_operation(
                 })?,
                 body.disposition_note.as_deref().unwrap_or_default(),
             )
-            .map_err(bad_request)?;
+            .map_err(internal)?;
     } else {
         service(&state)?
             .resolve_recovery(id)
             .await
-            .map_err(bad_request)?;
+            .map_err(internal)?;
     }
     Ok(Json(ReconcileOperationResponse {
         operation_id: id,
@@ -285,10 +299,24 @@ pub struct ReconcileOperationResponse {
 }
 
 fn upstream(error: String) -> HttpError {
-    HttpError::new(StatusCode::BAD_GATEWAY, "bad_gateway", error)
+    tracing::error!(error = %error, "Codex app-server request failed");
+    HttpError::new(
+        StatusCode::BAD_GATEWAY,
+        "bad_gateway",
+        "Codex app-server request failed",
+    )
 }
 fn bad_request(error: String) -> HttpError {
     HttpError::new(StatusCode::BAD_REQUEST, "bad_request", error)
+}
+
+fn internal(error: String) -> HttpError {
+    tracing::error!(error = %error, "Codex control persistence request failed");
+    HttpError::new(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal_error",
+        "Codex control persistence request failed",
+    )
 }
 
 #[utoipa::path(get, path = "/v1/codex", responses((status = 200, description = "Codex control runtime snapshot", body = axon_services::codex_control::CodexControlSnapshot), (status = 404, description = "Codex control disabled", body = super::super::error::ErrorBody), (status = 503, description = "Codex control unavailable", body = super::super::error::ErrorBody)), tag = "codex-control")]
@@ -334,3 +362,7 @@ pub async fn respond_to_server_request_openapi_marker() {}
 #[utoipa::path(post, path = "/v1/codex/operations/{id}/reconcile", params(("id" = i64, Path, description = "Operation identifier")), request_body = ReconcileOperationBody, responses((status = 200, description = "Ambiguous operation reconciled", body = ReconcileOperationResponse), (status = 400, description = "Operation cannot be reconciled", body = super::super::error::ErrorBody)), tag = "codex-control")]
 #[allow(dead_code)]
 pub async fn reconcile_operation_openapi_marker() {}
+
+#[cfg(test)]
+#[path = "codex_control_tests.rs"]
+mod tests;

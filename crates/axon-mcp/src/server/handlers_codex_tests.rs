@@ -27,3 +27,11 @@ fn codex_mutation_enum_maps_without_stringly_typed_input() {
         MutationAction::ExternalAgentConfigImport
     );
 }
+
+#[test]
+fn event_cursor_requires_both_components() {
+    assert!(event_cursor(None, None).unwrap().is_none());
+    assert!(event_cursor(Some(1), Some(2)).unwrap().is_some());
+    assert!(event_cursor(Some(1), None).is_err());
+    assert!(event_cursor(None, Some(2)).is_err());
+}

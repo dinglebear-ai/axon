@@ -295,6 +295,11 @@
     { "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/SftpConnectionDialog.tsx", "tag": "input" },
     { "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/SftpTreeSection.tsx", "tag": "button" },
     { "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/TerminalView.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexControlView.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexControlView.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexMutationEditor.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexMutationEditor.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexMutationEditor.tsx", "tag": "textarea" }
   ],
   "android_reusable_control_allowlist": [
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/feature/ask/AskPromptBar.kt", "pattern": "BasicTextField" },

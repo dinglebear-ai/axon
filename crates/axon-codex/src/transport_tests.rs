@@ -40,6 +40,99 @@ for line in sys.stdin:
     transport.stop().await.unwrap();
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn records_redacted_stderr_unknown_frames_and_response_correlation_failures() {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path().canonicalize().unwrap();
+    let binary = root_path.join("codex");
+    fs::write(
+        &binary,
+        r#"#!/usr/bin/env python3
+import json, sys
+for line in sys.stdin:
+    message=json.loads(line)
+    if message.get("method") == "initialize":
+        response={"id":message["id"],"result":{"userAgent":"fake"}}
+        print(json.dumps(response), flush=True)
+        print(json.dumps(response), flush=True)
+        print(json.dumps({"unexpected":"envelope"}), flush=True)
+        print("api_key=must-not-leak", file=sys.stderr, flush=True)
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+    let home = root_path.join("home");
+    fs::create_dir(&home).unwrap();
+    let config = ControlConfig {
+        enabled: true,
+        codex_binary: binary,
+        control_home: home,
+        request_timeout: Duration::from_secs(2),
+        read_concurrency: 2,
+        max_restart_backoff: Duration::from_secs(30),
+    };
+    let transport = ControlTransport::start(&config, RuntimeEpoch(1))
+        .await
+        .unwrap();
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if transport.events_after(None, 100).unwrap().len() >= 3 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let details = transport
+        .events_after(None, 100)
+        .unwrap()
+        .into_iter()
+        .filter_map(|event| match event.event {
+            EventKind::ProtocolFailure { detail } => Some(detail),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.contains("failed to correlate"))
+    );
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.contains("unrecognized JSON-RPC"))
+    );
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.contains("stderr: [REDACTED]"))
+    );
+    assert!(
+        details
+            .iter()
+            .all(|detail| !detail.contains("must-not-leak"))
+    );
+    transport.stop().await.unwrap();
+}
+
+#[test]
+fn stderr_redaction_is_bounded_and_conservative() {
+    assert_eq!(redact_stderr("Authorization: Bearer abc"), "[REDACTED]");
+    assert_eq!(
+        redact_stderr("ordinary diagnostic\r\n"),
+        "ordinary diagnostic"
+    );
+    assert_eq!(
+        redact_stderr("https://example.com/path?token=abc"),
+        "[REDACTED]"
+    );
+}
+
 #[test]
 fn server_request_claim_is_concurrency_safe_and_write_failure_is_retryable() {
     let mut registry = HashMap::from([(

@@ -235,6 +235,7 @@ async fn acquire_process_mutation_lock(
         let deadline = std::time::Instant::now() + timeout;
         let file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(&path)
@@ -284,14 +285,14 @@ pub fn home_identity(path: &Path) -> Result<String, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        return Ok(format!(
+        Ok(format!(
             "path={};dev={};ino={};uid={};mode={:o}",
             canonical.display(),
             metadata.dev(),
             metadata.ino(),
             metadata.uid(),
             metadata.mode() & 0o7777
-        ));
+        ))
     }
     #[cfg(not(unix))]
     Ok(format!("path={}", canonical.display()))

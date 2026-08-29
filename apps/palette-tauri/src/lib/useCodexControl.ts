@@ -22,7 +22,6 @@ export function useCodexControl(client: Client | null, active: boolean) {
       if (!client) return;
       const current = ++generation.current;
       setLoading(true);
-      setError(null);
       try {
         const [eventsResult, operationsResult] = await Promise.allSettled([
           readCodexEvents(client, cursor.current),
@@ -96,6 +95,7 @@ export function useCodexControl(client: Client | null, active: boolean) {
             setError(
               failure.reason instanceof Error ? failure.reason.message : String(failure.reason),
             );
+          else setError(null);
         }
       } catch (cause) {
         if (generation.current === current)

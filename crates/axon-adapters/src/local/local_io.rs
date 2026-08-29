@@ -300,16 +300,6 @@ fn root_unsafe(path: &Path, _err: std::io::Error) -> ApiError {
     .with_context("path_hint", public_path_hint(path))
 }
 
-#[cfg(target_os = "linux")]
-fn containment_denied(path: &Path) -> ApiError {
-    ApiError::new(
-        "adapter.local.item_key.escape",
-        axon_error::ErrorStage::Fetching,
-        "local source containment denied",
-    )
-    .with_context("path_hint", public_path_hint(path))
-}
-
 pub(crate) fn fs_error(code: &'static str, path: &Path, err: std::io::Error) -> ApiError {
     ApiError::new(code, axon_error::ErrorStage::Discovering, err.to_string())
         .with_context("path_hint", public_path_hint(path))

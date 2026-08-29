@@ -29,9 +29,10 @@ AXON_CODEX_CONTROL_SKILL_WRITES=false
 When `AXON_CODEX_CONTROL_ENABLED=true`, `AXON_CODEX_CMD` must be an absolute
 path to the executable used by both bounded synthesis and Palette control.
 Synthesis alone may use the default bare `codex` command. The setting does not
-select separate binaries for those runtimes. The binary, the control home, and every control-home ancestor must be
-owned by the Axon server account (or root), must not be group- or world-writable,
-and must pass the runtime's non-symlink checks. The binary must be executable;
+select separate binaries for those runtimes. The binary and control home must be
+owned by the effective Axon server user (which is root only when Axon itself runs
+as root). Their ancestor paths must not be group- or world-writable, and all
+paths must pass the runtime's non-symlink checks. The binary must be executable;
 symlinked binary or home paths are rejected. Axon binds approved operations to
 the canonical home identity, app-server boot, active policy, method, exact
 parameter digest, and optional config revision.
@@ -53,9 +54,10 @@ Changes use three explicit stages:
 3. Execute revalidates the home, boot, policy, revision, method, and parameters.
 
 Config values are entered as JSON so booleans, numbers, strings, arrays, objects,
-and `null` retain their types. Batch writes accept a JSON array of at least two
+and `null` retain their types. The Palette batch editor accepts a JSON array of at least two
 `{"keyPath": ..., "value": ...}` entries, or an object containing an `edits`,
-`writes`, or `changes` array with that shape. Invalid JSON and malformed writes
+`writes`, or `changes` array with that shape. The shared REST/MCP boundary accepts
+any non-empty edits array, including a single edit. Invalid JSON and malformed writes
 are shown inline before Prepare is enabled.
 
 Lost responses after a side effect become `ambiguous`; interrupted executions

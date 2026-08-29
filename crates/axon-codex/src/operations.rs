@@ -8,6 +8,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use utoipa::ToSchema;
 
+const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
+
 #[path = "operations_migrations.rs"]
 mod migrations;
 use migrations::migrate_columns;
@@ -123,6 +125,7 @@ impl OperationStore {
     }
 
     pub fn create(&self, intent: &OperationIntent) -> Result<ControlOperation, String> {
+        validate_idempotency_key(&intent.idempotency_key)?;
         let digest = request_digest(&intent.redacted_request)?;
         let mut nonce = [0_u8; 32];
         rand::thread_rng().fill_bytes(&mut nonce);
@@ -193,6 +196,7 @@ impl OperationStore {
             .ok_or_else(|| "operation cannot be cancelled".to_string())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn begin_execution(
         &self,
         id: i64,
@@ -407,6 +411,18 @@ impl OperationStore {
             ))
         }
     }
+}
+
+fn validate_idempotency_key(key: &str) -> Result<(), String> {
+    if key.trim().is_empty() {
+        return Err("idempotency key must not be blank".to_string());
+    }
+    if key.len() > MAX_IDEMPOTENCY_KEY_BYTES {
+        return Err(format!(
+            "idempotency key exceeds {MAX_IDEMPOTENCY_KEY_BYTES} bytes"
+        ));
+    }
+    Ok(())
 }
 
 struct GuardRow {

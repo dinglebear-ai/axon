@@ -1,6 +1,6 @@
 //! Services-first facade for the dedicated Codex app-server control plane.
 
-pub use axon_codex::api::{ControlAction, MutationAction};
+pub use axon_codex::api::{ControlAction, MutationAction, ReadAction};
 use axon_codex::api::{WritePolicy, account_summary, validate_mutation_params};
 use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus, home_identity};
 use axon_codex::events::sanitize_value;

@@ -67,6 +67,78 @@ pub enum ControlAction {
     ExperimentalFeatureEnablementSet,
 }
 
+/// Read-only actions accepted by direct control-plane read endpoints.
+///
+/// This type deliberately cannot represent a mutation, so deserialization at
+/// the transport boundary cannot accidentally route writes through a read API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadAction {
+    AccountRead,
+    RateLimitsRead,
+    AccountUsageRead,
+    AccountWorkspaceMessagesRead,
+    AccountBedrockDiscover,
+    ModelsList,
+    ModelProviderCapabilitiesRead,
+    CollaborationModesList,
+    PermissionProfilesList,
+    ConfigRead,
+    ConfigRequirementsRead,
+    McpServersList,
+    McpServerResourceRead,
+    PluginsList,
+    PluginsInstalled,
+    PluginSearch,
+    PluginRead,
+    PluginSkillRead,
+    PluginShareList,
+    SkillsList,
+    ExternalAgentConfigDetect,
+    ExternalAgentConfigImportReadHistories,
+    HooksList,
+    AppsList,
+    AppsInstalled,
+    AppRead,
+    ExperimentalFeaturesList,
+}
+
+impl From<ReadAction> for ControlAction {
+    fn from(action: ReadAction) -> Self {
+        match action {
+            ReadAction::AccountRead => Self::AccountRead,
+            ReadAction::RateLimitsRead => Self::RateLimitsRead,
+            ReadAction::AccountUsageRead => Self::AccountUsageRead,
+            ReadAction::AccountWorkspaceMessagesRead => Self::AccountWorkspaceMessagesRead,
+            ReadAction::AccountBedrockDiscover => Self::AccountBedrockDiscover,
+            ReadAction::ModelsList => Self::ModelsList,
+            ReadAction::ModelProviderCapabilitiesRead => Self::ModelProviderCapabilitiesRead,
+            ReadAction::CollaborationModesList => Self::CollaborationModesList,
+            ReadAction::PermissionProfilesList => Self::PermissionProfilesList,
+            ReadAction::ConfigRead => Self::ConfigRead,
+            ReadAction::ConfigRequirementsRead => Self::ConfigRequirementsRead,
+            ReadAction::McpServersList => Self::McpServersList,
+            ReadAction::McpServerResourceRead => Self::McpServerResourceRead,
+            ReadAction::PluginsList => Self::PluginsList,
+            ReadAction::PluginsInstalled => Self::PluginsInstalled,
+            ReadAction::PluginSearch => Self::PluginSearch,
+            ReadAction::PluginRead => Self::PluginRead,
+            ReadAction::PluginSkillRead => Self::PluginSkillRead,
+            ReadAction::PluginShareList => Self::PluginShareList,
+            ReadAction::SkillsList => Self::SkillsList,
+            ReadAction::ExternalAgentConfigDetect => Self::ExternalAgentConfigDetect,
+            ReadAction::ExternalAgentConfigImportReadHistories => {
+                Self::ExternalAgentConfigImportReadHistories
+            }
+            ReadAction::HooksList => Self::HooksList,
+            ReadAction::AppsList => Self::AppsList,
+            ReadAction::AppsInstalled => Self::AppsInstalled,
+            ReadAction::AppRead => Self::AppRead,
+            ReadAction::ExperimentalFeaturesList => Self::ExperimentalFeaturesList,
+        }
+    }
+}
+
 /// Write-only actions accepted by the approved mutation workflow.
 /// Keeping this separate from [`ControlAction`] prevents callers from preparing
 /// or executing a read method through the mutation endpoints.

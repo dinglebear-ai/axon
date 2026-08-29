@@ -40,6 +40,24 @@ describe("useCodexControl", () => {
     expect(result.current.error).toContain("event service unavailable");
   });
 
+  it("keeps the previous error visible until a refresh succeeds", async () => {
+    readCodexEvents.mockRejectedValueOnce(new Error("event service unavailable"));
+    const pending = Promise.withResolvers<typeof snapshot>();
+    const { result } = renderHook(() => useCodexControl(client, true));
+    await waitFor(() => expect(result.current.error).toContain("event service unavailable"));
+    readCodexSnapshot.mockReturnValueOnce(pending.promise);
+
+    let refresh: Promise<void>;
+    act(() => {
+      refresh = result.current.refresh();
+    });
+    expect(result.current.error).toContain("event service unavailable");
+
+    pending.resolve(snapshot);
+    await act(async () => refresh);
+    expect(result.current.error).toBeNull();
+  });
+
   it("resets boot-scoped events and retries without a cursor after a cursor error", async () => {
     const { result } = renderHook(() => useCodexControl(client, true));
     await waitFor(() => expect(result.current.events).toEqual([event]));

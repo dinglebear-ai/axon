@@ -20,6 +20,18 @@ use tokio::task::JoinHandle;
 
 const EVENT_CAPACITY: usize = 256;
 const MAX_PENDING_SERVER_REQUESTS: usize = 128;
+const STDERR_CHUNK_BYTES: usize = 4096;
+
+#[path = "transport/diagnostics.rs"]
+mod diagnostics;
+#[cfg(test)]
+use diagnostics::redact_stderr;
+use diagnostics::{emit_protocol_failure, spawn_stderr_reader};
+#[path = "transport/server_requests.rs"]
+mod server_requests;
+use server_requests::{
+    PendingServerRequest, claim_server_request, finish_server_request, server_request_result,
+};
 
 pub struct ControlTransport {
     epoch: RuntimeEpoch,
@@ -29,6 +41,7 @@ pub struct ControlTransport {
     events: broadcast::Sender<RecordedEvent>,
     event_recorder: EventRecorder,
     reader_task: JoinHandle<()>,
+    stderr_task: JoinHandle<()>,
     timeout: Duration,
     alive: Arc<AtomicBool>,
     server_requests: Arc<StdMutex<HashMap<u64, PendingServerRequest>>>,
@@ -49,7 +62,7 @@ impl ControlTransport {
             .env("PATH", "/usr/bin:/bin")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .kill_on_drop(true);
         let mut child = command
             .spawn()
@@ -64,6 +77,10 @@ impl ControlTransport {
             .stdout
             .take()
             .ok_or("Codex control stdout unavailable")?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or("Codex control stderr unavailable")?;
         let child = Arc::new(Mutex::new(child));
         let pending = PendingRequests::new(epoch);
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
@@ -80,6 +97,7 @@ impl ControlTransport {
             Arc::clone(&server_requests),
             Arc::clone(&stdin),
         );
+        let stderr_task = spawn_stderr_reader(stderr, events.clone(), event_recorder.clone());
         let transport = Self {
             epoch,
             pending,
@@ -88,6 +106,7 @@ impl ControlTransport {
             events,
             event_recorder,
             reader_task,
+            stderr_task,
             timeout: config.request_timeout,
             alive,
             server_requests,
@@ -225,6 +244,7 @@ impl ControlTransport {
 
     pub async fn stop(self) -> Result<(), String> {
         self.reader_task.abort();
+        self.stderr_task.abort();
         let mut child = self.child.lock().await;
         child
             .kill()
@@ -269,6 +289,7 @@ async fn write_json_to<T: Serialize>(
         .map_err(|error| format!("failed to flush Codex request: {error}"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_reader(
     stdout: tokio::process::ChildStdout,
     epoch: RuntimeEpoch,
@@ -305,7 +326,13 @@ fn spawn_reader(
                     }
                     match parse_frame(epoch, &line) {
                         Ok(IncomingMessage::Response { id, result }) => {
-                            let _ = pending.resolve(id, result);
+                            if let Err(error) = pending.resolve(id, result) {
+                                emit_protocol_failure(
+                                    &events,
+                                    &recorder,
+                                    format!("failed to correlate Codex response: {error}"),
+                                );
+                            }
                         }
                         Ok(IncomingMessage::Notification { method, params }) => {
                             let _ = events
@@ -355,7 +382,13 @@ fn spawn_reader(
                             );
                             let _ = events.send(event);
                         }
-                        Ok(IncomingMessage::Unknown(_)) => {}
+                        Ok(IncomingMessage::Unknown(_)) => {
+                            emit_protocol_failure(
+                                &events,
+                                &recorder,
+                                "Codex app-server sent an unrecognized JSON-RPC frame".to_string(),
+                            );
+                        }
                         Err(error) => {
                             let _ = events.send(recorder.record(EventKind::ProtocolFailure {
                                 detail: error.to_string(),
@@ -371,97 +404,22 @@ fn spawn_reader(
                 }
             }
         }
-        alive.store(false, Ordering::Release);
-        let _ = pending.restart(RuntimeEpoch(epoch.0.saturating_add(1)));
-        server_requests
-            .lock()
-            .unwrap_or_else(|value| value.into_inner())
-            .clear();
+        finish_reader(epoch, &pending, &alive, &server_requests);
     })
 }
 
-fn approval_decision_supported(method: &str) -> bool {
-    method == "applyPatchApproval"
-        || method == "execCommandApproval"
-        || method.ends_with("requestApproval")
-}
-
-fn server_request_result(
-    method: &str,
-    approved: bool,
-    typed_response: Option<Value>,
-) -> Result<Value, String> {
-    if approval_decision_supported(method) {
-        return Ok(json!({"decision": if approved { "accept" } else { "decline" }}));
-    }
-    if method == "item/tool/requestUserInput" {
-        if !approved {
-            return Ok(json!({"answers": {}}));
-        }
-        let response = typed_response.ok_or("requestUserInput approval requires typed answers")?;
-        if !response.get("answers").is_some_and(Value::is_object) {
-            return Err("requestUserInput response requires an answers object".to_string());
-        }
-        return Ok(response);
-    }
-    if method == "mcpServer/elicitation/request" {
-        if !approved {
-            return Ok(json!({"action": "decline"}));
-        }
-        let response = typed_response.ok_or("MCP elicitation approval requires typed content")?;
-        if response.get("action").and_then(Value::as_str) != Some("accept")
-            || !response.get("content").is_some_and(Value::is_object)
-        {
-            return Err(
-                "MCP elicitation response requires action=accept and object content".to_string(),
-            );
-        }
-        return Ok(response);
-    }
-    if approved {
-        return Err(format!(
-            "server request {method} cannot be generically approved"
-        ));
-    }
-    Ok(json!({"decision":"decline"}))
-}
-
-#[derive(Clone)]
-struct PendingServerRequest {
-    method: String,
-    expires_at: Instant,
-    claimed: bool,
-    event: RecordedEvent,
-}
-
-fn claim_server_request(
-    registry: &mut HashMap<u64, PendingServerRequest>,
-    request_id: u64,
-) -> Result<(), String> {
-    let pending_request = registry
-        .get_mut(&request_id)
-        .ok_or("server request is unknown or already answered")?;
-    if pending_request.expires_at <= Instant::now() {
-        registry.remove(&request_id);
-        return Err("server request approval expired".to_string());
-    }
-    if pending_request.claimed {
-        return Err("server request response is already in progress".to_string());
-    }
-    pending_request.claimed = true;
-    Ok(())
-}
-
-fn finish_server_request(
-    registry: &mut HashMap<u64, PendingServerRequest>,
-    request_id: u64,
-    write_succeeded: bool,
+fn finish_reader(
+    epoch: RuntimeEpoch,
+    pending: &PendingRequests,
+    alive: &AtomicBool,
+    server_requests: &StdMutex<HashMap<u64, PendingServerRequest>>,
 ) {
-    if write_succeeded {
-        registry.remove(&request_id);
-    } else if let Some(pending_request) = registry.get_mut(&request_id) {
-        pending_request.claimed = false;
-    }
+    alive.store(false, Ordering::Release);
+    let _ = pending.restart(RuntimeEpoch(epoch.0.saturating_add(1)));
+    server_requests
+        .lock()
+        .unwrap_or_else(|value| value.into_inner())
+        .clear();
 }
 
 fn protocol_error(error: ProtocolError) -> String {

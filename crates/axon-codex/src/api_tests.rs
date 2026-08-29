@@ -42,6 +42,19 @@ fn mutation_actions_exclude_reads_and_map_to_control_methods() {
 }
 
 #[test]
+fn read_actions_exclude_mutations_and_map_to_control_actions() {
+    assert_eq!(
+        ControlAction::from(ReadAction::PluginSkillRead),
+        ControlAction::PluginSkillRead
+    );
+    assert!(serde_json::from_value::<ReadAction>(json!("plugin_install")).is_err());
+    assert_eq!(
+        serde_json::from_value::<ReadAction>(json!("config_read")).unwrap(),
+        ReadAction::ConfigRead
+    );
+}
+
+#[test]
 fn account_projection_drops_tokens_and_masks_email() {
     let raw = json!({
         "account": {
