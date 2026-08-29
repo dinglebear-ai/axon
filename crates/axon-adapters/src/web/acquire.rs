@@ -160,11 +160,10 @@ fn summarize_acquisition_timings(
         .unwrap_or(0);
     let occupied_ms = elapsed.iter().map(Duration::as_millis).sum::<u128>();
     let capacity_ms = wall.as_millis().saturating_mul(concurrency as u128);
-    let slot_occupancy_permille = if capacity_ms == 0 {
-        0
-    } else {
-        occupied_ms.saturating_mul(1_000) / capacity_ms
-    };
+    let slot_occupancy_permille = occupied_ms
+        .saturating_mul(1_000)
+        .checked_div(capacity_ms)
+        .unwrap_or(0);
 
     AcquisitionTimingSummary {
         wall_ms: wall.as_millis(),

@@ -300,6 +300,7 @@ fn root_unsafe(path: &Path, _err: std::io::Error) -> ApiError {
     .with_context("path_hint", public_path_hint(path))
 }
 
+#[cfg(target_os = "linux")]
 fn containment_denied(path: &Path) -> ApiError {
     ApiError::new(
         "adapter.local.item_key.escape",
