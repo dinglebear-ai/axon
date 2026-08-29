@@ -7623,4 +7623,13 @@ textarea {
 .cortex-grid h2,.cortex-graph h2 { margin:0 0 8px; font-size:14px; }
 .cortex-graph { display:grid; gap:8px; margin-top:16px; max-height:60vh; overflow:auto; }
 .cortex-more { margin-top:12px; }
+.cortex-session-fields { display:grid!important; grid-template-columns:repeat(5,minmax(0,1fr)); flex:1; gap:8px; }
+.cortex-session-list article { min-height:84px; }
+.cortex-session-list article header { display:flex; align-items:center; gap:10px; }
+.cortex-session-list article[data-kind="error"] { border-left:3px solid var(--destructive); }
+.cortex-session-list article[data-kind="user"] { border-left:3px solid var(--primary); }
+.cortex-tail-controls { display:flex; gap:8px; margin-top:12px; }
+.cortex-tail-controls legend { position:absolute; width:1px; height:1px; overflow:hidden; }
+.cortex-session-matches { display:grid; gap:8px; margin-top:16px; }
+.cortex-session-matches button { display:grid; gap:4px; text-align:left; }
 @media (max-width:640px) { .cortex-workspace { padding:16px; } .cortex-workspace > header { align-items:flex-start; flex-direction:column; } .cortex-workspace nav { overflow-x:auto; } }

@@ -47,4 +47,15 @@ describe("CortexClient", () => {
     release();
     await pending;
   });
+  it("uses a committed cursor with the complete rendered-session identity", async () => {
+    await new CortexClient(profile).renderedSession(
+      { project: "axon", tool: "codex", sessionId: "session/1", host: "dev host" },
+      "cortex-session-v1:42",
+    );
+    expect(invoke).toHaveBeenCalledWith("backend_http_request", {
+      request: expect.objectContaining({
+        path: "/api/sessions/rendered?project=axon&tool=codex&session_id=session%2F1&host=dev+host&cursor=cortex-session-v1%3A42&limit=200",
+      }),
+    });
+  });
 });

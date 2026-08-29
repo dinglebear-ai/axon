@@ -2,7 +2,7 @@ use crate::{BackendProduct, BackendProfile, merged_settings, validate_saved_serv
 use futures_util::StreamExt as _;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Mutex, time::Duration};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
 
 const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
@@ -46,6 +46,28 @@ pub(crate) struct BackendRequest {
     method: BackendMethod,
     path: String,
     body: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackendStreamRequest {
+    profile_id: String,
+    product: BackendProduct,
+    request_id: String,
+    generation: u64,
+    path: String,
+    #[serde(default)]
+    params: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BackendStreamEvent {
+    request_id: String,
+    generation: u64,
+    event: String,
+    id: Option<String>,
+    data: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,7 +139,17 @@ pub(crate) async fn backend_http_request(
         .lock()
         .map_err(|_| "request registry unavailable")?
         .remove(&request.request_id);
-    let response = response?;
+    let response = match response {
+        Ok(response) => response,
+        Err(error) => {
+            transport
+                .cancellations
+                .lock()
+                .map_err(|_| "request registry unavailable")?
+                .remove(&request.request_id);
+            return Err(error);
+        }
+    };
     if response.status().is_redirection() {
         return Err("backend redirects are forbidden".into());
     }
@@ -166,6 +198,135 @@ pub(crate) fn backend_cancel_request(
         .map_err(|_| "request registry unavailable")?
         .remove(&request_id)
         .is_some_and(|sender| sender.send(()).is_ok()))
+}
+
+#[tauri::command]
+pub(crate) async fn backend_http_stream(
+    app: AppHandle,
+    window: tauri::Window,
+    transport: tauri::State<'_, BackendTransport>,
+    request: BackendStreamRequest,
+) -> Result<(), String> {
+    let ordinary = BackendRequest {
+        profile_id: request.profile_id.clone(),
+        product: request.product,
+        request_id: request.request_id.clone(),
+        method: BackendMethod::Get,
+        path: request.path.clone(),
+        body: None,
+    };
+    validate_request(&ordinary)?;
+    if request.product != BackendProduct::Cortex
+        || !matches!(
+            request.path.as_str(),
+            "/v1/cortex/api/streams/logs" | "/v1/cortex/api/streams/sessions"
+        )
+    {
+        return Err("backend stream route is not allowed".into());
+    }
+    if request.params.len() > 8
+        || request
+            .params
+            .iter()
+            .any(|(key, value)| key.len() > 64 || value.len() > 4096)
+    {
+        return Err("backend stream parameters exceed limits".into());
+    }
+    let settings = merged_settings(&app)?;
+    let profile = resolve_profile(&settings.backend_profiles, &ordinary)?;
+    let origin = validate_profile_origin(profile)?;
+    let upstream_path = request
+        .path
+        .strip_prefix("/v1/cortex")
+        .ok_or("invalid Cortex stream route")?;
+    let mut url = reqwest::Url::parse(&format!("{origin}{upstream_path}")).map_err(redact)?;
+    url.query_pairs_mut().extend_pairs(request.params.iter());
+    let (cancel_tx, mut cancel_rx) = oneshot::channel();
+    transport
+        .cancellations
+        .lock()
+        .map_err(|_| "request registry unavailable")?
+        .insert(request.request_id.clone(), cancel_tx);
+    let response = tokio::select! {
+        _ = &mut cancel_rx => Err("backend request cancelled".into()),
+        result = transport.client.get(url).header(reqwest::header::ACCEPT, "text/event-stream").send() => result.map_err(redact),
+    };
+    let response = response?;
+    if !response.status().is_success() {
+        transport
+            .cancellations
+            .lock()
+            .map_err(|_| "request registry unavailable")?
+            .remove(&request.request_id);
+        return Err(format!(
+            "backend stream failed with HTTP {}",
+            response.status()
+        ));
+    }
+    let mut bytes = response.bytes_stream();
+    let mut pending = Vec::new();
+    let result = async {
+        loop {
+            let chunk = tokio::select! {
+                _ = &mut cancel_rx => return Err("backend request cancelled".into()),
+                chunk = bytes.next() => chunk,
+            };
+            let Some(chunk) = chunk else { break };
+            let chunk = chunk.map_err(redact)?;
+            pending.extend_from_slice(&chunk);
+            if pending.len() > 256 * 1024 {
+                return Err("backend SSE frame exceeds 256 KiB".into());
+            }
+            while let Some(end) = pending.windows(2).position(|pair| pair == b"\n\n") {
+                let frame: Vec<u8> = pending.drain(..end + 2).collect();
+                emit_sse_frame(&window, &request, &frame)?;
+            }
+        }
+        Ok(())
+    }
+    .await;
+    transport
+        .cancellations
+        .lock()
+        .map_err(|_| "request registry unavailable")?
+        .remove(&request.request_id);
+    result
+}
+
+fn emit_sse_frame(
+    window: &tauri::Window,
+    request: &BackendStreamRequest,
+    frame: &[u8],
+) -> Result<(), String> {
+    let text = std::str::from_utf8(frame).map_err(|_| "invalid UTF-8 in backend SSE stream")?;
+    let mut event = "message";
+    let mut id = None;
+    let mut data = String::new();
+    for line in text.lines() {
+        if let Some(value) = line.strip_prefix("event:") {
+            event = value.trim();
+        } else if let Some(value) = line.strip_prefix("id:") {
+            id = Some(value.trim().to_string());
+        } else if let Some(value) = line.strip_prefix("data:") {
+            data.push_str(value.trim());
+        }
+    }
+    if data.is_empty() {
+        return Ok(());
+    }
+    let data = serde_json::from_str(&data).map_err(|_| "invalid JSON in backend SSE event")?;
+    window
+        .emit(
+            "palette://backend-stream",
+            BackendStreamEvent {
+                request_id: request.request_id.clone(),
+                generation: request.generation,
+                event: event.to_string(),
+                id,
+                data,
+            },
+        )
+        .map_err(redact)
 }
 
 fn validate_request(request: &BackendRequest) -> Result<(), String> {

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ProductIdentity } from "../backendProfiles/model";
-import { boundedAppend, capabilityAvailable, visibleWindow } from "./viewModel";
+import {
+  boundedAppend,
+  boundedByItemsAndBytes,
+  capabilityAvailable,
+  CORTEX_RETAINED_BYTES,
+  visibleWindow,
+} from "./viewModel";
 
 const identity: ProductIdentity = {
   contract_version: "1.0.0",
@@ -32,5 +38,14 @@ describe("Cortex view model", () => {
     expect(view.rows.length).toBeLessThanOrEqual(80);
     expect(view.start).toBeGreaterThan(0);
     expect(view.top + view.bottom).toBeGreaterThan(0);
+  });
+  it("caps retained tail bytes while preserving the newest event", () => {
+    expect(
+      boundedByItemsAndBytes(
+        [],
+        ["a".repeat(CORTEX_RETAINED_BYTES), "latest"],
+        (item) => item.length,
+      ),
+    ).toEqual(["latest"]);
   });
 });

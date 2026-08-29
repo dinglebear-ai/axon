@@ -99,6 +99,7 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
             backend_transport::backend_http_request,
+            backend_transport::backend_http_stream,
             backend_transport::backend_cancel_request,
             axon_http_stream_request,
             browser::browser_open,
