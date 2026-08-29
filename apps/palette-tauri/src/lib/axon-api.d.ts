@@ -1824,6 +1824,7 @@ export interface components {
             hooks: unknown;
             mcp_servers: unknown;
             models: unknown;
+            pending_server_requests: components["schemas"]["RecordedEvent"][];
             plugins: unknown;
             skills: unknown;
             status: components["schemas"]["ControlStatus"];
@@ -1853,17 +1854,18 @@ export interface components {
             kind: "external";
             uri: string;
         };
-        /** @enum {string} */
-        ControlAction: "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "models_list" | "model_provider_capabilities_read" | "config_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugin_read" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "hooks_list" | "apps_list";
         ControlOperation: {
             actor: string;
             approver?: string | null;
+            expected_revision?: string | null;
             /** Format: int64 */
             id: number;
             method: string;
             phase: components["schemas"]["OperationPhase"];
             post_state_revision?: string | null;
             recovery_state?: string | null;
+            /** @description Secret-free request retained so recovery can prove the intended effect. */
+            redacted_request: unknown;
             request_digest: string;
             scope: string;
         };
@@ -1890,8 +1892,8 @@ export interface components {
             options?: components["schemas"]["CrawlOptions"];
         };
         CreateOperationBody: {
+            action: components["schemas"]["MutationAction"];
             idempotency_key: string;
-            method: string;
             redacted_request: unknown;
         };
         /** @enum {string} */
@@ -2047,7 +2049,7 @@ export interface components {
             kind: "exited";
         };
         ExecuteBody: {
-            action: components["schemas"]["ControlAction"];
+            action: components["schemas"]["MutationAction"];
             capability: string;
             params: unknown;
         };
@@ -2637,6 +2639,14 @@ export interface components {
             /** Format: int64 */
             updated_at: number;
         };
+        /**
+         * @description Write-only actions accepted by the approved mutation workflow.
+         *
+         *     Keeping this separate from [`ControlAction`] prevents callers from preparing
+         *     or executing a read method through the mutation endpoints.
+         * @enum {string}
+         */
+        MutationAction: "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "external_agent_config_import";
         /** @enum {string} */
         OperationPhase: "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         OutputPolicy: {
@@ -2950,7 +2960,7 @@ export interface components {
         ReconcileOperationResponse: {
             /** Format: int64 */
             operation_id: number;
-            phase: string;
+            phase: components["schemas"]["OperationPhase"];
         };
         RecordedEvent: {
             cursor: components["schemas"]["EventCursor"];

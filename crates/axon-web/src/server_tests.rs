@@ -245,13 +245,26 @@ fn codex_openapi_exposes_typed_responses_and_server_owned_revisions() {
     let document = serde_json::to_value(crate::server::openapi_document()).unwrap();
     let schemas = &document["components"]["schemas"];
 
-    assert_eq!(schemas["ControlAction"]["type"], "string");
+    assert_eq!(schemas["MutationAction"]["type"], "string");
     assert_eq!(
-        schemas["ControlAction"]["enum"].as_array().unwrap().len(),
-        26
+        schemas["MutationAction"]["enum"].as_array().unwrap().len(),
+        14
     );
+    assert_eq!(
+        schemas["CreateOperationBody"]["properties"]["action"]["$ref"],
+        "#/components/schemas/MutationAction"
+    );
+    assert_eq!(
+        schemas["ExecuteBody"]["properties"]["action"]["$ref"],
+        "#/components/schemas/MutationAction"
+    );
+    assert!(schemas["CreateOperationBody"]["properties"]["method"].is_null());
     assert!(schemas["CreateOperationBody"]["properties"]["expected_revision"].is_null());
     assert!(schemas["ExecuteBody"]["properties"]["revision"].is_null());
+    assert_eq!(
+        schemas["ReconcileOperationResponse"]["properties"]["phase"]["$ref"],
+        "#/components/schemas/OperationPhase"
+    );
 
     for (path, method, status) in [
         ("/v1/codex", "get", "200"),

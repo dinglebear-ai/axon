@@ -1,7 +1,8 @@
 //! Services-first facade for the dedicated Codex app-server control plane.
 
 use axon_codex::api::{
-    ControlAction, WritePolicy, account_summary, state_revision, validate_mutation_params,
+    ControlAction, MutationAction, WritePolicy, account_summary, state_revision,
+    validate_mutation_params,
 };
 use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus, home_identity};
 use axon_codex::events::sanitize_value;
@@ -19,6 +20,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
+mod postconditions;
+use postconditions::{EffectProof, verify_intended_effect};
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CodexControlSnapshot {
     pub status: ControlStatus,
@@ -30,6 +34,7 @@ pub struct CodexControlSnapshot {
     pub skills: Value,
     pub hooks: Value,
     pub apps: Value,
+    pub pending_server_requests: Vec<RecordedEvent>,
 }
 
 pub struct CodexControlService {
@@ -99,7 +104,8 @@ impl CodexControlService {
                 transport.request(ControlAction::AppsList.method(), json!({})),
             );
             let account = serde_json::to_value(account_summary(&account?)).map_err(|error| error.to_string())?;
-            Ok(CodexControlSnapshot { status: self.runtime.status(), account, models: sanitize_value(models?), config: sanitize_value(config?), mcp_servers: sanitize_value(mcp_servers?), plugins: sanitize_value(plugins?), skills: sanitize_value(skills?), hooks: sanitize_value(hooks?), apps: sanitize_value(apps?) })
+            let pending_server_requests = transport.pending_server_requests()?;
+            Ok(CodexControlSnapshot { status: self.runtime.status(), account, models: sanitize_value(models?), config: sanitize_value(config?), mcp_servers: sanitize_value(mcp_servers?), plugins: sanitize_value(plugins?), skills: sanitize_value(skills?), hooks: sanitize_value(hooks?), apps: sanitize_value(apps?), pending_server_requests })
         }).await
     }
 
@@ -116,9 +122,13 @@ impl CodexControlService {
 
     pub async fn create_operation(
         &self,
+        mutation: MutationAction,
         intent: &OperationIntent,
     ) -> Result<ControlOperation, String> {
-        let action = action_from_method(&intent.method)?;
+        let action = ControlAction::from(mutation);
+        if intent.method != mutation.method() {
+            return Err("Codex mutation method does not match typed action".to_string());
+        }
         self.policy.authorize(&action)?;
         validate_mutation_params(&action, &intent.redacted_request)?;
         verify_artifact_source(&action, &intent.redacted_request).await?;
@@ -148,17 +158,31 @@ impl CodexControlService {
             .ok_or_else(|| "Codex operation is not awaiting recovery".to_string())?;
         let action = action_from_method(&operation.method)?;
         let transport = self.transport().await?;
-        let revision = canonical_revision(&action, &transport).await?;
-        self.operations.resolve_recovery(id, &revision)
+        let state = canonical_state(&action, &transport).await?;
+        match verify_intended_effect(
+            &action,
+            &operation.redacted_request,
+            None,
+            &state.value,
+            operation.expected_revision.as_deref(),
+            Some(&state.revision),
+        ) {
+            EffectProof::Applied => self.operations.resolve_recovery(id, &state.revision),
+            EffectProof::Absent(reason) | EffectProof::Unknown(reason) => {
+                self.operations.retain_recovery(id, &reason)?;
+                Err(format!("Codex recovery remains unresolved: {reason}"))
+            }
+        }
     }
 
     pub async fn execute_operation(
         &self,
         id: i64,
         capability: &str,
-        action: ControlAction,
+        mutation: MutationAction,
         params: Value,
     ) -> Result<Value, String> {
+        let action = ControlAction::from(mutation);
         self.policy.authorize(&action)?;
         validate_mutation_params(&action, &params)?;
         verify_artifact_source(&action, &params).await?;
@@ -172,23 +196,35 @@ impl CodexControlService {
         let result = self
             .runtime
             .with_mutation(|| async {
-                let revision = canonical_revision(&action, &transport).await?;
+                let before = canonical_state(&action, &transport).await?;
                 self.operations.begin_execution(
                     id,
                     capability,
                     action.method(),
                     &params,
-                    Some(&revision),
+                    Some(&before.revision),
                     &self.home_identity,
                     self.runtime_boot_id.load(Ordering::Acquire),
                     &self.policy_version,
                 )?;
                 started_in_lane.store(true, Ordering::Release);
-                let value = transport.request(action.method(), params).await?;
-                let post_revision = canonical_revision(&action, &transport)
+                let value = transport.request(action.method(), params.clone()).await?;
+                let after = canonical_state(&action, &transport)
                     .await
                     .map_err(|error| format!("post-state readback failed: {error}"))?;
-                Ok::<_, String>((value, post_revision))
+                match verify_intended_effect(
+                    &action,
+                    &params,
+                    Some(&before.value),
+                    &after.value,
+                    Some(&before.revision),
+                    Some(&after.revision),
+                ) {
+                    EffectProof::Applied => Ok::<_, String>((value, after.revision)),
+                    EffectProof::Absent(reason) | EffectProof::Unknown(reason) => Err(format!(
+                        "post-state did not prove intended effect: {reason}"
+                    )),
+                }
             })
             .await;
         match result {
@@ -258,6 +294,18 @@ async fn canonical_revision(
     action: &ControlAction,
     transport: &ControlTransport,
 ) -> Result<String, String> {
+    Ok(canonical_state(action, transport).await?.revision)
+}
+
+struct CanonicalState {
+    value: Value,
+    revision: String,
+}
+
+async fn canonical_state(
+    action: &ControlAction,
+    transport: &ControlTransport,
+) -> Result<CanonicalState, String> {
     let (method, params) = match action {
         ControlAction::AccountLoginStart
         | ControlAction::AccountLoginCancel
@@ -281,7 +329,9 @@ async fn canonical_revision(
             json!({"includeLayers":true}),
         ),
     };
-    state_revision(&sanitize_value(transport.request(method, params).await?))
+    let value = sanitize_value(transport.request(method, params).await?);
+    let revision = state_revision(&value)?;
+    Ok(CanonicalState { value, revision })
 }
 
 async fn verify_artifact_source(action: &ControlAction, params: &Value) -> Result<(), String> {
@@ -351,3 +401,7 @@ fn action_from_method(method: &str) -> Result<ControlAction, String> {
     .find(|action| action.method() == method)
     .ok_or_else(|| format!("unsupported Codex control mutation: {method}"))
 }
+
+#[cfg(test)]
+#[path = "codex_control_tests.rs"]
+mod tests;

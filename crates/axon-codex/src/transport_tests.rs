@@ -48,6 +48,17 @@ fn server_request_claim_is_concurrency_safe_and_write_failure_is_retryable() {
             method: "execCommandApproval".to_string(),
             expires_at: Instant::now() + Duration::from_secs(30),
             claimed: false,
+            event: RecordedEvent {
+                cursor: crate::events::EventCursor {
+                    boot_id: 1,
+                    sequence: 1,
+                },
+                event: EventKind::ServerRequest {
+                    request_id: 77,
+                    method: "execCommandApproval".to_string(),
+                    params: json!({}),
+                },
+            },
         },
     )]);
 

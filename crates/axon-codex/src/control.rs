@@ -100,6 +100,13 @@ impl ControlRuntime {
     }
 
     pub fn mark_ready(&self) {
+        let mut restart = self
+            .restart
+            .lock()
+            .unwrap_or_else(|value| value.into_inner());
+        restart.consecutive_failures = 0;
+        restart.retry_not_before = None;
+        drop(restart);
         self.update_status(ControlState::Ready, None);
     }
 

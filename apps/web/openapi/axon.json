@@ -9788,7 +9788,8 @@
           "plugins",
           "skills",
           "hooks",
-          "apps"
+          "apps",
+          "pending_server_requests"
         ],
         "properties": {
           "account": {},
@@ -9797,6 +9798,12 @@
           "hooks": {},
           "mcp_servers": {},
           "models": {},
+          "pending_server_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecordedEvent"
+            }
+          },
           "plugins": {},
           "skills": {},
           "status": {
@@ -9914,37 +9921,6 @@
           }
         ]
       },
-      "ControlAction": {
-        "type": "string",
-        "enum": [
-          "account_read",
-          "account_login_start",
-          "account_login_cancel",
-          "account_logout",
-          "rate_limits_read",
-          "models_list",
-          "model_provider_capabilities_read",
-          "config_read",
-          "config_value_write",
-          "config_batch_write",
-          "mcp_servers_list",
-          "mcp_server_reload",
-          "mcp_server_oauth_login",
-          "plugins_list",
-          "plugin_read",
-          "plugin_install",
-          "plugin_uninstall",
-          "marketplace_add",
-          "marketplace_remove",
-          "marketplace_upgrade",
-          "skills_list",
-          "skill_config_write",
-          "external_agent_config_detect",
-          "external_agent_config_import",
-          "hooks_list",
-          "apps_list"
-        ]
-      },
       "ControlOperation": {
         "type": "object",
         "required": [
@@ -9953,6 +9929,7 @@
           "scope",
           "method",
           "request_digest",
+          "redacted_request",
           "phase"
         ],
         "properties": {
@@ -9960,6 +9937,12 @@
             "type": "string"
           },
           "approver": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected_revision": {
             "type": [
               "string",
               "null"
@@ -9986,6 +9969,9 @@
               "string",
               "null"
             ]
+          },
+          "redacted_request": {
+            "description": "Secret-free request retained so recovery can prove the intended effect."
           },
           "request_digest": {
             "type": "string"
@@ -10090,15 +10076,15 @@
       "CreateOperationBody": {
         "type": "object",
         "required": [
-          "method",
+          "action",
           "idempotency_key",
           "redacted_request"
         ],
         "properties": {
-          "idempotency_key": {
-            "type": "string"
+          "action": {
+            "$ref": "#/components/schemas/MutationAction"
           },
-          "method": {
+          "idempotency_key": {
             "type": "string"
           },
           "redacted_request": {}
@@ -10785,7 +10771,7 @@
         ],
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/ControlAction"
+            "$ref": "#/components/schemas/MutationAction"
           },
           "capability": {
             "type": "string"
@@ -12991,6 +12977,26 @@
           }
         }
       },
+      "MutationAction": {
+        "type": "string",
+        "description": "Write-only actions accepted by the approved mutation workflow.\n\nKeeping this separate from [`ControlAction`] prevents callers from preparing\nor executing a read method through the mutation endpoints.",
+        "enum": [
+          "account_login_start",
+          "account_login_cancel",
+          "account_logout",
+          "config_value_write",
+          "config_batch_write",
+          "mcp_server_reload",
+          "mcp_server_oauth_login",
+          "plugin_install",
+          "plugin_uninstall",
+          "marketplace_add",
+          "marketplace_remove",
+          "marketplace_upgrade",
+          "skill_config_write",
+          "external_agent_config_import"
+        ]
+      },
       "OperationPhase": {
         "type": "string",
         "enum": [
@@ -14209,7 +14215,7 @@
             "format": "int64"
           },
           "phase": {
-            "type": "string"
+            "$ref": "#/components/schemas/OperationPhase"
           }
         }
       },

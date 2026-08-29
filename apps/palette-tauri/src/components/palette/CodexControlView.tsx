@@ -201,15 +201,15 @@ export function CodexControlView({
               <code>{item.request_digest}</code>
               {["ambiguous", "recovery_required", "rollback_required"].includes(item.phase) && (
                 <Button
-                  disabled={busy || !client || !value}
+                  disabled={busy || !client}
                   onClick={() =>
                     void run(async () => {
-                      if (client) await reconcileCodexOperation(client, item.id, value);
+                      if (client) await reconcileCodexOperation(client, item.id);
                       await refresh();
                     })
                   }
                 >
-                  Mark reconciled at revision in Value
+                  Mark reconciled
                 </Button>
               )}
             </article>

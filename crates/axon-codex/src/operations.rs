@@ -75,6 +75,9 @@ pub struct ControlOperation {
     pub scope: String,
     pub method: String,
     pub request_digest: String,
+    /// Secret-free request retained so recovery can prove the intended effect.
+    pub redacted_request: serde_json::Value,
+    pub expected_revision: Option<String>,
     pub phase: OperationPhase,
     pub approver: Option<String>,
     pub post_state_revision: Option<String>,
@@ -126,8 +129,8 @@ impl OperationStore {
             return Ok(existing);
         }
         connection.execute(
-            "INSERT INTO codex_control_operations(actor,scope,method,target_home_identity,runtime_boot_id,policy_version,expected_revision,idempotency_key,request_digest,nonce,phase,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'pending',unixepoch(),unixepoch())",
-            params![intent.actor,intent.scope,intent.method,intent.target_home_identity,intent.runtime_boot_id,intent.policy_version,intent.expected_revision,intent.idempotency_key,digest,nonce],
+            "INSERT INTO codex_control_operations(actor,scope,method,target_home_identity,runtime_boot_id,policy_version,expected_revision,idempotency_key,request_digest,redacted_request,nonce,phase,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'pending',unixepoch(),unixepoch())",
+            params![intent.actor,intent.scope,intent.method,intent.target_home_identity,intent.runtime_boot_id,intent.policy_version,intent.expected_revision,intent.idempotency_key,digest,serde_json::to_string(&intent.redacted_request).map_err(|error| error.to_string())?,nonce],
         ).map_err(db_error)?;
         get_operation(&connection, connection.last_insert_rowid())?
             .ok_or_else(|| "created operation missing".to_string())
@@ -241,7 +244,7 @@ impl OperationStore {
             .connection
             .lock()
             .map_err(|_| "operation store lock poisoned".to_string())?;
-        let mut statement = connection.prepare("SELECT id,actor,scope,method,request_digest,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE phase NOT IN ('reconciled','failed','denied','expired') ORDER BY updated_at DESC LIMIT ?1").map_err(db_error)?;
+        let mut statement = connection.prepare("SELECT id,actor,scope,method,request_digest,redacted_request,expected_revision,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE phase NOT IN ('reconciled','failed','denied','expired') ORDER BY updated_at DESC LIMIT ?1").map_err(db_error)?;
         statement
             .query_map([limit.min(100) as i64], row_to_operation)
             .map_err(db_error)?
@@ -255,6 +258,21 @@ impl OperationStore {
             .lock()
             .map_err(|_| "operation store lock poisoned".to_string())?;
         let changed = connection.execute("UPDATE codex_control_operations SET phase='reconciled',post_state_revision=?2,recovery_state='operator_reconciled',updated_at=unixepoch() WHERE id=?1 AND phase IN ('ambiguous','recovery_required','rollback_required')", params![id,revision]).map_err(db_error)?;
+        (changed == 1)
+            .then_some(())
+            .ok_or_else(|| "operation is not awaiting recovery".to_string())
+    }
+
+    /// Keep an operation safely unresolved when readback cannot prove its effect.
+    pub fn retain_recovery(&self, id: i64, reason: &str) -> Result<(), String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| "operation store lock poisoned".to_string())?;
+        let changed = connection.execute(
+            "UPDATE codex_control_operations SET phase='recovery_required',recovery_state=?2,updated_at=unixepoch() WHERE id=?1 AND phase IN ('ambiguous','recovery_required','rollback_required')",
+            params![id, reason],
+        ).map_err(db_error)?;
         (changed == 1)
             .then_some(())
             .ok_or_else(|| "operation is not awaiting recovery".to_string())
@@ -299,14 +317,14 @@ fn get_operation_guard(connection: &Connection, id: i64) -> Result<Option<GuardR
     connection.query_row("SELECT phase,approval_digest,target_home_identity,runtime_boot_id,policy_version,expected_revision,method,request_digest,expires_at FROM codex_control_operations WHERE id=?1", [id], |row| Ok(GuardRow { phase: OperationPhase::parse(&row.get::<_,String>(0)?).map_err(|_| rusqlite::Error::InvalidQuery)?, approval_digest: row.get(1)?, target_home_identity: row.get(2)?, runtime_boot_id: row.get(3)?, policy_version: row.get(4)?, expected_revision: row.get(5)?, method: row.get(6)?, request_digest: row.get(7)?, expires_at: row.get(8)? })).optional().map_err(db_error)
 }
 fn get_operation(connection: &Connection, id: i64) -> Result<Option<ControlOperation>, String> {
-    connection.query_row("SELECT id,actor,scope,method,request_digest,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE id=?1", [id], row_to_operation).optional().map_err(db_error)
+    connection.query_row("SELECT id,actor,scope,method,request_digest,redacted_request,expected_revision,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE id=?1", [id], row_to_operation).optional().map_err(db_error)
 }
 fn find_idempotent(
     connection: &Connection,
     actor: &str,
     key: &str,
 ) -> Result<Option<ControlOperation>, String> {
-    connection.query_row("SELECT id,actor,scope,method,request_digest,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE actor=?1 AND idempotency_key=?2", params![actor,key], row_to_operation).optional().map_err(db_error)
+    connection.query_row("SELECT id,actor,scope,method,request_digest,redacted_request,expected_revision,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE actor=?1 AND idempotency_key=?2", params![actor,key], row_to_operation).optional().map_err(db_error)
 }
 fn row_to_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<ControlOperation> {
     Ok(ControlOperation {
@@ -315,11 +333,19 @@ fn row_to_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<ControlOperatio
         scope: row.get(2)?,
         method: row.get(3)?,
         request_digest: row.get(4)?,
-        phase: OperationPhase::parse(&row.get::<_, String>(5)?)
+        redacted_request: serde_json::from_str(&row.get::<_, String>(5)?).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                5,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?,
+        expected_revision: row.get(6)?,
+        phase: OperationPhase::parse(&row.get::<_, String>(7)?)
             .map_err(|_| rusqlite::Error::InvalidQuery)?,
-        approver: row.get(6)?,
-        post_state_revision: row.get(7)?,
-        recovery_state: row.get(8)?,
+        approver: row.get(8)?,
+        post_state_revision: row.get(9)?,
+        recovery_state: row.get(10)?,
     })
 }
 fn request_digest(value: &serde_json::Value) -> Result<String, String> {
@@ -333,7 +359,7 @@ fn db_error(error: rusqlite::Error) -> String {
     format!("Codex operation database error: {error}")
 }
 
-const SCHEMA: &str = "PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS codex_control_operations(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,scope TEXT NOT NULL,method TEXT NOT NULL,target_home_identity TEXT NOT NULL,runtime_boot_id INTEGER NOT NULL,policy_version TEXT NOT NULL,expected_revision TEXT,idempotency_key TEXT NOT NULL,request_digest TEXT NOT NULL,nonce TEXT NOT NULL,phase TEXT NOT NULL,approver TEXT,approval_digest TEXT,approved_at INTEGER,expires_at INTEGER,side_effect_started_at INTEGER,post_state_revision TEXT,recovery_state TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(actor,idempotency_key)); CREATE INDEX IF NOT EXISTS idx_codex_control_phase_updated ON codex_control_operations(phase,updated_at);";
+const SCHEMA: &str = "PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS codex_control_operations(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,scope TEXT NOT NULL,method TEXT NOT NULL,target_home_identity TEXT NOT NULL,runtime_boot_id INTEGER NOT NULL,policy_version TEXT NOT NULL,expected_revision TEXT,idempotency_key TEXT NOT NULL,request_digest TEXT NOT NULL,redacted_request TEXT NOT NULL,nonce TEXT NOT NULL,phase TEXT NOT NULL,approver TEXT,approval_digest TEXT,approved_at INTEGER,expires_at INTEGER,side_effect_started_at INTEGER,post_state_revision TEXT,recovery_state TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(actor,idempotency_key)); CREATE INDEX IF NOT EXISTS idx_codex_control_phase_updated ON codex_control_operations(phase,updated_at);";
 
 fn unix_timestamp() -> i64 {
     std::time::SystemTime::now()
@@ -345,6 +371,7 @@ fn migrate_columns(connection: &Connection) {
     for statement in [
         "ALTER TABLE codex_control_operations ADD COLUMN approved_at INTEGER",
         "ALTER TABLE codex_control_operations ADD COLUMN expires_at INTEGER",
+        "ALTER TABLE codex_control_operations ADD COLUMN redacted_request TEXT NOT NULL DEFAULT '{}'",
     ] {
         let _ = connection.execute(statement, []);
     }

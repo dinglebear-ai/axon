@@ -211,6 +211,7 @@ export type components = {
             "hooks": unknown;
             "mcp_servers": unknown;
             "models": unknown;
+            "pending_server_requests": components['schemas']['RecordedEvent'][];
             "plugins": unknown;
             "skills": unknown;
             "status": components['schemas']['ControlStatus'];
@@ -235,15 +236,16 @@ export type components = {
             "kind": "external";
             "uri": string;
         };
-        "ControlAction": "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "models_list" | "model_provider_capabilities_read" | "config_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugin_read" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "hooks_list" | "apps_list";
         "ControlOperation": {
             "actor": string;
             "approver"?: string | null;
+            "expected_revision"?: string | null;
             "id": number;
             "method": string;
             "phase": components['schemas']['OperationPhase'];
             "post_state_revision"?: string | null;
             "recovery_state"?: string | null;
+            "redacted_request": unknown;
             "request_digest": string;
             "scope": string;
         };
@@ -268,8 +270,8 @@ export type components = {
             "options"?: components['schemas']['CrawlOptions'];
         };
         "CreateOperationBody": {
+            "action": components['schemas']['MutationAction'];
             "idempotency_key": string;
-            "method": string;
             "redacted_request": unknown;
         };
         "CredentialKind": "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
@@ -391,7 +393,7 @@ export type components = {
             "kind": "exited";
         };
         "ExecuteBody": {
-            "action": components['schemas']['ControlAction'];
+            "action": components['schemas']['MutationAction'];
             "capability": string;
             "params": unknown;
         };
@@ -799,6 +801,7 @@ export type components = {
             "turn_count": number;
             "updated_at": number;
         };
+        "MutationAction": "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "external_agent_config_import";
         "OperationPhase": "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         "OutputPolicy": {
             "artifact_mode": components['schemas']['ArtifactMode'];
@@ -1008,7 +1011,7 @@ export type components = {
         };
         "ReconcileOperationResponse": {
             "operation_id": number;
-            "phase": string;
+            "phase": components['schemas']['OperationPhase'];
         };
         "RecordedEvent": {
             "cursor": components['schemas']['EventCursor'];

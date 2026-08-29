@@ -48,9 +48,12 @@ become `recovery_required` on restart and are not retried blindly. Server-initia
 approval and MCP elicitation requests appear separately and require an operator
 approve or deny response.
 
-MCP definitions are written with Codex config RPCs and then reloaded. The
+MCP definitions are written with Codex config RPCs. Apply **Reload MCP servers**
+as a separate approved operation before expecting the active MCP runtime to use
+the changed definition; config writes do not automatically chain a reload. The
 Palette editor accepts either one executable plus a JSON string array of
-arguments, or an HTTPS URL. Environment entries use one `NAME=env:SECRET_NAME`
+arguments, or an HTTPS URL. URL transports reject command arguments and
+environment entries. Command environment entries use one `NAME=env:SECRET_NAME`
 reference per line. Removal is an explicit checkbox; an empty text value does
 not remove a definition. Do not send shell command strings or plaintext
 credentials. Plugin, marketplace, and

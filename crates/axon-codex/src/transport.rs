@@ -106,6 +106,21 @@ impl ControlTransport {
         self.event_recorder.after(cursor, limit)
     }
 
+    pub fn pending_server_requests(&self) -> Result<Vec<RecordedEvent>, String> {
+        let mut registry = self
+            .server_requests
+            .lock()
+            .map_err(|_| "server request registry lock poisoned".to_string())?;
+        let now = Instant::now();
+        registry.retain(|_, request| request.expires_at > now);
+        let mut pending = registry
+            .values()
+            .map(|request| request.event.clone())
+            .collect::<Vec<_>>();
+        pending.sort_by_key(|event| event.cursor.sequence);
+        Ok(pending)
+    }
+
     pub fn epoch(&self) -> RuntimeEpoch {
         self.epoch
     }
@@ -243,22 +258,24 @@ fn spawn_reader(
                                 .send(recorder.record(EventKind::Notification { method, params }));
                         }
                         Ok(IncomingMessage::ServerRequest { id, method, params }) => {
+                            let event = recorder.record(EventKind::ServerRequest {
+                                request_id: id.sequence,
+                                method: method.clone(),
+                                params,
+                            });
                             let mut registry = server_requests
                                 .lock()
                                 .unwrap_or_else(|value| value.into_inner());
                             registry.insert(
                                 id.sequence,
                                 PendingServerRequest {
-                                    method: method.clone(),
+                                    method,
                                     expires_at: Instant::now() + Duration::from_secs(300),
                                     claimed: false,
+                                    event: event.clone(),
                                 },
                             );
-                            let _ = events.send(recorder.record(EventKind::ServerRequest {
-                                request_id: id.sequence,
-                                method,
-                                params,
-                            }));
+                            let _ = events.send(event);
                         }
                         Ok(IncomingMessage::Unknown(_)) => {}
                         Err(error) => {
@@ -296,6 +313,7 @@ struct PendingServerRequest {
     method: String,
     expires_at: Instant,
     claimed: bool,
+    event: RecordedEvent,
 }
 
 fn claim_server_request(

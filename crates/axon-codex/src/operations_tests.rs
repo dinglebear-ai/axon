@@ -122,4 +122,16 @@ fn interrupted_execution_requires_recovery_not_blind_retry() {
         store.get(operation.id).unwrap().unwrap().phase,
         OperationPhase::RecoveryRequired
     );
+    let recovered = store.get(operation.id).unwrap().unwrap();
+    assert_eq!(recovered.redacted_request, json!({"plugin":"a"}));
+    assert_eq!(recovered.expected_revision.as_deref(), Some("r1"));
+    store
+        .retain_recovery(operation.id, "intended effect is absent")
+        .unwrap();
+    let unresolved = store.get(operation.id).unwrap().unwrap();
+    assert_eq!(unresolved.phase, OperationPhase::RecoveryRequired);
+    assert_eq!(
+        unresolved.recovery_state.as_deref(),
+        Some("intended effect is absent")
+    );
 }

@@ -25,6 +25,23 @@ fn action_methods_match_current_app_server_contract() {
 }
 
 #[test]
+fn mutation_actions_exclude_reads_and_map_to_control_methods() {
+    assert_eq!(
+        MutationAction::ConfigValueWrite.method(),
+        "config/value/write"
+    );
+    assert_eq!(
+        ControlAction::from(MutationAction::McpServerReload),
+        ControlAction::McpServerReload
+    );
+    assert!(serde_json::from_value::<MutationAction>(json!("config_read")).is_err());
+    assert_eq!(
+        serde_json::to_value(MutationAction::PluginInstall).unwrap(),
+        json!("plugin_install")
+    );
+}
+
+#[test]
 fn account_projection_drops_tokens_and_masks_email() {
     let raw = json!({
         "account": {

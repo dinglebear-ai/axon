@@ -36,6 +36,71 @@ pub enum ControlAction {
     AppsList,
 }
 
+/// Write-only actions accepted by the approved mutation workflow.
+///
+/// Keeping this separate from [`ControlAction`] prevents callers from preparing
+/// or executing a read method through the mutation endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MutationAction {
+    AccountLoginStart,
+    AccountLoginCancel,
+    AccountLogout,
+    ConfigValueWrite,
+    ConfigBatchWrite,
+    McpServerReload,
+    McpServerOauthLogin,
+    PluginInstall,
+    PluginUninstall,
+    MarketplaceAdd,
+    MarketplaceRemove,
+    MarketplaceUpgrade,
+    SkillConfigWrite,
+    ExternalAgentConfigImport,
+}
+
+impl MutationAction {
+    pub const fn method(self) -> &'static str {
+        match self {
+            Self::AccountLoginStart => "account/login/start",
+            Self::AccountLoginCancel => "account/login/cancel",
+            Self::AccountLogout => "account/logout",
+            Self::ConfigValueWrite => "config/value/write",
+            Self::ConfigBatchWrite => "config/batchWrite",
+            Self::McpServerReload => "config/mcpServer/reload",
+            Self::McpServerOauthLogin => "mcpServer/oauth/login",
+            Self::PluginInstall => "plugin/install",
+            Self::PluginUninstall => "plugin/uninstall",
+            Self::MarketplaceAdd => "marketplace/add",
+            Self::MarketplaceRemove => "marketplace/remove",
+            Self::MarketplaceUpgrade => "marketplace/upgrade",
+            Self::SkillConfigWrite => "skills/config/write",
+            Self::ExternalAgentConfigImport => "externalAgentConfig/import",
+        }
+    }
+}
+
+impl From<MutationAction> for ControlAction {
+    fn from(action: MutationAction) -> Self {
+        match action {
+            MutationAction::AccountLoginStart => Self::AccountLoginStart,
+            MutationAction::AccountLoginCancel => Self::AccountLoginCancel,
+            MutationAction::AccountLogout => Self::AccountLogout,
+            MutationAction::ConfigValueWrite => Self::ConfigValueWrite,
+            MutationAction::ConfigBatchWrite => Self::ConfigBatchWrite,
+            MutationAction::McpServerReload => Self::McpServerReload,
+            MutationAction::McpServerOauthLogin => Self::McpServerOauthLogin,
+            MutationAction::PluginInstall => Self::PluginInstall,
+            MutationAction::PluginUninstall => Self::PluginUninstall,
+            MutationAction::MarketplaceAdd => Self::MarketplaceAdd,
+            MutationAction::MarketplaceRemove => Self::MarketplaceRemove,
+            MutationAction::MarketplaceUpgrade => Self::MarketplaceUpgrade,
+            MutationAction::SkillConfigWrite => Self::SkillConfigWrite,
+            MutationAction::ExternalAgentConfigImport => Self::ExternalAgentConfigImport,
+        }
+    }
+}
+
 impl ControlAction {
     pub const fn method(&self) -> &'static str {
         match self {

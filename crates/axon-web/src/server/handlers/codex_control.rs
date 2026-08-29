@@ -1,6 +1,6 @@
-use axon_codex::api::ControlAction;
+use axon_codex::api::{ControlAction, MutationAction};
 use axon_codex::events::EventCursor;
-use axon_codex::operations::OperationIntent;
+use axon_codex::operations::{OperationIntent, OperationPhase};
 use axum::Extension;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -108,7 +108,7 @@ pub async fn create_operation(
     let intent = OperationIntent {
         actor: auth.sub.clone(),
         scope: auth.scopes.join(" "),
-        method: body.method,
+        method: body.action.method().to_string(),
         target_home_identity: String::new(),
         runtime_boot_id: 0,
         policy_version: String::new(),
@@ -117,7 +117,7 @@ pub async fn create_operation(
         redacted_request: body.redacted_request,
     };
     service(&state)?
-        .create_operation(&intent)
+        .create_operation(body.action, &intent)
         .await
         .map(Json)
         .map_err(bad_request)
@@ -134,7 +134,7 @@ pub async fn list_operations(
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateOperationBody {
-    method: String,
+    action: MutationAction,
     idempotency_key: String,
     redacted_request: Value,
 }
@@ -162,7 +162,7 @@ pub struct ApproveOperationResponse {
 #[derive(Deserialize, ToSchema)]
 pub struct ExecuteBody {
     capability: String,
-    action: ControlAction,
+    action: MutationAction,
     params: Value,
 }
 pub async fn execute_operation(
@@ -219,14 +219,14 @@ pub async fn reconcile_operation(
         .map_err(bad_request)?;
     Ok(Json(ReconcileOperationResponse {
         operation_id: id,
-        phase: "reconciled".to_string(),
+        phase: OperationPhase::Reconciled,
     }))
 }
 
 #[derive(Serialize, ToSchema)]
 pub struct ReconcileOperationResponse {
     operation_id: i64,
-    phase: String,
+    phase: OperationPhase,
 }
 
 fn upstream(error: String) -> HttpError {

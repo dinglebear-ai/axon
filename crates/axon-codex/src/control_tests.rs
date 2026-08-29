@@ -121,3 +121,34 @@ async fn restart_backoff_is_bounded_counted_and_opens_circuit() {
     );
     assert_eq!(runtime.status().restart_count, RESTART_FAILURE_LIMIT - 1);
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn successful_restart_resets_backoff_and_consecutive_failure_circuit() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let root_path = root.path().canonicalize().unwrap();
+    let binary = root_path.join("codex");
+    fs::write(&binary, "#!/bin/sh\n").unwrap();
+    fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+    let home = root_path.join("home");
+    fs::create_dir(&home).unwrap();
+    let mut config = disabled_config();
+    config.enabled = true;
+    config.codex_binary = binary;
+    config.control_home = home;
+    config.max_restart_backoff = Duration::from_secs(2);
+    let runtime = ControlRuntime::new(config).unwrap();
+
+    for failure in 1..RESTART_FAILURE_LIMIT {
+        runtime.record_restart_failure(format!("failure {failure}"));
+    }
+    runtime.begin_restart().await.unwrap();
+    runtime.mark_ready();
+
+    runtime.record_restart_failure("intermittent failure after success");
+    let started = tokio::time::Instant::now();
+    runtime.begin_restart().await.unwrap();
+    assert!(started.elapsed() < Duration::from_millis(300));
+    assert_eq!(runtime.status().state, ControlState::Starting);
+}

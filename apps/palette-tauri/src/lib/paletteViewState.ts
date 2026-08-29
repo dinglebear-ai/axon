@@ -22,7 +22,8 @@ import type { PaletteAction } from "@/lib/actions";
 // `history` are full-screen overlays — mutually exclusive with each other and
 // with the launcher, which is exactly what makes "settings + history" or
 // "browse while in settings" unrepresentable.
-// `browser` is a third full-screen overlay, alongside `settings`/`history`:
+// `browser` and `codex` are additional full-screen overlays alongside
+// `settings`/`history`:
 // mutually exclusive with them and with the launcher. It carries the initial
 // URL/query argument the user typed before invoking the `browser` action (or
 // `null` for a bare invocation, which opens to the browser's home page).

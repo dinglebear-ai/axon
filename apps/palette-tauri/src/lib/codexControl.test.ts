@@ -4,8 +4,10 @@ import {
   approveCodexOperation,
   buildMcpConfigMutation,
   CODEX_MUTATIONS,
+  executeCodexOperation,
   prepareCodexOperation,
   readCodexSnapshot,
+  reconcileCodexOperation,
 } from "./codexControl";
 
 const invoke = vi.fn();
@@ -43,7 +45,35 @@ describe("Codex control client", () => {
     });
     expect(operation.id).toBe(7);
     await expect(approveCodexOperation(client, 7)).resolves.toBe("single-use");
+    expect(invoke.mock.calls[0][1].request.body).toEqual({
+      action: "plugin_install",
+      idempotency_key: expect.any(String),
+      redacted_request: { plugin: "demo" },
+    });
     expect(invoke.mock.calls[1][1].request.path).toContain("/approve");
+    expect(invoke.mock.calls[1][1].request.body).toEqual({});
+  });
+
+  it("executes the exact typed mutation without client revision state", async () => {
+    invoke.mockResolvedValue({ ok: true, status: 200, payload: { result: { ok: true } } });
+    await executeCodexOperation(client, 7, "single-use", {
+      ...CODEX_MUTATIONS.config,
+      params: { keyPath: "model", value: "gpt-test" },
+    });
+    expect(invoke.mock.calls[0][1].request.body).toEqual({
+      capability: "single-use",
+      action: "config_value_write",
+      params: { keyPath: "model", value: "gpt-test" },
+    });
+  });
+
+  it("reconciles recovery with an empty body", async () => {
+    invoke.mockResolvedValue({ ok: true, status: 200, payload: {} });
+    await reconcileCodexOperation(client, 9);
+    expect(invoke.mock.calls[0][1].request).toMatchObject({
+      path: "/v1/codex/operations/9/reconcile",
+      body: {},
+    });
   });
 });
 
@@ -91,6 +121,51 @@ describe("MCP config mutations", () => {
       keyPath: "mcp_servers.remote",
       value: null,
     });
+  });
+
+  it("builds the exact MCP recovery mutation request", () => {
+    const params = buildMcpConfigMutation({
+      name: "recovered",
+      command: "codex",
+      args: '["mcp", "serve"]',
+      url: "",
+      env: "TOKEN=env:CODEX_TOKEN",
+      remove: false,
+    });
+    expect({ ...CODEX_MUTATIONS.config, params }).toEqual({
+      action: "config_value_write",
+      params: {
+        keyPath: "mcp_servers.recovered",
+        value: {
+          command: "codex",
+          args: ["mcp", "serve"],
+          env: { TOKEN: "env:CODEX_TOKEN" },
+        },
+      },
+    });
+  });
+
+  it("rejects command-only fields for URL MCP transports", () => {
+    expect(() =>
+      buildMcpConfigMutation({
+        name: "remote",
+        command: "",
+        args: '["--verbose"]',
+        url: "https://mcp.example.test",
+        env: "",
+        remove: false,
+      }),
+    ).toThrow("URL MCP transports do not accept command arguments");
+    expect(() =>
+      buildMcpConfigMutation({
+        name: "remote",
+        command: "",
+        args: "[]",
+        url: "https://mcp.example.test",
+        env: "TOKEN=env:MCP_TOKEN",
+        remove: false,
+      }),
+    ).toThrow("URL MCP transports do not accept environment entries");
   });
 
   it("rejects mixed transports, shell commands, invalid args, and plaintext secrets", () => {

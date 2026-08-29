@@ -11,6 +11,7 @@ export type CodexResource =
   | "apps";
 export type CodexSnapshot = Record<CodexResource, unknown> & {
   status: { state: string; detail?: string | null; home?: string | null; binary?: string | null };
+  pending_server_requests: CodexEvent[];
 };
 export type CodexOperation = { id: number; phase: string; request_digest: string };
 export type CodexEvent = {
@@ -19,10 +20,7 @@ export type CodexEvent = {
 };
 export type CodexMutation = {
   action: string;
-  method: string;
-  scope: string;
   params: Record<string, unknown>;
-  expectedRevision?: string | null;
 };
 export type McpConfigInput = {
   name: string;
@@ -36,73 +34,45 @@ export type McpConfigInput = {
 export const CODEX_MUTATIONS = {
   accountLogin: {
     action: "account_login_start",
-    method: "account/login/start",
-    scope: "codex:account:write",
   },
   accountLoginCancel: {
     action: "account_login_cancel",
-    method: "account/login/cancel",
-    scope: "codex:account:write",
   },
   accountLogout: {
     action: "account_logout",
-    method: "account/logout",
-    scope: "codex:account:write",
   },
   config: {
     action: "config_value_write",
-    method: "config/value/write",
-    scope: "codex:config:write",
   },
   configBatch: {
     action: "config_batch_write",
-    method: "config/batchWrite",
-    scope: "codex:config:write",
   },
   mcpReload: {
     action: "mcp_server_reload",
-    method: "config/mcpServer/reload",
-    scope: "codex:mcp:write",
   },
   mcpOauth: {
     action: "mcp_server_oauth_login",
-    method: "mcpServer/oauth/login",
-    scope: "codex:mcp:write",
   },
   pluginInstall: {
     action: "plugin_install",
-    method: "plugin/install",
-    scope: "codex:plugins:write",
   },
   pluginUninstall: {
     action: "plugin_uninstall",
-    method: "plugin/uninstall",
-    scope: "codex:plugins:write",
   },
   marketplaceAdd: {
     action: "marketplace_add",
-    method: "marketplace/add",
-    scope: "codex:plugins:write",
   },
   marketplaceRemove: {
     action: "marketplace_remove",
-    method: "marketplace/remove",
-    scope: "codex:plugins:write",
   },
   marketplaceUpgrade: {
     action: "marketplace_upgrade",
-    method: "marketplace/upgrade",
-    scope: "codex:plugins:write",
   },
   skillConfig: {
     action: "skill_config_write",
-    method: "skills/config/write",
-    scope: "codex:skills:write",
   },
   skillImport: {
     action: "external_agent_config_import",
-    method: "externalAgentConfig/import",
-    scope: "codex:skills:write",
   },
 } as const;
 
@@ -117,9 +87,8 @@ export async function readCodexOperations(client: Client): Promise<CodexOperatio
 export async function reconcileCodexOperation(
   client: Client,
   id: number,
-  revision: string,
 ): Promise<void> {
-  await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/reconcile`, { revision });
+  await executeAxonRequest(client, "POST", `/v1/codex/operations/${id}/reconcile`, {});
 }
 
 export async function readCodexEvents(
@@ -151,8 +120,7 @@ export async function prepareCodexOperation(
 ): Promise<CodexOperation> {
   return payload<CodexOperation>(
     await executeAxonRequest(client, "POST", "/v1/codex/operations", {
-      method: mutation.method,
-      expected_revision: mutation.expectedRevision ?? null,
+      action: mutation.action,
       idempotency_key: crypto.randomUUID(),
       redacted_request: mutation.params,
     }),
@@ -175,7 +143,6 @@ export async function executeCodexOperation(
       capability,
       action: mutation.action,
       params: mutation.params,
-      revision: mutation.expectedRevision ?? null,
     }),
   );
 }
@@ -227,7 +194,12 @@ export function buildMcpConfigMutation(input: McpConfigInput): Record<string, un
   }
   const value = command
     ? { command, ...(args.length ? { args } : {}), ...(Object.keys(env).length ? { env } : {}) }
-    : { url };
+    : (() => {
+        if (args.length) throw new Error("URL MCP transports do not accept command arguments");
+        if (Object.keys(env).length)
+          throw new Error("URL MCP transports do not accept environment entries");
+        return { url };
+      })();
   return { keyPath: `mcp_servers.${name}`, value };
 }
 
