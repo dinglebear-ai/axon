@@ -1622,6 +1622,11 @@ export interface components {
             /** @description Where this error may be surfaced. */
             visibility: components["schemas"]["ErrorVisibility"];
         };
+        ApproveOperationResponse: {
+            approval_capability: string;
+            /** Format: int64 */
+            operation_id: number;
+        };
         ArtifactContentDescriptor: {
             artifact_id: components["schemas"]["ArtifactId"];
             bytes: number[];
@@ -1812,6 +1817,21 @@ export interface components {
             inputs: components["schemas"]["QueryProjectionInput"][];
             options?: components["schemas"]["CodeSearchProjectionOptions"];
         };
+        CodexControlSnapshot: {
+            account: unknown;
+            apps: unknown;
+            config: unknown;
+            hooks: unknown;
+            mcp_servers: unknown;
+            models: unknown;
+            plugins: unknown;
+            skills: unknown;
+            status: components["schemas"]["ControlStatus"];
+        };
+        CodexResourceResponse: {
+            resource: string;
+            value: unknown;
+        };
         /** @enum {string} */
         ColorUsage: "primary" | "secondary" | "background" | "text" | "accent" | "unknown";
         ContentRef: {
@@ -1833,6 +1853,30 @@ export interface components {
             kind: "external";
             uri: string;
         };
+        /** @enum {string} */
+        ControlAction: "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "models_list" | "model_provider_capabilities_read" | "config_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugin_read" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "hooks_list" | "apps_list";
+        ControlOperation: {
+            actor: string;
+            approver?: string | null;
+            /** Format: int64 */
+            id: number;
+            method: string;
+            phase: components["schemas"]["OperationPhase"];
+            post_state_revision?: string | null;
+            recovery_state?: string | null;
+            request_digest: string;
+            scope: string;
+        };
+        /** @enum {string} */
+        ControlState: "disabled" | "starting" | "ready" | "degraded" | "incompatible" | "circuit_open" | "stopped";
+        ControlStatus: {
+            binary?: string | null;
+            detail?: string | null;
+            home?: string | null;
+            /** Format: int32 */
+            restart_count: number;
+            state: components["schemas"]["ControlState"];
+        };
         CrawlOptions: {
             collection?: string | null;
             execution?: components["schemas"]["ExecutionPolicy"];
@@ -1846,7 +1890,6 @@ export interface components {
             options?: components["schemas"]["CrawlOptions"];
         };
         CreateOperationBody: {
-            expected_revision?: string | null;
             idempotency_key: string;
             method: string;
             redacted_request: unknown;
@@ -1977,11 +2020,39 @@ export interface components {
          * @enum {string}
          */
         ErrorVisibility: "public" | "internal" | "sensitive";
+        EventCursor: {
+            /** Format: int64 */
+            boot_id: number;
+            /** Format: int64 */
+            sequence: number;
+        };
+        EventKind: {
+            /** @enum {string} */
+            kind: "notification";
+            method: string;
+            params: unknown;
+        } | {
+            /** @enum {string} */
+            kind: "server_request";
+            method: string;
+            params: unknown;
+            /** Format: int64 */
+            request_id: number;
+        } | {
+            detail: string;
+            /** @enum {string} */
+            kind: "protocol_failure";
+        } | {
+            /** @enum {string} */
+            kind: "exited";
+        };
         ExecuteBody: {
-            action: string;
+            action: components["schemas"]["ControlAction"];
             capability: string;
             params: unknown;
-            revision?: string | null;
+        };
+        ExecuteOperationResponse: {
+            result: unknown;
         };
         /** @enum {string} */
         ExecutionAffinity: "inline" | "worker" | "scheduler" | "provider_bound";
@@ -2566,6 +2637,8 @@ export interface components {
             /** Format: int64 */
             updated_at: number;
         };
+        /** @enum {string} */
+        OperationPhase: "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         OutputPolicy: {
             artifact_mode: components["schemas"]["ArtifactMode"];
             include_progress: boolean;
@@ -2874,8 +2947,14 @@ export interface components {
             sqlite: string;
             tei: string;
         };
-        ReconcileBody: {
-            revision: string;
+        ReconcileOperationResponse: {
+            /** Format: int64 */
+            operation_id: number;
+            phase: string;
+        };
+        RecordedEvent: {
+            cursor: components["schemas"]["EventCursor"];
+            event: components["schemas"]["EventKind"];
         };
         /** @description Bounded redaction provenance carried beside a public write. */
         RedactionMetadata: {
@@ -3293,6 +3372,11 @@ export interface components {
             supported_actions?: string[];
             supported_routes: string[];
             version: string;
+        };
+        ServerRequestRespondedResponse: {
+            /** Format: int64 */
+            request_id: number;
+            responded: boolean;
         };
         ServerRequestResponseBody: {
             approved: boolean;
@@ -4354,21 +4438,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CodexControlSnapshot"];
+                };
             };
             /** @description Codex control disabled */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
             /** @description Codex control unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4393,7 +4483,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RecordedEvent"][];
+                };
+            };
+            /** @description Codex app-server request failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4411,7 +4512,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ControlOperation"][];
+                };
+            };
+            /** @description Codex operation store unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4433,14 +4545,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ControlOperation"];
+                };
             };
             /** @description Invalid operation intent */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4461,14 +4577,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApproveOperationResponse"];
+                };
             };
             /** @description Operation cannot be approved */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4493,14 +4613,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExecuteOperationResponse"];
+                };
             };
             /** @description Codex app-server request failed */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4514,25 +4638,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReconcileBody"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Ambiguous operation reconciled */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReconcileOperationResponse"];
+                };
             };
             /** @description Operation cannot be reconciled */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4557,14 +4681,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ServerRequestRespondedResponse"];
+                };
             };
             /** @description Unknown, expired, or incompatible request */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };
@@ -4585,14 +4713,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CodexResourceResponse"];
+                };
             };
             /** @description Unknown resource */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Codex app-server request failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
         };
     };

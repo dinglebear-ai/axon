@@ -6,17 +6,18 @@ use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use utoipa::ToSchema;
 
 pub const MAX_EVENT_HISTORY: usize = 512;
 const MAX_EVENT_STRING: usize = 4096;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EventCursor {
     pub boot_id: u64,
     pub sequence: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EventKind {
     Notification {
@@ -34,7 +35,7 @@ pub enum EventKind {
     Exited,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct RecordedEvent {
     pub cursor: EventCursor,
     pub event: EventKind,

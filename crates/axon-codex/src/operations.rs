@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationPhase {
     Pending,
@@ -67,7 +68,7 @@ pub struct OperationIntent {
     pub redacted_request: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ControlOperation {
     pub id: i64,
     pub actor: String,
@@ -116,7 +117,10 @@ impl OperationStore {
         if let Some(existing) =
             find_idempotent(&connection, &intent.actor, &intent.idempotency_key)?
         {
-            if existing.request_digest != digest {
+            if existing.scope != intent.scope
+                || existing.method != intent.method
+                || existing.request_digest != digest
+            {
                 return Err("idempotency key already exists with different parameters".to_string());
             }
             return Ok(existing);

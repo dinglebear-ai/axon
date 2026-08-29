@@ -39,3 +39,25 @@ for line in sys.stdin:
     assert_eq!(result["models"][0]["id"], "gpt-test");
     transport.stop().await.unwrap();
 }
+
+#[test]
+fn server_request_claim_is_concurrency_safe_and_write_failure_is_retryable() {
+    let mut registry = HashMap::from([(
+        77,
+        PendingServerRequest {
+            method: "execCommandApproval".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(30),
+            claimed: false,
+        },
+    )]);
+
+    claim_server_request(&mut registry, 77, true).unwrap();
+    assert_eq!(
+        claim_server_request(&mut registry, 77, true).unwrap_err(),
+        "server request response is already in progress"
+    );
+    finish_server_request(&mut registry, 77, false);
+    claim_server_request(&mut registry, 77, true).unwrap();
+    finish_server_request(&mut registry, 77, true);
+    assert!(!registry.contains_key(&77));
+}

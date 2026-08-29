@@ -146,28 +146,20 @@ impl ControlTransport {
                 .server_requests
                 .lock()
                 .map_err(|_| "server request registry lock poisoned".to_string())?;
-            let pending_request = registry
-                .get(&request_id)
-                .cloned()
-                .ok_or("server request is unknown or already answered")?;
-            if pending_request.expires_at <= Instant::now() {
-                registry.remove(&request_id);
-                return Err("server request approval expired".to_string());
-            }
-            if approved && !approval_decision_supported(&pending_request.method) {
-                return Err(format!(
-                    "server request {} requires a typed response and cannot be generically approved",
-                    pending_request.method
-                ));
-            }
-            registry.remove(&request_id);
+            claim_server_request(&mut registry, request_id, approved)?;
         }
         let response = if approved {
             json!({"jsonrpc":"2.0","id":request_id,"result":{"decision":"accept"}})
         } else {
             json!({"jsonrpc":"2.0","id":request_id,"result":{"decision":"decline"}})
         };
-        self.write_json(&response).await
+        let write_result = self.write_json(&response).await;
+        let mut registry = self
+            .server_requests
+            .lock()
+            .map_err(|_| "server request registry lock poisoned".to_string())?;
+        finish_server_request(&mut registry, request_id, write_result.is_ok());
+        write_result
     }
 
     pub async fn stop(self) -> Result<(), String> {
@@ -259,6 +251,7 @@ fn spawn_reader(
                                 PendingServerRequest {
                                     method: method.clone(),
                                     expires_at: Instant::now() + Duration::from_secs(300),
+                                    claimed: false,
                                 },
                             );
                             let _ = events.send(recorder.record(EventKind::ServerRequest {
@@ -302,6 +295,44 @@ fn approval_decision_supported(method: &str) -> bool {
 struct PendingServerRequest {
     method: String,
     expires_at: Instant,
+    claimed: bool,
+}
+
+fn claim_server_request(
+    registry: &mut HashMap<u64, PendingServerRequest>,
+    request_id: u64,
+    approved: bool,
+) -> Result<(), String> {
+    let pending_request = registry
+        .get_mut(&request_id)
+        .ok_or("server request is unknown or already answered")?;
+    if pending_request.expires_at <= Instant::now() {
+        registry.remove(&request_id);
+        return Err("server request approval expired".to_string());
+    }
+    if approved && !approval_decision_supported(&pending_request.method) {
+        return Err(format!(
+            "server request {} requires a typed response and cannot be generically approved",
+            pending_request.method
+        ));
+    }
+    if pending_request.claimed {
+        return Err("server request response is already in progress".to_string());
+    }
+    pending_request.claimed = true;
+    Ok(())
+}
+
+fn finish_server_request(
+    registry: &mut HashMap<u64, PendingServerRequest>,
+    request_id: u64,
+    write_succeeded: bool,
+) {
+    if write_succeeded {
+        registry.remove(&request_id);
+    } else if let Some(pending_request) = registry.get_mut(&request_id) {
+        pending_request.claimed = false;
+    }
 }
 
 fn protocol_error(error: ProtocolError) -> String {

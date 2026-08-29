@@ -240,6 +240,39 @@ fn openapi_document_matches_openapi_route_inventory() {
     assert_eq!(expected, documented);
 }
 
+#[test]
+fn codex_openapi_exposes_typed_responses_and_server_owned_revisions() {
+    let document = serde_json::to_value(crate::server::openapi_document()).unwrap();
+    let schemas = &document["components"]["schemas"];
+
+    assert_eq!(schemas["ControlAction"]["type"], "string");
+    assert_eq!(
+        schemas["ControlAction"]["enum"].as_array().unwrap().len(),
+        26
+    );
+    assert!(schemas["CreateOperationBody"]["properties"]["expected_revision"].is_null());
+    assert!(schemas["ExecuteBody"]["properties"]["revision"].is_null());
+
+    for (path, method, status) in [
+        ("/v1/codex", "get", "200"),
+        ("/v1/codex/events", "get", "200"),
+        ("/v1/codex/{resource}", "get", "200"),
+        ("/v1/codex/operations", "get", "200"),
+        ("/v1/codex/operations", "post", "200"),
+        ("/v1/codex/operations/{id}/approve", "post", "200"),
+        ("/v1/codex/operations/{id}/execute", "post", "200"),
+        ("/v1/codex/operations/{id}/reconcile", "post", "200"),
+        ("/v1/codex/server-requests/{id}/respond", "post", "200"),
+    ] {
+        assert!(
+            !document["paths"][path][method]["responses"][status]["content"]
+                ["application/json"]["schema"]
+                .is_null(),
+            "{method} {path} response must have a JSON schema"
+        );
+    }
+}
+
 /// Close the one dispatch surface with no compiler check: a `.route("/v1/...")`
 /// or `.nest("/v1/...")` added to the central route tree without a matching
 /// `rest_route_inventory()` entry. The inventory is locked to the OpenAPI

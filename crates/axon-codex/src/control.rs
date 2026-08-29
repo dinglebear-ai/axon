@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 use tokio::sync::{Mutex, Semaphore, watch};
+use utoipa::ToSchema;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControlConfig {
@@ -17,7 +19,7 @@ pub struct ControlConfig {
     pub max_restart_backoff: Duration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ControlState {
     Disabled,
@@ -29,7 +31,7 @@ pub enum ControlState {
     Stopped,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ControlStatus {
     pub state: ControlState,
     pub detail: Option<String>,
@@ -44,7 +46,17 @@ pub struct ControlRuntime {
     mutation_lane: Mutex<()>,
     read_permits: Arc<Semaphore>,
     status_tx: watch::Sender<ControlStatus>,
+    restart: StdMutex<RestartState>,
 }
+
+#[derive(Debug, Default)]
+struct RestartState {
+    consecutive_failures: u32,
+    retry_not_before: Option<tokio::time::Instant>,
+}
+
+const RESTART_BACKOFF_BASE: Duration = Duration::from_millis(100);
+const RESTART_FAILURE_LIMIT: u32 = 5;
 
 impl ControlRuntime {
     pub fn new(config: ControlConfig) -> Result<Self, String> {
@@ -75,6 +87,7 @@ impl ControlRuntime {
             config,
             mutation_lane: Mutex::new(()),
             status_tx,
+            restart: StdMutex::new(RestartState::default()),
         })
     }
 
@@ -92,6 +105,52 @@ impl ControlRuntime {
 
     pub fn mark_degraded(&self, detail: impl Into<String>) {
         self.update_status(ControlState::Degraded, Some(detail.into()));
+    }
+
+    /// Record an observed process/start failure and schedule the next bounded retry.
+    pub fn record_restart_failure(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        let mut restart = self
+            .restart
+            .lock()
+            .unwrap_or_else(|value| value.into_inner());
+        restart.consecutive_failures = restart.consecutive_failures.saturating_add(1);
+        let exponent = restart.consecutive_failures.saturating_sub(1).min(31);
+        let delay = RESTART_BACKOFF_BASE
+            .saturating_mul(1_u32 << exponent)
+            .min(self.config.max_restart_backoff);
+        restart.retry_not_before = Some(tokio::time::Instant::now() + delay);
+        let state = if restart.consecutive_failures >= RESTART_FAILURE_LIMIT {
+            ControlState::CircuitOpen
+        } else {
+            ControlState::Degraded
+        };
+        drop(restart);
+        self.update_status(state, Some(detail));
+    }
+
+    /// Wait until the supervised retry window and count the actual restart attempt.
+    pub async fn begin_restart(&self) -> Result<(), String> {
+        self.require_enabled()?;
+        let retry_not_before = {
+            let restart = self
+                .restart
+                .lock()
+                .unwrap_or_else(|value| value.into_inner());
+            if restart.consecutive_failures >= RESTART_FAILURE_LIMIT {
+                return Err("Codex control restart circuit is open".to_string());
+            }
+            restart.retry_not_before
+        };
+        if let Some(deadline) = retry_not_before {
+            tokio::time::sleep_until(deadline).await;
+        }
+        let mut status = self.status();
+        status.restart_count = status.restart_count.saturating_add(1);
+        status.state = ControlState::Starting;
+        status.detail = None;
+        self.status_tx.send_replace(status);
+        Ok(())
     }
 
     fn update_status(&self, state: ControlState, detail: Option<String>) {

@@ -63,16 +63,6 @@ export function PaletteFooter({
         <Button
           variant="plain"
           size="unstyled"
-          className="titlebar-button"
-          type="button"
-          onClick={onCodex}
-          aria-label="Codex app-server"
-        >
-          <Bot size={14} />
-        </Button>
-        <Button
-          variant="plain"
-          size="unstyled"
           className={recentActive ? "mobile-nav-item mobile-nav-item-active" : "mobile-nav-item"}
           type="button"
           onClick={onRecent}
@@ -138,6 +128,16 @@ export function PaletteFooter({
         ) : (
           <StatusIndicator tone="syncing" label="Loading" />
         )}
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="titlebar-button"
+          type="button"
+          onClick={onCodex}
+          aria-label="Codex app-server"
+        >
+          <Bot size={14} />
+        </Button>
         <Button
           variant="plain"
           size="unstyled"

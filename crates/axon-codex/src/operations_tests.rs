@@ -26,6 +26,24 @@ fn idempotency_is_actor_and_digest_bound() {
             .unwrap_err()
             .contains("different parameters")
     );
+
+    let mut different_method = intent("same", "a");
+    different_method.method = "plugin/uninstall".into();
+    assert!(
+        store
+            .create(&different_method)
+            .unwrap_err()
+            .contains("different parameters")
+    );
+
+    let mut different_scope = intent("same", "a");
+    different_scope.scope = "codex:config:write".into();
+    assert!(
+        store
+            .create(&different_scope)
+            .unwrap_err()
+            .contains("different parameters")
+    );
 }
 
 #[test]

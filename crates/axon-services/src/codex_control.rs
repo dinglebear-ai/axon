@@ -17,8 +17,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::Mutex;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CodexControlSnapshot {
     pub status: ControlStatus,
     pub account: Value,
@@ -138,8 +139,17 @@ impl CodexControlService {
         self.operations.unfinished(100)
     }
 
-    pub fn resolve_recovery(&self, id: i64, revision: &str) -> Result<(), String> {
-        self.operations.resolve_recovery(id, revision)
+    pub async fn resolve_recovery(&self, id: i64) -> Result<(), String> {
+        let operation = self
+            .operations
+            .unfinished(100)?
+            .into_iter()
+            .find(|operation| operation.id == id)
+            .ok_or_else(|| "Codex operation is not awaiting recovery".to_string())?;
+        let action = action_from_method(&operation.method)?;
+        let transport = self.transport().await?;
+        let revision = canonical_revision(&action, &transport).await?;
+        self.operations.resolve_recovery(id, &revision)
     }
 
     pub async fn execute_operation(
@@ -148,7 +158,6 @@ impl CodexControlService {
         capability: &str,
         action: ControlAction,
         params: Value,
-        _revision: Option<&str>,
     ) -> Result<Value, String> {
         self.policy.authorize(&action)?;
         validate_mutation_params(&action, &params)?;
@@ -175,16 +184,16 @@ impl CodexControlService {
                     &self.policy_version,
                 )?;
                 started_in_lane.store(true, Ordering::Release);
-                transport.request(action.method(), params).await
+                let value = transport.request(action.method(), params).await?;
+                let post_revision = canonical_revision(&action, &transport)
+                    .await
+                    .map_err(|error| format!("post-state readback failed: {error}"))?;
+                Ok::<_, String>((value, post_revision))
             })
             .await;
         match result {
-            Ok(value) => {
-                let post_revision = value
-                    .get("revision")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown");
-                self.operations.reconcile(id, post_revision)?;
+            Ok((value, post_revision)) => {
+                self.operations.reconcile(id, &post_revision)?;
                 Ok(sanitize_value(value))
             }
             Err(error) => {
@@ -223,9 +232,10 @@ impl CodexControlService {
                 return Ok(Arc::clone(transport));
             }
             self.runtime
-                .mark_degraded("Codex app-server exited; restarting on demand");
+                .record_restart_failure("Codex app-server exited; restarting on demand");
             *slot = None;
         }
+        self.runtime.begin_restart().await?;
         let boot_id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| format!("system clock before epoch: {error}"))?
@@ -233,7 +243,7 @@ impl CodexControlService {
         let transport = match ControlTransport::start(&self.config, RuntimeEpoch(boot_id)).await {
             Ok(transport) => Arc::new(transport),
             Err(error) => {
-                self.runtime.mark_degraded(error.clone());
+                self.runtime.record_restart_failure(error.clone());
                 return Err(error);
             }
         };

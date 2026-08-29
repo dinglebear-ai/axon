@@ -1,3 +1,9 @@
+---
+title: Codex app-server control in Axon Palette
+created: 2026-08-28
+updated: 2026-08-28
+---
+
 # Codex app-server control in Axon Palette
 
 Axon has two separate Codex app-server uses. `AXON_LLM_BACKEND=codex-app-server`
@@ -42,9 +48,12 @@ become `recovery_required` on restart and are not retried blindly. Server-initia
 approval and MCP elicitation requests appear separately and require an operator
 approve or deny response.
 
-MCP definitions are written with Codex config RPCs and then reloaded. Use
-structured command, argument, URL, and `env:` secret references; do not send
-shell command strings or plaintext credentials. Plugin, marketplace, and
+MCP definitions are written with Codex config RPCs and then reloaded. The
+Palette editor accepts either one executable plus a JSON string array of
+arguments, or an HTTPS URL. Environment entries use one `NAME=env:SECRET_NAME`
+reference per line. Removal is an explicit checkbox; an empty text value does
+not remove a definition. Do not send shell command strings or plaintext
+credentials. Plugin, marketplace, and
 standalone-skill sources using a `source` field must be HTTPS and pinned with a
 64-character SHA-256 digest. Local and `file:` sources are rejected.
 
