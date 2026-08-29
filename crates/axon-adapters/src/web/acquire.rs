@@ -49,6 +49,7 @@ use axon_api::source::*;
 use axon_core::logging::log_warn;
 use futures_util::stream::{self, StreamExt};
 use serde_json::Value;
+use std::time::{Duration, Instant};
 
 use crate::adapter::{AcquisitionProgress, AcquisitionProgressSink, Result};
 use crate::boundary::{FetchProvider, RenderProvider};
@@ -110,6 +111,93 @@ pub(super) struct AcquireOutcome {
 pub(super) struct AcquiredItem {
     pub(super) item: Option<AcquiredSourceItem>,
     pub(super) warnings: Vec<SourceWarning>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ItemTiming {
+    elapsed: Duration,
+    completed_at: Duration,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct AcquisitionTimingSummary {
+    wall_ms: u128,
+    first_completion_ms: u128,
+    item_p50_ms: u128,
+    item_p95_ms: u128,
+    item_max_ms: u128,
+    max_completion_gap_ms: u128,
+    slot_occupancy_permille: u128,
+}
+
+fn percentile_ms(sorted: &[Duration], percentile: usize) -> u128 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let rank = sorted.len().saturating_mul(percentile).div_ceil(100);
+    sorted[rank.saturating_sub(1).min(sorted.len() - 1)].as_millis()
+}
+
+fn summarize_acquisition_timings(
+    wall: Duration,
+    concurrency: usize,
+    timings: &[ItemTiming],
+) -> AcquisitionTimingSummary {
+    let mut elapsed = timings
+        .iter()
+        .map(|timing| timing.elapsed)
+        .collect::<Vec<_>>();
+    elapsed.sort_unstable();
+    let mut completions = timings
+        .iter()
+        .map(|timing| timing.completed_at)
+        .collect::<Vec<_>>();
+    completions.sort_unstable();
+    let max_completion_gap_ms = completions
+        .windows(2)
+        .map(|pair| pair[1].saturating_sub(pair[0]).as_millis())
+        .max()
+        .unwrap_or(0);
+    let occupied_ms = elapsed.iter().map(Duration::as_millis).sum::<u128>();
+    let capacity_ms = wall.as_millis().saturating_mul(concurrency as u128);
+    let slot_occupancy_permille = if capacity_ms == 0 {
+        0
+    } else {
+        occupied_ms.saturating_mul(1_000) / capacity_ms
+    };
+
+    AcquisitionTimingSummary {
+        wall_ms: wall.as_millis(),
+        first_completion_ms: completions.first().map(Duration::as_millis).unwrap_or(0),
+        item_p50_ms: percentile_ms(&elapsed, 50),
+        item_p95_ms: percentile_ms(&elapsed, 95),
+        item_max_ms: elapsed.last().map(Duration::as_millis).unwrap_or(0),
+        max_completion_gap_ms,
+        slot_occupancy_permille,
+    }
+}
+
+fn log_acquisition_timings(
+    lane: &'static str,
+    item_count: usize,
+    concurrency: usize,
+    wall: Duration,
+    timings: &[ItemTiming],
+) {
+    let summary = summarize_acquisition_timings(wall, concurrency, timings);
+    tracing::info!(
+        lane,
+        item_count,
+        concurrency,
+        wall_ms = summary.wall_ms,
+        first_completion_ms = summary.first_completion_ms,
+        item_p50_ms = summary.item_p50_ms,
+        item_p95_ms = summary.item_p95_ms,
+        item_max_ms = summary.item_max_ms,
+        max_completion_gap_ms = summary.max_completion_gap_ms,
+        slot_occupancy_permille = summary.slot_occupancy_permille,
+        "web acquisition batch timing"
+    );
 }
 
 pub(super) async fn acquire_changed_items(
@@ -174,10 +262,17 @@ async fn acquire_sequential(
     opts: &AcquireOptions,
     progress: Option<&dyn AcquisitionProgressSink>,
 ) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
+    let batch_started = Instant::now();
     let mut items = Vec::with_capacity(manifest_items.len());
     let mut warnings = Vec::new();
+    let mut timings = Vec::with_capacity(manifest_items.len());
     for (index, item) in manifest_items.iter().enumerate() {
+        let item_started = Instant::now();
         let outcome = acquire_item(fetch, render, item, opts).await;
+        timings.push(ItemTiming {
+            elapsed: item_started.elapsed(),
+            completed_at: batch_started.elapsed(),
+        });
         if let Some(acquired) = resolve_item_outcome(
             outcome,
             item.source_item_key.clone(),
@@ -188,6 +283,13 @@ async fn acquire_sequential(
         }
         report_progress(progress, manifest_items.len(), index + 1, items.len()).await;
     }
+    log_acquisition_timings(
+        "sequential",
+        manifest_items.len(),
+        1,
+        batch_started.elapsed(),
+        &timings,
+    );
     (items, warnings)
 }
 
@@ -205,21 +307,30 @@ async fn acquire_concurrent(
     opts: &AcquireOptions,
     progress: Option<&dyn AcquisitionProgressSink>,
 ) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
+    let batch_started = Instant::now();
+    let concurrency = acquire_concurrency().min(manifest_items.len().max(1));
     let mut pending = stream::iter(manifest_items.iter().cloned())
         .map(|item| {
             let source_item_key = item.source_item_key.clone();
             let canonical_uri = item.canonical_uri.clone();
             async move {
+                let item_started = Instant::now();
                 let outcome = acquire_item(fetch, render, &item, opts).await;
-                (source_item_key, canonical_uri, outcome)
+                let timing = ItemTiming {
+                    elapsed: item_started.elapsed(),
+                    completed_at: batch_started.elapsed(),
+                };
+                (source_item_key, canonical_uri, outcome, timing)
             }
         })
-        .buffer_unordered(acquire_concurrency());
+        .buffer_unordered(concurrency);
 
     let mut items = Vec::new();
     let mut warnings = Vec::new();
+    let mut timings = Vec::with_capacity(manifest_items.len());
     let mut completed = 0usize;
-    while let Some((source_item_key, canonical_uri, outcome)) = pending.next().await {
+    while let Some((source_item_key, canonical_uri, outcome, timing)) = pending.next().await {
+        timings.push(timing);
         if let Some(acquired) =
             resolve_item_outcome(outcome, source_item_key, &canonical_uri, &mut warnings)
         {
@@ -228,6 +339,13 @@ async fn acquire_concurrent(
         completed += 1;
         report_progress(progress, manifest_items.len(), completed, items.len()).await;
     }
+    log_acquisition_timings(
+        "concurrent",
+        manifest_items.len(),
+        concurrency,
+        batch_started.elapsed(),
+        &timings,
+    );
     (items, warnings)
 }
 

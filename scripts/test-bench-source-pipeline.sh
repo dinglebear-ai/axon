@@ -42,6 +42,15 @@ sanitized=$(printf '%s\n' 'Authorization:Bearer-secret https://user:pass@example
 [[ $sanitized != *example.test* ]] || fail url-redaction
 [[ $sanitized != *abcdefghijklmnopqrstuvwxyz123456* ]] || fail long-value-redaction
 
+cat >"$fixture_dir/axon.log" <<'EOF'
+{"timestamp":"2026-08-28T00:00:00Z","level":"INFO","message":"web acquisition batch timing","lane":"concurrent","item_count":"16","concurrency":"16","wall_ms":"420","first_completion_ms":"35","item_p50_ms":"80","item_p95_ms":"390","item_max_ms":"410","max_completion_gap_ms":"210","slot_occupancy_permille":"440"}
+{"timestamp":"2026-08-28T00:00:01Z","level":"INFO","message":"unrelated"}
+EOF
+timings=$(acquisition_timings_from_log "$fixture_dir/axon.log")
+[[ $(jq 'length' <<<"$timings") -eq 1 ]] || fail acquisition-timing-count
+[[ $(jq -r '.[0].item_p95_ms' <<<"$timings") == 390 ]] || fail acquisition-timing-p95
+[[ $(jq -r '.[0].slot_occupancy' <<<"$timings") == 0.44 ]] || fail acquisition-slot-occupancy
+
 grep -q 'umask 077' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail umask
 grep -q 'mktemp -d' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail private-temp
 ! grep -Eq '(^|[[:space:]])set -x([[:space:]]|$)' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail xtrace

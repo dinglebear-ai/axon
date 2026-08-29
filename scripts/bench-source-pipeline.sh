@@ -75,6 +75,31 @@ print(hashlib.sha256(payload).hexdigest())
 PY
 }
 
+acquisition_timings_from_log() {
+  local log_file=$1
+  if [[ ! -f $log_file ]]; then
+    printf '[]\n'
+    return
+  fi
+  jq -s '[
+    .[]
+    | select(.message == "web acquisition batch timing")
+    | {
+        timestamp,
+        lane,
+        item_count: (.item_count | tonumber),
+        concurrency: (.concurrency | tonumber),
+        wall_ms: (.wall_ms | tonumber),
+        first_completion_ms: (.first_completion_ms | tonumber),
+        item_p50_ms: (.item_p50_ms | tonumber),
+        item_p95_ms: (.item_p95_ms | tonumber),
+        item_max_ms: (.item_max_ms | tonumber),
+        max_completion_gap_ms: (.max_completion_gap_ms | tonumber),
+        slot_occupancy: ((.slot_occupancy_permille | tonumber) / 1000)
+      }
+  ]' "$log_file"
+}
+
 metrics_get() {
   local output=$1
   [[ ${AXON_BENCH_MLX_URL:-http://127.0.0.1:8084} == http://127.0.0.1:* ]] || return 2
@@ -88,7 +113,7 @@ run_benchmark() {
   local axon_bin=${AXON_BENCH_AXON_BIN:-target/release/axon}
   local collection=${AXON_BENCH_COLLECTION:-axon_scheduler_evidence}
   local output=${AXON_BENCH_OUTPUT:-/dev/stdout}
-  local work_dir stdout_file stderr_file before_file after_file state_dir
+  local work_dir stdout_file stderr_file before_file after_file state_dir acquisition_file
 
   [[ -n $source ]] || { echo 'AXON_BENCH_SOURCE is required' >&2; return 2; }
   validate_safe_source "$source" || { echo 'source rejected by benchmark safety policy' >&2; return 2; }
@@ -102,6 +127,7 @@ run_benchmark() {
   stderr_file=$work_dir/stderr.log
   before_file=$work_dir/metrics-before.json
   after_file=$work_dir/metrics-after.json
+  acquisition_file=$work_dir/acquisition-timings.json
   state_dir=$work_dir/state
   mkdir -m 700 "$state_dir"
 
@@ -129,20 +155,24 @@ run_benchmark() {
   validate_job_id "$job_id" || { echo 'benchmark output did not contain a valid job id' >&2; return 3; }
 
   corpus_hash=$(corpus_hash_from_sqlite "$state_dir/jobs.db" "$job_id")
+  acquisition_timings_from_log "$state_dir/logs/axon.log" >"$acquisition_file"
 
   PYTHONPATH="$SCRIPT_DIR" python3 - "$before_file" "$after_file" "$job_id" \
-    "$corpus_hash" "$start_ns" "$end_ns" "$state_dir/jobs.db" >"$output" <<'PY'
+    "$corpus_hash" "$start_ns" "$end_ns" "$state_dir/jobs.db" \
+    "$acquisition_file" >"$output" <<'PY'
 from datetime import datetime
 import json
 import sqlite3
 import sys
 from mlx_metrics import evidence_gate, metrics_delta
 
-before_path, after_path, job_id, corpus_hash, start_ns, end_ns, database = sys.argv[1:]
+before_path, after_path, job_id, corpus_hash, start_ns, end_ns, database, acquisition_path = sys.argv[1:]
 with open(before_path, encoding="utf-8") as handle:
     before = json.load(handle)
 with open(after_path, encoding="utf-8") as handle:
     after = json.load(handle)
+with open(acquisition_path, encoding="utf-8") as handle:
+    acquisition_batches = json.load(handle)
 if before.get("requests") != 0:
     raise SystemExit("exclusive MLX benchmark service was already used")
 expected_requests = after.get("requests", 0) - before.get("requests", 0)
@@ -199,6 +229,7 @@ print(json.dumps({
     "evidence_reasons": reasons,
     "stage_seconds": stage_seconds,
     "phase_windows": phase_windows,
+    "acquisition_batches": acquisition_batches,
 }, sort_keys=True))
 PY
 
