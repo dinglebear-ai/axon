@@ -136,7 +136,7 @@ fn verify_entity(
     kind: EntityKind,
     present: bool,
 ) -> EffectProof {
-    let Some(_) = request.get("target") else {
+    let Some(_) = entity_target(request, kind) else {
         return EffectProof::Unknown("entity mutation has no canonical target".into());
     };
     let after_matches = find_entity(request, after, kind).is_some();
@@ -165,7 +165,7 @@ enum EntityKind {
 }
 
 fn find_entity<'a>(request: &Value, state: &'a Value, kind: EntityKind) -> Option<&'a Value> {
-    let target = request.get("target")?;
+    let target = entity_target(request, kind)?;
     let (collections, keys): (&[&str], &[&str]) = match kind {
         EntityKind::Plugin => (
             &["plugins", "installedPlugins"],
@@ -182,6 +182,14 @@ fn find_entity<'a>(request: &Value, state: &'a Value, kind: EntityKind) -> Optio
         ),
     };
     find_in_collections(state, collections, keys, target)
+}
+
+fn entity_target(request: &Value, kind: EntityKind) -> Option<&Value> {
+    request.get("target").or_else(|| match kind {
+        EntityKind::Marketplace => request.get("marketplaceName"),
+        EntityKind::Skill | EntityKind::Mcp => request.get("name").or_else(|| request.get("path")),
+        EntityKind::Plugin => request.get("plugin").or_else(|| request.get("pluginId")),
+    })
 }
 
 fn find_in_collections<'a>(
@@ -233,40 +241,24 @@ fn recursively_find_entity<'a>(
 }
 
 fn verify_marketplace_upgrade(request: &Value, after: &Value) -> EffectProof {
-    let Some(entity) = find_entity(request, after, EntityKind::Marketplace) else {
+    let Some(_) = find_entity(request, after, EntityKind::Marketplace) else {
         return EffectProof::Absent("requested marketplace is absent".into());
     };
-    let requested = ["version", "revision"]
-        .into_iter()
-        .filter_map(|key| request.get(key).map(|value| (key, value)))
-        .collect::<Vec<_>>();
-    if requested.is_empty() {
-        return EffectProof::Unknown(
-            "marketplace upgrade has no requested version or revision".into(),
-        );
-    }
-    if requested
-        .iter()
-        .all(|(key, expected)| entity.get(*key) == Some(*expected))
-    {
-        EffectProof::Applied
-    } else {
-        EffectProof::Absent("marketplace version or revision differs from the request".into())
-    }
+    EffectProof::Unknown(
+        "Codex does not expose a durable marketplace version or revision readback".into(),
+    )
 }
 
 fn verify_skill_config(request: &Value, after: &Value) -> EffectProof {
     let Some(entity) = find_entity(request, after, EntityKind::Skill) else {
         return EffectProof::Absent("requested skill is absent".into());
     };
-    let requested = ["enabled", "config"]
+    let requested = ["enabled"]
         .into_iter()
         .filter_map(|key| request.get(key).map(|value| (key, value)))
         .collect::<Vec<_>>();
     if requested.is_empty() {
-        return EffectProof::Unknown(
-            "skill config write has no requested enabled or config value".into(),
-        );
+        return EffectProof::Unknown("skill config write has no requested enabled value".into());
     }
     if requested
         .iter()
@@ -274,6 +266,6 @@ fn verify_skill_config(request: &Value, after: &Value) -> EffectProof {
     {
         EffectProof::Applied
     } else {
-        EffectProof::Absent("skill enabled or config value differs from the request".into())
+        EffectProof::Absent("skill enabled value differs from the request".into())
     }
 }

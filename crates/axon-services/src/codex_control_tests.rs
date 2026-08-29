@@ -108,10 +108,9 @@ fn recovery_requires_changed_revision_and_requested_entity_state() {
 }
 
 #[test]
-fn marketplace_upgrade_requires_requested_target_version() {
-    let request = json!({"target": "official", "version": "2.0.0"});
-    let current = json!({"marketplaces": [{"name": "official", "version": "1.0.0"}]});
-    let upgraded = json!({"marketplaces": [{"name": "official", "version": "2.0.0"}]});
+fn marketplace_upgrade_uses_native_selector_but_remains_unprovable() {
+    let request = json!({"marketplaceName": "official"});
+    let current = json!({"marketplaces": [{"name": "official"}]});
 
     assert!(matches!(
         verify_intended_effect(
@@ -122,45 +121,37 @@ fn marketplace_upgrade_requires_requested_target_version() {
             Some("r1"),
             Some("r2"),
         ),
-        EffectProof::Absent(_)
+        EffectProof::Unknown(_)
     ));
-    assert_eq!(
+    assert!(matches!(
         verify_intended_effect(
             &ControlAction::MarketplaceUpgrade,
             &request,
             Some(&current),
-            &upgraded,
-            Some("r1"),
-            Some("r2"),
-        ),
-        EffectProof::Applied
-    );
-    assert!(matches!(
-        verify_intended_effect(
-            &ControlAction::MarketplaceUpgrade,
-            &json!({"target": "official"}),
-            Some(&current),
-            &upgraded,
+            &current,
             Some("r1"),
             Some("r2"),
         ),
         EffectProof::Unknown(_)
     ));
+    assert!(matches!(
+        verify_intended_effect(
+            &ControlAction::MarketplaceUpgrade,
+            &json!({"marketplaceName": "missing"}),
+            Some(&current),
+            &current,
+            Some("r1"),
+            Some("r2"),
+        ),
+        EffectProof::Absent(_)
+    ));
 }
 
 #[test]
 fn skill_config_requires_requested_values_not_only_existence() {
-    let request = json!({
-        "target": "review",
-        "enabled": true,
-        "config": {"model": "gpt-5"}
-    });
-    let wrong = json!({
-        "skills": [{"name": "review", "enabled": true, "config": {"model": "gpt-4"}}]
-    });
-    let applied = json!({
-        "skills": [{"name": "review", "enabled": true, "config": {"model": "gpt-5"}}]
-    });
+    let request = json!({"name": "review", "enabled": true});
+    let wrong = json!({"skills": [{"name": "review", "enabled": false}]});
+    let applied = json!({"skills": [{"name": "review", "enabled": true}]});
 
     assert!(matches!(
         verify_intended_effect(

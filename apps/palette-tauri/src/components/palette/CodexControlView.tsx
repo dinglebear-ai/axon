@@ -403,18 +403,12 @@ function mutationParams(
     return { target, source, sha256 };
   }
   if (kind === "config") return { keyPath: target, value: parseConfigValue(value) };
-  if (kind === "mcpOauth") return { target, provider: value || undefined };
-  if (kind === "marketplaceUpgrade") {
-    if (!value) return null;
-    return { target, version: value };
-  }
+  if (kind === "mcpOauth") return { name: target, provider: value || undefined };
+  if (kind === "marketplaceUpgrade") return { marketplaceName: target };
   if (kind === "skillConfig") {
     const requested = parseConfigValue(value);
-    if (typeof requested === "boolean") return { target, enabled: requested };
-    if (requested && typeof requested === "object" && !Array.isArray(requested)) {
-      return { target, ...(requested as Record<string, unknown>) };
-    }
-    throw new Error('Skill value must be true, false, or a JSON object with "enabled"/"config"');
+    if (typeof requested === "boolean") return { name: target, enabled: requested };
+    throw new Error("Skill value must be true or false");
   }
   return { target };
 }

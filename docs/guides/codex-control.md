@@ -26,9 +26,10 @@ AXON_CODEX_CONTROL_PLUGIN_WRITES=false
 AXON_CODEX_CONTROL_SKILL_WRITES=false
 ```
 
-`AXON_CODEX_CMD` must be an absolute path to the executable used by both bounded
-synthesis and Palette control. It does not select separate binaries for those
-runtimes. The binary, the control home, and every control-home ancestor must be
+When `AXON_CODEX_CONTROL_ENABLED=true`, `AXON_CODEX_CMD` must be an absolute
+path to the executable used by both bounded synthesis and Palette control.
+Synthesis alone may use the default bare `codex` command. The setting does not
+select separate binaries for those runtimes. The binary, the control home, and every control-home ancestor must be
 owned by the Axon server account (or root), must not be group- or world-writable,
 and must pass the runtime's non-symlink checks. The binary must be executable;
 symlinked binary or home paths are rejected. Axon binds approved operations to

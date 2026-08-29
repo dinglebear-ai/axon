@@ -345,8 +345,8 @@
 # codex-pool-idle-ttl-secs = 300
 #
 # Codex app-server command/home stay runtime/bootstrap env-only. AXON_CODEX_CMD
-# must be an absolute executable path and is shared by synthesis and Palette
-# control; the two runtimes do not select independent Codex binaries.
+# is shared by synthesis and Palette control; when Palette control is enabled it
+# must be an absolute executable path. The runtimes do not select independent binaries.
 # AXON_CODEX_CMD=/absolute/path/to/codex
 # AXON_CODEX_HOME, AXON_SYNTHESIS_CODEX_MODEL,
 # AXON_CODEX_COMPLETION_CONCURRENCY.
