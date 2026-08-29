@@ -59,6 +59,7 @@ pub const LIVE_CRATE_NAMES: &[&str] = &[
     "axon-api",
     "axon-authz",
     "axon-cli",
+    "axon-codex",
     "axon-core",
     "axon-document",
     "axon-embedding",
@@ -183,6 +184,21 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
         // the target-contract minimal list — see module doc comment above.
         modules: &["commands", "json", "schema_registry", "ui"],
         forbidden_axon_deps: &[],
+    },
+    CrateContract {
+        name: "axon-codex",
+        modules: &[
+            "api",
+            "approval",
+            "artifacts",
+            "capabilities",
+            "control",
+            "events",
+            "operations",
+            "protocol",
+            "transport",
+        ],
+        forbidden_axon_deps: &["axon-services", "axon-cli", "axon-mcp", "axon-web"],
     },
     CrateContract {
         name: "axon-core",
