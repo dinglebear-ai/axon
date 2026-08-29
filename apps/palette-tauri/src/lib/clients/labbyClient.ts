@@ -1,4 +1,4 @@
-import type { BackendProfile } from "../backendProfiles/model";
+import type { BackendProfile, ProductIdentity } from "../backendProfiles/model";
 import { backendRequest } from "./backendTransport";
 
 export type JsonSchema = Record<string, unknown>;
@@ -54,6 +54,67 @@ export interface LabbySnippetReceipt<T = unknown> {
   value: T;
   receipt: LabbyExactReceipt;
 }
+export type CapabilityFamily =
+  | "tool"
+  | "prompt"
+  | "resource"
+  | "skill"
+  | "agent"
+  | "mcp_app"
+  | "mcp_server"
+  | "plugin";
+export interface CapabilityRef {
+  provider: string;
+  family: CapabilityFamily;
+  memberId: string;
+  expectedRevision: string;
+}
+export interface ExecutionLoadoutSummary {
+  id: string;
+  name: string;
+  draftRevision: number;
+  desiredActiveRevision: number | null;
+  effectiveRuntimeRevision: number | null;
+}
+export interface ExecutionLoadoutDraft extends ExecutionLoadoutSummary {
+  description: string | null;
+  members: CapabilityRef[];
+  restartRequired: boolean;
+}
+export type ResolutionStatus = "effective" | "missing" | "stale" | "unauthorized" | "unsupported";
+export interface ResolvedCapability {
+  capability: CapabilityRef;
+  status: ResolutionStatus;
+  currentRevision: string | null;
+  diagnostic: string | null;
+}
+export interface ExecutionLoadoutPreview {
+  loadoutId: string;
+  draftRevision: number;
+  catalogGeneration: string;
+  principal: string;
+  runtimeIdentity: string;
+  resolved: ResolvedCapability[];
+  effective: CapabilityRef[];
+  missing: CapabilityRef[];
+  conflicts: string[];
+}
+export interface ExecutionLoadoutActivation {
+  loadout: ExecutionLoadoutDraft;
+  revision: {
+    loadoutId: string;
+    revision: number;
+    members: CapabilityRef[];
+    catalogGeneration: string;
+  };
+  preview: ExecutionLoadoutPreview;
+}
+export interface ExecutionLoadoutConflict {
+  kind: "stale_revision";
+  expected: number;
+  current: number;
+  changedFields: string[];
+}
 export class LabbyClient {
   constructor(readonly profile: BackendProfile) {
     if (profile.product !== "labby") throw new Error("LabbyClient requires a Labby profile");
@@ -65,6 +126,109 @@ export class LabbyClient {
     signal?: AbortSignal,
   ) {
     return backendRequest<T>(this.profile, method, path, body, signal);
+  }
+
+  identity(signal?: AbortSignal) {
+    return backendRequest<ProductIdentity>(
+      this.profile,
+      "GET",
+      "/v1/integration/identity",
+      null,
+      signal,
+    );
+  }
+
+  private async loadoutRequest<T>(
+    method: "GET" | "POST" | "PATCH",
+    path: `/v1/palette/execution-loadouts${string}`,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const response = await this.request<T>(method, path, body, signal);
+    if (!response.ok)
+      throw Object.assign(new Error(`Labby loadout request failed (${response.status})`), {
+        detail: response.payload,
+      });
+    return response.payload;
+  }
+
+  listExecutionLoadouts(signal?: AbortSignal) {
+    return this.loadoutRequest<{ items: ExecutionLoadoutSummary[] }>(
+      "GET",
+      "/v1/palette/execution-loadouts",
+      undefined,
+      signal,
+    );
+  }
+  getExecutionLoadout(id: string, signal?: AbortSignal) {
+    return this.loadoutRequest<ExecutionLoadoutDraft>(
+      "GET",
+      `/v1/palette/execution-loadouts/${encodeURIComponent(id)}`,
+      undefined,
+      signal,
+    );
+  }
+  createExecutionLoadout(
+    input: { id: string; name: string; description?: string | null; members: CapabilityRef[] },
+    signal?: AbortSignal,
+  ) {
+    return this.loadoutRequest<ExecutionLoadoutDraft>(
+      "POST",
+      "/v1/palette/execution-loadouts",
+      input,
+      signal,
+    );
+  }
+  patchExecutionLoadout(
+    id: string,
+    input: {
+      expectedDraftRevision: number;
+      name?: string;
+      description?: string | null;
+      members?: CapabilityRef[];
+    },
+    signal?: AbortSignal,
+  ) {
+    return this.loadoutRequest<ExecutionLoadoutDraft>(
+      "PATCH",
+      `/v1/palette/execution-loadouts/${encodeURIComponent(id)}`,
+      input,
+      signal,
+    );
+  }
+  previewExecutionLoadout(id: string, runtimeIdentity: string, signal?: AbortSignal) {
+    return this.loadoutRequest<ExecutionLoadoutPreview>(
+      "POST",
+      `/v1/palette/execution-loadouts/${encodeURIComponent(id)}/preview`,
+      { runtimeIdentity },
+      signal,
+    );
+  }
+  activateExecutionLoadout(
+    id: string,
+    expectedDraftRevision: number,
+    runtimeIdentity: string,
+    signal?: AbortSignal,
+  ) {
+    return this.loadoutRequest<ExecutionLoadoutActivation>(
+      "POST",
+      `/v1/palette/execution-loadouts/${encodeURIComponent(id)}/activate`,
+      { expectedDraftRevision, runtimeIdentity },
+      signal,
+    );
+  }
+  rollbackExecutionLoadout(
+    id: string,
+    expectedDraftRevision: number,
+    revision: number,
+    signal?: AbortSignal,
+  ) {
+    return this.loadoutRequest<ExecutionLoadoutDraft>(
+      "POST",
+      `/v1/palette/execution-loadouts/${encodeURIComponent(id)}/rollback`,
+      { expectedDraftRevision, revision, runtimeIdentity: "palette" },
+      signal,
+    );
   }
 
   async search(query: string, signal?: AbortSignal): Promise<LabbyCatalog> {
