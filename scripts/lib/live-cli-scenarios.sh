@@ -97,12 +97,18 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
       --user-data-dir="$OUTDIR/chrome-profile" about:blank \
       >"$OUTDIR/logs/chrome.log" 2>"$OUTDIR/logs/chrome.stderr.log" &
     live_chrome_pid=$!
-    live_chrome_pgid="$(ps -o pgid= -p "$live_chrome_pid" 2>/dev/null | tr -d ' ')"
-    live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+    live_chrome_pgid=""
+    for _identity_attempt in $(seq 1 20); do
+      live_chrome_pgid="$(ps -o pgid= -p "$live_chrome_pid" 2>/dev/null | tr -d ' ')"
+      [ "$live_chrome_pgid" = "$live_chrome_pid" ] && break
+      kill -0 "$live_chrome_pid" 2>/dev/null || break
+      sleep 0.05
+    done
     if [ "$live_chrome_pgid" != "$live_chrome_pid" ]; then
       echo "harness-owned Chrome did not start in its own process group" >&2
       exit 2
     fi
+    live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
     live_chrome_ready=0
     for _attempt in $(seq 1 60); do
       if [ "$live_chrome_port" = "0" ] && [ -s "$OUTDIR/chrome-profile/DevToolsActivePort" ]; then
