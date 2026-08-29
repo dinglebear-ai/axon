@@ -7,7 +7,7 @@
 
 use axon_api::source::*;
 
-use super::generation_state::{GenerationAccumulator, GenerationStageProgress, ProcessedBatch};
+use super::generation_state::{GenerationAccumulator, GenerationStageProgress};
 use super::helpers::*;
 use super::progress::{ProgressCoordinator, stage_counts};
 use super::{
@@ -23,6 +23,7 @@ use crate::source::result_map::IndexCounts;
 
 mod batches;
 mod candidate_delivery;
+mod scheduler;
 mod setup;
 
 use batches::process_generation_batches;
@@ -58,7 +59,7 @@ pub(super) async fn run_created_generation(
     ensure_generation_collection(runtime, input, &collection).await?;
 
     let archive_requested = input.adapter.wants_archive(&input.plan);
-    let mut accumulated = GenerationAccumulator::default();
+    let mut accumulated = GenerationAccumulator::new(&generation.generation);
     let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
     let mut stage = GenerationStageProgress::default();
 

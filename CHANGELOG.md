@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.3.0] - 2026-08-28
+
+### Added
+
+- Add a generation-scoped embedding scheduler that streams bounded work
+  across acquisition waves and exposes provider-aware TEI request capacity.
+- Add hardened Apple MLX and source-pipeline benchmark tooling, including
+  acquisition batch timing telemetry for separating crawl variance from
+  embedding and publication work.
+
+### Changed
+
+- Overlap cross-pool embedding and vector publication while retaining source
+  work permits until durable publication and checkpoint completion.
+
+### Fixed
+
+- Keep TEI requests lossless by explicitly disabling provider-side truncation.
+- Reject stale Axon binaries and non-exclusive loopback MLX services in the
+  scheduler evidence harness.
+
 ## [7.2.24] - 2026-08-28
 
 ### Changed

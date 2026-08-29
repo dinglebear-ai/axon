@@ -2,8 +2,11 @@
 
 use std::collections::{BTreeSet, HashSet};
 
+use anyhow::Context as _;
 use axon_api::source::*;
 
+use super::generation_spool::{GenerationSpool, SideEffectsSpoolRecord};
+use super::generation_work::PreparedBatchSideEffects;
 use super::progress::PipelineProgress;
 use super::{SourcePipelineInput, reuse, vectorize};
 use crate::context::TargetLocalSourceRuntime;
@@ -19,18 +22,6 @@ pub(super) struct GenerationStageProgress {
     pub(super) normalized_documents: u64,
 }
 
-pub(super) struct ProcessedBatch {
-    pub(super) vectorized: vectorize::VectorizeResult,
-    pub(super) acquisition_artifacts: Vec<ArtifactRef>,
-    pub(super) enrichment_artifacts: Vec<ArtifactRef>,
-    pub(super) clean_output: SourceOutput,
-    pub(super) archive_items: Vec<AcquiredSourceItem>,
-    pub(super) artifact_candidates: Vec<ArtifactCandidate>,
-    pub(super) warnings: Vec<SourceWarning>,
-    pub(super) reused_item_keys: Vec<SourceItemKey>,
-    pub(super) refreshed_manifest_items: Vec<ManifestItem>,
-}
-
 #[derive(Default)]
 pub(super) struct GenerationAccumulator {
     vectorized: vectorize::VectorizeResult,
@@ -42,6 +33,8 @@ pub(super) struct GenerationAccumulator {
     warnings: Vec<SourceWarning>,
     reused_item_keys: BTreeSet<SourceItemKey>,
     refreshed_manifest_items: Vec<ManifestItem>,
+    spool: Option<GenerationSpool>,
+    spool_sequence: u64,
 }
 
 pub(super) struct FinalizedGeneration {
@@ -53,25 +46,74 @@ pub(super) struct FinalizedGeneration {
 }
 
 impl GenerationAccumulator {
-    pub(super) fn absorb(&mut self, cleanup: &mut ArtifactCleanupGuard, batch: ProcessedBatch) {
-        cleanup.track(&batch.acquisition_artifacts);
-        cleanup.track(&batch.enrichment_artifacts);
-        cleanup.track(&batch.clean_output.artifacts);
+    pub(super) fn new(generation: &SourceGenerationId) -> Self {
+        let spool = match GenerationSpool::temporary(&generation.0) {
+            Ok(spool) => Some(spool),
+            Err(error) => {
+                tracing::warn!(error = %error, "generation spool unavailable; retaining side effects in memory");
+                None
+            }
+        };
+        Self {
+            spool,
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn absorb_pretracked_side_effects(
+        &mut self,
+        batch: PreparedBatchSideEffects,
+    ) -> anyhow::Result<()> {
         self.artifacts.extend(batch.acquisition_artifacts);
         self.artifacts.extend(batch.enrichment_artifacts);
-        self.archive_items.extend(batch.archive_items);
-        self.artifact_candidates.extend(batch.artifact_candidates);
-        self.warnings.extend(batch.warnings);
-        self.reused_item_keys.extend(batch.reused_item_keys);
-        self.refreshed_manifest_items
-            .extend(batch.refreshed_manifest_items);
         self.output.merge(batch.clean_output);
+        let record = SideEffectsSpoolRecord {
+            archive_items: batch.archive_items,
+            artifact_candidates: batch.artifact_candidates,
+            warnings: batch.warnings,
+            reused_item_keys: batch.reused_item_keys,
+            refreshed_manifest_items: batch.refreshed_manifest_items,
+        };
+        let key = format!("side-effects:{}", self.spool_sequence);
+        self.spool_sequence = self.spool_sequence.saturating_add(1);
+        let append_error = self
+            .spool
+            .as_mut()
+            .and_then(|spool| spool.append(&key, &record).err());
+        if let Some(error) = append_error {
+            tracing::warn!(error = %error, "generation spool append failed; retaining side effects in memory");
+            if let Some(spool) = self.spool.take() {
+                spool
+                    .replay_each::<SideEffectsSpoolRecord>(|prior_key, prior| {
+                        // A flush error can be ambiguous: the current record
+                        // may already be readable. Absorb it exactly once via
+                        // the authoritative in-memory value below.
+                        if prior_key != key {
+                            self.absorb_side_effect_record(prior);
+                        }
+                        Ok(())
+                    })
+                    .context("generation spool replay failed after append error")?;
+            }
+            self.absorb_side_effect_record(record);
+        } else if self.spool.is_none() {
+            self.absorb_side_effect_record(record);
+        }
+        Ok(())
+    }
 
-        // Per-batch statuses have already been durably written. Retain only
-        // document identities for generation-wide deduplication; publication
-        // promotes the durable rows with one ledger-side update instead of
-        // carrying every full status object until the end of a large crawl.
-        let vectorized = batch.vectorized;
+    fn absorb_side_effect_record(&mut self, record: SideEffectsSpoolRecord) {
+        self.archive_items.extend(record.archive_items);
+        self.artifact_candidates.extend(record.artifact_candidates);
+        self.warnings.extend(record.warnings);
+        self.reused_item_keys.extend(record.reused_item_keys);
+        self.refreshed_manifest_items
+            .extend(record.refreshed_manifest_items);
+    }
+
+    pub(super) fn absorb_vectorized(&mut self, vectorized: vectorize::VectorizeResult) {
+        // Per-pool statuses have already been durably written. Retain only
+        // document identities for generation-wide deduplication.
         for status in &vectorized.document_statuses {
             if self.document_ids.insert(status.document_id.clone()) {
                 self.vectorized.documents_prepared =
@@ -100,6 +142,12 @@ impl GenerationAccumulator {
         manifest: &mut SourceManifest,
         diff: SourceManifestDiff,
     ) -> anyhow::Result<FinalizedGeneration> {
+        if let Some(spool) = self.spool.take() {
+            spool.replay_each::<SideEffectsSpoolRecord>(|_, record| {
+                self.absorb_side_effect_record(record);
+                Ok(())
+            })?;
+        }
         self.vectorized.warnings.splice(0..0, self.warnings);
         let archive =
             output::store_adapter_archive(runtime, input.adapter, &input.plan, &self.archive_items)

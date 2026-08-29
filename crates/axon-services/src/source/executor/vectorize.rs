@@ -11,11 +11,13 @@ use super::vector_points::point_batch;
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
 use crate::reserved_call::{self, ProviderCallContext};
 
-mod batching;
+pub(super) mod batching;
 mod pipeline;
+mod prepared_pool;
 
 use batching::chunk_batches;
 use pipeline::{embed_and_build_batch, publish_and_build_next, publish_built_batch};
+pub(super) use prepared_pool::PreparedPoolVectorizer;
 
 // Match the acquisition wave so the next web fetch overlaps this batch's
 // prepare/embed/upsert work.
@@ -161,6 +163,72 @@ pub(super) async fn prepare_embed_publish(
     }
     write_document_statuses(runtime.ledger.as_ref(), &output.document_statuses).await?;
     Ok(output)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn prepare_generation_documents(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    documents: Vec<SourceDocument>,
+    enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
+    generation: &SourceGenerationId,
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    is_final_generation_batch: bool,
+) -> anyhow::Result<Vec<PreparedDocument>> {
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Preparing,
+            progress.preparing_counts(),
+            "preparing source documents",
+        )
+        .await;
+    let prepared = reserved_call::parse_operation(
+        runtime,
+        ProviderCallContext::for_phase(
+            input.plan.job_id,
+            input.execution.attempt,
+            PipelinePhase::Parsing,
+            input.execution.priority,
+            format!("parse:{}:scheduled", generation.0),
+        ),
+        {
+            let document_preparer = runtime.document_preparer.clone();
+            let generation = generation.clone();
+            let enrichment_graph = enrichment_graph.clone();
+            let concurrency = runtime.document_prepare_concurrency;
+            move || async move {
+                prepare_documents(
+                    documents,
+                    &generation,
+                    &enrichment_graph,
+                    document_preparer,
+                    concurrency,
+                )
+                .await
+            }
+        },
+    )
+    .await?;
+    let chunk_count = prepared
+        .iter()
+        .map(|document| document.chunks.len() as u64)
+        .sum();
+    let counts = progress.prepared(
+        prepared.len() as u64,
+        chunk_count,
+        is_final_generation_batch,
+    );
+    coordinator
+        .checkpoint(
+            PipelinePhase::Preparing,
+            counts,
+            "prepared source documents",
+        )
+        .await;
+    Ok(prepared)
 }
 
 async fn report_batching(

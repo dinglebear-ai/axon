@@ -47,6 +47,7 @@ impl ProgressStatusWriter for NoopProgressWriter {
 #[derive(Debug, Default)]
 struct CoordinatorState {
     phase_counts: Vec<(PipelinePhase, StageCounts)>,
+    epoch: u64,
     /// The phase most recently published as a transition (`report`/
     /// `checkpoint`). Count-only checkpoints reuse it so they never regress
     /// the externally visible phase.
@@ -63,6 +64,9 @@ pub(super) struct ProgressCoordinator {
     source_id: SourceId,
     adapter: String,
     state: Arc<Mutex<CoordinatorState>>,
+    /// Serializes state version assignment with the corresponding durable
+    /// write, so a delayed older update can never land after a newer one.
+    write_lock: Arc<Mutex<()>>,
     interval: Duration,
     foreground: Option<ForegroundProgressSender>,
 }
@@ -75,6 +79,7 @@ impl ProgressCoordinator {
             source_id: input.plan.route.source.source_id.clone(),
             adapter: input.plan.route.adapter.name.clone(),
             state: Arc::new(Mutex::new(CoordinatorState::default())),
+            write_lock: Arc::new(Mutex::new(())),
             interval: DEFAULT_PROGRESS_INTERVAL,
             foreground: input.execution.foreground.clone(),
         }
@@ -122,6 +127,7 @@ impl ProgressCoordinator {
             source_id,
             adapter: adapter.into(),
             state: Arc::new(Mutex::new(CoordinatorState::default())),
+            write_lock: Arc::new(Mutex::new(())),
             interval,
             foreground,
         }
@@ -220,8 +226,10 @@ impl ProgressCoordinator {
         message: &str,
         count_only: bool,
     ) -> (StageCounts, bool) {
+        let _write_guard = self.write_lock.lock().await;
         let (published_phase, counts, publish) = {
             let mut state = self.state.lock().await;
+            state.epoch = state.epoch.saturating_add(1);
             let published_phase = if count_only {
                 state.current_phase.unwrap_or(phase)
             } else {

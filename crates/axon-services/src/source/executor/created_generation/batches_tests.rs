@@ -601,7 +601,10 @@ fn completed_batch_is_absorbed_before_prefetch_failure_is_returned() {
     let error = resolve_batch_step::<_, ()>(
         Ok("processed"),
         Some(Err(anyhow::anyhow!("prefetch failed"))),
-        |value| absorbed.push(value),
+        |value| {
+            absorbed.push(value);
+            Ok(())
+        },
     )
     .expect_err("prefetch failure");
 
@@ -614,7 +617,7 @@ fn dual_failure_keeps_processing_error_primary_and_attaches_prefetch_context() {
     let error = resolve_batch_step::<(), ()>(
         Err(anyhow::anyhow!("processing failed")),
         Some(Err(anyhow::anyhow!("prefetch failed"))),
-        |_| panic!("failed processing must not be absorbed"),
+        |_| -> anyhow::Result<()> { panic!("failed processing must not be absorbed") },
     )
     .expect_err("both operations fail");
 

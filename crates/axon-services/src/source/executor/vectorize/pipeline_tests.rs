@@ -454,10 +454,11 @@ async fn run_actual_publish_and_build_next_with_jobs(
     let execution =
         crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
     let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
+    let collection_name = collection.collection.clone();
     let input = SourcePipelineInput {
         adapter: &adapter,
         plan,
-        collection: &collection.collection,
+        collection: &collection_name,
         owner_id: "vector-overlap-test",
         auth_snapshot: None,
         execution: &execution,
@@ -636,7 +637,8 @@ async fn overlapped_embedding_failure_absorbs_the_successful_upsert_accounting()
         Err(error) => error,
     };
 
-    assert!(error.root_cause().to_string().contains("embedding failed"));
+    let rendered = format!("{error:#}");
+    assert!(rendered.contains("embedding failed"), "{rendered}");
     assert_eq!(
         output.points_written, 2,
         "the checkpointed current write's accounting must reach the failure \
@@ -651,6 +653,117 @@ async fn overlapped_embedding_failure_absorbs_the_successful_upsert_accounting()
         vec![PipelinePhase::Upserting],
         "the successful upsert is checkpointed before the embedding failure"
     );
+}
+
+#[tokio::test]
+async fn prepared_pool_checkpoints_successful_upsert_before_next_embedding_failure() {
+    let embedding = Arc::new(ControlledEmbeddingProvider::new(None, None, true));
+    let vectors = Arc::new(ControlledVectorStore::new(None, None, false));
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let collection = axon_vectors::testing::test_collection_spec_hybrid(3);
+    vectors
+        .ensure_collection(collection.clone())
+        .await
+        .expect("test collection");
+    let runtime = TargetLocalSourceRuntime::new(
+        Arc::new(axon_jobs::boundary::FakeJobWatchStore::new()),
+        ledger.clone(),
+        embedding,
+        vectors,
+        ProviderId::new("fake-embedding"),
+        "text-embedding-test",
+        3,
+    );
+    let route = crate::source::routing::resolve_source_route(&SourceRequest::new(
+        "https://example.com/vector-overlap-checkpoint".to_string(),
+    ))
+    .expect("web route")
+    .route;
+    let plan = crate::source::dispatch::family_source_plan(
+        &route.source.canonical_uri,
+        &route,
+        true,
+        None,
+        None,
+    );
+    let execution =
+        crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
+    let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
+    let input = SourcePipelineInput {
+        adapter: &adapter,
+        plan,
+        collection: &collection.collection,
+        owner_id: "vector-overlap-checkpoint-test",
+        auth_snapshot: None,
+        execution: &execution,
+    };
+    let mut source = crate::source::executor::metadata::source_summary(
+        &input,
+        LifecycleStatus::Running,
+        crate::source::executor::helpers::empty_source_counts(),
+        None,
+    );
+    source.source_id = SourceId::new("src-web");
+    ledger.upsert_source(source).await.expect("source summary");
+    let emitter = SourceEventEmitter::new(None, Some(input.plan.job_id));
+    let coordinator = ProgressCoordinator::test_noop();
+    let mut progress = PipelineProgress::default();
+
+    let current_document = axon_vectors::testing::test_prepared_document();
+    let current_document_id = current_document.document_id.clone();
+    let mut current_embeddings = axon_vectors::testing::test_embedding_result_for(
+        &current_document,
+        "text-embedding-test",
+        3,
+    );
+    let VectorPointBuild {
+        batch: point_batch,
+        skipped_redaction,
+        redaction_skips_by_source_item,
+        points_by_document,
+    } = point_batch(
+        collection.clone(),
+        std::slice::from_ref(&current_document),
+        &mut current_embeddings,
+    )
+    .expect("current point batch");
+    let current = BuiltVectorBatch {
+        documents: vec![current_document],
+        embedding_warnings: Vec::new(),
+        point_batch,
+        points_by_document,
+        skipped_redaction,
+        redaction_skips_by_source_item,
+    };
+    let mut next_document = axon_vectors::testing::test_prepared_document();
+    next_document.metadata.remove("embedding_batch_id");
+    let mut vectorizer = super::super::PreparedPoolVectorizer {
+        ready: Some(current),
+        cumulative: std::collections::HashMap::new(),
+    };
+
+    let error = vectorizer
+        .push(
+            &runtime,
+            &input,
+            collection.clone(),
+            &emitter,
+            &coordinator,
+            vec![next_document],
+            &mut progress,
+            &tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("speculative next embedding must fail");
+
+    let rendered = format!("{error:#}");
+    assert!(rendered.contains("embedding failed"), "{rendered}");
+    let status = ledger
+        .document_status(&current_document_id)
+        .await
+        .expect("successful current upsert must be checkpointed");
+    assert_eq!(status.status, DocumentLifecycleStatus::Vectorized);
+    assert_eq!(status.vector_point_count, 2);
 }
 
 #[tokio::test]

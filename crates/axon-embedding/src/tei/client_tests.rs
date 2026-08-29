@@ -9,7 +9,7 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
         .mock_async(|when, then| {
             when.method("POST")
                 .path("/embed")
-                .json_body(serde_json::json!({"inputs": ["a", "cc"], "truncate": true}));
+                .json_body(serde_json::json!({"inputs": ["a", "cc"], "truncate": false}));
             then.status(200)
                 .json_body(serde_json::json!([[1.0_f32], [2.0_f32]]));
         })
@@ -18,7 +18,7 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
         .mock_async(|when, then| {
             when.method("POST")
                 .path("/embed")
-                .json_body(serde_json::json!({"inputs": ["ddd", "bbbb"], "truncate": true}));
+                .json_body(serde_json::json!({"inputs": ["ddd", "bbbb"], "truncate": false}));
             then.status(200)
                 .json_body(serde_json::json!([[3.0_f32], [4.0_f32]]));
         })
@@ -47,6 +47,74 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
     );
     short.assert_calls_async(1).await;
     long.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn embed_all_explicitly_disables_truncation_for_long_input() {
+    let server = MockServer::start_async().await;
+    let long_input = "important documentation ".repeat(700);
+    let expected = long_input.clone();
+    let endpoint = server
+        .mock_async(move |when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": [expected], "truncate": false}));
+            then.status(200)
+                .json_body(serde_json::json!([[0.25_f32, 0.75_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 1,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 1,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&[long_input])
+        .await
+        .expect("lossless embed");
+    assert_eq!(outcome.vectors, vec![vec![0.25, 0.75]]);
+    endpoint.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn embed_all_surfaces_single_input_413_without_retrying_or_truncating() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["oversized"], "truncate": false}));
+            then.status(413);
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 1,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 1,
+        max_attempts: 3,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let error = client
+        .embed_all(&["oversized".to_string()])
+        .await
+        .expect_err("a singleton cannot be split without losing content");
+
+    assert_eq!(error.code.0, "embedding.tei.status");
+    assert!(error.message.contains("413"));
+    assert!(error.provider_cooling().is_none());
+    endpoint.assert_calls_async(1).await;
 }
 
 #[tokio::test]
@@ -147,7 +215,7 @@ fn resolve_batch_size_clamps_to_valid_range() {
     // Env var is not set in this test, so config value is used and clamped.
     assert_eq!(resolve_batch_size(64), 64);
     assert_eq!(resolve_batch_size(0), 1);
-    assert_eq!(resolve_batch_size(10_000), 256);
+    assert_eq!(resolve_batch_size(10_000), 4096);
 }
 
 #[test]

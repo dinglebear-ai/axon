@@ -32,9 +32,11 @@ const MAX_BACKOFF_MS: u64 = 60_000;
 /// `cooldown_secs` used by [`crate::reservation::ProviderReservations`].
 const TEI_COOLDOWN_SECS: i64 = 30;
 
-/// Absolute ceiling on the client-side batch size, matching the legacy client's
-/// `tei_max_client_batch_size.clamp(1, 256)`.
-const MAX_CLIENT_BATCH_SIZE: usize = 256;
+/// Absolute safety ceiling matching the instrumented server's default row
+/// limit. The effective value remains controlled by
+/// `TEI_MAX_CLIENT_BATCH_SIZE`; raising the ceiling avoids silently defeating
+/// a generation pool that has already been bounded by chunks and bytes.
+const MAX_CLIENT_BATCH_SIZE: usize = 4096;
 
 /// Environment knob mirroring the legacy client's `TEI_MAX_CLIENT_BATCH_SIZE`.
 const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
@@ -78,7 +80,7 @@ pub struct TeiClientParams {
     pub retry_backoff_base_ms: u64,
 }
 
-/// Wire shape for a TEI `/embed` request body: `{"inputs": [...], "truncate": true}`.
+/// Wire shape for a lossless TEI `/embed` request body.
 #[derive(serde::Serialize)]
 struct EmbedRequest<'a> {
     inputs: &'a [String],
@@ -296,7 +298,7 @@ impl TeiClient {
     async fn send_chunk_with_retries(&self, chunk: &[String]) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
             inputs: chunk,
-            truncate: true,
+            truncate: false,
         };
         let started = Instant::now();
         let mut last: Option<ApiError> = None;
@@ -457,7 +459,7 @@ fn effective_request_concurrency(
 
 /// Resolve the initial client-side batch size, honouring the
 /// `TEI_MAX_CLIENT_BATCH_SIZE` env knob (matching the legacy client), then
-/// clamping to `[1, 256]`.
+/// clamping to `[1, 4096]`.
 fn resolve_batch_size(config_batch: usize) -> usize {
     let base = std::env::var(TEI_MAX_CLIENT_BATCH_SIZE_ENV)
         .ok()
