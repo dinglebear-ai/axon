@@ -3,9 +3,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::net::IpAddr;
-use url::Url;
 use utoipa::ToSchema;
+
+mod validation;
+pub use validation::validate_mutation_params;
+pub(crate) use validation::{contains_sensitive_url, is_sensitive_identifier};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -15,9 +17,17 @@ pub enum ControlAction {
     AccountLoginCancel,
     AccountLogout,
     RateLimitsRead,
+    AccountUsageRead,
+    AccountWorkspaceMessagesRead,
+    AccountRateLimitResetCreditConsume,
+    AccountBedrockDiscover,
+    AccountBedrockSetup,
     ModelsList,
     ModelProviderCapabilitiesRead,
+    CollaborationModesList,
+    PermissionProfilesList,
     ConfigRead,
+    ConfigRequirementsRead,
     ConfigValueWrite,
     ConfigBatchWrite,
     McpServersList,
@@ -53,6 +63,8 @@ pub enum ControlAction {
     AppsList,
     AppsInstalled,
     AppRead,
+    ExperimentalFeaturesList,
+    ExperimentalFeatureEnablementSet,
 }
 
 /// Write-only actions accepted by the approved mutation workflow.
@@ -64,6 +76,8 @@ pub enum MutationAction {
     AccountLoginStart,
     AccountLoginCancel,
     AccountLogout,
+    AccountRateLimitResetCreditConsume,
+    AccountBedrockSetup,
     ConfigValueWrite,
     ConfigBatchWrite,
     McpServerReload,
@@ -84,13 +98,16 @@ pub enum MutationAction {
     SkillsExtraRootsSet,
     ExternalAgentConfigImport,
     ExternalAgentConfigImportRecordHistory,
+    ExperimentalFeatureEnablementSet,
 }
 
 impl MutationAction {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 26] = [
         Self::AccountLoginStart,
         Self::AccountLoginCancel,
         Self::AccountLogout,
+        Self::AccountRateLimitResetCreditConsume,
+        Self::AccountBedrockSetup,
         Self::ConfigValueWrite,
         Self::ConfigBatchWrite,
         Self::McpServerReload,
@@ -111,6 +128,7 @@ impl MutationAction {
         Self::SkillsExtraRootsSet,
         Self::ExternalAgentConfigImport,
         Self::ExternalAgentConfigImportRecordHistory,
+        Self::ExperimentalFeatureEnablementSet,
     ];
 
     pub const fn method(self) -> &'static str {
@@ -122,6 +140,10 @@ impl MutationAction {
             Self::AccountLoginStart => ControlAction::AccountLoginStart,
             Self::AccountLoginCancel => ControlAction::AccountLoginCancel,
             Self::AccountLogout => ControlAction::AccountLogout,
+            Self::AccountRateLimitResetCreditConsume => {
+                ControlAction::AccountRateLimitResetCreditConsume
+            }
+            Self::AccountBedrockSetup => ControlAction::AccountBedrockSetup,
             Self::ConfigValueWrite => ControlAction::ConfigValueWrite,
             Self::ConfigBatchWrite => ControlAction::ConfigBatchWrite,
             Self::McpServerReload => ControlAction::McpServerReload,
@@ -143,6 +165,9 @@ impl MutationAction {
             Self::ExternalAgentConfigImport => ControlAction::ExternalAgentConfigImport,
             Self::ExternalAgentConfigImportRecordHistory => {
                 ControlAction::ExternalAgentConfigImportRecordHistory
+            }
+            Self::ExperimentalFeatureEnablementSet => {
+                ControlAction::ExperimentalFeatureEnablementSet
             }
         }
     }
@@ -173,9 +198,17 @@ impl ControlAction {
             Self::AccountLoginCancel => "account/login/cancel",
             Self::AccountLogout => "account/logout",
             Self::RateLimitsRead => "account/rateLimits/read",
+            Self::AccountUsageRead => "account/usage/read",
+            Self::AccountWorkspaceMessagesRead => "account/workspaceMessages/read",
+            Self::AccountRateLimitResetCreditConsume => "account/rateLimitResetCredit/consume",
+            Self::AccountBedrockDiscover => "account/bedrock/discover",
+            Self::AccountBedrockSetup => "account/bedrock/setup",
             Self::ModelsList => "model/list",
             Self::ModelProviderCapabilitiesRead => "modelProvider/capabilities/read",
+            Self::CollaborationModesList => "collaborationMode/list",
+            Self::PermissionProfilesList => "permissionProfile/list",
             Self::ConfigRead => "config/read",
+            Self::ConfigRequirementsRead => "configRequirements/read",
             Self::ConfigValueWrite => "config/value/write",
             Self::ConfigBatchWrite => "config/batchWrite",
             Self::McpServersList => "mcpServerStatus/list",
@@ -215,6 +248,8 @@ impl ControlAction {
             Self::AppsList => "app/list",
             Self::AppsInstalled => "app/installed",
             Self::AppRead => "app/read",
+            Self::ExperimentalFeaturesList => "experimentalFeature/list",
+            Self::ExperimentalFeatureEnablementSet => "experimentalFeature/enablement/set",
         }
     }
 
@@ -223,9 +258,15 @@ impl ControlAction {
             self,
             Self::AccountRead
                 | Self::RateLimitsRead
+                | Self::AccountUsageRead
+                | Self::AccountWorkspaceMessagesRead
+                | Self::AccountBedrockDiscover
                 | Self::ModelsList
                 | Self::ModelProviderCapabilitiesRead
+                | Self::CollaborationModesList
+                | Self::PermissionProfilesList
                 | Self::ConfigRead
+                | Self::ConfigRequirementsRead
                 | Self::McpServersList
                 | Self::McpServerResourceRead
                 | Self::PluginsList
@@ -241,6 +282,7 @@ impl ControlAction {
                 | Self::AppsList
                 | Self::AppsInstalled
                 | Self::AppRead
+                | Self::ExperimentalFeaturesList
         )
     }
 }
@@ -282,7 +324,9 @@ impl WritePolicy {
         let allowed = match action {
             ControlAction::AccountLoginStart
             | ControlAction::AccountLoginCancel
-            | ControlAction::AccountLogout => self.account,
+            | ControlAction::AccountLogout
+            | ControlAction::AccountRateLimitResetCreditConsume
+            | ControlAction::AccountBedrockSetup => self.account,
             ControlAction::ConfigValueWrite | ControlAction::ConfigBatchWrite => self.config,
             ControlAction::McpServerReload
             | ControlAction::McpServerOauthLogin
@@ -301,6 +345,7 @@ impl WritePolicy {
             ControlAction::SkillConfigWrite | ControlAction::SkillsExtraRootsSet => self.skills,
             ControlAction::ExternalAgentConfigImport
             | ControlAction::ExternalAgentConfigImportRecordHistory => self.imports,
+            ControlAction::ExperimentalFeatureEnablementSet => self.config,
             _ => false,
         };
         allowed
@@ -309,165 +354,9 @@ impl WritePolicy {
     }
 }
 
-pub fn validate_mutation_params(action: &ControlAction, params: &Value) -> Result<(), String> {
-    let encoded = serde_json::to_vec(params).map_err(|error| error.to_string())?;
-    if encoded.len() > 64 * 1024 {
-        return Err("Codex mutation parameters exceed 64 KiB".to_string());
-    }
-    if !params.is_object() {
-        return Err("Codex mutation parameters must be a JSON object".to_string());
-    }
-    reject_plaintext_secrets(params)?;
-    if matches!(action, ControlAction::ConfigValueWrite) {
-        validate_config_edit(params)?;
-    }
-    if matches!(action, ControlAction::ConfigBatchWrite) {
-        let edits = params
-            .get("edits")
-            .and_then(Value::as_array)
-            .ok_or("config batch requires an edits array")?;
-        if edits.is_empty() {
-            return Err("config batch requires at least one edit".to_string());
-        }
-        for edit in edits {
-            validate_config_edit(edit)?;
-        }
-    }
-    if matches!(action, ControlAction::MarketplaceAdd) {
-        validate_public_source(
-            params
-                .get("source")
-                .and_then(Value::as_str)
-                .ok_or("marketplace source missing")?,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_config_edit(edit: &Value) -> Result<(), String> {
-    let key_path = edit
-        .get("keyPath")
-        .and_then(Value::as_str)
-        .ok_or("config edit keyPath missing")?;
-    let strategy = edit
-        .get("mergeStrategy")
-        .and_then(Value::as_str)
-        .ok_or("config edit mergeStrategy missing")?;
-    if !matches!(strategy, "replace" | "upsert") {
-        return Err("config edit mergeStrategy must be replace or upsert".to_string());
-    }
-    let value = edit.get("value").ok_or("config edit value missing")?;
-    let secret_target = key_path.split('.').any(is_sensitive_identifier);
-    if secret_target && !value.as_str().is_some_and(is_env_reference) {
-        return Err(format!("{key_path} must use an env: secret reference"));
-    }
-    Ok(())
-}
-
-fn validate_public_source(source: &str) -> Result<(), String> {
-    let parsed = Url::parse(source).map_err(|_| "marketplace source is not a valid URL")?;
-    if parsed.scheme() != "https" {
-        return Err("marketplace source must use HTTPS".to_string());
-    }
-    if !parsed.username().is_empty()
-        || parsed.password().is_some()
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-    {
-        return Err(
-            "marketplace source must not contain credentials or a query string".to_string(),
-        );
-    }
-    let host = parsed
-        .host_str()
-        .ok_or("marketplace source host is missing")?
-        .to_ascii_lowercase();
-    if host.parse::<IpAddr>().is_ok()
-        || host == "localhost"
-        || host.ends_with(".localhost")
-        || host.ends_with(".local")
-        || host.ends_with(".internal")
-    {
-        return Err("marketplace source host is not public".to_string());
-    }
-    // The Codex subprocess performs the network request, so Axon's guarded
-    // resolver cannot protect its connection from DNS rebinding. Restrict the
-    // hand-off to stable public forge authorities instead of pretending a
-    // preflight DNS lookup closes that TOCTOU window.
-    if !matches!(host.as_str(), "github.com" | "gitlab.com" | "bitbucket.org") {
-        return Err("marketplace source must use an approved public forge".to_string());
-    }
-    Ok(())
-}
-
 pub fn state_revision(value: &Value) -> Result<String, String> {
     let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
-}
-
-fn reject_plaintext_secrets(value: &Value) -> Result<(), String> {
-    match value {
-        Value::Object(values) => {
-            for (key, value) in values {
-                let secret_key = is_sensitive_identifier(key);
-                if secret_key && !value.as_str().is_some_and(is_env_reference) {
-                    return Err(format!("{key} must use an env: secret reference"));
-                }
-                reject_plaintext_secrets(value)?;
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                reject_plaintext_secrets(value)?;
-            }
-        }
-        Value::String(text) if contains_sensitive_url(text) => {
-            return Err("signed or credential-bearing URLs are not accepted".to_string());
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-pub(crate) fn is_sensitive_identifier(value: &str) -> bool {
-    let canonical = value
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect::<String>();
-    [
-        "apikey",
-        "token",
-        "secret",
-        "password",
-        "authorization",
-        "cookie",
-        "privatekey",
-        "accesskey",
-        "credential",
-        "clientsecret",
-        "bearer",
-    ]
-    .iter()
-    .any(|needle| canonical.contains(needle))
-}
-
-fn is_env_reference(value: &str) -> bool {
-    value.strip_prefix("env:").is_some_and(|name| {
-        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-    })
-}
-
-pub(crate) fn contains_sensitive_url(value: &str) -> bool {
-    let Ok(url) = Url::parse(value) else {
-        return false;
-    };
-    !url.username().is_empty()
-        || url.password().is_some()
-        || url.query_pairs().any(|(key, _)| {
-            is_sensitive_identifier(&key)
-                || matches!(key.as_ref(), "X-Amz-Signature" | "X-Goog-Signature")
-        })
 }
 
 /// Decode an account response without retaining tokens or raw auth payloads.

@@ -126,3 +126,49 @@ fn marketplace_sources_are_restricted_to_stable_public_forges() {
         );
     }
 }
+
+#[test]
+fn sensitive_management_mutations_require_native_v0150_shapes() {
+    assert!(
+        validate_mutation_params(
+            &ControlAction::AccountRateLimitResetCreditConsume,
+            &json!({"idempotencyKey":"18e75f56-fb1d-4e06-b657-b278bbe0db16"})
+        )
+        .is_ok()
+    );
+    assert!(
+        validate_mutation_params(
+            &ControlAction::AccountRateLimitResetCreditConsume,
+            &json!({})
+        )
+        .is_err()
+    );
+    assert!(
+        validate_mutation_params(
+            &ControlAction::AccountBedrockSetup,
+            &json!({"type":"profile","profile":"work","region":"us-east-1"})
+        )
+        .is_ok()
+    );
+    assert!(
+        validate_mutation_params(
+            &ControlAction::AccountBedrockSetup,
+            &json!({"type":"profile","region":"us-east-1"})
+        )
+        .is_err()
+    );
+    assert!(
+        validate_mutation_params(
+            &ControlAction::ExperimentalFeatureEnablementSet,
+            &json!({"enablement":{"example":true}})
+        )
+        .is_ok()
+    );
+    assert!(
+        validate_mutation_params(
+            &ControlAction::ExperimentalFeatureEnablementSet,
+            &json!({"enablement":[]})
+        )
+        .is_err()
+    );
+}

@@ -160,11 +160,17 @@ fn resource_action(resource: &CodexResource) -> Result<ControlAction, ErrorData>
     match resource {
         CodexResource::Account => Ok(ControlAction::AccountRead),
         CodexResource::RateLimits => Ok(ControlAction::RateLimitsRead),
+        CodexResource::AccountUsage => Ok(ControlAction::AccountUsageRead),
+        CodexResource::AccountWorkspaceMessages => Ok(ControlAction::AccountWorkspaceMessagesRead),
+        CodexResource::AccountBedrock => Ok(ControlAction::AccountBedrockDiscover),
         CodexResource::Models => Ok(ControlAction::ModelsList),
         CodexResource::ModelProviderCapabilities => {
             Ok(ControlAction::ModelProviderCapabilitiesRead)
         }
+        CodexResource::CollaborationModes => Ok(ControlAction::CollaborationModesList),
+        CodexResource::PermissionProfiles => Ok(ControlAction::PermissionProfilesList),
         CodexResource::Config => Ok(ControlAction::ConfigRead),
+        CodexResource::ConfigRequirements => Ok(ControlAction::ConfigRequirementsRead),
         CodexResource::McpServers => Ok(ControlAction::McpServersList),
         CodexResource::McpResource => Ok(ControlAction::McpServerResourceRead),
         CodexResource::Plugins => Ok(ControlAction::PluginsList),
@@ -182,6 +188,7 @@ fn resource_action(resource: &CodexResource) -> Result<ControlAction, ErrorData>
         CodexResource::Apps => Ok(ControlAction::AppsList),
         CodexResource::AppsInstalled => Ok(ControlAction::AppsInstalled),
         CodexResource::App => Ok(ControlAction::AppRead),
+        CodexResource::ExperimentalFeatures => Ok(ControlAction::ExperimentalFeaturesList),
     }
 }
 

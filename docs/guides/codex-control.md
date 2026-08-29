@@ -42,6 +42,9 @@ Open **Codex app-server** from the Palette footer. The resource tabs show the
 server account summary, models, persisted/active config, MCP servers, plugins,
 skills, hooks, and apps. Data belongs to the Axon server host, never the Palette
 client device. Auth tokens and secret-shaped event fields are not returned.
+The method-inventory tab exposes the complete pinned app-server request and
+notification inventory so unsupported or deferred protocol areas remain
+discoverable instead of disappearing from the control UI.
 
 Changes use three explicit stages:
 

@@ -210,6 +210,7 @@ export type components = {
             "config": unknown;
             "hooks": unknown;
             "mcp_servers": unknown;
+            "method_inventory": unknown;
             "models": unknown;
             "pending_server_requests": components['schemas']['RecordedEvent'][];
             "plugins": unknown;
@@ -240,7 +241,7 @@ export type components = {
             "kind": "external";
             "uri": string;
         };
-        "ControlAction": "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "models_list" | "model_provider_capabilities_read" | "config_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_resource_read" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skills_extra_roots_set" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "external_agent_config_import_read_histories" | "external_agent_config_import_record_history" | "hooks_list" | "apps_list" | "apps_installed" | "app_read";
+        "ControlAction": "account_read" | "account_login_start" | "account_login_cancel" | "account_logout" | "rate_limits_read" | "account_usage_read" | "account_workspace_messages_read" | "account_rate_limit_reset_credit_consume" | "account_bedrock_discover" | "account_bedrock_setup" | "models_list" | "model_provider_capabilities_read" | "collaboration_modes_list" | "permission_profiles_list" | "config_read" | "config_requirements_read" | "config_value_write" | "config_batch_write" | "mcp_servers_list" | "mcp_server_resource_read" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "mcp_server_reload" | "mcp_server_oauth_login" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "plugin_install" | "plugin_uninstall" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skills_list" | "skills_extra_roots_set" | "skill_config_write" | "external_agent_config_detect" | "external_agent_config_import" | "external_agent_config_import_read_histories" | "external_agent_config_import_record_history" | "hooks_list" | "apps_list" | "apps_installed" | "app_read" | "experimental_features_list" | "experimental_feature_enablement_set";
         "ControlOperation": {
             "actor": string;
             "approver"?: string | null;
@@ -808,7 +809,7 @@ export type components = {
             "turn_count": number;
             "updated_at": number;
         };
-        "MutationAction": "account_login_start" | "account_login_cancel" | "account_logout" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "plugin_install" | "plugin_uninstall" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "skills_extra_roots_set" | "external_agent_config_import" | "external_agent_config_import_record_history";
+        "MutationAction": "account_login_start" | "account_login_cancel" | "account_logout" | "account_rate_limit_reset_credit_consume" | "account_bedrock_setup" | "config_value_write" | "config_batch_write" | "mcp_server_reload" | "mcp_server_oauth_login" | "mcp_server_tool_call" | "mcp_server_event_stream_start" | "mcp_server_event_stream_stop" | "plugin_install" | "plugin_uninstall" | "plugin_share_checkout" | "plugin_share_save" | "plugin_share_delete" | "plugin_share_update_targets" | "marketplace_add" | "marketplace_remove" | "marketplace_upgrade" | "skill_config_write" | "skills_extra_roots_set" | "external_agent_config_import" | "external_agent_config_import_record_history" | "experimental_feature_enablement_set";
         "OperationPhase": "pending" | "approved" | "denied" | "expired" | "executing" | "reconciled" | "failed" | "ambiguous" | "rollback_required" | "recovery_required";
         "OutputPolicy": {
             "artifact_mode": components['schemas']['ArtifactMode'];

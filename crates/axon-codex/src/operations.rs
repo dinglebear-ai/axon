@@ -143,6 +143,15 @@ impl OperationStore {
             {
                 return Err("idempotency key already exists with different parameters".to_string());
             }
+            let guard = get_operation_guard(&transaction, existing.id)?
+                .ok_or_else(|| "idempotent operation guard missing".to_string())?;
+            if guard.target_home_identity != intent.target_home_identity
+                || guard.policy_version != intent.policy_version
+            {
+                return Err(
+                    "idempotency key belongs to a different control target or policy".to_string(),
+                );
+            }
             return Ok(existing);
         }
         transaction.execute(

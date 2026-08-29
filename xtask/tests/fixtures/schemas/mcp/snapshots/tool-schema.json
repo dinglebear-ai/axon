@@ -1448,6 +1448,8 @@
         "account_login_start",
         "account_login_cancel",
         "account_logout",
+        "account_rate_limit_reset_credit_consume",
+        "account_bedrock_setup",
         "config_value_write",
         "config_batch_write",
         "mcp_server_reload",
@@ -1467,7 +1469,8 @@
         "skill_config_write",
         "skills_extra_roots_set",
         "external_agent_config_import",
-        "external_agent_config_import_record_history"
+        "external_agent_config_import_record_history",
+        "experimental_feature_enablement_set"
       ],
       "type": "string"
     },
@@ -1475,9 +1478,15 @@
       "enum": [
         "account",
         "rate_limits",
+        "account_usage",
+        "account_workspace_messages",
+        "account_bedrock",
         "models",
         "model_provider_capabilities",
+        "collaboration_modes",
+        "permission_profiles",
         "config",
+        "config_requirements",
         "mcp_servers",
         "mcp_resource",
         "plugins",
@@ -1492,7 +1501,8 @@
         "hooks",
         "apps",
         "apps_installed",
-        "app"
+        "app",
+        "experimental_features"
       ],
       "type": "string"
     },
@@ -5655,7 +5665,7 @@
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:dbf0d5c5c3b580c05083f6062ccb82a70a901eed2ca71e1e51c97d8bd9ef45a6",
+        "checksum": "sha256:cda8958025c515f1ec7a97d42f0d0e6e658e1a9f15ccc4f2f3dcf619a1f70e92",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },

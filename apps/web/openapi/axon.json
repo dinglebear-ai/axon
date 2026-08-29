@@ -9881,6 +9881,7 @@
           "skills",
           "hooks",
           "apps",
+          "method_inventory",
           "pending_server_requests"
         ],
         "properties": {
@@ -9889,6 +9890,9 @@
           "config": {},
           "hooks": {},
           "mcp_servers": {},
+          "method_inventory": {
+            "description": "Complete method inventory generated from the pinned Codex app-server\nschema, including methods outside Axon's approved management surface."
+          },
           "models": {},
           "pending_server_requests": {
             "type": "array",
@@ -10033,9 +10037,17 @@
           "account_login_cancel",
           "account_logout",
           "rate_limits_read",
+          "account_usage_read",
+          "account_workspace_messages_read",
+          "account_rate_limit_reset_credit_consume",
+          "account_bedrock_discover",
+          "account_bedrock_setup",
           "models_list",
           "model_provider_capabilities_read",
+          "collaboration_modes_list",
+          "permission_profiles_list",
           "config_read",
+          "config_requirements_read",
           "config_value_write",
           "config_batch_write",
           "mcp_servers_list",
@@ -10070,7 +10082,9 @@
           "hooks_list",
           "apps_list",
           "apps_installed",
-          "app_read"
+          "app_read",
+          "experimental_features_list",
+          "experimental_feature_enablement_set"
         ]
       },
       "ControlOperation": {
@@ -13148,6 +13162,8 @@
           "account_login_start",
           "account_login_cancel",
           "account_logout",
+          "account_rate_limit_reset_credit_consume",
+          "account_bedrock_setup",
           "config_value_write",
           "config_batch_write",
           "mcp_server_reload",
@@ -13167,7 +13183,8 @@
           "skill_config_write",
           "skills_extra_roots_set",
           "external_agent_config_import",
-          "external_agent_config_import_record_history"
+          "external_agent_config_import_record_history",
+          "experimental_feature_enablement_set"
         ]
       },
       "OperationPhase": {

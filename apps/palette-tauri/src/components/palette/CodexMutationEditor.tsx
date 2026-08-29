@@ -50,6 +50,8 @@ export function CodexMutationEditor(props: CodexMutationEditorProps) {
           <option value="accountLogin">Start account login</option>
           <option value="accountLoginCancel">Cancel account login</option>
           <option value="accountLogout">Log out account</option>
+          <option value="accountResetCredit">Consume usage reset credit</option>
+          <option value="accountBedrockSetup">Configure Amazon Bedrock</option>
           <option value="config">Write config value</option>
           <option value="mcpConfig">Add, edit, or remove MCP definition</option>
           <option value="configBatch">Write config batch</option>
@@ -71,6 +73,7 @@ export function CodexMutationEditor(props: CodexMutationEditorProps) {
           <option value="skillRoots">Set extra skill roots</option>
           <option value="skillImport">Import standalone skill or agent config</option>
           <option value="importHistory">Record external import history</option>
+          <option value="experimentalFeaturesSet">Set experimental features</option>
         </select>
       </label>
       {kind !== "configBatch" && kind !== "marketplaceAdd" && (

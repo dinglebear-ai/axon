@@ -47,6 +47,31 @@ fn idempotency_is_actor_and_digest_bound() {
 }
 
 #[test]
+fn idempotency_is_bound_to_control_home_and_policy() {
+    let store = OperationStore::open_memory().unwrap();
+    let first = intent("target-bound", "a");
+    store.create(&first).unwrap();
+
+    let mut other_home = first.clone();
+    other_home.target_home_identity = "dev:9:ino:9".into();
+    assert!(
+        store
+            .create(&other_home)
+            .unwrap_err()
+            .contains("control target")
+    );
+
+    let mut other_policy = first;
+    other_policy.policy_version = "v2".into();
+    assert!(
+        store
+            .create(&other_policy)
+            .unwrap_err()
+            .contains("control target")
+    );
+}
+
+#[test]
 fn approval_is_single_use_and_queue_head_is_revalidated() {
     let store = OperationStore::open_memory().unwrap();
     let operation = store.create(&intent("one", "a")).unwrap();

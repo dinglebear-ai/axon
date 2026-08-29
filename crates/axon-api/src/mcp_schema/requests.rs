@@ -25,9 +25,15 @@ pub enum CodexSubaction {
 pub enum CodexResource {
     Account,
     RateLimits,
+    AccountUsage,
+    AccountWorkspaceMessages,
+    AccountBedrock,
     Models,
     ModelProviderCapabilities,
+    CollaborationModes,
+    PermissionProfiles,
     Config,
+    ConfigRequirements,
     McpServers,
     McpResource,
     Plugins,
@@ -43,6 +49,7 @@ pub enum CodexResource {
     Apps,
     AppsInstalled,
     App,
+    ExperimentalFeatures,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -51,6 +58,8 @@ pub enum CodexMutationAction {
     AccountLoginStart,
     AccountLoginCancel,
     AccountLogout,
+    AccountRateLimitResetCreditConsume,
+    AccountBedrockSetup,
     ConfigValueWrite,
     ConfigBatchWrite,
     McpServerReload,
@@ -71,6 +80,7 @@ pub enum CodexMutationAction {
     SkillsExtraRootsSet,
     ExternalAgentConfigImport,
     ExternalAgentConfigImportRecordHistory,
+    ExperimentalFeatureEnablementSet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

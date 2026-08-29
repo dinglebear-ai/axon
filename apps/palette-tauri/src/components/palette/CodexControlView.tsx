@@ -29,11 +29,15 @@ const resources: CodexResource[] = [
   "skills",
   "hooks",
   "apps",
+  "method_inventory",
 ];
 export type MutationKind = keyof typeof CODEX_MUTATIONS | "mcpConfig";
 type ReadAction = Parameters<typeof readCodexAction>[1];
 const advancedReads: ReadonlyArray<{ label: string; action: ReadAction }> = [
   { label: "Account rate limits", action: "rate_limits_read" },
+  { label: "Account usage", action: "account_usage_read" },
+  { label: "Workspace messages", action: "account_workspace_messages_read" },
+  { label: "Amazon Bedrock discovery", action: "account_bedrock_discover" },
   {
     label: "Model provider capabilities",
     action: "model_provider_capabilities_read",
@@ -54,6 +58,10 @@ const advancedReads: ReadonlyArray<{ label: string; action: ReadAction }> = [
   },
   { label: "Installed apps", action: "apps_installed" },
   { label: "App detail", action: "app_read" },
+  { label: "Config requirements", action: "config_requirements_read" },
+  { label: "Collaboration modes", action: "collaboration_modes_list" },
+  { label: "Permission profiles", action: "permission_profiles_list" },
+  { label: "Experimental features", action: "experimental_features_list" },
 ];
 
 export function CodexControlView({
@@ -389,6 +397,9 @@ export function mutationParams(
   if (kind === "configBatch") return buildConfigBatchMutation(value);
   if (
     kind === "mcpTool" ||
+    kind === "accountResetCredit" ||
+    kind === "accountBedrockSetup" ||
+    kind === "experimentalFeaturesSet" ||
     kind === "mcpStreamStart" ||
     kind === "mcpStreamStop" ||
     kind === "pluginShareCheckout" ||
@@ -448,6 +459,9 @@ function mutationValidationMessage(kind: MutationKind): string | null {
   if (
     [
       "mcpTool",
+      "accountResetCredit",
+      "accountBedrockSetup",
+      "experimentalFeaturesSet",
       "mcpStreamStart",
       "mcpStreamStop",
       "pluginShareCheckout",

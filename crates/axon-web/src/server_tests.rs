@@ -248,7 +248,7 @@ fn codex_openapi_exposes_typed_responses_and_server_owned_revisions() {
     assert_eq!(schemas["MutationAction"]["type"], "string");
     assert_eq!(
         schemas["MutationAction"]["enum"].as_array().unwrap().len(),
-        23
+        26
     );
     assert_eq!(
         schemas["CreateOperationBody"]["properties"]["action"]["$ref"],

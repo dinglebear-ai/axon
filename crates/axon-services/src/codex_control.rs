@@ -1,7 +1,7 @@
 //! Services-first facade for the dedicated Codex app-server control plane.
 
 pub use axon_codex::api::{ControlAction, MutationAction};
-use axon_codex::api::{WritePolicy, account_summary, state_revision, validate_mutation_params};
+use axon_codex::api::{WritePolicy, account_summary, validate_mutation_params};
 use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus, home_identity};
 use axon_codex::events::sanitize_value;
 pub use axon_codex::events::{EventCursor, RecordedEvent};
@@ -19,6 +19,11 @@ use utoipa::ToSchema;
 
 mod postconditions;
 use postconditions::{EffectProof, verify_intended_effect};
+mod state;
+use state::{
+    CompletionStrategy, action_from_method, canonical_revision, canonical_state,
+    completion_strategy,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CodexControlSnapshot {
@@ -31,6 +36,9 @@ pub struct CodexControlSnapshot {
     pub skills: Value,
     pub hooks: Value,
     pub apps: Value,
+    /// Complete method inventory generated from the pinned Codex app-server
+    /// schema, including methods outside Axon's approved management surface.
+    pub method_inventory: Value,
     pub pending_server_requests: Vec<RecordedEvent>,
 }
 
@@ -150,6 +158,8 @@ impl CodexControlService {
             skills: sanitize_value(skills?),
             hooks: sanitize_value(hooks?),
             apps: sanitize_value(apps?),
+            method_inventory: serde_json::from_str(axon_codex::capabilities::METHOD_INVENTORY_JSON)
+                .map_err(|error| format!("invalid embedded Codex method inventory: {error}"))?,
             pending_server_requests,
         })
     }
@@ -397,98 +407,6 @@ impl CodexControlService {
         *slot = Some(Arc::clone(&transport));
         Ok(transport)
     }
-}
-
-async fn canonical_revision(
-    action: &ControlAction,
-    transport: &ControlTransport,
-) -> Result<String, String> {
-    Ok(canonical_state(action, transport).await?.revision)
-}
-
-struct CanonicalState {
-    value: Value,
-    revision: String,
-}
-
-async fn canonical_state(
-    action: &ControlAction,
-    transport: &ControlTransport,
-) -> Result<CanonicalState, String> {
-    let (method, params) = match action {
-        ControlAction::AccountLoginStart
-        | ControlAction::AccountLoginCancel
-        | ControlAction::AccountLogout => (
-            ControlAction::AccountRead.method(),
-            json!({"refreshToken":false}),
-        ),
-        ControlAction::McpServerReload | ControlAction::McpServerOauthLogin => {
-            (ControlAction::McpServersList.method(), json!({}))
-        }
-        ControlAction::McpServerToolCall
-        | ControlAction::McpServerEventStreamStart
-        | ControlAction::McpServerEventStreamStop => {
-            (ControlAction::McpServersList.method(), json!({}))
-        }
-        ControlAction::PluginInstall
-        | ControlAction::PluginUninstall
-        | ControlAction::MarketplaceAdd
-        | ControlAction::MarketplaceRemove
-        | ControlAction::MarketplaceUpgrade
-        | ControlAction::PluginShareCheckout
-        | ControlAction::PluginShareSave
-        | ControlAction::PluginShareDelete
-        | ControlAction::PluginShareUpdateTargets => {
-            (ControlAction::PluginsList.method(), json!({}))
-        }
-        ControlAction::SkillConfigWrite
-        | ControlAction::SkillsExtraRootsSet
-        | ControlAction::ExternalAgentConfigImport
-        | ControlAction::ExternalAgentConfigImportRecordHistory => {
-            (ControlAction::SkillsList.method(), json!({}))
-        }
-        _ => (
-            ControlAction::ConfigRead.method(),
-            json!({"includeLayers":true}),
-        ),
-    };
-    let value = sanitize_value(transport.request(method, params).await?);
-    let revision = state_revision(&value)?;
-    Ok(CanonicalState { value, revision })
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CompletionStrategy {
-    CanonicalReadback,
-    ResponseAcknowledged,
-}
-
-fn completion_strategy(action: &ControlAction) -> CompletionStrategy {
-    if matches!(
-        action,
-        ControlAction::AccountLoginStart
-            | ControlAction::AccountLoginCancel
-            | ControlAction::McpServerReload
-            | ControlAction::McpServerOauthLogin
-            | ControlAction::McpServerToolCall
-            | ControlAction::McpServerEventStreamStart
-            | ControlAction::McpServerEventStreamStop
-            | ControlAction::PluginShareCheckout
-            | ControlAction::PluginShareSave
-            | ControlAction::PluginShareDelete
-            | ControlAction::PluginShareUpdateTargets
-            | ControlAction::MarketplaceUpgrade
-            | ControlAction::SkillsExtraRootsSet
-            | ControlAction::ExternalAgentConfigImportRecordHistory
-    ) {
-        CompletionStrategy::ResponseAcknowledged
-    } else {
-        CompletionStrategy::CanonicalReadback
-    }
-}
-
-fn action_from_method(method: &str) -> Result<ControlAction, String> {
-    MutationAction::try_from(method).map(ControlAction::from)
 }
 
 #[cfg(test)]

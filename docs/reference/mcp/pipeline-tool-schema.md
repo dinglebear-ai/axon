@@ -81,7 +81,7 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 |---|---|
 | `crates/axon-api/src/mcp_schema.rs` | `sha256:d2f9859a8ac45aafaddb449a2b0a7b3733be0cf12f8046c2cc498cbe2d4bbb61` |
 | `crates/axon-api/src/mcp_schema/prune_request.rs` | `sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656` |
-| `crates/axon-api/src/mcp_schema/requests.rs` | `sha256:dbf0d5c5c3b580c05083f6062ccb82a70a901eed2ca71e1e51c97d8bd9ef45a6` |
+| `crates/axon-api/src/mcp_schema/requests.rs` | `sha256:cda8958025c515f1ec7a97d42f0d0e6e658e1a9f15ccc4f2f3dcf619a1f70e92` |
 | `crates/axon-api/src/mcp_schema/requests/discovery.rs` | `sha256:74cc0184db8d8f39740e9822a92509b4eb468caa1c731a7e23ea557167dfc5d7` |
 | `crates/axon-api/src/mcp_schema/requests/graph.rs` | `sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1` |
 | `crates/axon-api/src/mcp_schema/requests/watch.rs` | `sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a` |

@@ -9,7 +9,8 @@ export type CodexResource =
   | "plugins"
   | "skills"
   | "hooks"
-  | "apps";
+  | "apps"
+  | "method_inventory";
 export type CodexSnapshot = Record<CodexResource, unknown> & {
   status: { state: string; detail?: string | null; home?: string | null; binary?: string | null };
   pending_server_requests: CodexEvent[];
@@ -54,6 +55,8 @@ export const CODEX_MUTATIONS = {
   accountLogout: {
     action: "account_logout",
   },
+  accountResetCredit: { action: "account_rate_limit_reset_credit_consume" },
+  accountBedrockSetup: { action: "account_bedrock_setup" },
   config: {
     action: "config_value_write",
   },
@@ -96,6 +99,7 @@ export const CODEX_MUTATIONS = {
     action: "external_agent_config_import",
   },
   importHistory: { action: "external_agent_config_import_record_history" },
+  experimentalFeaturesSet: { action: "experimental_feature_enablement_set" },
 } as const;
 
 export async function readCodexSnapshot(client: Client): Promise<CodexSnapshot> {
