@@ -2,7 +2,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { CortexWorkspace } from "@/components/palette/cortex/CortexWorkspace";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
-import { LabbyExactToolRunner } from "@/components/palette/labby/LabbyExactToolRunner";
+import { LabbyWorkspace } from "@/components/palette/labby/LabbyWorkspace";
 import { PaletteShell } from "@/components/palette/PaletteShell";
 import {
   actionConfirmationArmed,
@@ -427,7 +427,7 @@ export default function App() {
     dispatchView({ type: "collapse" });
   }, []);
   if (new URLSearchParams(window.location.search).get("workspace") === "labby" && labbyProfile) {
-    return <LabbyExactToolRunner profile={labbyProfile} />;
+    return <LabbyWorkspace profile={labbyProfile} />;
   }
   if (new URLSearchParams(window.location.search).get("workspace") === "cortex" && cortexProfile) {
     return <CortexWorkspace profile={cortexProfile} />;

@@ -76,4 +76,70 @@ describe("LabbyClient exact calls", () => {
     });
     await expect(new LabbyClient(profile).execute(descriptor, {}, false)).rejects.toThrow("no-LLM");
   });
+  it("fails closed when the authenticated live catalog does not expose admin snippet actions", async () => {
+    const invoke = vi.spyOn(await import("../invoke"), "invoke").mockResolvedValue({
+      ok: true,
+      status: 200,
+      profileId: profile.id,
+      product: "labby",
+      requestId: "r",
+      payload: { fingerprint: "reader-catalog", entries: [] },
+    });
+    await expect(new LabbyClient(profile).listSnippets()).rejects.toThrow("does not expose");
+    expect(invoke).toHaveBeenCalledOnce();
+  });
+  it("binds snippet actions to the live descriptor contract before exact execution", async () => {
+    const action = {
+      ...descriptor,
+      kind: "labbyAction" as const,
+      id: "labby:snippets::snippets.validate",
+    };
+    const invoke = vi
+      .spyOn(await import("../invoke"), "invoke")
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        profileId: profile.id,
+        product: "labby",
+        requestId: "search",
+        payload: { fingerprint: "f", entries: [action] },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        profileId: profile.id,
+        product: "labby",
+        requestId: "describe",
+        payload: action,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        profileId: profile.id,
+        product: "labby",
+        requestId: "execute",
+        payload: {
+          id: action.id,
+          result: { valid: true, name: "demo", mode: "body" },
+          receipt: {
+            requestId: "execute",
+            auditId: "audit",
+            toolId: action.id,
+            contractHash: action.contractHash,
+            catalogRevision: action.catalogRevision,
+            executionMode: "exact",
+            llmInvocations: 0,
+            truncated: false,
+          },
+        },
+      });
+    const result = await new LabbyClient(profile).validateSnippet(
+      "demo",
+      "async () => ({ok:true})",
+    );
+    expect(result.value.valid).toBe(true);
+    expect(invoke.mock.calls[2]?.[1]).toMatchObject({
+      request: { body: { expectedContractHash: "hash-1" } },
+    });
+  });
 });

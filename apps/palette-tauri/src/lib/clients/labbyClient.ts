@@ -40,6 +40,20 @@ export interface LabbyExactResult {
   receipt: LabbyExactReceipt;
   ui?: unknown;
 }
+export interface LabbySnippetInfo {
+  name: string;
+  description?: string | null;
+  source: "builtin" | "user";
+  path?: string;
+  shadowed?: boolean;
+}
+export interface LabbyResolvedSnippet extends LabbySnippetInfo {
+  body: string;
+}
+export interface LabbySnippetReceipt<T = unknown> {
+  value: T;
+  receipt: LabbyExactReceipt;
+}
 export class LabbyClient {
   constructor(readonly profile: BackendProfile) {
     if (profile.product !== "labby") throw new Error("LabbyClient requires a Labby profile");
@@ -97,5 +111,64 @@ export class LabbyClient {
       throw new Error("Labby did not confirm an exact no-LLM execution");
     }
     return response.payload;
+  }
+
+  private async snippetAction<T>(
+    action: string,
+    params: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<LabbySnippetReceipt<T>> {
+    const id = `labby:snippets::${action}`;
+    const catalog = await this.search(id, signal);
+    const entry = catalog.entries.find((candidate) => candidate.id === id);
+    if (!entry) throw new Error(`Labby does not expose ${action} for this principal`);
+    const descriptor = await this.descriptor(entry.id, signal);
+    const result = await this.execute(descriptor, params, descriptor.destructive, signal);
+    return { value: result.result as T, receipt: result.receipt };
+  }
+
+  listSnippets(signal?: AbortSignal) {
+    return this.snippetAction<{ snippets: LabbySnippetInfo[] }>("snippets.list", {}, signal);
+  }
+  getSnippet(name: string, signal?: AbortSignal) {
+    return this.snippetAction<LabbyResolvedSnippet>("snippets.get", { name }, signal);
+  }
+  validateSnippet(name: string, body: string, signal?: AbortSignal) {
+    return this.snippetAction<{ valid: true; name: string; mode: string }>(
+      "snippets.validate",
+      { name, body },
+      signal,
+    );
+  }
+  createSnippet(
+    draft: { name: string; body: string; description: string; force: boolean },
+    signal?: AbortSignal,
+  ) {
+    return this.snippetAction<LabbySnippetInfo>("snippets.create", draft, signal);
+  }
+  testSnippet(name: string, params: Record<string, unknown>, signal?: AbortSignal) {
+    return this.snippetAction<{ name: string; passed: boolean; response: unknown }>(
+      "snippets.test",
+      { name, params },
+      signal,
+    );
+  }
+  executeSnippet(name: string, params: Record<string, unknown>, signal?: AbortSignal) {
+    return this.snippetAction<unknown>("snippets.exec", { name, params }, signal);
+  }
+  promoteSnippet(
+    draft: {
+      execution_id: string;
+      name: string;
+      description: string;
+      force: boolean;
+      shadow_builtin: boolean;
+    },
+    signal?: AbortSignal,
+  ) {
+    return this.snippetAction<unknown>("snippets.promote", draft, signal);
+  }
+  removeSnippet(name: string, signal?: AbortSignal) {
+    return this.snippetAction<unknown>("snippets.remove", { name }, signal);
   }
 }
