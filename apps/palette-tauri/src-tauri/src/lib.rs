@@ -330,19 +330,45 @@ fn default_settings() -> PaletteSettings {
     PaletteSettings {
         server_url: DEFAULT_SERVER_URL.to_string(),
         token: None,
-        backend_profiles: vec![BackendProfile {
-            id: "axon-default".to_string(),
-            label: "Axon".to_string(),
-            product: BackendProduct::Axon,
-            origin: DEFAULT_SERVER_URL.to_string(),
-            credential_handle: Some("legacy-axon".to_string()),
-            credential_generation: None,
-            pinned_server_id: None,
-            accepted_api_major: 1,
-        }],
-        active_backend_profiles: [(BackendProduct::Axon, "axon-default".to_string())]
-            .into_iter()
-            .collect(),
+        backend_profiles: vec![
+            BackendProfile {
+                id: "axon-default".to_string(),
+                label: "Axon".to_string(),
+                product: BackendProduct::Axon,
+                origin: DEFAULT_SERVER_URL.to_string(),
+                credential_handle: Some("legacy-axon".to_string()),
+                credential_generation: None,
+                pinned_server_id: None,
+                accepted_api_major: 1,
+            },
+            BackendProfile {
+                id: "labby-default".to_string(),
+                label: "Labby".to_string(),
+                product: BackendProduct::Labby,
+                origin: "https://dev.dinglebear.ai".to_string(),
+                credential_handle: Some("labby-default-cred".to_string()),
+                credential_generation: Some("gen-labby-1".to_string()),
+                pinned_server_id: Some("srv-labby".to_string()),
+                accepted_api_major: 1,
+            },
+            BackendProfile {
+                id: "cortex-default".to_string(),
+                label: "Cortex".to_string(),
+                product: BackendProduct::Cortex,
+                origin: "https://cortex.tootie.tv".to_string(),
+                credential_handle: Some("cortex-default-cred".to_string()),
+                credential_generation: Some("gen-cortex-1".to_string()),
+                pinned_server_id: Some("srv-cortex".to_string()),
+                accepted_api_major: 1,
+            },
+        ],
+        active_backend_profiles: [
+            (BackendProduct::Axon, "axon-default".to_string()),
+            (BackendProduct::Labby, "labby-default".to_string()),
+            (BackendProduct::Cortex, "cortex-default".to_string()),
+        ]
+        .into_iter()
+        .collect(),
         shortcut: DEFAULT_SHORTCUT.to_string(),
         collection: "axon".to_string(),
         result_limit: 10,
