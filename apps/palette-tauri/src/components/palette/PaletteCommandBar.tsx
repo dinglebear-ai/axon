@@ -5,6 +5,7 @@ import { actionIcon } from "@/components/palette/ActionIcon";
 import { AskSessionMenu } from "@/components/palette/AskSessionMenu";
 import { AxonMark } from "@/components/palette/AxonMark";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
+import { LoadoutSelector } from "@/components/palette/labby/LoadoutSelector";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { Kbd } from "@/components/ui/aurora/kbd";
@@ -232,6 +233,11 @@ export function PaletteCommandBar({
         </span>
       </Button>
       <span className="axon-divider" aria-hidden="true" />
+      {(modeAction?.subcommand === "ask" || modeAction?.subcommand === "chat") && (
+        <LoadoutSelector
+          profile={config?.backendProfiles?.find((profile) => profile.product === "labby") ?? null}
+        />
+      )}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users focus the input directly; this wrapper only expands the pointer target */}
       <div

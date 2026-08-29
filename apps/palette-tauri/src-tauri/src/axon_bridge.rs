@@ -362,6 +362,29 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
         ) | (HttpMethod::Get | HttpMethod::Delete, "/v1/jobs")
     ) || matches_dynamic_unified_job_route(method, path)
         || matches_dynamic_watch_route(method, path)
+        || matches_dynamic_agent_turn_route(method, path)
+}
+
+fn matches_dynamic_agent_turn_route(method: HttpMethod, path: &str) -> bool {
+    let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    match parts.as_slice() {
+        ["v1", "agent", "turns", id] if method == HttpMethod::Get => is_bounded_opaque_id(id),
+        ["v1", "agent", "turns", id, "events"] if method == HttpMethod::Get => {
+            is_bounded_opaque_id(id)
+        }
+        ["v1", "agent", "turns", id, "cancel"] if method == HttpMethod::Post => {
+            is_bounded_opaque_id(id)
+        }
+        _ => false,
+    }
+}
+
+fn is_bounded_opaque_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 160
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':'))
 }
 
 fn matches_dynamic_unified_job_route(method: HttpMethod, path: &str) -> bool {

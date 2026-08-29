@@ -1,4 +1,10 @@
-import type { AskActivity, AskSource, AskTurn } from "@/lib/runState";
+import type {
+  AskActivity,
+  AskAgentTurn,
+  AskLoadoutProvenance,
+  AskSource,
+  AskTurn,
+} from "@/lib/runState";
 
 type RecordLike = Record<string, unknown>;
 
@@ -28,6 +34,102 @@ export function completeLastAssistantTurn(
     }
   }
   return next;
+}
+
+const MAX_DISPLAY_VALUE = 240;
+
+export function responseTurnMetadata(payload: unknown): {
+  loadout?: AskLoadoutProvenance;
+  agent?: AskAgentTurn;
+  activities: AskActivity[];
+} {
+  const root = asRecord(payload);
+  const body = asRecord(root?.payload) ?? root;
+  const rawLoadout = asRecord(body?.loadout);
+  const rawAgent = asRecord(body?.agent);
+  const correlation = asRecord(rawAgent?.correlation);
+  const proposal = asRecord(rawAgent?.pendingApproval);
+  const loadout =
+    rawLoadout && typeof rawLoadout.loadoutId === "string"
+      ? {
+          integrationId: bounded(rawLoadout.integrationId),
+          loadoutId: bounded(rawLoadout.loadoutId),
+          requestedRevision: numberValue(rawLoadout.requestedRevision),
+          effectiveRevision: numberValue(rawLoadout.effectiveRevision),
+          status: rawLoadout.status === "narrowed" ? ("narrowed" as const) : ("effective" as const),
+          catalogGeneration: boundedOptional(rawLoadout.catalogGeneration),
+          executionContextId: boundedOptional(rawLoadout.executionContextId),
+          correlationId: boundedOptional(rawLoadout.correlationId),
+        }
+      : undefined;
+  const agent =
+    rawAgent && typeof rawAgent.turnId === "string"
+      ? {
+          turnId: bounded(rawAgent.turnId),
+          status: bounded(rawAgent.status),
+          pendingApproval: proposal
+            ? {
+                toolCallId: bounded(proposal.toolCallId),
+                toolId: bounded(proposal.toolId),
+                destructive: proposal.destructive === true,
+              }
+            : undefined,
+        }
+      : undefined;
+  const activities: AskActivity[] = [];
+  if (loadout)
+    activities.push({
+      id: `loadout:${loadout.correlationId ?? loadout.loadoutId}`,
+      label: `${loadout.loadoutId} · requested r${loadout.requestedRevision} · effective r${loadout.effectiveRevision}`,
+      detail:
+        loadout.status === "narrowed"
+          ? "Labby narrowed unavailable or unauthorized capabilities."
+          : `Catalog ${loadout.catalogGeneration ?? "not reported"}`,
+      kind: loadout.status === "narrowed" ? "warning" : "done",
+    });
+  if (agent)
+    activities.push({
+      id: `agent:${agent.turnId}`,
+      label: `Agent turn ${agent.status}`,
+      detail: `Turn ${agent.turnId} · ${bounded(correlation?.actor)} via ${bounded(correlation?.service)}`,
+      kind: agent.pendingApproval ? "approval" : agent.status === "succeeded" ? "done" : "tool",
+    });
+  if (agent?.pendingApproval)
+    activities.push({
+      id: `approval:${agent.pendingApproval.toolCallId}`,
+      label: `Approval required for ${agent.pendingApproval.toolId}`,
+      detail: "Resume with a Labby-issued approval token, or cancel this durable turn.",
+      kind: "approval",
+    });
+  return { loadout, agent, activities: activities.slice(0, 16) };
+}
+
+export function attachResponseMetadata(
+  transcript: AskTurn[] | undefined,
+  payload: unknown,
+): AskTurn[] | undefined {
+  if (!transcript?.length) return transcript;
+  const metadata = responseTurnMetadata(payload);
+  return transcript.map((turn, index) =>
+    index === transcript.length - 1 && turn.role === "assistant"
+      ? {
+          ...turn,
+          loadout: metadata.loadout,
+          agent: metadata.agent,
+          activities: [...(turn.activities ?? []), ...metadata.activities].slice(-32),
+        }
+      : turn,
+  );
+}
+
+function bounded(value: unknown) {
+  return typeof value === "string" ? value.slice(0, MAX_DISPLAY_VALUE) : "unknown";
+}
+function boundedOptional(value: unknown) {
+  return typeof value === "string" ? value.slice(0, MAX_DISPLAY_VALUE) : undefined;
+}
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : 0;
 }
 
 export function completeAssistantTurnById(

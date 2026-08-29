@@ -1,12 +1,11 @@
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { Paperclip, Send, X } from "lucide-react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { Message, MessageContent } from "@/components/aurora/ai/message";
 import { Response } from "@/components/aurora/ai/response";
 import { actionIcon } from "@/components/palette/ActionIcon";
+import { AgentTurnControls } from "@/components/palette/AgentTurnControls";
 import { ActivityTrail, SourceStrip } from "@/components/palette/AskConversationBits";
-import { Button } from "@/components/ui/aurora/button";
-import { Input } from "@/components/ui/aurora/input";
 import { AxonMark } from "@/components/palette/AxonMark";
 import {
   ChatMessageActions,
@@ -14,8 +13,11 @@ import {
   type SuggestionState,
 } from "@/components/palette/ChatMessageAffordances";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
-import { ACTIONS, type PaletteAction } from "@/lib/actions";
+import { Button } from "@/components/ui/aurora/button";
+import { Input } from "@/components/ui/aurora/input";
 import { actionDisplayMeta } from "@/lib/actionMeta";
+import { ACTIONS, type PaletteAction } from "@/lib/actions";
+import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { sortActionsByRelevance } from "@/lib/paletteView";
 import type { AskTurn, ChatSuggestion } from "@/lib/runState";
 
@@ -34,6 +36,9 @@ export const ConversationThread = memo(function ConversationThread({
   onEditTurn,
   onRegenerateTurn,
   agentBubbles = false,
+  client = null,
+  config = null,
+  action = "ask",
 }: {
   prompt?: string;
   answer: string;
@@ -46,6 +51,9 @@ export const ConversationThread = memo(function ConversationThread({
   onEditTurn?: (turn: AskTurn) => void;
   onRegenerateTurn?: (turn: AskTurn) => void;
   agentBubbles?: boolean;
+  client?: Client | null;
+  config?: PaletteConfig | null;
+  action?: "ask" | "chat";
 }) {
   const threadTurns = useMemo<AskTurn[]>(
     () =>
@@ -176,6 +184,16 @@ export const ConversationThread = memo(function ConversationThread({
                       )}
                     </MessageContent>
                     <SourceStrip sources={turn.sources} />
+                    {turn.agent ? (
+                      <AgentTurnControls
+                        agent={turn.agent}
+                        loadout={turn.loadout}
+                        prompt={previousUserTurn(turnIndex)?.content ?? ""}
+                        action={action}
+                        client={client}
+                        config={config}
+                      />
+                    ) : null}
                   </div>
                 </Message>
               );
@@ -199,6 +217,9 @@ export const AskConversation = memo(function AskConversation({
   suggestionsEnabled = false,
   onSuggestMessage,
   agentBubbles = false,
+  client = null,
+  config = null,
+  action = "ask",
 }: {
   prompt?: string;
   answer?: string;
@@ -209,6 +230,9 @@ export const AskConversation = memo(function AskConversation({
   suggestionsEnabled?: boolean;
   onSuggestMessage?: (message: string) => Promise<ChatSuggestion[]>;
   agentBubbles?: boolean;
+  client?: Client | null;
+  config?: PaletteConfig | null;
+  action?: "ask" | "chat";
 }) {
   const [draft, setDraft] = useState("");
   const [selectedCommand, setSelectedCommand] = useState(0);
@@ -343,6 +367,9 @@ export const AskConversation = memo(function AskConversation({
         onEditTurn={editTurn}
         onRegenerateTurn={regenerateTurn}
         agentBubbles={agentBubbles}
+        client={client}
+        config={config}
+        action={action}
       />
       <form
         className="ask-compose"

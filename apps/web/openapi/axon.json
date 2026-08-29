@@ -64,6 +64,129 @@
         }
       }
     },
+    "/v1/agent/turns/{id}": {
+      "get": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent/turns/{id}/cancel": {
+      "post": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResult"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent/turns/{id}/events": {
+      "get": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered durable agent events"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/artifacts": {
       "get": {
         "tags": [
@@ -9193,6 +9316,350 @@
         },
         "additionalProperties": false
       },
+      "AgentApprovalToken": {
+        "type": "object",
+        "required": [
+          "toolCallId",
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "toolCallId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentCorrelation": {
+        "type": "object",
+        "required": [
+          "turnId",
+          "executionContextId",
+          "loadoutId",
+          "loadoutRevision",
+          "actor",
+          "service",
+          "toolCallCount"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "auditIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "executionContextId": {
+            "type": "string"
+          },
+          "loadoutId": {
+            "type": "string"
+          },
+          "loadoutRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "receiptIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requestIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "service": {
+            "type": "string"
+          },
+          "toolCallCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "turnId": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "status",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "state"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "status": {
+                "$ref": "#/components/schemas/AgentTurnStatus"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "proposal",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "model_proposal"
+                ]
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/AgentToolProposal"
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "decision",
+              "kind"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "axon_decision"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "request_id",
+              "receipt_id",
+              "audit_id",
+              "status",
+              "kind"
+            ],
+            "properties": {
+              "audit_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "labby_execution"
+                ]
+              },
+              "receipt_id": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "tool_call_id",
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tool_result"
+                ]
+              },
+              "result": {},
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "tool_call_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "answer",
+              "kind"
+            ],
+            "properties": {
+              "answer": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "final"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "AgentToolProposal": {
+        "type": "object",
+        "required": [
+          "toolCallId",
+          "toolId",
+          "contractHash",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {},
+          "contractHash": {
+            "type": "string"
+          },
+          "destructive": {
+            "type": "boolean"
+          },
+          "toolCallId": {
+            "type": "string"
+          },
+          "toolId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentTurnOptions": {
+        "type": "object",
+        "required": [
+          "delegationToken"
+        ],
+        "properties": {
+          "approvalTokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentApprovalToken"
+            }
+          },
+          "delegationToken": {
+            "type": "string"
+          },
+          "maxToolCalls": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "turnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentTurnResult": {
+        "type": "object",
+        "required": [
+          "turnId",
+          "status",
+          "correlation"
+        ],
+        "properties": {
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/AgentCorrelation"
+          },
+          "pendingApproval": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentToolProposal"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTurnStatus"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentTurnStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "proposing",
+          "awaiting_approval",
+          "executing",
+          "continuing",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "timed_out",
+          "interrupted"
+        ]
+      },
       "ApiError": {
         "type": "object",
         "description": "The shared, transport-neutral error shape.\n\nEvery crate reports failures as an `ApiError` so CLI, REST, MCP, jobs, logs,\nand progress streams render one consistent structure.",
@@ -12780,6 +13247,95 @@
           }
         }
       },
+      "LoadoutBinding": {
+        "type": "object",
+        "required": [
+          "integrationId",
+          "loadoutId",
+          "expectedRevision"
+        ],
+        "properties": {
+          "conversationBinding": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "integrationId": {
+            "type": "string"
+          },
+          "loadoutId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoadoutResolution": {
+        "type": "object",
+        "required": [
+          "integrationId",
+          "loadoutId",
+          "requestedRevision",
+          "effectiveRevision",
+          "catalogGeneration",
+          "executionContextId",
+          "correlationId",
+          "status",
+          "effectiveCapabilityCount",
+          "unavailableCapabilityCount"
+        ],
+        "properties": {
+          "catalogGeneration": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "effectiveCapabilityCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effectiveRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "executionContextId": {
+            "type": "string"
+          },
+          "integrationId": {
+            "type": "string"
+          },
+          "loadoutId": {
+            "type": "string"
+          },
+          "requestedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/LoadoutResolutionStatus"
+          },
+          "unavailableCapabilityCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoadoutResolutionStatus": {
+        "type": "string",
+        "enum": [
+          "effective",
+          "narrowed"
+        ]
+      },
       "LogoVariant": {
         "type": "object",
         "required": [
@@ -15302,6 +15858,16 @@
           "query"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentTurnOptions"
+              }
+            ]
+          },
           "ask_authoritative_boost": {
             "type": [
               "number",
@@ -15418,6 +15984,16 @@
               "null"
             ]
           },
+          "loadout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoadoutBinding"
+              }
+            ]
+          },
           "query": {
             "type": "string"
           },
@@ -15448,8 +16024,34 @@
           "message"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentTurnOptions"
+              }
+            ]
+          },
+          "loadout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoadoutBinding"
+              }
+            ]
+          },
           "message": {
             "type": "string"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -15461,8 +16063,28 @@
           "answer"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentTurnResult"
+              }
+            ]
+          },
           "answer": {
             "type": "string"
+          },
+          "loadout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoadoutResolution"
+              }
+            ]
           },
           "message": {
             "type": "string"

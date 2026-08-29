@@ -332,6 +332,9 @@ export const OutputPanel = memo(function OutputPanel({
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
             agentBubbles={agentBubbles}
+            client={client}
+            config={config}
+            action={active?.subcommand === "chat" ? "chat" : "ask"}
           />
         ) : run.kind === "streaming" && conversationMode ? (
           <AskConversation
@@ -343,6 +346,9 @@ export const OutputPanel = memo(function OutputPanel({
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
             agentBubbles={agentBubbles}
+            client={client}
+            config={config}
+            action={active?.subcommand === "chat" ? "chat" : "ask"}
           />
         ) : run.kind === "running" || run.kind === "streaming" ? (
           <PendingBody run={run} />
