@@ -196,6 +196,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/codex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["snapshot_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["events_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_operations_openapi_marker"];
+        put?: never;
+        post: operations["create_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["execute_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/operations/{id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reconcile_operation_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/server-requests/{id}/respond": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["respond_to_server_request_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/codex/{resource}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["resource_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/collections": {
         parameters: {
             query?: never;
@@ -1717,6 +1845,12 @@ export interface components {
             inputs: components["schemas"]["SourceProjectionInput"][];
             options?: components["schemas"]["CrawlOptions"];
         };
+        CreateOperationBody: {
+            expected_revision?: string | null;
+            idempotency_key: string;
+            method: string;
+            redacted_request: unknown;
+        };
         /** @enum {string} */
         CredentialKind: "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
         CredentialRequirement: {
@@ -1843,6 +1977,12 @@ export interface components {
          * @enum {string}
          */
         ErrorVisibility: "public" | "internal" | "sensitive";
+        ExecuteBody: {
+            action: string;
+            capability: string;
+            params: unknown;
+            revision?: string | null;
+        };
         /** @enum {string} */
         ExecutionAffinity: "inline" | "worker" | "scheduler" | "provider_bound";
         /** @enum {string} */
@@ -2734,6 +2874,9 @@ export interface components {
             sqlite: string;
             tei: string;
         };
+        ReconcileBody: {
+            revision: string;
+        };
         /** @description Bounded redaction provenance carried beside a public write. */
         RedactionMetadata: {
             /** Format: int32 */
@@ -3150,6 +3293,11 @@ export interface components {
             supported_actions?: string[];
             supported_routes: string[];
             version: string;
+        };
+        ServerRequestResponseBody: {
+            approved: boolean;
+            /** Format: int64 */
+            boot_id: number;
         };
         ServiceRetrieveVariantError: {
             error: string;
@@ -4189,6 +4337,262 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    snapshot_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Codex control runtime snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Codex control disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Codex control unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    events_openapi_marker: {
+        parameters: {
+            query?: {
+                /** @description Runtime boot identifier */
+                boot_id?: number;
+                /** @description Last observed sequence */
+                after?: number;
+                /** @description Maximum events */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded, redacted Codex event page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_operations_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unfinished Codex control operations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOperationBody"];
+            };
+        };
+        responses: {
+            /** @description Prepared Codex control operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid operation intent */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    approve_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Short-lived approval capability */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Operation cannot be approved */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    execute_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecuteBody"];
+            };
+        };
+        responses: {
+            /** @description Sanitized Codex mutation result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Codex app-server request failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reconcile_operation_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Operation identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileBody"];
+            };
+        };
+        responses: {
+            /** @description Ambiguous operation reconciled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Operation cannot be reconciled */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    respond_to_server_request_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Pending server-request identifier */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerRequestResponseBody"];
+            };
+        };
+        responses: {
+            /** @description Single-use response accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown, expired, or incompatible request */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resource_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description account, models, config, mcp, plugins, skills, hooks, or apps */
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redacted Codex resource projection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

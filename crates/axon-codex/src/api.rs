@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -152,6 +153,70 @@ impl WritePolicy {
             .then_some(())
             .ok_or_else(|| format!("{} is denied by Codex control policy", action.method()))
     }
+}
+
+pub fn validate_mutation_params(action: &ControlAction, params: &Value) -> Result<(), String> {
+    let encoded = serde_json::to_vec(params).map_err(|error| error.to_string())?;
+    if encoded.len() > 64 * 1024 {
+        return Err("Codex mutation parameters exceed 64 KiB".to_string());
+    }
+    if !params.is_object() {
+        return Err("Codex mutation parameters must be a JSON object".to_string());
+    }
+    reject_plaintext_secrets(params)?;
+    if matches!(
+        action,
+        ControlAction::PluginInstall
+            | ControlAction::MarketplaceAdd
+            | ControlAction::ExternalAgentConfigImport
+    ) {
+        let source = params
+            .get("source")
+            .and_then(Value::as_str)
+            .ok_or("artifact mutation requires a pinned HTTPS source")?;
+        if !source.starts_with("https://") {
+            return Err(
+                "artifact sources must use HTTPS; local and file sources are disabled".to_string(),
+            );
+        }
+        let digest = params
+            .get("sha256")
+            .and_then(Value::as_str)
+            .ok_or("artifact source requires an immutable sha256 digest")?;
+        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("artifact sha256 must be exactly 64 hexadecimal characters".to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn state_revision(value: &Value) -> Result<String, String> {
+    let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+}
+
+fn reject_plaintext_secrets(value: &Value) -> Result<(), String> {
+    match value {
+        Value::Object(values) => {
+            for (key, value) in values {
+                let lowered = key.to_ascii_lowercase();
+                let secret_key = ["token", "secret", "password", "authorization", "cookie"]
+                    .iter()
+                    .any(|needle| lowered.contains(needle));
+                if secret_key && value.as_str().is_some_and(|text| !text.starts_with("env:")) {
+                    return Err(format!("{key} must use an env: secret reference"));
+                }
+                reject_plaintext_secrets(value)?;
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                reject_plaintext_secrets(value)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// Decode an account response without retaining tokens or raw auth payloads.

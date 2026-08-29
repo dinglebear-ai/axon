@@ -41,3 +41,38 @@ fn account_projection_drops_tokens_and_masks_email() {
     assert!(!encoded.contains("secret"));
     assert!(!encoded.contains("accessToken"));
 }
+
+#[test]
+fn artifact_mutations_require_https_digest_and_secret_references() {
+    let action = ControlAction::PluginInstall;
+    assert!(validate_mutation_params(&action, &json!({"source":"file:///tmp/plugin"})).is_err());
+    assert!(
+        validate_mutation_params(
+            &action,
+            &json!({"source":"https://example.test/plugin.zip"})
+        )
+        .is_err()
+    );
+    assert!(
+        validate_mutation_params(
+            &action,
+            &json!({
+                "source":"https://example.test/plugin.zip",
+                "sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "api_token":"plain-text"
+            })
+        )
+        .is_err()
+    );
+    assert!(
+        validate_mutation_params(
+            &action,
+            &json!({
+                "source":"https://example.test/plugin.zip",
+                "sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "api_token":"env:PLUGIN_TOKEN"
+            })
+        )
+        .is_ok()
+    );
+}

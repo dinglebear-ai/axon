@@ -28,9 +28,9 @@ for line in sys.stdin:
         enabled: true,
         codex_binary: binary,
         control_home: home,
-        request_timeout: std::time::Duration::from_secs(2),
+        request_timeout: Duration::from_secs(2),
         read_concurrency: 2,
-        max_restart_backoff: std::time::Duration::from_secs(30),
+        max_restart_backoff: Duration::from_secs(30),
     };
     let transport = ControlTransport::start(&config, RuntimeEpoch(1))
         .await

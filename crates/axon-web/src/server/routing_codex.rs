@@ -23,7 +23,8 @@ pub(super) fn admin_routes() -> Router<ServeState> {
     Router::new()
         .route(
             "/v1/codex/operations",
-            post(handlers::codex_control::create_operation),
+            get(handlers::codex_control::list_operations)
+                .post(handlers::codex_control::create_operation),
         )
         .route(
             "/v1/codex/operations/{id}/approve",
@@ -32,5 +33,13 @@ pub(super) fn admin_routes() -> Router<ServeState> {
         .route(
             "/v1/codex/operations/{id}/execute",
             post(handlers::codex_control::execute_operation),
+        )
+        .route(
+            "/v1/codex/server-requests/{id}/respond",
+            post(handlers::codex_control::respond_to_server_request),
+        )
+        .route(
+            "/v1/codex/operations/{id}/reconcile",
+            post(handlers::codex_control::reconcile_operation),
         )
 }

@@ -33,6 +33,9 @@ pub(super) async fn block_loopback_destructive_request(
 }
 
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
+    if path == "/v1/codex" || path.starts_with("/v1/codex/") {
+        return true;
+    }
     if *method == Method::POST
         && (path == "/v1/sources"
             || path == "/v1/scrape"

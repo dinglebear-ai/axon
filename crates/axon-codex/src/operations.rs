@@ -89,6 +89,7 @@ impl OperationStore {
     pub fn open(path: &Path) -> Result<Self, String> {
         let connection = Connection::open(path).map_err(db_error)?;
         connection.execute_batch(SCHEMA).map_err(db_error)?;
+        migrate_columns(&connection);
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })
@@ -97,6 +98,7 @@ impl OperationStore {
     pub fn open_memory() -> Result<Self, String> {
         let connection = Connection::open_in_memory().map_err(db_error)?;
         connection.execute_batch(SCHEMA).map_err(db_error)?;
+        migrate_columns(&connection);
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })
@@ -136,7 +138,7 @@ impl OperationStore {
             .connection
             .lock()
             .map_err(|_| "operation store lock poisoned".to_string())?;
-        let changed = connection.execute("UPDATE codex_control_operations SET phase='approved',approver=?2,approval_digest=?3,updated_at=unixepoch() WHERE id=?1 AND phase='pending'", params![id,approver,capability_digest]).map_err(db_error)?;
+        let changed = connection.execute("UPDATE codex_control_operations SET phase='approved',approver=?2,approval_digest=?3,approved_at=unixepoch(),expires_at=unixepoch()+300,updated_at=unixepoch() WHERE id=?1 AND phase='pending'", params![id,approver,capability_digest]).map_err(db_error)?;
         if changed != 1 {
             return Err("operation is not pending approval".to_string());
         }
@@ -166,6 +168,14 @@ impl OperationStore {
         if row.phase != OperationPhase::Approved || row.approval_digest.as_deref() != Some(&digest)
         {
             return Err("approval capability is invalid or already consumed".to_string());
+        }
+        if row
+            .expires_at
+            .is_none_or(|expires| expires <= unix_timestamp())
+        {
+            transaction.execute("UPDATE codex_control_operations SET phase='expired',approval_digest=NULL,updated_at=unixepoch() WHERE id=?1", [id]).map_err(db_error)?;
+            transaction.commit().map_err(db_error)?;
+            return Err("approval capability expired; reapproval required".to_string());
         }
         if row.method != method || row.request_digest != supplied_request_digest {
             return Err("operation method or parameters changed; reapproval required".to_string());
@@ -222,6 +232,30 @@ impl OperationStore {
         get_operation(&connection, id)
     }
 
+    pub fn unfinished(&self, limit: usize) -> Result<Vec<ControlOperation>, String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| "operation store lock poisoned".to_string())?;
+        let mut statement = connection.prepare("SELECT id,actor,scope,method,request_digest,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE phase NOT IN ('reconciled','failed','denied','expired') ORDER BY updated_at DESC LIMIT ?1").map_err(db_error)?;
+        statement
+            .query_map([limit.min(100) as i64], row_to_operation)
+            .map_err(db_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_error)
+    }
+
+    pub fn resolve_recovery(&self, id: i64, revision: &str) -> Result<(), String> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| "operation store lock poisoned".to_string())?;
+        let changed = connection.execute("UPDATE codex_control_operations SET phase='reconciled',post_state_revision=?2,recovery_state='operator_reconciled',updated_at=unixepoch() WHERE id=?1 AND phase IN ('ambiguous','recovery_required','rollback_required')", params![id,revision]).map_err(db_error)?;
+        (changed == 1)
+            .then_some(())
+            .ok_or_else(|| "operation is not awaiting recovery".to_string())
+    }
+
     fn transition(
         &self,
         id: i64,
@@ -255,9 +289,10 @@ struct GuardRow {
     expected_revision: Option<String>,
     method: String,
     request_digest: String,
+    expires_at: Option<i64>,
 }
 fn get_operation_guard(connection: &Connection, id: i64) -> Result<Option<GuardRow>, String> {
-    connection.query_row("SELECT phase,approval_digest,target_home_identity,runtime_boot_id,policy_version,expected_revision,method,request_digest FROM codex_control_operations WHERE id=?1", [id], |row| Ok(GuardRow { phase: OperationPhase::parse(&row.get::<_,String>(0)?).map_err(|_| rusqlite::Error::InvalidQuery)?, approval_digest: row.get(1)?, target_home_identity: row.get(2)?, runtime_boot_id: row.get(3)?, policy_version: row.get(4)?, expected_revision: row.get(5)?, method: row.get(6)?, request_digest: row.get(7)? })).optional().map_err(db_error)
+    connection.query_row("SELECT phase,approval_digest,target_home_identity,runtime_boot_id,policy_version,expected_revision,method,request_digest,expires_at FROM codex_control_operations WHERE id=?1", [id], |row| Ok(GuardRow { phase: OperationPhase::parse(&row.get::<_,String>(0)?).map_err(|_| rusqlite::Error::InvalidQuery)?, approval_digest: row.get(1)?, target_home_identity: row.get(2)?, runtime_boot_id: row.get(3)?, policy_version: row.get(4)?, expected_revision: row.get(5)?, method: row.get(6)?, request_digest: row.get(7)?, expires_at: row.get(8)? })).optional().map_err(db_error)
 }
 fn get_operation(connection: &Connection, id: i64) -> Result<Option<ControlOperation>, String> {
     connection.query_row("SELECT id,actor,scope,method,request_digest,phase,approver,post_state_revision,recovery_state FROM codex_control_operations WHERE id=?1", [id], row_to_operation).optional().map_err(db_error)
@@ -294,7 +329,22 @@ fn db_error(error: rusqlite::Error) -> String {
     format!("Codex operation database error: {error}")
 }
 
-const SCHEMA: &str = "PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS codex_control_operations(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,scope TEXT NOT NULL,method TEXT NOT NULL,target_home_identity TEXT NOT NULL,runtime_boot_id INTEGER NOT NULL,policy_version TEXT NOT NULL,expected_revision TEXT,idempotency_key TEXT NOT NULL,request_digest TEXT NOT NULL,nonce TEXT NOT NULL,phase TEXT NOT NULL,approver TEXT,approval_digest TEXT,side_effect_started_at INTEGER,post_state_revision TEXT,recovery_state TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(actor,idempotency_key)); CREATE INDEX IF NOT EXISTS idx_codex_control_phase_updated ON codex_control_operations(phase,updated_at);";
+const SCHEMA: &str = "PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS codex_control_operations(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,scope TEXT NOT NULL,method TEXT NOT NULL,target_home_identity TEXT NOT NULL,runtime_boot_id INTEGER NOT NULL,policy_version TEXT NOT NULL,expected_revision TEXT,idempotency_key TEXT NOT NULL,request_digest TEXT NOT NULL,nonce TEXT NOT NULL,phase TEXT NOT NULL,approver TEXT,approval_digest TEXT,approved_at INTEGER,expires_at INTEGER,side_effect_started_at INTEGER,post_state_revision TEXT,recovery_state TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(actor,idempotency_key)); CREATE INDEX IF NOT EXISTS idx_codex_control_phase_updated ON codex_control_operations(phase,updated_at);";
+
+fn unix_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |value| value.as_secs() as i64)
+}
+
+fn migrate_columns(connection: &Connection) {
+    for statement in [
+        "ALTER TABLE codex_control_operations ADD COLUMN approved_at INTEGER",
+        "ALTER TABLE codex_control_operations ADD COLUMN expires_at INTEGER",
+    ] {
+        let _ = connection.execute(statement, []);
+    }
+}
 
 #[cfg(test)]
 #[path = "operations_tests.rs"]

@@ -98,11 +98,16 @@ impl EventRecorder {
                 return Err("Codex event cursor gap; refresh the snapshot".to_string());
             }
         }
+        let limit = limit.min(100);
+        if cursor.is_none() {
+            let start = history.len().saturating_sub(limit);
+            return Ok(history.iter().skip(start).cloned().collect());
+        }
         let sequence = cursor.map_or(0, |value| value.sequence);
         Ok(history
             .iter()
             .filter(|event| event.cursor.sequence > sequence)
-            .take(limit.min(100))
+            .take(limit)
             .cloned()
             .collect())
     }
@@ -130,7 +135,7 @@ fn sanitize_event(event: EventKind) -> EventKind {
     }
 }
 
-fn sanitize_value(value: Value) -> Value {
+pub fn sanitize_value(value: Value) -> Value {
     match value {
         Value::Object(values) => Value::Object(
             values

@@ -1,16 +1,21 @@
 //! Services-first facade for the dedicated Codex app-server control plane.
 
-use axon_codex::api::{ControlAction, WritePolicy, account_summary};
+use axon_codex::api::{
+    ControlAction, WritePolicy, account_summary, state_revision, validate_mutation_params,
+};
 use axon_codex::control::{ControlConfig, ControlRuntime, ControlStatus, home_identity};
+use axon_codex::events::sanitize_value;
 use axon_codex::events::{EventCursor, RecordedEvent};
 use axon_codex::operations::{ControlOperation, OperationIntent, OperationStore};
 use axon_codex::protocol::RuntimeEpoch;
 use axon_codex::transport::ControlTransport;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,11 +58,13 @@ impl CodexControlService {
             policy.skills as u8,
             policy.imports as u8
         );
+        let operations = OperationStore::open(database)?;
+        operations.recover_interrupted()?;
         Ok(Self {
             config: config.clone(),
             runtime: Arc::new(ControlRuntime::new(config)?),
             transport: Mutex::new(None),
-            operations: OperationStore::open(database)?,
+            operations,
             policy,
             home_identity,
             runtime_boot_id: AtomicU64::new(0),
@@ -91,7 +98,7 @@ impl CodexControlService {
                 transport.request(ControlAction::AppsList.method(), json!({})),
             );
             let account = serde_json::to_value(account_summary(&account?)).map_err(|error| error.to_string())?;
-            Ok(CodexControlSnapshot { status: self.runtime.status(), account, models: models?, config: config?, mcp_servers: mcp_servers?, plugins: plugins?, skills: skills?, hooks: hooks?, apps: apps? })
+            Ok(CodexControlSnapshot { status: self.runtime.status(), account, models: sanitize_value(models?), config: sanitize_value(config?), mcp_servers: sanitize_value(mcp_servers?), plugins: sanitize_value(plugins?), skills: sanitize_value(skills?), hooks: sanitize_value(hooks?), apps: sanitize_value(apps?) })
         }).await
     }
 
@@ -103,24 +110,36 @@ impl CodexControlService {
         self.runtime
             .with_read(|| transport.request(action.method(), params))
             .await
+            .map(sanitize_value)
     }
 
     pub async fn create_operation(
         &self,
         intent: &OperationIntent,
     ) -> Result<ControlOperation, String> {
-        self.policy
-            .authorize(&action_from_method(&intent.method)?)?;
-        self.transport().await?;
+        let action = action_from_method(&intent.method)?;
+        self.policy.authorize(&action)?;
+        validate_mutation_params(&action, &intent.redacted_request)?;
+        verify_artifact_source(&action, &intent.redacted_request).await?;
+        let transport = self.transport().await?;
         let mut trusted_intent = intent.clone();
         trusted_intent.target_home_identity = self.home_identity.clone();
         trusted_intent.runtime_boot_id = self.runtime_boot_id.load(Ordering::Acquire);
         trusted_intent.policy_version = self.policy_version.clone();
+        trusted_intent.expected_revision = Some(canonical_revision(&action, &transport).await?);
         self.operations.create(&trusted_intent)
     }
 
     pub fn approve_operation(&self, id: i64, approver: &str) -> Result<String, String> {
         self.operations.approve(id, approver)
+    }
+
+    pub fn unfinished_operations(&self) -> Result<Vec<ControlOperation>, String> {
+        self.operations.unfinished(100)
+    }
+
+    pub fn resolve_recovery(&self, id: i64, revision: &str) -> Result<(), String> {
+        self.operations.resolve_recovery(id, revision)
     }
 
     pub async fn execute_operation(
@@ -129,23 +148,35 @@ impl CodexControlService {
         capability: &str,
         action: ControlAction,
         params: Value,
-        revision: Option<&str>,
+        _revision: Option<&str>,
     ) -> Result<Value, String> {
         self.policy.authorize(&action)?;
-        self.operations.begin_execution(
-            id,
-            capability,
-            action.method(),
-            &params,
-            revision,
-            &self.home_identity,
-            self.runtime_boot_id.load(Ordering::Acquire),
-            &self.policy_version,
-        )?;
+        validate_mutation_params(&action, &params)?;
+        verify_artifact_source(&action, &params).await?;
         let transport = self.transport().await?;
+        let started = Arc::new(AtomicBool::new(false));
+        let started_in_lane = Arc::clone(&started);
+        let current_home = home_identity(&self.config.control_home)?;
+        if current_home != self.home_identity {
+            return Err("Codex control home identity changed; restart and reapprove".to_string());
+        }
         let result = self
             .runtime
-            .with_mutation(|| transport.request(action.method(), params))
+            .with_mutation(|| async {
+                let revision = canonical_revision(&action, &transport).await?;
+                self.operations.begin_execution(
+                    id,
+                    capability,
+                    action.method(),
+                    &params,
+                    Some(&revision),
+                    &self.home_identity,
+                    self.runtime_boot_id.load(Ordering::Acquire),
+                    &self.policy_version,
+                )?;
+                started_in_lane.store(true, Ordering::Release);
+                transport.request(action.method(), params).await
+            })
             .await;
         match result {
             Ok(value) => {
@@ -154,10 +185,12 @@ impl CodexControlService {
                     .and_then(Value::as_str)
                     .unwrap_or("unknown");
                 self.operations.reconcile(id, post_revision)?;
-                Ok(value)
+                Ok(sanitize_value(value))
             }
             Err(error) => {
-                self.operations.fail_ambiguous(id, &error)?;
+                if started.load(Ordering::Acquire) {
+                    self.operations.fail_ambiguous(id, &error)?;
+                }
                 Err(error)
             }
         }
@@ -171,10 +204,27 @@ impl CodexControlService {
         self.transport().await?.events_after(cursor, limit)
     }
 
+    pub async fn respond_to_server_request(
+        &self,
+        boot_id: u64,
+        request_id: u64,
+        approved: bool,
+    ) -> Result<(), String> {
+        self.transport()
+            .await?
+            .respond_to_server_request(boot_id, request_id, approved)
+            .await
+    }
+
     async fn transport(&self) -> Result<Arc<ControlTransport>, String> {
         let mut slot = self.transport.lock().await;
         if let Some(transport) = slot.as_ref() {
-            return Ok(Arc::clone(transport));
+            if transport.is_alive() {
+                return Ok(Arc::clone(transport));
+            }
+            self.runtime
+                .mark_degraded("Codex app-server exited; restarting on demand");
+            *slot = None;
         }
         let boot_id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -192,6 +242,82 @@ impl CodexControlService {
         *slot = Some(Arc::clone(&transport));
         Ok(transport)
     }
+}
+
+async fn canonical_revision(
+    action: &ControlAction,
+    transport: &ControlTransport,
+) -> Result<String, String> {
+    let (method, params) = match action {
+        ControlAction::AccountLoginStart
+        | ControlAction::AccountLoginCancel
+        | ControlAction::AccountLogout => (
+            ControlAction::AccountRead.method(),
+            json!({"refreshToken":false}),
+        ),
+        ControlAction::McpServerReload | ControlAction::McpServerOauthLogin => {
+            (ControlAction::McpServersList.method(), json!({}))
+        }
+        ControlAction::PluginInstall
+        | ControlAction::PluginUninstall
+        | ControlAction::MarketplaceAdd
+        | ControlAction::MarketplaceRemove
+        | ControlAction::MarketplaceUpgrade => (ControlAction::PluginsList.method(), json!({})),
+        ControlAction::SkillConfigWrite | ControlAction::ExternalAgentConfigImport => {
+            (ControlAction::SkillsList.method(), json!({}))
+        }
+        _ => (
+            ControlAction::ConfigRead.method(),
+            json!({"includeLayers":true}),
+        ),
+    };
+    state_revision(&sanitize_value(transport.request(method, params).await?))
+}
+
+async fn verify_artifact_source(action: &ControlAction, params: &Value) -> Result<(), String> {
+    if !matches!(
+        action,
+        ControlAction::PluginInstall
+            | ControlAction::MarketplaceAdd
+            | ControlAction::ExternalAgentConfigImport
+    ) {
+        return Ok(());
+    }
+    let source = params
+        .get("source")
+        .and_then(Value::as_str)
+        .ok_or("artifact source missing")?;
+    let expected = params
+        .get("sha256")
+        .and_then(Value::as_str)
+        .ok_or("artifact digest missing")?;
+    axon_core::http::validate_url_with_dns(source)
+        .await
+        .map_err(|error| format!("artifact source rejected: {error}"))?;
+    let response = axon_core::http::http_client()
+        .map_err(|error| error.to_string())?
+        .get(source)
+        .send()
+        .await
+        .map_err(|error| format!("artifact fetch failed: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("artifact fetch failed: {error}"))?;
+    let mut stream = response.bytes_stream();
+    let mut hasher = Sha256::new();
+    let mut size = 0_u64;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| format!("artifact fetch failed: {error}"))?;
+        size = size.saturating_add(chunk.len() as u64);
+        if size > axon_codex::artifacts::MAX_EXPANDED_BYTES {
+            return Err("artifact download exceeds size limit".to_string());
+        }
+        hasher.update(&chunk);
+    }
+    let actual = format!("{:x}", hasher.finalize());
+    if !actual.eq_ignore_ascii_case(expected) {
+        return Err("artifact SHA-256 does not match approved digest".to_string());
+    }
+    Ok(())
 }
 
 fn action_from_method(method: &str) -> Result<ControlAction, String> {

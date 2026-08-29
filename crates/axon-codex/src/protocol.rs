@@ -171,6 +171,7 @@ impl PendingRequests {
             id,
             receiver,
             registry: self.clone(),
+            completed: false,
         })
     }
 
@@ -229,13 +230,14 @@ pub struct PendingRequest {
     pub id: RequestId,
     receiver: oneshot::Receiver<PendingResult>,
     registry: PendingRequests,
+    completed: bool,
 }
 
 impl PendingRequest {
     /// Waits for a response and unregisters the request on timeout.
-    pub async fn wait(self, timeout: Duration) -> PendingResult {
+    pub async fn wait(mut self, timeout: Duration) -> PendingResult {
         let id = self.id;
-        match tokio::time::timeout(timeout, self.receiver).await {
+        let outcome = match tokio::time::timeout(timeout, &mut self.receiver).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(ProtocolError::RuntimeInterrupted {
                 previous: id.epoch,
@@ -245,12 +247,24 @@ impl PendingRequest {
                 let _ = self.registry.cancel(id);
                 Err(ProtocolError::Timeout(id))
             }
-        }
+        };
+        self.completed = true;
+        outcome
     }
 
     /// Cancels the pending request exactly once.
-    pub fn cancel(self) -> Result<(), ProtocolError> {
-        self.registry.cancel(self.id)
+    pub fn cancel(mut self) -> Result<(), ProtocolError> {
+        let result = self.registry.cancel(self.id);
+        self.completed = true;
+        result
+    }
+}
+
+impl Drop for PendingRequest {
+    fn drop(&mut self) {
+        if !self.completed {
+            let _ = self.registry.cancel(self.id);
+        }
     }
 }
 

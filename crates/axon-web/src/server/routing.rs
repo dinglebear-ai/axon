@@ -110,7 +110,6 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
         .route("/v1/stats", get(handlers::discovery::stats))
         .route("/v1/status", get(handlers::discovery::status))
         .route("/v1/doctor", get(handlers::discovery::doctor))
-        .merge(codex_routes::read_routes())
         .route("/v1/collections", get(handlers::collections))
         .route(
             "/v1/mobile/sessions",
@@ -297,6 +296,7 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
 /// satisfy this scope.
 fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
+        .merge(codex_routes::read_routes())
         .merge(codex_routes::admin_routes())
         .nest(
             "/v1/jobs",

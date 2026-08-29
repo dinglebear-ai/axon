@@ -8,9 +8,12 @@ use crate::protocol::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin};
 use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
@@ -25,7 +28,9 @@ pub struct ControlTransport {
     events: broadcast::Sender<RecordedEvent>,
     event_recorder: EventRecorder,
     reader_task: JoinHandle<()>,
-    timeout: std::time::Duration,
+    timeout: Duration,
+    alive: Arc<AtomicBool>,
+    server_requests: Arc<StdMutex<HashMap<u64, PendingServerRequest>>>,
 }
 
 impl ControlTransport {
@@ -37,7 +42,10 @@ impl ControlTransport {
         let mut command = tokio::process::Command::new(&config.codex_binary);
         command
             .arg("app-server")
+            .env_clear()
+            .env("HOME", &config.control_home)
             .env("CODEX_HOME", &config.control_home)
+            .env("PATH", "/usr/bin:/bin")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -59,12 +67,16 @@ impl ControlTransport {
         let pending = PendingRequests::new(epoch);
         let (events, _) = broadcast::channel(EVENT_CAPACITY);
         let event_recorder = EventRecorder::new(epoch);
+        let alive = Arc::new(AtomicBool::new(true));
+        let server_requests = Arc::new(StdMutex::new(HashMap::new()));
         let reader_task = spawn_reader(
             stdout,
             epoch,
             pending.clone(),
             events.clone(),
             event_recorder.clone(),
+            Arc::clone(&alive),
+            Arc::clone(&server_requests),
         );
         let transport = Self {
             epoch,
@@ -75,6 +87,8 @@ impl ControlTransport {
             event_recorder,
             reader_task,
             timeout: config.request_timeout,
+            alive,
+            server_requests,
         };
         transport.initialize().await?;
         Ok(transport)
@@ -96,6 +110,10 @@ impl ControlTransport {
         self.epoch
     }
 
+    pub fn is_alive(&self) -> bool {
+        self.alive.load(Ordering::Acquire)
+    }
+
     pub async fn request<P: Serialize>(
         &self,
         method: &'static str,
@@ -112,6 +130,44 @@ impl ControlTransport {
             Ok(value) => Ok(value),
             Err(error) => Err(rpc_error(error)),
         }
+    }
+
+    pub async fn respond_to_server_request(
+        &self,
+        boot_id: u64,
+        request_id: u64,
+        approved: bool,
+    ) -> Result<(), String> {
+        if boot_id != self.epoch.0 {
+            return Err("server request belongs to a previous runtime".to_string());
+        }
+        {
+            let mut registry = self
+                .server_requests
+                .lock()
+                .map_err(|_| "server request registry lock poisoned".to_string())?;
+            let pending_request = registry
+                .get(&request_id)
+                .cloned()
+                .ok_or("server request is unknown or already answered")?;
+            if pending_request.expires_at <= Instant::now() {
+                registry.remove(&request_id);
+                return Err("server request approval expired".to_string());
+            }
+            if approved && !approval_decision_supported(&pending_request.method) {
+                return Err(format!(
+                    "server request {} requires a typed response and cannot be generically approved",
+                    pending_request.method
+                ));
+            }
+            registry.remove(&request_id);
+        }
+        let response = if approved {
+            json!({"jsonrpc":"2.0","id":request_id,"result":{"decision":"accept"}})
+        } else {
+            json!({"jsonrpc":"2.0","id":request_id,"result":{"decision":"decline"}})
+        };
+        self.write_json(&response).await
     }
 
     pub async fn stop(self) -> Result<(), String> {
@@ -159,37 +215,65 @@ fn spawn_reader(
     pending: PendingRequests,
     events: broadcast::Sender<RecordedEvent>,
     recorder: EventRecorder,
+    alive: Arc<AtomicBool>,
+    server_requests: Arc<StdMutex<HashMap<u64, PendingServerRequest>>>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).split(b'\n');
+        let mut reader = BufReader::new(stdout);
         loop {
-            match lines.next_segment().await {
-                Ok(Some(line)) if line.is_empty() => continue,
-                Ok(Some(line)) => match parse_frame(epoch, &line) {
-                    Ok(IncomingMessage::Response { id, result }) => {
-                        let _ = pending.resolve(id, result);
-                    }
-                    Ok(IncomingMessage::Notification { method, params }) => {
-                        let _ = events
-                            .send(recorder.record(EventKind::Notification { method, params }));
-                    }
-                    Ok(IncomingMessage::ServerRequest { id, method, params }) => {
-                        let _ = events.send(recorder.record(EventKind::ServerRequest {
-                            request_id: id.sequence,
-                            method,
-                            params,
-                        }));
-                    }
-                    Ok(IncomingMessage::Unknown(_)) => {}
-                    Err(error) => {
-                        let _ = events.send(recorder.record(EventKind::ProtocolFailure {
-                            detail: error.to_string(),
-                        }));
-                    }
-                },
-                Ok(None) => {
+            let mut line = Vec::new();
+            let read = (&mut reader)
+                .take((crate::protocol::MAX_FRAME_BYTES + 1) as u64)
+                .read_until(b'\n', &mut line)
+                .await;
+            match read {
+                Ok(0) => {
                     let _ = events.send(recorder.record(EventKind::Exited));
                     break;
+                }
+                Ok(_) if line.len() > crate::protocol::MAX_FRAME_BYTES => {
+                    let _ = events.send(recorder.record(EventKind::ProtocolFailure {
+                        detail: "Codex control frame exceeded maximum size".to_string(),
+                    }));
+                    break;
+                }
+                Ok(_) if line == b"\n" => continue,
+                Ok(_) => {
+                    if line.last() == Some(&b'\n') {
+                        line.pop();
+                    }
+                    match parse_frame(epoch, &line) {
+                        Ok(IncomingMessage::Response { id, result }) => {
+                            let _ = pending.resolve(id, result);
+                        }
+                        Ok(IncomingMessage::Notification { method, params }) => {
+                            let _ = events
+                                .send(recorder.record(EventKind::Notification { method, params }));
+                        }
+                        Ok(IncomingMessage::ServerRequest { id, method, params }) => {
+                            let mut registry = server_requests
+                                .lock()
+                                .unwrap_or_else(|value| value.into_inner());
+                            registry.insert(
+                                id.sequence,
+                                PendingServerRequest {
+                                    method: method.clone(),
+                                    expires_at: Instant::now() + Duration::from_secs(300),
+                                },
+                            );
+                            let _ = events.send(recorder.record(EventKind::ServerRequest {
+                                request_id: id.sequence,
+                                method,
+                                params,
+                            }));
+                        }
+                        Ok(IncomingMessage::Unknown(_)) => {}
+                        Err(error) => {
+                            let _ = events.send(recorder.record(EventKind::ProtocolFailure {
+                                detail: error.to_string(),
+                            }));
+                        }
+                    }
                 }
                 Err(error) => {
                     let _ = events.send(recorder.record(EventKind::ProtocolFailure {
@@ -199,7 +283,25 @@ fn spawn_reader(
                 }
             }
         }
+        alive.store(false, Ordering::Release);
+        let _ = pending.restart(RuntimeEpoch(epoch.0.saturating_add(1)));
+        server_requests
+            .lock()
+            .unwrap_or_else(|value| value.into_inner())
+            .clear();
     })
+}
+
+fn approval_decision_supported(method: &str) -> bool {
+    method == "applyPatchApproval"
+        || method == "execCommandApproval"
+        || method.ends_with("requestApproval")
+}
+
+#[derive(Clone)]
+struct PendingServerRequest {
+    method: String,
+    expires_at: Instant,
 }
 
 fn protocol_error(error: ProtocolError) -> String {

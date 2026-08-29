@@ -54,8 +54,11 @@ impl ControlRuntime {
                 state: ControlState::Stopped,
                 detail: None,
                 restart_count: 0,
-                binary: Some(config.codex_binary.display().to_string()),
-                home: Some(config.control_home.display().to_string()),
+                binary: config
+                    .codex_binary
+                    .file_name()
+                    .map(|value| value.to_string_lossy().into_owned()),
+                home: Some("isolated-control-home".to_string()),
             }
         } else {
             ControlStatus {
@@ -207,9 +210,15 @@ fn validate_binary(path: &Path) -> Result<(), String> {
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
         if metadata.permissions().mode() & 0o111 == 0 {
             return Err("Codex control binary must be executable".to_string());
+        }
+        if metadata.permissions().mode() & 0o022 != 0 {
+            return Err("Codex control binary must not be group/world writable".to_string());
+        }
+        if metadata.uid() != nix::unistd::Uid::effective().as_raw() {
+            return Err("Codex control binary must be owned by the Axon service user".to_string());
         }
     }
     validate_ancestors(path.parent().unwrap_or(Path::new("/")))
@@ -224,6 +233,16 @@ fn validate_home(path: &Path) -> Result<(), String> {
     })?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err("Codex control home must be a non-symlink directory".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != nix::unistd::Uid::effective().as_raw() || metadata.mode() & 0o022 != 0
+        {
+            return Err(
+                "Codex control home must be service-owned and not group/world writable".to_string(),
+            );
+        }
     }
     validate_ancestors(path)
 }
@@ -242,7 +261,7 @@ fn validate_ancestors(path: &Path) -> Result<(), String> {
         {
             use std::os::unix::fs::MetadataExt;
             let mode = metadata.mode();
-            if ancestor != Path::new("/") && mode & 0o002 != 0 && mode & 0o1000 == 0 {
+            if ancestor != Path::new("/") && mode & 0o022 != 0 {
                 return Err(format!(
                     "untrusted writable ancestor: {}",
                     ancestor.display()

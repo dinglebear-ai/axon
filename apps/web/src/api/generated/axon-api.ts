@@ -228,6 +228,12 @@ export type components = {
             "inputs": components['schemas']['SourceProjectionInput'][];
             "options"?: components['schemas']['CrawlOptions'];
         };
+        "CreateOperationBody": {
+            "expected_revision"?: string | null;
+            "idempotency_key": string;
+            "method": string;
+            "redacted_request": unknown;
+        };
         "CredentialKind": "api_key" | "o_auth_token" | "bearer_token" | "basic_auth" | "cookie" | "ssh_key" | "local_config";
         "CredentialRequirement": {
             "credential_kind": components['schemas']['CredentialKind'];
@@ -327,6 +333,12 @@ export type components = {
         "ErrorSeverity": "info" | "warning" | "degraded" | "failed" | "fatal";
         "ErrorStage": "parsing" | "validation" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "enriching" | "normalizing" | "parsing_content" | "graphing" | "preparing" | "batching" | "embedding" | "vectorizing" | "upserting" | "publishing" | "cleaning" | "retrieving" | "synthesizing" | "evaluating" | "observing" | "storage" | "provider" | "transport" | "internal";
         "ErrorVisibility": "public" | "internal" | "sensitive";
+        "ExecuteBody": {
+            "action": string;
+            "capability": string;
+            "params": unknown;
+            "revision"?: string | null;
+        };
         "ExecutionAffinity": "inline" | "worker" | "scheduler" | "provider_bound";
         "ExecutionMode": "foreground" | "background" | "wait";
         "ExecutionPolicy": {
@@ -934,6 +946,9 @@ export type components = {
             "sqlite": string;
             "tei": string;
         };
+        "ReconcileBody": {
+            "revision": string;
+        };
         "RedactionMetadata": {
             "detector_count": number;
             "detector_names": string[];
@@ -1246,6 +1261,10 @@ export type components = {
             "supported_actions"?: string[];
             "supported_routes": string[];
             "version": string;
+        };
+        "ServerRequestResponseBody": {
+            "approved": boolean;
+            "boot_id": number;
         };
         "ServiceRetrieveVariantError": {
             "error": string;
@@ -1595,6 +1614,14 @@ export type paths = {
     "/v1/chat": { post: operations["v1_chat"] };
     "/v1/chat/stream": { post: operations["v1_chat_stream"] };
     "/v1/code-search": { post: operations["codeSearch"] };
+    "/v1/codex": { get: operations["snapshot_openapi_marker"] };
+    "/v1/codex/events": { get: operations["events_openapi_marker"] };
+    "/v1/codex/operations": { get: operations["list_operations_openapi_marker"]; post: operations["create_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/approve": { post: operations["approve_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/execute": { post: operations["execute_operation_openapi_marker"] };
+    "/v1/codex/operations/{id}/reconcile": { post: operations["reconcile_operation_openapi_marker"] };
+    "/v1/codex/server-requests/{id}/respond": { post: operations["respond_to_server_request_openapi_marker"] };
+    "/v1/codex/{resource}": { get: operations["resource_openapi_marker"] };
     "/v1/collections": { get: operations["collections_openapi_marker"] };
     "/v1/crawl": { post: operations["crawlSources"] };
     "/v1/diff": { post: operations["diff"] };
@@ -1686,6 +1713,15 @@ export type operations = {
     "v1_chat": { method: "post"; path: "/v1/chat"; operationId: "v1_chat"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": components['schemas']['RestChatResponse']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "v1_chat_stream": { method: "post"; path: "/v1/chat/stream"; operationId: "v1_chat_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestChatRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "codeSearch": { method: "post"; path: "/v1/code-search"; operationId: "codeSearch"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CodeSearchRequest']; responses: { "200": components['schemas']['BatchResult_QueryResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "snapshot_openapi_marker": { method: "get"; path: "/v1/codex"; operationId: "snapshot_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "404": unknown; "503": unknown }; security: never };
+    "events_openapi_marker": { method: "get"; path: "/v1/codex/events"; operationId: "events_openapi_marker"; parameters: { query: { "boot_id"?: number; "after"?: number; "limit"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown }; security: never };
+    "list_operations_openapi_marker": { method: "get"; path: "/v1/codex/operations"; operationId: "list_operations_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown }; security: never };
+    "create_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations"; operationId: "create_operation_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CreateOperationBody']; responses: { "200": unknown; "400": unknown }; security: never };
+    "approve_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/approve"; operationId: "approve_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: never; responses: { "200": unknown; "400": unknown }; security: never };
+    "execute_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/execute"; operationId: "execute_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ExecuteBody']; responses: { "200": unknown; "502": unknown }; security: never };
+    "reconcile_operation_openapi_marker": { method: "post"; path: "/v1/codex/operations/{id}/reconcile"; operationId: "reconcile_operation_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ReconcileBody']; responses: { "200": unknown; "400": unknown }; security: never };
+    "respond_to_server_request_openapi_marker": { method: "post"; path: "/v1/codex/server-requests/{id}/respond"; operationId: "respond_to_server_request_openapi_marker"; parameters: { query: Record<string, never>; path: { "id": number } }; requestBody: components['schemas']['ServerRequestResponseBody']; responses: { "200": unknown; "502": unknown }; security: never };
+    "resource_openapi_marker": { method: "get"; path: "/v1/codex/{resource}"; operationId: "resource_openapi_marker"; parameters: { query: Record<string, never>; path: { "resource": string } }; requestBody: never; responses: { "200": unknown; "404": unknown }; security: never };
     "collections_openapi_marker": { method: "get"; path: "/v1/collections"; operationId: "collections_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['PanelCollectionsResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "crawlSources": { method: "post"; path: "/v1/crawl"; operationId: "crawlSources"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CrawlRequest']; responses: { "200": components['schemas']['BatchResult_SourceResult']; "202": components['schemas']['BatchResult_SourceResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "429": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "diff": { method: "post"; path: "/v1/diff"; operationId: "diff"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestDiffRequest']; responses: { "200": components['schemas']['DiffResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
