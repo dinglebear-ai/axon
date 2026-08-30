@@ -210,21 +210,26 @@ async fn flush_pending(
         // Retain only the tail envelopes that supplied the final unpublished
         // pool. Earlier envelopes backed pools that were checkpointed by a
         // subsequent push and must return their permits immediately.
-        let mut retained_chunks = 0_usize;
-        let mut tail_start = pending.len();
-        for (index, chunks) in envelope_chunks.iter().enumerate().rev() {
-            tail_start = index;
-            retained_chunks = retained_chunks.saturating_add(*chunks);
-            if retained_chunks >= pending_pool_chunks {
-                break;
-            }
-        }
+        let tail_start = retained_tail_start(&envelope_chunks, pending_pool_chunks);
         held.extend(pending.drain(tail_start..));
         pending.clear();
     } else {
         pending.clear();
     }
     Ok(())
+}
+
+fn retained_tail_start(envelope_chunks: &[usize], pending_pool_chunks: usize) -> usize {
+    let mut retained_chunks = 0_usize;
+    let mut tail_start = envelope_chunks.len();
+    for (index, chunks) in envelope_chunks.iter().enumerate().rev() {
+        tail_start = index;
+        retained_chunks = retained_chunks.saturating_add(*chunks);
+        if retained_chunks >= pending_pool_chunks {
+            break;
+        }
+    }
+    tail_start
 }
 
 #[cfg(test)]

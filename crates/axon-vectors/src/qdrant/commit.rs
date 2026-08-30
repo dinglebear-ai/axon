@@ -152,14 +152,8 @@ pub async fn mark_unchanged_items_committed_rest(
     let mut requests = 0u64;
     // Qdrant's `match.any` request size is bounded here so sparse carry-forward
     // scales with selected item keys rather than the complete prior generation.
-    for key_batch in live_keys.chunks(256) {
-        let filter = serde_json::json!({
-            "must": [
-                { "key": "source_id", "match": { "value": &source_id.0 } },
-                { "key": "committed_generation", "match": { "value": previous_generation_value } },
-                { "key": "source_item_key", "match": { "any": key_batch } },
-            ]
-        });
+    for key_batch in live_keys.chunks(CARRY_FORWARD_KEY_BATCH_SIZE) {
+        let filter = carry_forward_filter(&source_id, previous_generation_value, key_batch);
         let mut offset: Option<serde_json::Value> = None;
         loop {
             let mut body = serde_json::json!({
@@ -225,6 +219,26 @@ pub async fn mark_unchanged_items_committed_rest(
         usage: request_usage(requests),
     })
 }
+
+const CARRY_FORWARD_KEY_BATCH_SIZE: usize = 256;
+
+fn carry_forward_filter(
+    source_id: &SourceId,
+    previous_generation: i64,
+    keys: &[String],
+) -> serde_json::Value {
+    serde_json::json!({
+        "must": [
+            { "key": "source_id", "match": { "value": &source_id.0 } },
+            { "key": "committed_generation", "match": { "value": previous_generation } },
+            { "key": "source_item_key", "match": { "any": keys } },
+        ]
+    })
+}
+
+#[cfg(test)]
+#[path = "commit_tests.rs"]
+mod tests;
 
 async fn upsert_carried_points(
     store: &QdrantVectorStore,

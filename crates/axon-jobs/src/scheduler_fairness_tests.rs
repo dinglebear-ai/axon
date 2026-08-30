@@ -211,6 +211,49 @@ async fn later_fitting_waiter_uses_capacity_stranded_by_non_fitting_head() {
 }
 
 #[tokio::test]
+async fn fitting_waiter_beyond_sixty_four_blocked_rows_uses_residual_capacity() {
+    let ids = (1_000_u128..1_067).collect::<Vec<_>>();
+    let pool = fixture(&ids).await;
+    let scheduler = ProviderScheduler::new(
+        pool,
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei-fairness".into(),
+            authority_id: "authority-fairness".into(),
+        },
+        SchedulerConfig {
+            capacity: 3,
+            interactive_reserve: 0,
+            max_entries: 128,
+            max_units: 256,
+        },
+    )
+    .expect("scheduler");
+    let held = scheduler
+        .reserve(request(1_000, "held", JobPriority::Normal, 2))
+        .await
+        .expect("held");
+    assert!(held.granted);
+    for id in 1_001_u128..1_066 {
+        let blocked = scheduler
+            .reserve(request(
+                id,
+                &format!("blocked-{id}"),
+                JobPriority::Normal,
+                2,
+            ))
+            .await
+            .expect("blocked waiter");
+        assert!(!blocked.granted);
+    }
+    let fitting = scheduler
+        .reserve(request(1_066, "fitting", JobPriority::Normal, 1))
+        .await
+        .expect("fitting waiter");
+    assert!(fitting.granted, "the fitting waiter after row 64 must run");
+}
+
+#[tokio::test]
 async fn embedding_saturation_does_not_consume_vector_capacity() {
     let pool = fixture(&[61, 62]).await;
     let embedding = ProviderScheduler::new(

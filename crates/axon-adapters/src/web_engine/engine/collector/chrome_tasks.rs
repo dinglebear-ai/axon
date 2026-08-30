@@ -3,7 +3,7 @@ use crate::web_engine::engine::thin_refetch::{RefetchResult, render_html_with_ch
 use crate::web_engine::engine::{CrawlDiagnostic, CrawlSummary};
 use crate::web_engine::manifest::ManifestEntry;
 use axon_core::content::url_to_stable_filename;
-use axon_core::logging::{log_info, log_warn};
+use axon_core::logging::log_info;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -57,9 +57,9 @@ pub(super) fn spawn_chrome_render(
 pub(super) async fn drain_chrome_tasks(
     chrome_tasks: &mut JoinSet<RefetchResult>,
     chrome_results: &mut Vec<RefetchResult>,
-) {
+) -> Result<(), String> {
     if chrome_tasks.is_empty() {
-        return;
+        return Ok(());
     }
     let pending = chrome_tasks.len();
     log_info(&format!(
@@ -68,9 +68,10 @@ pub(super) async fn drain_chrome_tasks(
     while let Some(task_result) = chrome_tasks.join_next().await {
         match task_result {
             Ok(r) => chrome_results.push(r),
-            Err(e) => log_warn(&format!("thin_refetch: Chrome task panicked: {e}")),
+            Err(e) => return Err(format!("thin_refetch: Chrome render task failed: {e}")),
         }
     }
+    Ok(())
 }
 
 /// Write a thin page to disk using the already-transformed markdown and hash

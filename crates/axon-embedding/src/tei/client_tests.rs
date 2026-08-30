@@ -69,7 +69,7 @@ async fn embed_all_explicitly_disables_truncation_for_long_input() {
         endpoint: server.base_url(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 1,
-        max_input_tokens: 8_192,
+        max_input_tokens: 32_768,
         max_batch_tokens: 131_072,
         max_concurrent_requests: 1,
         max_in_flight_inputs: 1,
@@ -171,6 +171,69 @@ async fn embed_all_overlaps_independent_client_batches() {
     assert_eq!(outcome.vectors.len(), 4);
     assert_eq!(outcome.requests, 4);
     endpoint.assert_calls_async(4).await;
+}
+
+#[tokio::test]
+async fn embed_all_sends_a_long_singleton_for_provider_tokenization() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200).json_body(serde_json::json!([[1.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 8,
+        max_input_tokens: 1,
+        max_batch_tokens: 8,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["12345".to_string()])
+        .await
+        .expect("a conservative estimate must not reject a valid singleton");
+    assert_eq!(outcome.vectors.len(), 1);
+    endpoint.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn embed_all_splits_batches_at_the_configured_token_boundary() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200).json_body(serde_json::json!([[1.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 8,
+        max_input_tokens: 8,
+        max_batch_tokens: 1,
+        max_concurrent_requests: 2,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["aaaa".to_string(), "bbbb".to_string()])
+        .await
+        .expect("two one-token inputs should be packed separately");
+    assert_eq!(outcome.vectors.len(), 2);
+    assert_eq!(outcome.requests, 2);
+    endpoint.assert_calls_async(2).await;
 }
 
 #[test]

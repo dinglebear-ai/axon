@@ -443,6 +443,8 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC",
             "AXON_EMBED_CACHE_ENABLED",
             "AXON_EMBED_CACHE_MAX_ENTRIES",
+            "AXON_EMBED_SCHEDULER_ENABLED",
+            "AXON_VECTOR_UPSERT_EMBED_OVERLAP",
         ],
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
@@ -451,6 +453,8 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             env::set_var("AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC", "0");
             env::remove_var("AXON_EMBED_CACHE_ENABLED");
             env::set_var("AXON_EMBED_CACHE_MAX_ENTRIES", "300000");
+            env::remove_var("AXON_EMBED_SCHEDULER_ENABLED");
+            env::remove_var("AXON_VECTOR_UPSERT_EMBED_OVERLAP");
 
             let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
 
@@ -470,6 +474,12 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert_eq!(cfg.openai_embed_max_concurrent, 16);
             assert_eq!(cfg.openai_embed_max_in_flight_inputs, 256);
             assert_eq!(cfg.openai_embed_pool_max_inputs, 768);
+
+            env::set_var("AXON_EMBED_SCHEDULER_ENABLED", "true");
+            env::set_var("AXON_VECTOR_UPSERT_EMBED_OVERLAP", "true");
+            let overridden = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+            assert!(overridden.embed_scheduler_enabled);
+            assert!(overridden.vector_upsert_embed_overlap);
         },
     );
 }

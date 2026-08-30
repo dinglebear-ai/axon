@@ -9,51 +9,10 @@
 //! - `docs/pipeline-unification/configuration/config-contract.md` (20-section
 //!   shape + required key table)
 
-/// One `config.toml` setting from the contract's "Required Config Keys" table.
-pub struct ConfigKeySpec {
-    pub key: &'static str,
-    pub section: &'static str,
-    pub kind: &'static str,
-    pub default_json: &'static str,
-    pub owner_crate: &'static str,
-    pub env_override: Option<&'static str>,
-    /// Whether this key holds secret material. Per the config-contract design
-    /// rule ("Secrets and deployment URLs stay in `.env`"), every key in this
-    /// registry is non-secret by construction — a secret-shaped tuning knob
-    /// belongs in the env var registry instead, not here.
-    pub secret: bool,
-    /// Whether changing this key requires a process restart to take effect.
-    /// Axon has no config hot-reload path today (config is loaded once at
-    /// process start — see `crates/axon-core/src/config`), so every currently
-    /// enforced config key is restart-required.
-    pub restart_required: bool,
-    pub description: &'static str,
-}
-
-/// One `.env` variable from the contract's "Required Env Variables" table.
-pub struct EnvVarSpec {
-    pub name: &'static str,
-    pub required: bool,
-    pub secret: bool,
-    pub default: Option<&'static str>,
-    pub owner_crate: &'static str,
-    pub compose_usage: bool,
-    pub validation: &'static str,
-    pub example_allowed: bool,
-    pub description: &'static str,
-}
-
-type RawConfigKey = (
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    Option<&'static str>,
-    bool,
-    bool,
-    &'static str,
-);
+#[path = "config_schema_registry/types.rs"]
+mod types;
+use types::RawConfigKey;
+pub use types::{ConfigKeySpec, EnvVarSpec};
 
 // (key, section, kind, default_json, owner_crate, env_key, secret, restart_required, description)
 //
@@ -73,7 +32,7 @@ type RawConfigKey = (
 // (`config_keys_and_env_vars_do_not_reuse_removed_names` enforces this).
 // Every other key without a documented override is `None` rather than
 // guessed.
-const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
+pub(super) const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
     (
         "server.default_collection",
         "server",
@@ -269,6 +228,39 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "Maximum vectors retained by the persistent embedding cache.",
     ),
     (
+        "providers.embedding.scheduler_enabled",
+        "providers",
+        "boolean",
+        "true",
+        "axon-services",
+        Some("AXON_EMBED_SCHEDULER_ENABLED"),
+        false,
+        true,
+        "Use the bounded preparation and embedding scheduler.",
+    ),
+    (
+        "providers.embedding.max_batch_tokens",
+        "providers",
+        "integer",
+        "65536",
+        "axon-embedding",
+        Some("AXON_TEI_CLIENT_MAX_BATCH_TOKENS"),
+        false,
+        true,
+        "Conservative maximum token budget for one TEI client batch.",
+    ),
+    (
+        "providers.embedding.vector_upsert_overlap_enabled",
+        "providers",
+        "boolean",
+        "true",
+        "axon-services",
+        Some("AXON_VECTOR_UPSERT_EMBED_OVERLAP"),
+        false,
+        true,
+        "Overlap the next embedding request with the current vector upsert.",
+    ),
+    (
         "providers.vector.write_concurrency",
         "providers",
         "integer",
@@ -454,75 +446,11 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
 mod projection_batch;
 pub(super) use projection_batch::PROJECTION_BATCH_KEYS;
 
-pub fn config_key_registry() -> Vec<ConfigKeySpec> {
-    let mut keys: Vec<_> = RAW_CONFIG_KEYS
-        .iter()
-        .map(
-            |&(
-                key,
-                section,
-                kind,
-                default_json,
-                owner_crate,
-                env_override,
-                secret,
-                restart_required,
-                description,
-            )| {
-                debug_assert!(
-                    REQUIRED_CONFIG_SECTIONS.contains(&section),
-                    "config key {key} has section {section} outside the 20-section contract"
-                );
-                ConfigKeySpec {
-                    key,
-                    section,
-                    kind,
-                    default_json,
-                    owner_crate,
-                    env_override,
-                    secret,
-                    restart_required,
-                    description,
-                }
-            },
-        )
-        .collect();
-    keys.extend(
-        PROJECTION_BATCH_KEYS
-            .iter()
-            .map(|&(suffix, default_json, env, description)| ConfigKeySpec {
-                key: Box::leak(format!("server.projection_batch.{suffix}").into_boxed_str()),
-                section: "server",
-                kind: "integer",
-                default_json,
-                owner_crate: "axon-core",
-                env_override: Some(env),
-                secret: false,
-                restart_required: true,
-                description,
-            }),
-    );
-    keys
-}
-
-/// The 15 required top-level `config.toml` sections from the contract.
-pub const REQUIRED_CONFIG_SECTIONS: &[&str] = &[
-    "server",
-    "sources",
-    "pipeline",
-    "watch",
-    "jobs",
-    "providers",
-    "retrieval",
-    "ask",
-    "crawl",
-    "memory",
-    "graph",
-    "artifacts",
-    "prune",
-    "observability",
-    "security",
-];
+#[path = "config_schema_registry/keys.rs"]
+mod keys;
+#[cfg(test)]
+pub use keys::REQUIRED_CONFIG_SECTIONS;
+pub use keys::config_key_registry;
 
 #[path = "config_schema_registry/env_vars.rs"]
 mod env_vars;

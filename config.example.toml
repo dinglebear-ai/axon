@@ -258,7 +258,11 @@
 # Max chunk inputs pooled into one native TEI embedding wave.
 # Env: AXON_EMBED_POOL_MAX_INPUTS
 # pool-max-inputs = 512
+# Env: AXON_TEI_CLIENT_MAX_BATCH_TOKENS
+# max-batch-tokens = 65536
+# Env: AXON_EMBED_SCHEDULER_ENABLED
 # scheduler-enabled = true
+# Env: AXON_VECTOR_UPSERT_EMBED_OVERLAP
 # vector-upsert-overlap-enabled = true
 # Concurrent source-document preparation tasks before embedding.
 # Env: AXON_EMBED_PREP_CONCURRENCY

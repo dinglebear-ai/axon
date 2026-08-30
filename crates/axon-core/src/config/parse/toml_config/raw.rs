@@ -238,6 +238,7 @@ pub(in crate::config) struct RawEmbeddingSection {
     pub batch_size: Option<usize>,
     pub max_concurrent_requests: Option<usize>,
     pub max_in_flight_inputs: Option<usize>,
+    pub max_batch_tokens: Option<usize>,
     pub request_timeout_ms: Option<u64>,
     pub max_retries: Option<usize>,
     pub retry_backoff_ms: Option<u64>,

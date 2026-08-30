@@ -898,6 +898,10 @@ pub struct Config {
     /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.pool-max-inputs`. Clamped 64–65536. Default: 512.
     pub embed_pool_max_inputs: usize,
 
+    /// Conservative maximum token budget for one TEI client batch.
+    /// Env: `AXON_TEI_CLIENT_MAX_BATCH_TOKENS`. TOML: `providers.embedding.max-batch-tokens`. Clamped 8192–1048576. Default: 65536.
+    pub embed_tei_max_batch_tokens: u32,
+
     /// Use the bounded preparation/embedding scheduler.
     /// Env: `AXON_EMBED_SCHEDULER_ENABLED`. TOML: `providers.embedding.scheduler-enabled`. Default: true.
     pub embed_scheduler_enabled: bool,

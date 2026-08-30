@@ -269,6 +269,10 @@ impl fmt::Debug for Config {
             .field("embed_cache_enabled", &self.embed_cache_enabled)
             .field("embed_cache_max_entries", &self.embed_cache_max_entries)
             .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
+            .field(
+                "embed_tei_max_batch_tokens",
+                &self.embed_tei_max_batch_tokens,
+            )
             .field("embed_scheduler_enabled", &self.embed_scheduler_enabled)
             .field(
                 "vector_upsert_embed_overlap",

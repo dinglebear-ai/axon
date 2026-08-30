@@ -66,7 +66,7 @@ fn build_tei_provider(cfg: &Config, identity: &EmbeddingIdentity) -> TeiEmbeddin
         max_concurrent_requests: cfg.embed_tei_max_concurrent,
         max_in_flight_inputs: cfg.embed_tei_max_in_flight_inputs,
         max_input_tokens: MAX_INPUT_TOKENS,
-        max_batch_tokens: tei_client_max_batch_tokens(),
+        max_batch_tokens: cfg.embed_tei_max_batch_tokens,
         instruction_support: query_instruction_support(cfg),
         retry_backoff_ms: cfg.embed_tei_retry_backoff_ms,
         max_attempts: tei_max_attempts(cfg),
@@ -298,7 +298,7 @@ async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration
         max_concurrent_requests: cfg.embed_tei_max_concurrent,
         max_in_flight_inputs: cfg.embed_tei_max_in_flight_inputs,
         max_input_tokens: MAX_INPUT_TOKENS,
-        max_batch_tokens: tei_client_max_batch_tokens(),
+        max_batch_tokens: cfg.embed_tei_max_batch_tokens,
         instruction_support: query_instruction_support(cfg),
         retry_backoff_ms: cfg.embed_tei_retry_backoff_ms,
         max_attempts: tei_max_attempts(cfg),
@@ -366,21 +366,6 @@ const EMBEDDING_MODEL_FALLBACK: &str = "Qwen3-Embedding-0.6B";
 const EMBEDDING_DIMENSIONS_FALLBACK: u32 = 1024;
 /// Max input tokens per embedding request (mirrors the provider capability).
 const MAX_INPUT_TOKENS: u32 = 8192;
-/// Max tokens pooled into one TEI embed batch.
-const MAX_BATCH_TOKENS: u32 = 65_536;
-
-fn tei_client_max_batch_tokens() -> u32 {
-    let configured = std::env::var("AXON_TEI_CLIENT_MAX_BATCH_TOKENS").ok();
-    tei_client_max_batch_tokens_from_value(configured.as_deref())
-}
-
-fn tei_client_max_batch_tokens_from_value(value: Option<&str>) -> u32 {
-    value
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(MAX_BATCH_TOKENS)
-        .clamp(MAX_INPUT_TOKENS, 1_048_576)
-}
-
 struct EmbeddingComposition {
     provider: Arc<dyn EmbeddingProvider>,
     #[cfg(test)]

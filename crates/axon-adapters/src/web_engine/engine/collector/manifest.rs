@@ -100,7 +100,14 @@ pub async fn write_page_to_manifest(
                 Err(std::io::Error::other("no previous path"))
             };
             if link_res.is_err() {
-                return Ok(false);
+                tokio::fs::write(&path, trimmed.as_bytes())
+                    .await
+                    .map_err(|e| {
+                        format!(
+                            "write failed after cache link fallback for {}: {e}",
+                            super::sanitized_url_for_log(url)
+                        )
+                    })?;
             }
             append_manifest_entry(manifest, entry).await?;
             Ok(true)

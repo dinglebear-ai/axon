@@ -313,6 +313,7 @@ pub(super) struct TomlTeiSection {
 pub(super) struct TomlEmbedSection {
     pub tei_max_concurrent: Option<usize>,
     pub tei_max_in_flight_inputs: Option<usize>,
+    pub tei_max_batch_tokens: Option<usize>,
     pub tei_retry_backoff_ms: Option<u64>,
     pub tei_cooldown_after_failures: Option<usize>,
     pub tei_cooldown_secs: Option<u64>,

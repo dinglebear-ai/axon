@@ -242,14 +242,12 @@ impl TeiClient {
         let mut batch_tokens = 0_usize;
         let mut batch_bytes = 0_usize;
         for (index, text) in ordered {
-            let tokens = text.chars().count().div_ceil(4).max(1);
+            // Without the provider model's tokenizer, one Unicode scalar per
+            // token is the conservative bound: it may underfill a batch, but
+            // it cannot admit CJK, emoji, code, or punctuation at a 4x
+            // undercount as the former chars/4 heuristic could.
+            let tokens = text.chars().count().max(1);
             let bytes = text.len().saturating_add(4);
-            if tokens > self.max_input_tokens {
-                return Err(self.error(
-                    "embedding.tei.input_too_large",
-                    "one embedding input exceeds the configured token limit",
-                ));
-            }
             if bytes > MAX_BATCH_BYTES {
                 return Err(self.error(
                     "embedding.tei.input_too_large",
@@ -258,6 +256,7 @@ impl TeiClient {
             }
             if !texts.is_empty()
                 && (texts.len() >= self.max_batch_inputs
+                    || tokens > self.max_input_tokens
                     || batch_tokens.saturating_add(tokens) > self.max_batch_tokens
                     || batch_bytes.saturating_add(bytes) > MAX_BATCH_BYTES)
             {

@@ -198,6 +198,13 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         64,
         65_536,
     );
+    cfg.embed_tei_max_batch_tokens = resolve_clamped_usize(
+        "AXON_TEI_CLIENT_MAX_BATCH_TOKENS",
+        toml.embed.tei_max_batch_tokens,
+        65_536,
+        8_192,
+        1_048_576,
+    ) as u32;
     cfg.embed_scheduler_enabled = env_bool_opt("AXON_EMBED_SCHEDULER_ENABLED")
         .or(toml.embed.scheduler_enabled)
         .unwrap_or(true);

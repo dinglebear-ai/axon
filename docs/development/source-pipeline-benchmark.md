@@ -81,9 +81,11 @@ still worse than not scheduling. Scheduler-off spends 55.3 s in vectorization
 against 53.4 s of Metal work, so 96.5% of that window is already accelerator
 compute; pool accumulation and the flush deadline only add latency.
 
-Task 10 requires at least a 5% median improvement to promote. No scheduler arm
-improves on scheduler-off in any thermal epoch. The bounded scheduler is now
-the default; set `AXON_EMBED_SCHEDULER_ENABLED=false` only as a rollback switch.
+Task 10 requires at least a 5% median improvement to claim a throughput
+promotion, and no scheduler arm met that bar in any thermal epoch. The bounded
+scheduler is nevertheless the default for memory-admission and pipeline-safety
+reasons, not as a benchmark-backed speedup; set
+`AXON_EMBED_SCHEDULER_ENABLED=false` only as a rollback switch.
 
 ### The 2026-08-28 02:23-02:26 results are the best recorded, at about 50 s
 

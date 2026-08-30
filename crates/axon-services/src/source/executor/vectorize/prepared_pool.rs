@@ -111,13 +111,21 @@ impl PreparedPoolVectorizer {
         runtime: &TargetLocalSourceRuntime,
         result: &VectorizeResult,
     ) -> anyhow::Result<()> {
-        // The ledger upsert is idempotent, so checkpoint only the statuses
-        // made durable by this pool. Rewriting the cumulative snapshot after
-        // every pool made total checkpoint work quadratic.
-        write_document_statuses(runtime.ledger.as_ref(), &result.document_statuses).await?;
-        merge_cumulative_statuses(&mut self.cumulative, &result.document_statuses);
+        let touched = merge_and_collect_touched(&mut self.cumulative, &result.document_statuses);
+        write_document_statuses(runtime.ledger.as_ref(), &touched).await?;
         Ok(())
     }
+}
+
+fn merge_and_collect_touched(
+    cumulative: &mut HashMap<DocumentId, DocumentStatus>,
+    statuses: &[DocumentStatus],
+) -> Vec<DocumentStatus> {
+    merge_cumulative_statuses(cumulative, statuses);
+    statuses
+        .iter()
+        .filter_map(|status| cumulative.get(&status.document_id).cloned())
+        .collect()
 }
 
 fn merge_cumulative_statuses(
@@ -137,3 +145,7 @@ fn merge_cumulative_statuses(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "prepared_pool_tests.rs"]
+mod tests;

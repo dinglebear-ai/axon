@@ -11,23 +11,57 @@ impl ProviderScheduler {
         let domain = domain_name(self.domain.kind)?;
         self.expire_abandoned_queued_locked(connection, &domain)
             .await?;
-        // Reclaim only grant rows that directly affect this admission
-        // decision. Full active-lease reconciliation remains a lifecycle task
-        // and no longer runs as four global updates before every provider call.
+        self.reclaim_capacity_affecting_rows_locked(connection, &domain)
+            .await?;
+        self.ensure_capacity(connection, &domain, &request).await?;
+        let id = self.insert_queued(connection, &domain, &request).await?;
+        self.grant_head_locked(connection, &domain).await?;
+        self.reservation_grant_locked(connection, &id).await
+    }
+
+    async fn reclaim_capacity_affecting_rows_locked(
+        &self,
+        connection: &mut PoolConnection<Sqlite>,
+        domain: &str,
+    ) -> Result<(), SchedulerError> {
         sqlx::query(
             "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
              terminal_reason = 'grant_expired', updated_at = datetime('now')
              WHERE capacity_domain = ? AND instance_id = ?
                AND status = 'granted' AND grant_deadline <= datetime('now')",
         )
-        .bind(&domain)
+        .bind(domain)
         .bind(&self.domain.instance_id)
         .execute(&mut **connection)
         .await?;
-        self.ensure_capacity(connection, &domain, &request).await?;
-        let id = self.insert_queued(connection, &domain, &request).await?;
-        self.grant_head_locked(connection, &domain).await?;
-        self.reservation_grant_locked(connection, &id).await
+        // Admission also advances the two-phase orphan lifecycle so an active
+        // reservation abandoned after startup cannot hold capacity forever.
+        sqlx::query(
+            "UPDATE provider_reservations SET quarantined = 1,
+             terminal_reason = 'active_lease_uncertain', updated_at = datetime('now')
+             WHERE capacity_domain = ? AND instance_id = ? AND authority_id = ?
+               AND status = 'active' AND quarantined = 0
+               AND (expires_at <= datetime('now') OR renewed_at <= datetime('now', '-60 seconds'))",
+        )
+        .bind(domain)
+        .bind(&self.domain.instance_id)
+        .bind(&self.domain.authority_id)
+        .execute(&mut **connection)
+        .await?;
+        sqlx::query(
+            "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
+             terminal_reason = 'quarantine_expired', updated_at = datetime('now')
+             WHERE capacity_domain = ? AND instance_id = ? AND authority_id = ?
+               AND status = 'active' AND quarantined = 1
+               AND unixepoch(COALESCE(renewed_at, updated_at)) <= unixepoch('now') - ?",
+        )
+        .bind(domain)
+        .bind(&self.domain.instance_id)
+        .bind(&self.domain.authority_id)
+        .bind(QUARANTINE_RELEASE_SECS)
+        .execute(&mut **connection)
+        .await?;
+        Ok(())
     }
 
     pub(super) async fn try_grant_existing(
@@ -51,6 +85,8 @@ impl ProviderScheduler {
             .bind(&self.domain.authority_id)
             .execute(&mut *connection)
             .await?;
+            self.reclaim_capacity_affecting_rows_locked(&mut connection, &domain)
+                .await?;
             self.grant_head_locked(&mut connection, &domain).await?;
             self.reservation_grant_locked(&mut connection, reservation_id)
                 .await
@@ -82,7 +118,7 @@ impl ProviderScheduler {
              ORDER BY CASE effective_priority
                  WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
                  WHEN 'background' THEN 3 ELSE 4 END,
-                 enqueue_sequence, reservation_id LIMIT 64",
+                 enqueue_sequence, reservation_id",
         )
         .bind(domain)
         .bind(&self.domain.instance_id)
@@ -108,10 +144,9 @@ impl ProviderScheduler {
         .bind(&self.domain.instance_id)
         .fetch_one(&mut **connection)
         .await?;
-        // Preserve priority ordering, but do not strand usable units behind a
-        // head request that cannot currently fit. The bounded scan prevents an
-        // unbounded transaction; priority aging eventually promotes an older
-        // large waiter, and it wins as soon as sufficient capacity is free.
+        // Preserve priority ordering, but scan to queue exhaustion so usable
+        // capacity cannot be stranded behind an arbitrary prefix of requests
+        // that do not fit. Abandoned queued rows are expired before this scan.
         let candidate = candidates.into_iter().find(|(_, units, priority)| {
             let limit = if priority != "interactive" && interactive_queued > 0 {
                 self.config

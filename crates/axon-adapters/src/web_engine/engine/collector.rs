@@ -223,7 +223,7 @@ pub(super) async fn collect_crawl_pages(
         while let Some(r) = chrome_tasks.try_join_next() {
             match r {
                 Ok(res) => chrome_results.push(res),
-                Err(e) => log_warn(&format!("thin_refetch: Chrome task panicked: {e}")),
+                Err(e) => return Err(format!("thin_refetch: Chrome render task failed: {e}")),
             }
         }
 
@@ -266,13 +266,13 @@ pub(super) async fn collect_crawl_pages(
         .await?;
     }
 
-    drain_chrome_tasks(&mut chrome_tasks, &mut chrome_results).await;
+    drain_chrome_tasks(&mut chrome_tasks, &mut chrome_results).await?;
     manifest
         .flush()
         .await
         .map_err(|e| format!("manifest flush failed: {e}"))?;
     if !chrome_results.is_empty() {
-        summary = write_refetch_results(summary, chrome_results, &col.output_dir).await;
+        summary = write_refetch_results(summary, chrome_results, &col.output_dir).await?;
     }
     if let Some(tx) = col.progress_tx.as_ref() {
         tx.send(summary_with_adaptive(&col, &summary)).await.ok();

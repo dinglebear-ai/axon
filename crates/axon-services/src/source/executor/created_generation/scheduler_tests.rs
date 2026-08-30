@@ -1,5 +1,12 @@
 use super::*;
 
+#[test]
+fn retains_only_envelopes_contributing_to_the_unpublished_tail_pool() {
+    assert_eq!(retained_tail_start(&[4, 4, 4], 3), 2);
+    assert_eq!(retained_tail_start(&[4, 2, 4], 5), 1);
+    assert_eq!(retained_tail_start(&[4, 4, 4], 12), 0);
+}
+
 #[tokio::test(start_paused = true)]
 async fn oldest_deadline_is_not_reset_by_later_arrivals() {
     let first = Instant::now() + DEFAULT_FLUSH_DELAY;

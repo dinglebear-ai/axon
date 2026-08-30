@@ -19,8 +19,7 @@ use tokio::sync::Barrier;
 
 use super::{
     RuntimeSchedulers, artifact_candidate_sink_from_values, build_runtime_schedulers,
-    invalidate_embedding_identity_cache, resolve_embedding_identity,
-    tei_client_max_batch_tokens_from_value, tei_max_attempts,
+    invalidate_embedding_identity_cache, resolve_embedding_identity, tei_max_attempts,
 };
 use crate::context::TargetLocalSourceRuntime;
 
@@ -109,24 +108,6 @@ fn tei_max_attempts_reflects_configured_retry_count_not_a_hardcoded_default() {
         tei_max_attempts(&cfg),
         1,
         "zero retries still allows exactly one (the initial) attempt"
-    );
-}
-
-#[test]
-fn tei_client_batch_token_override_defaults_and_clamps_without_global_env_mutation() {
-    assert_eq!(tei_client_max_batch_tokens_from_value(None), 65_536);
-    assert_eq!(
-        tei_client_max_batch_tokens_from_value(Some("invalid")),
-        65_536
-    );
-    assert_eq!(tei_client_max_batch_tokens_from_value(Some("1")), 8_192);
-    assert_eq!(
-        tei_client_max_batch_tokens_from_value(Some("131072")),
-        131_072
-    );
-    assert_eq!(
-        tei_client_max_batch_tokens_from_value(Some("99999999")),
-        1_048_576
     );
 }
 

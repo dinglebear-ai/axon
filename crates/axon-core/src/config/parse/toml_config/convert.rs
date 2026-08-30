@@ -229,6 +229,7 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.tei.max_client_batch_size = e.batch_size;
     flat.embed.tei_max_concurrent = e.max_concurrent_requests;
     flat.embed.tei_max_in_flight_inputs = e.max_in_flight_inputs;
+    flat.embed.tei_max_batch_tokens = e.max_batch_tokens;
     // Previously parsed (round-tripped) but never copied onto the flat runtime
     // shape, so nothing downstream ever read them — see config-contract.md's
     // "Providers: Embedding" section and axon_rust-ldozg.

@@ -212,6 +212,7 @@ impl Default for Config {
             embed_cache_enabled: false,
             embed_cache_max_entries: 100_000,
             embed_pool_max_inputs: 512,
+            embed_tei_max_batch_tokens: 65_536,
             embed_scheduler_enabled: true,
             vector_upsert_embed_overlap: true,
             embed_prep_concurrency: std::thread::available_parallelism()

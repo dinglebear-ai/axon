@@ -184,10 +184,10 @@ pub async fn chrome_refetch_thin_pages(
     cfg: &Config,
     http_summary: CrawlSummary,
     output_dir: &Path,
-) -> CrawlSummary {
+) -> Result<CrawlSummary, String> {
     let thin_urls: Vec<String> = http_summary.thin_urls.iter().cloned().collect();
     if thin_urls.is_empty() {
-        return http_summary;
+        return Ok(http_summary);
     }
 
     log_info(&format!(
@@ -227,19 +227,16 @@ pub(super) async fn write_refetch_results(
     mut summary: CrawlSummary,
     results: Vec<RefetchResult>,
     output_dir: &Path,
-) -> CrawlSummary {
+) -> Result<CrawlSummary, String> {
     let markdown_dir = output_dir.join("markdown");
     let manifest_path = output_dir.join("manifest.jsonl");
 
-    let Ok(file) = tokio::fs::OpenOptions::new()
+    let file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&manifest_path)
         .await
-    else {
-        log_warn("thin_refetch: failed to open manifest for append; skipping disk writes");
-        return summary;
-    };
+        .map_err(|error| format!("thin_refetch: failed to open manifest for append: {error}"))?;
     let mut manifest = tokio::io::BufWriter::new(file);
 
     for result in results {
@@ -261,24 +258,20 @@ pub(super) async fn write_refetch_results(
         // Write to a temp file then rename to avoid leaving a partial file if
         // the process is interrupted mid-write when overwriting an existing thin page.
         let tmp_path = path.with_extension("tmp");
-        let write_ok = tokio::fs::write(&tmp_path, markdown.as_bytes())
-            .await
-            .is_ok()
-            && tokio::fs::rename(&tmp_path, &path).await.is_ok();
-        if !write_ok {
+        if let Err(error) = tokio::fs::write(&tmp_path, markdown.as_bytes()).await {
             let _ = tokio::fs::remove_file(&tmp_path).await;
-            log_warn(&format!(
-                "thin_refetch: failed to write {}: atomic rename failed",
+            return Err(format!(
+                "thin_refetch: failed to write temporary file {}: {error}",
+                tmp_path.display()
+            ));
+        }
+        if let Err(error) = tokio::fs::rename(&tmp_path, &path).await {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(format!(
+                "thin_refetch: failed to publish {}: {error}",
                 path.display()
             ));
-            // Undo the thin-page removals above since we didn't actually recover.
-            summary.thin_pages += 1;
-            summary.thin_urls.insert(canonical);
-            continue;
         }
-
-        // Write succeeded — now it is safe to count this file.
-        summary.markdown_files += 1;
 
         let mut hasher = Sha256::new();
         hasher.update(markdown.as_bytes());
@@ -295,35 +288,38 @@ pub(super) async fn write_refetch_results(
             // threaded through RefetchResult to enable extraction.
             structured: None,
         };
-        match serde_json::to_string(&entry) {
-            Ok(mut line) => {
-                line.push('\n');
-                if let Err(e) = manifest.write_all(line.as_bytes()).await {
-                    log_warn(&format!(
-                        "thin_refetch: manifest write failed for {canonical}: {e}"
-                    ));
-                }
-            }
-            Err(e) => {
-                log_warn(&format!(
-                    "thin_refetch: manifest serialize failed for {canonical}: {e}"
-                ));
-            }
-        }
+        let mut line = serde_json::to_string(&entry)
+            .map_err(|error| format!("thin_refetch: manifest serialize failed: {error}"))?;
+        line.push('\n');
+        manifest
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|error| format!("thin_refetch: manifest write failed: {error}"))?;
+        manifest
+            .flush()
+            .await
+            .map_err(|error| format!("thin_refetch: manifest flush failed: {error}"))?;
+        summary.markdown_files += 1;
 
         log_info(&format!("thin_refetch: recovered {canonical}"));
     }
 
-    if let Err(e) = manifest.flush().await {
-        log_warn(&format!("thin_refetch: manifest flush failed: {e}"));
-    }
-
-    summary
+    Ok(summary)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn manifest_open_failure_is_propagated() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let missing_output = temp.path().join("missing");
+        let error = write_refetch_results(CrawlSummary::default(), Vec::new(), &missing_output)
+            .await
+            .expect_err("missing output directory must not be reported as success");
+        assert!(error.contains("failed to open manifest"), "{error}");
+    }
 
     #[test]
     fn single_page_chrome_refetch_uses_remote_policy_and_ssrf_blacklists() {

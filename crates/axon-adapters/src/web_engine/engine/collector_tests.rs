@@ -45,6 +45,38 @@ fn crawl_log_urls_drop_userinfo_and_redact_query_values() {
     assert!(!sanitized.contains("secret"));
 }
 
+#[tokio::test]
+async fn broadcast_lag_fails_the_crawl_instead_of_publishing_partial_output() {
+    let server = MockServer::start_async().await;
+    let page_mock = server
+        .mock_async(|when, then| {
+            when.path("/page");
+            then.status(200).body("<html><body>content</body></html>");
+        })
+        .await;
+    let client = spider::reqwest_middleware::ClientBuilder::new(reqwest::Client::new()).build();
+    let page = spider::page::Page::new_page(&format!("{}/page", server.base_url()), &client).await;
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut col = test_collector_config(None);
+    col.output_dir = temp.path().to_path_buf();
+    col.markdown_dir = temp.path().join("markdown");
+    tokio::fs::create_dir_all(&col.markdown_dir)
+        .await
+        .expect("markdown dir");
+    col.manifest_path = temp.path().join("manifest.jsonl");
+    let (tx, rx) = tokio::sync::broadcast::channel(1);
+    tx.send(page.clone()).expect("first page");
+    tx.send(page).expect("second page overruns receiver");
+    drop(tx);
+
+    let error = collect_crawl_pages(rx, col)
+        .await
+        .expect_err("lagged collection must fail closed");
+    assert!(error.contains("crawl incomplete"), "{error}");
+    assert!(error.contains("dropped 1 pages"), "{error}");
+    page_mock.assert_calls_async(1).await;
+}
+
 #[test]
 fn canonicalize_and_track_page_rejects_same_host_root_outside_project_scope() {
     let col = test_collector_config(Some(MapScope {
