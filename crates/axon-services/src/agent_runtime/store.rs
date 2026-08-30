@@ -6,6 +6,7 @@ use axon_core::config::Config;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 mod schema;
@@ -78,12 +79,7 @@ pub struct AgentTurnStore {
 
 impl AgentTurnStore {
     pub fn open(cfg: &Config) -> anyhow::Result<Self> {
-        // The database name is service-owned. Callers may configure Axon's main
-        // SQLite location, but cannot supply a second arbitrary persistence path.
-        let path = cfg.sqlite_path.with_file_name("agent-turns.sqlite3");
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        let path = resolve_store_path(&cfg.sqlite_path)?;
         let conn = Connection::open(&path)?;
         #[cfg(unix)]
         {
@@ -439,6 +435,26 @@ impl AgentTurnStore {
         })
     }
 }
+
+fn resolve_store_path(configured_sqlite_path: &Path) -> anyhow::Result<PathBuf> {
+    let parent = configured_sqlite_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("configured SQLite path has no parent directory"))?;
+    // Resolve the host-created data directory before deriving the service-owned
+    // filename. This rejects missing/traversal aliases and ensures no request can
+    // redirect agent persistence outside Axon's configured storage directory.
+    let root = std::fs::canonicalize(parent)?;
+    let path = root.join("agent-turns.sqlite3");
+    anyhow::ensure!(
+        path.starts_with(&root),
+        "agent turn store escaped data directory"
+    );
+    Ok(path)
+}
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod tests;
 
 fn append_event_tx(conn: &Connection, id: &str, event: AgentEvent) -> anyhow::Result<()> {
     let seq: i64 = conn.query_row(
