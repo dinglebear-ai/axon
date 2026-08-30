@@ -7,13 +7,6 @@ use crate::source::executor::generation_work::{
 };
 use crate::source::executor::progress::PipelineProgress;
 
-pub(super) fn enabled() -> bool {
-    std::env::var("AXON_EMBED_SCHEDULER_ENABLED")
-        .ok()
-        .and_then(|value| value.parse::<bool>().ok())
-        .unwrap_or(false)
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn process(
     runtime: &TargetLocalSourceRuntime,

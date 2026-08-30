@@ -1,4 +1,4 @@
-use super::{CollectorConfig, PageOutcome, write_page_to_manifest};
+use super::{CollectorConfig, PageOutcome, sanitized_url_for_log, write_page_to_manifest};
 use crate::web_engine::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
 use crate::web_engine::engine::{CrawlDiagnostic, CrawlSummary};
 use crate::web_engine::manifest::ManifestEntry;
@@ -150,7 +150,8 @@ pub(super) async fn apply_thin_page_outcome(
             }
         };
         log_info(&format!(
-            "thin_refetch: inline Chrome render spawned for {url}"
+            "thin_refetch: inline Chrome render spawned for {}",
+            sanitized_url_for_log(url)
         ));
         spawn_chrome_render(
             chrome_tasks,

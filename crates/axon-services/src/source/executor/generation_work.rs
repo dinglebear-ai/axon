@@ -51,8 +51,28 @@ impl PreparedBatchSideEffects {
             &self.clean_output.artifacts,
             &self.clean_output.inline,
         );
-        Ok(serde_json::to_vec(&serializable)?.len())
+        serialized_len(&serializable)
     }
+}
+
+#[derive(Default)]
+struct CountingWriter(usize);
+
+impl std::io::Write for CountingWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(bytes.len());
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn serialized_len(value: &impl serde::Serialize) -> anyhow::Result<usize> {
+    let mut writer = CountingWriter::default();
+    serde_json::to_writer(&mut writer, value)?;
+    Ok(writer.0)
 }
 
 /// One lossless, prepared acquisition wave. The sender may split this into
@@ -190,7 +210,10 @@ impl PreparedBatchSender {
             charged_chunks <= self.pool_size,
             "prepared pool exceeds chunk limit"
         );
-        let prepared_bytes = serde_json::to_vec(&prepared)?.len();
+        // Count the encoded size without materializing a second full copy of
+        // the prepared envelope before admission. The original values already
+        // own the payload memory charged by the permit below.
+        let prepared_bytes = serialized_len(&prepared)?;
         let estimated_bytes = prepared_bytes
             .checked_add(side_effects.estimated_bytes()?)
             .ok_or_else(|| anyhow::anyhow!("prepared work byte size overflow"))?;

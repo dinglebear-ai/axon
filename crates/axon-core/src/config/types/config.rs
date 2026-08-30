@@ -898,6 +898,14 @@ pub struct Config {
     /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.pool-max-inputs`. Clamped 64–65536. Default: 512.
     pub embed_pool_max_inputs: usize,
 
+    /// Use the bounded preparation/embedding scheduler.
+    /// Env: `AXON_EMBED_SCHEDULER_ENABLED`. TOML: `providers.embedding.scheduler-enabled`. Default: true.
+    pub embed_scheduler_enabled: bool,
+
+    /// Overlap the next embedding request with the current vector upsert.
+    /// Env: `AXON_VECTOR_UPSERT_EMBED_OVERLAP`. TOML: `providers.embedding.vector-upsert-overlap-enabled`. Default: true.
+    pub vector_upsert_embed_overlap: bool,
+
     /// Concurrent source-document preparation tasks before embedding.
     /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `providers.embedding.prep-concurrency`. Clamped 1–64.
     pub embed_prep_concurrency: usize,

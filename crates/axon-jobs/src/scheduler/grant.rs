@@ -11,6 +11,19 @@ impl ProviderScheduler {
         let domain = domain_name(self.domain.kind)?;
         self.expire_abandoned_queued_locked(connection, &domain)
             .await?;
+        // Reclaim only grant rows that directly affect this admission
+        // decision. Full active-lease reconciliation remains a lifecycle task
+        // and no longer runs as four global updates before every provider call.
+        sqlx::query(
+            "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
+             terminal_reason = 'grant_expired', updated_at = datetime('now')
+             WHERE capacity_domain = ? AND instance_id = ?
+               AND status = 'granted' AND grant_deadline <= datetime('now')",
+        )
+        .bind(&domain)
+        .bind(&self.domain.instance_id)
+        .execute(&mut **connection)
+        .await?;
         self.ensure_capacity(connection, &domain, &request).await?;
         let id = self.insert_queued(connection, &domain, &request).await?;
         self.grant_head_locked(connection, &domain).await?;
@@ -62,22 +75,22 @@ impl ProviderScheduler {
     ) -> Result<(), SchedulerError> {
         self.refresh_effective_priorities(connection, domain)
             .await?;
-        let candidate: Option<(String, i64, String)> = sqlx::query_as(
+        let candidates: Vec<(String, i64, String)> = sqlx::query_as(
             "SELECT reservation_id, requested_units, effective_priority
              FROM provider_reservations
              WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
              ORDER BY CASE effective_priority
                  WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
                  WHEN 'background' THEN 3 ELSE 4 END,
-                 enqueue_sequence, reservation_id LIMIT 1",
+                 enqueue_sequence, reservation_id LIMIT 64",
         )
         .bind(domain)
         .bind(&self.domain.instance_id)
-        .fetch_optional(&mut **connection)
+        .fetch_all(&mut **connection)
         .await?;
-        let Some((candidate_id, candidate_units, candidate_priority)) = candidate else {
+        if candidates.is_empty() {
             return Ok(());
-        };
+        }
         let active: i64 = sqlx::query_scalar(
             "SELECT COALESCE(SUM(granted_units), 0) FROM provider_reservations
              WHERE capacity_domain = ? AND instance_id = ? AND status IN ('granted','active')",
@@ -95,16 +108,23 @@ impl ProviderScheduler {
         .bind(&self.domain.instance_id)
         .fetch_one(&mut **connection)
         .await?;
-        let limit = if candidate_priority != "interactive" && interactive_queued > 0 {
-            self.config
-                .capacity
-                .saturating_sub(self.config.interactive_reserve)
-        } else {
-            self.config.capacity
-        };
-        if active + candidate_units > i64::from(limit) {
+        // Preserve priority ordering, but do not strand usable units behind a
+        // head request that cannot currently fit. The bounded scan prevents an
+        // unbounded transaction; priority aging eventually promotes an older
+        // large waiter, and it wins as soon as sufficient capacity is free.
+        let candidate = candidates.into_iter().find(|(_, units, priority)| {
+            let limit = if priority != "interactive" && interactive_queued > 0 {
+                self.config
+                    .capacity
+                    .saturating_sub(self.config.interactive_reserve)
+            } else {
+                self.config.capacity
+            };
+            active + units <= i64::from(limit)
+        });
+        let Some((candidate_id, candidate_units, _candidate_priority)) = candidate else {
             return Ok(());
-        }
+        };
         sqlx::query(
             "UPDATE provider_reservations SET status = 'granted', granted_units = ?,
              acquired_at = datetime('now'), grant_deadline = datetime('now', '+30 seconds'),

@@ -198,6 +198,12 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         64,
         65_536,
     );
+    cfg.embed_scheduler_enabled = env_bool_opt("AXON_EMBED_SCHEDULER_ENABLED")
+        .or(toml.embed.scheduler_enabled)
+        .unwrap_or(true);
+    cfg.vector_upsert_embed_overlap = env_bool_opt("AXON_VECTOR_UPSERT_EMBED_OVERLAP")
+        .or(toml.embed.vector_upsert_overlap_enabled)
+        .unwrap_or(true);
     cfg.embed_prep_concurrency = resolve_clamped_usize(
         "AXON_EMBED_PREP_CONCURRENCY",
         toml.embed.prep_concurrency,

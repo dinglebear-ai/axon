@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
+use futures_util::{StreamExt, stream};
 use tokio::sync::Semaphore;
 
 const MAX_IN_FLIGHT_BYTES: usize = 64 * 1024 * 1024;
@@ -88,36 +89,39 @@ where
     W: Fn(&T) -> usize,
     F: Fn(T) -> anyhow::Result<R> + Send + Sync + 'static,
 {
-    let task_slots = Arc::new(Semaphore::new(concurrency.max(1)));
     let byte_budget = byte_budget.max(1).min(u32::MAX as usize);
     let byte_slots = Arc::new(Semaphore::new(byte_budget));
     let work = Arc::new(work);
-    let mut handles = Vec::with_capacity(items.len());
-
-    for item in items {
-        let task_permit = Arc::clone(&task_slots)
-            .acquire_owned()
-            .await
-            .map_err(|error| anyhow::anyhow!("document preparation gate closed: {error}"))?;
-        let permits = weight(&item).max(1).min(byte_budget) as u32;
-        let byte_permit = Arc::clone(&byte_slots)
-            .acquire_many_owned(permits)
-            .await
-            .map_err(|error| anyhow::anyhow!("document preparation byte gate closed: {error}"))?;
-        let work = Arc::clone(&work);
-        handles.push(tokio::task::spawn_blocking(move || {
-            let _task_permit = task_permit;
-            let _byte_permit = byte_permit;
-            work(item)
-        }));
-    }
-
-    let mut output = Vec::with_capacity(handles.len());
-    for (index, handle) in handles.into_iter().enumerate() {
-        output.push(handle.await.map_err(|error| {
-            anyhow::anyhow!("document preparation task {index} failed: {error}")
-        })??);
-    }
+    let output = stream::iter(items.into_iter().enumerate())
+        .map(|(index, item)| {
+            let permits = weight(&item).max(1).min(byte_budget) as u32;
+            let byte_slots = Arc::clone(&byte_slots);
+            let work = Arc::clone(&work);
+            async move {
+                let byte_permit =
+                    byte_slots
+                        .acquire_many_owned(permits)
+                        .await
+                        .map_err(|error| {
+                            anyhow::anyhow!("document preparation byte gate closed: {error}")
+                        })?;
+                tokio::task::spawn_blocking(move || {
+                    let _byte_permit = byte_permit;
+                    work(item)
+                })
+                .await
+                .map_err(|error| {
+                    anyhow::anyhow!("document preparation task {index} failed: {error}")
+                })?
+            }
+        })
+        // `buffered` preserves input order while bounding both active tasks and
+        // completed results waiting behind an earlier slow item.
+        .buffered(concurrency.max(1))
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<anyhow::Result<Vec<_>>>()?;
     Ok(output)
 }
 

@@ -36,6 +36,16 @@ fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
 }
 
 #[test]
+fn crawl_log_urls_drop_userinfo_and_redact_query_values() {
+    let sanitized = sanitized_url_for_log(
+        "https://user:password@example.com/private?token=secret&signature=also-secret",
+    );
+    assert_eq!(sanitized, "https://example.com/private?redacted");
+    assert!(!sanitized.contains("password"));
+    assert!(!sanitized.contains("secret"));
+}
+
+#[test]
 fn canonicalize_and_track_page_rejects_same_host_root_outside_project_scope() {
     let col = test_collector_config(Some(MapScope {
         host: "example.github.io".to_string(),

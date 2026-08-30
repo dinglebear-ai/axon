@@ -23,6 +23,18 @@ use super::{
 };
 use axon_core::logging::log_warn;
 
+pub(super) fn sanitized_url_for_log(raw: &str) -> String {
+    let Ok(mut url) = url::Url::parse(raw) else {
+        return "<invalid-url>".to_string();
+    };
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    if url.query().is_some() {
+        url.set_query(Some("redacted"));
+    }
+    url.to_string()
+}
+
 /// Extract the host of a URL for the rate-limit banner; empty string on parse failure.
 fn host_of(url: &str) -> String {
     url::Url::parse(url)
@@ -114,9 +126,10 @@ async fn apply_page_outcome(
         }
         PageOutcome::Empty => return Ok(true),
         PageOutcome::Challenged { ref vendor } => {
+            let log_url = sanitized_url_for_log(url);
             tracing::warn!(
                 vendor = %vendor,
-                url = %url,
+                url = %log_url,
                 "antibot.skipped: challenge page not embedded"
             );
             summary.push_diagnostic(
@@ -231,7 +244,9 @@ pub(super) async fn collect_crawl_pages(
                     )
                     .with_dropped(n),
                 );
-                continue;
+                return Err(format!(
+                    "crawl incomplete: collector dropped {n} pages after broadcast lag"
+                ));
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
         };

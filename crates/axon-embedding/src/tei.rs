@@ -205,6 +205,8 @@ impl TeiEmbeddingProvider {
                 endpoint: self.config.endpoint.clone(),
                 provider_id: "tei".to_string(),
                 max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
+                max_input_tokens: self.config.max_input_tokens.max(1) as usize,
+                max_batch_tokens: self.config.max_batch_tokens.max(1) as usize,
                 max_concurrent_requests: self.config.max_concurrent_requests.max(1),
                 max_in_flight_inputs: self.config.max_in_flight_inputs.max(1),
                 max_attempts: self.max_attempts,
@@ -379,7 +381,7 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
                 instruction_support: self.config.instruction_support,
                 sparse_output: false,
                 max_batch_items: self.config.max_batch_inputs,
-                max_batch_bytes: None,
+                max_batch_bytes: Some(client::MAX_BATCH_BYTES as u64),
             }),
         }))
     }

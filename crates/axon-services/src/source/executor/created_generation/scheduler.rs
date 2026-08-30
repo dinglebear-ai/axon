@@ -162,10 +162,31 @@ async fn flush_pending(
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
     let mut prepared = Vec::new();
+    let envelope_chunks = pending
+        .iter()
+        .map(|envelope| {
+            envelope
+                .prepared
+                .iter()
+                .map(|document| document.chunks.len())
+                .sum::<usize>()
+                .max(1)
+        })
+        .collect::<Vec<_>>();
     for envelope in pending.iter_mut() {
         prepared.append(&mut envelope.prepared);
     }
-    for pool in vectorize::batching::chunk_batches(prepared, runtime.embed_pool_max_inputs) {
+    let pools = vectorize::batching::chunk_batches(prepared, runtime.embed_pool_max_inputs);
+    let pending_pool_chunks = pools
+        .last()
+        .map(|pool| {
+            pool.iter()
+                .map(|document| document.chunks.len())
+                .sum::<usize>()
+                .max(1)
+        })
+        .unwrap_or(0);
+    for pool in pools {
         if let Some(result) = vectorizer
             .push(
                 runtime,
@@ -186,9 +207,20 @@ async fn flush_pending(
         }
     }
     if vectorizer.has_pending_publication() {
-        // Conservatively retain every envelope from this flush until the last
-        // built pool is published by the next push (or scheduler finish).
-        held.append(pending);
+        // Retain only the tail envelopes that supplied the final unpublished
+        // pool. Earlier envelopes backed pools that were checkpointed by a
+        // subsequent push and must return their permits immediately.
+        let mut retained_chunks = 0_usize;
+        let mut tail_start = pending.len();
+        for (index, chunks) in envelope_chunks.iter().enumerate().rev() {
+            tail_start = index;
+            retained_chunks = retained_chunks.saturating_add(*chunks);
+            if retained_chunks >= pending_pool_chunks {
+                break;
+            }
+        }
+        held.extend(pending.drain(tail_start..));
+        pending.clear();
     } else {
         pending.clear();
     }

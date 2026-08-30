@@ -22,6 +22,15 @@ fn prepared_batch_counts_all_chunks() {
     assert_eq!(batch.chunk_count(), 0);
 }
 
+#[test]
+fn counting_writer_matches_json_length_without_materializing_output() {
+    let value = vec!["alpha", "beta", "gamma"];
+    assert_eq!(
+        serialized_len(&value).expect("count serialized bytes"),
+        serde_json::to_vec(&value).expect("serialize fixture").len()
+    );
+}
+
 #[tokio::test]
 async fn zero_chunk_message_is_bounded_and_releases_on_drop() {
     let (mut sender, mut receiver) = prepared_work_channel(4).unwrap();

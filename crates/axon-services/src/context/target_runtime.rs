@@ -565,6 +565,8 @@ impl TargetLocalSourceRuntime {
             }),
             document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
             embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
+            embed_scheduler_enabled: cfg.embed_scheduler_enabled,
+            vector_upsert_embed_overlap: cfg.vector_upsert_embed_overlap,
             db_stage_slots,
             fetch_provider,
             render_provider,

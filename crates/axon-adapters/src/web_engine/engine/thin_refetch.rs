@@ -1,3 +1,4 @@
+use super::collector::sanitized_url_for_log;
 use super::{CrawlDiagnostic, CrawlSummary, canonicalize_url_for_dedupe};
 use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
@@ -113,7 +114,10 @@ async fn fetch_url_with_chrome(
     let page = match collect.await {
         Ok(Some(p)) => p,
         _ => {
-            log_warn(&format!("thin_refetch: no page received for {url}"));
+            log_warn(&format!(
+                "thin_refetch: no page received for {}",
+                sanitized_url_for_log(url)
+            ));
             return (
                 None,
                 Some(
@@ -130,8 +134,9 @@ async fn fetch_url_with_chrome(
 
     if !page.status_code.is_success() {
         log_warn(&format!(
-            "thin_refetch: HTTP {} for {url}",
-            page.status_code.as_u16()
+            "thin_refetch: HTTP {} for {}",
+            page.status_code.as_u16(),
+            sanitized_url_for_log(url)
         ));
         return (
             None,

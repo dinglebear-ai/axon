@@ -16,7 +16,7 @@ use axon_api::source::ApiError;
 use axon_error::ErrorStage;
 use axon_error::cooling::ProviderCooling;
 use chrono::Utc;
-use futures_util::future::join_all;
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use reqwest::{Client, StatusCode};
 use tokio::sync::Semaphore;
 
@@ -27,6 +27,7 @@ pub const ENDPOINT_MARKER: &str = "configured";
 
 /// Cap on exponential backoff before jitter, matching the legacy client.
 const MAX_BACKOFF_MS: u64 = 60_000;
+pub(crate) const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 
 /// Cooling window attached to a retry-exhausted error, matching the default
 /// `cooldown_secs` used by [`crate::reservation::ProviderReservations`].
@@ -70,6 +71,8 @@ pub struct TeiClientParams {
     pub provider_id: String,
     /// Initial per-request chunk size (`config.max_batch_inputs`).
     pub max_batch_inputs: usize,
+    pub max_input_tokens: usize,
+    pub max_batch_tokens: usize,
     pub max_concurrent_requests: usize,
     pub max_in_flight_inputs: usize,
     /// Total attempts = retries + 1; matches legacy `tei_max_retries + 1`.
@@ -118,6 +121,8 @@ pub struct TeiClient {
     info_url: String,
     provider_id: String,
     max_batch_inputs: usize,
+    max_input_tokens: usize,
+    max_batch_tokens: usize,
     max_concurrent_requests: usize,
     request_slots: Arc<Semaphore>,
     input_slots: Arc<Semaphore>,
@@ -156,6 +161,8 @@ impl TeiClient {
             info_url,
             provider_id: params.provider_id,
             max_batch_inputs,
+            max_input_tokens: params.max_input_tokens.max(1),
+            max_batch_tokens: params.max_batch_tokens.max(1),
             max_concurrent_requests: effective_request_concurrency(
                 params.max_concurrent_requests,
                 max_in_flight_inputs,
@@ -229,45 +236,74 @@ impl TeiClient {
         // vectors still satisfy this method's input-order contract.
         let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
         ordered.sort_by_key(|(index, text)| (text.chars().count(), *index));
-        let mut pending: Vec<(Vec<usize>, Vec<String>)> = ordered
-            .chunks(self.max_batch_inputs)
-            .map(|chunk| {
-                chunk
-                    .iter()
-                    .map(|(index, text)| (*index, (*text).clone()))
-                    .unzip()
-            })
-            .collect();
+        let mut pending = Vec::<(Vec<usize>, Vec<String>)>::new();
+        let mut indices = Vec::new();
+        let mut texts = Vec::new();
+        let mut batch_tokens = 0_usize;
+        let mut batch_bytes = 0_usize;
+        for (index, text) in ordered {
+            let tokens = text.chars().count().div_ceil(4).max(1);
+            let bytes = text.len().saturating_add(4);
+            if tokens > self.max_input_tokens {
+                return Err(self.error(
+                    "embedding.tei.input_too_large",
+                    "one embedding input exceeds the configured token limit",
+                ));
+            }
+            if bytes > MAX_BATCH_BYTES {
+                return Err(self.error(
+                    "embedding.tei.input_too_large",
+                    "one embedding input exceeds the configured payload limit",
+                ));
+            }
+            if !texts.is_empty()
+                && (texts.len() >= self.max_batch_inputs
+                    || batch_tokens.saturating_add(tokens) > self.max_batch_tokens
+                    || batch_bytes.saturating_add(bytes) > MAX_BATCH_BYTES)
+            {
+                pending.push((std::mem::take(&mut indices), std::mem::take(&mut texts)));
+                batch_tokens = 0;
+                batch_bytes = 0;
+            }
+            indices.push(index);
+            texts.push(text.clone());
+            batch_tokens = batch_tokens.saturating_add(tokens);
+            batch_bytes = batch_bytes.saturating_add(bytes);
+        }
+        if !texts.is_empty() {
+            pending.push((indices, texts));
+        }
 
-        while !pending.is_empty() {
-            let wave = std::mem::take(&mut pending);
-            for group in wave.chunks(self.max_concurrent_requests) {
-                let mut requests = Vec::with_capacity(group.len());
-                for (indices, chunk) in group {
-                    requests.push(self.send_indexed_chunk(indices, chunk));
-                }
-                for (indices, chunk, outcome) in join_all(requests).await {
-                    match outcome? {
-                        ChunkOutcome::Vectors(batch) => {
-                            if batch.len() != chunk.len() {
-                                return Err(self.error(
-                                    "embedding.tei.count_mismatch",
-                                    &format!(
-                                        "TEI returned {} vectors for a {}-input batch",
-                                        batch.len(),
-                                        chunk.len()
-                                    ),
-                                ));
-                            }
-                            for (index, vector) in indices.iter().copied().zip(batch) {
-                                slots[index] = vector;
-                            }
+        let mut in_flight = FuturesUnordered::new();
+        while !pending.is_empty() || !in_flight.is_empty() {
+            while in_flight.len() < self.max_concurrent_requests && !pending.is_empty() {
+                let (indices, chunk) = pending.pop().expect("pending checked non-empty");
+                in_flight.push(async move {
+                    let outcome = self.send_chunk_with_retries(&chunk).await;
+                    (indices, chunk, outcome)
+                });
+            }
+            if let Some((indices, chunk, outcome)) = in_flight.next().await {
+                match outcome? {
+                    ChunkOutcome::Vectors(batch) => {
+                        if batch.len() != chunk.len() {
+                            return Err(self.error(
+                                "embedding.tei.count_mismatch",
+                                &format!(
+                                    "TEI returned {} vectors for a {}-input batch",
+                                    batch.len(),
+                                    chunk.len()
+                                ),
+                            ));
                         }
-                        ChunkOutcome::Split => {
-                            let mid = chunk.len() / 2;
-                            pending.push((indices[..mid].to_vec(), chunk[..mid].to_vec()));
-                            pending.push((indices[mid..].to_vec(), chunk[mid..].to_vec()));
+                        for (index, vector) in indices.iter().copied().zip(batch) {
+                            slots[index] = vector;
                         }
+                    }
+                    ChunkOutcome::Split => {
+                        let mid = chunk.len() / 2;
+                        pending.push((indices[..mid].to_vec(), chunk[..mid].to_vec()));
+                        pending.push((indices[mid..].to_vec(), chunk[mid..].to_vec()));
                     }
                 }
             }
@@ -277,14 +313,6 @@ impl TeiClient {
             vectors: slots,
             requests: self.requests.load(Ordering::Relaxed),
         })
-    }
-
-    async fn send_indexed_chunk<'a>(
-        &'a self,
-        indices: &'a [usize],
-        chunk: &'a [String],
-    ) -> (&'a [usize], &'a [String], Result<ChunkOutcome, ApiError>) {
-        (indices, chunk, self.send_chunk_with_retries(chunk).await)
     }
 
     /// Send one chunk, retrying transport errors and 429/5xx, and signalling a

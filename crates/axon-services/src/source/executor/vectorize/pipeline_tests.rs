@@ -776,6 +776,7 @@ async fn next_embedding_overlaps_current_upsert_and_results_keep_operation_order
     let joined = tokio::spawn(join_upsert_and_embedding(
         controlled(upsert_started_tx, upsert_release_rx, Ok("current-write")),
         controlled(embed_started_tx, embed_release_rx, Ok("next-embeddings")),
+        true,
     ));
 
     upsert_started_rx.await.expect("upsert started");

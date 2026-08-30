@@ -72,7 +72,8 @@ pub async fn write_page_to_manifest(
             let prev_exists = previous_markdown_exists(markdown_dir, prev_path.as_ref()).await;
             if !prev_exists {
                 axon_core::logging::log_warn(&format!(
-                    "cache_miss: previous file missing for {url}, writing fresh"
+                    "cache_miss: previous file missing for {}, writing fresh",
+                    super::sanitized_url_for_log(url)
                 ));
                 tokio::fs::write(&path, trimmed.as_bytes())
                     .await
@@ -81,7 +82,16 @@ pub async fn write_page_to_manifest(
                 return Ok(true);
             }
             let link_res = if let Some(ref prev) = prev_path {
-                if reflink_copy::reflink_or_copy(prev, &path).is_ok() {
+                let prev = prev.clone();
+                let reflink_prev = prev.clone();
+                let reflink_path = path.clone();
+                let reflinked = tokio::task::spawn_blocking(move || {
+                    reflink_copy::reflink_or_copy(reflink_prev, reflink_path)
+                })
+                .await
+                .map_err(|error| format!("reflink task failed: {error}"))?
+                .is_ok();
+                if reflinked {
                     Ok(())
                 } else {
                     tokio::fs::hard_link(prev, &path).await

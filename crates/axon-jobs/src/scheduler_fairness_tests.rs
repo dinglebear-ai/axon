@@ -170,6 +170,47 @@ async fn interactive_waiter_cannot_be_bypassed_by_lower_priority_capacity() {
 }
 
 #[tokio::test]
+async fn later_fitting_waiter_uses_capacity_stranded_by_non_fitting_head() {
+    let pool = fixture(&[71, 72, 73]).await;
+    let scheduler = scheduler(pool.clone(), 3, 0);
+    let held = scheduler
+        .reserve(request(71, "held", JobPriority::Normal, 2))
+        .await
+        .expect("held");
+    let head = scheduler
+        .reserve(request(72, "large-head", JobPriority::Normal, 2))
+        .await
+        .expect("head");
+    let fitting = scheduler
+        .reserve(request(73, "fitting", JobPriority::Normal, 1))
+        .await
+        .expect("fitting");
+
+    assert!(held.granted);
+    assert!(
+        !head.granted,
+        "the large head cannot fit the one remaining unit"
+    );
+    assert!(
+        fitting.granted,
+        "a later fitting waiter must use residual capacity"
+    );
+
+    scheduler
+        .complete(&held.reservation_id, "held")
+        .await
+        .expect("release held");
+    assert!(
+        scheduler
+            .try_grant_existing(&head.reservation_id)
+            .await
+            .expect("grant head after capacity release")
+            .granted,
+        "the bypassed head must advance once it fits"
+    );
+}
+
+#[tokio::test]
 async fn embedding_saturation_does_not_consume_vector_capacity() {
     let pool = fixture(&[61, 62]).await;
     let embedding = ProviderScheduler::new(

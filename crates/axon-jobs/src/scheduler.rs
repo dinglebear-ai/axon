@@ -176,10 +176,6 @@ impl ProviderScheduler {
         if request.units == 0 || request.units > self.config.capacity {
             return Err(SchedulerError::RequestTooLarge);
         }
-        // Reclaim grants whose holder never activated them before computing
-        // capacity. Previously these rows survived until an external
-        // reconciliation pass and could exhaust the domain indefinitely.
-        self.reconcile().await?;
         let _write_permit = self.write_gate.lock().await;
         let mut connection = self.pool.acquire().await?;
         begin_immediate(&mut connection).await?;

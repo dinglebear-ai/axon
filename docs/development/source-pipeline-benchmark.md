@@ -82,8 +82,8 @@ against 53.4 s of Metal work, so 96.5% of that window is already accelerator
 compute; pool accumulation and the flush deadline only add latency.
 
 Task 10 requires at least a 5% median improvement to promote. No scheduler arm
-improves on scheduler-off in any thermal epoch, so `AXON_EMBED_SCHEDULER_ENABLED`
-remains `false` by default and the scheduler code stays dormant behind it.
+improves on scheduler-off in any thermal epoch. The bounded scheduler is now
+the default; set `AXON_EMBED_SCHEDULER_ENABLED=false` only as a rollback switch.
 
 ### The 2026-08-28 02:23-02:26 results are the best recorded, at about 50 s
 
