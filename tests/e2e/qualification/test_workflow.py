@@ -11,6 +11,8 @@ class QualificationWorkflowTests(unittest.TestCase):
   self.assertIn("ref: ${{ inputs.tested_sha }}",text);self.assertIn('index.get("tested_sha") != expected_sha',text)
   self.assertIn('index.get("profile") != os.environ["EXPECTED_PROFILE"]',text)
   self.assertIn("name: e2e-qualification-input",text);self.assertIn("run-id: ${{ inputs.evidence_run_id }}",text)
+  self.assertIn("actions/runs/${EVIDENCE_RUN_ID}",text);self.assertIn("test \"$actual_sha\" = \"$EXPECTED_SHA\"",text);self.assertIn("test \"$conclusion\" = success",text)
+  self.assertIn('test "$EVIDENCE_RUN_ID" = "$GITHUB_RUN_ID"',text);self.assertIn('test "$EXPECTED_SHA" = "$GITHUB_SHA"',text)
   for action in re.findall(r"uses:\s*([^\s]+)",text):self.assertRegex(action,r"^[^@]+@[0-9a-f]{40}$")
  def test_output_contract_contains_all_three_unsigned_artifacts(self):
   text=WORKFLOW.read_text()

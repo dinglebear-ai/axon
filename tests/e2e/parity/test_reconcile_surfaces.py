@@ -58,30 +58,53 @@ def passing_bundle(tmp_path: Path) -> tuple[dict, Path]:
             "semantics": semantic(), "envelope": envelope,
         })
     executions.extend([
-        {"parent_scenario_id": "jobs.observe", "execution_id": "jobs-cli", "capability": "jobs",
+        {"parent_scenario_id": "jobs.stream.happy", "execution_id": "jobs-cli", "capability": "jobs",
          "surface": "cli", "comparison_mode": "multi_observer", "observed_operation_id": "job-42",
          "evidence_path": saved_path, "evidence_sha256": digest, "semantics": semantic(identity="job-42"),
          "envelope": {"exit_code": 0, "assertions": [{"id": "cli.json_object", "passed": True}]}},
-        {"parent_scenario_id": "jobs.observe", "execution_id": "jobs-http", "capability": "jobs",
+        {"parent_scenario_id": "jobs.stream.happy", "execution_id": "jobs-http", "capability": "jobs",
          "surface": "http", "comparison_mode": "multi_observer", "observed_operation_id": "job-42",
          "evidence_path": saved_path, "evidence_sha256": digest, "semantics": semantic(identity="job-42"),
          "envelope": {"status": 200, "assertions": [{"id": "http.success_status", "passed": True}]}},
     ])
+    for scenario_id, execution_id, capability in [
+        ("source.detached.negative", "source-negative-cli", "source"),
+        ("jobs.cancel.negative", "jobs-negative-cli", "jobs"),
+        ("prune.plan.happy", "prune-happy-cli", "prune"),
+        ("prune.execute.negative", "prune-negative-cli", "prune"),
+    ]:
+        executions.append({
+            "parent_scenario_id": scenario_id, "execution_id": execution_id,
+            "capability": capability, "surface": "cli", "comparison_mode": "independent",
+            "evidence_path": saved_path, "evidence_sha256": digest, "semantics": semantic(),
+            "envelope": {"exit_code": 0, "assertions": [{"id": "cli.json_object", "passed": True}]},
+        })
     behavioral = [row for row in CATALOG["operations"] if row["classification"] == "behavioral_e2e"]
-    lifecycle_pairs = [(lifecycle, polarity) for lifecycle in CATALOG["coverage_policy"]["critical_lifecycles"]
-                       for polarity in ("happy", "negative")]
+    scenario_for = {
+        (scenario["lifecycle"], scenario["polarity"]): scenario
+        for scenario in CATALOG["scenarios"]
+    }
+    lifecycle_pairs = list(scenario_for)
+    execution_for = {
+        (item["parent_scenario_id"], item["surface"]): item["execution_id"]
+        for item in executions
+    }
     coverage = []
     for index, row in enumerate(behavioral):
         lifecycle, polarity = lifecycle_pairs[index] if index < len(lifecycle_pairs) else ("inventory", "happy")
-        scenario_id = f"{lifecycle}.{polarity}" if index < len(lifecycle_pairs) else f"inventory.behavioral.{index}"
+        scenario = scenario_for[(lifecycle, polarity)] if index < len(lifecycle_pairs) else CATALOG["scenarios"][0]
+        lifecycle, polarity = scenario["lifecycle"], scenario["polarity"]
+        scenario_id = scenario["id"]
+        execution_id = execution_for[(scenario_id, "cli")]
         coverage_path, _ = evidence(tmp_path, f"coverage-{index}.json", {
             "operation_id": row["id"], "scenario_id": scenario_id, "kind": "behavioral", "result": "pass",
             "surface": "cli", "lifecycle": lifecycle, "polarity": polarity,
+            "execution_id": execution_id,
         })
         coverage.append({
             "operation_id": row["id"], "scenario_id": scenario_id, "surface": "cli",
             "kind": "behavioral", "result": "pass", "evidence_path": coverage_path,
-            "lifecycle": lifecycle, "polarity": polarity,
+            "lifecycle": lifecycle, "polarity": polarity, "execution_id": execution_id,
         })
     bundle = {"schema_version": 1, "executions": executions, "coverage": coverage}
     bundle_path = tmp_path / "bundle.json"
@@ -130,7 +153,7 @@ class ReconcileSurfaceTests(unittest.TestCase):
 
     def test_multi_observer_requires_literal_operation_identity(self):
         bundle, path = passing_bundle(self.tmp_path)
-        bundle["executions"][-1]["observed_operation_id"] = "job-99"
+        next(item for item in bundle["executions"] if item["execution_id"] == "jobs-http")["observed_operation_id"] = "job-99"
         result = module().reconcile(CATALOG, bundle, path)
         self.assertTrue(any(item["invariant"] == "observed_operation_id" for item in result["failures"]))
 
@@ -171,6 +194,7 @@ class ReconcileSurfaceTests(unittest.TestCase):
             "operation_id": "cli:wrong", "scenario_id": record["scenario_id"],
             "kind": "behavioral", "result": "pass", "surface": record["surface"],
             "lifecycle": record["lifecycle"], "polarity": record["polarity"],
+            "execution_id": record["execution_id"],
         }), encoding="utf-8")
         result = module().reconcile(CATALOG, bundle, path)
         self.assertTrue(any(item["invariant"] == "coverage.evidence_binding" for item in result["failures"]))
@@ -180,7 +204,13 @@ class ReconcileSurfaceTests(unittest.TestCase):
         target = bundle["coverage"][6]
         target.update({"lifecycle": "source", "polarity": "negative"})
         result = module().reconcile(CATALOG, bundle, path)
-        self.assertTrue(any(item["invariant"] == "coverage.evidence_binding" for item in result["failures"]))
+        self.assertTrue(any(item["invariant"] == "coverage.scenario_binding" for item in result["failures"]))
+
+    def test_coverage_requires_matching_executable_scenario_evidence(self):
+        bundle, path = passing_bundle(self.tmp_path)
+        bundle["coverage"][0]["execution_id"] = "invented-execution"
+        result = module().reconcile(CATALOG, bundle, path)
+        self.assertTrue(any(item["invariant"] == "coverage.execution_binding" for item in result["failures"]))
 
     def test_reconciler_cli_is_deterministic_offline(self):
         _, path = passing_bundle(self.tmp_path)

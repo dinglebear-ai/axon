@@ -110,24 +110,22 @@ pub(super) async fn get_source_detail(
     .map_err(sqlite_error)?;
     let documents = rows
         .into_iter()
-        .map(|row| -> Result<LedgerDocumentState> {
+        .filter_map(|row| {
             let raw: String = row.get("status_json");
-            let status: DocumentStatus = serde_json::from_str(&raw).map_err(json_error)?;
-            Ok(LedgerDocumentState {
+            let status: DocumentStatus = match serde_json::from_str(&raw).map_err(json_error) {
+                Ok(status) => status,
+                Err(error) => return Some(Err(error)),
+            };
+            let generation = status.generation?;
+            Some(Ok(LedgerDocumentState {
                 document_id: status.document_id,
                 source_item_key: status.source_item_key,
-                generation: status.generation.ok_or_else(|| {
-                    ApiError::new(
-                        "source.ledger.document_generation_missing",
-                        ErrorStage::Publishing,
-                        "document generation missing",
-                    )
-                })?,
+                generation,
                 status: status.status,
                 chunk_count: status.chunk_count,
                 vector_point_count: status.vector_point_count,
                 updated_at: status.updated_at,
-            })
+            }))
         })
         .collect::<Result<Vec<_>>>()?;
     Ok(Some(LedgerSourceDetail {

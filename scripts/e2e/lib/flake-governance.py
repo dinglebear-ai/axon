@@ -15,7 +15,7 @@ from typing import Any
 
 REQUIRED = {"scenario_id","owner","rationale","issue","tier","environment","created_on","expires_on","restoration_criteria"}
 PROTECTED_WORDS = {"security","cleanup","redaction","secret","trust","auth","ssrf","teardown"}
-MASK_FORBIDDEN = {"product","auth/network","cleanup"}
+MASK_FORBIDDEN = {"product","auth_network","cleanup"}
 SAFE_RETRY_CLASSES = {"provider","fixture","harness"}
 UNSAFE_LIFECYCLES = {"destructive","migration","upload","watch"}
 PROVIDER_HEALTH_FIELDS = {"schema","kind","provider","passed","classification"}

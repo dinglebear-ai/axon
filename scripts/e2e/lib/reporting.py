@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-FAILURE_CLASSES = {"product", "fixture", "provider", "auth/network", "cleanup", "harness"}
+FAILURE_CLASSES = {"product", "fixture", "provider", "auth_network", "cleanup", "harness"}
 TERMINAL = {"passed", "failed", "timed_out", "canceled"}
 
 
@@ -98,6 +98,7 @@ def sanitize_cleanup(report: dict[str, Any]) -> dict[str, Any]:
 def suite_report(scenarios: list[Scenario], *, tested_sha: str, provider_versions: dict[str, str],
                  policy: dict[str, Any], upload: dict[str, Any] | None = None) -> dict[str, Any]:
     if not isinstance(tested_sha, str) or len(tested_sha) != 40: raise ReportingError("tested SHA must be full length")
+    if not scenarios: raise ReportingError("canonical report requires at least one scenario")
     records = sorted((scenario.record() for scenario in scenarios), key=lambda item: (item["scenario_id"], item["surface"]))
     failures = sum(item["status"] != "passed" for item in records)
     report = {"schema": 1, "tested_sha": tested_sha, "provider_versions": dict(sorted(provider_versions.items())),
@@ -118,7 +119,8 @@ def validate_report(report: dict[str, Any]) -> None:
     unsigned = {key: value for key, value in report.items() if key != "report_sha256"}
     expected = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     if report["report_sha256"] != expected: raise ReportingError("report provenance digest mismatch")
-    if not isinstance(report["scenarios"], list): raise ReportingError("scenario results are invalid")
+    if not isinstance(report["scenarios"], list) or not report["scenarios"]:
+        raise ReportingError("canonical report requires at least one scenario")
     total_ms = 0
     passed = failed = 0
     for scenario in report["scenarios"]:
@@ -132,7 +134,24 @@ def validate_report(report: dict[str, Any]) -> None:
             if attempt["status"] != "passed" and attempt.get("classification") not in FAILURE_CLASSES:
                 raise ReportingError("invalid failure taxonomy")
         cleanup = scenario.get("cleanup", {})
-        if not isinstance(cleanup.get("success"), bool): raise ReportingError("cleanup audit is absent")
+        cleanup_fields = {"success", "manifest_digest", "residuals", "classes", "phases"}
+        if not isinstance(cleanup, dict) or set(cleanup) != cleanup_fields:
+            raise ReportingError("cleanup audit shape is invalid")
+        residuals = cleanup.get("residuals")
+        if not isinstance(residuals, list): raise ReportingError("cleanup residuals are invalid")
+        for residual in residuals:
+            if (not isinstance(residual, dict)
+                    or set(residual) != {"class", "opaque_id", "reason_class"}
+                    or not isinstance(residual["class"], str)
+                    or re.fullmatch(r"[0-9a-f]{16}", str(residual["opaque_id"])) is None
+                    or residual["reason_class"] != "cleanup"):
+                raise ReportingError("cleanup residual shape is invalid")
+        if cleanup.get("success") is not (not residuals):
+            raise ReportingError("cleanup success disagrees with residuals")
+        if cleanup["manifest_digest"] is not None and re.fullmatch(r"[0-9a-f]{64}", str(cleanup["manifest_digest"])) is None:
+            raise ReportingError("cleanup manifest digest is invalid")
+        if not isinstance(cleanup["classes"], dict) or not isinstance(cleanup["phases"], list):
+            raise ReportingError("cleanup classes or phases are invalid")
         expected_status = attempts[-1]["status"] if cleanup["success"] else "failed"
         if scenario.get("status") != expected_status: raise ReportingError("scenario status disagrees with attempts or cleanup")
         expected_first = next((item for item in attempts if item["status"] != "passed"), None)

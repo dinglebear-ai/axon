@@ -265,6 +265,76 @@ async fn openai_compat_preserves_scheduler_queue_full_code() {
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_does_not_retry_permanent_http_errors() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(401).body("invalid API key");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, Some("bad-key"));
+
+    let error = complete_text(req).await.expect_err("401 must fail");
+
+    assert!(error.to_string().contains("HTTP 401"));
+    mock.assert_calls(1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_streaming_does_not_retry_permanent_http_errors() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(403).body("forbidden");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, Some("denied-key"));
+
+    let error = complete_streaming(req, |_| Ok(()))
+        .await
+        .expect_err("403 must fail");
+
+    assert!(error.to_string().contains("HTTP 403"));
+    mock.assert_calls(1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_retries_transient_http_errors_once() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(503).body("temporarily unavailable");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+
+    let error = complete_text(req)
+        .await
+        .expect_err("503 must fail after retry");
+
+    assert!(error.to_string().contains("HTTP 503"));
+    mock.assert_calls(2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_streaming_retries_transient_http_errors_once() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(429).body("rate limited");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+
+    let error = complete_streaming(req, |_| Ok(()))
+        .await
+        .expect_err("429 must fail after retry");
+
+    assert!(error.to_string().contains("HTTP 429"));
+    mock.assert_calls(2);
+}
+
 #[test]
 fn openai_compat_plain_error_truncates_on_utf8_boundary() {
     // NB: redaction runs before truncation. The `x` padding is zero-entropy, so

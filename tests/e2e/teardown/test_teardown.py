@@ -189,6 +189,20 @@ class TeardownTests(unittest.TestCase):
         self.assertTrue(report["success"], report); self.assertFalse(lease.exists())
         self.assertFalse(any(Path(str(sqlite) + suffix).exists() for suffix in ("", "-wal", "-shm", "-journal")))
 
+    def test_port_cleanup_fails_closed_while_registered_listener_is_reachable(self):
+        manifest = isolation.Manifest.open(self.path)
+        reservation = isolation.allocate_port(self.root / "ports", self.allocation["run_id"], manifest)
+        listener = __import__("socket").socket()
+        reservation.close()
+        listener.bind(("127.0.0.1", reservation.port)); listener.listen()
+        try:
+            engine, _ = self.engine(); report = engine.run().json()
+            self.assertFalse(report["success"], report)
+            self.assertTrue(any("listener remains reachable" in item["reason"] for item in report["refused"]), report)
+            self.assertTrue(any(item["class"] == "port" for item in report["residual"]), report)
+        finally:
+            listener.close()
+
     @unittest.skipIf(sys.platform == "win32", "POSIX escalation contract")
     def test_term_immune_owned_process_is_force_killed(self):
         manifest = isolation.Manifest.open(self.path)

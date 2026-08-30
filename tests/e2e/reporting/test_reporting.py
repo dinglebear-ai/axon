@@ -45,6 +45,21 @@ class ReportingTests(unittest.TestCase):
         self.assertEqual("passed", first["summary"]["status"])
         reporting.validate_report(first)
 
+    def test_empty_canonical_report_is_rejected_at_creation_and_validation(self):
+        with self.assertRaisesRegex(reporting.ReportingError, "at least one scenario"):
+            reporting.suite_report([], tested_sha="a" * 40, provider_versions={}, policy={})
+        report = {
+            "schema": 1, "tested_sha": "a" * 40, "provider_versions": {}, "policy": {},
+            "scenarios": [], "timing": {"total_ms": 0, "scenario_count": 0},
+            "summary": {"passed": 0, "failed": 0, "status": "passed"},
+            "upload": {"status": "not_attempted", "local_evidence_path": None},
+        }
+        report["report_sha256"] = reporting.hashlib.sha256(
+            json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        with self.assertRaisesRegex(reporting.ReportingError, "at least one scenario"):
+            reporting.validate_report(report)
+
     def test_cleanup_failure_is_terminal_and_residual_is_opaque(self):
         report = reporting.suite_report([self.scenario(cleanup=False)], tested_sha="b" * 40,
                                         provider_versions={}, policy={})
@@ -98,6 +113,18 @@ class ReportingTests(unittest.TestCase):
         invalid = reporting.suite_report([self.scenario()], tested_sha="2" * 40, provider_versions={}, policy={})
         invalid["tested_sha"] = "g" * 40
         with self.assertRaises(reporting.ReportingError): reporting.validate_report(invalid)
+
+    def test_cleanup_shape_and_success_residual_equivalence_fail_closed(self):
+        for mutate in (
+            lambda cleanup: cleanup.update(extra=True),
+            lambda cleanup: cleanup.update(success=True, residuals=[{"class":"port","opaque_id":"a"*16,"reason_class":"cleanup"}]),
+            lambda cleanup: cleanup.update(residuals=[{"class":"port","opaque_id":"raw","reason_class":"cleanup"}]),
+        ):
+            report = reporting.suite_report([self.scenario()], tested_sha="3" * 40, provider_versions={}, policy={})
+            mutate(report["scenarios"][0]["cleanup"])
+            unsigned={key:value for key,value in report.items() if key!="report_sha256"}
+            report["report_sha256"]=reporting.hashlib.sha256(json.dumps(unsigned,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+            with self.assertRaises(reporting.ReportingError): reporting.validate_report(report)
 
 
 if __name__ == "__main__": unittest.main()

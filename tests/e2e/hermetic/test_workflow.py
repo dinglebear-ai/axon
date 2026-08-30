@@ -107,6 +107,23 @@ class HermeticWorkflowTests(unittest.TestCase):
                 self.assertEqual("passed",body["cleanup"]["isolation"]["status"])
         finally:os.environ.clear();os.environ.update(saved)
 
+    def test_environment_failure_is_reported_then_propagated_after_cleanup(self):
+        runner=load_runner();saved=dict(os.environ)
+        try:
+            for key in runner.REQUIRED_ENV:os.environ.pop(key,None)
+            commands=[("teardown",[os.sys.executable,"-c","pass"],5),
+                      ("isolation",[os.sys.executable,"-c","pass"],5)]
+            with tempfile.TemporaryDirectory() as directory,mock.patch.object(runner,"commands",return_value=commands):
+                report=Path(directory)/"report.json"
+                with self.assertRaisesRegex(RuntimeError,"mandatory hermetic"):
+                    runner.run(report,10)
+                body=json.loads(report.read_text())
+                self.assertEqual("environment",body["stages"][0]["name"])
+                self.assertTrue(body["stages"][0]["sanitized"])
+                self.assertEqual("passed",body["cleanup"]["teardown"]["status"])
+                self.assertEqual("passed",body["cleanup"]["isolation"]["status"])
+        finally:os.environ.clear();os.environ.update(saved)
+
     def test_total_budget_is_enforced_without_synthetic_stage(self):
         runner=load_runner();saved=dict(os.environ)
         try:

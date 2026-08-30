@@ -33,13 +33,29 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertIn("PUT /v1/uploads/{upload_id}/content", routes)
         self.assertIn("GET /v1/artifacts/{artifact_id}/content", routes)
         self.assertIn("POST /v1/ask/stream", routes)
+        self.assertIn("GET /v1/codex", routes)
+        self.assertIn("POST /v1/codex/operations/{id}/execute", routes)
 
     def test_inventory_reconciliation_classifies_every_operation(self):
         groups = adapter.reconcile_inventory()
         classified = {route for routes in groups.values() for route in routes}
         self.assertEqual(set(adapter.inventory()), classified)
-        for required in ("jobs", "uploads", "artifacts", "behavioral_operations", "contract_only"):
+        for required in ("jobs", "uploads", "artifacts", "codex_control",
+                         "behavioral_operations", "contract_only"):
             self.assertTrue(groups[required], required)
+        self.assertEqual({
+            "GET /v1/codex",
+            "GET /v1/codex/events",
+            "GET /v1/codex/operations",
+            "POST /v1/codex/operations",
+            "POST /v1/codex/operations/{id}/approve",
+            "POST /v1/codex/operations/{id}/cancel",
+            "POST /v1/codex/operations/{id}/execute",
+            "POST /v1/codex/operations/{id}/reconcile",
+            "POST /v1/codex/read",
+            "POST /v1/codex/server-requests/{id}/respond",
+            "GET /v1/codex/{resource}",
+        }, set(groups["codex_control"]))
 
     def test_cross_origin_redirect_is_refused_before_credentials_forward(self):
         handler = adapter.SameOriginRedirects()

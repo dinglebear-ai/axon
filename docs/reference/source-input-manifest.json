@@ -620,7 +620,7 @@
         {
           "path": "crates/axon-web/src/schema_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:3a9ba483a305b9d1d74298d87546d708462625594cc5659dd5e330fd8d8ec6c5"
+          "checksum": "sha256:7deafb1c3ef2e0c489d160b3187850a93d4efe4ff756cf5c1a0a6f19fad6ea33"
         },
         {
           "path": "crates/axon-web/src/schema_registry/admin_watch_routes.rs",
@@ -688,7 +688,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "398750b4064f9d77a35b6ef7e18a696820be72984b59fd61f689ca64ef79c45d"
+      "manifest_checksum": "04e89af7a8b249b40337d0b94ac6753c4ce5b360cd69a711d128c4218846af3e"
     },
     {
       "family": "presentation",

@@ -173,12 +173,37 @@ def reconcile_coverage(catalog: dict[str, Any], rows: dict[str, dict[str, Any]],
                        bundle_path: Path, errors: list[dict[str, Any]]) -> dict[str, Any]:
     covered: set[str] = set()
     lifecycle_evidence: dict[str, set[str]] = defaultdict(set)
+    scenarios = {item["id"]: item for item in catalog.get("scenarios", [])
+                 if isinstance(item, dict) and isinstance(item.get("id"), str)}
+    executions = {(item.get("parent_scenario_id"), item.get("surface")): item
+                  for item in bundle.get("executions", []) if isinstance(item, dict)}
     for item in bundle.get("coverage", []):
         operation_id = item.get("operation_id")
         context = {"scenario": item.get("scenario_id"), "capability": operation_id,
                    "surface": item.get("surface"), "evidence_path": item.get("evidence_path")}
         if item.get("surface") not in SURFACES:
             errors.append({**context, "invariant": "coverage.surface", "detail": "behavioral evidence requires a known execution surface"})
+            continue
+        scenario = scenarios.get(item.get("scenario_id"))
+        if scenario is None:
+            errors.append({**context, "invariant": "coverage.scenario",
+                           "detail": "coverage must reference an executable catalog scenario"})
+            continue
+        if (item.get("surface") not in scenario.get("surfaces", [])
+                or item.get("lifecycle") != scenario.get("lifecycle")
+                or item.get("polarity") != scenario.get("polarity")):
+            errors.append({**context, "invariant": "coverage.scenario_binding",
+                           "detail": "coverage surface, lifecycle, or polarity disagrees with its catalog scenario"})
+            continue
+        execution = executions.get((item.get("scenario_id"), item.get("surface")))
+        if execution is None:
+            errors.append({**context, "invariant": "coverage.execution",
+                           "detail": "coverage has no matching executable scenario evidence"})
+            continue
+        execution_id = execution.get("execution_id")
+        if not isinstance(execution_id, str) or item.get("execution_id") != execution_id:
+            errors.append({**context, "invariant": "coverage.execution_binding",
+                           "detail": "coverage must bind the matching execution ID"})
             continue
         row = rows.get(operation_id)
         if row is None:
@@ -199,7 +224,8 @@ def reconcile_coverage(catalog: dict[str, Any], rows: dict[str, dict[str, Any]],
             continue
         expected = {"operation_id": operation_id, "scenario_id": item.get("scenario_id"),
                     "kind": "behavioral", "result": "pass", "surface": item.get("surface"),
-                    "lifecycle": item.get("lifecycle"), "polarity": item.get("polarity")}
+                    "lifecycle": item.get("lifecycle"), "polarity": item.get("polarity"),
+                    "execution_id": execution_id}
         if not isinstance(saved, dict) or any(saved.get(key) != value for key, value in expected.items()):
             errors.append({**context, "invariant": "coverage.evidence_binding",
                            "detail": "saved evidence does not bind this operation, scenario, kind, and passing result"})

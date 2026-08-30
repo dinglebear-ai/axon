@@ -98,7 +98,10 @@ class LocalAdapter:
                 if not lease.exists(): return "absent"
                 raise CleanupError("port lease ownership is unknown") from error
             if owner != self.header.run_id: raise CleanupError("port lease ownership changed")
-            shutil.rmtree(lease); return "removed"
+            shutil.rmtree(lease)
+            if self._port_reachable(resource):
+                raise CleanupError("registered port listener remains reachable after lease removal")
+            return "removed"
         if resource.resource_type in {"cache", "chrome_diagnostic", "chrome_profile", "credential_file", "data_dir",
                                       "download", "feed_fixture", "git_fixture", "http_cache", "lease", "lock", "output",
                                       "screenshot", "socket", "sqlite", "sqlite_sidecar", "temp_path", "warc"}:
@@ -189,7 +192,8 @@ class LocalAdapter:
                 return leader or self._group_alive(int(resource.metadata.get("process_group", pid)))
             except ProcessLookupError: return False
             except Exception as error: raise CleanupError("process residual state is unknown") from error
-        if resource.resource_type == "port": return Path(str(resource.metadata.get("lease", ""))).exists()
+        if resource.resource_type == "port":
+            return Path(str(resource.metadata.get("lease", ""))).exists() or self._port_reachable(resource)
         if resource.resource_type == "sqlite":
             return any(Path(str(resource.identity) + suffix).exists() for suffix in ("", "-wal", "-shm", "-journal"))
         if resource.resource_type in {"cache", "chrome_diagnostic", "chrome_profile", "credential_file", "data_dir",
@@ -197,6 +201,21 @@ class LocalAdapter:
                                       "screenshot", "socket", "sqlite_sidecar", "temp_path", "warc"}:
             path = Path(resource.identity); return path.exists() or path.is_symlink()
         return None
+
+    @staticmethod
+    def _port_reachable(resource: Any) -> bool:
+        host = str(resource.metadata.get("host", "127.0.0.1"))
+        if host not in {"127.0.0.1", "::1", "localhost"}:
+            raise CleanupError("registered port host is not an allowed loopback address")
+        try:
+            port = int(resource.identity)
+            if not 1 <= port <= 65535: raise ValueError
+        except (TypeError, ValueError) as error:
+            raise CleanupError("registered port identity is invalid") from error
+        family = socket.AF_INET6 if host == "::1" else socket.AF_INET
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.2)
+            return probe.connect_ex((host, port)) == 0
 
 
 @dataclass
@@ -251,38 +270,51 @@ class Engine:
             "expires_unix_ms": max(int(item["expires_unix_ms"]) for item in states),
         }
 
+    def _prepare_for_delete(self, resource: Any, adapter: Adapter, deadline: float) -> bool:
+        """Validate ownership and handle resources that need no normal delete."""
+        if resource.resource_type == "evidence" and resource.metadata.get("retain") is True:
+            if not hasattr(adapter, "sanitize_evidence"):
+                raise CleanupError("evidence retention requires an independent redaction scanner")
+            try:
+                proof = adapter.sanitize_evidence(resource)
+                self.report.retained.append(self.report.item(resource, outcome="sanitized-evidence", **proof))
+            except Exception as error:
+                outcome = adapter.delete(resource, deadline)
+                self.report.removed.append(self.report.item(
+                    resource, outcome="redaction-failed-destroyed",
+                    reason=str(error), provider_outcome=outcome,
+                ))
+            return False
+
+        marker = adapter.marker(resource)
+        if resource.resource_type not in PROVIDER_TYPES:
+            return True
+        if marker is None and getattr(adapter, "absent_is_clean", False):
+            state = adapter.exists(resource)
+            if state is None:
+                raise CleanupError("absent provider state is unknown")
+            if not state:
+                self.report.removed.append(self.report.item(resource, outcome="already-absent"))
+                return False
+        if marker is None and hasattr(adapter, "recover_creating"):
+            outcome = adapter.recover_creating(resource, deadline)
+            state = adapter.exists(resource)
+            if state is None or state:
+                raise CleanupError("setup-intent recovery left provider residue")
+            self.report.removed.append(self.report.item(resource, outcome=f"recovered-{outcome}"))
+            return False
+        if marker is None:
+            raise CleanupError("provider-native ownership marker is absent")
+        manifest_api.verify_marker(self.header, resource, marker)
+        return True
+
     def _one(self, resource: Any, deadline: float) -> None:
         adapter = self.adapter(resource)
         if hasattr(adapter, "set_deadline"): adapter.set_deadline(deadline)
         started = time.monotonic(); before = int(getattr(adapter, "round_trips", 0)); escalated = 0
         try:
-            if resource.resource_type == "evidence" and resource.metadata.get("retain") is True:
-                if not hasattr(adapter, "sanitize_evidence"):
-                    raise CleanupError("evidence retention requires an independent redaction scanner")
-                try:
-                    proof = adapter.sanitize_evidence(resource)
-                    self.report.retained.append(self.report.item(resource, outcome="sanitized-evidence", **proof))
-                except Exception as error:
-                    outcome = adapter.delete(resource, deadline)
-                    self.report.removed.append(self.report.item(resource, outcome="redaction-failed-destroyed",
-                                                                reason=str(error), provider_outcome=outcome))
+            if not self._prepare_for_delete(resource, adapter, deadline):
                 return
-            marker = adapter.marker(resource)
-            if resource.resource_type in PROVIDER_TYPES:
-                if marker is None and getattr(adapter, "absent_is_clean", False):
-                    state = adapter.exists(resource)
-                    if state is None: raise CleanupError("absent provider state is unknown")
-                    if not state:
-                        self.report.removed.append(self.report.item(resource, outcome="already-absent"))
-                        return
-                if marker is None and hasattr(adapter, "recover_creating"):
-                    outcome = adapter.recover_creating(resource, deadline)
-                    exists = adapter.exists(resource)
-                    if exists is None or exists: raise CleanupError("setup-intent recovery left provider residue")
-                    self.report.removed.append(self.report.item(resource, outcome=f"recovered-{outcome}"))
-                    return
-                if marker is None: raise CleanupError("provider-native ownership marker is absent")
-                manifest_api.verify_marker(self.header, resource, marker)
             outcome = adapter.delete(resource, deadline)
             escalated = int(outcome == "force-killed")
             exists = adapter.exists(resource)
@@ -311,33 +343,8 @@ class Engine:
         eligible: list[Any] = []
         for resource in resources:
             try:
-                if resource.resource_type == "evidence" and resource.metadata.get("retain") is True:
-                    if not hasattr(adapter, "sanitize_evidence"):
-                        raise CleanupError("evidence retention requires an independent redaction scanner")
-                    try:
-                        proof = adapter.sanitize_evidence(resource)
-                        self.report.retained.append(self.report.item(resource, outcome="sanitized-evidence", **proof))
-                    except Exception as error:
-                        outcome = adapter.delete(resource, deadline)
-                        self.report.removed.append(self.report.item(resource, outcome="redaction-failed-destroyed",
-                                                                    reason=str(error), provider_outcome=outcome))
+                if not self._prepare_for_delete(resource, adapter, deadline):
                     continue
-                marker = adapter.marker(resource)
-                if resource.resource_type in PROVIDER_TYPES:
-                    if marker is None and getattr(adapter, "absent_is_clean", False):
-                        state = adapter.exists(resource)
-                        if state is None: raise CleanupError("absent provider state is unknown")
-                        if not state:
-                            self.report.removed.append(self.report.item(resource, outcome="already-absent"))
-                            continue
-                    if marker is None and hasattr(adapter, "recover_creating"):
-                        outcome = adapter.recover_creating(resource, deadline)
-                        state = adapter.exists(resource)
-                        if state is None or state: raise CleanupError("setup-intent recovery left provider residue")
-                        self.report.removed.append(self.report.item(resource, outcome=f"recovered-{outcome}"))
-                        continue
-                    if marker is None: raise CleanupError("provider-native ownership marker is absent")
-                    manifest_api.verify_marker(self.header, resource, marker)
                 eligible.append(resource)
             except Exception as error: self.report.refused.append(self.report.item(resource, reason=str(error)))
         try:

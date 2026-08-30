@@ -11,6 +11,18 @@ wif=load("axon_wif_claim_test",ROOT/"scripts/e2e/validate-wif-claims.py")
 def policy():
  text=(ROOT/"config/tailscale/axon-ci-live-policy.hujson").read_text();return json.loads(re.sub(r"//.*","",text))
 class LiveContractTests(unittest.TestCase):
+ def test_heartbeat_failure_retains_sanitized_provider_operation_and_cause(self):
+  item={"name":"qdrant","url_env":"GATEWAY_URL","auth_env":"GATEWAY_TOKEN"};lease={"lease_id":"opaque"}
+  beats=runner.Heartbeats([(item,lease)],"namespace","123","2",1)
+  with mock.patch.dict(os.environ,{"GATEWAY_URL":"https://private.example","GATEWAY_TOKEN":"super-secret"},clear=True),mock.patch.object(runner,"call",side_effect=TimeoutError("secret detail")):
+   with self.assertRaises(runner.HeartbeatFailure) as caught:beats._beat()
+  self.assertEqual({"provider":"qdrant","operation":"lease-heartbeat","cause":"TimeoutError"},caught.exception.evidence())
+  self.assertNotIn("secret",json.dumps(caught.exception.evidence()))
+ def test_invalid_invariants_and_wrong_binary_are_typed_harness_errors(self):
+  valid={"commands":[{"argv":["target/debug/axon"]}],"invariants":["job-terminal"]}
+  with self.assertRaises(runner.HarnessError):runner.validate_plan({**valid,"invariants":["invented"]},"a"*40,"a"*40)
+  with self.assertRaises(runner.HarnessError):runner.validate_plan({**valid,"commands":[{"argv":["/tmp/not-axon"]}]},"a"*40,"a"*40)
+  self.assertEqual(["job-terminal"],runner.validate_plan(valid,"a"*40,"a"*40))
  def test_repeated_termination_is_deferred_after_live_cleanup_begins(self):
   shield=runner.CancellationShield()
   with self.assertRaises(InterruptedError):shield._handle(15,None)

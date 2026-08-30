@@ -176,7 +176,7 @@
         "500",
         "502"
       ],
-      "result_dto": "LedgerSourceDetail",
+      "result_dto": "SourceSummary",
       "streaming": false
     },
     {
@@ -2147,7 +2147,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:3a9ba483a305b9d1d74298d87546d708462625594cc5659dd5e330fd8d8ec6c5",
+        "checksum": "sha256:7deafb1c3ef2e0c489d160b3187850a93d4efe4ff756cf5c1a0a6f19fad6ea33",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

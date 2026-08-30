@@ -1,0 +1,134 @@
+name: E2E qualification evidence assembly
+
+on:
+  workflow_call:
+    inputs:
+      tested_sha: {required: true, type: string}
+      profile: {required: true, type: string}
+      hermetic_run_id: {required: true, type: string}
+      hermetic_artifact: {required: true, type: string}
+      live_run_id: {required: true, type: string}
+      live_artifact: {required: true, type: string}
+      platform_run_id: {required: true, type: string}
+      platform_artifact: {required: true, type: string}
+      performance_run_id: {required: true, type: string}
+      performance_artifact: {required: true, type: string}
+  workflow_dispatch:
+    inputs:
+      tested_sha: {description: Exact tested commit SHA, required: true, type: string}
+      profile: {description: Qualification profile, required: true, default: release-candidate, type: choice, options: [pr, main, release-candidate]}
+      hermetic_run_id: {description: Hermetic workflow run ID, required: true, type: string}
+      hermetic_artifact: {description: Exact hermetic artifact name, required: true, type: string}
+      live_run_id: {description: Live workflow run ID, required: true, type: string}
+      live_artifact: {description: Exact live artifact name, required: true, type: string}
+      platform_run_id: {description: Platform workflow run ID, required: true, type: string}
+      platform_artifact: {description: Exact platform artifact name, required: true, type: string}
+      performance_run_id: {description: Performance workflow run ID, required: true, type: string}
+      performance_artifact: {description: Exact performance artifact name, required: true, type: string}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    outputs:
+      evidence_run_id: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.tested_sha }}
+          persist-credentials: false
+      - name: Verify every producer run is successful and exact-SHA bound
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.tested_sha }}
+          RUN_IDS: ${{ inputs.hermetic_run_id }} ${{ inputs.live_run_id }} ${{ inputs.platform_run_id }} ${{ inputs.performance_run_id }}
+        run: |
+          mkdir -p target/e2e/producer-metadata
+          for run_id in $RUN_IDS; do
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > "target/e2e/producer-metadata/${run_id}.json"
+            python3 - "$run_id" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          run_id=sys.argv[1]
+          value=json.loads(Path(f"target/e2e/producer-metadata/{run_id}.json").read_text())
+          if value.get("head_sha") != os.environ["EXPECTED_SHA"] or value.get("conclusion") != "success":
+              raise SystemExit(f"producer run {run_id} is not a successful exact-SHA run")
+          PY
+          done
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: {github-token: '${{ github.token }}', run-id: '${{ inputs.hermetic_run_id }}', name: '${{ inputs.hermetic_artifact }}', path: target/e2e/lanes/hermetic}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: {github-token: '${{ github.token }}', run-id: '${{ inputs.live_run_id }}', name: '${{ inputs.live_artifact }}', path: target/e2e/lanes/live}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: {github-token: '${{ github.token }}', run-id: '${{ inputs.platform_run_id }}', name: '${{ inputs.platform_artifact }}', path: target/e2e/lanes/platform}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: {github-token: '${{ github.token }}', run-id: '${{ inputs.performance_run_id }}', name: '${{ inputs.performance_artifact }}', path: target/e2e/lanes/performance}
+      - name: Assemble content-bound evidence index
+        env:
+          EXPECTED_SHA: ${{ inputs.tested_sha }}
+          PROFILE: ${{ inputs.profile }}
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          HERMETIC_RUN: ${{ inputs.hermetic_run_id }}
+          LIVE_RUN: ${{ inputs.live_run_id }}
+          PLATFORM_RUN: ${{ inputs.platform_run_id }}
+          PERFORMANCE_RUN: ${{ inputs.performance_run_id }}
+          ASSEMBLY_RUN_ID: ${{ github.run_id }}
+          ASSEMBLY_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, tomllib
+          from pathlib import Path
+          root=Path("target/e2e/lanes")
+          def one(directory, pattern):
+              matches=list((root/directory).glob(pattern))
+              if len(matches)!=1: raise SystemExit(f"expected one {directory}/{pattern}, found {len(matches)}")
+              return str(matches[0])
+          now=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00","Z")
+          def producer(workflow, run_id):
+              run=json.loads(Path(f"target/e2e/producer-metadata/{run_id}.json").read_text())
+              if run.get("path") != f".github/workflows/{workflow}": raise SystemExit(f"run {run_id} is not from {workflow}")
+              branch=run.get("head_branch")
+              if not branch: raise SystemExit(f"producer run {run_id} has no attributable head branch")
+              return {"repository":run["repository"]["full_name"],"workflow":workflow,
+                      "ref":f"refs/heads/{branch}","run_id":str(run["id"]),
+                      "run_attempt":run["run_attempt"],"tested_sha":run["head_sha"],
+                      "completed_at":run["updated_at"]}
+          artifacts=[
+            {"id":"hermetic","family":"hermetic","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"upgrade","family":"upgrade","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","canonical_scenario":"hermetic.upgrade","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"sensitivity","family":"sensitivity","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","canonical_scenario":"hermetic.mutation-sensitivity","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"reliability","family":"reliability","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","canonical_scenario":"*","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"observability","family":"observability","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","canonical_scenario":"hermetic.real-composed-retrieval","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"cleanup","family":"cleanup","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","canonical_scenario":"hermetic.teardown","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"security","family":"security","source":one("hermetic","hermetic-canonical.json"),"format":"canonical-report","canonical_scenario":"hermetic.isolation","producer":producer("e2e-hermetic.yml",os.environ["HERMETIC_RUN"])},
+            {"id":"live","family":"live","source":one("live","live-report.json"),"format":"canonical-report","producer":producer("e2e-live.yml",os.environ["LIVE_RUN"])},
+            {"id":"platform","family":"platform","source":one("platform","platform-smoke-*.json"),"format":"canonical-report","producer":producer("e2e-platform-smoke.yml",os.environ["PLATFORM_RUN"])},
+            {"id":"performance","family":"performance","source":one("performance","release-projection.json"),"format":"performance-projection","producer":producer("e2e-performance.yml",os.environ["PERFORMANCE_RUN"])},
+          ]
+          product_version=tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"]
+          policy_version=json.loads(Path("config/e2e/qualification-policy.json").read_text())["policy_version"]
+          assembly={"repository":os.environ["REPOSITORY"],"workflow":".github/workflows/e2e-qualification-assemble.yml",
+                    "run_id":os.environ["ASSEMBLY_RUN_ID"],"run_attempt":int(os.environ["ASSEMBLY_RUN_ATTEMPT"]),
+                    "tested_sha":os.environ["EXPECTED_SHA"]}
+          spec={"tested_sha":os.environ["EXPECTED_SHA"],"profile":os.environ["PROFILE"],"policy_version":policy_version,"as_of":now,"product_version":product_version,"artifacts":artifacts,"assembly":assembly}
+          Path("target/e2e/qualification-assembly-spec.json").write_text(json.dumps(spec))
+          PY
+          python3 scripts/e2e/assemble-qualification-input.py --spec target/e2e/qualification-assembly-spec.json --out target/e2e/qualification-input
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-qualification-input
+          path: target/e2e/qualification-input
+          if-no-files-found: error
+          retention-days: 30
+  qualify:
+    needs: assemble
+    uses: ./.github/workflows/e2e-qualification.yml
+    with:
+      evidence_run_id: ${{ needs.assemble.outputs.evidence_run_id }}
+      tested_sha: ${{ inputs.tested_sha }}
+      profile: ${{ inputs.profile }}
+      assembled_in_current_run: true

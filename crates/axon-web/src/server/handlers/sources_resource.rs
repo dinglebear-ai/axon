@@ -21,7 +21,7 @@
 //! are intentionally NOT wired here — see the WS-G followups list.
 
 use axon_api::ApiError;
-use axon_api::source::{LedgerSourceDetail, RoutePlan, SourceId, SourceRequest};
+use axon_api::source::{RoutePlan, SourceId, SourceRequest, SourceSummary};
 use axon_error::ErrorStage;
 use axum::{
     extract::{Path, State},
@@ -40,7 +40,7 @@ type WebState = (AppState, Arc<axon_core::config::Config>);
     path = "/v1/sources/{source_id}",
     params(("source_id" = String, Path, description = "Ledger source id")),
     responses(
-        (status = 200, description = "Source ledger detail", body = LedgerSourceDetail),
+        (status = 200, description = "Source detail", body = SourceSummary),
         (status = 404, description = "Source not found in the ledger", body = crate::server::error::ErrorBody),
         (status = 503, description = "Source ledger not configured on this deployment", body = crate::server::error::ErrorBody)
     ),
@@ -49,11 +49,11 @@ type WebState = (AppState, Arc<axon_core::config::Config>);
 pub(crate) async fn get_source(
     State((state, _cfg)): State<WebState>,
     Path(source_id): Path<String>,
-) -> Result<Json<LedgerSourceDetail>, HttpError> {
+) -> Result<Json<SourceSummary>, HttpError> {
     let runtime = ledger_runtime(state.service_context.target_local_source_runtime())?;
-    let detail = runtime
+    let summary = runtime
         .ledger
-        .get_source_detail(SourceId::new(source_id.clone()))
+        .get_source(SourceId::new(source_id.clone()))
         .await
         .map_err(HttpError::from_api_error)?
         .ok_or_else(|| {
@@ -63,7 +63,7 @@ pub(crate) async fn get_source(
                 format!("source {source_id} not found"),
             )
         })?;
-    Ok(Json(detail))
+    Ok(Json(summary))
 }
 
 fn ledger_runtime(

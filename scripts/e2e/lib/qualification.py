@@ -111,6 +111,7 @@ def build(index: dict[str, Any], policy: dict[str, Any], root: Path) -> tuple[di
     require(isinstance(subject.get("catalog_version"), (str, int)), "catalog version missing")
     require(isinstance(subject.get("corpus_version"), str), "corpus version missing")
     sources = subject.get("sources", {})
+    source_values: dict[str, dict[str, Any]] = {}
     for name, expected_version_key, actual_version_key in (("catalog", "catalog_version", "schema_version"), ("corpus", "corpus_version", "corpus_version")):
         source = sources.get(name, {}); relative = source.get("path")
         require(isinstance(relative, str) and SAFE_PATH.fullmatch(relative), f"{name} source path invalid")
@@ -119,6 +120,16 @@ def build(index: dict[str, Any], policy: dict[str, Any], root: Path) -> tuple[di
         require(source.get("sha256") == source_digest == subject[f"{name}_sha256"], f"{name} source digest mismatch")
         source_value = load_json(source_path)
         require(str(source_value.get(actual_version_key)) == str(subject[expected_version_key]), f"{name} version mismatch")
+        source_values[name] = source_value
+    catalog_scenarios = source_values["catalog"].get("scenarios")
+    require(isinstance(catalog_scenarios, list) and catalog_scenarios, "verified catalog has no scenarios")
+    catalog_by_id: dict[str, dict[str, Any]] = {}
+    for scenario in catalog_scenarios:
+        require(isinstance(scenario, dict) and isinstance(scenario.get("id"), str), "catalog scenario identity invalid")
+        require(scenario["id"] not in catalog_by_id, "catalog scenario identity duplicated")
+        require(isinstance(scenario.get("capability"), str) and scenario["capability"], "catalog scenario capability invalid")
+        require(isinstance(scenario.get("surfaces"), list) and scenario["surfaces"], "catalog scenario surfaces invalid")
+        catalog_by_id[scenario["id"]] = scenario
     requirements = policy["profiles"][profile]["families"]
     require(set(requirements) == FAMILIES and set(requirements.values()) <= REQUIREMENTS, "profile family policy incomplete")
     exception = index.get("outage_exception")
@@ -127,6 +138,7 @@ def build(index: dict[str, Any], policy: dict[str, Any], root: Path) -> tuple[di
     artifacts = index.get("artifacts"); require(isinstance(artifacts, list), "artifact index missing")
     seen_ids: set[str] = set(); family_records: dict[str, list[dict[str, Any]]] = {family: [] for family in FAMILIES}
     projections: list[dict[str, Any]] = []
+    verified_coverage: dict[str, set[str]] = {}
     max_age = int(policy["max_evidence_age_seconds"])
     for item in artifacts:
         require(isinstance(item, dict), "artifact descriptor invalid")
@@ -159,6 +171,18 @@ def build(index: dict[str, Any], policy: dict[str, Any], root: Path) -> tuple[di
         value = load_json(path); require(value.get("tested_sha") == tested_sha, "evidence tested SHA mismatch")
         _no_sensitive_keys(value)
         state = _result(value, item.get("format"))
+        if item.get("format") == "canonical-report":
+            for scenario in value["scenarios"]:
+                scenario_id = scenario.get("scenario_id")
+                catalog_scenario = catalog_by_id.get(scenario_id)
+                # Infrastructure/measurement scenarios may coexist in a
+                # canonical report, but they never earn catalog coverage.
+                if catalog_scenario is None:
+                    continue
+                require(scenario.get("capability") == catalog_scenario["capability"], f"evidence capability disagrees with catalog: {scenario_id}")
+                require(scenario.get("surface") in catalog_scenario["surfaces"], f"evidence surface disagrees with catalog: {scenario_id}")
+                if scenario.get("status") == "passed":
+                    verified_coverage.setdefault(scenario_id, set()).add(scenario["surface"])
         claim = _projection(value, item.get("format")); _no_sensitive_keys(claim)
         require(len(canonical(claim)) <= 65536, "artifact projection exceeds bound")
         record = {"artifact_id": artifact_id, "state": state, "projection": claim}
@@ -186,16 +210,29 @@ def build(index: dict[str, Any], policy: dict[str, Any], root: Path) -> tuple[di
             if state == "failed": failed = True
         families.append({"family": family, "requirement": requirement, "state": state,
                          "rationale": rationale, "evidence": sorted(records, key=lambda x: x["artifact_id"])})
+    authoritative_pairs = {(scenario_id, surface) for scenario_id, row in catalog_by_id.items()
+                           for surface in row["surfaces"]}
+    covered_pairs = {(scenario_id, surface) for scenario_id, surfaces in verified_coverage.items()
+                     for surface in surfaces} & authoritative_pairs
+    covered_rows = [catalog_by_id[scenario_id] for scenario_id in sorted({item[0] for item in covered_pairs})]
+    coverage = {
+        "capabilities": sorted({row["capability"] for row in covered_rows}),
+        "surfaces": sorted({surface for surfaces in verified_coverage.values() for surface in surfaces}),
+        "scenario_surface_covered": len(covered_pairs),
+        "scenario_surface_total": len(authoritative_pairs),
+    }
+    coverage_threshold = policy["profiles"][profile].get("minimum_catalog_coverage_percent", 0)
+    require(isinstance(coverage_threshold, int) and 0 <= coverage_threshold <= 100,
+            "catalog coverage policy invalid")
+    coverage["required_percent"] = coverage_threshold
+    actual_coverage = 100 * coverage["scenario_surface_covered"] / coverage["scenario_surface_total"]
+    if actual_coverage < coverage_threshold:
+        incomplete = True
     outcome = "failed" if failed else ("incomplete" if incomplete else "passed")
-    coverage = index.get("coverage", {})
-    require(isinstance(coverage.get("capabilities"), list) and isinstance(coverage.get("surfaces"), list), "coverage projection missing")
-    require(all(isinstance(item, str) and 0 < len(item) <= 80 for item in coverage["capabilities"] + coverage["surfaces"]), "coverage identifiers invalid")
-    require(isinstance(coverage.get("catalog_covered"), int) and isinstance(coverage.get("catalog_total"), int) and 0 <= coverage["catalog_covered"] <= coverage["catalog_total"], "catalog coverage counts invalid")
     manifest = {"schema": 1, "kind": "axon-e2e-release-qualification", "profile": profile,
                 "policy": {"version": policy["policy_version"], "outage_exception": exception},
                 "as_of": index["as_of"], "subject": subject,
-                "coverage": {"capabilities": sorted(set(coverage["capabilities"])), "surfaces": sorted(set(coverage["surfaces"])),
-                             "catalog_covered": int(coverage.get("catalog_covered", 0)), "catalog_total": int(coverage.get("catalog_total", 0))},
+                "coverage": coverage,
                 "families": families, "artifacts": sorted(projections, key=lambda x: x["id"]),
                 "qualification": {"outcome": outcome, "unsigned": True, "release_eligible": False,
                                   "reason": "unsigned evidence projection; signing is a separate approved-identity operation"},

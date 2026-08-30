@@ -16,6 +16,11 @@ on:
         required: false
         default: release-candidate
         type: string
+      assembled_in_current_run:
+        description: Evidence was produced by a successful prerequisite job in this workflow run
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       evidence_run_id:
@@ -58,13 +63,35 @@ jobs:
           run-id: ${{ inputs.evidence_run_id }}
           name: e2e-qualification-input
           path: target/e2e/evidence
+      - name: Verify producer run completed successfully for the exact tested SHA
+        if: ${{ !inputs.assembled_in_current_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+          EXPECTED_SHA: ${{ inputs.tested_sha }}
+        run: |
+          actual_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EVIDENCE_RUN_ID}" --jq '.head_sha')"
+          conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EVIDENCE_RUN_ID}" --jq '.conclusion')"
+          workflow_path="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${EVIDENCE_RUN_ID}" --jq '.path')"
+          test "$actual_sha" = "$EXPECTED_SHA"
+          test "$conclusion" = success
+          test "$workflow_path" = '.github/workflows/e2e-qualification-assemble.yml'
+      - name: Verify prerequisite-job evidence is bound to this exact run and SHA
+        if: ${{ inputs.assembled_in_current_run }}
+        env:
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+          EXPECTED_SHA: ${{ inputs.tested_sha }}
+        run: |
+          test "$EVIDENCE_RUN_ID" = "$GITHUB_RUN_ID"
+          test "$EXPECTED_SHA" = "$GITHUB_SHA"
       - name: Bind bundle to requested profile and tested commit
         env:
           EXPECTED_PROFILE: ${{ inputs.profile }}
           EXPECTED_SHA: ${{ inputs.tested_sha }}
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
         run: |
           python3 - <<'PY'
-          import json, os, re
+          import hashlib, json, os, re
           from pathlib import Path
           index=json.loads(Path("target/e2e/evidence/qualification-index.json").read_text())
           expected_sha=os.environ["EXPECTED_SHA"]
@@ -72,6 +99,21 @@ jobs:
               raise SystemExit("qualification evidence tested SHA mismatch")
           if index.get("profile") != os.environ["EXPECTED_PROFILE"]:
               raise SystemExit("qualification evidence profile mismatch")
+          attestation=index.get("assembly_attestation",{})
+          if attestation.get("workflow") != ".github/workflows/e2e-qualification-assemble.yml":
+              raise SystemExit("qualification assembly workflow mismatch")
+          if str(attestation.get("run_id")) != os.environ.get("EVIDENCE_RUN_ID", ""):
+              raise SystemExit("qualification assembly run mismatch")
+          path=Path("target/e2e/evidence")/attestation.get("path","")
+          if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=attestation.get("sha256"):
+              raise SystemExit("qualification assembly attestation digest mismatch")
+          assembled=json.loads(path.read_text())
+          if assembled.get("tested_sha")!=expected_sha or assembled.get("assembly",{}).get("run_id")!=os.environ["EVIDENCE_RUN_ID"]:
+              raise SystemExit("qualification assembly attestation metadata mismatch")
+          indexed={(item.get("id"),item.get("family"),item.get("sha256"),str(item.get("producer",{}).get("run_id"))) for item in index.get("artifacts",[])}
+          attested={(item.get("id"),item.get("family"),item.get("sha256"),str(item.get("producer",{}).get("run_id"))) for item in assembled.get("artifacts",[])}
+          if indexed!=attested or len(indexed)!=len(index.get("artifacts",[])):
+              raise SystemExit("indexed producer metadata disagrees with assembly attestation")
           PY
       - name: Build deterministic unsigned qualification
         run: |

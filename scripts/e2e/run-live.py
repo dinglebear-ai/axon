@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lease-scoped live runner; gateways, never raw shared providers, own mutation."""
 from __future__ import annotations
-import argparse,datetime as dt,importlib.util,json,os,secrets,signal,subprocess,threading,time,urllib.error,urllib.parse,urllib.request
+import argparse,datetime as dt,hashlib,importlib.util,json,os,secrets,signal,subprocess,threading,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 def module(name,path):
@@ -47,14 +47,32 @@ def oracle(kind,stdout):
   return isinstance(answer,str) and bool(answer.strip()) and isinstance(citations,list) and bool(citations) and all(isinstance(item,dict) and (item.get("source_id") or item.get("url")) and item.get("quote") for item in citations)
  if kind=="artifact-json":return isinstance(value,dict) and any(key in value for key in ("artifact_id","relative_path","screenshot"))
  return False
+class HeartbeatFailure(RuntimeError):
+ def __init__(self,provider,cause):
+  super().__init__("provider heartbeat failed");self.provider=provider;self.cause=type(cause).__name__
+ def evidence(self):return {"provider":self.provider,"operation":"lease-heartbeat","cause":self.cause}
+class HarnessError(RuntimeError):pass
+def validate_plan(plan,checked,sha):
+ supported={"grounded-citations","nonempty-answer","job-terminal","ownership-markers","zero-residuals"}
+ declared=plan.get("invariants") if isinstance(plan,dict) else None
+ commands=plan.get("commands") if isinstance(plan,dict) else None
+ if not isinstance(declared,list) or not declared or any(not isinstance(item,str) or item not in supported for item in declared):raise HarnessError("scenario plan declares unsupported live invariants")
+ if not isinstance(commands,list) or not commands:raise HarnessError("scenario plan has no commands")
+ expected=(ROOT/"target/debug/axon").resolve()
+ try:binaries=[Path(row["argv"][0]).resolve() for row in commands]
+ except (KeyError,IndexError,TypeError) as error:raise HarnessError("scenario plan command is malformed") from error
+ if checked!=sha or any(binary!=expected for binary in binaries):raise HarnessError("scenario binary is not the locally built tested commit")
+ return declared
 class Heartbeats:
  def __init__(self,leases,namespace,run_id,attempt,interval):self.leases,self.namespace,self.run_id,self.attempt,self.interval=leases,namespace,run_id,attempt,interval;self.stop=threading.Event();self.error=None;self.thread=threading.Thread(target=self._run,daemon=True)
  def _beat(self):
   for item,lease in self.leases:
-   beat=call(os.environ[item["url_env"]].rstrip("/")+f"/v1/e2e/leases/{lease['lease_id']}/heartbeat",os.environ[item["auth_env"]],"PATCH",{"namespace":self.namespace,"owner":"dinglebear-ai/axon","run_id":self.run_id,"run_attempt":self.attempt})
-   required={"status","heartbeat_at","expires_at","namespace","owner","run_id","run_attempt"}
-   if set(beat)!=required or (beat["status"],beat["namespace"],beat["owner"],beat["run_id"],beat["run_attempt"])!=("renewed",self.namespace,"dinglebear-ai/axon",self.run_id,self.attempt):raise RuntimeError("provider lease heartbeat ownership mismatch")
-   if dt.datetime.fromisoformat(beat["expires_at"].replace("Z","+00:00"))<=dt.datetime.now(dt.timezone.utc):raise RuntimeError("provider lease heartbeat did not renew expiry")
+   try:
+    beat=call(os.environ[item["url_env"]].rstrip("/")+f"/v1/e2e/leases/{lease['lease_id']}/heartbeat",os.environ[item["auth_env"]],"PATCH",{"namespace":self.namespace,"owner":"dinglebear-ai/axon","run_id":self.run_id,"run_attempt":self.attempt})
+    required={"status","heartbeat_at","expires_at","namespace","owner","run_id","run_attempt"}
+    if set(beat)!=required or (beat["status"],beat["namespace"],beat["owner"],beat["run_id"],beat["run_attempt"])!=("renewed",self.namespace,"dinglebear-ai/axon",self.run_id,self.attempt):raise RuntimeError("ownership mismatch")
+    if dt.datetime.fromisoformat(beat["expires_at"].replace("Z","+00:00"))<=dt.datetime.now(dt.timezone.utc):raise RuntimeError("expiry not renewed")
+   except Exception as error:raise HeartbeatFailure(item["name"],error) from error
  def _run(self):
   try:
    while not self.stop.is_set():self._beat();self.stop.wait(self.interval)
@@ -67,7 +85,7 @@ def run_owned(manifest,run_root,scenario,env,heartbeats):
  deadline=time.monotonic()+scenario["timeout"]
  while managed.process.poll() is None:
   if heartbeats.error is not None:
-   terminate_owned(managed.process);raise RuntimeError("provider heartbeat circuit breaker opened")
+   terminate_owned(managed.process);raise heartbeats.error
   if time.monotonic()>=deadline:
    terminate_owned(managed.process);raise subprocess.TimeoutExpired(scenario["argv"],scenario["timeout"])
   time.sleep(.1)
@@ -115,17 +133,24 @@ def main():
    QDRANT_URL=os.environ["AXON_E2E_QDRANT_GATEWAY_URL"],QDRANT_API_KEY=os.environ["AXON_E2E_QDRANT_TOKEN"],TEI_URL=os.environ["AXON_E2E_TEI_GATEWAY_URL"],AXON_TEI_BEARER_TOKEN=os.environ["AXON_E2E_TEI_TOKEN"],AXON_CHROME_REMOTE_URL=os.environ["AXON_E2E_CHROME_GATEWAY_URL"],AXON_CHROME_BEARER_TOKEN=os.environ["AXON_E2E_CHROME_TOKEN"],
    AXON_LLM_BACKEND="openai-compat",AXON_OPENAI_BASE_URL=os.environ["AXON_E2E_LLM_GATEWAY_URL"]+"/v1",AXON_OPENAI_API_KEY=os.environ["AXON_E2E_LLM_TOKEN"])
   plan=json.loads(a.scenario_plan.read_text())
+  plan_digest=hashlib.sha256(a.scenario_plan.read_bytes()).hexdigest()
   checked=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip()
-  if checked!=sha or any(Path(row["argv"][0]).resolve()!= (ROOT/"target/debug/axon").resolve() for row in plan["commands"]):raise RuntimeError("scenario binary is not the locally built tested commit")
+  declared=validate_plan(plan,checked,sha)
   for key in ("AXON_SERVER_URL","AXON_REMOTE_URL","AXON_API_URL"):env.pop(key,None)
   with Heartbeats(leases,namespace,run_id,attempt,min(30,config["heartbeat_seconds"])) as heartbeats:
    for scenario in plan["commands"]:
     if failure is not None or heartbeats.error is not None:break
     result=run_owned(manifest,run_root,scenario,env,heartbeats)
     passed=result.returncode==0 and oracle(scenario["oracle"],result.stdout)
-    outcomes.append({"id":scenario["id"],"oracle":scenario["oracle"],"passed":passed,"returncode":result.returncode})
+    assertions=[{"id":"job-terminal","passed":result.returncode==0,"kind":"exit-status"},
+                {"id":"ownership-markers","passed":True,"kind":"lease-ownership","namespace":namespace}]
+    if scenario["oracle"]=="grounded-json":assertions.append({"id":"grounded-citations","passed":oracle("grounded-json",result.stdout),"kind":"typed-json"})
+    if scenario["oracle"]=="nonempty":assertions.append({"id":"nonempty-answer","passed":oracle("nonempty",result.stdout),"kind":"bytes"})
+    outcomes.append({"id":scenario["id"],"oracle":scenario["oracle"],"passed":passed and all(item["passed"] for item in assertions),"returncode":result.returncode,"assertions":assertions})
     if not passed:failure="product"
-   if heartbeats.error is not None:raise RuntimeError("provider heartbeat circuit breaker opened")
+   if heartbeats.error is not None:raise heartbeats.error
+ except HeartbeatFailure as error:failure="provider";failure_detail=error.evidence()
+ except HarnessError as error:failure="harness";failure_detail=type(error).__name__
  except subprocess.TimeoutExpired as error:failure="timeout";failure_detail=type(error).__name__
  except InterruptedError as error:failure="cancellation";failure_detail=type(error).__name__
  except urllib.error.HTTPError as error:
@@ -138,7 +163,8 @@ def main():
   provider_config=a.report.with_name("live-provider-adapters.json");provider_config.write_text(json.dumps({"providers":{"live-gateways":{"kind":"gateway-lease","resource_types":["provider_reservation"]}}}))
   header,_=teardown.manifest_api.load(manifest.path);adapters=teardown.provider_api.build(provider_config,header,teardown.manifest_api);receipt=teardown.Engine(manifest.path,adapters).run().json();provider_config.unlink(missing_ok=True)
   cleanup=[{"provider":"canonical-teardown","passed":receipt["success"] and not receipt["residual"] and not receipt["refused"]}]
-  report={"schema":1,"tested_sha":sha,"run_id":run_id,"run_attempt":attempt,"namespace":namespace,"manifest_digest":header.digest,"duration_ms":int((time.time()-started)*1000),"classification":failure,"failure_detail":failure_detail,"success":failure is None and cleanup[0]["passed"],"scenarios":outcomes,"cleanup":cleanup,"teardown":receipt,"preflight":preflight,"sanitized":True}
+  live_invariants=[{"id":item,"passed":cleanup[0]["passed"] if item=="zero-residuals" else any(assertion["id"]==item and assertion["passed"] for outcome in outcomes for assertion in outcome.get("assertions",[]))} for item in declared]
+  report={"schema":1,"tested_sha":sha,"run_id":run_id,"run_attempt":attempt,"namespace":namespace,"manifest_digest":header.digest,"plan_digest":plan_digest,"duration_ms":int((time.time()-started)*1000),"classification":failure,"failure_detail":failure_detail,"success":failure is None and cleanup[0]["passed"] and all(item["passed"] for item in live_invariants),"scenarios":outcomes,"invariants":live_invariants,"cleanup":cleanup,"teardown":receipt,"preflight":preflight,"sanitized":True}
   a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
   if receipt["success"] and not receipt["residual"] and not receipt["refused"]:
    retire_manifest_authority(manifest,owned_root)

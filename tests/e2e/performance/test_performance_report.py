@@ -59,6 +59,18 @@ class PerformanceReportTests(unittest.TestCase):
   current,baseline=report(),report();current["contention"].update(pressure_detected=True,baseline_eligible=False)
   budgets={"schema":"axon-e2e-performance-budgets/v1","mode":"report_only","promotion":{},"budgets":[]}
   result=perf.compare(current,baseline,budgets);self.assertEqual("infrastructure",result["classification"]);self.assertEqual("incomparable",result["status"])
+ def test_each_measurement_prerequisite_can_make_report_ineligible(self):
+  cases=[]
+  pressure=report();pressure["contention"].update(pressure_detected=True,baseline_eligible=False);cases.append(pressure)
+  censored=report();censored["contention"]["baseline_eligible"]=False;censored["censored"]=[{"classification":"infrastructure"}];cases.append(censored)
+  samples=report();target=samples["metrics"][0];target["samples"]=[10.0]*4;target["summary"]=perf.summarize(target["samples"],1,1000);samples["contention"]["baseline_eligible"]=False;cases.append(samples)
+  supported=report();supported["contention"].update(baseline_eligible=False,supported_metrics=7,minimum_supported_metrics=8);cases.append(supported)
+  for value in cases:
+   perf.validate_report(value)
+   self.assertEqual("measurement_ineligible",perf.release_projection(value)["status"])
+ def test_ineligible_report_requires_a_real_prerequisite_failure(self):
+  value=report();value["contention"]["baseline_eligible"]=False
+  with self.assertRaisesRegex(perf.PerformanceError,"without an unmet prerequisite"):perf.validate_report(value)
  def test_release_projection_is_bounded_and_consumable(self):
   value=report();projection=perf.release_projection(value);encoded=json.dumps(projection);self.assertEqual(value["tested_sha"],projection["tested_sha"])
   self.assertNotIn('"samples"',encoded);self.assertNotIn("canonical_execution",encoded)

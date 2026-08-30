@@ -25,7 +25,7 @@ ORACLE_IDS = (
     "observe.timing_reconciliation",
 )
 TERMINAL = {"completed", "completed_degraded", "failed", "canceled"}
-FAILURE_CLASSES = {"product", "provider", "auth/network"}
+FAILURE_CLASSES = {"product", "provider", "auth_network"}
 PHASE_ORDER = {name: index for index, name in enumerate((
     "queued", "requested", "resolving", "routing", "authorizing", "planning", "leasing",
     "discovering", "diffing", "fetching", "rendering", "enriching", "normalizing", "parsing",
@@ -189,7 +189,7 @@ def _retry(events: list[dict[str, Any]]) -> dict[str, Any]:
 def classify_error(error: dict[str, Any]) -> str:
     code = str(error.get("code", ""))
     if code.startswith(("auth.", "security.", "network.", "http.ssrf", "route.local_path")):
-        return "auth/network"
+        return "auth_network"
     if code.startswith(("provider.", "embedding.", "llm.", "qdrant.", "chrome.")):
         return "provider"
     return "product"

@@ -154,14 +154,25 @@ def run(report_path: Path, total_budget: int) -> int:
         "socket.getaddrinfo=_guard_gai\n")
     child_env = {**os.environ, "PYTHONPATH": str(guard_path) + os.pathsep + os.environ.get("PYTHONPATH", ""),
                  "AXON_E2E_REAL_AXON_BIN":str(ROOT/"target/debug/axon"),"AXON_E2E_REQUIRE_REAL_SOURCE_JOBS":"1"}
-    budget_exhausted=False
+    budget_exhausted=False; pending_error: Exception | None = None
     try:
         cleanup_names={"teardown","isolation"}
         cleanup_reserve=sum(budget for name,_argv,budget in planned if name in cleanup_names)
         if total_budget < cleanup_reserve:
             raise ValueError(f"total budget must cover cleanup reserve ({cleanup_reserve}s)")
-        try: validate_environment(); verify_native_isolation()
-        except Exception: failed=True
+        try:
+            validate_environment()
+        except Exception as error:
+            failed=True;pending_error=error
+            stages.append({"name":"environment","status":"failed","duration_ms":0,
+                           "error_type":type(error).__name__,"sanitized":True})
+        if pending_error is None:
+            try:
+                verify_native_isolation()
+            except Exception as error:
+                failed=True;pending_error=error
+                stages.append({"name":"native-isolation","status":"failed","duration_ms":0,
+                               "error_type":type(error).__name__,"sanitized":True})
         for name, argv, budget in planned:
             if (failed or canceled) and name not in cleanup_names: continue
             remaining=max(0.0,total_budget-(time.monotonic()-started))
@@ -250,6 +261,8 @@ def run(report_path: Path, total_budget: int) -> int:
         report_path.write_text(json.dumps(report, indent=2, sort_keys=True)+"\n")
         guard.cleanup()
         for sig,handler in previous.items():signal.signal(sig,handler)
+    if pending_error is not None:
+        raise pending_error
     return 0 if report["success"] else 1
 
 

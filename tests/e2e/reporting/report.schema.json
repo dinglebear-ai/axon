@@ -39,10 +39,21 @@
             "items": {
               "type": "object", "additionalProperties": false,
               "required": ["attempt", "status", "duration_ms", "classification", "summary"],
-              "properties": {"attempt": {"type": "integer", "minimum": 1}, "status": {"enum": ["passed", "failed", "timed_out", "canceled"]}, "duration_ms": {"type": "integer", "minimum": 0}, "classification": {"enum": ["product", "fixture", "provider", "auth/network", "cleanup", "harness", null]}, "summary": {"type": ["string", "null"]}, "namespace": {"type": "string"}, "serialized": {"type": "boolean"}, "backoff_ms": {"type": "integer", "minimum": 0}, "teardown_verified": {"type": "boolean"}}
+              "properties": {"attempt": {"type": "integer", "minimum": 1}, "status": {"enum": ["passed", "failed", "timed_out", "canceled"]}, "duration_ms": {"type": "integer", "minimum": 0}, "classification": {"enum": ["product", "fixture", "provider", "auth_network", "cleanup", "harness", null]}, "summary": {"type": ["string", "null"]}, "namespace": {"type": "string"}, "serialized": {"type": "boolean"}, "backoff_ms": {"type": "integer", "minimum": 0}, "teardown_verified": {"type": "boolean"}}
             }
           },
-          "cleanup": {"type": "object", "required": ["success", "residuals"]}
+          "cleanup": {
+            "type": "object", "additionalProperties": false,
+            "required": ["success", "manifest_digest", "residuals", "classes", "phases"],
+            "properties": {
+              "success": {"type": "boolean"},
+              "manifest_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+              "classes": {"type": "object"}, "phases": {"type": "array"},
+              "residuals": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+                "required": ["class", "opaque_id", "reason_class"],
+                "properties": {"class": {"type": "string"}, "opaque_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"}, "reason_class": {"const": "cleanup"}}}}
+            }
+          }
         }
       }
     }

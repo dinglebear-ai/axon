@@ -109,9 +109,21 @@ def validate_report(report: dict[str, Any]) -> None:
         else:
             _require(bool(metric.get("reason")), "unsupported/censored metric needs a reason")
     _require(report.get("contention", {}).get("exclusive_acquired") is True, "exclusive contention group was not acquired")
-    _require(report["contention"].get("baseline_eligible") is (not report["contention"].get("pressure_detected")),
-             "contention baseline eligibility is contradictory")
-    if report["contention"]["baseline_eligible"]:
+    contention = report["contention"]
+    minimum_samples = report["policy"]["minimum_promotion_samples"]
+    measured = [item for item in metrics if item["status"] == "measured"]
+    supported_count = contention.get("supported_metrics", len(measured))
+    minimum_supported = contention.get("minimum_supported_metrics", 0)
+    blockers = {
+        "pressure": contention.get("pressure_detected") is True,
+        "censoring": bool(report.get("censored")),
+        "samples": any(item["summary"]["count"] < minimum_samples for item in measured),
+        "supported_metrics": supported_count < minimum_supported,
+    }
+    eligible = contention.get("baseline_eligible") is True
+    _require(not eligible or not any(blockers.values()), "contention or measurement prerequisites contradict baseline eligibility")
+    _require(eligible or any(blockers.values()), "measurement is ineligible without an unmet prerequisite")
+    if eligible:
         _require(all(item["status"] != "measured" or item["summary"]["count"] >= 5 for item in metrics),
                  "baseline-eligible report contains an undersampled measured metric")
     _require(report.get("cleanup", {}).get("success") is True and not report["cleanup"].get("residual"), "benchmark cleanup is incomplete")

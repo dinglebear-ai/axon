@@ -11,7 +11,8 @@ def scenario(identifier="source.page",tier="hermetic",status="passed",classifica
     attempts=attempts or [{"attempt":1,"status":status,"duration_ms":10,"classification":classification,"summary":None}]
     first=next((item for item in attempts if item["status"]!="passed"),None)
     return {"scenario_id":identifier,"tier":tier,"capability":capability,"surface":"cli","status":status,
-            "attempts":attempts,"first_attempt_failure":first,"invariants":[],"evidence":[],"cleanup":{"success":True,"residuals":[]}}
+            "attempts":attempts,"first_attempt_failure":first,"invariants":[],"evidence":[],
+            "cleanup":{"success":True,"manifest_digest":None,"residuals":[],"classes":{},"phases":[]}}
 
 def report(rows):
     total=sum(sum(a["duration_ms"] for a in r["attempts"]) for r in rows);failed=sum(r["status"]!="passed" for r in rows)
@@ -41,7 +42,8 @@ class GovernanceTests(unittest.TestCase):
         for protected in ("cleanup","trust-boundary","secret-redaction","auth"):
             with self.assertRaisesRegex(gov.GovernanceError,"protected"):gov.validate_quarantines(quarantine(),catalog(capability=protected),today=self.today)
     def test_quarantined_scenario_must_run_and_is_not_healthy_coverage(self):
-        with self.assertRaisesRegex(gov.GovernanceError,"did not execute"):gov.govern(report([]),catalog(),quarantine(),environment="homelab",today=self.today)
+        nonempty_catalog=catalog();nonempty_catalog["scenarios"].append({"id":"jobs.list","capability":"jobs","lifecycle":"jobs","tags":[],"semantic_oracles":[]})
+        with self.assertRaisesRegex(gov.GovernanceError,"did not execute"):gov.govern(report([scenario(identifier="jobs.list",capability="jobs")]),nonempty_catalog,quarantine(),environment="homelab",today=self.today)
         result=gov.govern(report([scenario(tier="live")]),catalog(),quarantine(),environment="homelab",today=self.today)
         self.assertEqual(1,result["quarantined_scenarios"]);self.assertEqual(0,result["healthy_scenarios"])
         self.assertEqual({"observed":1,"denominator":0,"healthy":0,"percent":0,"quarantined_excluded_from_denominator":True},result["coverage"])

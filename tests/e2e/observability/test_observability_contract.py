@@ -84,12 +84,12 @@ class ObservabilityContractTests(unittest.TestCase):
         self.assert_rejected(lambda capture, _: capture["evidence"][0].update(job_id="foreign"), "evidence lost")
 
     def test_provider_auth_and_product_failures_agree_across_channels(self):
-        for classification in ("provider", "auth/network", "product"):
+        for classification in ("provider", "auth_network", "product"):
             capture, runtime = copy.deepcopy(self.capture), copy.deepcopy(self.runtime)
             capture["expected_failure"] = {"classification": classification}
             for execution in capture["executions"]:
                 execution["failure_classification"] = classification; execution["terminal_status"] = "failed"
-            code = {"provider": "provider.timeout", "auth/network": "auth.denied", "product": "source.invalid"}[classification]
+            code = {"provider": "provider.timeout", "auth_network": "auth.denied", "product": "source.invalid"}[classification]
             runtime["events"][-1].update(status="failed", error={"code": code, "message": "sanitized"})
             if classification == "provider":
                 capture["owned_provider_ids"] = ["tei"]

@@ -52,6 +52,17 @@ class CatalogValidationTests(unittest.TestCase):
         self.assert_rejected(lambda value: value["operations"][0].update(classification="contract_only"), "below")
         self.assert_rejected(lambda value: value["scenarios"].__setitem__(slice(None), [item for item in value["scenarios"] if not (item["lifecycle"] == "jobs" and item["polarity"] == "negative")]), "requires happy and negative")
 
+    def test_catalog_cannot_be_empty(self):
+        self.assert_rejected(lambda value: value["operations"].clear(), "too few items")
+        self.assert_rejected(lambda value: value["scenarios"].clear(), "too few items")
+
+    def test_failure_taxonomy_matches_canonical_reporting_schema(self):
+        reporting_schema = validator.load(validator.ROOT / "tests/e2e/reporting/report.schema.json")
+        attempt = reporting_schema["properties"]["scenarios"]["items"]["properties"]["attempts"]["items"]
+        report_values = set(attempt["properties"]["classification"]["enum"]) - {None}
+        self.assertEqual({"product", "fixture", "provider", "auth_network", "cleanup", "harness"}, report_values)
+        self.assertTrue(all(set(item["failure_taxonomy"]) <= report_values for item in self.catalog["scenarios"]))
+
 
 if __name__ == "__main__":
     unittest.main()

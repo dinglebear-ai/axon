@@ -110,11 +110,14 @@ def main():
   metric("peak_rss_bytes",pick("peak_rss_bytes"),unit="bytes",attribution="infrastructure"),metric("peak_process_count",pick("peak_process_count"),unit="count",attribution="infrastructure"),
   metric("cleanup_ms",pick("cleanup_ms"),attribution="infrastructure"),unsupported("llm_ms","deterministic retrieval scenario does not invoke an external LLM","provider"),
   metric("retrieval_context_ms",retrieval)])
+ supported_metrics=sum(item["status"]=="measured" for item in metrics)
+ minimum_supported_metrics=8
  report={"schema":performance.SCHEMA,"tested_sha":head_sha(),"measured_at_unix_ms":int(time.time()*1000),"fingerprint":fingerprint,
   "fingerprint_sha256":performance.fingerprint_digest(fingerprint),"policy":{"exclusive_group":"e2e-performance","correctness_retries":0,
   "baseline_retention":"last-20-per-fingerprint","timeout_censoring":"record","minimum_promotion_samples":5,
    "workload_cardinality":fingerprint["scenario"]["workload_cardinality"],"concurrency":1,"queue_depth":0},
-  "contention":{"exclusive_acquired":True,"pressure_detected":pressure,"baseline_eligible":not pressure and not censored and args.samples>=5,"load_1m":load,"cpu_count":os.cpu_count()},"metrics":metrics,
+  "contention":{"exclusive_acquired":True,"pressure_detected":pressure,"baseline_eligible":not pressure and not censored and args.samples>=5 and supported_metrics>=minimum_supported_metrics,"load_1m":load,"cpu_count":os.cpu_count(),
+  "supported_metrics":supported_metrics,"minimum_supported_metrics":minimum_supported_metrics},"metrics":metrics,
   "cleanup":warm_observations[-1]["cleanup_audit"],"redaction":{"scanned":True,"oracle":"observe.redaction"},"censored":censored,
   "evidence":[{"kind":"real-composed","samples":args.samples,"warmup_discarded":1,"censored":len(censored),"bounded":True}]}
  scenario=reporting.Scenario("performance.representative","hermetic","performance","cli+http+mcp")

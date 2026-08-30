@@ -29,7 +29,7 @@ jobs:
       - name: Build measured binary
         run: cargo build --locked --bin axon
       - name: Measure representative source and retrieval
-        run: just e2e-performance 5 target/e2e/performance/report.json --allow-contended
+        run: just e2e-performance 5 target/e2e/performance/report.json
       - name: Validate bounded release projection
         run: python3 scripts/e2e/run-performance.py --input target/e2e/performance/report.json --out target/e2e/performance/validated-report.json > target/e2e/performance/release-projection.json
       - name: Outer ownership-checked teardown
