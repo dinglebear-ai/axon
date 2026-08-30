@@ -4257,3 +4257,86 @@ container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
 reason = "Compose-only Chrome service container-name override."
+[[env]]
+key = "QDRANT_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Qdrant bearer credential used by runtime and trusted live E2E providers."
+
+[[env]]
+key = "AXON_CHROME_BEARER_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Bearer credential for an authenticated remote Chrome management endpoint."
+
+[[env]]
+key = "AXON_TEI_BEARER_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Bearer credential for an authenticated remote TEI endpoint."
+
+[[env]]
+key = "AXON_GOOGLE_AUTHORIZE_ENDPOINT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OAuth authorization endpoint override."
+
+[[env]]
+key = "AXON_GOOGLE_TOKEN_ENDPOINT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OAuth token endpoint override."
+
+[[env]]
+key = "AXON_GOOGLE_JWKS_ENDPOINT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OIDC JWKS endpoint override."
+
+[[env]]
+key = "AXON_GOOGLE_ISSUER"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OIDC issuer override."

@@ -7,6 +7,22 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
     spec("QDRANT_URL", KeepEnv, Both, None, Canonical, false),
     spec("QDRANT_API_KEY", KeepEnv, Both, None, Canonical, true),
     spec(
+        "AXON_CHROME_BEARER_TOKEN",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        true,
+    ),
+    spec(
+        "AXON_TEI_BEARER_TOKEN",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        true,
+    ),
+    spec(
         "AXON_QDRANT_URL",
         ComposeEnv,
         ComposeInterpolation,
