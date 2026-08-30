@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 import secrets
+import signal
 import subprocess
 import sys
 import time
@@ -365,16 +366,34 @@ def structural_evidence(actual: Any, operation: str, scenario_id: str, run_id: s
 
 def invoke(binary: Path, argv: list[str], env: dict[str, str], timeout: float) -> tuple[Any, int]:
     started = time.monotonic_ns()
+    command = [str(binary), *argv]
+    popen_kwargs = {"cwd": ROOT, "env": env, "stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+    if os.name == "nt": popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else: popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(command, **popen_kwargs)
     try:
-        completed = subprocess.run([str(binary), *argv], cwd=ROOT, env=env, capture_output=True,
-                                   timeout=timeout, check=False)
+        stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as error:
+        if process.poll() is None:
+            try:
+                if os.name == "nt": process.terminate()
+                else: os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError: pass
+            try: process.wait(timeout=.5)
+            except subprocess.TimeoutExpired:
+                try:
+                    if os.name == "nt": process.kill()
+                    else: os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError: pass
+        try: process.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill(); process.communicate()
         raise ExecutionError(f"Axon operation timed out: {argv[0]}") from error
     elapsed = (time.monotonic_ns() - started) // 1_000_000
-    if completed.returncode:
-        message = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise ExecutionError(f"Axon {argv[0]} failed with {completed.returncode}: {message[:300]}")
-    return parse_output(completed.stdout), elapsed
+    if process.returncode:
+        message = stderr.decode("utf-8", errors="replace").strip()
+        raise ExecutionError(f"Axon {argv[0]} failed with {process.returncode}: {message[:300]}")
+    return parse_output(stdout), elapsed
 
 
 def invoke_http(base_url: str, token: str | None, operation: str, item: dict[str, Any],
@@ -441,7 +460,9 @@ def invoke_mcp(mcporter: Path, selector: str, operation: str, item: dict[str, An
         "suggest": {"focus": item["prompt"], "collection": collection, "limit": item["max_results"]},
     }
     action = "code_search" if operation == "code-search" else operation
-    arguments: dict[str, Any] = {"action": action, "body": bodies[operation]}
+    # MCP's generated action schemas expose operation fields at the top level;
+    # wrapping them in an invented `body` object bypasses the real contract.
+    arguments: dict[str, Any] = {"action": action, **bodies[operation]}
     if operation == "extract":
         arguments["subaction"] = "start"
     started = time.monotonic_ns()
@@ -452,7 +473,8 @@ def invoke_mcp(mcporter: Path, selector: str, operation: str, item: dict[str, An
         raise ExecutionError(f"Axon MCP {operation} timed out") from error
     elapsed = (time.monotonic_ns() - started) // 1_000_000
     if completed.returncode:
-        raise ExecutionError(f"Axon MCP {operation} failed with {completed.returncode}")
+        detail=(completed.stderr or completed.stdout).decode("utf-8",errors="replace").strip()
+        raise ExecutionError(f"Axon MCP {operation} failed with {completed.returncode}: {detail[:300]}")
     actual = parse_output(completed.stdout)
     if operation == "extract":
         job_id = next((obj.get("job_id") for obj in _walk(actual)

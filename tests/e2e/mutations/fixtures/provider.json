@@ -1,0 +1,1 @@
+{"provider":{"expected_peer":"tei-owned","observed_peer":"tei-owned"},"failure":{"provider_failed":true,"terminal_state":"failed","error_code":"provider.unavailable"}}

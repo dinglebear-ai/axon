@@ -43,7 +43,9 @@ use async_trait::async_trait;
 use axon_api::source::common::SourceWarning;
 use axon_api::source::enums::Severity;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
-use axon_api::source::prune::{PruneEstimate, PrunePlan, PruneRequest, PruneResult, PruneSelector};
+use axon_api::source::prune::{
+    PruneEstimate, PrunePlan, PruneRequest, PruneResult, PruneSelector, StoredPrunePlan,
+};
 use axon_api::source::vector::VectorDeleteSelector;
 use axon_api::source::{LeaseGuard, LeaseRequest, MetadataMap};
 use axon_ledger::sqlite::SqliteLedgerStore;
@@ -61,6 +63,14 @@ use crate::context::ServiceContext;
 mod plan_store;
 mod saved_execution;
 pub use saved_execution::prune_execute_saved;
+
+/// Load the exact durable plan record that execution will consume.
+pub async fn prune_get_saved_plan(
+    ctx: &ServiceContext,
+    plan_id: &str,
+) -> Result<StoredPrunePlan, Box<dyn Error>> {
+    plan_store::load_plan(ctx, plan_id).await
+}
 
 /// Resolve a [`PruneRequest`]'s selector into a reviewable [`PrunePlan`]
 /// without mutating any state. Always safe to call — dry-run planning never

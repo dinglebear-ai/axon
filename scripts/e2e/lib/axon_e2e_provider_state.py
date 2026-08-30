@@ -1,10 +1,41 @@
 """Durable-state, owned-file, and Tailscale provider adapters."""
 from __future__ import annotations
+from contextlib import closing
 
 from axon_e2e_provider_common import *
 
+class GatewayLeaseAdapter:
+    """Canonical teardown adapter for bearer-authenticated disposable provider leases."""
+    def __init__(self, header: Any, manifest_api: Any):self.header,self.manifest_api=header,manifest_api;self.round_trips=0
+    def _request(self,resource,method="GET",payload=None):
+        base=os.environ.get(resource.metadata.get("base_url_env",""),"").rstrip("/");token=os.environ.get(resource.metadata.get("token_env",""),"")
+        if not base.startswith("https://") or not token:raise ProviderError("gateway lease endpoint/auth is unavailable")
+        url=base+"/v1/e2e/leases/"+segment(resource.metadata["lease_id"]);data=None if payload is None else json.dumps(payload).encode()
+        request=urllib.request.Request(url,data=data,method=method,headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"});self.round_trips+=1
+        try:
+            with urllib.request.urlopen(request,timeout=10) as response:return json.load(response)
+        except urllib.error.HTTPError as error:
+            try:
+                if error.code==404:return None
+                raise ProviderError("gateway lease request failed") from error
+            finally:error.close()
+    def marker(self,resource):
+        body=self._request(resource)
+        if body is None:return None
+        expected=(resource.metadata["lease_id"],resource.metadata["namespace"],resource.metadata["gateway_owner"],resource.metadata["github_run_id"],resource.metadata["run_attempt"])
+        if (body.get("lease_id"),body.get("namespace"),body.get("owner"),body.get("run_id"),body.get("run_attempt"))!=expected:raise ProviderError("gateway provider-visible ownership changed")
+        state={key:body[key] for key in ("lease_id","namespace","provider","owner","run_id","run_attempt")}
+        return self.manifest_api.verify_provider_ledger(self.header,resource,state)
+    def delete(self,resource,_deadline):
+        body=self._request(resource,"DELETE",{"namespace":resource.metadata["namespace"],"owner":resource.metadata["gateway_owner"],"residual_audit":True})
+        if body!={"status":"deleted","residuals":[]}:raise ProviderError("gateway exhaustive residual audit failed")
+        return "deleted-and-audited"
+    def exists(self,resource):return self._request(resource) is not None
+    def snapshot_shared(self,owned):return {"boundary":"dedicated-disposable-provider-gateway","owned_excluded":sorted(identity for kind,identity in owned if kind=="provider_reservation")}
+
 class DurableStateAdapter:
     """Exact cleanup/audit against the isolated SQLite or owned state path."""
+    absent_is_clean = True
     TABLES = {
         "job": ("jobs", ("job_id",)), "job_attempt": ("job_attempts", ("attempt_id",)),
         "job_stage": ("job_stages", ("stage_id",)), "job_event": ("job_events", ("event_id",)),
@@ -18,7 +49,9 @@ class DurableStateAdapter:
         "document_status": ("document_status", ("document_id",)), "cleanup_debt": ("cleanup_debt", ("debt_id",)),
         "source_lease": ("leases", ("lease_id",)),
         "graph_node": ("graph_nodes", ("node_id",)), "graph_edge": ("graph_edges", ("edge_id",)),
-        "graph_evidence": ("graph_evidence", ("edge_id", "evidence_id")),
+        # evidence_id is generated as a globally opaque identity even though
+        # SQLite's relational primary key also carries edge_id.
+        "graph_evidence": ("graph_evidence", ("evidence_id",)),
         "graph_alias": ("graph_aliases", ("alias_kind", "alias_value")),
         "graph_conflict": ("graph_conflicts", ("conflict_id",)),
         "memory_record": ("memory_records", ("memory_id",)), "memory_link": ("memory_links", ("id",)),
@@ -57,13 +90,17 @@ class DurableStateAdapter:
         if resource.resource_type in self.FILE_TYPES: return self._path(resource).exists()
         table, _ = self.TABLES[resource.resource_type]; where, values = self._selector(resource)
         try:
-            with self._db() as db:
+            with closing(self._db()) as db, db:
                 row = db.execute(f"SELECT 1 FROM {table} WHERE {where} LIMIT 1", values).fetchone()
                 return row is not None
         except sqlite3.Error as error: raise ProviderError(f"durable state audit failed: {error}") from error
     def marker(self, resource: Any) -> dict[str, Any] | None:
         if not self.exists(resource): return None
         return self.manifest_api.provider_marker(self.header, resource)
+    def provision_ownership(self, resource: Any) -> dict[str, Any]:
+        if not self.exists(resource): raise ProviderError("cannot bind absent durable state")
+        state={"resource_type":resource.resource_type,"identity":resource.identity}
+        return self.manifest_api.write_provider_ledger(self.header,resource,state)
     def delete(self, resource: Any, deadline: float) -> str:
         if time.monotonic() >= deadline: raise TimeoutError("durable state deadline exceeded")
         if resource.resource_type in self.FILE_TYPES:
@@ -74,7 +111,7 @@ class DurableStateAdapter:
             return "removed"
         table, _ = self.TABLES[resource.resource_type]; where, values = self._selector(resource)
         try:
-            with self._db() as db:
+            with closing(self._db()) as db, db:
                 if resource.resource_type == "provider_reservation":
                     row = db.execute("SELECT status FROM provider_reservations WHERE reservation_id = ?", (resource.identity,)).fetchone()
                     if row and row[0] in {"queued", "granted", "active"}:
@@ -92,7 +129,7 @@ class DurableStateAdapter:
         identities = [item.identity for item in resources]; placeholders = ",".join("?" for _ in identities)
         try:
             self.round_trips += 1
-            with self._db() as db:
+            with closing(self._db()) as db, db:
                 if resources[0].resource_type == "provider_reservation":
                     db.execute(f"UPDATE {table} SET status='released', granted_units=0 WHERE {column} IN ({placeholders}) AND status IN ('queued','granted','active')", identities)
                 existing = {row[0] for row in db.execute(f"SELECT {column} FROM {table} WHERE {column} IN ({placeholders})", identities)}
@@ -129,6 +166,106 @@ class DurableStateAdapter:
         if hashlib.sha256(sanitized.encode()).hexdigest() != digest: raise ProviderError("sanitized evidence checksum verification failed")
         source.unlink()
         return {"path": str(destination), "sha256": digest, "redactions": str(matches)}
+
+
+class ArtifactStoreAdapter:
+    """Exact cleanup for Axon's public opaque artifact store.
+
+    The JSON manifest is the store authority: it must name the requested
+    artifact and its canonical sibling content file before either is removed.
+    Ownership remains bound by the signed provider ledger, so an opaque ID
+    cannot be adopted merely because it is present under the run directory.
+    """
+    absent_is_clean = True
+    def __init__(self, config: dict[str, Any], header: Any, manifest_api: Any):
+        self.header, self.manifest_api = header, manifest_api; self.round_trips = 0
+        self.root = Path(config["root"]).resolve()
+        if self.header.data_dir.resolve() not in self.root.parents:
+            raise ProviderError("artifact store is outside the owned data directory")
+    def _paths(self, resource: Any) -> tuple[Path, Path]:
+        manifest = self.root / f"{resource.identity}.json"
+        content = self.root / f"{resource.identity}.bin"
+        return manifest, content
+    def _state(self, resource: Any) -> dict[str, Any] | None:
+        manifest, content = self._paths(resource); self.round_trips += 1
+        if not manifest.exists(): return None
+        try: body = json.loads(manifest.read_text())
+        except (OSError, json.JSONDecodeError) as error: raise ProviderError(f"artifact manifest is unreadable: {error}") from error
+        handle = body.get("handle", {})
+        if handle.get("artifact_id") != resource.identity or body.get("content_path") != content.name:
+            raise ProviderError("artifact manifest identity/content binding changed")
+        if not content.is_file(): raise ProviderError("artifact content state is unknown")
+        return {"artifact_id": resource.identity, "content_path": content.name}
+    def provision_ownership(self, resource: Any) -> dict[str, Any]:
+        state = self._state(resource)
+        if state is None: raise ProviderError("cannot bind absent artifact")
+        return self.manifest_api.write_provider_ledger(self.header, resource, state)
+    def marker(self, resource: Any) -> dict[str, Any] | None:
+        state = self._state(resource)
+        if state is None: return None
+        return self.manifest_api.verify_provider_ledger(self.header, resource, state)
+    def delete(self, resource: Any, deadline: float) -> str:
+        if time.monotonic() >= deadline: raise TimeoutError("artifact cleanup deadline exceeded")
+        manifest, content = self._paths(resource)
+        if self._state(resource) is None: return "absent"
+        content.unlink(); manifest.unlink(); return "removed"
+    def exists(self, resource: Any) -> bool: return self._state(resource) is not None
+    def delete_batch(self, resources: list[Any], deadline: float) -> list[tuple[Any, str]]:
+        return [(resource, self.delete(resource, deadline)) for resource in resources]
+    @staticmethod
+    def batch_capability(_resource_type: str) -> str: return "unbatchable-artifact-store"
+    def snapshot_shared(self, owned: set[tuple[str, str]]) -> list[str]:
+        excluded={identity for kind,identity in owned if kind=="artifact"}
+        return sorted(path.stem for path in self.root.glob("art_*.json") if path.stem not in excluded)
+
+class UploadStoreAdapter:
+    """Batch cleanup against Axon's authoritative upload records and index."""
+    absent_is_clean=True
+    def __init__(self,config,header,manifest_api):
+        self.root=Path(config["root"]).resolve();self.header=header;self.manifest_api=manifest_api;self.round_trips=0
+        if header.data_dir.resolve() not in self.root.parents:raise ProviderError("upload store outside owned data directory")
+    def _record(self,r):return self.root/f"{r.identity}.json"
+    def _state(self,r):
+        self.round_trips+=1;p=self._record(r)
+        if not p.exists():return None
+        body=json.loads(p.read_text());value=body.get("upload_id");identity=value.get("0") if isinstance(value,dict) else value
+        if identity!=r.identity:raise ProviderError("upload record identity changed")
+        return {"upload_id":r.identity}
+    def exists(self,r):return self._state(r) is not None
+    def provision_ownership(self,r):return self.manifest_api.write_provider_ledger(self.header,r,self._state(r))
+    def marker(self,r):
+        state=self._state(r);return None if state is None else self.manifest_api.verify_provider_ledger(self.header,r,state)
+    def delete(self,r,deadline):return self.delete_batch([r],deadline)[0][1]
+    def delete_batch(self,resources,deadline):
+        ids={r.identity for r in resources};index=self.root/".upload-index.json"
+        for r in resources:
+            for suffix in (".json",".part",".lock"):
+                p=self.root/f"{r.identity}{suffix}"
+                if p.exists():p.unlink()
+        if index.exists():
+            body=json.loads(index.read_text())
+            def keep(item):
+                value=item.get("upload_id") if isinstance(item,dict) else None
+                if isinstance(value,dict):value=value.get("0")
+                return value not in ids
+            body["by_id"]=[x for x in body.get("by_id",[]) if keep(x)]
+            body["by_expiry"]=[x for x in body.get("by_expiry",[]) if keep(x)]
+            body["by_status"]={k:[x for x in values if ((x.get("0") if isinstance(x,dict) else x) not in ids)] for k,values in body.get("by_status",{}).items()}
+            tmp=index.with_suffix(".tmp");tmp.write_text(json.dumps(body,sort_keys=True));os.replace(tmp,index)
+        return [(r,"removed") for r in resources]
+    @staticmethod
+    def batch_capability(_kind):return "upload-index-batch"
+    def snapshot_shared(self,owned):
+        excluded={i for k,i in owned if k=="upload"};return sorted(p.stem for p in self.root.glob("upl_*.json") if p.stem not in excluded)
+
+class ManifestOnlyAdapter:
+    """Adapter for manifest relationship records with no independent state."""
+    absent_is_clean = True
+    round_trips = 0
+    def marker(self, _resource): return None
+    def exists(self, _resource): self.round_trips += 1; return False
+    def delete(self, _resource, _deadline): return "already-absent"
+    def snapshot_shared(self, _owned): return []
 
 
 class FileStateAdapter:

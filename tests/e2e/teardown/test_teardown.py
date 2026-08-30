@@ -6,6 +6,7 @@ import sys
 import tempfile
 import sqlite3
 import os
+from contextlib import closing
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -84,7 +85,7 @@ class TeardownTests(unittest.TestCase):
             "run_id": self.allocation["run_id"], "provider": "llm", "permits": 1, "requests": 1, "retries": 0,
         })
         db_path = Path(self.allocation["sqlite"])
-        with sqlite3.connect(db_path) as db:
+        with closing(sqlite3.connect(db_path)) as db, db:
             db.execute("CREATE TABLE provider_reservations (reservation_id TEXT PRIMARY KEY, status TEXT, granted_units INTEGER)")
             db.execute("INSERT INTO provider_reservations VALUES (?, 'active', 1)", (reservation,))
         header, resources = teardown.manifest_api.load(self.path); fake = fake_module.FakeProvider(teardown.manifest_api, header, resources)
@@ -175,7 +176,8 @@ class TeardownTests(unittest.TestCase):
                                         fail_delete={(target.resource_type, target.identity)})
         report = teardown.Engine(self.path, {kind: fake for kind in teardown.PROVIDER_TYPES}).run().json()
         self.assertFalse(report["success"]); self.assertTrue(any("provider outage" in item["reason"] for item in report["refused"]))
-        self.assertFalse(Path(self.allocation["data_dir"]).exists())
+        self.assertTrue(Path(self.allocation["data_dir"]).exists())
+        self.assertTrue(any("preserved after upstream cleanup refusal" in item["reason"] for item in report["refused"]))
 
     def test_sqlite_sidecars_and_port_lease_are_removed(self):
         sqlite = Path(self.allocation["sqlite"])

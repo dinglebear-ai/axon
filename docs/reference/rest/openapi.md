@@ -14,7 +14,7 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `crates/axon-web/src/schema_registry.rs` | `sha256:7deafb1c3ef2e0c489d160b3187850a93d4efe4ff756cf5c1a0a6f19fad6ea33` |
+| `crates/axon-web/src/schema_registry.rs` | `sha256:3a9ba483a305b9d1d74298d87546d708462625594cc5659dd5e330fd8d8ec6c5` |
 | `crates/axon-web/src/schema_registry/admin_watch_routes.rs` | `sha256:e76c07f91410786b0e79ad2c32aaa2ac9486d21a6baea3739f2c7d1ca8d68059` |
 | `crates/axon-web/src/schema_registry/codex_routes.rs` | `sha256:ebcfe554161e465811c11a3afa630f3fc651df0f1c3eeed04adbd486d53de26b` |
 | `crates/axon-web/src/schema_registry/extract_routes.rs` | `sha256:ed5a2623857d813b13af1785ea4a5e49b97b0241092b94dbf58f39a6a24cc3b6` |

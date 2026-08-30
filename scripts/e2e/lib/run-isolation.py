@@ -136,11 +136,45 @@ def validate_owned_name(value: str) -> None:
         raise IsolationError("resource name contains unsafe characters")
 
 
+def _darwin_process_bsdinfo(pid: int):
+    import ctypes
+
+    class ProcBsdInfo(ctypes.Structure):
+        _fields_ = [
+            ("pbi_flags", ctypes.c_uint32), ("pbi_status", ctypes.c_uint32),
+            ("pbi_xstatus", ctypes.c_uint32), ("pbi_pid", ctypes.c_uint32),
+            ("pbi_ppid", ctypes.c_uint32), ("pbi_uid", ctypes.c_uint32),
+            ("pbi_gid", ctypes.c_uint32), ("pbi_ruid", ctypes.c_uint32),
+            ("pbi_rgid", ctypes.c_uint32), ("pbi_svuid", ctypes.c_uint32),
+            ("pbi_svgid", ctypes.c_uint32), ("rfu_1", ctypes.c_uint32),
+            ("pbi_comm", ctypes.c_char * 16), ("pbi_name", ctypes.c_char * 32),
+            ("pbi_nfiles", ctypes.c_uint32), ("pbi_pgid", ctypes.c_uint32),
+            ("pbi_pjobc", ctypes.c_uint32), ("e_tdev", ctypes.c_uint32),
+            ("e_tpgid", ctypes.c_uint32), ("pbi_nice", ctypes.c_int32),
+            ("pbi_start_tvsec", ctypes.c_uint64),
+            ("pbi_start_tvusec", ctypes.c_uint64),
+        ]
+
+    info = ProcBsdInfo()
+    libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    size = libproc.proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+    return info if size == ctypes.sizeof(info) else None
+
+
 def _process_start_time(pid: int) -> str:
     if pid < 1:
         raise IsolationError("process PID must be positive")
     if _is_windows():
         return _windows_process_start_time(pid)
+    if sys.platform == "darwin":
+        # `/bin/ps` is a protected set-id platform binary and macOS refuses to
+        # exec it from sandbox-exec even under an allow-default profile.  Use
+        # the public libproc contract directly so PID-reuse protection remains
+        # available inside the network-denied hermetic sandbox.
+        info = _darwin_process_bsdinfo(pid)
+        if info is None or not info.pbi_start_tvsec:
+            raise IsolationError("process start time is unavailable")
+        return f"{info.pbi_start_tvsec}.{info.pbi_start_tvusec:06d}"
     proc_stat = Path(f"/proc/{pid}/stat")
     if proc_stat.exists():
         fields = proc_stat.read_text(encoding="utf-8").split()
@@ -171,12 +205,37 @@ def _private_write(path: Path, data: bytes) -> None:
         _windows_acl(path, apply=True)
 
 
+def _auto_register_outer_cleanup(manifest: "Manifest") -> None:
+    """Publish cleanup authority before a caller can create any resources."""
+    registry = os.environ.get("AXON_E2E_CLEANUP_REGISTRY")
+    if not registry:
+        return
+    root = Path(__file__).resolve().parents[3]
+    report = manifest.path.parent / "outer-cleanup-registration.json"
+    completed = subprocess.run(
+        [sys.executable, str(root / "scripts/e2e/cleanup-owned-runs.py"),
+         "--registry", registry, "--register-manifest", str(manifest.path), "--report", str(report)],
+        cwd=root, capture_output=True, text=True, timeout=15, check=False,
+    )
+    try:
+        receipt = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        detail = (completed.stderr or completed.stdout).strip()[:300]
+        raise IsolationError(f"outer cleanup registration receipt is unavailable: {detail}") from error
+    if completed.returncode or receipt.get("success") is not True or receipt.get("run_id") != manifest.run_id:
+        raise IsolationError("outer cleanup registration failed")
+
+
 class Manifest:
     """A versioned, chained-HMAC, append-only resource registration ledger."""
 
     def __init__(self, path: Path, key_path: Path):
         self.path = path
         self.key_path = key_path
+
+    @property
+    def run_id(self) -> str:
+        return self.path.parent.name
 
     @classmethod
     def create(cls, manifest_root: Path, run_id: str, data_dir: Path) -> "Manifest":
@@ -190,6 +249,16 @@ class Manifest:
             "kind": "header", "version": MANIFEST_VERSION, "run_id": run_id,
             "data_dir": str(_canonical(data_dir)), "created_unix_ms": int(time.time() * 1000),
         })
+        try:
+            _auto_register_outer_cleanup(manifest)
+        except Exception:
+            # Nothing may be provisioned before registration succeeds. Remove
+            # the otherwise-unreachable empty authority and fail creation.
+            manifest.path.unlink(missing_ok=True); manifest.key_path.unlink(missing_ok=True)
+            (run_manifest_root / "outer-cleanup-registration.json").unlink(missing_ok=True)
+            try: run_manifest_root.rmdir()
+            except OSError: pass
+            raise
         return manifest
 
     @classmethod
@@ -375,6 +444,7 @@ class ManagedProcess:
 
 def spawn_owned_process(
     manifest: Manifest, run_root: Path, argv: list[str], *, env: dict[str, str] | None = None,
+    capture_prefix: Path | None = None,
 ) -> ManagedProcess:
     if not argv:
         raise IsolationError("owned process argv must not be empty")
@@ -386,9 +456,21 @@ def spawn_owned_process(
     process_env = os.environ.copy(); process_env.update(env or {})
     process_env["AXON_E2E_PROCESS_NONCE"] = nonce
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200) if _is_windows() else 0
-    process = subprocess.Popen(
-        argv, env=process_env, start_new_session=not _is_windows(), creationflags=creationflags,
-    )
+    stdout_handle = stderr_handle = None
+    if capture_prefix is not None:
+        capture_prefix.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        stdout_handle = capture_prefix.with_suffix(".stdout").open("wb")
+        stderr_handle = capture_prefix.with_suffix(".stderr").open("wb")
+    try:
+        process = subprocess.Popen(
+            argv, env=process_env, start_new_session=not _is_windows(), creationflags=creationflags,
+            stdout=stdout_handle, stderr=stderr_handle,
+        )
+    finally:
+        if stdout_handle is not None:
+            stdout_handle.close()
+        if stderr_handle is not None:
+            stderr_handle.close()
     try:
         start_time = _process_start_time(process.pid)
         manifest.register("process", str(process.pid), {
@@ -450,12 +532,14 @@ def allocate(run_base: Path, manifest_base: Path) -> dict[str, str]:
     manifest.register("data_dir", str(data_dir))
     manifest.register("sqlite", str(sqlite))
     namespace = run_id
-    manifest.register("collection", namespace, {"ownership_generation": secrets.token_hex(32)})
+    ownership_generation = secrets.token_hex(32)
+    manifest.register("collection", namespace, {"ownership_generation": ownership_generation})
     for kind in ("compose_project", "network"):
         manifest.register(kind, namespace, {"ownership_generation": secrets.token_hex(32)})
     return {
         "run_id": run_id, "run_root": str(run_root), "data_dir": str(data_dir),
         "sqlite": str(sqlite), "manifest": str(manifest.path), "namespace": namespace,
+        "collection": namespace, "ownership_generation": ownership_generation,
         "network_policy": "deny-external", "ssrf_token": secrets.token_urlsafe(24),
     }
 

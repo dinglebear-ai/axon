@@ -12,6 +12,7 @@ import argparse
 import importlib.util
 import json
 import re
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +86,10 @@ def tool_arguments(item: dict[str, Any]) -> dict[str, Any]:
 
 def mcporter_argv(selector: str, arguments: dict[str, Any]) -> list[str]:
     """Return argv suitable for subprocess execution without interpolation."""
-    return ["call", selector, "--args", json.dumps(arguments, separators=(",", ":")), "--output", "json"]
+    argv = ["call", selector, "--args", json.dumps(arguments, separators=(",", ":")), "--output", "json"]
+    if selector.startswith("http://127.0.0.1:") or selector.startswith("http://localhost:"):
+        argv.append("--allow-http")
+    return argv
 
 
 def redact(value: Any) -> Any:
@@ -213,9 +217,11 @@ def register_evidence(manifest_path: Path, scenario: dict[str, Any], evidence_pa
         manifest.register("artifact", f"axon_e2e_{safe_id}_source_{index}", {"external_type": "source", "external_id": source_id})
     for collection in extracted["collections"]:
         if isinstance(collection, str) and collection.startswith("axon_e2e_"):
-            manifest.register("collection", collection, {"scenario_id": scenario["id"]})
+            manifest.register("collection", collection, {"scenario_id": scenario["id"],
+                                                         "ownership_generation": secrets.token_hex(32)})
     if owned_collection and owned_collection.startswith("axon_e2e_"):
-        manifest.register("collection", owned_collection, {"scenario_id": scenario["id"], "role": "requested_collection"})
+        manifest.register("collection", owned_collection, {"scenario_id": scenario["id"], "role": "requested_collection",
+                                                            "ownership_generation": secrets.token_hex(32)})
     return {"registered": True, "cleanup_state": "registered_only", "cleanup_executed": False}
 
 

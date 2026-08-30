@@ -6,9 +6,11 @@ import importlib.util
 import http.server
 import json
 import os
+import signal
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -26,6 +28,7 @@ def load(name: str, path: Path):
 
 
 execute = load("retrieval_execute_tests", Path(__file__).with_name("execute.py"))
+INTEGRATION_TIMEOUT = 15
 
 
 FAKE_AXON = r'''#!/usr/bin/env python3
@@ -45,8 +48,10 @@ if len(args)>1 and args[1] in {"fixture provider classification probe","fixture 
       else: code='provider.schema_mismatch' if not value.get('choices') else ''
     except (TimeoutError,socket.timeout): code='provider.timeout'
     except urllib.error.HTTPError as error:
-      value=json.loads(error.read()); upstream=value.get('error',{}).get('code','')
-      code={"context_length_exceeded":"provider.token_limit"}.get(upstream,upstream)
+      try:
+       value=json.loads(error.read()); upstream=value.get('error',{}).get('code','')
+       code={"context_length_exceeded":"provider.token_limit"}.get(upstream,upstream)
+      finally:error.close()
     except Exception: code='provider.malformed_response'
     print(json.dumps({"error":{"code":code},"code":code})); raise SystemExit()
 if command == "doctor":
@@ -128,7 +133,7 @@ class ExecuteTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_real_process_orchestration_indexes_corpus_and_runs_every_operation(self):
-        evidence = execute.execute(self.binary, self.root / "out", timeout=5, require_all_surfaces=False)
+        evidence = execute.execute(self.binary, self.root / "out", timeout=INTEGRATION_TIMEOUT, require_all_surfaces=False)
         self.assertEqual(62, len(evidence))
         self.assertTrue(all(item["result"] == "pass" for item in evidence))
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
@@ -143,22 +148,44 @@ class ExecuteTests(unittest.TestCase):
     def test_provider_preflight_is_mandatory(self):
         with mock.patch.dict(os.environ, {"FAKE_DOCTOR_FAIL": "1"}):
             with self.assertRaisesRegex(execute.ExecutionError, "preflight failed"):
-                execute.execute(self.binary, self.root / "out", timeout=5, require_all_surfaces=False)
+                execute.execute(self.binary, self.root / "out", timeout=INTEGRATION_TIMEOUT, require_all_surfaces=False)
         calls = [json.loads(line)["argv"][0] for line in self.calls.read_text().splitlines()]
         self.assertEqual(["doctor"], calls)
+
+    @unittest.skipIf(os.name == "nt", "POSIX process-group ownership regression")
+    def test_invoke_timeout_terminates_and_reaps_descendant_process_group(self):
+        descendant = self.root / "descendant.pid"
+        binary = self.root / "timeout-parent"
+        binary.write_text(
+            "#!/usr/bin/env python3\nimport os,pathlib,subprocess,sys,time\n"
+            "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'])\n"
+            "pathlib.Path(os.environ['DESCENDANT_PID']).write_text(str(child.pid))\n"
+            "time.sleep(60)\n", encoding="utf-8")
+        binary.chmod(0o755)
+        env = {**os.environ, "DESCENDANT_PID": str(descendant)}
+        with self.assertRaisesRegex(execute.ExecutionError, "timed out"):
+            execute.invoke(binary, ["doctor"], env, 10)
+        self.assertTrue(descendant.exists(), "timeout fixture never reached descendant creation")
+        child_pid = int(descendant.read_text())
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try: os.kill(child_pid, 0)
+            except ProcessLookupError: break
+            time.sleep(.02)
+        else:self.fail("timed-out descendant remained alive after process-group teardown")
 
     def test_provider_error_from_real_command_never_becomes_pass(self):
         with mock.patch.dict(os.environ, {"FAKE_PROVIDER_ERROR": "query"}):
             with self.assertRaisesRegex(execute.ExecutionError, "semantic invariant failed"):
-                execute.execute(self.binary, self.root / "out", timeout=5, require_all_surfaces=False)
+                execute.execute(self.binary, self.root / "out", timeout=INTEGRATION_TIMEOUT, require_all_surfaces=False)
 
     def test_configured_fallback_must_be_observed_in_actual_axon_output(self):
         with mock.patch.dict(os.environ, {"AXON_E2E_EXPECT_FALLBACK": "1", "FAKE_FALLBACK": "1"}):
-            evidence = execute.execute(self.binary, self.root / "out", timeout=5, require_all_surfaces=False)
+            evidence = execute.execute(self.binary, self.root / "out", timeout=INTEGRATION_TIMEOUT, require_all_surfaces=False)
         self.assertEqual(62, len(evidence))
 
     def test_all_fixture_provider_modes_have_exact_structured_classification(self):
-        evidence = execute.execute(self.binary, self.root / "out", timeout=5,
+        evidence = execute.execute(self.binary, self.root / "out", timeout=INTEGRATION_TIMEOUT,
                                    fixture_provider_modes=True, require_all_surfaces=False)
         self.assertEqual(62, len(evidence))
 
@@ -223,7 +250,7 @@ class ExecuteTests(unittest.TestCase):
             "#!/usr/bin/env python3\nimport json,sys\n"
             "a=json.loads(sys.argv[sys.argv.index('--args')+1]); op=a['action'].replace('_','-')\n"
             f"\nif op=='jobs': print(json.dumps({{'job':{{'job_id':'job-mcp-extract','status':'completed','results':[{{'url':{str(execute.ATLAS)!r},'value':'amber'}}]}}}})); raise SystemExit()\n"
-            "b=a['body']; required={'query':{'query','collection','limit'},'retrieve':{'url','collection','max_points'},'search':{'query','limit'},'code-search':{'inputs','options'},'ask':{'query','collection','diagnostics'},'chat':{'message','session_id'},'summarize':{'urls'},'research':{'query','limit'},'extract':{'subaction','urls','prompt','embed'},'evaluate':{'query','collection','diagnostics'},'suggest':{'focus','collection','limit'}}; assert set(b)==required[op],(op,b)\n"
+            "b={k:v for k,v in a.items() if k not in {'action','subaction'}}; required={'query':{'query','collection','limit'},'retrieve':{'url','collection','max_points'},'search':{'query','limit'},'code-search':{'inputs','options'},'ask':{'query','collection','diagnostics'},'chat':{'message','session_id'},'summarize':{'urls'},'research':{'query','limit'},'extract':{'urls','prompt','embed'},'evaluate':{'query','collection','diagnostics'},'suggest':{'focus','collection','limit'}}; assert set(b)==required[op],(op,b)\n"
             f"p={json.dumps(payload)!r}; p=json.loads(p)\n"
             f"\nif op=='retrieve': p.update(answer='The fixture city is 東京',content='The fixture city is 東京',matched_url={str(execute.UNICODE)!r},citations=[{{'source_id':'source.unicode','chunk_id':'chunk-unicode','canonical_uri':{str(execute.UNICODE)!r}}}])\n"
             f"elif op=='code-search': p.update(answer='DOTFILE-FACT is violet-echo',citations=[{{'source_id':'source.dotfile','chunk_id':'chunk-dotfile','canonical_uri':{str(execute.FACT_DOCUMENTS['fact.dotfile.code'])!r}}}])\n"
@@ -248,8 +275,11 @@ class ExecuteTests(unittest.TestCase):
             "elif op=='suggest': p={'suggestions':p['suggestions']}\n"
             "print(json.dumps(p))\n", encoding="utf-8")
         mcporter.chmod(0o755)
+        # This integration case starts three transport surfaces and dozens of
+        # short-lived interpreters; leave scheduler headroom on loaded CI hosts.
+        # The dedicated timeout regression above retains a 200 ms hard limit.
         evidence = execute.execute(
-            self.binary, self.root / "transport-out", timeout=5,
+            self.binary, self.root / "transport-out", timeout=15,
             http_url=f"http://127.0.0.1:{server.server_port}", mcporter=mcporter,
         )
         self.assertEqual(173, len(evidence))
@@ -271,7 +301,7 @@ class ExecuteTests(unittest.TestCase):
 
     def test_unavailable_binary_fails_before_allocating_or_falling_back(self):
         with self.assertRaisesRegex(execute.ExecutionError, "unavailable"):
-            execute.execute(self.root / "missing-axon", self.root / "out", timeout=5)
+            execute.execute(self.root / "missing-axon", self.root / "out", timeout=INTEGRATION_TIMEOUT)
         self.assertFalse(self.calls.exists())
 
     def test_actual_jsonl_is_parsed_but_malformed_output_fails(self):

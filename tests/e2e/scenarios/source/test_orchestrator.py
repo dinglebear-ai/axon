@@ -201,6 +201,19 @@ class RealAxonSourceJobTests(unittest.TestCase):
             if required:
                 self.fail("AXON_E2E_REQUIRE_REAL_SOURCE_JOBS=1 requires AXON_E2E_REAL_AXON_BIN")
             self.skipTest("set AXON_E2E_REAL_AXON_BIN to run real Axon source/jobs acceptance")
+        if os.environ.get("AXON_E2E_HERMETIC") == "1":
+            with tempfile.TemporaryDirectory() as directory:
+                env={**os.environ,"AXON_DATA_DIR":directory,"AXON_SQLITE_PATH":str(Path(directory)/"jobs.db"),
+                     "QDRANT_URL":"http://127.0.0.1:9","TEI_URL":"http://127.0.0.1:9"}
+                version=subprocess.run([binary,"--version"],env=env,capture_output=True,text=True,check=False)
+                self.assertEqual(0,version.returncode,version.stderr)
+                source=Path(directory)/"source.md";source.write_text("hermetic real source stage")
+                attempted=subprocess.run([binary,str(source),"--wait","true","--json"],env=env,capture_output=True,text=True,check=False,timeout=30)
+                self.assertNotEqual(0,attempted.returncode,"unavailable provider double gate unexpectedly succeeded")
+                jobs=subprocess.run([binary,"jobs","list","--json"],env=env,capture_output=True,text=True,check=False,timeout=20)
+                self.assertEqual(0,jobs.returncode,jobs.stderr)
+                self.assertIsNotNone(json.loads(jobs.stdout))
+            return
         fixture = os.environ.get("AXON_E2E_FIXTURE_BASE_URL")
         transient = os.environ.get("AXON_E2E_TRANSIENT_SOURCE_URL")
         required_env = {

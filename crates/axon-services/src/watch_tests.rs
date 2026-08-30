@@ -120,6 +120,96 @@ async fn create_source_watch_ensures_existing_canonical_source() {
 }
 
 #[tokio::test]
+async fn overlapping_watch_exec_enqueues_and_links_one_source_job() {
+    let (pool, temp) = open_pool().await;
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = temp.path().to_path_buf();
+    let created = create_source_watch(
+        &cfg,
+        Some(&pool),
+        watch_request("https://example.com/watch-race", 60),
+        None,
+    )
+    .await
+    .expect("create watch");
+    let ctx = Arc::new(
+        crate::context::ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("service context"),
+    );
+    let barrier = Arc::new(tokio::sync::Barrier::new(2));
+    let execute = |ctx: Arc<crate::context::ServiceContext>, pool: SqlitePool| {
+        let watch_id = created.watch_id.clone();
+        let barrier = barrier.clone();
+        async move {
+            barrier.wait().await;
+            exec_source_watch(
+                &ctx,
+                Some(&pool),
+                watch_id,
+                WatchExecRequest {
+                    reason: Some("concurrent-test".to_string()),
+                    refresh: None,
+                    wait: Some(false),
+                },
+                None,
+            )
+            .await
+        }
+    };
+    let (first, second) = tokio::join!(
+        execute(ctx.clone(), pool.clone()),
+        execute(ctx.clone(), pool.clone())
+    );
+
+    let mut successes = Vec::new();
+    let mut errors = Vec::new();
+    for result in [first, second] {
+        match result {
+            Ok(job) => successes.push(job),
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    assert_eq!(successes.len(), 1);
+    assert_eq!(errors.len(), 1);
+    assert!(errors[0].contains("watch.execution_busy"), "{}", errors[0]);
+
+    let history = history_source_watch(
+        &cfg,
+        Some(&pool),
+        WatchHistoryRequest {
+            watch_id: created.watch_id.clone(),
+            status: None,
+            limit: Some(10),
+            cursor: None,
+        },
+    )
+    .await
+    .expect("watch history");
+    assert_eq!(history.jobs.len(), 1);
+    assert_eq!(history.jobs[0].id, successes[0].id);
+
+    sqlx::query("UPDATE jobs SET status = 'completed' WHERE job_id = ?")
+        .bind(successes[0].job_id.0.to_string())
+        .execute(&pool)
+        .await
+        .expect("mark first manual run terminal");
+    exec_source_watch(
+        &ctx,
+        Some(&pool),
+        created.watch_id,
+        WatchExecRequest {
+            reason: Some("immediate-terminal-rerun".to_string()),
+            refresh: None,
+            wait: Some(false),
+        },
+        None,
+    )
+    .await
+    .expect("terminal manual run must release enqueue lease immediately");
+}
+
+#[tokio::test]
 async fn source_watch_denies_local_session_scope_without_local_auth() {
     let (pool, temp) = open_pool().await;
     let mut cfg = Config::test_default();

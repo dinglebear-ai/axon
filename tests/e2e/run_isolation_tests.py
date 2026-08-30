@@ -62,6 +62,25 @@ class IsolationTests(unittest.TestCase):
         self.assertEqual(results[0]["network_policy"], "deny-external")
         for result in results: result["reservation"].close()
 
+    def test_manifest_create_and_allocate_auto_register_before_resource_growth(self):
+        registry = self.root / "stable/registry.json"
+        with mock.patch.dict(os.environ, {"AXON_E2E_CLEANUP_REGISTRY": str(registry)}):
+            run_id = isolation.new_run_id(); data = self.root / "direct" / run_id / "data"; data.mkdir(parents=True)
+            direct = isolation.Manifest.create(self.root / "direct-manifests", run_id, data)
+            first = json.loads(registry.read_text())["payload"]["runs"]
+            self.assertEqual([run_id], [item["run_id"] for item in first])
+            direct.register("data_dir", str(data))
+            allocated = isolation.allocate(self.root / "runs", self.root / "manifests")
+            runs = json.loads(registry.read_text())["payload"]["runs"]
+            self.assertEqual({run_id, allocated["run_id"]}, {item["run_id"] for item in runs})
+
+    def test_no_registry_local_create_has_no_external_registration_side_effect(self):
+        registry = self.root / "must-not-exist.json"
+        with mock.patch.dict(os.environ, {}, clear=True):
+            allocation = isolation.allocate(self.root / "runs", self.root / "manifests")
+        self.assertFalse(registry.exists())
+        self.assertFalse((Path(allocation["manifest"]).parent / "outer-cleanup-registration.json").exists())
+
     def test_local_ci_and_rerun_allocations_cannot_collide(self):
         allocations = [isolation.allocate(self.root / "runs", self.root / "manifests") for _ in range(3)]
         self.assertEqual(3, len({item["namespace"] for item in allocations}))
@@ -376,7 +395,8 @@ class FixtureServerTests(unittest.TestCase):
         with self.assertRaises(json.JSONDecodeError): json.loads(malformed)
         with self.assertRaises(urllib.error.HTTPError) as transient:
             self.request("/provider/tei/embed?mode=transient", payload)
-        self.assertEqual(transient.exception.code, 429)
+        try:self.assertEqual(transient.exception.code, 429)
+        finally:transient.exception.close()
         self.assertEqual(len(json.loads(self.request("/provider/tei/embed?mode=transient", payload)[1])), 2)
         wrong = json.loads(self.request("/provider/tei/embed?mode=wrong-dimension", payload)[1])
         self.assertTrue(all(len(vector) == 7 for vector in wrong))
@@ -386,7 +406,8 @@ class FixtureServerTests(unittest.TestCase):
     def test_ssrf_sentinel_requires_unpredictable_owned_token(self):
         with self.assertRaises(urllib.error.HTTPError) as denied:
             self.request("/ssrf-sentinel")
-        self.assertEqual(denied.exception.code, 403)
+        try:self.assertEqual(denied.exception.code, 403)
+        finally:denied.exception.close()
         status, body = self.request("/ssrf-sentinel", headers={"X-Axon-E2E-SSRF-Token": "owned-secret"})
         self.assertEqual(status, 200); self.assertTrue(json.loads(body)["reached"])
 

@@ -1,0 +1,11 @@
+{"schema_version":1,"scenarios":[
+{"id":"security.auth.matrix","oracle":"auth.policy_matrix","fixture":"../../fixtures/security/auth-policy.json"},
+{"id":"security.ssrf.alternate_forms","oracle":"network.zero_connection","cases":17},
+{"id":"security.path.traversal","oracle":"input.path_forbidden","fixture":"../../fixtures/security/hostile.json"},
+{"id":"security.upload.oversized","oracle":"input.too_large","fixture":"../../fixtures/security/hostile.json"},
+{"id":"security.identifier.malformed","oracle":"input.identifier_invalid","fixture":"../../fixtures/security/hostile.json"},
+{"id":"security.hostile.content","oracle":"content.instructions_untrusted","fixture":"../../fixtures/security/hostile.json"},
+{"id":"security.provider.qdrant","oracle":"provider.nonowned_refused","resources":["collection","alias","snapshot","admin","enumeration"]},
+{"id":"security.provider.chrome","oracle":"provider.nonowned_refused","resources":["profile","session","admin","enumeration"]},
+{"id":"security.artifact.canary","oracle":"artifact.secret_absent","fixture":"../../fixtures/security/hostile.json"}
+]}

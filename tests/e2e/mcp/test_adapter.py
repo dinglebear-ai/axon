@@ -97,9 +97,11 @@ class McpAdapterTests(unittest.TestCase):
             evidence_path = base / "evidence.json"
             envelope_path = base / "envelope.json"
             evidence_path.write_text("{}", encoding="utf-8")
-            envelope_path.write_text(json.dumps({"job_id":"job-123", "source_id":"source-456", "collection":"axon_e2e_returned"}), encoding="utf-8")
+            envelope_path.write_text(json.dumps({"job_id":"job-123", "source_id":"source-456",
+                                                 "collection":f"{allocation['run_id']}_returned"}), encoding="utf-8")
             scenario = adapter.scenarios()[0]
-            result = adapter.register_evidence(Path(allocation["manifest"]), scenario, evidence_path, envelope_path, "axon_e2e_requested")
+            result = adapter.register_evidence(Path(allocation["manifest"]), scenario, evidence_path, envelope_path,
+                                               f"{allocation['run_id']}_requested")
             records = isolation.Manifest.open(Path(allocation["manifest"])).verify()
             metadata = [record["payload"].get("metadata", {}) for record in records]
             self.assertTrue(any(value.get("path") == str(evidence_path.resolve()) for value in metadata))

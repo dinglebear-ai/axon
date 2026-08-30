@@ -94,7 +94,7 @@
         {
           "path": "crates/axon-api/src/source/document.rs",
           "kind": "rust_module",
-          "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e"
+          "checksum": "sha256:f60074bd1841a702461c9bc3ed4887612e4159dfda20690b21909a6097995e84"
         },
         {
           "path": "crates/axon-api/src/source/enums.rs",
@@ -144,7 +144,7 @@
         {
           "path": "crates/axon-api/src/source/listing.rs",
           "kind": "rust_module",
-          "checksum": "sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb"
+          "checksum": "sha256:149a94ec4ce7683c9ffd89e34bf719cf1e89089e8f96439c78b4f5f6458ce232"
         },
         {
           "path": "crates/axon-api/src/source/llm.rs",
@@ -174,7 +174,7 @@
         {
           "path": "crates/axon-api/src/source/prune.rs",
           "kind": "rust_module",
-          "checksum": "sha256:fbd7cdfd5175b4511170d270bb4d70d511e2875dac0c4ffea86cbe3b6e6cfde3"
+          "checksum": "sha256:2d4d558ce68b3ae21f8d5fe8118ab4a0249fd3c12fb2cbef8b989c3cbd4afaa1"
         },
         {
           "path": "crates/axon-api/src/source/redaction.rs",
@@ -312,7 +312,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "314e92cef7f63f3e8cfdc86e3e7bcf282af239ec04a6a46d0a05d5e649537ac6"
+      "manifest_checksum": "80337b2e82abdcac949fa4e1701637594fe700ab9daeb73cbc013c8f7e360c5f"
     },
     {
       "family": "cli",
@@ -558,7 +558,7 @@
         {
           "path": "crates/axon-api/src/mcp_schema/prune_request.rs",
           "kind": "rust_module",
-          "checksum": "sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656"
+          "checksum": "sha256:56370b8c7b8fa0062f040c3d579ad7c12ad29ed36d8a4e48e0f9d13c1013afec"
         },
         {
           "path": "crates/axon-api/src/mcp_schema/requests.rs",
@@ -598,7 +598,7 @@
         {
           "path": "crates/axon-mcp/src/server/authz.rs",
           "kind": "rust_module",
-          "checksum": "sha256:e9ea73016f239d48c5c85c3cc2bc0cc4c3dd7f279afa83e014044a5106262b3d"
+          "checksum": "sha256:3717c3f9668f67df14915497d250ed8270bbfc7daf514d8f900e53bae8082bdb"
         },
         {
           "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md",
@@ -611,7 +611,7 @@
           "checksum": "sha256:c1f983a8fe02ec10747e7deb25b71e03d901012710e2834f0abdc82ff331bedd"
         }
       ],
-      "manifest_checksum": "f6fd3ad0ddf2ea7b0466d004078d3cb3b954f676b7283fdca5fc58f990d698b9"
+      "manifest_checksum": "1acc8d276aacde06b5a2d791447179f8aa67fac3ec484e56a388ae7e19d04435"
     },
     {
       "family": "openapi",
@@ -620,7 +620,7 @@
         {
           "path": "crates/axon-web/src/schema_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:7deafb1c3ef2e0c489d160b3187850a93d4efe4ff756cf5c1a0a6f19fad6ea33"
+          "checksum": "sha256:3a9ba483a305b9d1d74298d87546d708462625594cc5659dd5e330fd8d8ec6c5"
         },
         {
           "path": "crates/axon-web/src/schema_registry/admin_watch_routes.rs",
@@ -688,7 +688,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "04e89af7a8b249b40337d0b94ac6753c4ce5b360cd69a711d128c4218846af3e"
+      "manifest_checksum": "398750b4064f9d77a35b6ef7e18a696820be72984b59fd61f689ca64ef79c45d"
     },
     {
       "family": "presentation",

@@ -11,10 +11,10 @@ use crate::context::ServiceContext;
 // a thin facade over `axon_jobs::watch_store::SqliteWatchStore` — the real
 // `WatchStore` implementation.
 pub use axon_api::source::{
-    AdapterOptions, AuthSnapshot, ExecutionMode, JobDescriptor, JobKind, SourceIntent,
-    SourceRefreshPolicy, SourceRequest, SourceScope, SourceWatchPolicy, WatchExecRequest,
-    WatchHistoryRequest, WatchHistoryResult, WatchId, WatchListRequest, WatchRequest, WatchResult,
-    WatchSchedule, WatchSummary, WatchUpdateRequest,
+    AdapterOptions, ApiError, AuthSnapshot, ErrorStage, ExecutionMode, JobDescriptor, JobKind,
+    SourceIntent, SourceRefreshPolicy, SourceRequest, SourceScope, SourceWatchPolicy,
+    WatchExecRequest, WatchHistoryRequest, WatchHistoryResult, WatchId, WatchListRequest,
+    WatchRequest, WatchResult, WatchSchedule, WatchSummary, WatchUpdateRequest,
 };
 pub use axon_jobs::boundary::WatchStore as SourceWatchStoreTrait;
 pub use axon_jobs::watch_store::SqliteWatchStore;
@@ -101,6 +101,18 @@ pub async fn exec_source_watch(
         .map_err(|err| Box::new(err) as Box<dyn Error>)?
         .ok_or_else(|| format!("watch {} not found", watch_id.0))?;
     authorize_watch_request(&watch_request, auth_snapshot.as_ref())?;
+    const MANUAL_EXEC_LEASE_TTL_MS: i64 = 5 * 60 * 1000;
+    if !store
+        .acquire_exec_lease(&watch_id, MANUAL_EXEC_LEASE_TTL_MS)
+        .await
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?
+    {
+        return Err(Box::new(ApiError::new(
+            "watch.execution_busy",
+            ErrorStage::Leasing,
+            format!("watch {} already has an active execution", watch_id.0),
+        )));
+    }
     let source_request = source_request_for_watch_exec(watch_request, &request);
     let run_auth = Some(
         stored_auth
@@ -110,7 +122,19 @@ pub async fn exec_source_watch(
     let job_store = ctx
         .job_store()
         .ok_or("watch exec requires a unified source job store")?;
-    let result = enqueue_watch_source(source_request, job_store.as_ref(), run_auth).await?;
+    let result = match enqueue_watch_source(source_request, job_store.as_ref(), run_auth)
+        .await
+        .map_err(|error| error.to_string())
+    {
+        Ok(result) => result,
+        Err(error) => {
+            store
+                .release_lease(&watch_id)
+                .await
+                .map_err(|release| format!("{error}; watch lease release failed: {release}"))?;
+            return Err(error.into());
+        }
+    };
     let descriptor = result.job.ok_or_else(|| {
         let error = result
             .errors
@@ -124,8 +148,31 @@ pub async fn exec_source_watch(
             })
             .unwrap_or_else(|| "source job enqueue returned no job descriptor".to_string());
         format!("watch {} exec failed: {error}", watch_id.0)
-    })?;
-    SourceWatchStoreTrait::record_run(&store, watch_id, descriptor.job_id)
+    });
+    let descriptor = match descriptor {
+        Ok(descriptor) => descriptor,
+        Err(error) => {
+            store
+                .release_lease(&watch_id)
+                .await
+                .map_err(|release| format!("{error}; watch lease release failed: {release}"))?;
+            return Err(error.into());
+        }
+    };
+    if let Err(error) =
+        SourceWatchStoreTrait::record_run(&store, watch_id.clone(), descriptor.job_id).await
+    {
+        store
+            .release_lease(&watch_id)
+            .await
+            .map_err(|release| format!("{error}; watch lease release failed: {release}"))?;
+        return Err(Box::new(error));
+    }
+    // Once the run link is durable, the active-job predicate is authoritative
+    // for overlap prevention. The short enqueue lease must not linger after a
+    // terminal job and block a legitimate immediate manual rerun.
+    store
+        .release_lease(&watch_id)
         .await
         .map_err(|err| Box::new(err) as Box<dyn Error>)?;
     ctx.notify_unified();

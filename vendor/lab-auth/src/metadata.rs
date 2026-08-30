@@ -142,6 +142,7 @@ mod tests {
                 client_secret: "secret".into(),
                 callback_path: "/auth/google/callback".into(),
                 scopes: vec!["openid".into(), "email".into()],
+                ..crate::config::GoogleConfig::default()
             },
             scopes_supported: vec!["syslog:read".to_string(), "syslog:admin".to_string()],
             resource_path: "/syslog/mcp".to_string(),

@@ -34,8 +34,10 @@ class ExactHttpAdapter:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 raw = response.read(); return response.status, json.loads(raw) if raw else {}
         except urllib.error.HTTPError as error:
-            if error.code == 404: return 404, {}
-            raise ProviderError(f"HTTP {method} failed with status {error.code}") from error
+            try:
+                if error.code == 404: return 404, {}
+                raise ProviderError(f"HTTP {method} failed with status {error.code}") from error
+            finally:error.close()
         except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
             raise ProviderError(f"HTTP {method} state is unknown: {error}") from error
 

@@ -6,6 +6,7 @@ import json
 import sys
 import threading
 import sqlite3
+from contextlib import closing
 import tempfile
 from unittest import mock
 import unittest
@@ -153,7 +154,7 @@ class ProviderAdapterTests(unittest.TestCase):
     def test_durable_state_adapter_deletes_and_audits_sqlite_and_files(self):
         with tempfile.TemporaryDirectory() as temp:
             data = Path(temp) / "data"; data.mkdir(); db_path = data / "jobs.db"
-            with sqlite3.connect(db_path) as db:
+            with closing(sqlite3.connect(db_path)) as db, db:
                 db.execute("CREATE TABLE provider_reservations (reservation_id TEXT PRIMARY KEY, status TEXT, granted_units INTEGER)")
                 db.execute("INSERT INTO provider_reservations VALUES ('r1','active',1)")
             header = SimpleNamespace(data_dir=data); api = SimpleNamespace(provider_marker=lambda _h, _r: {"run_id": "owned"})
@@ -169,7 +170,7 @@ class ProviderAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             data = Path(temp) / "data"; data.mkdir(); db_path = data / "jobs.db"
             resources = []
-            with sqlite3.connect(db_path) as db:
+            with closing(sqlite3.connect(db_path)) as db, db:
                 created = set()
                 for index, (kind, (table, columns)) in enumerate(providers.DurableStateAdapter.TABLES.items()):
                     if kind == "provider_reservation": continue

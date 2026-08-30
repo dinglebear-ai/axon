@@ -303,8 +303,16 @@ fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
             handlers::jobs::unified_jobs_admin_router(Arc::clone(service_context)),
         )
         .route("/v1/prune/plan", post(handlers::admin::prune_plan))
+        .route(
+            "/v1/prune/plans/{plan_id}",
+            get(handlers::admin::prune_get_plan),
+        )
         .route("/v1/prune/exec", post(handlers::admin::prune_exec))
         .route("/v1/reset/plan", post(handlers::admin::reset_plan))
+        .route(
+            "/v1/reset/plans/{plan_id}",
+            get(handlers::admin::reset_get_plan),
+        )
         .route("/v1/reset/exec", post(handlers::admin::reset_exec))
 }
 

@@ -113,6 +113,7 @@ def qdrant_ownership_point(header: RunHeader, resource: Resource) -> dict[str, A
     return {"id": point_id, "vector": {}, "payload": {
         "axon_e2e_ownership": {**provider_marker(header, resource), "generation": generation},
         "axon_e2e_marker": True,
+        "payload_contract_version": "2026-07-01",
     }}
 
 

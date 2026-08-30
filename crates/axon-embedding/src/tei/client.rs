@@ -117,6 +117,7 @@ pub struct TeiClient {
     embed_url: String,
     info_url: String,
     provider_id: String,
+    bearer_token: Option<String>,
     max_batch_inputs: usize,
     max_concurrent_requests: usize,
     request_slots: Arc<Semaphore>,
@@ -155,6 +156,9 @@ impl TeiClient {
             embed_url,
             info_url,
             provider_id: params.provider_id,
+            bearer_token: std::env::var("AXON_TEI_BEARER_TOKEN")
+                .ok()
+                .filter(|value| !value.is_empty()),
             max_batch_inputs,
             max_concurrent_requests: effective_request_concurrency(
                 params.max_concurrent_requests,
@@ -173,9 +177,11 @@ impl TeiClient {
     /// Fetch the TEI `/info` document (single attempt, no retries). Errors carry
     /// only the opaque endpoint marker — never the raw URL.
     pub async fn fetch_info(&self) -> Result<TeiInfo, ApiError> {
-        let resp = self
-            .client
-            .get(&self.info_url)
+        let mut request = self.client.get(&self.info_url);
+        if let Some(token) = &self.bearer_token {
+            request = request.bearer_auth(token);
+        }
+        let resp = request
             .timeout(self.request_timeout)
             .send()
             .await
@@ -335,9 +341,11 @@ impl TeiClient {
                 })?;
 
             self.requests.fetch_add(1, Ordering::Relaxed);
-            let send = self
-                .client
-                .post(&self.embed_url)
+            let mut request = self.client.post(&self.embed_url);
+            if let Some(token) = &self.bearer_token {
+                request = request.bearer_auth(token);
+            }
+            let send = request
                 .timeout(self.request_timeout)
                 .json(&body)
                 .send()

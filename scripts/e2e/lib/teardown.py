@@ -154,12 +154,24 @@ class LocalAdapter:
         if stat_path.exists():
             try: return stat_path.read_text().split()[2] != "Z"
             except (OSError, IndexError): pass
+        if sys.platform == "darwin":
+            info = isolation._darwin_process_bsdinfo(pid)
+            # proc.h: SZOMB == 5. A zombie has no live execution context and
+            # must not be reported as teardown residue while its owner reaps.
+            if info is None or info.pbi_status == 5:
+                return False
         try: os.kill(pid, 0); return True
         except ProcessLookupError: return False
 
     @staticmethod
     def _group_alive(group: int) -> bool:
         if os.name == "nt": return False
+        if sys.platform == "darwin":
+            # spawn_owned_process creates a fresh group whose leader PID equals
+            # its PGID. SIGKILL is unignorable for every member; libproc avoids
+            # protected `/bin/ps` and treats a reaping zombie as absent.
+            info = isolation._darwin_process_bsdinfo(group)
+            return info is not None and info.pbi_status != 5
         try:
             result = __import__("subprocess").run(
                 ["ps", "-eo", "pgid=,state="], capture_output=True, text=True, timeout=1, check=False,
@@ -257,6 +269,12 @@ class Engine:
                 return
             marker = adapter.marker(resource)
             if resource.resource_type in PROVIDER_TYPES:
+                if marker is None and getattr(adapter, "absent_is_clean", False):
+                    state = adapter.exists(resource)
+                    if state is None: raise CleanupError("absent provider state is unknown")
+                    if not state:
+                        self.report.removed.append(self.report.item(resource, outcome="already-absent"))
+                        return
                 if marker is None and hasattr(adapter, "recover_creating"):
                     outcome = adapter.recover_creating(resource, deadline)
                     exists = adapter.exists(resource)
@@ -306,6 +324,12 @@ class Engine:
                     continue
                 marker = adapter.marker(resource)
                 if resource.resource_type in PROVIDER_TYPES:
+                    if marker is None and getattr(adapter, "absent_is_clean", False):
+                        state = adapter.exists(resource)
+                        if state is None: raise CleanupError("absent provider state is unknown")
+                        if not state:
+                            self.report.removed.append(self.report.item(resource, outcome="already-absent"))
+                            continue
                     if marker is None and hasattr(adapter, "recover_creating"):
                         outcome = adapter.recover_creating(resource, deadline)
                         state = adapter.exists(resource)
@@ -364,6 +388,9 @@ class Engine:
         for phase_name, types in PHASES:
             started = time.monotonic(); deadline = min(global_deadline, started + self.phase_timeout)
             batch = [item for item in reversed(self.resources) if item.resource_type in types]
+            if phase_name in {"files","run-root"} and self.report.refused:
+                for item in batch:self.report.refused.append(self.report.item(item,reason="preserved after upstream cleanup refusal"))
+                continue
             handled.update(item.sequence for item in batch)
             adapters = {id(self.adapter(item)): self.adapter(item) for item in batch}
             before = sum(int(getattr(adapter, "round_trips", 0)) for adapter in adapters.values())

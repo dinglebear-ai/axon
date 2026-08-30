@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "issuer": "https://token.actions.githubusercontent.com",
+  "audience_variable": "TS_WIF_AUDIENCE",
+  "repository_owner": "dinglebear-ai",
+  "repository_owner_id": "301925356",
+  "repository": "dinglebear-ai/axon",
+  "repository_id": "1160613618",
+  "job_workflow_ref": "dinglebear-ai/axon/.github/workflows/e2e-live.yml@refs/heads/main",
+  "audience_template": "api.tailscale.com/{federated_client_id}",
+  "refs": ["refs/heads/main"],
+  "events": ["push", "schedule", "workflow_dispatch"],
+  "environment": "axon-live-e2e",
+  "subject": "repo:dinglebear-ai/axon:environment:axon-live-e2e",
+  "token_max_age_seconds": 600,
+  "token_max_lifetime_seconds": 600,
+  "clock_skew_seconds": 30,
+  "scope": {"auth_keys": "write", "tags": ["tag:axon-ci-e2e"], "ephemeral_only": true},
+  "denied_capabilities": ["api_tokens", "devices", "dns", "policy", "ssh", "other_tags"]
+}

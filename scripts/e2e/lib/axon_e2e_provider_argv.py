@@ -6,8 +6,10 @@ from axon_e2e_provider_common import *
 class ArgvAdapter:
     """Exact argv operations with no shell, glob, or interpolated command text."""
 
+    absent_is_clean = True
     def __init__(self, config: dict[str, Any]):
         self.binary = str(config["binary"]); self.operations = dict(config["resources"])
+        self.env = {**os.environ, **{str(key): str(value) for key, value in config.get("environment", {}).items()}}
         self.timeout = float(config.get("timeout_seconds", 10)); self.round_trips = 0; self.deadline: float | None = None
     def set_deadline(self, deadline: float) -> None: self.deadline = deadline
 
@@ -21,7 +23,7 @@ class ArgvAdapter:
         self.round_trips += 1
         try:
             timeout = self.timeout if self.deadline is None else min(self.timeout, max(.05, self.deadline - time.monotonic()))
-            return subprocess.run(self._argv(resource, operation), capture_output=True, text=True,
+            return subprocess.run(self._argv(resource, operation), env=self.env, capture_output=True, text=True,
                                   timeout=timeout, check=False, shell=False)
         except (OSError, subprocess.TimeoutExpired) as error:
             raise ProviderError(f"argv {operation} state is unknown: {error}") from error
@@ -119,7 +121,7 @@ class ManifestBoundArgvAdapter(ArgvAdapter):
         output = {}
         for kind in self.operations:
             family = "uploads" if kind == "upload" else kind
-            try: result = subprocess.run([self.binary, "--json", family, "list"], capture_output=True, text=True,
+            try: result = subprocess.run([self.binary, "--json", family, "list"], env=self.env, capture_output=True, text=True,
                                          timeout=self.timeout, check=False, shell=False)
             except (OSError, subprocess.TimeoutExpired) as error: raise ProviderError(f"Axon {family} operator snapshot unknown: {error}") from error
             if result.returncode: raise ProviderError(f"Axon {family} operator snapshot failed")

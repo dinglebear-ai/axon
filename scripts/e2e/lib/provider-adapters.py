@@ -28,9 +28,13 @@ try:
         ManifestBoundArgvAdapter,
     )
     from axon_e2e_provider_state import (
+        ArtifactStoreAdapter,
         DurableStateAdapter,
+        ManifestOnlyAdapter,
+        UploadStoreAdapter,
         FileStateAdapter,
         TailscaleAdapter,
+        GatewayLeaseAdapter,
     )
 finally:
     if _ADDED_LIB_DIR:
@@ -48,8 +52,12 @@ def build(config_path: Path, header: Any, manifest_api: Any) -> dict[str, Any]:
         elif item.get("kind") == "manifest-argv": adapter = ManifestBoundArgvAdapter(item, header, manifest_api)
         elif item.get("kind") == "docker-compose": adapter = DockerComposeAdapter(item, header, manifest_api)
         elif item.get("kind") == "durable-state": adapter = DurableStateAdapter(header, manifest_api)
+        elif item.get("kind") == "artifact-store": adapter = ArtifactStoreAdapter(item, header, manifest_api)
+        elif item.get("kind") == "manifest-only": adapter = ManifestOnlyAdapter()
+        elif item.get("kind") == "upload-store": adapter = UploadStoreAdapter(item, header, manifest_api)
         elif item.get("kind") == "owned-state": adapter = FileStateAdapter(header, manifest_api)
         elif item.get("kind") == "tailscale": adapter = TailscaleAdapter(item, header, manifest_api)
+        elif item.get("kind") == "gateway-lease": adapter = GatewayLeaseAdapter(header, manifest_api)
         else: raise ProviderError(f"unsupported provider adapter kind: {name}")
         for resource_type in item.get("resource_types", []):
             if resource_type in adapters: raise ProviderError(f"duplicate adapter for {resource_type}")

@@ -33,6 +33,7 @@ SCENARIO_KEYS = {
     "timeout_class", "estimated_seconds", "weights", "provider",
     "setup_sharing_group", "isolation", "shard_eligible", "retry_class", "retry",
     "evidence_kib", "redaction_class", "failure_taxonomy",
+    "tags",
 }
 
 JSON_TYPES = {
@@ -172,6 +173,10 @@ def validate(catalog: dict[str, Any]) -> list[str]:
             errors.append(f"{item.get('id')}: unknown classification")
         if not isinstance(item.get("reason"), str) or not item["reason"].strip():
             errors.append(f"{item.get('id')}: classification reason is required")
+        if item.get("classification") == "unsupported" and (
+            not isinstance(item.get("owner"), str) or not item["owner"].strip()
+        ):
+            errors.append(f"{item.get('id')}: unsupported mapping requires an owner")
 
     scenario_ids = [item.get("id", "") for item in scenarios if isinstance(item, dict)]
     if duplicates := duplicate_values(scenario_ids):

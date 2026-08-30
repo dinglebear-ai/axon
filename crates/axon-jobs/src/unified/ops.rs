@@ -192,14 +192,16 @@ impl SqliteUnifiedJobStore {
 
     pub(crate) async fn update_job_status(&self, status: JobStatusUpdate) -> Result<()> {
         let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
-        let row =
-            sqlx::query("SELECT status, started_at, warnings_json FROM jobs WHERE job_id = ?")
-                .bind(status.job_id.0.to_string())
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(sql_error)?
-                .ok_or_else(|| missing_job(status.job_id))?;
+        let row = sqlx::query(
+            "SELECT status, started_at, warnings_json, attempt FROM jobs WHERE job_id = ?",
+        )
+        .bind(status.job_id.0.to_string())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sql_error)?
+        .ok_or_else(|| missing_job(status.job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+        let current_attempt = row.get::<i64, _>("attempt") as u32;
         #[cfg(test)]
         super::snapshot_test_hook::pause_once_after_read(status.job_id).await;
         validate_transition(status.job_id, current, status.status)?;
@@ -270,7 +272,7 @@ impl SqliteUnifiedJobStore {
         // (strictly-increasing per-job sequence + heartbeat). Runs after the
         // authoritative status write commits; sink errors are logged, not
         // propagated, so the observe stream never fails the status update.
-        self.observe_status(&status).await;
+        self.observe_status(&status, current_attempt).await;
         Ok(())
     }
 

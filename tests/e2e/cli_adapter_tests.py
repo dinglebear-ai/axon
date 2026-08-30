@@ -38,7 +38,7 @@ class CliAdapterTests(unittest.TestCase):
         missing_job = adapter.scenario_argv(
             {"id": "jobs.cancel.negative"}, {}, {"fixture.job": "must_not_be_used"}
         )
-        self.assertEqual(["jobs", "cancel", "e2e_missing_job", "--json"], missing_job)
+        self.assertEqual(["jobs", "cancel", "00000000-0000-0000-0000-000000000000", "--json"], missing_job)
 
     def test_selection_is_deterministic_and_rejects_unknown_ids(self):
         catalog = json.loads((ROOT / "tests/e2e/catalog/catalog.json").read_text())
@@ -206,9 +206,8 @@ class CliAdapterTests(unittest.TestCase):
             )
             self.assertEqual(1, completed.returncode, completed.stderr)
             record = json.loads((output / "cli-evidence.jsonl").read_text().strip())
-            self.assertEqual(2, record["attempts"])
-            self.assertEqual(["timeout", "timeout"], [item["result"] for item in record["attempt_history"]])
-            self.assertNotEqual(record["attempt_history"][0]["namespace"], record["attempt_history"][1]["namespace"])
+            self.assertEqual(1, record["attempts"])
+            self.assertEqual(["timeout"], [item["result"] for item in record["attempt_history"]])
 
 
 if __name__ == "__main__":

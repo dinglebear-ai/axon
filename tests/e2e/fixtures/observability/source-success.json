@@ -1,0 +1,22 @@
+{
+  "observation_mode": "multi_observer",
+  "owned_provider_ids": [],
+  "executions": [
+    {"surface": "cli", "job_id": "job-observe-1", "terminal_status": "completed", "failure_classification": null, "progress_sequence": 1, "terminal_sequence": 10},
+    {"surface": "mcp", "job_id": "job-observe-1", "terminal_status": "completed", "failure_classification": null, "progress_sequence": 1, "terminal_sequence": 10},
+    {"surface": "http", "job_id": "job-observe-1", "terminal_status": "completed", "failure_classification": null, "progress_sequence": 1, "terminal_sequence": 10}
+  ],
+  "timing": {"started_monotonic_ms": 1000, "finished_monotonic_ms": 1400, "reported_duration_ms": 400, "tolerance_ms": 100},
+  "logs": [{"job_id": "job-observe-1", "message": "source completed", "phase": "cleaning"}],
+  "metrics": [{"name": "axon_source_jobs_total", "labels": {"phase": "complete", "status": "completed"}, "value": 1}],
+  "evidence": [{"job_id": "job-observe-1", "path": "observe/events.json", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bytes": 512}],
+  "raw_channels": {
+    "cli_job": {"job_id": "job-observe-1", "status": "completed"},
+    "cli_events": {"events": [{"job_id": "job-observe-1", "sequence": 10}]},
+    "http_job": {"job_id": "job-observe-1", "status": "completed"},
+    "mcp_job": {"job_id": "job-observe-1", "status": "completed"},
+    "server_logs": "job-observe-1 complete completed"
+  },
+  "protected_canaries": ["ObserveSecret-DO-NOT-LEAK"],
+  "private_paths": ["/Users/private/customer/acme-contract.pdf"]
+}

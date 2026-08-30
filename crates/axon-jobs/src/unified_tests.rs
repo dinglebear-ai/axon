@@ -1783,7 +1783,9 @@ async fn store_with_observe() -> (
 #[tokio::test]
 async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
     let (store, sink) = store_with_observe().await;
-    let job = store.create(create_request()).await.expect("create job");
+    let mut request = create_request();
+    request.attempt = 2;
+    let job = store.create(request).await.expect("create job");
 
     // Queued -> Running -> Completed, plus a mid-run progress transition.
     for (status, phase) in [
@@ -1829,6 +1831,7 @@ async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
         "all events carry the job id"
     );
     assert_eq!(events[2].status, LifecycleStatus::Completed);
+    assert!(events.iter().all(|event| event.attempt == 2));
 
     // The heartbeat row was upserted for the job too.
     let hb = sink
@@ -1836,6 +1839,7 @@ async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
         .await
         .expect("read observe heartbeat");
     assert!(hb.is_some(), "observe heartbeat row exists for the job");
+    assert_eq!(hb.expect("heartbeat").attempt, 2);
 }
 
 #[tokio::test]

@@ -1322,6 +1322,7 @@
       },
       "evidence_kib": 512,
       "redaction_class": "sensitive",
+      "tags": [],
       "failure_taxonomy": [
         "product",
         "fixture",
@@ -1399,6 +1400,7 @@
       },
       "evidence_kib": 512,
       "redaction_class": "sensitive",
+      "tags": ["platform_smoke"],
       "failure_taxonomy": [
         "product",
         "fixture",
@@ -1476,6 +1478,7 @@
       },
       "evidence_kib": 512,
       "redaction_class": "sensitive",
+      "tags": [],
       "failure_taxonomy": [
         "product",
         "fixture",
@@ -1553,6 +1556,7 @@
       },
       "evidence_kib": 512,
       "redaction_class": "sensitive",
+      "tags": ["platform_smoke"],
       "failure_taxonomy": [
         "product",
         "fixture",
@@ -1630,6 +1634,7 @@
       },
       "evidence_kib": 512,
       "redaction_class": "sensitive",
+      "tags": [],
       "failure_taxonomy": [
         "product",
         "fixture",
@@ -1707,6 +1712,7 @@
       },
       "evidence_kib": 512,
       "redaction_class": "sensitive",
+      "tags": [],
       "failure_taxonomy": [
         "product",
         "fixture",

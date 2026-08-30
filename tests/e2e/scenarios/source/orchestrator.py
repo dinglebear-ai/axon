@@ -134,10 +134,12 @@ class HttpJobsClient:
                                          headers=headers, method=method)
         try: urllib.request.urlopen(request, timeout=self.timeout)
         except urllib.error.HTTPError as error:
-            value = json.loads(error.read())
-            if error.code < 400 or not isinstance(value, dict):
-                raise AcceptanceError("HTTP negative lacked structured error")
-            return value
+            try:
+                value = json.loads(error.read())
+                if error.code < 400 or not isinstance(value, dict):
+                    raise AcceptanceError("HTTP negative lacked structured error")
+                return value
+            finally:error.close()
         raise AcceptanceError("HTTP negative unexpectedly succeeded")
 
 
@@ -567,7 +569,7 @@ class SourceJobAcceptance:
             if not cancel.get("side_effects") or not cancel.get("cleanup_debt_ids"):
                 raise AcceptanceError("partial publication cancel omitted side_effects/cleanup_debt_ids")
         # Release the blocking provider only after cancellation has persisted.
-        urllib.request.urlopen(control_url, timeout=5).read()
+        with urllib.request.urlopen(control_url, timeout=5) as response:response.read()
         terminal = self.wait(job_id)
         if terminal["status"] not in {"canceled", "cancelled"}:
             raise AcceptanceError(f"{phase} cancellation did not persist: {terminal}")
@@ -576,7 +578,7 @@ class SourceJobAcceptance:
     def cancel_after_partial_publication(self, source: str, partial_release_url: str,
                                          cleanup_failure_url: str) -> dict[str, Any]:
         detached = self.source(source, "page", wait=False)
-        urllib.request.urlopen(partial_release_url, timeout=5).read()
+        with urllib.request.urlopen(partial_release_url, timeout=5) as response:response.read()
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             events = self.client.call("jobs", "events", detached["job_id"], "--after-sequence", "0",
@@ -589,7 +591,7 @@ class SourceJobAcceptance:
         else:
             raise AcceptanceError("partial-publication gate exposed no real side effect/artifact")
         cancel = self.client.call("jobs", "cancel", detached["job_id"], "--reason", "observe failed partial publication", "--json")
-        urllib.request.urlopen(cleanup_failure_url, timeout=5).read()
+        with urllib.request.urlopen(cleanup_failure_url, timeout=5) as response:response.read()
         terminal = self.wait(detached["job_id"])
         if terminal["status"] not in {"canceled", "cancelled", "failed"}:
             raise AcceptanceError("partial publication cancellation did not become terminal")
@@ -682,7 +684,7 @@ class SourceJobAcceptance:
                 env=restarted.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
                 start_new_session=True,
             )
-            urllib.request.urlopen(release_url, timeout=5).read()
+            with urllib.request.urlopen(release_url, timeout=5) as response:response.read()
             self.client = restarted
             terminal = self.wait(job_id)
             fresh_worker.terminate(); fresh_worker.wait(timeout=5)
@@ -821,7 +823,7 @@ class SourceJobAcceptance:
             if job_id not in self._values(cancel, "job_id") + self._values(cancel, "id"):
                 raise AcceptanceError(f"{name} cancel changed durable job identity")
             canceled.append((name, job_id))
-        urllib.request.urlopen(release_url, timeout=5).read()
+        with urllib.request.urlopen(release_url, timeout=5) as response:response.read()
         for name, job_id in canceled:
             retry = (http.request("POST", f"/v1/jobs/{job_id}/retry", {"mode": "same_config"})
                      if name == "http" else mcp.call({"action": "jobs", "subaction": "retry",

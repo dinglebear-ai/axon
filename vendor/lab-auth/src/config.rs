@@ -16,6 +16,10 @@ const DEFAULT_AUTH_CODE_TTL_SECS: u64 = 300;
 const DEFAULT_REGISTER_REQUESTS_PER_MINUTE: u32 = 20;
 const DEFAULT_AUTHORIZE_REQUESTS_PER_MINUTE: u32 = 60;
 const DEFAULT_MAX_PENDING_OAUTH_STATES: usize = 1024;
+const DEFAULT_GOOGLE_AUTHORIZE_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const DEFAULT_GOOGLE_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
+const DEFAULT_GOOGLE_JWKS_ENDPOINT: &str = "https://www.googleapis.com/oauth2/v3/certs";
+const DEFAULT_GOOGLE_ISSUER: &str = "https://accounts.google.com";
 
 /// Default env-var prefix used when consumers do not specify one.
 /// Backward-compatible with the original `LAB_*` env scheme.
@@ -78,7 +82,7 @@ impl AuthModeConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GoogleConfig {
     #[serde(default)]
     pub client_id: String,
@@ -88,6 +92,29 @@ pub struct GoogleConfig {
     pub callback_path: String,
     #[serde(default = "default_google_scopes")]
     pub scopes: Vec<String>,
+    #[serde(default = "default_google_authorize_endpoint")]
+    pub authorize_endpoint: Url,
+    #[serde(default = "default_google_token_endpoint")]
+    pub token_endpoint: Url,
+    #[serde(default = "default_google_jwks_endpoint")]
+    pub jwks_endpoint: Url,
+    #[serde(default = "default_google_issuer")]
+    pub issuer: String,
+}
+
+impl Default for GoogleConfig {
+    fn default() -> Self {
+        Self {
+            client_id: String::new(),
+            client_secret: String::new(),
+            callback_path: default_callback_path(),
+            scopes: default_google_scopes(),
+            authorize_endpoint: default_google_authorize_endpoint(),
+            token_endpoint: default_google_token_endpoint(),
+            jwks_endpoint: default_google_jwks_endpoint(),
+            issuer: default_google_issuer(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -247,6 +274,7 @@ impl AuthConfig {
                      can log in unless explicitly permitted"
                 )));
             }
+            validate_identity_provider_endpoints(&self.google, prefix)?;
         }
 
         Ok(())
@@ -382,6 +410,10 @@ impl AuthConfigBuilder {
         let key_g_secret = env_key(&prefix, "GOOGLE_CLIENT_SECRET");
         let key_g_callback = env_key(&prefix, "GOOGLE_CALLBACK_PATH");
         let key_g_scopes = env_key(&prefix, "GOOGLE_SCOPES");
+        let key_g_authorize = env_key(&prefix, "GOOGLE_AUTHORIZE_ENDPOINT");
+        let key_g_token = env_key(&prefix, "GOOGLE_TOKEN_ENDPOINT");
+        let key_g_jwks = env_key(&prefix, "GOOGLE_JWKS_ENDPOINT");
+        let key_g_issuer = env_key(&prefix, "GOOGLE_ISSUER");
         let key_at_ttl = env_key(&prefix, "AUTH_ACCESS_TOKEN_TTL_SECS");
         let key_rt_ttl = env_key(&prefix, "AUTH_REFRESH_TOKEN_TTL_SECS");
         let key_code_ttl = env_key(&prefix, "AUTH_CODE_TTL_SECS");
@@ -413,6 +445,10 @@ impl AuthConfigBuilder {
                 callback_path: read_string(&vars, &key_g_callback)
                     .unwrap_or_else(|| DEFAULT_CALLBACK_PATH.to_string()),
                 scopes: read_csv(&vars, &key_g_scopes).unwrap_or_else(default_google_scopes),
+                authorize_endpoint: read_url(&vars, &key_g_authorize)?.unwrap_or_else(|| Url::parse(DEFAULT_GOOGLE_AUTHORIZE_ENDPOINT).expect("valid default authorize endpoint")),
+                token_endpoint: read_url(&vars, &key_g_token)?.unwrap_or_else(|| Url::parse(DEFAULT_GOOGLE_TOKEN_ENDPOINT).expect("valid default token endpoint")),
+                jwks_endpoint: read_url(&vars, &key_g_jwks)?.unwrap_or_else(|| Url::parse(DEFAULT_GOOGLE_JWKS_ENDPOINT).expect("valid default JWKS endpoint")),
+                issuer: read_string(&vars, &key_g_issuer).unwrap_or_else(|| DEFAULT_GOOGLE_ISSUER.to_string()),
             },
             access_token_ttl: Duration::from_secs(
                 read_u64(&vars, &key_at_ttl)?.unwrap_or(DEFAULT_ACCESS_TOKEN_TTL_SECS),
@@ -444,6 +480,44 @@ impl AuthConfigBuilder {
         config.validate()?;
         Ok(config)
     }
+}
+
+fn validate_identity_provider_endpoints(google: &GoogleConfig, prefix: &str) -> Result<(), AuthError> {
+    let endpoints = [&google.authorize_endpoint, &google.token_endpoint, &google.jwks_endpoint];
+    for endpoint in endpoints {
+        let secure = endpoint.scheme() == "https";
+        let loopback_http = endpoint.scheme() == "http"
+            && endpoint.host_str().is_some_and(|host| host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()));
+        if !secure && !loopback_http {
+            return Err(AuthError::Config(format!("{prefix}_GOOGLE_*_ENDPOINT values must use HTTPS or loopback HTTP")));
+        }
+        if endpoint.username() != "" || endpoint.password().is_some() || endpoint.fragment().is_some() {
+            return Err(AuthError::Config(format!("{prefix}_GOOGLE_*_ENDPOINT values must not contain credentials or fragments")));
+        }
+    }
+    let issuer = Url::parse(&google.issuer).map_err(|error| {
+        AuthError::Config(format!(
+            "{prefix}_GOOGLE_ISSUER must be a valid URL: {error}"
+        ))
+    })?;
+    let secure = issuer.scheme() == "https";
+    let loopback_http = issuer.scheme() == "http"
+        && issuer.host_str().is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        });
+    if (!secure && !loopback_http)
+        || issuer.username() != ""
+        || issuer.password().is_some()
+        || issuer.fragment().is_some()
+    {
+        return Err(AuthError::Config(format!(
+            "{prefix}_GOOGLE_ISSUER must use HTTPS or loopback HTTP without credentials or fragments"
+        )));
+    }
+    Ok(())
 }
 
 fn env_key(prefix: &str, suffix: &str) -> String {
@@ -488,6 +562,22 @@ fn default_google_scopes() -> Vec<String> {
         "email".to_string(),
         "profile".to_string(),
     ]
+}
+
+fn default_google_authorize_endpoint() -> Url {
+    Url::parse(DEFAULT_GOOGLE_AUTHORIZE_ENDPOINT).expect("valid default authorize endpoint")
+}
+
+fn default_google_token_endpoint() -> Url {
+    Url::parse(DEFAULT_GOOGLE_TOKEN_ENDPOINT).expect("valid default token endpoint")
+}
+
+fn default_google_jwks_endpoint() -> Url {
+    Url::parse(DEFAULT_GOOGLE_JWKS_ENDPOINT).expect("valid default JWKS endpoint")
+}
+
+fn default_google_issuer() -> String {
+    DEFAULT_GOOGLE_ISSUER.to_string()
 }
 
 fn read_string(vars: &HashMap<String, String>, key: &str) -> Option<String> {
@@ -633,6 +723,38 @@ mod tests {
                 "https://claude.ai/api/mcp/auth_callback".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn oauth_mode_accepts_loopback_identity_provider_endpoints() {
+        let cfg = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "http://127.0.0.1:9000"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "admin@example.com"),
+            ("LAB_GOOGLE_AUTHORIZE_ENDPOINT", "http://127.0.0.1:9100/authorize"),
+            ("LAB_GOOGLE_TOKEN_ENDPOINT", "http://127.0.0.1:9100/token"),
+            ("LAB_GOOGLE_JWKS_ENDPOINT", "http://127.0.0.1:9100/jwks"),
+            ("LAB_GOOGLE_ISSUER", "http://127.0.0.1:9100"),
+        ]))
+        .unwrap();
+        assert_eq!(cfg.google.issuer, "http://127.0.0.1:9100");
+        assert_eq!(cfg.google.token_endpoint.path(), "/token");
+    }
+
+    #[test]
+    fn oauth_mode_rejects_plain_http_non_loopback_identity_provider() {
+        let err = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "https://lab.example.com"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "admin@example.com"),
+            ("LAB_GOOGLE_TOKEN_ENDPOINT", "http://idp.example.com/token"),
+        ]))
+        .unwrap_err();
+        assert!(err.to_string().contains("HTTPS or loopback HTTP"));
     }
 
     #[test]

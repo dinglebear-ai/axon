@@ -4360,6 +4360,13 @@
             "null"
           ]
         },
+        "plan_id": {
+          "description": "Persisted plan id required by `get` and `exec`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "response_mode": {
           "anyOf": [
             {
@@ -4371,7 +4378,7 @@
           ]
         },
         "subaction": {
-          "description": "`plan` or `exec`. Defaults to `plan` when omitted so a bare `prune`\ncall never mutates state.",
+          "description": "`plan`, `get`, or `exec`. Defaults to `plan` when omitted so a bare `prune`\ncall never mutates state.",
           "type": [
             "string",
             "null"
@@ -5660,7 +5667,7 @@
         "path": "crates/axon-api/src/mcp_schema.rs"
       },
       {
-        "checksum": "sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656",
+        "checksum": "sha256:56370b8c7b8fa0062f040c3d579ad7c12ad29ed36d8a4e48e0f9d13c1013afec",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
@@ -5700,7 +5707,7 @@
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:e9ea73016f239d48c5c85c3cc2bc0cc4c3dd7f279afa83e014044a5106262b3d",
+        "checksum": "sha256:3717c3f9668f67df14915497d250ed8270bbfc7daf514d8f900e53bae8082bdb",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },

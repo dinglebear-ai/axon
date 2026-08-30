@@ -5,13 +5,7 @@ use axon_core::redact::Redactor;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct StoredPrunePlan {
-    pub plan: PrunePlan,
-    pub reason: String,
-    pub inventory_checksum: String,
-    pub expires_at_utc: String,
-}
+pub(super) use axon_api::source::prune::StoredPrunePlan;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct StoredPruneReceipt {

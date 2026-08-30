@@ -1,0 +1,126 @@
+name: E2E Hermetic Required
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 5 * * 2'
+  workflow_dispatch:
+    inputs:
+      mutation_mode:
+        description: Mutation sensitivity scope
+        type: choice
+        options: [representative, full]
+        default: full
+
+# Repository-owned required gate. External branch-protection configuration is
+# intentionally managed separately and is not mutated by this workflow.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: e2e-hermetic-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  required-hermetic:
+    name: E2E Hermetic Required
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AXON_E2E_HERMETIC: '1'
+      AXON_E2E_LIVE: '0'
+      AXON_E2E_PROVIDER_MODE: double
+      AXON_E2E_STAGE_GATES: '1'
+      AXON_E2E_NETWORK_POLICY: loopback-only
+      AXON_E2E_EVIDENCE_POLICY: sanitized-only
+      AXON_E2E_REQUIRE_REAL_SOURCE_JOBS: '1'
+      AXON_E2E_CLEANUP_REGISTRY: ${{ runner.tool_cache }}/axon-e2e-cleanup/${{ github.repository_id }}/registry.json
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      # setup-node resolves this exact release through Node's checksummed
+      # distribution manifest. Cargo and npm verify registry checksums while
+      # installing the exact, immutable package versions below.
+      - name: Acquire checksummed Node runtime
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 24.8.0
+          check-latest: false
+          cache: ''
+      - name: Acquire checksummed harness tools
+        run: |
+          cargo install --locked --version 1.42.4 just
+          npm ci --prefix scripts/e2e/tooling --ignore-scripts --audit=false --fund=false
+          echo "$GITHUB_WORKSPACE/scripts/e2e/tooling/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Verify acquired harness tools
+        run: |
+          test "$(node --version)" = 'v24.8.0'
+          test "$(just --version)" = 'just 1.42.4'
+          test "$(scripts/e2e/tooling/node_modules/.bin/mcporter --version)" = '0.13.0'
+      - name: Run measured hermetic slice
+        run: |
+          cargo build --locked --bin axon
+          sudo --preserve-env=PATH unshare --net --fork bash -c 'ip link set lo up; AXON_E2E_NATIVE_ISOLATION=1 just e2e-hermetic-inner'
+      - name: Run full scheduled or requested sensitivity set
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mutation_mode == 'full')
+        run: python3 scripts/e2e/run-mutations.py --subset full --report target/e2e/mutation-report.json
+      - name: Outer ownership-checked teardown
+        if: always()
+        run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --report target/e2e/outer-cleanup.json
+      - name: Verify sanitized evidence structure
+        id: evidence
+        if: always()
+        run: python3 scripts/e2e/verify-hermetic-report.py --allow-failure --expected-required true target/e2e/hermetic-report.json
+      - name: Enforce canonical attempt and quarantine governance
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/e2e/project-hermetic-report.py target/e2e/hermetic-report.json --out target/e2e/hermetic-canonical.json
+          python3 scripts/e2e/restore-reliability-history.py --repository ${{ github.repository }} --workflow e2e-hermetic.yml --artifact e2e-reliability-history-hermetic --out target/e2e/prior-history.json --attestations-out target/e2e/prior-history-attestations.json
+          python3 scripts/e2e/flake-governance.py --report target/e2e/hermetic-canonical.json --history target/e2e/prior-history.json --repository ${{ github.repository }} --workflow e2e-hermetic.yml --environment ci-linux --reliability-out target/e2e/hermetic-reliability.json --history-out target/e2e/history.json
+      - name: Enforce required-gate qualification preflight
+        if: always()
+        run: |
+          python3 scripts/e2e/qualify-required-gate.py \
+            --mode ${{ github.ref == 'refs/heads/main' && 'observe' || 'enforce' }} \
+            --report target/e2e/hermetic-report.json \
+            --canonical target/e2e/hermetic-canonical.json \
+            --reliability target/e2e/hermetic-reliability.json \
+            --mutations target/e2e/mutation-report.json \
+            --history target/e2e/prior-history.json \
+            --attestations target/e2e/prior-history-attestations.json \
+            --out target/e2e/required-gate-decision.json
+      - name: Retain sanitized measured evidence
+        # Upload independently of validation/result so a total-budget failure
+        # still leaves the sanitized diagnostic report for operators.
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-hermetic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/e2e/hermetic-report.json
+            target/e2e/mutation-report.json
+            target/e2e/hermetic-canonical.json
+            target/e2e/hermetic-reliability.json
+            target/e2e/required-gate-decision.json
+            target/e2e/outer-cleanup.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain trusted rolling history
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-reliability-history-hermetic
+          path: target/e2e/history.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce measured result after evidence retention
+        if: always()
+        run: |
+          python3 scripts/e2e/verify-hermetic-report.py --expected-required true target/e2e/hermetic-report.json
+          python3 scripts/e2e/qualify-required-gate.py --verify-decision target/e2e/required-gate-decision.json ${{ github.ref == 'refs/heads/main' && '--allow-observation' || '' }}

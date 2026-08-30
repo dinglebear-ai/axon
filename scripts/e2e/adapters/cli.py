@@ -38,7 +38,7 @@ def scenario_argv(scenario: dict[str, Any], fixture: dict[str, Any], prerequisit
     if scenario_id == "jobs.stream.happy":
         return ["jobs", "list", "--limit", "10", "--json"]
     if scenario_id == "jobs.cancel.negative":
-        return ["jobs", "cancel", "e2e_missing_job", "--json"]
+        return ["jobs", "cancel", "00000000-0000-0000-0000-000000000000", "--json"]
     if scenario_id == "prune.plan.happy":
         collection = prerequisites.get("fixture.owned_collection", os.environ.get("E2E_OWNED_COLLECTION", str(fixture["collection"])))
         return ["prune", "plan", "--collection", collection, "--json"]
@@ -87,7 +87,7 @@ def normalized_failure_envelope(
     code = ""
     if scenario["id"] == "source.detached.negative" and "error:" in folded \
             and ("source" in folded or "invalid value" in folded) \
-            and ("empty" in folded or "''" in message or '""' in message):
+            and ("empty" in folded or "requires a local path" in folded or "''" in message or '""' in message):
         code = "validation.source_invalid"
     elif scenario["id"] == "jobs.cancel.negative" and "not found" in folded and "job" in folded:
         code = "jobs.not_found"
@@ -309,7 +309,10 @@ def main() -> int:
     with evidence_path.open("w", encoding="utf-8") as evidence:
         for scenario, argv in prepared:
             history: list[dict[str, Any]] = []
-            max_attempts = 1 if scenario["retry_class"] == "never" else 2
+            # The canonical catalog is hermetic. Required hermetic scenarios
+            # never auto-retry; live diagnostic retry is governed separately
+            # after teardown/namespace safety evidence exists.
+            max_attempts = 1
             result, failure_class, assertions = "fail", "harness", []
             for attempt in range(1, max_attempts + 1):
                 attempt_namespace = f"{isolation['namespace']}_attempt_{attempt}"

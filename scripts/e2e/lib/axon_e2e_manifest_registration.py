@@ -31,7 +31,7 @@ def register_resource(
     records = manifest.verify()
     header = records[0]["payload"]
     namespaced_types = {"chat_session", "collection", "compose_project", "container", "evidence", "network",
-                        "operation", "qdrant_alias", "qdrant_snapshot", "tailscale_node", "volume", "watch"}
+                        "operation", "qdrant_alias", "qdrant_snapshot", "tailscale_node", "volume"}
     if resource_type in namespaced_types:
         validate_owned_name(identity)
         if identity != header["run_id"] and not identity.startswith(header["run_id"] + "_"):
@@ -43,8 +43,8 @@ def register_resource(
         if resource_type != "collection" and (not isinstance(metadata.get("collection"), str)
                                                or not metadata["collection"].startswith(run_prefix)):
             raise error_type(f"{resource_type} requires an owned collection binding")
-    if resource_type in {"artifact", "upload"} and not identity.startswith(run_prefix):
-        prefix = "art_" if resource_type == "artifact" else "upl_"
+    if resource_type in {"artifact", "upload", "watch"} and not identity.startswith(run_prefix):
+        prefix = {"artifact": "art_", "upload": "upl_", "watch": "watch_"}[resource_type]
         required = {"run_id", "attempt", "scenario_id", "request_id", "origin",
                     "parent_resource_type", "parent_identity"}
         if not re.fullmatch(rf"{prefix}[A-Za-z0-9_-]{{3,128}}", identity):
@@ -62,7 +62,7 @@ def register_resource(
                            for record in records)
         if not parent_found:
             raise error_type(f"opaque {resource_type} parent is not registered in this manifest")
-    elif resource_type in {"artifact", "upload"}:
+    elif resource_type in {"artifact", "upload", "watch"}:
         validate_owned_name(identity)
     data_dir = Path(header["data_dir"])
     if resource_type in {"job", "source"}:

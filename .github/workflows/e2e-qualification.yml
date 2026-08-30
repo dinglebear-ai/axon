@@ -1,0 +1,93 @@
+name: E2E release qualification
+
+on:
+  workflow_call:
+    inputs:
+      evidence_run_id:
+        description: Successful workflow run containing e2e-qualification-input
+        required: true
+        type: string
+      tested_sha:
+        description: Full commit SHA shared by every evidence record
+        required: true
+        type: string
+      profile:
+        description: Qualification policy profile
+        required: false
+        default: release-candidate
+        type: string
+  workflow_dispatch:
+    inputs:
+      evidence_run_id:
+        description: Successful workflow run containing e2e-qualification-input
+        required: true
+        type: string
+      tested_sha:
+        description: Full commit SHA shared by every evidence record
+        required: true
+        type: string
+      profile:
+        description: Qualification policy profile
+        required: true
+        default: release-candidate
+        type: choice
+        options: [pr, main, release-candidate, deployed-compatibility]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: e2e-qualification-${{ inputs.tested_sha }}-${{ inputs.profile }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-tested-commit:
+    name: qualify-${{ inputs.profile }}-${{ inputs.tested_sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.tested_sha }}
+          persist-credentials: false
+      - name: Restore checksum-bound evidence bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.evidence_run_id }}
+          name: e2e-qualification-input
+          path: target/e2e/evidence
+      - name: Bind bundle to requested profile and tested commit
+        env:
+          EXPECTED_PROFILE: ${{ inputs.profile }}
+          EXPECTED_SHA: ${{ inputs.tested_sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          index=json.loads(Path("target/e2e/evidence/qualification-index.json").read_text())
+          expected_sha=os.environ["EXPECTED_SHA"]
+          if re.fullmatch(r"[0-9a-f]{40}",expected_sha) is None or index.get("tested_sha") != expected_sha:
+              raise SystemExit("qualification evidence tested SHA mismatch")
+          if index.get("profile") != os.environ["EXPECTED_PROFILE"]:
+              raise SystemExit("qualification evidence profile mismatch")
+          PY
+      - name: Build deterministic unsigned qualification
+        run: |
+          python3 scripts/e2e/build-qualification-manifest.py \
+            --index target/e2e/evidence/qualification-index.json \
+            --evidence-root target/e2e/evidence \
+            --out target/e2e/qualification/qualification.json \
+            --summary target/e2e/qualification/qualification.md \
+            --checksums target/e2e/qualification/SHA256SUMS
+      - name: Retain release-candidate qualification
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-qualification-${{ inputs.profile }}-${{ inputs.tested_sha }}
+          path: |
+            target/e2e/qualification/qualification.json
+            target/e2e/qualification/qualification.md
+            target/e2e/qualification/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
