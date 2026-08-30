@@ -19,7 +19,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use support::{build_model_prompt, now_ms, parse_action, store_path, validate_options};
+use support::{build_model_prompt, now_ms, parse_action, validate_options};
 
 pub use client::{LabbyAgentClient, LabbyExecutionReceipt};
 pub use store::AgentTurnStore;
@@ -76,7 +76,7 @@ pub async fn run(
     completion: CompletionFn,
 ) -> anyhow::Result<AgentTurnResult> {
     validate_options(&options)?;
-    let store = AgentTurnStore::open(store_path(cfg))?;
+    let store = AgentTurnStore::open(cfg)?;
     let turn_id = options
         .turn_id
         .clone()
@@ -404,7 +404,7 @@ async fn execute_proposal(
 }
 
 pub async fn cancel(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<AgentTurnResult> {
-    let store = AgentTurnStore::open(store_path(cfg))?;
+    let store = AgentTurnStore::open(cfg)?;
     let turn = store.request_cancel(turn_id, owner)?;
     if let Some(request_id) = turn.active_request_id.as_deref() {
         let receipt = LabbyAgentClient::from_config(cfg)?
@@ -425,7 +425,7 @@ pub async fn resume(
     approvals: Vec<AgentApprovalToken>,
     completion: CompletionFn,
 ) -> anyhow::Result<AgentTurnResult> {
-    let store = AgentTurnStore::open(store_path(cfg))?;
+    let store = AgentTurnStore::open(cfg)?;
     let turn = store.load_owned(turn_id, &owner.principal)?;
     turn.verify_resume(&owner.principal)?;
     let configured_model = axon_core::llm::configured_chat_model_from_config(cfg)
@@ -452,7 +452,7 @@ pub async fn resume(
 }
 
 pub fn status(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<AgentTurnResult> {
-    let store = AgentTurnStore::open(store_path(cfg))?;
+    let store = AgentTurnStore::open(cfg)?;
     store.load_owned(turn_id, owner)?;
     store.result(turn_id)
 }
@@ -462,7 +462,7 @@ pub fn events(
     owner: &str,
     after: u64,
 ) -> anyhow::Result<Vec<AgentEvent>> {
-    let store = AgentTurnStore::open(store_path(cfg))?;
+    let store = AgentTurnStore::open(cfg)?;
     store.load_owned(turn_id, owner)?;
     store.events(turn_id, after)
 }

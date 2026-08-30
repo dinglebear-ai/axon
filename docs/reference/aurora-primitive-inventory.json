@@ -281,6 +281,29 @@
       "secret_classification": "not-applicable",
       "expected_verification": ["button disabled/asChild upstream test and public/r artifact check"],
       "stale_bead_links": ["axon_rust-dnu7"]
+    },
+    {
+      "id": "W-PAL-008",
+      "platform": "web",
+      "file_paths": [
+        "apps/palette-tauri/src/components/palette/cortex/CortexWorkspace.tsx",
+        "apps/palette-tauri/src/components/palette/cortex/TailControls.tsx",
+        "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx",
+        "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx",
+        "apps/palette-tauri/src/components/palette/labby/LabbyExactToolRunner.tsx",
+        "apps/palette-tauri/src/components/palette/labby/LabbySnippetWorkspace.tsx",
+        "apps/palette-tauri/src/components/palette/labby/LoadoutSelector.tsx",
+        "apps/palette-tauri/src/components/palette/labby/LoadoutWorkspace.tsx"
+      ],
+      "symbols": ["Cortex and Labby Palette workspace controls"],
+      "current_primitive_smell": "The first-class Cortex and Labby workspaces retain native controls while their interaction and accessibility contracts settle.",
+      "classification": "axon-composite",
+      "migration_owner": "axon_rust-1p6q8",
+      "upstream_requirement": "Migrate ordinary controls to Aurora Button, Input, NativeSelect, and Textarea in a focused visual-parity change; retain native checkbox and stream controls only where direct semantics are required.",
+      "app_specific_exception": "These controls currently own virtualized catalogs, schema-driven arguments, live stream cancellation, and revision-bound activation semantics introduced by the cross-product Palette contract.",
+      "secret_classification": "mixed: delegation and gateway credential inputs are secret; remaining controls are non-secret",
+      "expected_verification": ["web-raw-control-guard", "Cortex and Labby workspace regression tests", "rendered Palette accessibility proof"],
+      "stale_bead_links": []
     }
   ],
   "web_raw_control_allowlist": [
@@ -300,6 +323,27 @@
     ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexMutationEditor.tsx", "tag": "input" }
     ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexMutationEditor.tsx", "tag": "select" }
     ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/CodexMutationEditor.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/cortex/CortexWorkspace.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/cortex/CortexWorkspace.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/cortex/CortexWorkspace.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/cortex/TailControls.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LabbyExactToolRunner.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LabbyExactToolRunner.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LabbyExactToolRunner.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LabbySnippetWorkspace.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LabbySnippetWorkspace.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutSelector.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutSelector.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutWorkspace.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutWorkspace.tsx", "tag": "input" }
   ],
   "android_reusable_control_allowlist": [
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/feature/ask/AskPromptBar.kt", "pattern": "BasicTextField" },

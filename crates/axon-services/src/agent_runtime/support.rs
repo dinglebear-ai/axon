@@ -1,6 +1,4 @@
 use super::{AgentTurnOptions, MAX_TIMEOUT_MS, MAX_TOOL_CALLS, ModelAction, store::StoredTurn};
-use axon_core::config::Config;
-
 pub(super) fn build_model_prompt(turn: &StoredTurn) -> anyhow::Result<String> {
     Ok(format!(
         "You are Axon's bounded agent. Return exactly one JSON object: {{\"type\":\"final\",\"answer\":string}} or {{\"type\":\"tool\",\"tool_id\":string,\"contract_hash\":string,\"arguments\":object,\"destructive\":bool}}. Never invent tools outside the revision-bound loadout.\n\nUSER:\n{}\n\nTOOL RESULTS:\n{}",
@@ -30,10 +28,6 @@ pub(super) fn validate_options(options: &AgentTurnOptions) -> anyhow::Result<()>
         anyhow::bail!("agent_bounds_invalid");
     }
     Ok(())
-}
-
-pub(super) fn store_path(cfg: &Config) -> std::path::PathBuf {
-    cfg.sqlite_path.with_file_name("agent-turns.sqlite3")
 }
 
 pub(super) fn now_ms() -> i64 {

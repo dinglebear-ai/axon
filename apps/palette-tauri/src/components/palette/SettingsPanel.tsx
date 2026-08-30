@@ -11,9 +11,9 @@ import {
   type PaletteConfig,
   type PaletteResult,
 } from "@/lib/axonClient";
-import { isRecord, strField, unwrapPayload } from "@/lib/payload";
+import type { BackendProduct, BackendProfile } from "@/lib/backendProfiles/model";
 import { invoke } from "@/lib/invoke";
-import type { BackendProfile, BackendProduct } from "@/lib/backendProfiles/model";
+import { isRecord, strField, unwrapPayload } from "@/lib/payload";
 
 interface SettingsPanelProps {
   configError: string | null;
@@ -235,34 +235,59 @@ export function BackendProfilesSettings({
     });
   };
   return (
-    <div className="settings-stack" aria-label="Backend profiles">
+    <section className="settings-stack" aria-label="Backend profiles">
       <span className="settings-section-label">Product backends</span>
       {profiles.map((profile) => (
-        <div className="settings-stack" key={profile.id} data-testid={`backend-profile-${profile.id}`}>
+        <div
+          className="settings-stack"
+          key={profile.id}
+          data-testid={`backend-profile-${profile.id}`}
+        >
           <Field label={`${profile.product} profile label`}>
-            <TextInput value={profile.label} onChange={(label) => updateProfile(profile.id, { label })} />
+            <TextInput
+              value={profile.label}
+              onChange={(label) => updateProfile(profile.id, { label })}
+            />
           </Field>
           <Field label="Origin">
-            <TextInput value={profile.origin} onChange={(origin) => updateProfile(profile.id, { origin })} mono />
+            <TextInput
+              value={profile.origin}
+              onChange={(origin) => updateProfile(profile.id, { origin })}
+              mono
+            />
           </Field>
           <Field label="Credential" hint={profile.credentialHandle ? "saved" : "not saved"}>
-            <SecretInput value={tokens[profile.id] ?? ""} onChange={(token) => setTokens((current) => ({ ...current, [profile.id]: token }))} />
+            <SecretInput
+              value={tokens[profile.id] ?? ""}
+              onChange={(token) => setTokens((current) => ({ ...current, [profile.id]: token }))}
+            />
           </Field>
           <div className="settings-footer-actions">
             <Button size="sm" variant="neutral" onClick={() => void saveCredential(profile)}>
               {profile.credentialHandle ? "Rotate credential" : "Save credential"}
             </Button>
-            <Button size="sm" variant="neutral" disabled={!profile.credentialHandle} onClick={() => void removeCredential(profile)}>Remove credential</Button>
-            <Button size="sm" variant="neutral" onClick={() => void deleteProfile(profile)}>Delete profile</Button>
+            <Button
+              size="sm"
+              variant="neutral"
+              disabled={!profile.credentialHandle}
+              onClick={() => void removeCredential(profile)}
+            >
+              Remove credential
+            </Button>
+            <Button size="sm" variant="neutral" onClick={() => void deleteProfile(profile)}>
+              Delete profile
+            </Button>
           </div>
         </div>
       ))}
       <div className="settings-footer-actions">
         {(["axon", "labby", "cortex"] as const).map((product) => (
-          <Button key={product} size="sm" variant="neutral" onClick={() => addProfile(product)}>Add {product}</Button>
+          <Button key={product} size="sm" variant="neutral" onClick={() => addProfile(product)}>
+            Add {product}
+          </Button>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 

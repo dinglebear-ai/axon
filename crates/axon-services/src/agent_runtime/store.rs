@@ -2,10 +2,11 @@ use super::{LabbyExecutionReceipt, client::LabbyContextReceipt};
 use axon_api::agent::{
     AgentCorrelation, AgentEvent, AgentToolProposal, AgentTurnResult, AgentTurnStatus,
 };
+use axon_core::config::Config;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::{path::PathBuf, sync::Mutex};
+use std::sync::Mutex;
 
 mod schema;
 mod support;
@@ -76,7 +77,10 @@ pub struct AgentTurnStore {
 }
 
 impl AgentTurnStore {
-    pub fn open(path: PathBuf) -> anyhow::Result<Self> {
+    pub fn open(cfg: &Config) -> anyhow::Result<Self> {
+        // The database name is service-owned. Callers may configure Axon's main
+        // SQLite location, but cannot supply a second arbitrary persistence path.
+        let path = cfg.sqlite_path.with_file_name("agent-turns.sqlite3");
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }

@@ -26,10 +26,10 @@ use std::sync::Arc;
 mod loopback_guard;
 use loopback_guard::block_loopback_destructive_request;
 
-#[path = "routing_codex.rs"]
-mod codex_routes;
 #[path = "routing_ask.rs"]
 mod ask;
+#[path = "routing_codex.rs"]
+mod codex_routes;
 #[path = "routing_resource_tier.rs"]
 mod resource_tier;
 pub(crate) use ask::ask_router;
