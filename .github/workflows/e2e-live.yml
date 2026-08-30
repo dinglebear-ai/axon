@@ -45,13 +45,14 @@ jobs:
       AXON_E2E_LLM_PEER: ${{ vars.AXON_E2E_LLM_PEER }}
       AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
       AXON_E2E_EXPECTED_PEERS: ${{ vars.AXON_E2E_EXPECTED_PEERS }}
-      AXON_E2E_CLEANUP_REGISTRY: ${{ runner.tool_cache }}/axon-e2e-cleanup/${{ github.repository_id }}/registry.json
     steps:
       - name: Checkout exact tested commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
+      - name: Configure persistent cleanup registry
+        run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
       - name: Reject stale or untrusted invocation before discovery
         run: python3 scripts/e2e/validate-live-invocation.py
       - name: Recover stale owned runs before mutation

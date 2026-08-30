@@ -37,11 +37,12 @@ jobs:
       AXON_E2E_NETWORK_POLICY: loopback-only
       AXON_E2E_EVIDENCE_POLICY: sanitized-only
       AXON_E2E_REQUIRE_REAL_SOURCE_JOBS: '1'
-      AXON_E2E_CLEANUP_REGISTRY: ${{ runner.tool_cache }}/axon-e2e-cleanup/${{ github.repository_id }}/registry.json
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+      - name: Configure persistent cleanup registry
+        run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
       # setup-node resolves this exact release through Node's checksummed
       # distribution manifest. Cargo and npm verify registry checksums while
       # installing the exact, immutable package versions below.

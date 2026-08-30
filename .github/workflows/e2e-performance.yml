@@ -19,11 +19,12 @@ jobs:
     timeout-minutes: 45
     env:
       AXON_E2E_RUNNER_CLASS: macbook-primary-performance
-      AXON_E2E_CLEANUP_REGISTRY: ${{ runner.tool_cache }}/axon-e2e-cleanup/${{ github.repository_id }}/registry.json
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           persist-credentials: false
+      - name: Configure persistent cleanup registry
+        run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
       - name: Recover stale owned runs before mutation
         run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --stale-seconds 21600 --report target/e2e/performance/stale-cleanup.json
       - name: Build measured binary
