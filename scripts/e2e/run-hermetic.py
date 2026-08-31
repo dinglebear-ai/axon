@@ -200,9 +200,16 @@ def run(report_path: Path, total_budget: int) -> int:
                     stdout,stderr=current.communicate(timeout=allowed);returncode=current.returncode
                 finally:
                     stage_monitor_stop.set();monitor.join(timeout=2)
+                diagnostics=[]
                 for line in stdout.splitlines():
                     try:value=json.loads(line)
                     except json.JSONDecodeError:continue
+                    diagnostic=value.get("axon_e2e_diagnostic") if isinstance(value,dict) else None
+                    if (isinstance(diagnostic,dict) and
+                        set(diagnostic) == {"domain","error_type"} and
+                        all(isinstance(item,str) and re.fullmatch(r"[A-Za-z0-9_-]+",item)
+                            for item in diagnostic.values())):
+                        diagnostics.append(diagnostic)
                     observation=value.get("provider_observation",{}) if isinstance(value,dict) else {}
                     if isinstance(observation.get("retries"),int):measured["retries"]+=observation["retries"]
                 status = "passed" if returncode == 0 else "failed"; failed |= returncode != 0
@@ -210,6 +217,9 @@ def run(report_path: Path, total_budget: int) -> int:
                                "duration_ms": int((time.monotonic()-stage_started)*1000),
                                "returncode": returncode,"stdout_sha256":hashlib.sha256(stdout.encode()).hexdigest(),
                                "stderr_sha256":hashlib.sha256(stderr.encode()).hexdigest(),"sanitized":True})
+                if diagnostics:
+                    stages[-1]["diagnostics"]=diagnostics
+                    print(f"hermetic stage {name} diagnostics: {json.dumps(diagnostics,sort_keys=True)}",flush=True)
                 print(f"hermetic stage {name}: {status}", flush=True)
             except subprocess.TimeoutExpired as error:
                 if os.name == "nt":current.terminate()

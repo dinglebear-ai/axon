@@ -63,7 +63,7 @@ def oversize_probe(base,token,path,size):
   with path.open("rb") as stream:
    try:
     while chunk:=stream.read(64*1024):connection.send(chunk)
-   except BrokenPipeError:
+   except (BrokenPipeError,ConnectionResetError):
     # A server may reject the declared oversized body before consuming it.
     # The response remains authoritative and must still be inspected below.
     pass

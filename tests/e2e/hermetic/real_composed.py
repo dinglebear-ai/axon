@@ -172,7 +172,13 @@ def main():
     for entry in sorted((ROOT/"tests/e2e/scenarios").glob("*/hermetic_entry.py")):
      completed=subprocess.run([sys.executable,str(entry),"--launcher-descriptor",str(descriptor_path)],cwd=ROOT,env=env,
                               capture_output=True,text=True,timeout=180,check=False)
-     if completed.returncode:raise RuntimeError(f"domain hermetic entry failed: {entry.parent.name}: {completed.stderr[-2000:]}")
+     if completed.returncode:
+      error_type="unknown"
+      for line in reversed(completed.stderr.splitlines()):
+       candidate=line.split(":",1)[0]
+       if candidate.endswith(("Error","Exception")) and candidate.replace("_","").isalnum():error_type=candidate;break
+      print(json.dumps({"axon_e2e_diagnostic":{"domain":entry.parent.name,"error_type":error_type}},sort_keys=True),flush=True)
+      raise RuntimeError(f"domain hermetic entry failed: {entry.parent.name}: {completed.stderr[-2000:]}")
    result={"result":"pass","surfaces":["cli","http","mcp"],"provider_observation":delta,"observability":observability,
            "performance":{"cold_start_ms":cold_ms,
                           "warm_start_ms":warm_ms,"source_to_terminal_ms":representative_ms or observability["source_to_terminal_ms"],
