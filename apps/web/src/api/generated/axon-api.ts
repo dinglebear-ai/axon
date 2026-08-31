@@ -62,6 +62,9 @@ export type components = {
             "kind": "final";
             "sequence": number;
         };
+        "AgentResumeRequest": {
+            "approvalTokens"?: components['schemas']['AgentApprovalToken'][];
+        };
         "AgentToolProposal": {
             "arguments": unknown;
             "contractHash": string;
@@ -83,7 +86,7 @@ export type components = {
             "status": components['schemas']['AgentTurnStatus'];
             "turnId": string;
         };
-        "AgentTurnStatus": "pending" | "proposing" | "awaiting_approval" | "executing" | "continuing" | "succeeded" | "failed" | "cancelled" | "timed_out" | "interrupted";
+        "AgentTurnStatus": "pending" | "proposing" | "awaiting_approval" | "executing" | "continuing" | "succeeded" | "failed" | "cancelled" | "timed_out" | "interrupted" | "cancel_unconfirmed";
         "ApiError": {
             "chunk_id"?: string | null;
             "code": components['schemas']['ErrorCode'];
@@ -1786,6 +1789,7 @@ export type paths = {
     "/v1/agent/turns/{id}": { get: operations["v1_agent_status"] };
     "/v1/agent/turns/{id}/cancel": { post: operations["v1_agent_cancel"] };
     "/v1/agent/turns/{id}/events": { get: operations["v1_agent_events"] };
+    "/v1/agent/turns/{id}/resume": { post: operations["v1_agent_resume"] };
     "/v1/artifacts": { get: operations["list_artifacts"] };
     "/v1/artifacts/{artifact_id}": { get: operations["get_artifact"] };
     "/v1/artifacts/{artifact_id}/content": { get: operations["artifact_content"] };
@@ -1887,9 +1891,10 @@ export type paths = {
 export type operations = {
     "healthz": { method: "get"; path: "/healthz"; operationId: "healthz"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": string }; security: never };
     "readyz": { method: "get"; path: "/readyz"; operationId: "readyz"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['ReadinessBody']; "503": components['schemas']['ReadinessBody'] }; security: never };
-    "v1_agent_status": { method: "get"; path: "/v1/agent/turns/{id}"; operationId: "v1_agent_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['AgentTurnResult']; "404": components['schemas']['ErrorBody'] }; security: never };
-    "v1_agent_cancel": { method: "post"; path: "/v1/agent/turns/{id}/cancel"; operationId: "v1_agent_cancel"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['AgentTurnResult']; "502": components['schemas']['ErrorBody'] }; security: never };
-    "v1_agent_events": { method: "get"; path: "/v1/agent/turns/{id}/events"; operationId: "v1_agent_events"; parameters: { query: { "after"?: number }; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "404": components['schemas']['ErrorBody'] }; security: never };
+    "v1_agent_status": { method: "get"; path: "/v1/agent/turns/{id}"; operationId: "v1_agent_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['AgentTurnResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "v1_agent_cancel": { method: "post"; path: "/v1/agent/turns/{id}/cancel"; operationId: "v1_agent_cancel"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['AgentTurnResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "v1_agent_events": { method: "get"; path: "/v1/agent/turns/{id}/events"; operationId: "v1_agent_events"; parameters: { query: { "after"?: number }; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "v1_agent_resume": { method: "post"; path: "/v1/agent/turns/{id}/resume"; operationId: "v1_agent_resume"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: components['schemas']['AgentResumeRequest']; responses: { "200": components['schemas']['AgentTurnResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_artifacts": { method: "get"; path: "/v1/artifacts"; operationId: "list_artifacts"; parameters: { query: { "source_id"?: string; "job_id"?: string; "kind"?: string; "limit"?: number; "cursor"?: string }; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['Page_ArtifactSummary']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_artifact": { method: "get"; path: "/v1/artifacts/{artifact_id}"; operationId: "get_artifact"; parameters: { query: Record<string, never>; path: { "artifact_id": string } }; requestBody: never; responses: { "200": components['schemas']['ArtifactDetail']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "artifact_content": { method: "get"; path: "/v1/artifacts/{artifact_id}/content"; operationId: "artifact_content"; parameters: { query: { "download"?: boolean }; path: { "artifact_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
