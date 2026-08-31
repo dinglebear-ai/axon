@@ -1,8 +1,8 @@
 use axon_api::source::*;
 
 use super::QdrantVectorStore;
+use super::collection_spec::detect_collection_spec;
 use super::http::QdrantHttp;
-use super::store_impl::detect_collection_spec;
 use crate::store::Result;
 
 impl QdrantVectorStore {

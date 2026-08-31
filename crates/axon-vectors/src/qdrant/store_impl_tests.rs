@@ -5,6 +5,7 @@ use std::{
     thread,
 };
 
+use super::super::collection_spec::detect_collection_spec;
 use super::*;
 use crate::qdrant::configure_parallelism;
 use serde_json::json;
