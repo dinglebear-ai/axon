@@ -90,6 +90,8 @@ class HermeticWorkflowTests(unittest.TestCase):
     def test_native_namespace_drops_root_before_running_suite(self):
         workflow=(ROOT/".github/workflows/e2e-hermetic.yml").read_text()
         self.assertIn('setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups',workflow)
+        self.assertIn('env HOME="$1" USER="$SUDO_USER" LOGNAME="$SUDO_USER"',workflow)
+        self.assertIn("' _ \"$HOME\"",workflow)
         self.assertLess(workflow.index("ip link set lo up"),workflow.index("setpriv --reuid"))
 
     def test_failure_still_emits_machine_readable_cleanup_report(self):

@@ -86,8 +86,9 @@ jobs:
           sudo --preserve-env=PATH unshare --net --fork bash -c '
             ip link set lo up
             exec setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
-              env AXON_E2E_NATIVE_ISOLATION=1 just e2e-hermetic-inner
-          '
+              env HOME="$1" USER="$SUDO_USER" LOGNAME="$SUDO_USER" \
+              AXON_E2E_NATIVE_ISOLATION=1 just e2e-hermetic-inner
+          ' _ "$HOME"
       - name: Run full scheduled or requested sensitivity set
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mutation_mode == 'full')
         run: python3 scripts/e2e/run-mutations.py --subset full --report target/e2e/mutation-report.json
