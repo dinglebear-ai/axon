@@ -65,7 +65,7 @@ class ReportingTests(unittest.TestCase):
                                         provider_versions={}, policy={})
         record = report["scenarios"][0]; self.assertEqual("failed", record["status"])
         encoded = json.dumps(record); self.assertNotIn("private-host", encoded)
-        self.assertRegex(record["cleanup"]["residuals"][0]["opaque_id"], r"^[0-9a-f]{16}$")
+        self.assertRegex(record["cleanup"]["residuals"][0]["opaque_id"], r"^[0-9a-f]{20}$")
 
     def test_success_failure_timeout_and_cancellation_are_representable(self):
         scenarios = []
@@ -117,7 +117,7 @@ class ReportingTests(unittest.TestCase):
     def test_cleanup_shape_and_success_residual_equivalence_fail_closed(self):
         for mutate in (
             lambda cleanup: cleanup.update(extra=True),
-            lambda cleanup: cleanup.update(success=True, residuals=[{"class":"port","opaque_id":"a"*16,"reason_class":"cleanup"}]),
+            lambda cleanup: cleanup.update(success=True, residuals=[{"class":"port","opaque_id":"a"*20,"reason_class":"cleanup"}]),
             lambda cleanup: cleanup.update(residuals=[{"class":"port","opaque_id":"raw","reason_class":"cleanup"}]),
         ):
             report = reporting.suite_report([self.scenario()], tested_sha="3" * 40, provider_versions={}, policy={})

@@ -51,7 +51,7 @@
               "classes": {"type": "object"}, "phases": {"type": "array"},
               "residuals": {"type": "array", "items": {"type": "object", "additionalProperties": false,
                 "required": ["class", "opaque_id", "reason_class"],
-                "properties": {"class": {"type": "string"}, "opaque_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"}, "reason_class": {"const": "cleanup"}}}}
+                "properties": {"class": {"type": "string"}, "opaque_id": {"type": "string", "pattern": "^[0-9a-f]{20}$"}, "reason_class": {"const": "cleanup"}}}}
             }
           }
         }

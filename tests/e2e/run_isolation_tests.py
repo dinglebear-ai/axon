@@ -284,6 +284,7 @@ class IsolationTests(unittest.TestCase):
         class FakeLibrary:
             OpenProcess = FakeFunction()
             GetProcessTimes = FakeFunction()
+            GetExitCodeProcess = FakeFunction()
             CloseHandle = FakeFunction()
 
         library = FakeLibrary()
@@ -294,7 +295,26 @@ class IsolationTests(unittest.TestCase):
         pointee = library.GetProcessTimes.argtypes[1]._type_
         self.assertIs(pointee, isolation._WindowsFileTime)
         self.assertEqual(isolation.ctypes.sizeof(pointee), 8)
+        self.assertIs(library.GetExitCodeProcess.argtypes[0], isolation.ctypes.c_void_p)
+        self.assertIs(library.GetExitCodeProcess.argtypes[1]._type_, isolation.ctypes.c_uint32)
         self.assertIs(library.CloseHandle.argtypes[0], isolation.ctypes.c_void_p)
+
+    def test_windows_process_liveness_uses_exit_code_and_closes_handle(self):
+        class FakeKernel32:
+            def __init__(self, code): self.code = code; self.closed = []
+            def OpenProcess(self, access, inherit, pid):
+                self.opened = (access, inherit, pid); return 0x1_0000_0092
+            def GetExitCodeProcess(self, handle, exit_code):
+                exit_code._obj.value = self.code; return 1
+            def CloseHandle(self, handle): self.closed.append(handle)
+
+        active = FakeKernel32(259)
+        self.assertTrue(isolation._windows_process_alive(45, active))
+        self.assertEqual(active.opened, (0x1000, False, 45))
+        self.assertEqual(active.closed, [0x1_0000_0092])
+        exited = FakeKernel32(0)
+        self.assertFalse(isolation._windows_process_alive(45, exited))
+        self.assertEqual(exited.closed, [0x1_0000_0092])
 
     def test_windows_process_identity_fails_closed_on_api_error(self):
         api = mock.Mock()

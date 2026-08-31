@@ -37,6 +37,11 @@ def _bounded_summary(value: str | None) -> str | None:
 def opaque(value: str) -> str: return hashlib.sha256(value.encode()).hexdigest()[:16]
 
 
+def cleanup_opaque(value: str) -> str:
+    """Match the canonical resource-manifest identity width."""
+    return hashlib.sha256(value.encode()).hexdigest()[:20]
+
+
 def evidence_ref(path: Path, root: Path) -> dict[str, Any]:
     resolved, base = path.resolve(strict=True), root.resolve(strict=True)
     if resolved != base and base not in resolved.parents: raise ReportingError("evidence path escaped suite root")
@@ -86,7 +91,7 @@ def sanitize_cleanup(report: dict[str, Any]) -> dict[str, Any]:
     for key in ("refused", "residual"):
         for item in report.get(key, []):
             residuals.append({"class": item.get("class", "unknown"),
-                              "opaque_id": item.get("opaque_id") or opaque(str(item.get("identity", "unknown"))),
+                              "opaque_id": item.get("opaque_id") or cleanup_opaque(str(item.get("identity", "unknown"))),
                               "reason_class": "cleanup"})
     phases = [{key: item[key] for key in ("name", "count", "duration_ms", "timed_out") if key in item}
               for item in report.get("phases", [])]
@@ -143,7 +148,7 @@ def validate_report(report: dict[str, Any]) -> None:
             if (not isinstance(residual, dict)
                     or set(residual) != {"class", "opaque_id", "reason_class"}
                     or not isinstance(residual["class"], str)
-                    or re.fullmatch(r"[0-9a-f]{16}", str(residual["opaque_id"])) is None
+                    or re.fullmatch(r"[0-9a-f]{20}", str(residual["opaque_id"])) is None
                     or residual["reason_class"] != "cleanup"):
                 raise ReportingError("cleanup residual shape is invalid")
         if cleanup.get("success") is not (not residuals):

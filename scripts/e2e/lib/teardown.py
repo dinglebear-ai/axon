@@ -119,9 +119,14 @@ class LocalAdapter:
 
     def _process(self, resource: Any, deadline: float) -> str:
         pid = int(resource.identity)
-        try: os.kill(pid, 0)
-        except ProcessLookupError: return "absent"
-        except PermissionError as error: raise CleanupError("process existence is unknown") from error
+        if os.name == "nt":
+            try:
+                if not isolation._windows_process_alive(pid): return "absent"
+            except Exception as error: raise CleanupError("process existence is unknown") from error
+        else:
+            try: os.kill(pid, 0)
+            except ProcessLookupError: return "absent"
+            except PermissionError as error: raise CleanupError("process existence is unknown") from error
         try: observed = isolation._process_start_time(pid)
         except Exception as error: raise CleanupError("process identity is unknown") from error
         nonce_file = Path(str(resource.metadata.get("nonce_file", "")))
@@ -129,8 +134,20 @@ class LocalAdapter:
         except OSError as error: raise CleanupError("process ownership marker is unreadable") from error
         if observed != str(resource.metadata.get("start_time")) or nonce != resource.metadata.get("nonce"):
             raise CleanupError("process identity changed before TERM")
+        if os.name == "nt":
+            completed = __import__("subprocess").run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True,
+                timeout=max(0.1, min(2.0, deadline - time.monotonic())), check=False,
+            )
+            if completed.returncode and isolation._windows_process_alive(pid):
+                raise CleanupError("owned Windows process tree could not be terminated")
+            while isolation._windows_process_alive(pid) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if isolation._windows_process_alive(pid):
+                raise CleanupError("owned Windows process remained alive after taskkill")
+            return "force-killed"
         group = int(resource.metadata.get("process_group", pid))
-        target = -group if os.name != "nt" else pid
+        target = -group
         try: os.kill(target, signal.SIGTERM)
         except ProcessLookupError: return "absent"
         grace = min(deadline, time.monotonic() + 1.0)
@@ -153,6 +170,8 @@ class LocalAdapter:
 
     @staticmethod
     def _process_alive(pid: int) -> bool:
+        if os.name == "nt":
+            return isolation._windows_process_alive(pid)
         stat_path = Path(f"/proc/{pid}/stat")
         if stat_path.exists():
             try: return stat_path.read_text().split()[2] != "Z"

@@ -50,6 +50,8 @@ def _configure_windows_kernel32(api: Any) -> Any:
         ctypes.c_void_p, filetime_pointer, filetime_pointer, filetime_pointer, filetime_pointer,
     ]
     api.GetProcessTimes.restype = ctypes.c_int
+    api.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    api.GetExitCodeProcess.restype = ctypes.c_int
     api.CloseHandle.argtypes = [ctypes.c_void_p]
     api.CloseHandle.restype = ctypes.c_int
     return api
@@ -79,6 +81,24 @@ def _windows_process_start_time(pid: int, kernel32: Any | None = None) -> str:
         if not ok:
             raise IsolationError("Windows process creation time is unavailable")
         return str((creation.high << 32) | creation.low)
+    finally:
+        api.CloseHandle(process)
+
+
+def _windows_process_alive(pid: int, kernel32: Any | None = None) -> bool:
+    """Query process state without relying on Windows' limited os.kill shim."""
+    api = kernel32 or _windows_kernel32()
+    process = api.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not process:
+        error = ctypes.get_last_error()
+        if error in {87, 1168}:  # invalid PID / process no longer exists
+            return False
+        raise IsolationError("Windows process state could not be queried")
+    exit_code = ctypes.c_uint32()
+    try:
+        if not api.GetExitCodeProcess(process, ctypes.byref(exit_code)):
+            raise IsolationError("Windows process exit state is unavailable")
+        return exit_code.value == 259  # STILL_ACTIVE
     finally:
         api.CloseHandle(process)
 
