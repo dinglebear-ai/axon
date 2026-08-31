@@ -117,6 +117,30 @@ fn resolver_uses_lexical_local_path_identity_without_requiring_existing_paths() 
 }
 
 #[test]
+fn resolver_recognizes_absolute_windows_paths_without_filename_heuristics() {
+    let resolver = resolver();
+    for path in [
+        r"C:\\workspace\\extensionless",
+        "D:/workspace/space name.txt",
+        r"\\\\server\\share\\unicode-東京-🧪",
+    ] {
+        let resolved = resolver
+            .resolve(&SourceRequest::new(path))
+            .expect("absolute Windows path resolves");
+        assert_eq!(resolved.source_kind, SourceKind::Local, "{path}");
+        assert_eq!(resolved.adapter.name, "local", "{path}");
+    }
+}
+
+#[test]
+fn resolver_rejects_drive_relative_windows_lookalike() {
+    let error = resolver()
+        .resolve(&SourceRequest::new(r"C:relative"))
+        .expect_err("drive-relative input is not an absolute local path");
+    assert_eq!(error.code.0, "source.resolve.unsupported");
+}
+
+#[test]
 fn resolver_preserves_leading_parent_components_in_relative_local_paths() {
     let resolver = resolver();
     let parent = resolver
