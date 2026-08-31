@@ -86,10 +86,11 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
  except BaseException as error:setattr(error,"axon_e2e_phase","observe-http-stats");raise
  source_total=values(stats,"sources")
  if not any(isinstance(item,int) and item>=1 for item in source_total):raise RuntimeError("real durable source metric is absent")
- log_root=Path(env["AXON_DATA_DIR"])/"logs";log_text=source_log
- if log_root.is_dir():
-  for path in log_root.rglob("*"):
-   if path.is_file() and path.suffix in {".log",".jsonl",".json"}:log_text+="\n"+path.read_text(errors="strict")
+ log_text=source_log
+ for log_root in (Path(env["AXON_DATA_DIR"])/"logs",Path(descriptor["run_root"])/"logs"):
+  if log_root.is_dir():
+   for path in log_root.rglob("*"):
+    if path.is_file() and path.suffix in {".log",".jsonl",".json",".stderr"}:log_text+="\n"+path.read_text(errors="strict")
  if job_id not in log_text:raise RuntimeError("real structured CLI/file log lost source job correlation")
  duration=(time.monotonic_ns()-started)//1_000_000
  digest=hashlib.sha256(json.dumps(http_events,sort_keys=True).encode()).hexdigest()

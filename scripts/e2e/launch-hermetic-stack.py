@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Launch one allocation-bound hermetic Axon stack and emit its live descriptor."""
 from __future__ import annotations
-import hashlib,importlib.util,json,os,secrets,sqlite3,subprocess,sys,time,urllib.request,uuid
+import hashlib,importlib.util,json,os,secrets,socket,sqlite3,subprocess,sys,time,urllib.request,uuid
 from contextlib import closing
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
@@ -27,6 +27,13 @@ def wait(url,process,token=None):
    urllib.request.urlopen(request,timeout=.1).close();return
   except OSError:time.sleep(.025)
  raise RuntimeError(f"owned endpoint did not become ready: {url}")
+def wait_port(port,process):
+ for _ in range(1200):
+  if process.poll() is not None:raise RuntimeError(f"owned process exited before ready: {process.returncode}")
+  try:
+   with socket.create_connection(("127.0.0.1",port),timeout=.1):return
+  except OSError:time.sleep(.025)
+ raise RuntimeError(f"owned port did not become ready: {port}")
 def require(value,key):
  item=value.get(key)
  if not isinstance(item,str) or not item.strip():raise RuntimeError(f"allocation omitted {key}")
@@ -94,6 +101,16 @@ def _launch(allocation):
  mcporter_config.write_text(json.dumps({"mcpServers":{mcp_name:{"baseUrl":f"http://127.0.0.1:{hport}/mcp",
    "headers":{"Authorization":f"Bearer {http_token}"}}}},sort_keys=True)+"\n");os.chmod(mcporter_config,0o600)
  env["MCPORTER_CONFIG"]=str(mcporter_config)
+ fixture_source=str(allocation.get("fixture_source") or f"http://127.0.0.1:{pport}/corpus/atlas")
+ if allocation.get("stateful") or allocation.get("seed_stateful"):
+  # Let the real runtime migrate a new database, stop it, then seed before the
+  # tested server opens SQLite. Seeding after startup can leave an eager Linux
+  # connection pinned to the pre-seed inode.
+  reservations[2].close()
+  bootstrap=isolation.spawn_owned_process(manifest,run_root,[str(binary),"mcp","--transport","http"],env=env)
+  wait_port(hport,bootstrap.process)
+  bootstrap.process.terminate();bootstrap.process.wait(timeout=10)
+  seed_stateful_database(data/"jobs.db",fixture_source,identities)
  processes=[];descriptor_path=logs/"descriptor.json"
  descriptor={"schema":1,"run_id":run_id,"run_root":str(run_root),"status":"launching",
   "process_ids":{},"ports":[qport,pport,hport],"ownership_manifest":str(manifest.path),
@@ -113,9 +130,6 @@ def _launch(allocation):
    descriptor_path.write_text(json.dumps(descriptor,indent=2,sort_keys=True)+"\n")
   wait(f"http://127.0.0.1:{qport}/readyz",processes[0][1]);wait(f"http://127.0.0.1:{pport}/health",processes[1][1]);wait(f"http://127.0.0.1:{hport}/v1/status",processes[2][1],http_token)
   manifest.register("sqlite",str(data/"jobs.db"))
-  fixture_source=str(allocation.get("fixture_source") or f"http://127.0.0.1:{pport}/corpus/atlas")
-  if allocation.get("stateful") or allocation.get("seed_stateful"):
-   seed_stateful_database(data/"jobs.db",fixture_source,identities)
   bound={key:env[key] for key in ("AXON_COLLECTION","AXON_MEMORY_COLLECTION","QDRANT_URL","TEI_URL","AXON_OPENAI_BASE_URL",
     "AXON_OPENAI_API_KEY","AXON_LLM_BACKEND","AXON_SYNTHESIS_OPENAI_MODEL","AXON_SEARXNG_URL","AXON_CHROME_REMOTE_URL",
     "AXON_HTTP_HOST","AXON_HTTP_PORT","AXON_HTTP_TOKEN","AXON_DATA_DIR","AXON_SQLITE_PATH","MCPORTER_CONFIG")}
