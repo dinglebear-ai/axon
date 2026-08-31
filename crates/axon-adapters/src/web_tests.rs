@@ -87,6 +87,68 @@ async fn web_streaming_emits_stable_single_item_acquisitions() {
     );
 }
 
+#[tokio::test]
+async fn web_streaming_failures_advance_order_and_emit_each_warning_once() {
+    let adapter =
+        adapter(FakeAdapterProviders::new().with_mode(crate::boundary::FakeAdapterMode::Fatal));
+    let plan = web_plan("https://example.com/docs", SourceScope::Site);
+    let items = (0..2)
+        .map(|index| ManifestItem {
+            source_id: plan.route.source.source_id.clone(),
+            source_item_key: SourceItemKey::from(format!("failed-{index}")),
+            canonical_uri: format!("https://example.com/docs/failed-{index}"),
+            item_kind: ItemKind::WebPage,
+            content_kind: Some(ContentKind::Html),
+            display_path: None,
+            parent_key: None,
+            size_bytes: None,
+            content_hash: None,
+            mtime: None,
+            version: None,
+            fetch_plan: None,
+            metadata: MetadataMap::new(),
+            graph_hints: Vec::new(),
+        })
+        .collect();
+    let diff = manifest_diff(&plan, items);
+    let sink = RecordingStream::default();
+
+    adapter
+        .acquire_streaming(&plan, &diff, None, &sink)
+        .await
+        .unwrap();
+
+    let streamed = sink.0.lock().await;
+    assert_eq!(
+        streamed.iter().map(|item| item.ordinal).collect::<Vec<_>>(),
+        vec![0, 1]
+    );
+    assert!(
+        streamed
+            .iter()
+            .all(|item| item.acquisition.fetched_items.is_empty())
+    );
+    assert_eq!(
+        streamed
+            .iter()
+            .map(|item| item.acquisition.header.warnings.len())
+            .sum::<usize>(),
+        2
+    );
+    assert_eq!(
+        streamed[0].acquisition.header.warnings[0]
+            .source_item_key
+            .as_ref(),
+        Some(&SourceItemKey::from("failed-0"))
+    );
+    assert_eq!(
+        streamed[1].acquisition.header.warnings[0]
+            .source_item_key
+            .as_ref(),
+        Some(&SourceItemKey::from("failed-1"))
+    );
+}
+
 #[test]
 fn web_adapter_opts_into_bounded_acquisition_prefetch() {
     assert!(adapter(FakeAdapterProviders::new()).supports_acquisition_prefetch());
