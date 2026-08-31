@@ -350,7 +350,7 @@ def main():
     "POST /v1/reset/plan","POST /v1/reset/exec","POST /v1/uploads","GET /v1/artifacts/{artifact_id}/content"}
   if not required<=routes:raise RuntimeError(f"generated OpenAPI auth routes missing: {required-routes}")
   report={"schema_version":1,"passed":True,"real_http_probes":probes,"nonloopback":nonloop,"mcp_http":mcp,
-          "oauth":{"fixture_flows":2,"axon_flows":2,"mcp_cases":len(oauth_mcp["cases"]),"passed":True},"oauth_negative":oauth_negative,"oauth_insufficient_scope":insufficient.status,"transformed_canary_auth":transformed_auth,"route_auth":route_auth,"validation":validation,
+          "oauth":{"fixture_flows":2,"axon_flows":2,"mcp_cases":len(oauth_mcp["cases"]),"negative_probes_passed":True,"passed":True},"oauth_insufficient_scope":insufficient.status,"transformed_canary_auth":transformed_auth,"route_auth":route_auth,"validation":validation,
           "oversized_upload":{"status":oversized.status,"code":oversized_code},"hostile_status":hostile_response.status,
           "artifact_canary":{"upload_id":upload_id,"artifact_id":artifact_id,"sha256":artifact_sha,"bytes":len(artifact_payload)},
           "mcp_stdio_schema":True,"ssrf":ssrf,"ssrf_sentinel":{"before":before,"after":after,"sink_before":sink_before,"sink_after":sink_after},
