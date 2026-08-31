@@ -8,7 +8,7 @@ class PlatformWorkflowTests(unittest.TestCase):
     def test_workflow_is_bounded_secretless_and_pinned(self):
         text = (ROOT / ".github/workflows/e2e-platform-smoke.yml").read_text()
         for runner in ("ubuntu-latest", "macos-latest", "windows-latest"): self.assertIn(runner, text)
-        self.assertIn("timeout-minutes: 15", text)
+        self.assertIn("timeout-minutes: 25", text)
         self.assertIn("permissions:\n  contents: read", text)
         self.assertNotIn("tailscale", text.lower())
         self.assertNotIn("secrets.", text)
