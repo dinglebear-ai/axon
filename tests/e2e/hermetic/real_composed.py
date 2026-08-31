@@ -132,22 +132,22 @@ def main():
   retained=ROOT/"target/e2e/launcher-descriptor.json";retained.parent.mkdir(parents=True,exist_ok=True)
   retained.write_text(json.dumps(retained_descriptor(descriptor),indent=2,sort_keys=True)+"\n");os.chmod(retained,0o600)
   env={**os.environ,**descriptor["environment"],"AXON_E2E_RUN_ID":run_id,"AXON_E2E_CORPUS_ROOT":str(execute.CORPUS)}
-  result=None;primary_error=None
+  result=None;primary_error=None;phase="launcher"
   try:
    required_env={"AXON_COLLECTION","AXON_MEMORY_COLLECTION","AXON_LLM_BACKEND","AXON_SYNTHESIS_OPENAI_MODEL",
                  "AXON_OPENAI_BASE_URL","AXON_OPENAI_API_KEY","QDRANT_URL","TEI_URL","AXON_CHROME_REMOTE_URL"}
    if not required_env <= set(descriptor["environment"]):raise RuntimeError("launcher omitted effective direct-CLI settings")
-   warm_started=time.monotonic_ns();doctor,_=execute.invoke(binary,["doctor","--json"],env,30);warm_ms=(time.monotonic_ns()-warm_started)//1_000_000
+   phase="doctor";warm_started=time.monotonic_ns();doctor,_=execute.invoke(binary,["doctor","--json"],env,30);warm_ms=(time.monotonic_ns()-warm_started)//1_000_000
    if doctor.get("all_ok") is not True:raise RuntimeError("allocation-bound direct CLI doctor failed")
    graph_source,_=execute.invoke(binary,["graph","source",descriptor["fixture_source_id"],"--json"],env,30)
    if descriptor["fixture_source_id"] not in json.dumps(graph_source):raise RuntimeError("stateful source fixture was not persisted")
    def sqlite_footprint():
     database=Path(env["AXON_SQLITE_PATH"]);return sum(path.stat().st_size for path in (database,Path(str(database)+"-wal"),Path(str(database)+"-shm")) if path.exists())
    sqlite_before=sqlite_footprint()
-   observability=verify_observability(binary,mcporter,descriptor,env,run_id)
+   phase="observability";observability=verify_observability(binary,mcporter,descriptor,env,run_id)
    sqlite_growth=max(0,sqlite_footprint()-sqlite_before)
    representative_count=0;representative_ms=None
-   item={"prompt":"What signal does the Atlas beacon emit?","max_results":1};provider=descriptor["environment"]["AXON_SEARXNG_URL"]
+   phase="retrieval";item={"prompt":"What signal does the Atlas beacon emit?","max_results":1};provider=descriptor["environment"]["AXON_SEARXNG_URL"]
    before=execute.provider_stats(provider)
    query_started=time.monotonic_ns();cli,_=execute.invoke(binary,["query",item["prompt"],"--limit","1","--collection",run_id,"--json"],env,30);cli_ms=(time.monotonic_ns()-query_started)//1_000_000
    token=descriptor["environment"]["AXON_HTTP_TOKEN"]
@@ -169,6 +169,7 @@ def main():
    descriptor_path.write_text(json.dumps(descriptor,indent=2,sort_keys=True)+"\n");os.chmod(descriptor_path,0o600)
    retained.write_text(json.dumps(retained_descriptor(descriptor),indent=2,sort_keys=True)+"\n");os.chmod(retained,0o600)
    if os.environ.get("AXON_E2E_PERFORMANCE_ONLY") != "1":
+    phase="domains"
     for entry in sorted((ROOT/"tests/e2e/scenarios").glob("*/hermetic_entry.py")):
      completed=subprocess.run([sys.executable,str(entry),"--launcher-descriptor",str(descriptor_path)],cwd=ROOT,env=env,
                               capture_output=True,text=True,timeout=180,check=False)
@@ -193,7 +194,9 @@ def main():
     "model_versions":{"synthesis":descriptor["environment"].get("AXON_SYNTHESIS_OPENAI_MODEL",{"status":"unsupported"}),
                       "embedding":descriptor["environment"].get("AXON_EMBEDDING_MODEL",{"status":"unsupported","reason":"launcher does not export embedding model"})}}
   except BaseException as error:
-   primary_error=error;raise
+   primary_error=error
+   print(json.dumps({"axon_e2e_diagnostic":{"domain":phase,"error_type":type(error).__name__}},sort_keys=True),flush=True)
+   raise
   finally:
    resource_stop.set();resource_thread.join(timeout=1)
    command=json.loads(descriptor_path.read_text())["teardown_handle"]["command"]
