@@ -1,3 +1,9 @@
+---
+title: E2E release qualification manifest
+created: 2026-08-30
+updated: 2026-08-30
+---
+
 # E2E release qualification manifest
 
 `scripts/e2e/build-qualification-manifest.py` is a deterministic projection over

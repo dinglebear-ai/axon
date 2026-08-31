@@ -59,7 +59,10 @@ def verify_native_isolation() -> None:
 def commands() -> list[tuple[str, list[str], int]]:
     python = sys.executable
     result = [
-        ("build-axon", ["cargo", "build", "--locked", "--bin", "axon"], 900),
+        # CI builds the exact checkout before entering native network
+        # isolation. Recompiling here would require exposing Cargo's registry
+        # and cache inside the sandbox, so prove that exact artifact instead.
+        ("build-axon", [str(ROOT/"target/debug/axon"), "--version"], 20),
         ("real-axon", [str(ROOT/"target/debug/axon"), "--version"], 20),
         ("upgrade", [python, "scripts/e2e/run-upgrade.py", "--binary", str(ROOT/"target/debug/axon")], 90),
         ("catalog", [python, "scripts/e2e/validate-catalog.py", "--report"], 20),

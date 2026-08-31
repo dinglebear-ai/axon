@@ -1,3 +1,9 @@
+---
+title: Axon end-to-end test operations
+created: 2026-08-30
+updated: 2026-08-30
+---
+
 # Axon end-to-end test operations
 
 This runbook operates the catalog-driven E2E system. The authoritative coverage

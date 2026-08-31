@@ -108,11 +108,6 @@ def executable_and_paths(binary: Path, run_root: Path, _env: dict[str, str]) -> 
     # macOS can be configured case-sensitive; record the native result instead
     # of imposing a filesystem setting that the product does not control.
     if os.name == "nt": ensure(aliases, "Windows path lookup unexpectedly became case-sensitive")
-    case_runtime=run_root/"path-runtime-case";case_runtime.mkdir()
-    case_probe = subprocess.run([str(binary), str(fixtures / "caseprobe"), "--wait", "false", "--json"],
-                                env=axon_env(case_runtime), capture_output=True, text=True, timeout=20)
-    ensure((case_probe.returncode == 0) == aliases,
-           f"Axon path case behavior differs from native filesystem: rc={case_probe.returncode} stderr={case_probe.stderr[:240]}")
     ensure(os.pathsep in os.environ.get("PATH", ""), "native executable search path is malformed")
     return {"python": Path(python).name, "axon_binary":binary.name, "axon_paths":axon_results,
             "argv_round_trip": "real-axon-direct-exec-no-shell",

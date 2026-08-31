@@ -1,3 +1,9 @@
+---
+title: Hermetic E2E CI
+created: 2026-08-30
+updated: 2026-08-30
+---
+
 # Hermetic E2E CI
 
 The promoted pull-request check is named **`E2E Hermetic Required`** in the

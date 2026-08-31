@@ -1,3 +1,9 @@
+---
+title: Trusted homelab live E2E
+created: 2026-08-30
+updated: 2026-08-30
+---
+
 # Trusted homelab live E2E
 
 `E2E Live Homelab (non-required)` is a serialized, protected-environment lane.
