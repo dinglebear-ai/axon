@@ -217,10 +217,17 @@ async fn stream_prepare_batch(
     // Two ready acquisitions may queue while one is prepared. This preserves
     // overlap without allowing the adapter to outrun scheduler backpressure.
     let (tx, mut rx) = tokio::sync::mpsc::channel(2);
-    let sink = ChannelStreamSink(tx);
-    let acquire = input
-        .adapter
-        .acquire_streaming(&input.plan, &batch.diff, Some(&reporter), &sink);
+    // The acquisition future must own the last sender. Keeping `sink` in this
+    // outer scope leaves the channel open after the adapter returns, so the
+    // consumer waits forever for another item and the job is eventually
+    // recovered as stale.
+    let acquire = async {
+        let sink = ChannelStreamSink(tx);
+        input
+            .adapter
+            .acquire_streaming(&input.plan, &batch.diff, Some(&reporter), &sink)
+            .await
+    };
     let consume = async {
         let mut first_error = None;
         let mut batch_documents = 0_u64;
