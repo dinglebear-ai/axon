@@ -135,7 +135,7 @@ class LocalAdapter:
         except ProcessLookupError: return "absent"
         grace = min(deadline, time.monotonic() + 1.0)
         while time.monotonic() < grace:
-            if not self._process_alive(pid): return "removed"
+            if not self._process_alive(pid) and not self._group_alive(group): return "removed"
             time.sleep(0.02)
         try:
             if isolation._process_start_time(pid) != observed or nonce_file.read_text() != nonce:
@@ -143,7 +143,7 @@ class LocalAdapter:
             os.kill(target, signal.SIGKILL)
         except ProcessLookupError: pass
         kill_deadline = min(deadline, time.monotonic() + 1.0)
-        while self._process_alive(pid) and time.monotonic() < kill_deadline:
+        while (self._process_alive(pid) or self._group_alive(group)) and time.monotonic() < kill_deadline:
             try: os.waitpid(pid, os.WNOHANG)
             except (AttributeError, ChildProcessError): pass
             time.sleep(0.01)
@@ -170,11 +170,10 @@ class LocalAdapter:
     def _group_alive(group: int) -> bool:
         if os.name == "nt": return False
         if sys.platform == "darwin":
-            # spawn_owned_process creates a fresh group whose leader PID equals
-            # its PGID. SIGKILL is unignorable for every member; libproc avoids
-            # protected `/bin/ps` and treats a reaping zombie as absent.
-            info = isolation._darwin_process_bsdinfo(group)
-            return info is not None and info.pbi_status != 5
+            # The leader can exit before a child server. Inspect every group
+            # member so teardown cannot advance while a descendant still owns
+            # a registered port.
+            return isolation._darwin_process_group_alive(group)
         try:
             result = __import__("subprocess").run(
                 ["ps", "-eo", "pgid=,state="], capture_output=True, text=True, timeout=1, check=False,
@@ -395,10 +394,10 @@ class Engine:
         for phase_name, types in PHASES:
             started = time.monotonic(); deadline = min(global_deadline, started + self.phase_timeout)
             batch = [item for item in reversed(self.resources) if item.resource_type in types]
+            handled.update(item.sequence for item in batch)
             if phase_name in {"files","run-root"} and self.report.refused:
                 for item in batch:self.report.refused.append(self.report.item(item,reason="preserved after upstream cleanup refusal"))
                 continue
-            handled.update(item.sequence for item in batch)
             adapters = {id(self.adapter(item)): self.adapter(item) for item in batch}
             before = sum(int(getattr(adapter, "round_trips", 0)) for adapter in adapters.values())
             escalations_before = sum(item.get("outcome") == "force-killed" for item in self.report.removed)

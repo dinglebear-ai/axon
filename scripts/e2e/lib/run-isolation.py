@@ -161,6 +161,27 @@ def _darwin_process_bsdinfo(pid: int):
     return info if size == ctypes.sizeof(info) else None
 
 
+def _darwin_process_group_alive(pgid: int) -> bool:
+    """Return whether a Darwin process group has any non-zombie members."""
+    import ctypes
+
+    libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    count = libproc.proc_listallpids(None, 0)
+    if count <= 0:
+        raise OSError(ctypes.get_errno(), "proc_listallpids failed")
+    pids = (ctypes.c_int * (count + 32))()
+    size = libproc.proc_listallpids(ctypes.byref(pids), ctypes.sizeof(pids))
+    if size < 0:
+        raise OSError(ctypes.get_errno(), "proc_listallpids failed")
+    for pid in pids[:size]:
+        if pid <= 0:
+            continue
+        info = _darwin_process_bsdinfo(pid)
+        if info is not None and info.pbi_pgid == pgid and info.pbi_status != 5:
+            return True
+    return False
+
+
 def _process_start_time(pid: int) -> str:
     if pid < 1:
         raise IsolationError("process PID must be positive")

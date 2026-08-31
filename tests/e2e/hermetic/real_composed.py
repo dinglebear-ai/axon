@@ -132,7 +132,7 @@ def main():
   retained=ROOT/"target/e2e/launcher-descriptor.json";retained.parent.mkdir(parents=True,exist_ok=True)
   retained.write_text(json.dumps(retained_descriptor(descriptor),indent=2,sort_keys=True)+"\n");os.chmod(retained,0o600)
   env={**os.environ,**descriptor["environment"],"AXON_E2E_RUN_ID":run_id,"AXON_E2E_CORPUS_ROOT":str(execute.CORPUS)}
-  result=None
+  result=None;primary_error=None
   try:
    required_env={"AXON_COLLECTION","AXON_MEMORY_COLLECTION","AXON_LLM_BACKEND","AXON_SYNTHESIS_OPENAI_MODEL",
                  "AXON_OPENAI_BASE_URL","AXON_OPENAI_API_KEY","QDRANT_URL","TEI_URL","AXON_CHROME_REMOTE_URL"}
@@ -186,11 +186,16 @@ def main():
                          "provider_double":hashlib.sha256((ROOT/"tests/e2e/scenarios/retrieval/provider_double.py").read_bytes()).hexdigest()},
     "model_versions":{"synthesis":descriptor["environment"].get("AXON_SYNTHESIS_OPENAI_MODEL",{"status":"unsupported"}),
                       "embedding":descriptor["environment"].get("AXON_EMBEDDING_MODEL",{"status":"unsupported","reason":"launcher does not export embedding model"})}}
+  except BaseException as error:
+   primary_error=error;raise
   finally:
    resource_stop.set();resource_thread.join(timeout=1)
    command=json.loads(descriptor_path.read_text())["teardown_handle"]["command"]
    cleanup_started=time.monotonic_ns();stopped=subprocess.run(command,cwd=ROOT,capture_output=True,text=True,timeout=15,check=False);cleanup_ms=(time.monotonic_ns()-cleanup_started)//1_000_000
-   if stopped.returncode:raise RuntimeError(f"launcher teardown failed: {stopped.stderr[:300]}")
+   if stopped.returncode:
+    detail=(stopped.stderr or stopped.stdout)[:300]
+    if primary_error is not None:primary_error.add_note(f"launcher teardown also failed: {detail}")
+    else:raise RuntimeError(f"launcher teardown failed: {detail}")
    cleanup_audit=json.loads(stopped.stdout)
    if cleanup_audit.get("success") is not True or cleanup_audit.get("residual") or cleanup_audit.get("refused"):raise RuntimeError("authoritative launcher cleanup audit failed")
    teardown_handle.unlink(missing_ok=True)

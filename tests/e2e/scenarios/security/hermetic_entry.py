@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real composed security entry: Axon + transport clients + owned manifest."""
 from __future__ import annotations
-import argparse,base64,hashlib,http.client,importlib.util,json,os,subprocess,sys,time,urllib.error,urllib.parse,urllib.request
+import argparse,base64,hashlib,http.client as http_client,importlib.util,json,os,subprocess,sys,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[4]
 def load(name,path):
@@ -55,13 +55,18 @@ def redacted_oauth(value):
          for key,item in value.items() if key!="claims"}
 def oversize_probe(base,token,path,size):
  path.write_bytes(b"x"*size)
- parsed=urllib.parse.urlsplit(base);connection_type=http.client.HTTPSConnection if parsed.scheme=="https" else http.client.HTTPConnection
+ parsed=urllib.parse.urlsplit(base);connection_type=http_client.HTTPSConnection if parsed.scheme=="https" else http_client.HTTPConnection
  connection=connection_type(parsed.hostname,parsed.port,timeout=15)
  try:
   connection.putrequest("POST",(parsed.path.rstrip("/") if parsed.path else "")+"/v1/uploads")
   connection.putheader("Authorization",f"Bearer {token}");connection.putheader("content-type","application/json");connection.putheader("content-length",str(size));connection.endheaders()
   with path.open("rb") as stream:
-   while chunk:=stream.read(64*1024):connection.send(chunk)
+   try:
+    while chunk:=stream.read(64*1024):connection.send(chunk)
+   except BrokenPipeError:
+    # A server may reject the declared oversized body before consuming it.
+    # The response remains authoritative and must still be inspected below.
+    pass
   response=connection.getresponse();body=response.read();status=response.status
  finally:connection.close();path.unlink(missing_ok=True)
  return http.HttpResponse(status,{},body)

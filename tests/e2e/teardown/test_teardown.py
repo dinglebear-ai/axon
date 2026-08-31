@@ -178,6 +178,7 @@ class TeardownTests(unittest.TestCase):
         self.assertFalse(report["success"]); self.assertTrue(any("provider outage" in item["reason"] for item in report["refused"]))
         self.assertTrue(Path(self.allocation["data_dir"]).exists())
         self.assertTrue(any("preserved after upstream cleanup refusal" in item["reason"] for item in report["refused"]))
+        self.assertFalse(any(item["reason"] == "unsupported resource class" for item in report["refused"]), report)
 
     def test_sqlite_sidecars_and_port_lease_are_removed(self):
         sqlite = Path(self.allocation["sqlite"])
@@ -213,6 +214,23 @@ class TeardownTests(unittest.TestCase):
         managed.process.wait(timeout=3)
         outcomes = [item.get("outcome") for item in report["removed"] if item["class"] == "process"]
         self.assertTrue(report["success"], report); self.assertIn("force-killed", outcomes)
+
+    @unittest.skipIf(sys.platform == "win32", "POSIX process group contract")
+    def test_owned_process_group_waits_for_descendant_listener(self):
+        manifest = isolation.Manifest.open(self.path)
+        reservation = isolation.allocate_port(self.root / "ports", self.allocation["run_id"], manifest)
+        port = reservation.port; reservation.close()
+        child = ("import socket,time; s=socket.socket(); "
+                 "s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); "
+                 f"s.bind(('127.0.0.1',{port})); s.listen(); time.sleep(30)")
+        parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(30)"
+        managed = isolation.spawn_owned_process(
+            manifest, Path(self.allocation["data_dir"]).parent, [sys.executable, "-c", parent])
+        import time; time.sleep(0.4)
+        engine, _ = self.engine(); report = engine.run().json()
+        managed.process.wait(timeout=3)
+        self.assertTrue(report["success"], report)
+        self.assertFalse(any(item["class"] == "port" for item in report["residual"]), report)
 
     def test_delayed_old_process_record_cannot_kill_recycled_pid(self):
         header, _ = teardown.manifest_api.load(self.path); adapter = teardown.LocalAdapter(header)
