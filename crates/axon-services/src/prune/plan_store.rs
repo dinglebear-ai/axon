@@ -24,19 +24,18 @@ fn root(ctx: &ServiceContext) -> PathBuf {
         .join("prune-control")
 }
 
-fn validate_plan_id(plan_id: &str) -> Result<(), Box<dyn Error>> {
+fn validate_plan_id(plan_id: &str) -> Result<uuid::Uuid, Box<dyn Error>> {
     uuid::Uuid::parse_str(plan_id)
-        .map(|_| ())
         .map_err(|_| "prune.plan_id_invalid: expected a UUID from `prune plan`".into())
 }
 
 fn plan_path(ctx: &ServiceContext, plan_id: &str) -> Result<PathBuf, Box<dyn Error>> {
-    validate_plan_id(plan_id)?;
+    let plan_id = validate_plan_id(plan_id)?;
     Ok(root(ctx).join("plans").join(format!("{plan_id}.json")))
 }
 
 fn receipt_path(ctx: &ServiceContext, plan_id: &str) -> Result<PathBuf, Box<dyn Error>> {
-    validate_plan_id(plan_id)?;
+    let plan_id = validate_plan_id(plan_id)?;
     Ok(root(ctx).join("receipts").join(format!("{plan_id}.json")))
 }
 
