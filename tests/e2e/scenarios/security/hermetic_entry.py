@@ -53,8 +53,9 @@ def error_code(response):
 def redacted_oauth(value):
  # This is an evidence fingerprint, not password storage. OAuth tokens are
  # removed and only a one-way correlation digest is retained.
+ # lgtm [py/weak-sensitive-data-hashing]
  return {key:(hashlib.sha256(item.encode()).hexdigest() if key=="token" else item)
-         for key,item in value.items() if key!="claims"}  # lgtm[py/weak-sensitive-data-hashing]
+         for key,item in value.items() if key!="claims"}
 def oversize_probe(base,token,path,size):
  path.write_bytes(b"x"*size)
  parsed=urllib.parse.urlsplit(base);connection_type=http_client.HTTPSConnection if parsed.scheme=="https" else http_client.HTTPConnection
@@ -363,7 +364,8 @@ def main():
           "manifest":str(manifest.path)}
   # All issued tokens are removed or fingerprinted by redacted_oauth above;
   # scan_tree immediately verifies no credential value reached this report.
-  report_path.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")  # lgtm[py/clear-text-storage-sensitive-data]
+  # lgtm [py/clear-text-storage-sensitive-data]
+  report_path.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
   security.scan_tree(evidence,[canary,*issued_tokens])
   handoff=owned_root/"teardown-handoff.json";teardown_report=run_root/"launcher/security-teardown-report.json"
   handoff.write_text(json.dumps({"manifest":str(manifest.path),"report":str(teardown_report)})+"\n")

@@ -22,7 +22,7 @@ class Handler(BaseHTTPRequestHandler):
   if query["code_challenge_method"][0]!="S256" or scope not in {"axon:read","axon:write"}:return self.body(400,{"error":"invalid_request"})
   code=secrets.token_urlsafe(20);self.server.codes[code]={"challenge":query["code_challenge"][0],"scope":scope,"client_id":query["client_id"][0],"redirect":redirect}
   location=redirect+"?"+urllib.parse.urlencode({"code":code,"state":state})
-  self.send_response(302);self.send_header("location",location);self.end_headers()
+  self.send_response(302);self.send_header("location",location.replace("\r","").replace("\n",""));self.end_headers()
  def do_POST(self):
   if self.path!="/token":return self.body(404,{"error":"not_found"})
   length=int(self.headers.get("content-length","0"));form=urllib.parse.parse_qs(self.rfile.read(length).decode());code=form.get("code",[""])[0]

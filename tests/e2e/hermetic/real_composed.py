@@ -29,7 +29,8 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
  source_file=Path(env["AXON_DATA_DIR"])/"observe-canary-source.md"
  # The synthetic canary must be stored in an owned temporary input so the test
  # can prove it is absent from telemetry and sanitized retained evidence.
- source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {secret_canary} {private_path_canary}\n")  # lgtm[py/clear-text-storage-sensitive-data]
+ # lgtm [py/clear-text-storage-sensitive-data]
+ source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {secret_canary} {private_path_canary}\n")
  source_path=str(source_file.resolve())
  source_argv=[str(binary),"source",source_path,"--scope","file","--collection",run_id,"--wait","true","--json"]
  source_process=subprocess.run(source_argv,cwd=ROOT,env=env,capture_output=True,timeout=30,check=False)

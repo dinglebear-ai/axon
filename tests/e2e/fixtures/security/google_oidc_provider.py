@@ -92,7 +92,8 @@ class Handler(BaseHTTPRequestHandler):
         code = f"oidc-{len(self.server.codes) + 1}"
         self.server.codes[code] = query.get("client_id", [""])[0]
         self.send_response(302)
-        self.send_header("location", redirect + "?" + urllib.parse.urlencode({"code": code, "state": state}))
+        location = redirect + "?" + urllib.parse.urlencode({"code": code, "state": state})
+        self.send_header("location", location.replace("\r", "").replace("\n", ""))
         self.end_headers()
 
     def do_POST(self):
