@@ -15,6 +15,13 @@ OUTER_CLEANUP = ROOT / "scripts/e2e/cleanup-owned-runs.py"
 
 
 class PlatformSmokeTests(unittest.TestCase):
+    def test_isolated_axon_environment_cannot_spawn_unowned_background_workers(self):
+        spec = importlib.util.spec_from_file_location("platform_smoke_env", RUNNER)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as directory:
+            env = module.axon_env(Path(directory))
+        self.assertEqual("false", env["AXON_JOBS_AUTO_WORKER"])
+
     def _wait_for_record(self, record: Path) -> Path:
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:

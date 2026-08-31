@@ -81,6 +81,7 @@ def selected_catalog() -> list[str]:
 
 def axon_env(data_dir: Path) -> dict[str, str]:
     return {**os.environ, "AXON_DATA_DIR":str(data_dir), "AXON_SQLITE_PATH":str(data_dir / "jobs.db"),
+            "AXON_JOBS_AUTO_WORKER":"false",
             "TEI_URL":"http://127.0.0.1:1", "QDRANT_URL":"http://127.0.0.1:1",
             "AXON_LLM_BACKEND":"openai-compat", "AXON_OPENAI_BASE_URL":"http://127.0.0.1:1",
             "AXON_SERVER_URL":"http://127.0.0.1:1"}
