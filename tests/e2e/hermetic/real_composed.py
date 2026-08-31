@@ -39,8 +39,15 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
   cli,_=execute.invoke(binary,["jobs","get",job_id,"--json"],env,30)
   cli_events,_=execute.invoke(binary,["jobs","events",job_id,"--after-sequence","0","--limit","200","--json"],env,30)
  except BaseException as error:setattr(error,"axon_e2e_phase","observe-cli");raise
- try:http_value=http.request("GET",f"/v1/jobs/{job_id}");http_events=http.request("GET",f"/v1/jobs/{job_id}/events")
- except BaseException as error:setattr(error,"axon_e2e_phase","observe-http-jobs");raise
+ def eventually_http(path,phase):
+  deadline=time.monotonic()+2
+  while True:
+   try:return http.request("GET",path)
+   except source.AcceptanceError as error:
+    if time.monotonic()>=deadline:setattr(error,"axon_e2e_phase",phase);raise
+    time.sleep(.05)
+ http_value=eventually_http(f"/v1/jobs/{job_id}","observe-http-job")
+ http_events=eventually_http(f"/v1/jobs/{job_id}/events","observe-http-events")
  old_config=os.environ.get("MCPORTER_CONFIG");os.environ["MCPORTER_CONFIG"]=env["MCPORTER_CONFIG"]
  try:
   def mcp_call(arguments):
