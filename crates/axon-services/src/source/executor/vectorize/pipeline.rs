@@ -103,7 +103,7 @@ pub(super) async fn embed_and_build_batch(
     .await
 }
 
-async fn build_vector_batch(
+pub(super) async fn build_vector_batch(
     documents: Vec<PreparedDocument>,
     collection: CollectionSpec,
     embeddings: &mut EmbeddingResult,
@@ -251,7 +251,7 @@ async fn embed_prepared_batch(
     Ok(result)
 }
 
-async fn begin_embedding(
+pub(super) async fn begin_embedding(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &PipelineProgress,
@@ -268,7 +268,7 @@ async fn begin_embedding(
     counts
 }
 
-async fn finish_embedding(
+pub(super) async fn finish_embedding(
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
     result: &EmbeddingResult,
@@ -282,7 +282,7 @@ async fn finish_embedding(
         .await;
 }
 
-async fn call_embedding(
+pub(super) async fn call_embedding(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     documents: &[PreparedDocument],

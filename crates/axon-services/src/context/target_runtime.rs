@@ -36,6 +36,7 @@ use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
 use tokio::sync::{Semaphore, watch};
+use tokio::task::AbortHandle;
 
 mod read_stores;
 mod schedulers;
@@ -96,10 +97,60 @@ fn query_instruction_support(cfg: &Config) -> InstructionSupport {
 /// Resolved embedding model + dimensions used to size the collection, seed the
 /// provider, and stamp vector payloads.
 #[derive(Debug, Clone)]
-struct EmbeddingIdentity {
-    model: String,
-    dimensions: u32,
-    verified: bool,
+pub(crate) struct EmbeddingIdentity {
+    pub(crate) model: String,
+    pub(crate) dimensions: u32,
+    pub(crate) verified: bool,
+}
+
+pub(crate) struct VerifiedEmbeddingPlane {
+    pub(crate) provider: Arc<dyn EmbeddingProvider>,
+    pub(crate) identity: EmbeddingIdentity,
+}
+
+struct DeferredEmbeddingProvider {
+    receiver: watch::Receiver<Option<Arc<VerifiedEmbeddingPlane>>>,
+}
+
+#[async_trait::async_trait]
+impl EmbeddingProvider for DeferredEmbeddingProvider {
+    async fn embed(
+        &self,
+        batch: axon_api::source::EmbeddingBatch,
+    ) -> Result<axon_api::source::EmbeddingResult, axon_api::source::ApiError> {
+        wait_for_verified_plane(self.receiver.clone())
+            .await?
+            .provider
+            .embed(batch)
+            .await
+    }
+
+    async fn capabilities(
+        &self,
+    ) -> Result<axon_api::source::ProviderCapability, axon_api::source::ApiError> {
+        wait_for_verified_plane(self.receiver.clone())
+            .await?
+            .provider
+            .capabilities()
+            .await
+    }
+}
+
+async fn wait_for_verified_plane(
+    mut receiver: watch::Receiver<Option<Arc<VerifiedEmbeddingPlane>>>,
+) -> Result<Arc<VerifiedEmbeddingPlane>, axon_api::source::ApiError> {
+    loop {
+        if let Some(plane) = receiver.borrow().clone() {
+            return Ok(plane);
+        }
+        receiver.changed().await.map_err(|_| {
+            axon_api::source::ApiError::new(
+                "embedding.identity_unavailable",
+                axon_error::ErrorStage::Embedding,
+                "embedding identity verification task stopped",
+            )
+        })?;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -111,13 +162,20 @@ struct CachedEmbeddingIdentity {
 #[derive(Default)]
 struct EmbeddingIdentityCache {
     entries: HashMap<String, CachedEmbeddingIdentity>,
-    in_flight: HashMap<String, watch::Sender<Option<EmbeddingIdentity>>>,
+    in_flight: HashMap<String, InFlightIdentityProbe>,
+}
+
+struct InFlightIdentityProbe {
+    sender: watch::Sender<Option<EmbeddingIdentity>>,
+    started_at: Instant,
+    abort_handle: Option<AbortHandle>,
 }
 
 static EMBEDDING_IDENTITY_CACHE: OnceLock<Mutex<EmbeddingIdentityCache>> = OnceLock::new();
 const EMBEDDING_IDENTITY_CACHE_TTL: Duration = Duration::from_secs(30);
 const EMBEDDING_IDENTITY_FALLBACK_TTL: Duration = Duration::from_secs(5);
 const EMBEDDING_IDENTITY_DURABLE_TTL: Duration = Duration::from_secs(30 * 60);
+const EMBEDDING_IDENTITY_STALE_AFTER: Duration = Duration::from_secs(120);
 
 /// Resolve the embedding model + dimensions from the live TEI endpoint (`/info`
 /// for `model_id`, a probe embed for dimensions). Builds a probe provider seeded
@@ -126,11 +184,17 @@ const EMBEDDING_IDENTITY_DURABLE_TTL: Duration = Duration::from_secs(30 * 60);
 /// fire-and-forget CLI enqueue or an offline TEI never blocks store construction.
 async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
     let cache_key = embedding_identity_cache_key(cfg);
-    let receiver = match claim_embedding_identity_resolution(&cache_key, cfg.clone()) {
-        IdentityResolutionClaim::Cached(identity) => return identity,
-        IdentityResolutionClaim::Wait(receiver) => receiver,
-    };
-    wait_for_embedding_identity(receiver).await
+    loop {
+        let receiver = match claim_embedding_identity_resolution(&cache_key, cfg.clone()) {
+            IdentityResolutionClaim::Cached(identity) => return identity,
+            IdentityResolutionClaim::Wait(receiver) => receiver,
+        };
+        if let Some(identity) = wait_for_embedding_identity(receiver).await {
+            return identity;
+        }
+        // A supervised probe was aborted or panicked. Re-enter the claim path;
+        // it removes the closed/stale record and starts a fresh probe.
+    }
 }
 
 /// Resolve TEI identity with a process-independent SQLite cache. Short-lived
@@ -242,49 +306,85 @@ fn claim_embedding_identity_resolution(key: &str, cfg: Config) -> IdentityResolu
         }
     }
     cache.entries.remove(key);
-    if let Some(sender) = cache.in_flight.get(key) {
-        return IdentityResolutionClaim::Wait(sender.subscribe());
+    if let Some(probe) = cache.in_flight.get(key) {
+        if !probe.sender.is_closed() && probe.started_at.elapsed() < EMBEDDING_IDENTITY_STALE_AFTER
+        {
+            return IdentityResolutionClaim::Wait(probe.sender.subscribe());
+        }
+    }
+    if let Some(stale) = cache.in_flight.remove(key)
+        && let Some(handle) = stale.abort_handle
+    {
+        handle.abort();
     }
 
     let (sender, receiver) = watch::channel(None);
-    cache.in_flight.insert(key.to_string(), sender);
-    spawn_embedding_identity_probe(key.to_string(), cfg);
+    cache.in_flight.insert(
+        key.to_string(),
+        InFlightIdentityProbe {
+            sender,
+            started_at: Instant::now(),
+            abort_handle: None,
+        },
+    );
+    let abort_handle = spawn_embedding_identity_probe(key.to_string(), cfg);
+    if let Some(probe) = cache.in_flight.get_mut(key) {
+        probe.abort_handle = Some(abort_handle);
+    }
     IdentityResolutionClaim::Wait(receiver)
 }
 
-fn spawn_embedding_identity_probe(cache_key: String, cfg: Config) {
+fn spawn_embedding_identity_probe(cache_key: String, cfg: Config) -> AbortHandle {
+    let probe = tokio::spawn(async move { derive_embedding_identity(&cfg).await });
+    let abort_handle = probe.abort_handle();
     tokio::spawn(async move {
-        let (identity, ttl) = derive_embedding_identity(&cfg).await;
+        // The supervisor is independent from the abortable probe and therefore
+        // always removes the map entry after success, panic, or cancellation.
+        let derived = probe.await;
         let sender = {
             let mut cache = embedding_identity_cache()
                 .lock()
                 .expect("embedding identity cache mutex poisoned");
-            cache.entries.insert(
-                cache_key.clone(),
-                CachedEmbeddingIdentity {
-                    identity: identity.clone(),
-                    expires_at: Instant::now() + ttl,
-                },
-            );
-            cache.in_flight.remove(&cache_key)
+            let sender = cache.in_flight.remove(&cache_key).map(|probe| probe.sender);
+            if let Ok((identity, ttl)) = &derived {
+                cache.entries.insert(
+                    cache_key.clone(),
+                    CachedEmbeddingIdentity {
+                        identity: identity.clone(),
+                        expires_at: Instant::now() + *ttl,
+                    },
+                );
+            }
+            sender
         };
-        if let Some(sender) = sender {
+        if let (Ok((identity, _)), Some(sender)) = (derived, sender) {
             sender.send_replace(Some(identity));
         }
     });
+    abort_handle
 }
 
 async fn wait_for_embedding_identity(
     mut receiver: watch::Receiver<Option<EmbeddingIdentity>>,
-) -> EmbeddingIdentity {
+) -> Option<EmbeddingIdentity> {
     loop {
         if let Some(identity) = receiver.borrow().clone() {
-            return identity;
+            return Some(identity);
         }
-        receiver
-            .changed()
-            .await
-            .expect("embedding identity probe sender dropped before publishing a result");
+        if receiver.changed().await.is_err() {
+            return None;
+        }
+    }
+}
+
+#[cfg(test)]
+fn abort_embedding_identity_probe(cfg: &Config) {
+    let key = embedding_identity_cache_key(cfg);
+    if let Ok(mut cache) = embedding_identity_cache().lock()
+        && let Some(probe) = cache.in_flight.remove(&key)
+        && let Some(handle) = probe.abort_handle
+    {
+        handle.abort();
     }
 }
 
@@ -368,17 +468,13 @@ const EMBEDDING_DIMENSIONS_FALLBACK: u32 = 1024;
 const MAX_INPUT_TOKENS: u32 = 8192;
 struct EmbeddingComposition {
     provider: Arc<dyn EmbeddingProvider>,
-    #[cfg(test)]
-    cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
-    write_gate: SqliteWriteGate,
 }
 
 fn build_embedding_composition(
     cfg: &Config,
-    pool: &SqlitePool,
     identity: &EmbeddingIdentity,
+    cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
 ) -> EmbeddingComposition {
-    let write_gate = SqliteWriteGate::default();
     let raw_provider: Arc<dyn EmbeddingProvider> = Arc::new(build_tei_provider(cfg, identity));
     // The cache key and per-hit identity re-validation are only as good as the
     // resolved identity. An unverified (fallback or stale) identity could label
@@ -392,13 +488,7 @@ fn build_embedding_composition(
              against the TEI provider; using the raw provider without cache decoration"
         );
     }
-    let cache_store = (cfg.embed_cache_enabled && identity.verified).then(|| {
-        Arc::new(SqliteEmbeddingVectorCacheStore::new(
-            pool.clone(),
-            write_gate.clone(),
-            cfg.embed_cache_max_entries,
-        ))
-    });
+    let cache_store = identity.verified.then_some(cache_store).flatten();
     let provider: Arc<dyn EmbeddingProvider> = match &cache_store {
         Some(store) => Arc::new(CachedEmbeddingProvider::new(
             raw_provider,
@@ -412,12 +502,7 @@ fn build_embedding_composition(
         )),
         None => raw_provider,
     };
-    EmbeddingComposition {
-        provider,
-        #[cfg(test)]
-        cache_store,
-        write_gate,
-    }
+    EmbeddingComposition { provider }
 }
 
 impl TargetLocalSourceRuntime {
@@ -449,13 +534,31 @@ impl TargetLocalSourceRuntime {
             Arc::clone(&db_stage_slots),
         ));
 
-        let identity = resolve_embedding_identity_with_pool(cfg, &pool).await;
-        let EmbeddingComposition {
-            provider: embedding_provider,
-            #[cfg(test)]
-                cache_store: embedding_cache_store,
-            write_gate: sqlite_write_gate,
-        } = build_embedding_composition(cfg, &pool, &identity);
+        let sqlite_write_gate = SqliteWriteGate::default();
+        let embedding_cache_store = cfg.embed_cache_enabled.then(|| {
+            Arc::new(SqliteEmbeddingVectorCacheStore::new(
+                pool.clone(),
+                sqlite_write_gate.clone(),
+                cfg.embed_cache_max_entries,
+            ))
+        });
+        let (verified_sender, verified_embedding) = watch::channel(None);
+        let identity_cfg = cfg.clone();
+        let identity_pool = pool.clone();
+        let identity_cache_store = embedding_cache_store.clone();
+        tokio::spawn(async move {
+            let identity =
+                resolve_embedding_identity_with_pool(&identity_cfg, &identity_pool).await;
+            let composition =
+                build_embedding_composition(&identity_cfg, &identity, identity_cache_store);
+            verified_sender.send_replace(Some(Arc::new(VerifiedEmbeddingPlane {
+                provider: composition.provider,
+                identity,
+            })));
+        });
+        let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(DeferredEmbeddingProvider {
+            receiver: verified_embedding.clone(),
+        });
 
         let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
         axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
@@ -541,16 +644,21 @@ impl TargetLocalSourceRuntime {
             embedding_cache_store,
             embedding_provider_id,
             vector_provider_id,
-            embedding_model: identity.model,
-            embedding_dimensions: identity.dimensions,
+            embedding_model: EMBEDDING_MODEL_FALLBACK.to_string(),
+            embedding_dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
+            verified_embedding,
             document_preparer: DocumentPreparer::new(DocumentPreparerConfig {
                 markdown_max_chars: cfg.chunking_markdown_max_chars,
                 markdown_min_chars: cfg.chunking_markdown_min_chars,
                 markdown_overlap_chars: cfg.chunking_overlap_chars,
             }),
             document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
+            document_prepare_max_in_flight_bytes: cfg.embed_prep_max_in_flight_bytes,
             embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
+            document_batch_size: cfg.document_batch_size,
+            document_status_batch_size: cfg.document_status_batch_size,
             embed_scheduler_enabled: cfg.embed_scheduler_enabled,
+            embed_scheduler_flush_delay: Duration::from_millis(cfg.embed_scheduler_flush_ms),
             vector_upsert_embed_overlap: cfg.vector_upsert_embed_overlap,
             db_stage_slots,
             fetch_provider,

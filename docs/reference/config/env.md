@@ -16,7 +16,7 @@ See the family contract for declared output paths.
 |---|---|
 | `docs/pipeline-unification/configuration/config-contract.md` | `sha256:76d4b050eb45d3bf08f3dfccd35fd0fc43ee285e4a3b02faeb41ce18ab8d8792` |
 | `docs/pipeline-unification/schemas/config-schema.md` | `sha256:94689a80107aba459b8f57b9e631498a670e6dc6e1f48577411964c5dbfc594c` |
-| `xtask/src/schemas/config_schema_registry.rs` | `sha256:249610d626221b36d23cafd7cd737799cc550279bf14ea745e2fa1446d6b6cdd` |
+| `xtask/src/schemas/config_schema_registry.rs` | `sha256:081883440d2a40e18e5951bb0772ac5b5784d49b9e00c317fc9ac885555ae493` |
 
 ## Root Shape
 

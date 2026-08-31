@@ -8,22 +8,13 @@ use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use futures_util::{StreamExt, stream};
 use tokio::sync::Semaphore;
 
-const MAX_IN_FLIGHT_BYTES: usize = 64 * 1024 * 1024;
-
-fn max_in_flight_bytes() -> usize {
-    std::env::var("AXON_PREP_MAX_IN_FLIGHT_BYTES")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(MAX_IN_FLIGHT_BYTES)
-        .clamp(1024 * 1024, u32::MAX as usize)
-}
-
 pub(super) async fn prepare_documents(
     documents: Vec<SourceDocument>,
     generation: &SourceGenerationId,
     enrichment_graph: &BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
     preparer: DocumentPreparer,
     concurrency: usize,
+    max_in_flight_bytes: usize,
 ) -> anyhow::Result<Vec<PreparedDocument>> {
     let generation = generation.clone();
     let work_items = documents
@@ -39,7 +30,7 @@ pub(super) async fn prepare_documents(
     bounded_blocking_map_in_order(
         work_items,
         concurrency,
-        max_in_flight_bytes(),
+        max_in_flight_bytes,
         |(document, _)| source_document_bytes(document),
         move |(document, graph_candidates)| {
             let item_key = document.source_item_key.0.clone();
@@ -92,7 +83,7 @@ where
     let byte_budget = byte_budget.max(1).min(u32::MAX as usize);
     let byte_slots = Arc::new(Semaphore::new(byte_budget));
     let work = Arc::new(work);
-    let output = stream::iter(items.into_iter().enumerate())
+    let mut output = stream::iter(items.into_iter().enumerate())
         .map(|(index, item)| {
             let permits = weight(&item).max(1).min(byte_budget) as u32;
             let byte_slots = Arc::clone(&byte_slots);
@@ -105,24 +96,27 @@ where
                         .map_err(|error| {
                             anyhow::anyhow!("document preparation byte gate closed: {error}")
                         })?;
-                tokio::task::spawn_blocking(move || {
+                let result = tokio::task::spawn_blocking(move || {
                     let _byte_permit = byte_permit;
                     work(item)
                 })
                 .await
                 .map_err(|error| {
                     anyhow::anyhow!("document preparation task {index} failed: {error}")
-                })?
+                })?;
+                result.map(|value| (index, value))
             }
         })
-        // `buffered` preserves input order while bounding both active tasks and
-        // completed results waiting behind an earlier slow item.
-        .buffered(concurrency.max(1))
+        // Poll completions as they become ready so one slow early document does
+        // not prevent replacement work from entering the bounded worker set.
+        // Sequence numbers restore the public input-order contract below.
+        .buffer_unordered(concurrency.max(1))
         .collect::<Vec<_>>()
         .await
         .into_iter()
         .collect::<anyhow::Result<Vec<_>>>()?;
-    Ok(output)
+    output.sort_unstable_by_key(|(index, _)| *index);
+    Ok(output.into_iter().map(|(_, value)| value).collect())
 }
 
 #[cfg(test)]

@@ -221,6 +221,20 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         1,
         64,
     );
+    cfg.embed_prep_max_in_flight_bytes = resolve_clamped_usize(
+        "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+        toml.embed.prep_max_in_flight_bytes,
+        64 * 1024 * 1024,
+        1024 * 1024,
+        u32::MAX as usize,
+    );
+    cfg.embed_scheduler_flush_ms = resolve_clamped_usize(
+        "AXON_EMBED_SCHEDULER_FLUSH_MS",
+        toml.embed.scheduler_flush_ms,
+        1_500,
+        0,
+        5_000,
+    ) as u64;
     cfg.chunking_markdown_max_chars = resolve_clamped_usize(
         "AXON_MARKDOWN_CHUNK_MAX_CHARS",
         toml.chunking.markdown_max_chars,

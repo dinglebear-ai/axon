@@ -43,7 +43,7 @@ pub(super) fn spawn_chrome_render(
                 "chrome_render_failed_or_thin",
                 "inline Chrome render failed or still produced thin markdown",
             )
-            .with_url(url.clone())
+            .with_url(sanitized_url_for_log(&url))
         });
         RefetchResult {
             url,
@@ -145,7 +145,7 @@ pub(super) async fn apply_thin_page_outcome(
                         "chrome_semaphore_closed",
                         "Chrome render semaphore closed before task acquired a permit",
                     )
-                    .with_url(url.to_string()),
+                    .with_url(sanitized_url_for_log(url)),
                 );
                 return Ok(true);
             }

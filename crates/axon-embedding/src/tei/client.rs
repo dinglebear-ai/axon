@@ -1,8 +1,7 @@
 //! Reqwest-backed TEI `/embed` HTTP client.
 //!
-//! Behaviour is ported from the legacy `axon-vector` TEI client
-//! (`crates/axon-vector/src/ops/tei/tei_client.rs`): request/response wire shape,
-//! 413 recursive batch-split, and 429/5xx exponential-backoff retries.
+//! Requests use TEI's `/embed` wire shape, recursively split batches after HTTP
+//! 413, and retry HTTP 429/5xx responses with exponential backoff.
 //!
 //! Credentials never leak into [`ApiError`] messages — only the opaque marker
 //! `"configured"` is attached to error context, mirroring the qdrant store's
@@ -25,7 +24,7 @@ use tokio::sync::Semaphore;
 /// The raw URL and any embedded credentials are intentionally never surfaced.
 pub const ENDPOINT_MARKER: &str = "configured";
 
-/// Cap on exponential backoff before jitter, matching the legacy client.
+/// Cap on exponential backoff before jitter.
 const MAX_BACKOFF_MS: u64 = 60_000;
 pub(crate) const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 
@@ -39,7 +38,7 @@ const TEI_COOLDOWN_SECS: i64 = 30;
 /// a generation pool that has already been bounded by chunks and bytes.
 const MAX_CLIENT_BATCH_SIZE: usize = 4096;
 
-/// Environment knob mirroring the legacy client's `TEI_MAX_CLIENT_BATCH_SIZE`.
+/// Environment override for the initial client-side batch size.
 const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
 
 /// Process-wide reqwest client shared by every [`TeiClient`].
@@ -75,7 +74,7 @@ pub struct TeiClientParams {
     pub max_batch_tokens: usize,
     pub max_concurrent_requests: usize,
     pub max_in_flight_inputs: usize,
-    /// Total attempts = retries + 1; matches legacy `tei_max_retries + 1`.
+    /// Total attempts = configured retries + 1.
     pub max_attempts: usize,
     pub request_timeout: Duration,
     /// Base backoff (ms) before exponential growth + jitter, passed to
@@ -95,6 +94,16 @@ struct EmbedRequest<'a> {
 enum ChunkOutcome {
     Vectors(Vec<Vec<f32>>),
     Split,
+}
+
+type IndexedBatch = (Vec<usize>, Vec<String>);
+
+#[derive(Debug, Clone, Copy)]
+struct BatchLimits {
+    max_inputs: usize,
+    max_input_tokens: usize,
+    max_batch_tokens: usize,
+    max_batch_bytes: usize,
 }
 
 /// Result of an `embed_all` call: the ordered vectors plus how many HTTP
@@ -129,7 +138,7 @@ pub struct TeiClient {
     max_attempts: usize,
     request_timeout: Duration,
     retry_backoff_base_ms: u64,
-    requests: AtomicU64,
+    cumulative_requests: AtomicU64,
 }
 
 impl TeiClient {
@@ -163,17 +172,18 @@ impl TeiClient {
             max_batch_inputs,
             max_input_tokens: params.max_input_tokens.max(1),
             max_batch_tokens: params.max_batch_tokens.max(1),
-            max_concurrent_requests: effective_request_concurrency(
-                params.max_concurrent_requests,
-                max_in_flight_inputs,
-                max_batch_inputs,
-            ),
+            // Request concurrency and weighted input admission are independent
+            // limits. Each packed request acquires its actual input weight in
+            // `send_chunk_with_retries`; reducing request concurrency by the
+            // configured *maximum* batch size strands capacity whenever real
+            // packed requests are smaller.
+            max_concurrent_requests: params.max_concurrent_requests.max(1),
             request_slots,
             input_slots,
             max_attempts: params.max_attempts.max(1),
             request_timeout: params.request_timeout,
             retry_backoff_base_ms: params.retry_backoff_base_ms,
-            requests: AtomicU64::new(0),
+            cumulative_requests: AtomicU64::new(0),
         })
     }
 
@@ -234,51 +244,28 @@ impl TeiClient {
         // so arrival-order slicing can waste most of a Metal dispatch on
         // padding. Keep original indices beside the reordered text so response
         // vectors still satisfy this method's input-order contract.
-        let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
-        ordered.sort_by_key(|(index, text)| (text.chars().count(), *index));
-        let mut pending = Vec::<(Vec<usize>, Vec<String>)>::new();
-        let mut indices = Vec::new();
-        let mut texts = Vec::new();
-        let mut batch_tokens = 0_usize;
-        let mut batch_bytes = 0_usize;
-        for (index, text) in ordered {
-            // Without the provider model's tokenizer, one Unicode scalar per
-            // token is the conservative bound: it may underfill a batch, but
-            // it cannot admit CJK, emoji, code, or punctuation at a 4x
-            // undercount as the former chars/4 heuristic could.
-            let tokens = text.chars().count().max(1);
-            let bytes = text.len().saturating_add(4);
-            if bytes > MAX_BATCH_BYTES {
-                return Err(self.error(
-                    "embedding.tei.input_too_large",
-                    "one embedding input exceeds the configured payload limit",
-                ));
-            }
-            if !texts.is_empty()
-                && (texts.len() >= self.max_batch_inputs
-                    || tokens > self.max_input_tokens
-                    || batch_tokens.saturating_add(tokens) > self.max_batch_tokens
-                    || batch_bytes.saturating_add(bytes) > MAX_BATCH_BYTES)
-            {
-                pending.push((std::mem::take(&mut indices), std::mem::take(&mut texts)));
-                batch_tokens = 0;
-                batch_bytes = 0;
-            }
-            indices.push(index);
-            texts.push(text.clone());
-            batch_tokens = batch_tokens.saturating_add(tokens);
-            batch_bytes = batch_bytes.saturating_add(bytes);
-        }
-        if !texts.is_empty() {
-            pending.push((indices, texts));
-        }
+        let pending = pack_batches(
+            inputs,
+            BatchLimits {
+                max_inputs: self.max_batch_inputs,
+                max_input_tokens: self.max_input_tokens,
+                max_batch_tokens: self.max_batch_tokens,
+                max_batch_bytes: MAX_BATCH_BYTES,
+            },
+        )
+        .map_err(|message| self.error("embedding.tei.input_too_large", message))?;
+        let mut pending = pending;
 
+        let invocation_requests = Arc::new(AtomicU64::new(0));
         let mut in_flight = FuturesUnordered::new();
         while !pending.is_empty() || !in_flight.is_empty() {
             while in_flight.len() < self.max_concurrent_requests && !pending.is_empty() {
                 let (indices, chunk) = pending.pop().expect("pending checked non-empty");
+                let invocation_requests = Arc::clone(&invocation_requests);
                 in_flight.push(async move {
-                    let outcome = self.send_chunk_with_retries(&chunk).await;
+                    let outcome = self
+                        .send_chunk_with_retries(&chunk, invocation_requests.as_ref())
+                        .await;
                     (indices, chunk, outcome)
                 });
             }
@@ -310,7 +297,7 @@ impl TeiClient {
 
         Ok(TeiEmbedOutcome {
             vectors: slots,
-            requests: self.requests.load(Ordering::Relaxed),
+            requests: invocation_requests.load(Ordering::Relaxed),
         })
     }
 
@@ -322,7 +309,11 @@ impl TeiClient {
     /// [`ProviderCooling`] metadata (`with_provider_cooling`) so the scheduler
     /// backs off this provider instead of hammering it again immediately —
     /// see "Cooling" in `docs/pipeline-unification/runtime/provider-contract.md`.
-    async fn send_chunk_with_retries(&self, chunk: &[String]) -> Result<ChunkOutcome, ApiError> {
+    async fn send_chunk_with_retries(
+        &self,
+        chunk: &[String],
+        invocation_requests: &AtomicU64,
+    ) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
             inputs: chunk,
             truncate: false,
@@ -361,7 +352,8 @@ impl TeiClient {
                     )
                 })?;
 
-            self.requests.fetch_add(1, Ordering::Relaxed);
+            invocation_requests.fetch_add(1, Ordering::Relaxed);
+            self.cumulative_requests.fetch_add(1, Ordering::Relaxed);
             let send = self
                 .client
                 .post(&self.embed_url)
@@ -473,20 +465,80 @@ impl TeiClient {
     }
 }
 
-fn effective_request_concurrency(
-    configured: usize,
-    max_in_flight_inputs: usize,
-    max_batch_inputs: usize,
-) -> usize {
-    configured
-        .max(1)
-        .min(max_in_flight_inputs.max(1) / max_batch_inputs.max(1))
-        .max(1)
+/// Estimate tokens without coupling the transport to a model-specific tokenizer.
+///
+/// Common English and source code average more than two ASCII bytes per token,
+/// so charging one token per two bytes is deliberately conservative without the
+/// severe under-batching of charging every character as a token. Non-ASCII text
+/// is charged by UTF-8 byte count: this safely covers CJK, emoji, and tokenizer
+/// byte-fallback pieces. TEI's tokenizer remains authoritative; HTTP 413 still
+/// drives recursive splitting when an estimate is too optimistic.
+fn estimated_tokens(text: &str) -> usize {
+    let (ascii, non_ascii_bytes) = text.chars().fold((0_usize, 0_usize), |counts, ch| {
+        if ch.is_ascii() {
+            (counts.0 + 1, counts.1)
+        } else {
+            (counts.0, counts.1 + ch.len_utf8())
+        }
+    });
+    ascii.div_ceil(2).saturating_add(non_ascii_bytes).max(1)
+}
+
+/// Form canonical request batches before any admission permits are acquired.
+/// Inputs estimated above the per-input model limit are isolated as singletons,
+/// allowing TEI to make the final tokenization decision without contaminating a
+/// following normal batch.
+fn pack_batches(inputs: &[String], limits: BatchLimits) -> Result<Vec<IndexedBatch>, &'static str> {
+    let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
+    ordered.sort_by_key(|(index, text)| (estimated_tokens(text), text.chars().count(), *index));
+
+    let mut batches = Vec::new();
+    let mut indices = Vec::new();
+    let mut texts = Vec::new();
+    let mut batch_tokens = 0_usize;
+    let mut batch_bytes = 0_usize;
+
+    for (index, text) in ordered {
+        let tokens = estimated_tokens(text);
+        let bytes = text.len().saturating_add(4);
+        if bytes > limits.max_batch_bytes {
+            return Err("one embedding input exceeds the configured payload limit");
+        }
+
+        if tokens > limits.max_input_tokens {
+            push_batch(&mut batches, &mut indices, &mut texts);
+            batches.push((vec![index], vec![text.clone()]));
+            batch_tokens = 0;
+            batch_bytes = 0;
+            continue;
+        }
+
+        if !texts.is_empty()
+            && (texts.len() >= limits.max_inputs
+                || batch_tokens.saturating_add(tokens) > limits.max_batch_tokens
+                || batch_bytes.saturating_add(bytes) > limits.max_batch_bytes)
+        {
+            push_batch(&mut batches, &mut indices, &mut texts);
+            batch_tokens = 0;
+            batch_bytes = 0;
+        }
+        indices.push(index);
+        texts.push(text.clone());
+        batch_tokens = batch_tokens.saturating_add(tokens);
+        batch_bytes = batch_bytes.saturating_add(bytes);
+    }
+    push_batch(&mut batches, &mut indices, &mut texts);
+    Ok(batches)
+}
+
+fn push_batch(batches: &mut Vec<IndexedBatch>, indices: &mut Vec<usize>, texts: &mut Vec<String>) {
+    if !texts.is_empty() {
+        batches.push((std::mem::take(indices), std::mem::take(texts)));
+    }
 }
 
 /// Resolve the initial client-side batch size, honouring the
-/// `TEI_MAX_CLIENT_BATCH_SIZE` env knob (matching the legacy client), then
-/// clamping to `[1, 4096]`.
+/// `TEI_MAX_CLIENT_BATCH_SIZE` environment override, then clamp to `[1, 4096]`.
 fn resolve_batch_size(config_batch: usize) -> usize {
     let base = std::env::var(TEI_MAX_CLIENT_BATCH_SIZE_ENV)
         .ok()

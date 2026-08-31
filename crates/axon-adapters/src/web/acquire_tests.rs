@@ -9,6 +9,92 @@ use crate::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use super::*;
 
 #[test]
+fn acquisition_warning_serialization_drops_url_credentials() {
+    let raw = "https://user:password@example.com/private?token=secret#reset-secret";
+    let error = ApiError::new("provider.failed", ErrorStage::Fetching, "provider failed");
+    let mut warnings = Vec::new();
+
+    let item = resolve_item_outcome(Err(error), SourceItemKey::new("item"), raw, &mut warnings);
+
+    assert!(item.is_none());
+    let payload = serde_json::to_string(&warnings).expect("serialize warnings");
+    assert!(
+        payload.contains("example.com/private?redacted"),
+        "{payload}"
+    );
+    for secret in ["user", "password", "token", "secret", "reset"] {
+        assert!(!payload.contains(secret), "leaked {secret} in {payload}");
+    }
+}
+
+#[test]
+fn provider_error_serialization_drops_uri_and_provider_echoed_credentials() {
+    let raw = "https://user:password@example.com/private?token=secret#reset-secret";
+    let error = ApiError::new(
+        "provider.failed",
+        ErrorStage::Fetching,
+        format!("request to {raw} failed"),
+    )
+    .with_context("provider_url", raw);
+
+    let sanitized = sanitize_provider_error(error, raw);
+    let payload = serde_json::to_string(&sanitized).expect("serialize provider error");
+    assert!(
+        payload.contains("example.com/private?redacted"),
+        "{payload}"
+    );
+    for secret in ["user", "password", "token", "secret", "reset"] {
+        assert!(!payload.contains(secret), "leaked {secret} in {payload}");
+    }
+    assert_eq!(sanitized.details.len(), 1);
+    assert!(sanitized.details.contains_key("uri"));
+}
+
+#[tokio::test]
+async fn every_web_provider_reporting_sink_redacts_url_credentials() {
+    let raw = "https://user:password@example.com/private?token=secret#reset-secret";
+    let fatal = FakeAdapterProviders::new().with_mode(crate::boundary::FakeAdapterMode::Fatal);
+
+    let fetch_error = acquire_via_fetch(&fatal, &item(raw), CachePolicy::Bypass, &[])
+        .await
+        .expect_err("fetch provider failure");
+    let render_error = acquire_via_auto_switch(
+        &fatal,
+        &item(raw),
+        200,
+        None,
+        MetadataMap::new(),
+        Vec::new(),
+    )
+    .await
+    .expect_err("render provider failure");
+    let binary_error = reject_binary_rendered_payload(&item(raw), "%PDF-1.7\n\0binary")
+        .expect_err("binary payload rejection");
+    let vertical_warning = super::super::vertical::degraded_warning(&item(raw));
+
+    for (sink, payload) in [
+        ("fetch", serde_json::to_string(&fetch_error).unwrap()),
+        ("render", serde_json::to_string(&render_error).unwrap()),
+        ("binary", serde_json::to_string(&binary_error).unwrap()),
+        (
+            "vertical",
+            serde_json::to_string(&vertical_warning).unwrap(),
+        ),
+    ] {
+        assert!(
+            payload.contains("example.com/private?redacted"),
+            "{sink}: {payload}"
+        );
+        for secret in ["user", "password", "token", "secret", "reset"] {
+            assert!(
+                !payload.contains(secret),
+                "{sink} leaked {secret}: {payload}"
+            );
+        }
+    }
+}
+
+#[test]
 fn acquisition_timing_summary_exposes_tail_gaps_and_slot_occupancy() {
     let summary = summarize_acquisition_timings(
         Duration::from_millis(100),

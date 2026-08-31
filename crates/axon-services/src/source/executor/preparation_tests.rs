@@ -46,6 +46,43 @@ async fn bounded_blocking_map_allows_one_oversized_item_to_make_progress() {
 }
 
 #[tokio::test]
+async fn slow_first_item_does_not_block_replacement_work_and_results_remain_ordered() {
+    let gate = Arc::new(std::sync::Barrier::new(2));
+    let (completed_tx, mut completed_rx) = tokio::sync::mpsc::unbounded_channel();
+    let worker_gate = Arc::clone(&gate);
+    let task = tokio::spawn(bounded_blocking_map_in_order(
+        vec![0_usize, 1, 2, 3],
+        2,
+        8,
+        |_| 1,
+        move |item| {
+            if item == 0 {
+                worker_gate.wait();
+            } else {
+                completed_tx.send(item).expect("completion observer");
+            }
+            Ok(item)
+        },
+    ));
+
+    let later = tokio::time::timeout(Duration::from_secs(1), async {
+        let mut values = Vec::new();
+        for _ in 0..3 {
+            values.push(completed_rx.recv().await.expect("later completion"));
+        }
+        values
+    })
+    .await
+    .expect("replacement work must run while item zero is gated");
+    assert_eq!(later, vec![1, 2, 3]);
+    gate.wait();
+    assert_eq!(
+        task.await.expect("map task").expect("map result"),
+        vec![0, 1, 2, 3]
+    );
+}
+
+#[tokio::test]
 async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
     let text = format!("# Injected\n{}", "content ".repeat(40));
     let documents = vec![SourceDocument {
@@ -77,6 +114,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
         &BTreeMap::new(),
         preparer,
         1,
+        64 * 1024 * 1024,
     )
     .await
     .expect("prepare documents");

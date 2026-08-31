@@ -6,10 +6,10 @@ use httpmock::prelude::*;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::SourceAdapter;
 use crate::boundary::FakeAdapterProviders;
 use crate::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use crate::web::WebSourceAdapter;
+use crate::{AcquisitionStreamSink, SourceAdapter, StreamedAcquisition};
 
 fn adapter(providers: FakeAdapterProviders) -> WebSourceAdapter {
     let providers = Arc::new(providers);
@@ -21,6 +21,70 @@ fn http_adapter() -> WebSourceAdapter {
         Arc::new(HttpFetchProvider::new(HttpFetchConfig::default())),
         Arc::new(FakeAdapterProviders::new()),
     )
+}
+
+#[derive(Default)]
+struct RecordingStream(tokio::sync::Mutex<Vec<StreamedAcquisition>>);
+
+#[async_trait::async_trait]
+impl AcquisitionStreamSink for RecordingStream {
+    async fn send(&self, item: StreamedAcquisition) -> crate::adapter::Result<()> {
+        self.0.lock().await.push(item);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn web_streaming_emits_stable_single_item_acquisitions() {
+    let adapter = adapter(FakeAdapterProviders::new());
+    let plan = web_plan("https://example.com/docs", SourceScope::Site);
+    let mut items = Vec::new();
+    for index in 0..3 {
+        items.push(ManifestItem {
+            source_id: plan.route.source.source_id.clone(),
+            source_item_key: SourceItemKey::from(format!("item-{index}")),
+            canonical_uri: format!("https://example.com/docs/{index}"),
+            item_kind: ItemKind::WebPage,
+            content_kind: Some(ContentKind::Html),
+            display_path: None,
+            parent_key: None,
+            size_bytes: None,
+            content_hash: None,
+            mtime: None,
+            version: None,
+            fetch_plan: None,
+            metadata: MetadataMap::new(),
+            graph_hints: Vec::new(),
+        });
+    }
+    let diff = manifest_diff(&plan, items);
+    let sink = RecordingStream::default();
+
+    adapter
+        .acquire_streaming(&plan, &diff, None, &sink)
+        .await
+        .unwrap();
+
+    let streamed = sink.0.lock().await;
+    assert_eq!(streamed.len(), 3);
+    assert_eq!(
+        streamed.iter().map(|item| item.ordinal).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert_eq!(
+        streamed
+            .iter()
+            .map(|item| item.items_attempted)
+            .sum::<u64>(),
+        3
+    );
+    assert!(streamed[..2].iter().all(|item| !item.is_final));
+    assert!(streamed[2].is_final);
+    assert!(
+        streamed
+            .iter()
+            .all(|item| item.acquisition.manifest.items.len() == 1)
+    );
 }
 
 #[test]

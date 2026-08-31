@@ -1487,6 +1487,30 @@ compatibility = "warn-env-override"
 reason = "Typed provider embedding preparation concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
+key = "AXON_PREP_MAX_IN_FLIGHT_BYTES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.prep-max-in-flight-bytes"
+compatibility = "warn-env-override"
+reason = "Typed preparation memory admission is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
+key = "AXON_EMBED_SCHEDULER_FLUSH_MS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.scheduler-flush-ms"
+compatibility = "warn-env-override"
+reason = "Typed embedding scheduler flush delay is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
 key = "AXON_EMBED_SCHEDULER_ENABLED"
 classification = "move-toml"
 runtime_placement = "not-runtime"

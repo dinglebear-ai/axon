@@ -1,9 +1,9 @@
 //! TEI embedding provider — real reqwest-backed `/embed` client.
 //!
-//! Ports request/response shape, 413 batch-split, and 429/5xx retry behaviour
-//! from the legacy `axon-vector` TEI client. The HTTP transport lives in
-//! [`client`]; this module owns batch validation, instruction prefixing, order
-//! preservation, dimension validation, and capability reporting.
+//! The HTTP transport in [`client`] owns the request/response wire shape, 413
+//! batch splitting, and 429/5xx retries. This module owns batch validation,
+//! instruction prefixing, order preservation, dimension validation, and
+//! capability reporting.
 
 mod client;
 

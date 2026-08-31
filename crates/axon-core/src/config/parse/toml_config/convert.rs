@@ -246,6 +246,8 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.embed.scheduler_enabled = e.scheduler_enabled;
     flat.embed.vector_upsert_overlap_enabled = e.vector_upsert_overlap_enabled;
     flat.embed.prep_concurrency = e.prep_concurrency;
+    flat.embed.prep_max_in_flight_bytes = e.prep_max_in_flight_bytes;
+    flat.embed.scheduler_flush_ms = e.scheduler_flush_ms;
     flat.embed.max_chunks_per_doc = e.max_chunks_per_doc;
     flat.embed.max_source_chunks_per_doc = e.max_source_chunks_per_doc;
     flat.embed.dedupe_exact_chunks = e.dedupe_exact_chunks;

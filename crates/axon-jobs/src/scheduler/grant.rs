@@ -19,12 +19,12 @@ impl ProviderScheduler {
         self.reservation_grant_locked(connection, &id).await
     }
 
-    async fn reclaim_capacity_affecting_rows_locked(
+    pub(super) async fn reclaim_capacity_affecting_rows_locked(
         &self,
         connection: &mut PoolConnection<Sqlite>,
         domain: &str,
-    ) -> Result<(), SchedulerError> {
-        sqlx::query(
+    ) -> Result<Reconciliation, SchedulerError> {
+        let expired_grants = sqlx::query(
             "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
              terminal_reason = 'grant_expired', updated_at = datetime('now')
              WHERE capacity_domain = ? AND instance_id = ?
@@ -33,10 +33,11 @@ impl ProviderScheduler {
         .bind(domain)
         .bind(&self.domain.instance_id)
         .execute(&mut **connection)
-        .await?;
+        .await?
+        .rows_affected();
         // Admission also advances the two-phase orphan lifecycle so an active
         // reservation abandoned after startup cannot hold capacity forever.
-        sqlx::query(
+        let quarantined_active = sqlx::query(
             "UPDATE provider_reservations SET quarantined = 1,
              terminal_reason = 'active_lease_uncertain', updated_at = datetime('now')
              WHERE capacity_domain = ? AND instance_id = ? AND authority_id = ?
@@ -47,8 +48,9 @@ impl ProviderScheduler {
         .bind(&self.domain.instance_id)
         .bind(&self.domain.authority_id)
         .execute(&mut **connection)
-        .await?;
-        sqlx::query(
+        .await?
+        .rows_affected();
+        let released_quarantined = sqlx::query(
             "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
              terminal_reason = 'quarantine_expired', updated_at = datetime('now')
              WHERE capacity_domain = ? AND instance_id = ? AND authority_id = ?
@@ -60,8 +62,23 @@ impl ProviderScheduler {
         .bind(&self.domain.authority_id)
         .bind(QUARANTINE_RELEASE_SECS)
         .execute(&mut **connection)
-        .await?;
-        Ok(())
+        .await?
+        .rows_affected();
+        let result = Reconciliation {
+            expired_queued: 0,
+            expired_grants,
+            quarantined_active,
+            released_quarantined,
+        };
+        if result != Reconciliation::default() {
+            tracing::info!(
+                expired_grants,
+                quarantined_active,
+                released_quarantined,
+                "provider scheduler reclaimed stale capacity"
+            );
+        }
+        Ok(result)
     }
 
     pub(super) async fn try_grant_existing(
@@ -97,10 +114,7 @@ impl ProviderScheduler {
                 sqlx::query("COMMIT").execute(&mut *connection).await?;
                 Ok(grant)
             }
-            Err(error) => {
-                let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
-                Err(error)
-            }
+            Err(error) => Err(rollback_after_error(&mut connection, error).await),
         }
     }
 
@@ -111,22 +125,23 @@ impl ProviderScheduler {
     ) -> Result<(), SchedulerError> {
         self.refresh_effective_priorities(connection, domain)
             .await?;
-        let candidates: Vec<(String, i64, String)> = sqlx::query_as(
-            "SELECT reservation_id, requested_units, effective_priority
+        let head: Option<(String, i64, String, i64)> = sqlx::query_as(
+            "SELECT reservation_id, requested_units, effective_priority, enqueue_sequence
              FROM provider_reservations
              WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
              ORDER BY CASE effective_priority
                  WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
                  WHEN 'background' THEN 3 ELSE 4 END,
-                 enqueue_sequence, reservation_id",
+                 enqueue_sequence, reservation_id
+             LIMIT 1",
         )
         .bind(domain)
         .bind(&self.domain.instance_id)
-        .fetch_all(&mut **connection)
+        .fetch_optional(&mut **connection)
         .await?;
-        if candidates.is_empty() {
+        let Some((head_id, head_units, head_priority, head_sequence)) = head else {
             return Ok(());
-        }
+        };
         let active: i64 = sqlx::query_scalar(
             "SELECT COALESCE(SUM(granted_units), 0) FROM provider_reservations
              WHERE capacity_domain = ? AND instance_id = ? AND status IN ('granted','active')",
@@ -144,19 +159,62 @@ impl ProviderScheduler {
         .bind(&self.domain.instance_id)
         .fetch_one(&mut **connection)
         .await?;
-        // Preserve priority ordering, but scan to queue exhaustion so usable
-        // capacity cannot be stranded behind an arbitrary prefix of requests
-        // that do not fit. Abandoned queued rows are expired before this scan.
-        let candidate = candidates.into_iter().find(|(_, units, priority)| {
-            let limit = if priority != "interactive" && interactive_queued > 0 {
+        let capacity_limit = |priority: &str| {
+            if priority != "interactive" && interactive_queued > 0 {
                 self.config
                     .capacity
                     .saturating_sub(self.config.interactive_reserve)
             } else {
                 self.config.capacity
-            };
-            active + units <= i64::from(limit)
-        });
+            }
+        };
+        let head_fits = active + head_units <= i64::from(capacity_limit(&head_priority));
+        let candidate = if head_fits {
+            Some((head_id, head_units, head_priority))
+        } else {
+            // A non-fitting head may be bypassed once to avoid stranding residual
+            // capacity. The acquired row is the durable bypass marker: after a
+            // later waiter has run, no subsequent waiter can bypass this head,
+            // guaranteeing it gets the next opportunity when enough units free.
+            let already_bypassed: bool = sqlx::query_scalar(
+                "SELECT EXISTS(
+                   SELECT 1 FROM provider_reservations
+                   WHERE capacity_domain = ? AND instance_id = ?
+                     AND enqueue_sequence > ? AND acquired_at IS NOT NULL
+                 )",
+            )
+            .bind(domain)
+            .bind(&self.domain.instance_id)
+            .bind(head_sequence)
+            .fetch_one(&mut **connection)
+            .await?;
+            if already_bypassed {
+                None
+            } else {
+                let normal_limit = i64::from(capacity_limit("normal")) - active;
+                let interactive_limit = i64::from(capacity_limit("interactive")) - active;
+                sqlx::query_as(
+                    "SELECT reservation_id, requested_units, effective_priority
+                     FROM provider_reservations
+                     WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
+                       AND enqueue_sequence > ?
+                       AND requested_units <= CASE
+                         WHEN effective_priority = 'interactive' THEN ? ELSE ? END
+                     ORDER BY CASE effective_priority
+                       WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
+                       WHEN 'background' THEN 3 ELSE 4 END,
+                       enqueue_sequence, reservation_id
+                     LIMIT 1",
+                )
+                .bind(domain)
+                .bind(&self.domain.instance_id)
+                .bind(head_sequence)
+                .bind(interactive_limit)
+                .bind(normal_limit)
+                .fetch_optional(&mut **connection)
+                .await?
+            }
+        };
         let Some((candidate_id, candidate_units, _candidate_priority)) = candidate else {
             return Ok(());
         };
@@ -180,28 +238,46 @@ impl ProviderScheduler {
         connection: &mut PoolConnection<Sqlite>,
         domain: &str,
     ) -> Result<(), SchedulerError> {
-        sqlx::query(
-            "UPDATE provider_reservations
-             SET effective_priority = CASE max(0,
-                    CASE requested_priority
-                      WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
-                      WHEN 'background' THEN 3 ELSE 4 END
-                    - min(4, max(0, (unixepoch('now') - unixepoch(updated_at)) / ?)))
-                  WHEN 0 THEN 'interactive' WHEN 1 THEN 'high' WHEN 2 THEN 'normal'
-                  WHEN 3 THEN 'background' ELSE 'maintenance' END
+        let invalid_timestamps: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM provider_reservations
              WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
-               AND COALESCE(effective_priority, '') <> CASE max(0,
-                    CASE requested_priority
-                      WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
-                      WHEN 'background' THEN 3 ELSE 4 END
-                    - min(4, max(0, (unixepoch('now') - unixepoch(updated_at)) / ?)))
-                  WHEN 0 THEN 'interactive' WHEN 1 THEN 'high' WHEN 2 THEN 'normal'
-                  WHEN 3 THEN 'background' ELSE 'maintenance' END",
+               AND unixepoch(updated_at) IS NULL",
+        )
+        .bind(domain)
+        .bind(&self.domain.instance_id)
+        .fetch_one(&mut **connection)
+        .await?;
+        if invalid_timestamps > 0 {
+            return Err(SchedulerError::DatabaseState(
+                "queued reservation has an invalid aging timestamp",
+            ));
+        }
+        sqlx::query(
+            "WITH desired AS (
+               SELECT reservation_id,
+                 CASE max(0,
+                   CASE requested_priority
+                     WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
+                     WHEN 'background' THEN 3 ELSE 4 END
+                   - min(4, max(0, (unixepoch('now') - unixepoch(updated_at)) / ?)))
+                 WHEN 0 THEN 'interactive' WHEN 1 THEN 'high' WHEN 2 THEN 'normal'
+                 WHEN 3 THEN 'background' ELSE 'maintenance' END AS priority
+               FROM provider_reservations
+               WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
+             )
+             UPDATE provider_reservations
+             SET effective_priority = (
+               SELECT priority FROM desired
+               WHERE desired.reservation_id = provider_reservations.reservation_id
+             )
+             WHERE reservation_id IN (
+               SELECT desired.reservation_id FROM desired
+               WHERE COALESCE(provider_reservations.effective_priority, '') <> desired.priority
+             )",
         )
         .bind(AGING_QUANTUM_SECS)
         .bind(domain)
         .bind(&self.domain.instance_id)
-        .bind(AGING_QUANTUM_SECS)
         .execute(&mut **connection)
         .await?;
         Ok(())
@@ -224,21 +300,32 @@ impl ProviderScheduler {
             return Err(SchedulerError::StaleFence);
         };
         match status.as_str() {
-            "queued" => Ok(ReservationGrant {
+            "queued" if granted_units == 0 => Ok(ReservationGrant::Queued {
                 reservation_id: reservation_id.to_string(),
-                granted: false,
-                units: 0,
             }),
-            "granted" | "active" => Ok(ReservationGrant {
-                reservation_id: reservation_id.to_string(),
-                granted: true,
-                units: u32::try_from(granted_units.max(requested_units)).unwrap_or(u32::MAX),
-            }),
-            _ => Err(SchedulerError::StaleFence),
+            "granted" | "active" if granted_units == requested_units => {
+                let units = u32::try_from(granted_units)
+                    .ok()
+                    .and_then(NonZeroU32::new)
+                    .ok_or(SchedulerError::DatabaseState(
+                        "granted reservation has invalid unit accounting",
+                    ))?;
+                Ok(ReservationGrant::Granted {
+                    reservation_id: reservation_id.to_string(),
+                    units,
+                })
+            }
+            "queued" | "granted" | "active" => Err(SchedulerError::DatabaseState(
+                "reservation status and unit accounting disagree",
+            )),
+            "released" | "canceled" | "expired" | "failed" => Err(SchedulerError::StaleFence),
+            _ => Err(SchedulerError::DatabaseState(
+                "reservation has an unknown persisted status",
+            )),
         }
     }
 
-    async fn expire_abandoned_queued_locked(
+    pub(super) async fn expire_abandoned_queued_locked(
         &self,
         connection: &mut PoolConnection<Sqlite>,
         domain: &str,

@@ -261,6 +261,8 @@ pub(in crate::config) struct RawEmbeddingSection {
     pub scheduler_enabled: Option<bool>,
     pub vector_upsert_overlap_enabled: Option<bool>,
     pub prep_concurrency: Option<usize>,
+    pub prep_max_in_flight_bytes: Option<usize>,
+    pub scheduler_flush_ms: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,
     pub max_source_chunks_per_doc: Option<usize>,
     pub dedupe_exact_chunks: Option<bool>,

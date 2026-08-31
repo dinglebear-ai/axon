@@ -267,6 +267,13 @@
 # Concurrent source-document preparation tasks before embedding.
 # Env: AXON_EMBED_PREP_CONCURRENCY
 # prep-concurrency = 8
+# Maximum aggregate source-document bytes admitted to concurrent preparation.
+# Env: AXON_PREP_MAX_IN_FLIGHT_BYTES
+# prep-max-in-flight-bytes = 67108864
+# Maximum delay used to pool prepared chunks before an embedding request.
+# Set to 0 to flush each acquired wave immediately.
+# Env: AXON_EMBED_SCHEDULER_FLUSH_MS
+# scheduler-flush-ms = 1500
 # Optional circuit breakers after exact dedupe. `0` / unset disables the cap.
 # Env: AXON_EMBED_MAX_CHUNKS_PER_DOC, AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC
 # max-chunks-per-doc = 0

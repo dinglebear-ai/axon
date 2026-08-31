@@ -1,10 +1,103 @@
 ---
 title: "Source Pipeline Scheduler Benchmark"
 created: 2026-08-28
-updated: 2026-08-29
+updated: 2026-08-31
 ---
 
 # Source pipeline scheduler benchmark
+
+## Executable benchmark contracts
+
+The harness has two deliberately separate modes. `pinned-replay` consumes a
+versioned local replay fixture and supports deterministic pipeline comparisons;
+it does not establish live web performance. `live-cold-crawl` fetches the live
+site and supports cold-crawl qualification; network variance means it must be
+run in paired, back-to-back trials. The JSON records `benchmark_mode` and the
+corresponding `acceptance_claim` so results cannot silently cross those evidence
+boundaries.
+
+```bash
+# Deterministic replay
+AXON_BENCH_MODE=pinned-replay \
+AXON_BENCH_REPLAY_FIXTURE=/absolute/path/to/versioned-replay \
+AXON_BENCH_AXON_BIN=target/release/axon \
+bash scripts/bench-source-pipeline.sh
+
+# Live cold crawl
+AXON_BENCH_MODE=live-cold-crawl \
+AXON_BENCH_SOURCE=https://code.claude.com \
+AXON_BENCH_AXON_BIN=target/release/axon \
+bash scripts/bench-source-pipeline.sh
+```
+
+Both modes invoke the selected release binary directly with `--cache false`,
+`--scope site`, and no page or depth cap. By default the harness generates a
+globally unique `axon_bench_*` collection, proves it does not already exist,
+and treats it as owned. The collection is deleted on success, command failure,
+HUP, INT, and TERM. Temporary SQLite state is deleted on those same paths.
+Collection deletion failure fails an otherwise successful run. Set
+`AXON_BENCH_RETAIN_COLLECTION=1` only when residual inspection is intentional.
+`AXON_BENCH_RETAIN_WORK_DIR=1` preserves the isolated SQLite database and logs
+for a failed evidence gate; the default still removes all local benchmark state.
+An explicit `AXON_BENCH_COLLECTION` is accepted only with
+`AXON_BENCH_OWN_COLLECTION=1` and the reserved `axon_bench_` prefix; this keeps
+the cleanup boundary unambiguous.
+
+The result captures the provider's observed `/info` contract rather than model
+constants. It also captures the fully resolved `axon config list --json`
+throughput configuration with provenance and a SHA-256 hash. Keys that can hold
+credentials are replaced with `<redacted-secret>` and endpoints with
+`<redacted-endpoint>` before either the manifest or hash is emitted. Never put
+credentials in benchmark mode, source, collection, output, or comparison
+variables.
+
+`metal_busy_interval.seconds` is the union of provider-reported accelerator
+busy intervals within the single validated metrics epoch. It is not summed
+request duration. `wall_minus_metal_busy_seconds` is the wall-clock process
+interval less that union and is the ranking metric for paired runs. The timing
+object distinguishes:
+
+- `critical_path`: benchmark process wall time;
+- `stage_active`: persisted active stage durations;
+- `event_windows`: observational first/last event windows, never active time;
+- `stage_overlap_seconds`: intersections among active stage intervals;
+- `stage_union_seconds`: the union of active stage intervals; and
+- `unattributed_critical_path_seconds`: job critical-path time outside that union.
+
+The canonical job critical path is the interval from the earliest persisted
+start to the latest persisted completion for that job. Duplicate and
+overlapping stage rows contribute once to the union; their excess active sum is
+reported as overlap. Null/incomplete rows are excluded, and rows or events for
+other jobs are never considered. The result also emits top-level
+`critical_path_seconds`, `overlap_seconds`, `unattributed_seconds`,
+`unattributed_ratio`, and `attribution_ratio`. Attribution below 95% sets
+`attribution_gate`, `evidence_gate`, and `environment_comparable` false and adds
+`critical_path_attribution_below_95_percent` to the evidence reasons. A result
+with no completed timing interval fails attribution rather than passing
+vacuously.
+
+Queue wait, reservation wait, provider work, retries, publication, and
+checkpoint time are stage or telemetry intervals when the runtime emits them;
+they must not be inferred by adding overlapping event windows.
+
+The environment record includes machine/OS/CPU identity, machine load, the
+observed provider identity fingerprint, and provider load when `/info` exposes
+it. A control result's `environment.fingerprint_sha256` must be supplied as
+`AXON_BENCH_COMPARISON_ENV_SHA256` for the candidate. `environment_comparable`
+is true only when that stable fingerprint matches and one-minute load is at or
+below `AXON_BENCH_MAX_LOAD` (default 8). Missing baselines fail closed as false.
+Record provider ownership and ensure no unrelated clients use the exclusive
+metrics epoch. Run multiple paired trials and report median and range; never
+rank results whose environment gate is false.
+
+Executable fake-tool coverage validates exact Axon argv, generated collection
+ownership, secret redaction, and cleanup after success, Axon failure, and TERM:
+
+```bash
+bash -n scripts/bench-source-pipeline.sh
+bash -n scripts/test-bench-source-pipeline.sh
+bash scripts/test-bench-source-pipeline.sh
+```
 
 The evidence phase uses a pinned local replay and aggregate MLX metric deltas.
 It is intentionally smaller than the final acceptance matrix: if the telemetry
@@ -18,12 +111,6 @@ userinfo and command-substitution syntax, and sanitizes failures. MLX metrics
 must come from loopback and remain in one process epoch with an otherwise idle,
 freshly started service. Every request issued by the isolated crawl is validated
 as one uncontaminated aggregate delta.
-
-```bash
-AXON_BENCH_SOURCE=https://code.claude.com \
-AXON_BENCH_AXON_BIN=target/release/axon \
-bash scripts/bench-source-pipeline.sh
-```
 
 The final scheduler comparison, if earned by this gate, separately measures a
 pinned fresh-corpus/warm-service run, cold-service startup, and a live full
@@ -42,7 +129,7 @@ This authorizes the scheduler implementation. These values are hypothesis
 evidence, not cutover evidence; the Task 10 pinned comparison must use the
 SQLite-derived committed-corpus hash and exact vector/ID parity checks.
 
-## 2026-08-28 Task 10 cutover decision: scheduler stays off
+## 2026-08-28 Task 10 decision: no throughput promotion; safety default retained
 
 The 2026-08-28 evidence gate above is superseded as cutover evidence. It was
 measured before the Apple MLX dispatch geometry was pinned to 16 rows / 8,192
@@ -97,8 +184,9 @@ against the launchd MLX service on port 8084. The persistent embedding cache was
 off (`providers.embedding.cache-enabled = false`, no env override, and no cache
 row written since 2026-08-27T13:45Z), so those runs embedded the corpus for real.
 
-Every number in the tables above is from 2026-08-28 07:00-11:45Z and lands at 69
-to 80 s. The cause is not configuration. It is the crawl:
+The scheduler-off and cross-pool-overlap arms in the 2026-08-28 07:00-11:45Z
+window land at 69 to 80 s. The observed spread tracks crawl duration rather
+than the tested configuration changes:
 
 | Run | Fetch phase | Wall |
 |---|---|---|

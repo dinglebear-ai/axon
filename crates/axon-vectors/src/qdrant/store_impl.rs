@@ -10,7 +10,7 @@ use super::convert::{
     canonical_uri_filter_json, collection_create_json, eq_filter_json, eq2_filter_json,
     payload_index_json,
 };
-use super::http::QdrantHttp;
+use super::http::{PutCreateOutcome, QdrantHttp};
 use super::search::qdrant_search;
 use super::upsert::upsert_batches_rest;
 use crate::collection::{
@@ -42,13 +42,27 @@ impl QdrantVectorStore {
         let url = http.endpoint().collection_path(&spec.collection, "");
         {
             let _permit = self.write_permit(stage).await?;
-            http.put_json(
-                stage,
-                &url,
-                &collection_create_json(&spec),
-                "qdrant_create_collection",
-            )
-            .await?;
+            let outcome = http
+                .put_json_idempotent_create(
+                    stage,
+                    &url,
+                    &collection_create_json(&spec),
+                    "qdrant_create_collection",
+                )
+                .await?;
+            if outcome == PutCreateOutcome::AlreadyExists {
+                let existing = self
+                    .fetch_collection_spec(&http, &spec.collection, stage)
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::new(
+                            "vector.collection_create_conflict_unverified",
+                            stage,
+                            "Qdrant reported a collection create conflict but the existing collection could not be verified",
+                        )
+                    })?;
+                check_collection_drift(&existing, &spec)?;
+            }
         }
         self.ensure_payload_indexes(&http, &spec, stage).await?;
         self.cache_collection_spec(spec).await;
@@ -150,13 +164,58 @@ impl QdrantVectorStore {
                         )
                         .with_provider_id(provider_id)
                     })?;
-                    http.put_json(stage, &url, &body, "qdrant_payload_index")
-                        .await
+                    let outcome = http
+                        .put_json_idempotent_create(stage, &url, &body, "qdrant_payload_index")
+                        .await?;
+                    Ok::<_, ApiError>((index, outcome))
                 }
             })
             .buffer_unordered(self.payload_index_parallelism());
+        let mut conflicting_indexes = Vec::new();
         while let Some(result) = pending.next().await {
-            result?;
+            let (index, outcome) = result?;
+            if outcome == PutCreateOutcome::AlreadyExists {
+                conflicting_indexes.push(index);
+            }
+        }
+        if !conflicting_indexes.is_empty() {
+            let existing = self
+                .fetch_collection_spec(http, &spec.collection, stage)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::new(
+                        "vector.payload_index_conflict_unverified",
+                        stage,
+                        "Qdrant reported a payload-index conflict but the collection could not be verified",
+                    )
+                })?;
+            check_collection_drift(&existing, spec)?;
+            for conflicting in conflicting_indexes {
+                let actual = existing
+                    .payload_indexes
+                    .iter()
+                    .find(|index| index.field_name == conflicting.field_name)
+                    .ok_or_else(|| {
+                        ApiError::new(
+                            "vector.payload_index_conflict_unverified",
+                            stage,
+                            format!(
+                                "Qdrant reported a payload-index conflict for {} but the existing index was not visible",
+                                conflicting.field_name
+                            ),
+                        )
+                    })?;
+                if actual.field_schema != conflicting.field_schema {
+                    return Err(ApiError::new(
+                        "vector.collection_drift",
+                        stage,
+                        format!(
+                            "collection {} payload index {} has a different field schema",
+                            spec.collection, conflicting.field_name
+                        ),
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -436,56 +495,93 @@ fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
 pub(super) fn detect_collection_spec(
     collection: &str,
     body: &serde_json::Value,
-) -> Option<CollectionSpec> {
-    let params = body.pointer("/result/config/params")?;
-    let vectors = params.get("vectors")?;
+    stage: ErrorStage,
+) -> Result<Option<CollectionSpec>> {
+    let Some(params) = body.pointer("/result/config/params") else {
+        return Ok(None);
+    };
+    let Some(vectors) = params.get("vectors") else {
+        return Ok(None);
+    };
 
     // Named-mode: {"vectors": {"<name>": {"size": N, "distance": "Cosine"}}}
     let (dense_name, dense_cfg) = if vectors.get("size").is_some() {
         ("dense".to_string(), vectors.clone())
     } else {
-        let object = vectors.as_object()?;
-        let (name, cfg) = object.iter().next()?;
+        let Some(object) = vectors.as_object() else {
+            return Ok(None);
+        };
+        let Some((name, cfg)) = object.iter().next() else {
+            return Ok(None);
+        };
         (name.clone(), cfg.clone())
     };
-    let dimensions = dense_cfg.get("size").and_then(|v| v.as_u64())? as u32;
+    let Some(dimensions) = dense_cfg.get("size").and_then(|v| v.as_u64()) else {
+        return Ok(None);
+    };
+    let dimensions = u32::try_from(dimensions)
+        .map_err(|_| schema_verification_error(stage, collection, "dense vector dimensions"))?;
     let distance = dense_cfg
         .get("distance")
         .and_then(|v| v.as_str())
         .and_then(parse_distance)
-        .unwrap_or(VectorDistance::Cosine);
+        .ok_or_else(|| schema_verification_error(stage, collection, "dense vector distance"))?;
 
-    let sparse = params
-        .get("sparse_vectors")
-        .and_then(|v| v.as_object())
-        .and_then(|map| map.iter().next())
-        .map(|(name, cfg)| SparseVectorConfig {
-            name: name.clone(),
-            modifier: match cfg.get("modifier").and_then(|v| v.as_str()) {
-                Some("idf") => SparseVectorModifier::Idf,
-                _ => SparseVectorModifier::None,
-            },
-        });
-
-    let payload_indexes = body
-        .pointer("/result/payload_schema")
-        .and_then(|schema| schema.as_object())
-        .map(|schema| {
-            schema
-                .iter()
-                .filter_map(|(field, cfg)| {
-                    let data_type = cfg.get("data_type").and_then(|v| v.as_str())?;
-                    Some(PayloadIndexSpec {
-                        field_name: field.clone(),
-                        field_schema: parse_field_schema(data_type),
-                        required_for_filters: true,
+    let sparse = match params.get("sparse_vectors") {
+        None => None,
+        Some(value) => {
+            let map = value.as_object().ok_or_else(|| {
+                schema_verification_error(stage, collection, "sparse vector configuration")
+            })?;
+            match map.iter().next() {
+                None => None,
+                Some((name, cfg)) => {
+                    let modifier = match cfg.get("modifier").and_then(|v| v.as_str()) {
+                        Some("idf") => SparseVectorModifier::Idf,
+                        Some("none") => SparseVectorModifier::None,
+                        _ => {
+                            return Err(schema_verification_error(
+                                stage,
+                                collection,
+                                "sparse vector modifier",
+                            ));
+                        }
+                    };
+                    Some(SparseVectorConfig {
+                        name: name.clone(),
+                        modifier,
                     })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+                }
+            }
+        }
+    };
 
-    Some(CollectionSpec {
+    let mut payload_indexes = Vec::new();
+    if let Some(schema) = body.pointer("/result/payload_schema") {
+        let schema = schema
+            .as_object()
+            .ok_or_else(|| schema_verification_error(stage, collection, "payload index schema"))?;
+        for (field, cfg) in schema {
+            let field_schema = cfg
+                .get("data_type")
+                .and_then(|v| v.as_str())
+                .and_then(parse_field_schema)
+                .ok_or_else(|| {
+                    schema_verification_error(
+                        stage,
+                        collection,
+                        &format!("payload index data type for {field}"),
+                    )
+                })?;
+            payload_indexes.push(PayloadIndexSpec {
+                field_name: field.clone(),
+                field_schema,
+                required_for_filters: true,
+            });
+        }
+    }
+
+    Ok(Some(CollectionSpec {
         collection: collection.to_string(),
         dense: VectorConfig {
             name: dense_name,
@@ -497,18 +593,27 @@ pub(super) fn detect_collection_spec(
         aliases: Vec::new(),
         distance: None,
         metadata: MetadataMap::new(),
-    })
+    }))
 }
 
-fn parse_field_schema(data_type: &str) -> PayloadFieldSchema {
-    match data_type {
+fn schema_verification_error(stage: ErrorStage, collection: &str, field: &str) -> ApiError {
+    ApiError::new(
+        "vector.collection_schema_unrecognized",
+        stage,
+        format!("collection {collection} has an unrecognized or missing {field}"),
+    )
+}
+
+fn parse_field_schema(data_type: &str) -> Option<PayloadFieldSchema> {
+    Some(match data_type {
+        "keyword" => PayloadFieldSchema::Keyword,
         "integer" => PayloadFieldSchema::Integer,
         "float" => PayloadFieldSchema::Float,
         "bool" => PayloadFieldSchema::Boolean,
         "datetime" => PayloadFieldSchema::Datetime,
         "text" => PayloadFieldSchema::Text,
-        _ => PayloadFieldSchema::Keyword,
-    }
+        _ => return None,
+    })
 }
 
 fn parse_distance(value: &str) -> Option<VectorDistance> {

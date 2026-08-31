@@ -251,6 +251,32 @@
       "type": "integer"
     },
     {
+      "default": 67108864,
+      "description": "Maximum aggregate source-document bytes admitted to concurrent preparation.",
+      "env_key": "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+      "key": "providers.embedding.prep_max_in_flight_bytes",
+      "owner_crate": "axon-services",
+      "removed": false,
+      "replacement": null,
+      "restart_required": true,
+      "secret": false,
+      "section": "providers",
+      "type": "integer"
+    },
+    {
+      "default": 1500,
+      "description": "Maximum delay used to pool prepared chunks before an embedding request.",
+      "env_key": "AXON_EMBED_SCHEDULER_FLUSH_MS",
+      "key": "providers.embedding.scheduler_flush_ms",
+      "owner_crate": "axon-services",
+      "removed": false,
+      "replacement": null,
+      "restart_required": true,
+      "secret": false,
+      "section": "providers",
+      "type": "integer"
+    },
+    {
       "default": true,
       "description": "Overlap the next embedding request with the current vector upsert.",
       "env_key": "AXON_VECTOR_UPSERT_EMBED_OVERLAP",
@@ -791,7 +817,7 @@
         "path": "docs/pipeline-unification/schemas/config-schema.md"
       },
       {
-        "checksum": "sha256:249610d626221b36d23cafd7cd737799cc550279bf14ea745e2fa1446d6b6cdd",
+        "checksum": "sha256:081883440d2a40e18e5951bb0772ac5b5784d49b9e00c317fc9ac885555ae493",
         "kind": "rust_module",
         "path": "xtask/src/schemas/config_schema_registry.rs"
       }

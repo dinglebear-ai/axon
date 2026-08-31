@@ -470,6 +470,22 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+        MoveToml,
+        NotRuntime,
+        Some("providers.embedding.prep-max-in-flight-bytes"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_EMBED_SCHEDULER_FLUSH_MS",
+        MoveToml,
+        NotRuntime,
+        Some("providers.embedding.scheduler-flush-ms"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_EMBED_MAX_CHUNKS_PER_DOC",
         MoveToml,
         NotRuntime,

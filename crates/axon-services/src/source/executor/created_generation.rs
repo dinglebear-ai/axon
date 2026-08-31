@@ -50,7 +50,13 @@ pub(super) async fn run_created_generation(
     previous: Option<SourceSummary>,
     coordinator: &ProgressCoordinator,
 ) -> anyhow::Result<IndexCounts> {
-    let collection = collection_spec(input.collection, runtime.embedding_dimensions);
+    // Materialization/discovery has already completed before this executor is
+    // entered. Join the cold identity probe at the first vector-plane boundary:
+    // collection creation and every subsequent embed/upsert therefore use a
+    // provider-verified dimensionality without serializing acquisition behind
+    // TEI identity discovery.
+    let verified_embedding = runtime.verified_embedding_plane().await?;
+    let collection = collection_spec(input.collection, verified_embedding.identity.dimensions);
     let mut artifact_cleanup = ArtifactCleanupGuard::new(
         runtime,
         generation.source_id.clone(),

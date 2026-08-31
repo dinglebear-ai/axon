@@ -38,11 +38,33 @@ fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
 #[test]
 fn crawl_log_urls_drop_userinfo_and_redact_query_values() {
     let sanitized = sanitized_url_for_log(
-        "https://user:password@example.com/private?token=secret&signature=also-secret",
+        "https://user:password@example.com/private?token=secret&signature=also-secret#reset-secret",
     );
     assert_eq!(sanitized, "https://example.com/private?redacted");
     assert!(!sanitized.contains("password"));
     assert!(!sanitized.contains("secret"));
+    assert!(!sanitized.contains('#'));
+}
+
+#[test]
+fn persisted_crawl_reporting_serialization_drops_all_url_credentials() {
+    let raw = "https://user:password@example.com/private?token=secret#reset-secret";
+    let safe = sanitized_url_for_log(raw);
+    let payload = serde_json::to_string(&serde_json::json!({
+        "diagnostic": CrawlDiagnostic::new("fetch", "failure", "failed")
+            .with_url(safe.clone()),
+        "event": PageEvent { t: 1, url: safe.clone(), status: 500, links: None },
+        "waf_blocked_urls": [safe],
+    }))
+    .expect("serialize reporting payload");
+
+    assert!(
+        payload.contains("example.com/private?redacted"),
+        "{payload}"
+    );
+    for secret in ["user", "password", "token", "secret", "reset"] {
+        assert!(!payload.contains(secret), "leaked {secret} in {payload}");
+    }
 }
 
 #[tokio::test]

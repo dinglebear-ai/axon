@@ -24,15 +24,7 @@ use super::{
 use axon_core::logging::log_warn;
 
 pub(super) fn sanitized_url_for_log(raw: &str) -> String {
-    let Ok(mut url) = url::Url::parse(raw) else {
-        return "<invalid-url>".to_string();
-    };
-    let _ = url.set_username("");
-    let _ = url.set_password(None);
-    if url.query().is_some() {
-        url.set_query(Some("redacted"));
-    }
-    url.to_string()
+    super::url_utils::sanitize_url_for_reporting(raw)
 }
 
 /// Extract the host of a URL for the rate-limit banner; empty string on parse failure.
@@ -138,7 +130,7 @@ async fn apply_page_outcome(
                     "challenge_detected",
                     format!("challenge from {vendor}"),
                 )
-                .with_url(url.to_string()),
+                .with_url(sanitized_url_for_log(url)),
             );
             return Ok(true);
         }
@@ -321,7 +313,7 @@ async fn process_received_page(
     let status = page.status_code.as_u16();
     summary.push_event(PageEvent {
         t: crawl_started.elapsed().as_millis() as u64,
-        url: url.clone(),
+        url: sanitized_url_for_log(&url),
         status,
         links: link_count,
     });
@@ -334,7 +326,7 @@ async fn process_received_page(
         }
         axon_core::logging::log_info(&format!(
             "skip: {} (HTTP {})",
-            url,
+            sanitized_url_for_log(&url),
             page.status_code.as_u16()
         ));
         summary.error_pages += 1;
@@ -344,7 +336,7 @@ async fn process_received_page(
                 "http_status",
                 format!("skipped page with HTTP {}", page.status_code.as_u16()),
             )
-            .with_url(url.clone())
+            .with_url(sanitized_url_for_log(&url))
             .with_http_status(page.status_code.as_u16()),
         );
         emit_progress(col, summary, last_progress).await;

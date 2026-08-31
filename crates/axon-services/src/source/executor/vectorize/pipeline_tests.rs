@@ -6,7 +6,8 @@ use axon_jobs::boundary::JobStore as _;
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorStore, VectorStore};
 use std::sync::Arc;
-use tokio::sync::{Mutex, oneshot};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use tokio::sync::{Mutex, Notify, oneshot};
 
 fn vector_write(points: u64) -> VectorStoreWriteResult {
     VectorStoreWriteResult {
@@ -81,6 +82,70 @@ struct ControlledEmbeddingProvider {
     started: Mutex<Option<oneshot::Sender<()>>>,
     release: Mutex<Option<oneshot::Receiver<()>>>,
     fail: bool,
+}
+
+struct BarrierEmbeddingProvider {
+    inner: FakeEmbeddingProvider,
+    started: AtomicUsize,
+    released: AtomicBool,
+    changed: Notify,
+}
+
+impl BarrierEmbeddingProvider {
+    fn new() -> Self {
+        Self {
+            inner: FakeEmbeddingProvider::new("barrier-embedding", 3),
+            started: AtomicUsize::new(0),
+            released: AtomicBool::new(false),
+            changed: Notify::new(),
+        }
+    }
+
+    fn release(&self) {
+        self.released.store(true, Ordering::Release);
+        self.changed.notify_waiters();
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for BarrierEmbeddingProvider {
+    async fn embed(
+        &self,
+        batch: EmbeddingBatch,
+    ) -> axon_embedding::provider::Result<EmbeddingResult> {
+        self.started.fetch_add(1, Ordering::AcqRel);
+        self.changed.notify_waiters();
+        while !self.released.load(Ordering::Acquire) {
+            self.changed.notified().await;
+        }
+        let vectors = batch.items.len();
+        Ok(EmbeddingResult {
+            batch_id: batch.batch_id,
+            job_id: batch.job_id,
+            provider_id: ProviderId::new("fake-embedding"),
+            model: batch.model,
+            dimensions: 3,
+            vectors: batch
+                .items
+                .into_iter()
+                .map(|item| EmbeddingVector {
+                    chunk_id: item.chunk_id,
+                    values: vec![0.1, 0.2, 0.3],
+                })
+                .collect(),
+            usage: ProviderUsage {
+                input_tokens: None,
+                output_tokens: None,
+                requests: vectors as u64,
+                duration_ms: 0,
+            },
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> axon_embedding::provider::Result<ProviderCapability> {
+        self.inner.capabilities().await
+    }
 }
 
 impl ControlledEmbeddingProvider {
@@ -743,13 +808,14 @@ async fn prepared_pool_checkpoints_successful_upsert_before_next_embedding_failu
     };
 
     let error = vectorizer
-        .push(
+        .push_many(
             &runtime,
             &input,
             collection.clone(),
             &emitter,
             &coordinator,
-            vec![next_document],
+            vec![vec![next_document]],
+            false,
             &mut progress,
             &tokio_util::sync::CancellationToken::new(),
         )
@@ -764,6 +830,115 @@ async fn prepared_pool_checkpoints_successful_upsert_before_next_embedding_failu
         .expect("successful current upsert must be checkpointed");
     assert_eq!(status.status, DocumentLifecycleStatus::Vectorized);
     assert_eq!(status.vector_point_count, 2);
+}
+
+#[tokio::test]
+async fn four_outer_pools_keep_provider_busy_and_publish_in_sequence() {
+    let embedding = Arc::new(BarrierEmbeddingProvider::new());
+    let vectors = Arc::new(ControlledVectorStore::new(None, None, false));
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let collection = axon_vectors::testing::test_collection_spec_hybrid(3);
+    vectors
+        .ensure_collection(collection.clone())
+        .await
+        .expect("test collection");
+    let runtime = TargetLocalSourceRuntime::new(
+        Arc::new(axon_jobs::boundary::FakeJobWatchStore::new()),
+        ledger.clone(),
+        embedding.clone(),
+        vectors,
+        ProviderId::new("fake-embedding"),
+        "text-embedding-test",
+        3,
+    );
+    let route = crate::source::routing::resolve_source_route(&SourceRequest::new(
+        "https://example.com/four-pools".to_string(),
+    ))
+    .expect("web route")
+    .route;
+    let plan = crate::source::dispatch::family_source_plan(
+        &route.source.canonical_uri,
+        &route,
+        true,
+        None,
+        None,
+    );
+    let execution =
+        crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
+    let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
+    let input = SourcePipelineInput {
+        adapter: &adapter,
+        plan,
+        collection: &collection.collection,
+        owner_id: "four-pool-test",
+        auth_snapshot: None,
+        execution: &execution,
+    };
+    let mut source = crate::source::executor::metadata::source_summary(
+        &input,
+        LifecycleStatus::Running,
+        crate::source::executor::helpers::empty_source_counts(),
+        None,
+    );
+    source.source_id = SourceId::new("src-web");
+    ledger.upsert_source(source).await.expect("source summary");
+    let emitter = SourceEventEmitter::new(None, Some(input.plan.job_id));
+    let coordinator = ProgressCoordinator::test_noop();
+    let mut progress = PipelineProgress::default();
+    let mut vectorizer = super::super::PreparedPoolVectorizer::default();
+    let pools = (0..4)
+        .map(|index| {
+            let mut document = axon_vectors::testing::test_prepared_document();
+            document.document_id = DocumentId::new(format!("doc-{index}"));
+            document.source_item_key = SourceItemKey::new(format!("item-{index}"));
+            document.metadata.remove("embedding_batch_id");
+            for (chunk_index, chunk) in document.chunks.iter_mut().enumerate() {
+                chunk.document_id = document.document_id.clone();
+                chunk.chunk_id = ChunkId::new(format!("chunk-{index}-{chunk_index}"));
+            }
+            vec![document]
+        })
+        .collect::<Vec<_>>();
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let run = vectorizer.push_many(
+        &runtime,
+        &input,
+        collection.clone(),
+        &emitter,
+        &coordinator,
+        pools,
+        true,
+        &mut progress,
+        &cancel,
+    );
+    tokio::pin!(run);
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            tokio::select! {
+                result = &mut run => panic!("provider group completed before release: {result:?}"),
+                _ = embedding.changed.notified() => {}
+            }
+            if embedding.started.load(Ordering::Acquire) == 3 {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("three later pools must start before the first pool drains");
+    embedding.release();
+    let outcomes = run.await.expect("four-pool vectorization");
+    assert_eq!(embedding.started.load(Ordering::Acquire), 4);
+    assert_eq!(outcomes.len(), 4);
+    assert!(matches!(
+        outcomes[0],
+        super::super::PushOutcome::NoPublication
+    ));
+    assert!(
+        outcomes[1..]
+            .iter()
+            .all(|outcome| matches!(outcome, super::super::PushOutcome::Published(_)))
+    );
 }
 
 #[tokio::test]

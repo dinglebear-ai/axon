@@ -1,4 +1,9 @@
 use std::sync::Arc;
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+    thread,
+};
 
 use super::*;
 use crate::qdrant::configure_parallelism;
@@ -25,6 +30,117 @@ fn collection_spec(name: &str) -> CollectionSpec {
         distance: Some(VectorDistance::Cosine),
         metadata: MetadataMap::new(),
     }
+}
+
+fn sequential_response_server(responses: Vec<(u16, String)>) -> (String, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind sequential test server");
+    let address = listener.local_addr().expect("test server address");
+    let server = thread::spawn(move || {
+        for (status, body) in responses {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            let mut request = [0_u8; 8192];
+            let _ = stream.read(&mut request).expect("read test request");
+            let reason = match status {
+                200 => "OK",
+                404 => "Not Found",
+                409 => "Conflict",
+                _ => "Test",
+            };
+            write!(
+                stream,
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .expect("write test response");
+        }
+    });
+    (format!("http://{address}"), server)
+}
+
+#[tokio::test]
+async fn collection_create_conflict_refetches_and_rejects_incompatible_race_winner() {
+    let incompatible = serde_json::json!({
+        "result": { "config": { "params": {
+            "vectors": { "dense": { "size": 384, "distance": "Cosine" } },
+            "sparse_vectors": { "bm42": { "modifier": "idf" } }
+        } } }
+    })
+    .to_string();
+    let (base_url, server) = sequential_response_server(vec![
+        (404, String::new()),
+        (409, String::new()),
+        (200, incompatible),
+    ]);
+    let store = QdrantVectorStore::new(base_url, "qdrant-test");
+
+    let error = store
+        .ensure_collection_inner(collection_spec("axon-race"))
+        .await
+        .expect_err("an incompatible concurrent collection create must fail closed");
+
+    assert_eq!(error.code.to_string(), "vector.collection_drift");
+    server.join().expect("sequential test server");
+}
+
+#[tokio::test]
+async fn optional_payload_index_conflict_rejects_incompatible_schema() {
+    let actual = serde_json::json!({
+        "result": {
+            "config": { "params": {
+                "vectors": { "dense": { "size": 1024, "distance": "Cosine" } },
+                "sparse_vectors": { "bm42": { "modifier": "idf" } }
+            } },
+            "payload_schema": { "optional_tag": { "data_type": "integer" } }
+        }
+    })
+    .to_string();
+    let (base_url, server) = sequential_response_server(vec![(409, String::new()), (200, actual)]);
+    let store = QdrantVectorStore::new(base_url, "qdrant-test");
+    let http = store.http().expect("qdrant HTTP wrapper");
+    let mut spec = collection_spec("axon-index-race");
+    spec.payload_indexes = vec![PayloadIndexSpec {
+        field_name: "optional_tag".to_string(),
+        field_schema: PayloadFieldSchema::Keyword,
+        required_for_filters: false,
+    }];
+
+    let error = store
+        .ensure_payload_indexes(&http, &spec, ErrorStage::Upserting)
+        .await
+        .expect_err("optional index conflict must verify its schema");
+
+    assert_eq!(error.code.to_string(), "vector.collection_drift");
+    server.join().expect("sequential test server");
+}
+
+#[tokio::test]
+async fn optional_payload_index_conflict_accepts_matching_schema() {
+    let actual = serde_json::json!({
+        "result": {
+            "config": { "params": {
+                "vectors": { "dense": { "size": 1024, "distance": "Cosine" } },
+                "sparse_vectors": { "bm42": { "modifier": "idf" } }
+            } },
+            "payload_schema": { "optional_tag": { "data_type": "keyword" } }
+        }
+    })
+    .to_string();
+    let (base_url, server) = sequential_response_server(vec![(409, String::new()), (200, actual)]);
+    let store = QdrantVectorStore::new(base_url, "qdrant-test");
+    let http = store.http().expect("qdrant HTTP wrapper");
+    let mut spec = collection_spec("axon-index-race");
+    spec.payload_indexes = vec![PayloadIndexSpec {
+        field_name: "optional_tag".to_string(),
+        field_schema: PayloadFieldSchema::Keyword,
+        required_for_filters: false,
+    }];
+
+    store
+        .ensure_payload_indexes(&http, &spec, ErrorStage::Upserting)
+        .await
+        .expect("matching optional index conflict is idempotent");
+
+    server.join().expect("sequential test server");
 }
 
 #[test]
@@ -143,7 +259,9 @@ fn detect_named_mode_collection_with_sparse_and_indexes() {
             }
         }
     });
-    let spec = detect_collection_spec("axon", &body).expect("named spec");
+    let spec = detect_collection_spec("axon", &body, ErrorStage::Upserting)
+        .expect("valid schema")
+        .expect("named spec");
     assert_eq!(spec.dense.name, "dense");
     assert_eq!(spec.dense.dimensions, 1024);
     assert_eq!(spec.dense.distance, VectorDistance::Cosine);
@@ -171,7 +289,9 @@ fn detect_unnamed_mode_collection_uses_default_dense_name() {
             "vectors": { "size": 384, "distance": "Dot" }
         } } }
     });
-    let spec = detect_collection_spec("legacy", &body).expect("unnamed spec");
+    let spec = detect_collection_spec("legacy", &body, ErrorStage::Upserting)
+        .expect("valid schema")
+        .expect("unnamed spec");
     assert_eq!(spec.dense.name, "dense");
     assert_eq!(spec.dense.dimensions, 384);
     assert_eq!(spec.dense.distance, VectorDistance::Dot);
@@ -181,7 +301,32 @@ fn detect_unnamed_mode_collection_uses_default_dense_name() {
 #[test]
 fn detect_returns_none_for_error_envelope() {
     let body = json!({ "status": { "error": "boom" } });
-    assert!(detect_collection_spec("axon", &body).is_none());
+    assert!(
+        detect_collection_spec("axon", &body, ErrorStage::Upserting)
+            .expect("error envelope is absence")
+            .is_none()
+    );
+}
+
+#[test]
+fn detect_collection_schema_fails_closed_on_unknown_or_missing_values() {
+    let cases = [
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":1024}}}}}}),
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":1024,"distance":"Angular"}}}}}}),
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":u64::from(u32::MAX) + 1,"distance":"Cosine"}}}}}}),
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":1024,"distance":"Cosine"}},"sparse_vectors":{"bm42":{}}}}}}),
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":1024,"distance":"Cosine"}},"sparse_vectors":{"bm42":{"modifier":"bm25"}}}}}}),
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":1024,"distance":"Cosine"}}}},"payload_schema":{"tag":{}}}}),
+        json!({"result":{"config":{"params":{"vectors":{"dense":{"size":1024,"distance":"Cosine"}}}},"payload_schema":{"tag":{"data_type":"uuid"}}}}),
+    ];
+    for body in cases {
+        let error = detect_collection_spec("axon", &body, ErrorStage::Upserting)
+            .expect_err("unknown or missing schema values must fail closed");
+        assert_eq!(
+            error.code.to_string(),
+            "vector.collection_schema_unrecognized"
+        );
+    }
 }
 
 #[test]

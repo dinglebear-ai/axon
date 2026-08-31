@@ -9,12 +9,13 @@ use axon_api::source::{JobId, JobPriority, ProviderKind, StageId};
 use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_MIN: Duration = Duration::from_millis(20);
 const POLL_MAX: Duration = Duration::from_millis(250);
 const AGING_QUANTUM_SECS: i64 = 30;
@@ -36,6 +37,11 @@ const RENEW_INTERVAL: Duration = Duration::from_secs(20);
 #[cfg(test)]
 const RENEW_INTERVAL: Duration = Duration::from_millis(20);
 
+fn queue_wait_timeout(priority: JobPriority) -> Option<Duration> {
+    (!matches!(priority, JobPriority::Background | JobPriority::Maintenance))
+        .then_some(FOREGROUND_WAIT_TIMEOUT)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderCapacityDomain {
     pub kind: ProviderKind,
@@ -45,10 +51,44 @@ pub struct ProviderCapacityDomain {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchedulerConfig {
-    pub capacity: u32,
-    pub interactive_reserve: u32,
-    pub max_entries: u32,
-    pub max_units: u32,
+    capacity: u32,
+    interactive_reserve: u32,
+    max_entries: u32,
+    max_units: u32,
+}
+
+impl SchedulerConfig {
+    pub fn new(
+        capacity: u32,
+        interactive_reserve: u32,
+        max_entries: u32,
+        max_units: u32,
+    ) -> Result<Self, SchedulerError> {
+        if capacity == 0 {
+            return Err(SchedulerError::InvalidConfig("capacity must be positive"));
+        }
+        if interactive_reserve > capacity {
+            return Err(SchedulerError::InvalidConfig(
+                "interactive reserve cannot exceed capacity",
+            ));
+        }
+        if max_entries == 0 {
+            return Err(SchedulerError::InvalidConfig(
+                "maximum queue entries must be positive",
+            ));
+        }
+        if max_units < capacity {
+            return Err(SchedulerError::InvalidConfig(
+                "maximum queued units cannot be lower than capacity",
+            ));
+        }
+        Ok(Self {
+            capacity,
+            interactive_reserve,
+            max_entries,
+            max_units,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -62,10 +102,35 @@ pub struct ReservationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReservationGrant {
-    pub reservation_id: String,
-    pub granted: bool,
-    pub units: u32,
+pub enum ReservationGrant {
+    Queued {
+        reservation_id: String,
+    },
+    Granted {
+        reservation_id: String,
+        units: NonZeroU32,
+    },
+}
+
+impl ReservationGrant {
+    pub fn reservation_id(&self) -> &str {
+        match self {
+            Self::Queued { reservation_id } | Self::Granted { reservation_id, .. } => {
+                reservation_id
+            }
+        }
+    }
+
+    pub fn is_granted(&self) -> bool {
+        matches!(self, Self::Granted { .. })
+    }
+
+    pub fn units(&self) -> u32 {
+        match self {
+            Self::Queued { .. } => 0,
+            Self::Granted { units, .. } => units.get(),
+        }
+    }
 }
 
 mod grant;
@@ -79,8 +144,12 @@ pub use reconcile::Reconciliation;
 pub enum SchedulerError {
     #[error("scheduler database error: {0}")]
     Database(#[from] SqlxError),
+    #[error("scheduler database state is inconsistent: {0}")]
+    DatabaseState(&'static str),
     #[error("provider request exceeds declared capacity")]
     RequestTooLarge,
+    #[error("invalid scheduler configuration: {0}")]
+    InvalidConfig(&'static str),
     #[error("scheduler queue limit reached")]
     QueueFull,
     #[error("scheduler lease fence rejected")]
@@ -89,6 +158,30 @@ pub enum SchedulerError {
     Queued,
     #[error("scheduler reservation wait deadline expired")]
     WaitTimeout,
+    #[error("scheduler operation failed ({operation}); rollback also failed ({rollback})")]
+    RollbackFailed { operation: String, rollback: String },
+}
+
+async fn rollback_after_error(
+    connection: &mut PoolConnection<Sqlite>,
+    operation_error: SchedulerError,
+) -> SchedulerError {
+    match sqlx::query("ROLLBACK").execute(&mut **connection).await {
+        Ok(_) => operation_error,
+        Err(rollback_error) => {
+            // The transaction state is uncertain. Never return this connection
+            // to the pool, even though the pool's release hook is a second net.
+            connection.close_on_drop();
+            tracing::error!(
+                error_code = "provider_scheduler_rollback_failed",
+                "provider scheduler rollback failed; evicting connection"
+            );
+            SchedulerError::RollbackFailed {
+                operation: operation_error.to_string(),
+                rollback: rollback_error.to_string(),
+            }
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -151,13 +244,6 @@ impl ProviderScheduler {
         config: SchedulerConfig,
         write_gate: SqliteWriteGate,
     ) -> Result<Self, SchedulerError> {
-        if config.capacity == 0
-            || config.interactive_reserve > config.capacity
-            || config.max_entries == 0
-            || config.max_units < config.capacity
-        {
-            return Err(SchedulerError::RequestTooLarge);
-        }
         Ok(Self {
             pool,
             domain,
@@ -185,10 +271,7 @@ impl ProviderScheduler {
                 sqlx::query("COMMIT").execute(&mut *connection).await?;
                 Ok(grant)
             }
-            Err(error) => {
-                let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
-                Err(error)
-            }
+            Err(error) => Err(rollback_after_error(&mut connection, error).await),
         }
     }
 
@@ -197,13 +280,20 @@ impl ProviderScheduler {
         request: ReservationRequest,
     ) -> Result<ReservationGrant, SchedulerError> {
         let fence = request.fence.clone();
+        // Durable worker work may legitimately queue behind a provider call
+        // whose timeout plus retries exceeds 30 seconds. Its continuously
+        // renewed queue row is the liveness boundary; foreground requests keep
+        // the bounded UX deadline.
+        let wait_timeout = queue_wait_timeout(request.priority);
         let grant = self.reserve(request).await?;
-        if grant.granted {
+        if grant.is_granted() {
             return Ok(grant);
         }
         let mut guard =
-            WaitingReservationGuard::new(self.clone(), grant.reservation_id.clone(), fence);
-        let result = self.wait_for_grant(grant.reservation_id).await;
+            WaitingReservationGuard::new(self.clone(), grant.reservation_id().to_string(), fence);
+        let result = self
+            .wait_for_grant(grant.reservation_id().to_string(), wait_timeout)
+            .await;
         if matches!(
             &result,
             Ok(_) | Err(SchedulerError::WaitTimeout | SchedulerError::StaleFence)
@@ -216,15 +306,16 @@ impl ProviderScheduler {
     async fn wait_for_grant(
         &self,
         reservation_id: String,
+        wait_timeout: Option<Duration>,
     ) -> Result<ReservationGrant, SchedulerError> {
         let started = Instant::now();
         let mut poll = 0_u32;
         loop {
             let grant = self.try_grant_existing(&reservation_id).await?;
-            if grant.granted {
+            if grant.is_granted() {
                 return Ok(grant);
             }
-            if started.elapsed() >= WAIT_TIMEOUT {
+            if wait_timeout.is_some_and(|timeout| started.elapsed() >= timeout) {
                 let _write_permit = self.write_gate.lock().await;
                 let changed = sqlx::query(
                     "UPDATE provider_reservations SET status = 'expired', granted_units = 0,

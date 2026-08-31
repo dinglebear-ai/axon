@@ -1,5 +1,15 @@
 use axon_api::source::PreparedDocument;
 
+/// Admission weight for prepared documents. Even a document that produces no
+/// chunks still owns lifecycle state and must retain capacity until that state
+/// is durably checkpointed.
+pub(in crate::source::executor) fn charged_chunk_count(documents: &[PreparedDocument]) -> usize {
+    documents
+        .iter()
+        .map(|document| document.chunks.len().max(1))
+        .sum()
+}
+
 pub(in crate::source::executor) fn chunk_batches(
     documents: Vec<PreparedDocument>,
     max_chunks: usize,
@@ -12,7 +22,7 @@ pub(in crate::source::executor) fn chunk_batches(
         .into_iter()
         .flat_map(|document| split_oversized_document(document, max_chunks))
     {
-        let count = document.chunks.len().max(1);
+        let count = charged_chunk_count(std::slice::from_ref(&document));
         if !current.is_empty() && chunks + count > max_chunks {
             batches.push(std::mem::take(&mut current));
             chunks = 0;
