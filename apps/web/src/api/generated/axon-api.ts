@@ -1484,6 +1484,12 @@ export type components = {
             "items_total"?: number | null;
         };
         "StageId": string;
+        "StoredPrunePlan": {
+            "expires_at_utc": string;
+            "inventory_checksum": string;
+            "plan": components['schemas']['PrunePlan'];
+            "reason": string;
+        };
         "StreamEvent": {
             "data"?: unknown;
             "error"?: null | components['schemas']['ApiError'];
@@ -1758,11 +1764,13 @@ export type paths = {
     "/v1/providers/{provider}": { get: operations["get_provider"] };
     "/v1/prune/exec": { post: operations["prune_exec"] };
     "/v1/prune/plan": { post: operations["prune_plan"] };
+    "/v1/prune/plans/{plan_id}": { get: operations["prune_get_plan"] };
     "/v1/query": { post: operations["query"] };
     "/v1/research": { post: operations["research"] };
     "/v1/research/stream": { post: operations["research_stream"] };
     "/v1/reset/exec": { post: operations["execute_reset"] };
     "/v1/reset/plan": { post: operations["plan_reset"] };
+    "/v1/reset/plans/{plan_id}": { get: operations["reset_get_plan"] };
     "/v1/resolve": { post: operations["resolve_source"] };
     "/v1/retrieve": { post: operations["retrieve"] };
     "/v1/scrape": { post: operations["scrapeSources"] };
@@ -1865,11 +1873,13 @@ export type operations = {
     "get_provider": { method: "get"; path: "/v1/providers/{provider}"; operationId: "get_provider"; parameters: { query: Record<string, never>; path: { "provider": string } }; requestBody: never; responses: { "200": components['schemas']['ProviderSummary']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "prune_exec": { method: "post"; path: "/v1/prune/exec"; operationId: "prune_exec"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PruneExecRequest']; responses: { "200": components['schemas']['PruneResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "prune_plan": { method: "post"; path: "/v1/prune/plan"; operationId: "prune_plan"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PrunePlanRequest']; responses: { "200": components['schemas']['PrunePlan']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "prune_get_plan": { method: "get"; path: "/v1/prune/plans/{plan_id}"; operationId: "prune_get_plan"; parameters: { query: Record<string, never>; path: { "plan_id": string } }; requestBody: never; responses: { "200": components['schemas']['StoredPrunePlan']; "404": components['schemas']['ErrorBody'] }; security: never };
     "query": { method: "post"; path: "/v1/query"; operationId: "query"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestQueryRequest']; responses: { "200": components['schemas']['SuccessEnvelope_QueryResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research": { method: "post"; path: "/v1/research"; operationId: "research"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "504": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research_stream": { method: "post"; path: "/v1/research/stream"; operationId: "research_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "execute_reset": { method: "post"; path: "/v1/reset/exec"; operationId: "execute_reset"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['ResetExecRequest']; responses: { "200": components['schemas']['ResetResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "plan_reset": { method: "post"; path: "/v1/reset/plan"; operationId: "plan_reset"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['ResetPlanRequest']; responses: { "200": components['schemas']['ResetPlan']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "reset_get_plan": { method: "get"; path: "/v1/reset/plans/{plan_id}"; operationId: "reset_get_plan"; parameters: { query: Record<string, never>; path: { "plan_id": string } }; requestBody: never; responses: { "200": components['schemas']['ResetResult']; "404": components['schemas']['ErrorBody'] }; security: never };
     "resolve_source": { method: "post"; path: "/v1/resolve"; operationId: "resolve_source"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['SourceRequest']; responses: { "200": components['schemas']['RoutePlan']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "422": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "retrieve": { method: "post"; path: "/v1/retrieve"; operationId: "retrieve"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestRetrieveRequest']; responses: { "200": components['schemas']['SuccessEnvelope_RetrieveResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "scrapeSources": { method: "post"; path: "/v1/scrape"; operationId: "scrapeSources"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['ScrapeRequest']; responses: { "200": components['schemas']['BatchResult_SourceResult']; "202": components['schemas']['BatchResult_SourceResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": components['schemas']['ErrorBody']; "413": components['schemas']['ErrorBody']; "429": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

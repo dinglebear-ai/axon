@@ -319,7 +319,11 @@ def main() -> int:
     args = parser.parse_args()
     if not args.binary.is_file():
         raise SystemExit(f"tested Axon binary not found: {args.binary}")
-    output = args.output or Path(tempfile.mkdtemp(prefix="axon-e2e-upgrade-"))
+    # ``run`` owns creation of the output directory so it can fail closed when
+    # a caller accidentally points it at pre-existing state.  The implicit
+    # path must therefore be a fresh child of a temporary parent, not the
+    # already-created directory returned by ``mkdtemp``.
+    output = args.output or (Path(tempfile.mkdtemp(prefix="axon-e2e-upgrade-")) / "run")
     print(json.dumps(run(args.binary.resolve(), output.resolve(), failure_at=args.failure_at,
                          hold_seconds=args.test_hold_seconds, run_root_record=args.run_root_record,
                          manifest_root=args.manifest_root), sort_keys=True))

@@ -18,7 +18,9 @@ class CiOuterCleanupContractTests(unittest.TestCase):
                 self.assertIn("if: always()", text)
                 self.assertIn("scripts/e2e/cleanup-owned-runs.py", text)
                 self.assertIn("AXON_E2E_CLEANUP_REGISTRY", text)
-                self.assertIn("runner.tool_cache", text)
+                # The registry is configured at runtime because GitHub does
+                # not allow the ``runner`` context in job-level ``env``.
+                self.assertIn("RUNNER_TOOL_CACHE", text)
 
     def test_persistent_and_live_lanes_recover_stale_runs_before_mutation(self):
         for name in ("e2e-live.yml", "e2e-performance.yml"):

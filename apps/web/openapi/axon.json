@@ -6231,6 +6231,47 @@
         ]
       }
     },
+    "/v1/prune/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "prune_get_plan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "description": "Persisted prune plan id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact persisted prune plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredPrunePlan"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/query": {
       "post": {
         "tags": [
@@ -6622,6 +6663,47 @@
             ]
           }
         ]
+      }
+    },
+    "/v1/reset/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "reset_get_plan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "description": "Persisted reset plan id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact persisted reset plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/resolve": {
@@ -17288,6 +17370,31 @@
       "StageId": {
         "type": "string",
         "format": "uuid"
+      },
+      "StoredPrunePlan": {
+        "type": "object",
+        "description": "Durable, execution-bound prune plan as persisted by the service layer.\n\nTransports expose this record so an operator can re-fetch the exact plan,\nchecksum, and expiry immediately before destructive execution.",
+        "required": [
+          "plan",
+          "reason",
+          "inventory_checksum",
+          "expires_at_utc"
+        ],
+        "properties": {
+          "expires_at_utc": {
+            "type": "string"
+          },
+          "inventory_checksum": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PrunePlan"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "StreamEvent": {
         "type": "object",

@@ -111,6 +111,16 @@ class UpgradeFixtureTests(unittest.TestCase):
             self.assertFalse(owned.exists())
             self.assertFalse(any(output.rglob("*.db*")))
 
+    def test_default_output_is_fresh_for_runner_owned_creation(self):
+        result = subprocess.run(
+            [sys.executable, str(RUNNER), "--binary", sys.executable,
+             "--failure-at", "after_setup"],
+            cwd=ROOT, capture_output=True, text=True, timeout=15,
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("injected failure after setup", result.stderr)
+        self.assertNotIn("FileExistsError", result.stderr)
+
     @unittest.skipIf(os.name == "nt", "POSIX signal contract")
     def test_sigterm_tears_down_owned_upgrade_state(self):
         with tempfile.TemporaryDirectory() as directory:
