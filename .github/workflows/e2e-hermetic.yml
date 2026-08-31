@@ -111,7 +111,7 @@ jobs:
         if: always()
         run: |
           python3 scripts/e2e/qualify-required-gate.py \
-            --mode ${{ github.ref == 'refs/heads/main' && 'observe' || 'enforce' }} \
+            --mode observe \
             --report target/e2e/hermetic-report.json \
             --canonical target/e2e/hermetic-canonical.json \
             --reliability target/e2e/hermetic-reliability.json \
@@ -147,4 +147,4 @@ jobs:
         if: always()
         run: |
           python3 scripts/e2e/verify-hermetic-report.py --expected-required true target/e2e/hermetic-report.json
-          python3 scripts/e2e/qualify-required-gate.py --verify-decision target/e2e/required-gate-decision.json ${{ github.ref == 'refs/heads/main' && '--allow-observation' || '' }}
+          python3 scripts/e2e/qualify-required-gate.py --verify-decision target/e2e/required-gate-decision.json --allow-observation

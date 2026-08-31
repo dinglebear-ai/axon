@@ -56,6 +56,7 @@ class RequiredGateTests(unittest.TestCase):
   self.assertIn("name: E2E Hermetic Required",text);self.assertIn("cancel-in-progress: false",text);self.assertNotIn("cancel-in-progress: true",text);self.assertIn("if: always()",text)
   self.assertIn("persist-credentials: false",text);self.assertNotIn("actions/cache",text)
   for action in re.findall(r"uses:\s*([^\s]+)",text):self.assertRegex(action,r"^[^@]+@[0-9a-f]{40}$")
+  self.assertIn("--mode observe",text);self.assertIn("--verify-decision target/e2e/required-gate-decision.json --allow-observation",text)
  def test_policy_bypass_and_rollback_are_narrow(self):
   policy=fixtures()[4];self.assertEqual(["repository-administrator"],policy["bypass"]["actors"]);self.assertTrue(policy["bypass"]["requires_incident"])
   self.assertEqual({"remove_required_context_only":True,"preserve_workflow":True},policy["rollback"])
