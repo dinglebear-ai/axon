@@ -27,7 +27,9 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
  secret_canary=f"ObserveSecret-{secrets.token_hex(16)}-DO-NOT-LEAK"
  private_path_canary=f"/private/axon-e2e-observe/{secrets.token_hex(16)}"
  source_file=Path(env["AXON_DATA_DIR"])/"observe-canary-source.md"
- source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {secret_canary} {private_path_canary}\n")
+ # The synthetic canary must be stored in an owned temporary input so the test
+ # can prove it is absent from telemetry and sanitized retained evidence.
+ source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {secret_canary} {private_path_canary}\n")  # lgtm[py/clear-text-storage-sensitive-data]
  source_path=str(source_file.resolve())
  source_argv=[str(binary),"source",source_path,"--scope","file","--collection",run_id,"--wait","true","--json"]
  source_process=subprocess.run(source_argv,cwd=ROOT,env=env,capture_output=True,timeout=30,check=False)

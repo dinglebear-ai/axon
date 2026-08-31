@@ -54,7 +54,9 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ inputs.tested_sha }}
+          # Execute only the workflow revision selected by GitHub. The separately
+          # attested tested SHA remains evidence data, never executable input.
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - name: Restore checksum-bound evidence bundle
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0

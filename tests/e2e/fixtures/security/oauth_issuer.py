@@ -16,11 +16,12 @@ class Handler(BaseHTTPRequestHandler):
   if parsed.path!="/authorize":return self.body(404,{"error":"not_found"})
   required=("client_id","redirect_uri","state","code_challenge","code_challenge_method","scope")
   if any(not query.get(key,[""])[0] for key in required):return self.body(400,{"error":"invalid_request"})
-  redirect=query["redirect_uri"][0];scope=query["scope"][0]
+  redirect=query["redirect_uri"][0];scope=query["scope"][0];state=query["state"][0]
+  if any(character in redirect or character in state for character in ("\r","\n")):return self.body(400,{"error":"invalid_request"})
   if redirect not in self.server.redirects:return self.body(400,{"error":"invalid_redirect_uri"})
   if query["code_challenge_method"][0]!="S256" or scope not in {"axon:read","axon:write"}:return self.body(400,{"error":"invalid_request"})
   code=secrets.token_urlsafe(20);self.server.codes[code]={"challenge":query["code_challenge"][0],"scope":scope,"client_id":query["client_id"][0],"redirect":redirect}
-  location=redirect+"?"+urllib.parse.urlencode({"code":code,"state":query["state"][0]})
+  location=redirect+"?"+urllib.parse.urlencode({"code":code,"state":state})
   self.send_response(302);self.send_header("location",location);self.end_headers()
  def do_POST(self):
   if self.path!="/token":return self.body(404,{"error":"not_found"})

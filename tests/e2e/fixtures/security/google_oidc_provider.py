@@ -87,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         redirect = query.get("redirect_uri", [""])[0]
         state = query.get("state", [""])[0]
-        if not redirect.startswith("http://127.0.0.1:") or not state:
+        if not redirect.startswith("http://127.0.0.1:") or not state or "\r" in redirect or "\n" in redirect or "\r" in state or "\n" in state:
             return self.json(400, {"error": "invalid_request"})
         code = f"oidc-{len(self.server.codes) + 1}"
         self.server.codes[code] = query.get("client_id", [""])[0]

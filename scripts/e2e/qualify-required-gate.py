@@ -89,7 +89,7 @@ def main():
  if args.verify_decision:verify(load(args.verify_decision),args.allow_observation);return 0
  require(all((args.report,args.canonical,args.reliability,args.mutations,args.history,args.attestations,args.out)),"qualification inputs are required")
  value=seal(qualify(load(args.report),load(args.canonical),load(args.reliability),load(args.mutations),load(ROOT/"config/e2e/hermetic-required-policy.json"),load(ROOT/"tests/e2e/catalog/catalog.json"),load(ROOT/"config/e2e/quarantine.json"),load(args.history),load(args.attestations),args.report.stat().st_size+args.canonical.stat().st_size+args.reliability.stat().st_size+args.mutations.stat().st_size+args.history.stat().st_size+args.attestations.stat().st_size,args.mode))
- args.out.parent.mkdir(parents=True,exist_ok=True);args.out.write_text(json.dumps(value,indent=2,sort_keys=True)+"\n");print(json.dumps(value,sort_keys=True));return 0
+ args.out.parent.mkdir(parents=True,exist_ok=True);args.out.write_text(json.dumps(value,indent=2,sort_keys=True)+"\n");return 0
 if __name__=="__main__":
  try:raise SystemExit(main())
  except QualificationError as error:print(f"required gate qualification failed: {error}",file=sys.stderr);raise SystemExit(2)

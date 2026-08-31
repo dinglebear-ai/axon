@@ -128,7 +128,9 @@ class CorpusContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.write_allowlist(directory)
             secret = Path(directory) / "secret.txt"
-            secret.write_text("Authorization: Bearer abcdefghijklmnopqrstuvwxyz.123456")
+            # Deliberately credential-shaped inert fixture proving the corpus
+            # validator rejects it; it never leaves this temporary directory.
+            secret.write_text("Authorization: Bearer abcdefghijklmnopqrstuvwxyz.123456")  # lgtm[py/clear-text-storage-sensitive-data]
             unsafe_secret["documents"][0]["path"] = str(secret)
             unsafe_secret["documents"][0]["sha256"] = validator.sha256(secret)
             unsafe_secret["corpus_checksum"] = validator.corpus_checksum(unsafe_secret)

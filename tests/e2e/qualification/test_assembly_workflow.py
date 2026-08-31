@@ -9,6 +9,8 @@ class AssemblyWorkflowTests(unittest.TestCase):
   text=WORKFLOW.read_text()
   self.assertIn('value.get("head_sha") != os.environ["EXPECTED_SHA"]',text)
   self.assertIn('value.get("conclusion") != "success"',text)
+  self.assertIn("ref: ${{ github.workflow_sha }}",text)
+  self.assertNotIn("ref: ${{ inputs.tested_sha }}",text)
   self.assertEqual(4,text.count("actions/download-artifact@"))
   self.assertIn("name: e2e-qualification-input",text)
   self.assertIn("uses: ./.github/workflows/e2e-qualification.yml",text)
