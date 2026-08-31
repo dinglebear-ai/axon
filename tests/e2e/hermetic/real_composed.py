@@ -24,12 +24,12 @@ def retained_descriptor(descriptor):
  return scrub(value)
 def verify_observability(binary,mcporter,descriptor,env,run_id):
  started=time.monotonic_ns();http=source.HttpJobsClient(descriptor["http_base_url"],descriptor["environment"]["AXON_HTTP_TOKEN"],30)
- secret_canary=f"ObserveCanary-{uuid.uuid4().hex}-DO-NOT-LEAK"
+ telemetry_marker=f"ObserveCanary-{uuid.uuid4().hex}-DO-NOT-LEAK"
  private_path_canary=f"/private/axon-e2e-observe/{uuid.uuid4().hex}"
  source_file=Path(env["AXON_DATA_DIR"])/"observe-canary-source.md"
  # The non-secret synthetic canary must be stored in an owned temporary input
  # so the test can prove it is absent from retained telemetry.
- source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {secret_canary} {private_path_canary}\n")
+ source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {telemetry_marker} {private_path_canary}\n")
  source_path=str(source_file.resolve())
  source_argv=[str(binary),"source",source_path,"--scope","file","--collection",run_id,"--wait","true","--json"]
  source_process=subprocess.run(source_argv,cwd=ROOT,env=env,capture_output=True,timeout=30,check=False)
@@ -104,7 +104,7 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
   "raw_channels":{"cli_source_stderr":source_log,"cli_job":cli,"cli_events":cli_events,
                   "http_job":http_value,"http_events":http_events,"http_stats":stats,
                   "mcp_job":mcp_value,"mcp_events":mcp_events,"server_logs":log_text},
-  "protected_canaries":[secret_canary],"private_paths":[private_path_canary]}
+  "protected_canaries":[telemetry_marker],"private_paths":[private_path_canary]}
  runtime=observe.load_runtime(Path(env["AXON_SQLITE_PATH"]),job_id)
  try:outcomes=observe.evaluate(capture,runtime)
  except BaseException as error:setattr(error,"axon_e2e_phase","observe-oracles");raise

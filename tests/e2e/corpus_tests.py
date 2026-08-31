@@ -125,20 +125,20 @@ class CorpusContractTests(unittest.TestCase):
             with self.assertRaisesRegex(validator.CorpusError, "not allowlisted"):
                 validator.validate(temporary)
 
-        unsafe_secret = copy.deepcopy(self.manifest)
+        unsafe_marker = copy.deepcopy(self.manifest)
         with tempfile.TemporaryDirectory() as directory:
             self.write_allowlist(directory)
-            secret = Path(directory) / "secret.txt"
+            marker = Path(directory) / "credential-marker.txt"
             # Deliberately credential-shaped inert fixture proving the corpus
             # validator rejects it; it never leaves this temporary directory.
-            secret.write_text("Authorization: Bearer " + uuid.uuid4().hex)
-            unsafe_secret["documents"][0]["path"] = str(secret)
-            unsafe_secret["documents"][0]["sha256"] = validator.sha256(secret)
-            unsafe_secret["corpus_checksum"] = validator.corpus_checksum(unsafe_secret)
+            marker.write_text("Authorization: Bearer " + uuid.uuid4().hex)
+            unsafe_marker["documents"][0]["path"] = str(marker)
+            unsafe_marker["documents"][0]["sha256"] = validator.sha256(marker)
+            unsafe_marker["corpus_checksum"] = validator.corpus_checksum(unsafe_marker)
             temporary = Path(directory) / "manifest.json"
-            for record in validator.manifest_records(unsafe_secret)[1:]:
+            for record in validator.manifest_records(unsafe_marker)[1:]:
                 record["path"] = str((CORPUS_DIR / record["path"]).resolve())
-            temporary.write_text(json.dumps(unsafe_secret), encoding="utf-8")
+            temporary.write_text(json.dumps(unsafe_marker), encoding="utf-8")
             with self.assertRaisesRegex(validator.CorpusError, "credential-like data"):
                 validator.validate(temporary)
 

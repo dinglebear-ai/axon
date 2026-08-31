@@ -93,7 +93,7 @@ def oauth_flow(base,scope):
  response=json.loads(urllib.request.urlopen(urllib.request.Request(base+"/token",form,{"content-type":"application/x-www-form-urlencoded"}),timeout=2).read())
  segment=response["access_token"].split(".")[1];claims=json.loads(base64.urlsafe_b64decode(segment+"="*(-len(segment)%4)))
  if claims.get("scope")!=scope or claims.get("email_verified") is not True:raise RuntimeError("OAuth claims/scope mismatch")
- return {"scope":scope,"state_verified":True,"pkce_verified":True,"claims":claims}
+ return {"scope":scope,"state_verified":True,"pkce_verified":True}
 
 def axon_oauth_flow(axon_base,scope):
  redirect_uri="http://127.0.0.1:65534/callback"
@@ -354,7 +354,7 @@ def main():
     "POST /v1/reset/plan","POST /v1/reset/exec","POST /v1/uploads","GET /v1/artifacts/{artifact_id}/content"}
   if not required<=routes:raise RuntimeError(f"generated OpenAPI auth routes missing: {required-routes}")
   report={"schema_version":1,"passed":True,"real_http_probes":probes,"nonloopback":nonloop,"mcp_http":mcp,
-          "oauth":oauth,"axon_oauth":[redacted_oauth(item) for item in axon_oauth],"oauth_negative":oauth_negative,"oauth_mcp":oauth_mcp,"oauth_insufficient_scope":insufficient.status,"transformed_canary_auth":transformed_auth,"route_auth":route_auth,"validation":validation,
+          "oauth":oauth,"axon_oauth":[redacted_oauth(item) for item in axon_oauth],"oauth_negative":oauth_negative,"oauth_mcp":{"success":oauth_mcp["success"],"case_count":len(oauth_mcp["cases"])},"oauth_insufficient_scope":insufficient.status,"transformed_canary_auth":transformed_auth,"route_auth":route_auth,"validation":validation,
           "oversized_upload":{"status":oversized.status,"code":oversized_code},"hostile_status":hostile_response.status,
           "artifact_canary":{"upload_id":upload_id,"artifact_id":artifact_id,"sha256":artifact_sha,"bytes":len(artifact_payload)},
           "mcp_stdio_schema":True,"ssrf":ssrf,"ssrf_sentinel":{"before":before,"after":after,"sink_before":sink_before,"sink_after":sink_after},
