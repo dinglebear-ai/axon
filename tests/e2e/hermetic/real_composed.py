@@ -35,17 +35,22 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
  created=execute.parse_output(source_process.stdout);source_log=source_process.stderr.decode(errors="strict")
  job_id=created.get("job_id")
  if not isinstance(job_id,str) or created.get("status") not in {"completed","completed_degraded"}:raise RuntimeError("real source observability fixture did not complete")
- cli,_=execute.invoke(binary,["jobs","get",job_id,"--json"],env,30)
- cli_events,_=execute.invoke(binary,["jobs","events",job_id,"--after-sequence","0","--limit","200","--json"],env,30)
- http_value=http.request("GET",f"/v1/jobs/{job_id}");http_events=http.request("GET",f"/v1/jobs/{job_id}/events")
+ try:
+  cli,_=execute.invoke(binary,["jobs","get",job_id,"--json"],env,30)
+  cli_events,_=execute.invoke(binary,["jobs","events",job_id,"--after-sequence","0","--limit","200","--json"],env,30)
+ except BaseException as error:setattr(error,"axon_e2e_phase","observe-cli");raise
+ try:http_value=http.request("GET",f"/v1/jobs/{job_id}");http_events=http.request("GET",f"/v1/jobs/{job_id}/events")
+ except BaseException as error:setattr(error,"axon_e2e_phase","observe-http-jobs");raise
  old_config=os.environ.get("MCPORTER_CONFIG");os.environ["MCPORTER_CONFIG"]=env["MCPORTER_CONFIG"]
  try:
   def mcp_call(arguments):
    completed=subprocess.run([str(mcporter),*execute.mcp_adapter.mcporter_argv(descriptor["mcp_selector"],arguments)],cwd=ROOT,env=env,capture_output=True,text=True,timeout=30,check=False)
    if completed.returncode:raise RuntimeError(f"real MCP observability failed: {completed.stderr[-500:]}")
    return source.McpJobsClient.decode_content(json.loads(completed.stdout))
-  mcp_value=mcp_call({"action":"jobs","subaction":"get","job_id":job_id})
-  mcp_events=mcp_call({"action":"jobs","subaction":"events","job_id":job_id,"after_sequence":0,"limit":200})
+  try:
+   mcp_value=mcp_call({"action":"jobs","subaction":"get","job_id":job_id})
+   mcp_events=mcp_call({"action":"jobs","subaction":"events","job_id":job_id,"after_sequence":0,"limit":200})
+  except BaseException as error:setattr(error,"axon_e2e_phase","observe-mcp");raise
  finally:
   if old_config is None:os.environ.pop("MCPORTER_CONFIG",None)
   else:os.environ["MCPORTER_CONFIG"]=old_config
@@ -70,7 +75,9 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
   terminal=next((item for item in statuses if item in {"completed","completed_degraded","failed","canceled"}),None)
   executions.append({"surface":surface,"job_id":job_id,"terminal_status":terminal,"failure_classification":None,
                      "progress_sequence":min(sequences),"terminal_sequence":max(sequences)})
- stats=http.request("GET","/v1/stats");source_total=values(stats,"sources")
+ try:stats=http.request("GET","/v1/stats")
+ except BaseException as error:setattr(error,"axon_e2e_phase","observe-http-stats");raise
+ source_total=values(stats,"sources")
  if not any(isinstance(item,int) and item>=1 for item in source_total):raise RuntimeError("real durable source metric is absent")
  log_root=Path(env["AXON_DATA_DIR"])/"logs";log_text=source_log
  if log_root.is_dir():
@@ -89,11 +96,13 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
                   "mcp_job":mcp_value,"mcp_events":mcp_events,"server_logs":log_text},
   "protected_canaries":[secret_canary],"private_paths":[private_path_canary]}
  runtime=observe.load_runtime(Path(env["AXON_SQLITE_PATH"]),job_id)
- outcomes=observe.evaluate(capture,runtime)
+ try:outcomes=observe.evaluate(capture,runtime)
+ except BaseException as error:setattr(error,"axon_e2e_phase","observe-oracles");raise
  scenario=reporting.Scenario("source.observability",os.environ.get("AXON_E2E_TIER","hermetic"),"source","multi-observer")
  scenario.invariants.extend(outcomes);scenario.attempt("passed",duration);scenario.cleanup={"success":True,"residual":[],"refused":[]}
  report=reporting.suite_report([scenario],tested_sha="0"*40,provider_versions={"axon":"workspace"},policy={"stack":"allocation-owned"})
- reporting.validate_report(report)
+ try:reporting.validate_report(report)
+ except BaseException as error:setattr(error,"axon_e2e_phase","observe-report");raise
  return {"job_id":job_id,"oracles":[item["id"] for item in outcomes],"report_status":report["summary"]["status"],
          "source_to_terminal_ms":duration}
 def main():
@@ -195,7 +204,8 @@ def main():
                       "embedding":descriptor["environment"].get("AXON_EMBEDDING_MODEL",{"status":"unsupported","reason":"launcher does not export embedding model"})}}
   except BaseException as error:
    primary_error=error
-   print(json.dumps({"axon_e2e_diagnostic":{"domain":phase,"error_type":type(error).__name__}},sort_keys=True),flush=True)
+   diagnostic_phase=getattr(error,"axon_e2e_phase",phase)
+   print(json.dumps({"axon_e2e_diagnostic":{"domain":diagnostic_phase,"error_type":type(error).__name__}},sort_keys=True),flush=True)
    raise
   finally:
    resource_stop.set();resource_thread.join(timeout=1)
