@@ -87,6 +87,11 @@ class HermeticWorkflowTests(unittest.TestCase):
         text=RUNNER.read_text();self.assertIn("socket.socket.connect=_guard",text)
         self.assertIn("socket.getaddrinfo=_guard_gai",text);self.assertIn("hermetic public network denied",text)
 
+    def test_native_namespace_drops_root_before_running_suite(self):
+        workflow=(ROOT/".github/workflows/e2e-hermetic.yml").read_text()
+        self.assertIn('setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups',workflow)
+        self.assertLess(workflow.index("ip link set lo up"),workflow.index("setpriv --reuid"))
+
     def test_failure_still_emits_machine_readable_cleanup_report(self):
         runner=load_runner();saved=dict(os.environ)
         try:
