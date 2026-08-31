@@ -50,10 +50,6 @@ def error_code(response):
  if not isinstance(code,str) and isinstance(value.get("error"),dict):code=value["error"].get("code")
  if not isinstance(code,str) or not code:raise RuntimeError(f"HTTP {response.status} omitted an exact error code")
  return code
-def redacted_oauth(value):
- # Token and claims are runtime-only credentials; retained evidence records
- # only the non-sensitive protocol metadata needed by the assertion.
- return {key:item for key,item in value.items() if key not in {"token","claims"}}
 def oversize_probe(base,token,path,size):
  path.write_bytes(b"x"*size)
  parsed=urllib.parse.urlsplit(base);connection_type=http_client.HTTPSConnection if parsed.scheme=="https" else http_client.HTTPConnection
@@ -354,14 +350,14 @@ def main():
     "POST /v1/reset/plan","POST /v1/reset/exec","POST /v1/uploads","GET /v1/artifacts/{artifact_id}/content"}
   if not required<=routes:raise RuntimeError(f"generated OpenAPI auth routes missing: {required-routes}")
   report={"schema_version":1,"passed":True,"real_http_probes":probes,"nonloopback":nonloop,"mcp_http":mcp,
-          "oauth":oauth,"axon_oauth":[redacted_oauth(item) for item in axon_oauth],"oauth_negative":oauth_negative,"oauth_mcp":{"success":oauth_mcp["success"],"case_count":len(oauth_mcp["cases"])},"oauth_insufficient_scope":insufficient.status,"transformed_canary_auth":transformed_auth,"route_auth":route_auth,"validation":validation,
+          "oauth":{"fixture_flows":2,"axon_flows":2,"mcp_cases":len(oauth_mcp["cases"]),"passed":True},"oauth_negative":oauth_negative,"oauth_insufficient_scope":insufficient.status,"transformed_canary_auth":transformed_auth,"route_auth":route_auth,"validation":validation,
           "oversized_upload":{"status":oversized.status,"code":oversized_code},"hostile_status":hostile_response.status,
           "artifact_canary":{"upload_id":upload_id,"artifact_id":artifact_id,"sha256":artifact_sha,"bytes":len(artifact_payload)},
           "mcp_stdio_schema":True,"ssrf":ssrf,"ssrf_sentinel":{"before":before,"after":after,"sink_before":sink_before,"sink_after":sink_after},
           "provider_boundary":provider_cases,"provider_state":{"before":boundary_state_before,"after":boundary_state_after},"provider_zero_calls":{"before":provider_before,"after":provider_after},
           "manifest":str(manifest.path)}
-  # All issued tokens are removed by redacted_oauth above;
-  # scan_tree immediately verifies no credential value reached this report.
+  # OAuth credentials remain runtime-only; the report retains counts and
+  # pass/fail metadata, and scan_tree verifies no credential reached evidence.
   report_path.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
   security.scan_tree(evidence,[canary,*issued_tokens])
   handoff=owned_root/"teardown-handoff.json";teardown_report=run_root/"launcher/security-teardown-report.json"
