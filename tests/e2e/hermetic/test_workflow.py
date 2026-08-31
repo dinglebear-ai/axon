@@ -17,8 +17,8 @@ class HermeticWorkflowTests(unittest.TestCase):
         self.assertIn('(allow process-exec (literal "/bin/ps"))',profile)
         self.assertIn('(allow file-read* (literal "/bin/ps"))',profile)
         self.assertIn('/usr/lib/libproc.dylib',profile)
-        isolation=(ROOT/"scripts/e2e/lib/run-isolation.py").read_text()
-        self.assertIn('libproc.proc_pidinfo(pid, 3',isolation)
+        identity=(ROOT/"scripts/e2e/lib/axon_e2e_process_identity.py").read_text()
+        self.assertIn('libproc.proc_pidinfo(pid, 3',identity)
     def test_workflow_is_required_least_privilege_and_sha_pinned(self):
         text=WORKFLOW.read_text();self.assertIn("contents: read",text);self.assertNotIn("id-token:",text)
         self.assertNotIn("secrets.",text);self.assertNotIn("tailscale",text.lower());self.assertNotIn("pull_request_target",text)

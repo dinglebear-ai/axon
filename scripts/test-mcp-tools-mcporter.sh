@@ -22,125 +22,7 @@ OUTDIR=""
 CONFIG_PATH=""
 MCPORTER=()
 
-EXPECTED_ROUTES="$(cat <<'EOF'
-artifacts:content
-artifacts:get
-artifacts:list
-ask
-brand
-capabilities
-chat:chat
-collections:get
-collections:list
-diff
-doctor
-endpoints
-evaluate
-extract:start
-graph:edge
-graph:kinds
-graph:node
-graph:query
-graph:resolve
-graph:source
-help
-jobs:cancel
-jobs:cleanup
-jobs:clear
-jobs:events
-jobs:get
-jobs:list
-jobs:recover
-jobs:retry
-jobs:status
-jobs:stream
-map
-memory:remember
-memory:list
-memory:search
-memory:show
-memory:link
-memory:supersede
-memory:context
-memory:reinforce
-memory:contradict
-memory:pin
-memory:archive
-memory:forget
-memory:review
-memory:compact
-memory:import
-memory:export
-providers:get
-providers:list
-prune:exec
-prune:plan
-query
-research
-reset:exec
-reset:plan
-resolve
-retrieve
-screenshot
-search
-source
-status
-summarize
-suggest
-uploads:abort
-uploads:complete
-uploads:create
-uploads:get
-uploads:list
-uploads:put_content
-watch:create
-watch:delete
-watch:exec
-watch:get
-watch:history
-watch:list
-watch:pause
-watch:resume
-watch:status
-watch:update
-EOF
-)"
-
-DIRECT_ACTIONS_JSON='["ask","brand","capabilities","diff","doctor","endpoints","evaluate","help","map","query","research","resolve","retrieve","screenshot","search","source","status","suggest","summarize"]'
-EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
-artifacts
-ask
-brand
-capabilities
-chat
-collections
-diff
-doctor
-endpoints
-evaluate
-extract
-graph
-help
-jobs
-map
-memory
-providers
-prune
-query
-research
-reset
-resolve
-retrieve
-screenshot
-search
-source
-status
-summarize
-suggest
-uploads
-watch
-EOF
-)"
+. "$REPO_ROOT/scripts/e2e/lib/mcporter-expected-routes.sh"
 
 if ! command -v mcporter >/dev/null 2>&1; then
   echo "FAIL: mcporter not found in PATH" >&2
@@ -164,13 +46,6 @@ URL_MODE=0
 if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "$BASE_CONFIG_PATH" >/dev/null; then
   URL_MODE=1
 fi
-
-trim() {
-  local value="$1"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "$value"
-}
 
 record_pass() {
   local name="$1"

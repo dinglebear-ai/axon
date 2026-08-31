@@ -8,7 +8,7 @@ and stale-run recovery consume its manifest and are owned by the teardown suite.
 from __future__ import annotations
 
 import argparse, contextlib, ctypes, getpass, hashlib, hmac, json
-import os, re, secrets, socket, stat, subprocess, sys, tempfile, time
+import os, secrets, socket, stat, subprocess, sys, tempfile, time
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -18,6 +18,7 @@ if _ADDED_LIB_DIR:
     sys.path.insert(0, _LIB_DIR)
 try:
     from axon_e2e_manifest_registration import register_resource
+    import axon_e2e_process_identity as process_identity
 finally:
     if _ADDED_LIB_DIR:
         sys.path.remove(_LIB_DIR)
@@ -38,92 +39,29 @@ def _is_windows() -> bool:
     return os.name == "nt"
 
 
-class _WindowsFileTime(ctypes.Structure):
-    _fields_ = [("low", ctypes.c_uint32), ("high", ctypes.c_uint32)]
+_WindowsFileTime = process_identity._WindowsFileTime
 
 
 def _configure_windows_kernel32(api: Any) -> Any:
-    filetime_pointer = ctypes.POINTER(_WindowsFileTime)
-    api.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
-    api.OpenProcess.restype = ctypes.c_void_p
-    api.GetProcessTimes.argtypes = [
-        ctypes.c_void_p, filetime_pointer, filetime_pointer, filetime_pointer, filetime_pointer,
-    ]
-    api.GetProcessTimes.restype = ctypes.c_int
-    api.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
-    api.GetExitCodeProcess.restype = ctypes.c_int
-    api.CloseHandle.argtypes = [ctypes.c_void_p]
-    api.CloseHandle.restype = ctypes.c_int
-    return api
+    return process_identity._configure_windows_kernel32(api)
 
 
 def _windows_kernel32():
-    try:
-        return _configure_windows_kernel32(ctypes.WinDLL("kernel32", use_last_error=True))
-    except (AttributeError, OSError) as error:
-        raise IsolationError("Windows process identity APIs are unavailable") from error
+    return process_identity.windows_kernel32(IsolationError)
 
 
 def _windows_process_start_time(pid: int, kernel32: Any | None = None) -> str:
-    """Return the process creation FILETIME using native Windows handles."""
-    api = kernel32 or _windows_kernel32()
-    process = api.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-    if not process:
-        raise IsolationError("Windows process handle could not be opened")
-    creation = _WindowsFileTime()
-    exit_time = _WindowsFileTime()
-    kernel = _WindowsFileTime()
-    user = _WindowsFileTime()
-    try:
-        ok = api.GetProcessTimes(
-            process, ctypes.byref(creation), ctypes.byref(exit_time), ctypes.byref(kernel), ctypes.byref(user),
-        )
-        if not ok:
-            raise IsolationError("Windows process creation time is unavailable")
-        return str((creation.high << 32) | creation.low)
-    finally:
-        api.CloseHandle(process)
+    return process_identity.windows_process_start_time(pid, IsolationError, kernel32)
 
 
 def _windows_process_alive(pid: int, kernel32: Any | None = None) -> bool:
-    """Query process state without relying on Windows' limited os.kill shim."""
-    api = kernel32 or _windows_kernel32()
-    process = api.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-    if not process:
-        error = ctypes.get_last_error()
-        if error in {87, 1168}:  # invalid PID / process no longer exists
-            return False
-        raise IsolationError("Windows process state could not be queried")
-    exit_code = ctypes.c_uint32()
-    try:
-        if not api.GetExitCodeProcess(process, ctypes.byref(exit_code)):
-            raise IsolationError("Windows process exit state is unavailable")
-        return exit_code.value == 259  # STILL_ACTIVE
-    finally:
-        api.CloseHandle(process)
+    return process_identity.windows_process_alive(pid, IsolationError, kernel32)
 
 
 def _windows_acl(path: Path, *, apply: bool) -> None:
-    """Apply or verify a private owner-only Windows DACL using icacls.
-
-    icacls is part of supported Windows installations. Refusing to proceed when
-    it is absent or its output cannot be verified prevents permission fallback.
-    """
-    owner = getpass.getuser()
-    if not owner or any(char in owner for char in "\r\n"):
-        raise IsolationError("Windows ACL owner identity is unavailable")
-    if apply:
-        command = ["icacls", str(path), "/inheritance:r", "/grant:r", f"{owner}:(F)"]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-        if result.returncode:
-            raise IsolationError(f"failed to apply private Windows DACL: {result.stderr.strip()}")
-    result = subprocess.run(["icacls", str(path)], capture_output=True, text=True, check=False)
-    acl = result.stdout.casefold()
-    if result.returncode or owner.casefold() not in acl or "(f)" not in acl:
-        raise IsolationError("private Windows DACL could not be verified")
-    forbidden = ("everyone:", "authenticated users:", "builtin\\users:", " users:")
-    if any(principal in acl for principal in forbidden):
-        raise IsolationError("Windows DACL grants access beyond the current owner")
+    process_identity.windows_acl(
+        path, apply=apply, error_type=IsolationError, owner_getter=getpass.getuser, runner=subprocess.run,
+    )
 
 
 def _canonical(path: Path) -> Path:
@@ -157,78 +95,15 @@ def validate_owned_name(value: str) -> None:
 
 
 def _darwin_process_bsdinfo(pid: int):
-    import ctypes
-
-    class ProcBsdInfo(ctypes.Structure):
-        _fields_ = [
-            ("pbi_flags", ctypes.c_uint32), ("pbi_status", ctypes.c_uint32),
-            ("pbi_xstatus", ctypes.c_uint32), ("pbi_pid", ctypes.c_uint32),
-            ("pbi_ppid", ctypes.c_uint32), ("pbi_uid", ctypes.c_uint32),
-            ("pbi_gid", ctypes.c_uint32), ("pbi_ruid", ctypes.c_uint32),
-            ("pbi_rgid", ctypes.c_uint32), ("pbi_svuid", ctypes.c_uint32),
-            ("pbi_svgid", ctypes.c_uint32), ("rfu_1", ctypes.c_uint32),
-            ("pbi_comm", ctypes.c_char * 16), ("pbi_name", ctypes.c_char * 32),
-            ("pbi_nfiles", ctypes.c_uint32), ("pbi_pgid", ctypes.c_uint32),
-            ("pbi_pjobc", ctypes.c_uint32), ("e_tdev", ctypes.c_uint32),
-            ("e_tpgid", ctypes.c_uint32), ("pbi_nice", ctypes.c_int32),
-            ("pbi_start_tvsec", ctypes.c_uint64),
-            ("pbi_start_tvusec", ctypes.c_uint64),
-        ]
-
-    info = ProcBsdInfo()
-    libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-    size = libproc.proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
-    return info if size == ctypes.sizeof(info) else None
+    return process_identity.darwin_process_bsdinfo(pid)
 
 
 def _darwin_process_group_alive(pgid: int) -> bool:
-    """Return whether a Darwin process group has any non-zombie members."""
-    import ctypes
-
-    libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-    count = libproc.proc_listallpids(None, 0)
-    if count <= 0:
-        raise OSError(ctypes.get_errno(), "proc_listallpids failed")
-    pids = (ctypes.c_int * (count + 32))()
-    size = libproc.proc_listallpids(ctypes.byref(pids), ctypes.sizeof(pids))
-    if size < 0:
-        raise OSError(ctypes.get_errno(), "proc_listallpids failed")
-    for pid in pids[:size]:
-        if pid <= 0:
-            continue
-        info = _darwin_process_bsdinfo(pid)
-        if info is not None and info.pbi_pgid == pgid and info.pbi_status != 5:
-            return True
-    return False
+    return process_identity.darwin_process_group_alive(pgid)
 
 
 def _process_start_time(pid: int) -> str:
-    if pid < 1:
-        raise IsolationError("process PID must be positive")
-    if _is_windows():
-        return _windows_process_start_time(pid)
-    if sys.platform == "darwin":
-        # `/bin/ps` is a protected set-id platform binary and macOS refuses to
-        # exec it from sandbox-exec even under an allow-default profile.  Use
-        # the public libproc contract directly so PID-reuse protection remains
-        # available inside the network-denied hermetic sandbox.
-        info = _darwin_process_bsdinfo(pid)
-        if info is None or not info.pbi_start_tvsec:
-            raise IsolationError("process start time is unavailable")
-        return f"{info.pbi_start_tvsec}.{info.pbi_start_tvusec:06d}"
-    proc_stat = Path(f"/proc/{pid}/stat")
-    if proc_stat.exists():
-        fields = proc_stat.read_text(encoding="utf-8").split()
-        if len(fields) < 22:
-            raise IsolationError("process start time is unavailable")
-        return fields[21]
-    result = subprocess.run(
-        ["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True, check=False,
-    )
-    value = result.stdout.strip()
-    if result.returncode or not value:
-        raise IsolationError("process start time is unavailable")
-    return value
+    return process_identity.process_start_time(pid, IsolationError)
 
 
 def new_run_id() -> str:
