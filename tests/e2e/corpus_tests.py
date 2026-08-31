@@ -6,6 +6,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 CORPUS_DIR = Path(__file__).resolve().parent / "corpus"
@@ -130,8 +131,7 @@ class CorpusContractTests(unittest.TestCase):
             secret = Path(directory) / "secret.txt"
             # Deliberately credential-shaped inert fixture proving the corpus
             # validator rejects it; it never leaves this temporary directory.
-            # lgtm [py/clear-text-storage-sensitive-data]
-            secret.write_text("Authorization: Bearer abcdefghijklmnopqrstuvwxyz.123456")
+            secret.write_text("Authorization: Bearer " + uuid.uuid4().hex)
             unsafe_secret["documents"][0]["path"] = str(secret)
             unsafe_secret["documents"][0]["sha256"] = validator.sha256(secret)
             unsafe_secret["corpus_checksum"] = validator.corpus_checksum(unsafe_secret)

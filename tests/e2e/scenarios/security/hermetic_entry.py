@@ -51,11 +51,9 @@ def error_code(response):
  if not isinstance(code,str) or not code:raise RuntimeError(f"HTTP {response.status} omitted an exact error code")
  return code
 def redacted_oauth(value):
- # This is an evidence fingerprint, not password storage. OAuth tokens are
- # removed and only a one-way correlation digest is retained.
- # lgtm [py/weak-sensitive-data-hashing]
- return {key:(hashlib.sha256(item.encode()).hexdigest() if key=="token" else item)
-         for key,item in value.items() if key!="claims"}
+ # Token and claims are runtime-only credentials; retained evidence records
+ # only the non-sensitive protocol metadata needed by the assertion.
+ return {key:item for key,item in value.items() if key not in {"token","claims"}}
 def oversize_probe(base,token,path,size):
  path.write_bytes(b"x"*size)
  parsed=urllib.parse.urlsplit(base);connection_type=http_client.HTTPSConnection if parsed.scheme=="https" else http_client.HTTPConnection
@@ -362,9 +360,8 @@ def main():
           "mcp_stdio_schema":True,"ssrf":ssrf,"ssrf_sentinel":{"before":before,"after":after,"sink_before":sink_before,"sink_after":sink_after},
           "provider_boundary":provider_cases,"provider_state":{"before":boundary_state_before,"after":boundary_state_after},"provider_zero_calls":{"before":provider_before,"after":provider_after},
           "manifest":str(manifest.path)}
-  # All issued tokens are removed or fingerprinted by redacted_oauth above;
+  # All issued tokens are removed by redacted_oauth above;
   # scan_tree immediately verifies no credential value reached this report.
-  # lgtm [py/clear-text-storage-sensitive-data]
   report_path.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
   security.scan_tree(evidence,[canary,*issued_tokens])
   handoff=owned_root/"teardown-handoff.json";teardown_report=run_root/"launcher/security-teardown-report.json"

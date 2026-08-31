@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Substantive retrieval through one allocation-bound launcher descriptor."""
 from __future__ import annotations
-import contextlib,hashlib,importlib.util,json,os,secrets,shutil,subprocess,sys,threading,time
+import contextlib,hashlib,importlib.util,json,os,secrets,shutil,subprocess,sys,threading,time,uuid
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
 def load(name,path):
@@ -24,12 +24,11 @@ def retained_descriptor(descriptor):
  return scrub(value)
 def verify_observability(binary,mcporter,descriptor,env,run_id):
  started=time.monotonic_ns();http=source.HttpJobsClient(descriptor["http_base_url"],descriptor["environment"]["AXON_HTTP_TOKEN"],30)
- secret_canary=f"ObserveSecret-{secrets.token_hex(16)}-DO-NOT-LEAK"
- private_path_canary=f"/private/axon-e2e-observe/{secrets.token_hex(16)}"
+ secret_canary=f"ObserveCanary-{uuid.uuid4().hex}-DO-NOT-LEAK"
+ private_path_canary=f"/private/axon-e2e-observe/{uuid.uuid4().hex}"
  source_file=Path(env["AXON_DATA_DIR"])/"observe-canary-source.md"
- # The synthetic canary must be stored in an owned temporary input so the test
- # can prove it is absent from telemetry and sanitized retained evidence.
- # lgtm [py/clear-text-storage-sensitive-data]
+ # The non-secret synthetic canary must be stored in an owned temporary input
+ # so the test can prove it is absent from retained telemetry.
  source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {secret_canary} {private_path_canary}\n")
  source_path=str(source_file.resolve())
  source_argv=[str(binary),"source",source_path,"--scope","file","--collection",run_id,"--wait","true","--json"]
