@@ -44,7 +44,7 @@ def register_outer_cleanup(manifest) -> None:
     report = manifest.path.parent / "outer-registry-registration.json"
     completed = subprocess.run([sys.executable, str(ROOT / "scripts/e2e/cleanup-owned-runs.py"),
         "--registry", registry, "--register-manifest", str(manifest.path), "--report", str(report)],
-        cwd=ROOT, capture_output=True, text=True, timeout=15)
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=15)
     ensure(completed.returncode == 0, f"outer cleanup registration failed: {completed.stderr[:300]}")
 
 
@@ -99,7 +99,7 @@ def executable_and_paths(binary: Path, run_root: Path, _env: dict[str, str]) -> 
         ensure(path.read_bytes() == corpus.read_bytes(), f"corpus byte round trip failed for {name}")
         runtime=run_root/f"path-runtime-{index}";runtime.mkdir()
         result = subprocess.run([str(binary), str(path), "--wait", "false", "--json"], env=axon_env(runtime),
-                                capture_output=True, text=True, timeout=20)
+                                capture_output=True, text=True, encoding="utf-8", timeout=20)
         ensure(result.returncode == 0, f"Axon rejected native path {name}: {result.stderr[:300]}")
         envelope = json.loads(result.stdout); ensure(bool(envelope.get("job_id")), f"Axon omitted job ID for {name}")
         axon_results.append({"name":name,"job_id":reporting.opaque(envelope["job_id"])})
@@ -124,7 +124,7 @@ def config_roots(binary: Path, run_root: Path, base_env: dict[str, str]) -> dict
         if value is None: candidate.pop("AXON_DATA_DIR", None)
         else: candidate["AXON_DATA_DIR"] = value
         result = subprocess.run([str(binary), "config", "path", "--json"], env=candidate,
-                                capture_output=True, text=True, timeout=10)
+                                capture_output=True, text=True, encoding="utf-8", timeout=10)
         ensure(result.returncode == 0, f"Axon config path failed for {label}: {result.stderr[:300]}")
         resolved = json.loads(result.stdout)
         for key in ("env_path", "toml_path"):
@@ -139,7 +139,7 @@ def stdio_mcp(binary: Path, env: dict[str, str], manifest, run_root: Path) -> di
     manifest.register("temp_path", str(nonce_dir)); manifest.register("temp_path", str(nonce_file))
     child_env = {**env,"AXON_E2E_PROCESS_NONCE":nonce,"AXON_MCP_TRANSPORT":"stdio"}
     proc = subprocess.Popen([str(binary), "mcp", "--transport", "stdio"], stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=child_env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", env=child_env,
         start_new_session=os.name != "nt", creationflags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0) if os.name == "nt" else 0)
     assert proc.stdin and proc.stdout
     manifest.register("process", str(proc.pid), {"start_time":isolation._process_start_time(proc.pid),"nonce":nonce,
@@ -224,7 +224,8 @@ def terminate_tree(manifest, run_root: Path) -> dict:
     nonce_file = nonce_dir / f"{nonce}.owner"; isolation._private_write(nonce_file, nonce.encode())
     manifest.register("temp_path", str(nonce_dir)); manifest.register("temp_path", str(nonce_file))
     child_env = os.environ.copy(); child_env["AXON_E2E_PROCESS_NONCE"] = nonce
-    proc = subprocess.Popen([sys.executable, str(fixture)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+    proc = subprocess.Popen([sys.executable, str(fixture)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            text=True, encoding="utf-8",
                             start_new_session=os.name != "nt", creationflags=flags, env=child_env)
     assert proc.stdin and proc.stdout
     ensure(json.loads(proc.stdout.readline()) == {"ready": True}, "tree fixture did not reach ready state")
