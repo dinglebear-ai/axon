@@ -8,7 +8,8 @@ use crate::collection::{normalize_collection_spec, required_retrieval_payload_in
 use crate::filter::SEARCH_GENERATION_FIELD;
 use crate::point::VectorPointBatchBuilder;
 use crate::qdrant::{
-    QdrantVectorStore, qdrant_collection_request, qdrant_filter, qdrant_payload_index_requests,
+    QdrantCollectionSettings, QdrantVectorStore, qdrant_collection_request,
+    qdrant_collection_request_with_settings, qdrant_filter, qdrant_payload_index_requests,
     qdrant_upsert_points,
 };
 use crate::store::VectorStore;
@@ -43,13 +44,60 @@ fn collection_spec_converts_to_named_dense_and_optional_sparse_config() {
     assert_eq!(hnsw.m, Some(32));
     assert_eq!(hnsw.ef_construct, Some(256));
     assert_eq!(hnsw.on_disk, Some(false));
-    assert!(request.quantization_config.is_none());
+    let quantization = request
+        .quantization_config
+        .and_then(|config| config.quantization)
+        .expect("scalar quantization");
+    let qdrant_client::qdrant::quantization_config::Quantization::Scalar(scalar) = quantization
+    else {
+        panic!("expected scalar quantization");
+    };
+    assert_eq!(scalar.quantile, Some(0.99));
+    assert_eq!(scalar.always_ram, Some(true));
 
     let sparse = request.sparse_vectors_config.unwrap();
     assert_eq!(
         sparse.map["bm42"].modifier,
         Some(qdrant_client::qdrant::Modifier::Idf as i32)
     );
+}
+
+#[test]
+fn collection_settings_drive_bulk_threshold_hnsw_and_quantization() {
+    let settings = QdrantCollectionSettings {
+        dense_on_disk: true,
+        hnsw_m: 16,
+        hnsw_ef_construct: 100,
+        hnsw_on_disk: false,
+        indexing_threshold: 10_485_760,
+        quantization_enabled: true,
+        quantization_quantile: 0.97,
+        quantization_always_ram: false,
+    };
+
+    let request =
+        qdrant_collection_request_with_settings(&test_collection_spec(3), settings).unwrap();
+
+    assert_eq!(
+        request
+            .optimizers_config
+            .expect("optimizer settings")
+            .indexing_threshold,
+        Some(10_485_760)
+    );
+    let hnsw = request.hnsw_config.expect("HNSW settings");
+    assert_eq!(hnsw.m, Some(16));
+    assert_eq!(hnsw.ef_construct, Some(100));
+    let quantization = request
+        .quantization_config
+        .and_then(|config| config.quantization)
+        .expect("quantization settings");
+    let qdrant_client::qdrant::quantization_config::Quantization::Scalar(scalar) = quantization
+    else {
+        panic!("expected scalar quantization");
+    };
+    assert_eq!(scalar.quantile, Some(0.97));
+    assert_eq!(scalar.always_ram, Some(false));
 }
 
 #[test]

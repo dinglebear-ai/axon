@@ -5,6 +5,22 @@ local_release_profile := "release-fast"
 default:
     @just --list
 
+# Safely inspect and tune the tootie TEI deployment.
+tei-status:
+    ./scripts/tei-tune.py status
+
+tei-presets:
+    ./scripts/tei-tune.py presets
+
+tei-apply preset="rtx4070-axon" *args:
+    ./scripts/tei-tune.py apply {{preset}} {{args}}
+
+tei-benchmark *args:
+    ./scripts/tei-tune.py benchmark {{args}}
+
+tei-rollback:
+    ./scripts/tei-tune.py rollback
+
 # Bootstrap a new development environment (checks + installs all dependencies).
 # No just? Run ./scripts/dev-setup.sh directly — it installs just for you.
 setup *args:

@@ -76,7 +76,13 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     assert_eq!(refreshed.freshness.removed_files, 0);
     assert_eq!(
         vectors.calls().await,
-        vec!["ensure_collection", "upsert", "mark_generation_committed"]
+        vec![
+            "ensure_collection",
+            "begin_bulk_load",
+            "upsert",
+            "finish_bulk_load",
+            "mark_generation_committed"
+        ]
     );
     let jobs = JobStore::list(
         source_jobs.as_ref(),
@@ -289,7 +295,9 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
         vectors.calls().await,
         vec![
             "ensure_collection",
+            "begin_bulk_load",
             "upsert",
+            "finish_bulk_load",
             "mark_generation_committed",
             "upsert",
             "search"

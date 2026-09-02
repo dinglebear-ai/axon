@@ -28,7 +28,6 @@ mod setup;
 
 use batches::process_generation_batches;
 use candidate_delivery::{finish_candidate_delivery, stage_candidate_delivery};
-use setup::ensure_generation_collection;
 
 /// Acquire/normalize/prepare/embed/publish the diff's added+modified items in
 /// bounded batches (`ACQUIRE_BATCH_SIZE`) rather than a single
@@ -56,8 +55,6 @@ pub(super) async fn run_created_generation(
         generation.source_id.clone(),
         generation.generation.clone(),
     );
-    ensure_generation_collection(runtime, input, &collection).await?;
-
     let archive_requested = input.adapter.wants_archive(&input.plan);
     let mut accumulated = GenerationAccumulator::new(&generation.generation);
     let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;

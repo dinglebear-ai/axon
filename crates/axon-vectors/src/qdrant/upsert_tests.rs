@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use httpmock::MockServer;
 
 use super::*;
+use crate::qdrant::configure_async_writes;
 
 fn point(n: usize) -> VectorPoint {
     let point_id = format!("point-{n}");
@@ -329,6 +330,7 @@ async fn qdrant_upsert_splits_on_actual_encoded_byte_limit() {
         &url,
         ErrorStage::Upserting,
         max_request_bytes,
+        false,
     )
     .await
     .expect("byte-bounded upsert");
@@ -354,14 +356,61 @@ async fn qdrant_upsert_rejects_indivisible_oversized_point() {
         .endpoint()
         .collection_path("axon-test", "points?wait=true");
 
-    let error = upsert_chunk_rest(&http, &spec, &chunk, &url, ErrorStage::Upserting, 512)
-        .await
-        .expect_err("single oversized point must fail closed");
+    let error = upsert_chunk_rest(
+        &http,
+        &spec,
+        &chunk,
+        &url,
+        ErrorStage::Upserting,
+        512,
+        false,
+    )
+    .await
+    .expect_err("single oversized point must fail closed");
 
     assert_eq!(
         error.code.to_string(),
         "vector.qdrant.upsert_point_oversized"
     );
+}
+
+#[tokio::test]
+async fn async_upsert_pipelines_then_uses_a_wait_true_barrier() {
+    let server = MockServer::start_async().await;
+    let upsert = server
+        .mock_async(|when, then| {
+            when.method("PUT")
+                .path("/collections/axon-test/points")
+                .query_param("wait", "false");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"operation_id": 42, "status": "acknowledged"},
+                "status": "ok"
+            }));
+        })
+        .await;
+    let barrier = server
+        .mock_async(|when, then| {
+            when.method("PUT")
+                .path("/collections/axon-test/points")
+                .query_param("wait", "true");
+            then.status(200);
+        })
+        .await;
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    configure_async_writes(&mut store, true);
+    let http = store.http().unwrap();
+
+    upsert_batches_rest(
+        &store,
+        &http,
+        &test_collection_spec(),
+        valid_batch(1),
+        ErrorStage::Upserting,
+    )
+    .await
+    .unwrap();
+    upsert.assert_calls_async(1).await;
+    barrier.assert_calls_async(1).await;
 }
 
 #[tokio::test]

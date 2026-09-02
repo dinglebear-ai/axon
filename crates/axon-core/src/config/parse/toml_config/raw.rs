@@ -290,7 +290,10 @@ pub(in crate::config) struct RawVectorSection {
     pub payload_index_profile: Option<String>,
     pub payload_index_parallelism: Option<usize>,
     pub hnsw_on_disk: Option<bool>,
+    pub quantization_enabled: Option<bool>,
     pub quantization_always_ram: Option<bool>,
+    pub async_writes: Option<bool>,
+    pub transport: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

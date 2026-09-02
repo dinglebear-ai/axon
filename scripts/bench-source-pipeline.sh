@@ -45,6 +45,10 @@ validate_safe_source() {
   [[ $source != *'`'* ]] || return 1
 }
 
+benchmark_config_path() {
+  printf '%s\n' "${AXON_BENCH_CONFIG_PATH:-${AXON_CONFIG_PATH:-${HOME}/.axon/config.toml}}"
+}
+
 corpus_hash_from_sqlite() {
   local database=$1
   local job_id=$2
@@ -117,12 +121,18 @@ run_benchmark() {
   local axon_bin=${AXON_BENCH_AXON_BIN:-target/release/axon}
   local collection=${AXON_BENCH_COLLECTION:-axon_scheduler_evidence}
   local output=${AXON_BENCH_OUTPUT:-/dev/stdout}
-  local work_dir stdout_file stderr_file before_file after_file state_dir acquisition_file
+  local work_dir stdout_file stderr_file before_file after_file state_dir acquisition_file config_path
 
   [[ -n $source ]] || { echo 'AXON_BENCH_SOURCE is required' >&2; return 2; }
   validate_safe_source "$source" || { echo 'source rejected by benchmark safety policy' >&2; return 2; }
   [[ -x $axon_bin ]] || { echo 'benchmark binary is not executable' >&2; return 2; }
   reject_stale_binary "$axon_bin" || return 2
+  config_path=$(benchmark_config_path)
+  [[ -f $config_path ]] || {
+    echo "benchmark config is missing: $config_path" >&2
+    echo 'set AXON_BENCH_CONFIG_PATH to the tuned config.toml to benchmark' >&2
+    return 2
+  }
 
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/axon-source-bench.XXXXXX")
   BENCH_WORK_DIR=$work_dir
@@ -143,6 +153,7 @@ run_benchmark() {
   start_ns=$(python3 -c 'import time; print(time.time_ns())')
   set +e
   AXON_DATA_DIR="$state_dir" AXON_SQLITE_PATH="$state_dir/jobs.db" \
+    AXON_CONFIG_PATH="$config_path" \
     "$axon_bin" source "$source" --scope site --max-pages 200 --wait true \
     --json --performance-profile max --quiet --collection "$collection" \
     >"$stdout_file" 2>"$stderr_file"

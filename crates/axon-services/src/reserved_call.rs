@@ -26,8 +26,8 @@ mod vector;
 
 use support::{map_reserved, record_provider_heartbeat, scheduler_error};
 pub use vector::{
-    delete_vectors, mark_generation_committed, mark_unchanged_items_committed, retire_generation,
-    vector_operation,
+    begin_bulk_load, delete_vectors, finish_bulk_load, mark_generation_committed,
+    mark_unchanged_items_committed, retire_generation, vector_operation,
 };
 
 #[derive(Debug, Clone)]

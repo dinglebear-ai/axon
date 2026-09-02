@@ -266,7 +266,10 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.qdrant.payload_index_profile = v.payload_index_profile.clone();
     flat.qdrant.payload_index_parallelism = v.payload_index_parallelism;
     flat.qdrant.hnsw_on_disk = v.hnsw_on_disk;
+    flat.qdrant.quantization_enabled = v.quantization_enabled;
     flat.qdrant.quantization_always_ram = v.quantization_always_ram;
+    flat.qdrant.async_writes = v.async_writes;
+    flat.qdrant.transport = v.transport.clone();
 
     let l = &raw.providers.llm;
     flat.llm.backend = l.backend.clone();

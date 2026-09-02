@@ -47,6 +47,13 @@ fn sparse_modifier_kind(modifier: SparseVectorModifier) -> &'static str {
 /// REST body for `PUT /collections/{name}` — named dense + optional sparse.
 pub fn collection_create_json(spec: &CollectionSpec) -> serde_json::Value {
     let settings = QdrantCollectionSettings::default();
+    collection_create_json_with_settings(spec, settings)
+}
+
+pub fn collection_create_json_with_settings(
+    spec: &CollectionSpec,
+    settings: QdrantCollectionSettings,
+) -> serde_json::Value {
     let mut vectors = serde_json::Map::new();
     vectors.insert(
         spec.dense.name.clone(),
@@ -65,6 +72,15 @@ pub fn collection_create_json(spec: &CollectionSpec) -> serde_json::Value {
         },
         "optimizers_config": { "indexing_threshold": settings.indexing_threshold },
     });
+    if settings.quantization_enabled {
+        body["quantization_config"] = json!({
+            "scalar": {
+                "type": "int8",
+                "quantile": settings.quantization_quantile,
+                "always_ram": settings.quantization_always_ram,
+            }
+        });
+    }
     if let Some(sparse) = &spec.sparse {
         body["sparse_vectors"] = json!({
             sparse.name.clone(): { "modifier": sparse_modifier_kind(sparse.modifier) }

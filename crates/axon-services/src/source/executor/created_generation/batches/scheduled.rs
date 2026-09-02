@@ -2,6 +2,7 @@ use super::*;
 use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
+use crate::source::executor::created_generation::setup::ensure_generation_collection;
 use crate::source::executor::generation_work::{
     PreparedBatchSender, PreparedBatchSideEffects, prepared_work_channel,
 };
@@ -29,7 +30,77 @@ pub(super) async fn process(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
-    let (mut sender, receiver) = prepared_work_channel(runtime.embed_pool_max_inputs)?;
+    ensure_generation_collection(runtime, input, collection).await?;
+    if changed_total == 0 {
+        return process_inner(
+            runtime,
+            input,
+            emitter,
+            generation,
+            collection,
+            diff,
+            archive_requested,
+            changed_total,
+            coordinator,
+            stage,
+            accumulated,
+            artifact_cleanup,
+        )
+        .await;
+    }
+    crate::reserved_call::begin_bulk_load(
+        runtime,
+        super::bulk_context(input, collection, "begin-bulk-load"),
+        collection.collection.clone(),
+    )
+    .await?;
+    let processing = process_inner(
+        runtime,
+        input,
+        emitter,
+        generation,
+        collection,
+        diff,
+        archive_requested,
+        changed_total,
+        coordinator,
+        stage,
+        accumulated,
+        artifact_cleanup,
+    )
+    .await;
+    let finishing = crate::reserved_call::finish_bulk_load(
+        runtime,
+        super::bulk_context(input, collection, "finish-bulk-load"),
+        collection.collection.clone(),
+    )
+    .await;
+    match (processing, finishing) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error.into()),
+        (Err(error), Err(finish_error)) => Err(error.context(format!(
+            "restoring Qdrant indexing after the failed scheduled pipeline also failed: {finish_error}"
+        ))),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_inner(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    generation: &SourceGenerationId,
+    collection: &CollectionSpec,
+    diff: &SourceManifestDiff,
+    archive_requested: bool,
+    changed_total: u64,
+    coordinator: &ProgressCoordinator,
+    stage: &mut GenerationStageProgress,
+    accumulated: &mut GenerationAccumulator,
+    artifact_cleanup: &mut ArtifactCleanupGuard,
+) -> anyhow::Result<()> {
+    let (sender, receiver) = prepared_work_channel(runtime.embed_pool_max_inputs)?;
     tracing::info!(
         chunk_capacity = runtime.embed_pool_max_inputs.saturating_mul(3),
         queue_capacity = 2,
@@ -42,13 +113,14 @@ pub(super) async fn process(
         input,
         emitter,
         generation,
+        collection,
         diff,
         archive_requested,
         changed_total,
         coordinator,
         stage,
         artifact_cleanup,
-        &mut sender,
+        sender,
         &cancel,
     );
     let mut scheduler_progress = PipelineProgress::default();
@@ -116,13 +188,14 @@ async fn produce(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     generation: &SourceGenerationId,
+    collection: &CollectionSpec,
     diff: &SourceManifestDiff,
     archive_requested: bool,
     changed_total: u64,
     coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
     artifact_cleanup: &mut ArtifactCleanupGuard,
-    sender: &mut PreparedBatchSender,
+    mut sender: PreparedBatchSender,
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
     let acquire_batch_size = acquire_batch_size();
@@ -140,7 +213,7 @@ async fn produce(
             is_final: index + 1 == batch_count,
         });
     let Some(first) = batches.next() else {
-        return Ok(());
+        return ensure_generation_collection(runtime, input, collection).await;
     };
     anyhow::ensure!(
         !cancel.is_cancelled(),
@@ -149,14 +222,17 @@ async fn produce(
     // Once acquisition starts, let it settle so any returned artifacts can be
     // registered with the cleanup guard. Cancellation prevents new admission
     // and channel sends; it must not drop a mutation-bearing provider future.
-    let mut acquired = acquire_changed_batch(
-        input,
-        first,
-        changed_total,
-        stage.acquired_items,
-        stage.acquired_documents,
-        coordinator,
-        true,
+    let mut acquired = super::join_collection_setup_and_first_acquisition(
+        ensure_generation_collection(runtime, input, collection),
+        acquire_changed_batch(
+            input,
+            first,
+            changed_total,
+            stage.acquired_items,
+            stage.acquired_documents,
+            coordinator,
+            true,
+        ),
     )
     .await?;
     loop {
@@ -179,7 +255,7 @@ async fn produce(
                 artifact_cleanup,
             )
             .await?;
-            send_prepared(sender, prepared, cancel).await?;
+            send_prepared(&mut sender, prepared, cancel).await?;
             break;
         };
         let next_acquisition = acquire_changed_batch(
@@ -195,44 +271,46 @@ async fn produce(
             !cancel.is_cancelled(),
             "generation scheduler producer canceled"
         );
-        let (prepared, prefetched) = process_and_acquire_next(
+        let (sent, prefetched) = process_and_acquire_next(
             input.adapter,
-            prepare(
-                runtime,
-                input,
-                emitter,
-                generation,
-                acquired,
-                archive_requested,
-                coordinator,
-                stage,
-                artifact_cleanup,
-            ),
+            async {
+                let prepared = prepare(
+                    runtime,
+                    input,
+                    emitter,
+                    generation,
+                    acquired,
+                    archive_requested,
+                    coordinator,
+                    stage,
+                    artifact_cleanup,
+                )
+                .await?;
+                send_prepared(&mut sender, prepared, cancel).await
+            },
             next_acquisition,
         )
         .await;
         if let Some(Ok(prefetched)) = prefetched.as_ref() {
             artifact_cleanup.track(&prefetched.acquisition.artifacts);
         }
-        let (prepared, next_acquired) = resolve_prepared_step(prepared, prefetched)?;
-        send_prepared(sender, prepared, cancel).await?;
-        acquired = next_acquired;
+        acquired = resolve_sent_step(sent, prefetched)?;
     }
     Ok(())
 }
 
-fn resolve_prepared_step(
-    prepared: anyhow::Result<SchedulerPreparedBatch>,
+fn resolve_sent_step(
+    sent: anyhow::Result<()>,
     prefetched: Option<anyhow::Result<AcquiredChangedBatch>>,
-) -> anyhow::Result<(SchedulerPreparedBatch, AcquiredChangedBatch)> {
-    match (prepared, prefetched) {
-        (Ok(prepared), Some(Ok(prefetched))) => Ok((prepared, prefetched)),
+) -> anyhow::Result<AcquiredChangedBatch> {
+    match (sent, prefetched) {
+        (Ok(()), Some(Ok(prefetched))) => Ok(prefetched),
         (Err(primary), Some(Err(secondary))) => Err(primary.context(format!(
             "overlapped next-batch acquisition also failed: {secondary:#}"
         ))),
         (Err(primary), Some(Ok(_)) | None) => Err(primary),
-        (Ok(_), Some(Err(error))) => Err(error),
-        (Ok(_), None) => anyhow::bail!("next acquisition was not attempted after preparation"),
+        (Ok(()), Some(Err(error))) => Err(error),
+        (Ok(()), None) => anyhow::bail!("next acquisition was not attempted after preparation"),
     }
 }
 

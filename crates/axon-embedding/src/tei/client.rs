@@ -16,7 +16,7 @@ use axon_api::source::ApiError;
 use axon_error::ErrorStage;
 use axon_error::cooling::ProviderCooling;
 use chrono::Utc;
-use futures_util::future::join_all;
+use futures_util::{StreamExt, stream};
 use reqwest::{Client, StatusCode};
 use tokio::sync::Semaphore;
 
@@ -241,33 +241,32 @@ impl TeiClient {
 
         while !pending.is_empty() {
             let wave = std::mem::take(&mut pending);
-            for group in wave.chunks(self.max_concurrent_requests) {
-                let mut requests = Vec::with_capacity(group.len());
-                for (indices, chunk) in group {
-                    requests.push(self.send_indexed_chunk(indices, chunk));
-                }
-                for (indices, chunk, outcome) in join_all(requests).await {
-                    match outcome? {
-                        ChunkOutcome::Vectors(batch) => {
-                            if batch.len() != chunk.len() {
-                                return Err(self.error(
-                                    "embedding.tei.count_mismatch",
-                                    &format!(
-                                        "TEI returned {} vectors for a {}-input batch",
-                                        batch.len(),
-                                        chunk.len()
-                                    ),
-                                ));
-                            }
-                            for (index, vector) in indices.iter().copied().zip(batch) {
-                                slots[index] = vector;
-                            }
+            let mut requests = stream::iter(wave.into_iter().map(|(indices, chunk)| async move {
+                let outcome = self.send_chunk_with_retries(&chunk).await;
+                (indices, chunk, outcome)
+            }))
+            .buffer_unordered(self.max_concurrent_requests);
+            while let Some((indices, chunk, outcome)) = requests.next().await {
+                match outcome? {
+                    ChunkOutcome::Vectors(batch) => {
+                        if batch.len() != chunk.len() {
+                            return Err(self.error(
+                                "embedding.tei.count_mismatch",
+                                &format!(
+                                    "TEI returned {} vectors for a {}-input batch",
+                                    batch.len(),
+                                    chunk.len()
+                                ),
+                            ));
                         }
-                        ChunkOutcome::Split => {
-                            let mid = chunk.len() / 2;
-                            pending.push((indices[..mid].to_vec(), chunk[..mid].to_vec()));
-                            pending.push((indices[mid..].to_vec(), chunk[mid..].to_vec()));
+                        for (index, vector) in indices.iter().copied().zip(batch) {
+                            slots[index] = vector;
                         }
+                    }
+                    ChunkOutcome::Split => {
+                        let mid = chunk.len() / 2;
+                        pending.push((indices[..mid].to_vec(), chunk[..mid].to_vec()));
+                        pending.push((indices[mid..].to_vec(), chunk[mid..].to_vec()));
                     }
                 }
             }
@@ -277,14 +276,6 @@ impl TeiClient {
             vectors: slots,
             requests: self.requests.load(Ordering::Relaxed),
         })
-    }
-
-    async fn send_indexed_chunk<'a>(
-        &'a self,
-        indices: &'a [usize],
-        chunk: &'a [String],
-    ) -> (&'a [usize], &'a [String], Result<ChunkOutcome, ApiError>) {
-        (indices, chunk, self.send_chunk_with_retries(chunk).await)
     }
 
     /// Send one chunk, retrying transport errors and 429/5xx, and signalling a

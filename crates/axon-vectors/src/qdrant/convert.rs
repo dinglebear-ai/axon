@@ -12,9 +12,10 @@ use axon_api::source::*;
 use qdrant_client::qdrant::{
     CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
     FieldType, Filter, HnswConfigDiff, Match, NamedVectors, OptimizersConfigDiff, PointStruct,
-    SparseVector as QdrantSparseVector, SparseVectorConfig as QdrantSparseVectorConfig,
-    SparseVectorParams, Value, Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors,
-    VectorsConfig, condition, r#match, vector, vectors, vectors_config,
+    QuantizationConfig, QuantizationType, ScalarQuantization, SparseVector as QdrantSparseVector,
+    SparseVectorConfig as QdrantSparseVectorConfig, SparseVectorParams, Value,
+    Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors, VectorsConfig, condition,
+    r#match, quantization_config, vector, vectors, vectors_config,
 };
 
 use crate::collection::{normalize_collection_spec, validate_collection_spec};
@@ -28,9 +29,16 @@ use crate::validation::validate_upsert_batch;
 // ---------------------------------------------------------------------------
 
 pub fn qdrant_collection_request(spec: &CollectionSpec) -> Result<CreateCollection> {
+    let settings = QdrantCollectionSettings::default();
+    qdrant_collection_request_with_settings(spec, settings)
+}
+
+pub fn qdrant_collection_request_with_settings(
+    spec: &CollectionSpec,
+    settings: QdrantCollectionSettings,
+) -> Result<CreateCollection> {
     let spec = normalize_collection_spec(spec.clone());
     validate_collection_spec(&spec)?;
-    let settings = QdrantCollectionSettings::default();
     let mut dense = HashMap::new();
     dense.insert(
         spec.dense.name.clone(),
@@ -90,10 +98,15 @@ pub fn qdrant_collection_request(spec: &CollectionSpec) -> Result<CreateCollecti
         timeout: None,
         replication_factor: None,
         write_consistency_factor: None,
-        // Preserve the original floating-point vectors. Scalar INT8
-        // quantization is an optional latency/space tradeoff and must not be
-        // silently enabled for collections that require exact retrieval.
-        quantization_config: None,
+        quantization_config: settings.quantization_enabled.then_some(QuantizationConfig {
+            quantization: Some(quantization_config::Quantization::Scalar(
+                ScalarQuantization {
+                    r#type: QuantizationType::Int8 as i32,
+                    quantile: Some(settings.quantization_quantile),
+                    always_ram: Some(settings.quantization_always_ram),
+                },
+            )),
+        }),
         sharding_method: None,
         strict_mode_config: None,
         metadata: HashMap::new(),
@@ -107,6 +120,7 @@ pub struct QdrantCollectionSettings {
     pub hnsw_ef_construct: u64,
     pub hnsw_on_disk: bool,
     pub indexing_threshold: u64,
+    pub quantization_enabled: bool,
     pub quantization_quantile: f32,
     pub quantization_always_ram: bool,
 }
@@ -119,6 +133,7 @@ impl Default for QdrantCollectionSettings {
             hnsw_ef_construct: 256,
             hnsw_on_disk: false,
             indexing_threshold: 20_000,
+            quantization_enabled: true,
             quantization_quantile: 0.99,
             quantization_always_ram: true,
         }
@@ -406,6 +421,7 @@ fn qdrant_field_type(schema: PayloadFieldSchema) -> FieldType {
 
 mod rest;
 pub use rest::{
-    UpsertPointsBody, canonical_uri_filter_json, collection_create_json, eq_filter_json,
-    eq2_filter_json, payload_index_json, search_filter_json,
+    UpsertPointsBody, canonical_uri_filter_json, collection_create_json,
+    collection_create_json_with_settings, eq_filter_json, eq2_filter_json, payload_index_json,
+    search_filter_json,
 };

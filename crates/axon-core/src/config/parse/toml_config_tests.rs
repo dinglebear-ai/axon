@@ -169,7 +169,10 @@ hnsw-ef-construct = 256
 payload-index-profile = "full"
 payload-index-parallelism = 16
 hnsw-on-disk = false
+quantization-enabled = true
 quantization-always-ram = true
+async-writes = false
+transport = "rest"
 
 [sources.code-search]
 freshness-ttl-secs = 30
@@ -512,7 +515,10 @@ hnsw-ef-construct = 256
 payload-index-profile = "full"
 payload-index-parallelism = 16
 hnsw-on-disk = false
+quantization-enabled = true
 quantization-always-ram = true
+async-writes = false
+transport = "rest"
 
 [sources.code-search]
 freshness-ttl-secs = 30

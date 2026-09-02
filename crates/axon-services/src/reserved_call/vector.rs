@@ -13,6 +13,39 @@ use crate::context::TargetLocalSourceRuntime;
 
 use super::{ProviderCallContext, VectorLane, map_reserved};
 
+pub async fn begin_bulk_load(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+) -> Result<(), ApiError> {
+    bulk_load_operation(runtime, context, collection, false).await
+}
+
+pub async fn finish_bulk_load(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+) -> Result<(), ApiError> {
+    bulk_load_operation(runtime, context, collection, true).await
+}
+
+async fn bulk_load_operation(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+    finish: bool,
+) -> Result<(), ApiError> {
+    let store = Arc::clone(&runtime.vector_store);
+    vector_operation(runtime, context, move || async move {
+        if finish {
+            store.finish_bulk_load(&collection).await
+        } else {
+            store.begin_bulk_load(&collection).await
+        }
+    })
+    .await
+}
+
 /// Run an arbitrary vector-capacity operation under the durable scheduler.
 /// This is used for Qdrant-specific read helpers whose API intentionally sits
 /// outside the generic `VectorStore` trait.

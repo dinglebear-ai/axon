@@ -66,4 +66,15 @@ grep -q 'mktemp -d' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail private-temp
 ! grep -Eq '(^|[[:space:]])set -x([[:space:]]|$)' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail xtrace
 ! grep -Eq '(^|[[:space:]])eval([[:space:]]|$)' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail dynamic-evaluation
 
+config_root=$(mktemp -d "${TMPDIR:-/tmp}/axon-bench-config-test.XXXXXX")
+trap 'rm -rf -- "$config_root"' EXIT HUP INT TERM
+mkdir -p "$config_root/.axon"
+: >"$config_root/.axon/config.toml"
+[[ $(HOME=$config_root benchmark_config_path) == "$config_root/.axon/config.toml" ]] \
+  || fail default-config-path
+[[ $(HOME=$config_root AXON_CONFIG_PATH=/explicit/config.toml benchmark_config_path) == /explicit/config.toml ]] \
+  || fail explicit-config-path
+[[ $(HOME=$config_root AXON_BENCH_CONFIG_PATH=/bench/config.toml benchmark_config_path) == /bench/config.toml ]] \
+  || fail benchmark-config-path
+
 echo 'bench-source-pipeline tests passed'

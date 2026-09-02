@@ -9,6 +9,45 @@
 use super::*;
 
 #[test]
+fn collection_create_json_serializes_runtime_settings() {
+    let spec = CollectionSpec {
+        collection: "axon-test".to_string(),
+        dense: VectorConfig {
+            name: "dense".to_string(),
+            dimensions: 3,
+            distance: VectorDistance::Cosine,
+        },
+        payload_indexes: Vec::new(),
+        sparse: None,
+        aliases: Vec::new(),
+        distance: Some(VectorDistance::Cosine),
+        metadata: MetadataMap::new(),
+    };
+    let settings = QdrantCollectionSettings {
+        dense_on_disk: true,
+        hnsw_m: 16,
+        hnsw_ef_construct: 100,
+        hnsw_on_disk: false,
+        indexing_threshold: 9_999_999,
+        quantization_enabled: true,
+        quantization_quantile: 0.98,
+        quantization_always_ram: true,
+    };
+
+    let body = collection_create_json_with_settings(&spec, settings);
+
+    assert_eq!(body["hnsw_config"]["m"], 16);
+    assert_eq!(body["hnsw_config"]["ef_construct"], 100);
+    assert_eq!(body["optimizers_config"]["indexing_threshold"], 9_999_999);
+    assert_eq!(body["quantization_config"]["scalar"]["type"], "int8");
+    let quantile = body["quantization_config"]["scalar"]["quantile"]
+        .as_f64()
+        .expect("quantile number");
+    assert!((quantile - 0.98).abs() < 1e-6);
+    assert_eq!(body["quantization_config"]["scalar"]["always_ram"], true);
+}
+
+#[test]
 fn upsert_points_body_serializes_dense_sparse_and_payload_without_shape_drift() {
     let spec = CollectionSpec {
         collection: "axon-test".to_string(),

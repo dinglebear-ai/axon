@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::qdrant::configure_parallelism;
+use crate::qdrant::{
+    configure_grpc_transport, configure_parallelism, configure_rest_transport,
+    configure_write_transport,
+};
 use serde_json::json;
 
 fn collection_spec(name: &str) -> CollectionSpec {
@@ -25,6 +28,30 @@ fn collection_spec(name: &str) -> CollectionSpec {
         distance: Some(VectorDistance::Cosine),
         metadata: MetadataMap::new(),
     }
+}
+
+#[test]
+fn qdrant_grpc_transport_is_selectable_without_removing_rest_fallback() {
+    let mut store = QdrantVectorStore::new("http://127.0.0.1:6333", "qdrant-test");
+    assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
+
+    configure_grpc_transport(&mut store, "http://127.0.0.1:6334").unwrap();
+
+    assert_eq!(store.write_transport(), QdrantWriteTransport::Grpc);
+    configure_rest_transport(&mut store);
+    assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
+}
+
+#[test]
+fn qdrant_write_transport_rejects_unknown_values_and_missing_grpc_url() {
+    let mut store = QdrantVectorStore::new("http://127.0.0.1:6333", "qdrant-test");
+    let unknown = configure_write_transport(&mut store, "magic", None).unwrap_err();
+    assert_eq!(unknown.code.0, "vector.qdrant.transport_config");
+    assert!(unknown.message.contains("rest or grpc"));
+
+    let missing = configure_write_transport(&mut store, "grpc", None).unwrap_err();
+    assert_eq!(missing.code.0, "vector.qdrant.grpc_url_missing");
+    assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
 }
 
 #[test]

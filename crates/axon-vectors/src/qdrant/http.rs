@@ -185,6 +185,26 @@ impl QdrantHttp {
         Err(self.status_error(stage, context, status))
     }
 
+    pub async fn patch_json<B: Serialize + ?Sized>(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        body: &B,
+        context: &str,
+    ) -> Result<(), ApiError> {
+        let resp = self
+            .request(Method::PATCH)
+            .patch(url)
+            .json(body)
+            .send()
+            .await
+            .map_err(|err| self.transport(stage, context, &err))?;
+        if resp.status().is_success() {
+            return Ok(());
+        }
+        Err(self.status_error(stage, context, resp.status()))
+    }
+
     /// PUT an already encoded JSON body, tolerating 409. This is used by the
     /// vector hot path after enforcing the exact encoded-byte ceiling, avoiding
     /// a second serialization pass inside reqwest.
@@ -322,6 +342,10 @@ impl<'a> AuthedBuilder<'a> {
 
     fn post(self, url: &str) -> reqwest::RequestBuilder {
         self.apply(self.client.post(url))
+    }
+
+    fn patch(self, url: &str) -> reqwest::RequestBuilder {
+        self.apply(self.client.patch(url))
     }
 
     fn apply(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {

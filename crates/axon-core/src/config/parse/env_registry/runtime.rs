@@ -5,6 +5,7 @@ use super::{EnvKeySpec, spec};
 
 pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
     spec("QDRANT_URL", KeepEnv, Both, None, Canonical, false),
+    spec("QDRANT_GRPC_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_QDRANT_URL",
         ComposeEnv,

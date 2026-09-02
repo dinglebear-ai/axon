@@ -559,7 +559,7 @@ pub fn qdrant_upsert_parallelism() -> usize {
     resolve_clamped_usize(
         "AXON_QDRANT_UPSERT_PARALLELISM",
         toml.qdrant.upsert_parallelism,
-        1,
+        2,
         1,
         16,
     )
@@ -642,6 +642,36 @@ pub fn qdrant_quantization_always_ram() -> bool {
     env_bool_opt("AXON_QDRANT_QUANTIZATION_ALWAYS_RAM")
         .or(toml.qdrant.quantization_always_ram)
         .unwrap_or(true)
+}
+
+pub fn qdrant_quantization_enabled() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_QUANTIZATION_ENABLED")
+        .or(toml.qdrant.quantization_enabled)
+        .unwrap_or(true)
+}
+
+pub fn qdrant_async_writes() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_ASYNC_WRITES")
+        .or(toml.qdrant.async_writes)
+        .unwrap_or(false)
+}
+
+pub fn qdrant_write_transport() -> String {
+    let toml = load_toml_or_default();
+    std::env::var("AXON_QDRANT_TRANSPORT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or(toml.qdrant.transport)
+        .unwrap_or_else(|| "rest".to_string())
+        .to_ascii_lowercase()
+}
+
+pub fn qdrant_grpc_url() -> Option<String> {
+    std::env::var("QDRANT_GRPC_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 pub fn code_search_freshness_ttl_secs() -> u64 {
