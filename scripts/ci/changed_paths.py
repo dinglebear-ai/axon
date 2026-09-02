@@ -271,6 +271,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
                 "src/",
                 "crates/",
                 "xtask/",
+                "xtask-release/",
                 "benches/",
                 "tests/",
                 "migrations/",

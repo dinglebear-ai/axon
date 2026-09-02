@@ -67,8 +67,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       - uses: ./.github/actions/setup-rust-kache
-      - name: Build xtask once
-        run: cargo build --locked -p xtask
+      # xtask-release, not xtask: the release tooling depends on no axon crate,
+      # so this builds in seconds. Building xtask here meant compiling the whole
+      # product, which is what killed this job the first time it ever ran.
+      - name: Build the release tool once
+        run: cargo build --locked -p xtask-release
       - name: Apply release PR fixups
         env:
           PRS: ${{ needs.release-please.outputs.prs }}
@@ -84,14 +87,14 @@ jobs:
               "+refs/heads/$base_branch:refs/remotes/origin/$base_branch" \
               "+refs/heads/$branch:refs/remotes/origin/$branch"
             git checkout "$branch"
-            ./target/debug/xtask release-please-fixup-plan \
+            ./target/debug/xtask-release release-please-fixup-plan \
               --base "origin/$base_branch" \
               --head HEAD \
               --json > fixup-plan.json
             while read -r fixup; do
               component="$(jq -r '.id' <<<"$fixup")"
               version="$(jq -r '.version' <<<"$fixup")"
-              ./target/debug/xtask release-please-fixups \
+              ./target/debug/xtask-release release-please-fixups \
                 --component "$component" \
                 --version "$version" \
                 --base "origin/$base_branch"
@@ -102,7 +105,7 @@ jobs:
               git commit -m "chore: apply release-please fixups"
               fixup_commit_created=true
             fi
-            ./target/debug/xtask check-release-versions \
+            ./target/debug/xtask-release check-release-versions \
               --base "origin/$base_branch" \
               --head HEAD \
               --mode pr
@@ -129,7 +132,7 @@ jobs:
         env:
           RELEASE_OUTPUTS: ${{ toJson(needs.release-please.outputs) }}
         run: |
-          cargo xtask release-please-dispatch-plan \
+          cargo run --locked -p xtask-release -- release-please-dispatch-plan \
             --release-outputs "$RELEASE_OUTPUTS" \
             --json > dispatch-plan.json
           jq . dispatch-plan.json

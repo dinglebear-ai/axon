@@ -1,23 +1,43 @@
+//! Component release gating, version bumping, and release-please
+//! postprocessing.
+//!
+//! This lives in its own package, not in `xtask`, because it depends on no
+//! axon crate: everything here is regex, manifest, and `git` metadata work.
+//! `xtask` pulls in twelve axon crates (and transitively OpenSSL via
+//! `axon-services -> git2`), so building it just to rewrite a version string
+//! costs a full product compile. CI jobs that only need release bookkeeping
+//! build `-p xtask-release` and run the `xtask-release` binary instead.
+//!
+//! `xtask` flattens [`ReleaseCommand`] into its own CLI, so every
+//! `cargo xtask <release-command>` invocation keeps working unchanged.
+
 use semver::Version;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 type ReleaseResult<T> = Result<T, ReleaseVersionError>;
 
 macro_rules! release_bail {
     ($($arg:tt)*) => {
-        return Err($crate::checks::release_versions::ReleaseVersionError::msg(format!($($arg)*)))
+        return Err($crate::ReleaseVersionError::msg(format!($($arg)*)))
     };
 }
 
+mod command;
 mod error;
 mod files;
 mod gate;
 mod git;
 mod manifest;
+mod model;
 mod release_please;
 
-use error::{ReleaseContext, ReleaseVersionError};
+pub use command::{ReleaseCommand, run};
+pub use error::ReleaseVersionError;
+pub use model::{BumpLevel, ComponentPlan, GateMode, ReleaseDriver};
+
+pub(crate) use model::{Component, Manifest, VersionFile, VersionKind};
+
+use error::ReleaseContext;
 use manifest::validate_manifest;
 use release_please::{
     ReleasePleaseDispatchItem, ReleasePleaseFixupItem, release_please_dispatch_items,
@@ -43,103 +63,6 @@ use files::{
     read_gradle_version_code, read_gradle_version_name, read_json_version,
     read_npm_package_lock_version,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum GateMode {
-    Pr,
-    Main,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum BumpLevel {
-    Patch,
-    Minor,
-    Major,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ReleaseDriver {
-    AxonNative,
-    ReleasePlease,
-}
-
-impl ReleaseDriver {
-    const fn is_axon_native(self) -> bool {
-        matches!(self, Self::AxonNative)
-    }
-
-    const fn is_release_please(self) -> bool {
-        matches!(self, Self::ReleasePlease)
-    }
-
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::AxonNative => "axon-native",
-            Self::ReleasePlease => "release-please",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ComponentPlan {
-    pub id: String,
-    pub name: String,
-    pub changed: bool,
-    pub version: String,
-    pub candidate_tag: String,
-    pub last_tag: Option<String>,
-    pub release_workflow: String,
-    pub shipping_paths: Vec<String>,
-    pub release_driver: ReleaseDriver,
-}
-
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    schema_version: u32,
-    components: Vec<Component>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Component {
-    id: String,
-    name: String,
-    tag_prefix: String,
-    release_please_path: String,
-    release_workflow: String,
-    shipping_paths: Vec<String>,
-    version_source: VersionFile,
-    version_files: Vec<VersionFile>,
-    /// The system that owns this component's normal version, tag, GitHub
-    /// Release, and artifact-dispatch lifecycle. Every component must declare
-    /// this explicitly so an omitted owner fails closed. `cli` uses
-    /// `axon-native` because release-please's Cargo workspace plugin cannot
-    /// handle `version.workspace = true` (googleapis/release-please#2111).
-    /// Axon's xtask + auto-tag pipeline owns that component end to end instead.
-    release_driver: ReleaseDriver,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct VersionFile {
-    kind: VersionKind,
-    path: String,
-    package: Option<String>,
-    json_pointer: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum VersionKind {
-    CargoPackage,
-    CargoLockPackage,
-    ReadmeVersionLine,
-    ChangelogHeading,
-    JsonVersion,
-    JsonNoVersion,
-    NpmPackageLock,
-    GradleVersionName,
-    GradleVersionCode,
-}
 
 pub fn check(
     root: &Path,
@@ -481,5 +404,5 @@ fn build_plan(
 }
 
 #[cfg(test)]
-#[path = "release_versions_tests.rs"]
+#[path = "lib_tests.rs"]
 mod tests;
