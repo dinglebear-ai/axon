@@ -19,7 +19,7 @@ android {
         applicationId = "com.axon.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21 // x-release-please-version-code 2.1.0
+        versionCode = 22 // x-release-please-version-code 2.1.0
         // x-release-please-start-version
         versionName = "2.1.0"
         // x-release-please-end
