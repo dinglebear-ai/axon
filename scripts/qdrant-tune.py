@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import tempfile
 import time
@@ -47,7 +48,6 @@ def default_variants() -> list[Variant]:
         Variant("grpc-async-bulk-p2", "grpc", 2, True, True, 32, 256, True),
         Variant("grpc-p4", "grpc", 4, False, False, 32, 256, True),
         Variant("grpc-async-p4", "grpc", 4, True, False, 32, 256, True),
-        Variant("grpc-async-bulk-p4", "grpc", 4, True, True, 32, 256, True),
         Variant("hnsw-32-256", "grpc", 4, True, True, 32, 256, True),
         Variant("hnsw-16-128", "grpc", 4, True, True, 16, 128, True),
         Variant("hnsw-16-100", "grpc", 4, True, True, 16, 100, True),
@@ -138,8 +138,82 @@ def frozen_corpus(source: Path, destination: Path) -> int:
     return len(files)
 
 
-def run_variant(args: argparse.Namespace, variant: Variant, corpus: Path, run_id: str) -> dict:
-    collection = owned_collection(run_id, variant.name)
+def corpus_digest(corpus: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    for path in sorted(corpus.glob("code-claude-com-*.md")):
+        digest.update(path.name.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def file_digest(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def interleaved_runs(variants: list[Variant], repetitions: int) -> list[tuple[int, Variant]]:
+    if repetitions < 2:
+        raise ValueError("repetitions must be at least 2")
+    runs = []
+    for repetition in range(repetitions):
+        order = variants if repetition % 2 == 0 else list(reversed(variants))
+        runs.extend((repetition + 1, variant) for variant in order)
+    return runs
+
+
+def summarize_rows(rows: list[dict]) -> list[dict]:
+    names = list(dict.fromkeys(row["variant"]["name"] for row in rows))
+    summaries = []
+    for name in names:
+        samples = [row["seconds"] for row in rows if row["variant"]["name"] == name and "seconds" in row]
+        if samples:
+            summaries.append({
+                "variant": name,
+                "samples": len(samples),
+                "median_seconds": round(statistics.median(samples), 3),
+                "min_seconds": round(min(samples), 3),
+                "max_seconds": round(max(samples), 3),
+            })
+    return summaries
+
+
+def equivalence_report(rows: list[dict], repetitions: int) -> dict:
+    successful = [row for row in rows if "seconds" in row]
+    reasons = []
+    if len(successful) != len(rows):
+        reasons.append("one or more runs failed")
+    sample_counts = {}
+    for row in successful:
+        name = row["variant"]["name"]
+        sample_counts[name] = sample_counts.get(name, 0) + 1
+    if any(count != repetitions for count in sample_counts.values()):
+        reasons.append("one or more variants have an incomplete sample set")
+    points = {row.get("points") for row in successful}
+    if len(points) > 1 or None in points:
+        reasons.append("point counts differ or are missing")
+    if any(row.get("status") != "green" for row in successful):
+        reasons.append("one or more collections are not green")
+    return {"valid": not reasons, "reasons": reasons, "point_count": next(iter(points), None)}
+
+
+def service_identity(url: str) -> dict:
+    try:
+        return request_json(url.rstrip("/"))
+    except Exception as error:
+        return {"unavailable": type(error).__name__}
+
+
+def run_variant(args: argparse.Namespace, variant: Variant, corpus: Path, run_id: str, repetition: int) -> dict:
+    collection = owned_collection(run_id, f"{variant.name}-r{repetition}")
     assert_owned_collection(collection)
     env = os.environ.copy()
     env.update(variant_environment(variant, args.grpc_url))
@@ -156,7 +230,7 @@ def run_variant(args: argparse.Namespace, variant: Variant, corpus: Path, run_id
         info = request_json(f"{args.qdrant_url.rstrip('/')}/collections/{collection}").get("result", {})
         results = [query_urls(args.binary, collection, query, env) for query in args.queries]
         return {
-            "variant": variant._asdict(), "collection": collection, "seconds": round(seconds, 3),
+            "variant": variant._asdict(), "repetition": repetition, "collection": collection, "seconds": round(seconds, 3),
             "points": info.get("points_count"), "indexed_vectors": info.get("indexed_vectors_count"),
             "status": info.get("status"), "optimizer_status": info.get("optimizer_status"),
             "query_results": results,
@@ -181,6 +255,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--query", dest="queries", action="append")
     parser.add_argument("--variant", dest="variant_names", action="append")
+    parser.add_argument("--repetitions", type=int, default=3)
     args = parser.parse_args()
     args.queries = tuple(args.queries or DEFAULT_QUERIES)
     variants = select_variants(default_variants(), args.variant_names)
@@ -193,25 +268,44 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="axon-code-claude-corpus-") as directory:
         corpus = Path(directory)
         document_count = frozen_corpus(args.source, corpus)
+        digest = corpus_digest(corpus)
         rows = []
         try:
-            for variant in variants:
-                print(f"benchmarking {variant.name}...", flush=True)
+            for repetition, variant in interleaved_runs(variants, args.repetitions):
+                print(f"benchmarking {variant.name} repetition {repetition}...", flush=True)
                 try:
-                    rows.append(run_variant(args, variant, corpus, args.run_id))
+                    rows.append(run_variant(args, variant, corpus, args.run_id, repetition))
                 except Exception as error:
-                    rows.append({"variant": variant._asdict(), "status": "failed", "error": str(error)})
+                    rows.append({"variant": variant._asdict(), "repetition": repetition, "status": "failed", "error": str(error)})
                     print(f"{variant.name} failed: {error}", flush=True)
                 checkpoint(args.output, args.run_id, document_count, args.queries, rows)
         finally:
             if not args.keep_collections:
-                for variant in variants:
-                    delete_owned_collection(args.qdrant_url, owned_collection(args.run_id, variant.name))
+                for repetition, variant in interleaved_runs(variants, args.repetitions):
+                    delete_owned_collection(args.qdrant_url, owned_collection(args.run_id, f"{variant.name}-r{repetition}"))
     baseline = next(row["query_results"] for row in rows if "query_results" in row)
     for row in rows:
         if "query_results" in row:
             row["recall_overlap_at_10"] = round(mean_overlap(baseline, row.pop("query_results")), 4)
-    report = {"run_id": args.run_id, "documents": document_count, "queries": args.queries, "results": rows}
+    report = {
+        "run_id": args.run_id,
+        "documents": document_count,
+        "corpus_sha256": digest,
+        "repetitions": args.repetitions,
+        "interleaving": "alternating forward/reverse",
+        "queries": args.queries,
+        "runtime": {
+            "binary": str(args.binary),
+            "binary_sha256": file_digest(args.binary),
+            "qdrant_url": args.qdrant_url,
+            "qdrant_identity": service_identity(args.qdrant_url),
+            "tei_url": args.tei_url,
+            "tei_identity": service_identity(f"{args.tei_url.rstrip('/')}/info"),
+        },
+        "equivalence": equivalence_report(rows, args.repetitions),
+        "summaries": summarize_rows(rows),
+        "results": rows,
+    }
     rendered = json.dumps(report, indent=2) + "\n"
     if args.output:
         args.output.write_text(rendered)

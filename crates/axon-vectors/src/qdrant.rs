@@ -80,7 +80,7 @@ struct QdrantParallelismGates {
 
 static PARALLELISM_GATES: LazyLock<Mutex<HashMap<ParallelismKey, Weak<QdrantParallelismGates>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-static BULK_LOAD_USERS: LazyLock<AsyncMutex<HashMap<String, usize>>> =
+static BULK_LOAD_USERS: LazyLock<AsyncMutex<HashMap<String, Arc<AsyncMutex<usize>>>>> =
     LazyLock::new(|| AsyncMutex::new(HashMap::new()));
 
 fn shared_parallelism_gates(

@@ -14,6 +14,7 @@ SPEC.loader.exec_module(qdrant_tune)
 class QdrantTuneTests(unittest.TestCase):
     def test_matrix_systematically_covers_all_six_optimizations(self):
         variants = qdrant_tune.default_variants()
+        self.assertEqual(len({tuple(v[1:]) for v in variants}), len(variants))
         self.assertEqual([v.name for v in variants[:4]], ["rest-p1", "rest-p2", "rest-p3", "rest-p4"])
         self.assertTrue(any(v.transport == "grpc" for v in variants))
         self.assertTrue(any(v.async_writes for v in variants))
@@ -72,6 +73,43 @@ class QdrantTuneTests(unittest.TestCase):
             (source / "code-claude-com-one.md").write_text("one")
             self.assertEqual(qdrant_tune.frozen_corpus(source, destination), 1)
             self.assertEqual((destination / "code-claude-com-one.md").read_text(), "one")
+
+    def test_runs_are_repeated_and_order_is_interleaved(self):
+        variants = qdrant_tune.default_variants()[:2]
+        runs = qdrant_tune.interleaved_runs(variants, 3)
+        self.assertEqual([v.name for _, v in runs], [variants[0].name, variants[1].name, variants[1].name, variants[0].name, variants[0].name, variants[1].name])
+        with self.assertRaisesRegex(ValueError, "at least 2"):
+            qdrant_tune.interleaved_runs(variants, 1)
+
+    def test_summary_reports_median_and_spread(self):
+        variant = qdrant_tune.default_variants()[0]._asdict()
+        summary = qdrant_tune.summarize_rows([
+            {"variant": variant, "seconds": 3.0},
+            {"variant": variant, "seconds": 1.0},
+            {"variant": variant, "seconds": 2.0},
+        ])
+        self.assertEqual(summary, [{"variant": variant["name"], "samples": 3, "median_seconds": 2.0, "min_seconds": 1.0, "max_seconds": 3.0}])
+
+    def test_corpus_digest_changes_with_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory)
+            path = corpus / "code-claude-com-one.md"
+            path.write_text("one")
+            first = qdrant_tune.corpus_digest(corpus)
+            path.write_text("two")
+            self.assertNotEqual(first, qdrant_tune.corpus_digest(corpus))
+
+    def test_equivalence_requires_complete_green_equal_point_runs(self):
+        first, second = [variant._asdict() for variant in qdrant_tune.default_variants()[:2]]
+        rows = [
+            {"variant": first, "seconds": 1.0, "points": 10, "status": "green"},
+            {"variant": second, "seconds": 2.0, "points": 10, "status": "green"},
+        ]
+        self.assertTrue(qdrant_tune.equivalence_report(rows, 1)["valid"])
+        rows[1]["points"] = 9
+        report = qdrant_tune.equivalence_report(rows, 1)
+        self.assertFalse(report["valid"])
+        self.assertIn("point counts differ or are missing", report["reasons"])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 use httpmock::MockServer;
+use std::time::Duration;
 
 use super::*;
 use crate::qdrant::configure_bulk_load;
@@ -58,4 +59,24 @@ async fn overlapping_bulk_loads_restore_only_after_last_user() {
 
     patch.assert_calls_async(2).await;
     status.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn unrelated_collections_do_not_hold_the_registry_during_provider_io() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("PATCH").path("/collections/slow-a");
+            then.status(200).delay(Duration::from_millis(200));
+        })
+        .await;
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    configure_bulk_load(&mut store, true, 10_485_760, 20_000);
+
+    let pending = tokio::spawn(async move { store.begin_bulk_load_inner("slow-a").await });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let _registry = tokio::time::timeout(Duration::from_millis(50), BULK_LOAD_USERS.lock())
+        .await
+        .expect("provider I/O must not retain the global registry lock");
+    pending.await.unwrap().unwrap();
 }

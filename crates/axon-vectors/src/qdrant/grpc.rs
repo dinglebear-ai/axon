@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axon_api::source::*;
 use futures_util::{StreamExt, stream};
-use qdrant_client::qdrant::UpsertPointsBuilder;
+use qdrant_client::qdrant::{UpsertPointsBuilder, WriteOrdering, WriteOrderingType};
 
 use super::QdrantVectorStore;
 use super::qdrant_upsert_points;
@@ -44,7 +44,11 @@ pub(super) async fn upsert_batches_grpc(
             async move {
                 client
                     .upsert_points(
-                        UpsertPointsBuilder::new(collection, points).wait(!store.async_writes),
+                        UpsertPointsBuilder::new(collection, points)
+                            .wait(!store.async_writes)
+                            .ordering(WriteOrdering {
+                                r#type: WriteOrderingType::Strong.into(),
+                            }),
                     )
                     .await
                     .map_err(|error| {
@@ -65,7 +69,13 @@ pub(super) async fn upsert_batches_grpc(
     drop(pending);
     if let Some(points) = barrier_points {
         client
-            .upsert_points(UpsertPointsBuilder::new(collection.clone(), points).wait(true))
+            .upsert_points(
+                UpsertPointsBuilder::new(collection.clone(), points)
+                    .wait(true)
+                    .ordering(WriteOrdering {
+                        r#type: WriteOrderingType::Strong.into(),
+                    }),
+            )
             .await
             .map_err(|error| {
                 ApiError::new(

@@ -91,6 +91,33 @@ pinned fresh-corpus/warm-service run, cold-service startup, and a live full
 crawl. It adds corpus/vector equivalence, RSS, thermal state, SQLite admission,
 and Qdrant publication diagnostics.
 
+## Qdrant write-path sweep
+
+`scripts/qdrant-tune.py` replays the frozen `code.claude.com` Markdown corpus
+through isolated, benchmark-owned collections. A real sweep requires
+`--execute`; without it the script only prints the configuration matrix.
+
+```bash
+cargo build --release --bin axon
+python3 scripts/qdrant-tune.py --execute \
+  --binary target/release/axon \
+  --source ~/.axon/output/markdown \
+  --qdrant-url http://tootie:53333 \
+  --grpc-url http://tootie:53334 \
+  --tei-url http://tootie:52000 \
+  --repetitions 3 \
+  --output /tmp/axon-qdrant-sweep.json
+```
+
+The harness alternates forward and reverse variant order on successive
+repetitions, defaults to three samples per variant, and reports median, minimum,
+and maximum wall time. The report includes the frozen-corpus SHA-256, document
+count, endpoints, binary path, per-run Qdrant point/index state, and retrieval
+overlap. Do not rank failed runs, unequal corpus hashes or counts, non-green
+collections, or variants with fewer than the requested samples. Collections
+are deleted on exit unless `--keep-collections` is supplied; deletion is
+restricted to names with the `axon_qdrant_bench_` prefix.
+
 ## 2026-08-28 evidence gate
 
 A fresh live `code.claude.com` baseline used an empty Axon state, a unique

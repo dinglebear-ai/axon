@@ -17,8 +17,14 @@ impl QdrantVectorStore {
             return Ok(());
         }
         let key = format!("{}\0{collection}", self.url.trim_end_matches('/'));
-        let mut users = BULK_LOAD_USERS.lock().await;
-        let count = users.entry(key.clone()).or_default();
+        let entry = {
+            let mut users = BULK_LOAD_USERS.lock().await;
+            users
+                .entry(key.clone())
+                .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(0)))
+                .clone()
+        };
+        let mut count = entry.lock().await;
         *count += 1;
         if *count > 1 {
             return Ok(());
@@ -27,7 +33,7 @@ impl QdrantVectorStore {
             .set_indexing_threshold(collection, self.bulk_indexing_threshold)
             .await
         {
-            users.remove(&key);
+            *count = count.saturating_sub(1);
             return Err(error);
         }
         Ok(())
@@ -38,22 +44,26 @@ impl QdrantVectorStore {
             return Ok(());
         }
         let key = format!("{}\0{collection}", self.url.trim_end_matches('/'));
-        let mut users = BULK_LOAD_USERS.lock().await;
-        let Some(count) = users.get_mut(&key) else {
+        let entry = {
+            let users = BULK_LOAD_USERS.lock().await;
+            users.get(&key).cloned()
+        };
+        let Some(entry) = entry else {
             return Err(ApiError::new(
                 "vector.qdrant.bulk_load_unbalanced",
                 ErrorStage::Upserting,
                 "bulk-load completion has no matching begin",
             ));
         };
+        let mut count = entry.lock().await;
         *count = count.saturating_sub(1);
         if *count > 0 {
             return Ok(());
         }
-        users.remove(&key);
         self.set_indexing_threshold(collection, self.normal_indexing_threshold)
             .await?;
-        self.wait_for_optimizer_ready(collection).await
+        self.wait_for_optimizer_ready(collection).await?;
+        Ok(())
     }
 
     async fn set_indexing_threshold(&self, collection: &str, threshold: u64) -> Result<()> {

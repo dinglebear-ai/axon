@@ -190,6 +190,23 @@ pub(super) async fn process_generation_batches(
         batches,
     ))
     .await;
+    complete_bulk_load(
+        runtime,
+        input,
+        collection,
+        "restoring Qdrant indexing after the failed batch also failed",
+        processing,
+    )
+    .await
+}
+
+async fn complete_bulk_load(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    collection: &CollectionSpec,
+    failure_context: &str,
+    processing: anyhow::Result<()>,
+) -> anyhow::Result<()> {
     let finishing = reserved_call::finish_bulk_load(
         runtime,
         bulk_context(input, collection, "finish-bulk-load"),
@@ -200,9 +217,9 @@ pub(super) async fn process_generation_batches(
         (Ok(()), Ok(())) => Ok(()),
         (Err(error), Ok(())) => Err(error),
         (Ok(()), Err(error)) => Err(error.into()),
-        (Err(error), Err(finish_error)) => Err(error.context(format!(
-            "restoring Qdrant indexing after the failed batch also failed: {finish_error}"
-        ))),
+        (Err(error), Err(finish_error)) => {
+            Err(error.context(format!("{failure_context}: {finish_error}")))
+        }
     }
 }
 

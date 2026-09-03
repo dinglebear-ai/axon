@@ -35,9 +35,10 @@ pub(super) async fn upsert_batches_rest(
         .map(|index| index.field_name.clone())
         .collect();
     let wait = if store.async_writes { "false" } else { "true" };
-    let url = http
-        .endpoint()
-        .collection_path(&batch.collection, &format!("points?wait={wait}"));
+    let url = http.endpoint().collection_path(
+        &batch.collection,
+        &format!("points?wait={wait}&ordering=strong"),
+    );
 
     let write_slots = store.write_slots();
     let provider_id = store.provider_id().0.clone();
@@ -78,7 +79,7 @@ pub(super) async fn upsert_batches_rest(
     if let Some(barrier_chunk) = barrier_chunk {
         let barrier_url = http
             .endpoint()
-            .collection_path(&collection, "points?wait=true");
+            .collection_path(&collection, "points?wait=true&ordering=strong");
         requests = requests.saturating_add(
             upsert_chunk_rest(
                 http,

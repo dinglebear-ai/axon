@@ -375,13 +375,14 @@ async fn qdrant_upsert_rejects_indivisible_oversized_point() {
 }
 
 #[tokio::test]
-async fn async_upsert_pipelines_then_uses_a_wait_true_barrier() {
+async fn async_multichunk_upsert_uses_strong_ordering_and_a_wait_true_barrier() {
     let server = MockServer::start_async().await;
     let upsert = server
         .mock_async(|when, then| {
             when.method("PUT")
                 .path("/collections/axon-test/points")
-                .query_param("wait", "false");
+                .query_param("wait", "false")
+                .query_param("ordering", "strong");
             then.status(200).json_body(serde_json::json!({
                 "result": {"operation_id": 42, "status": "acknowledged"},
                 "status": "ok"
@@ -392,24 +393,26 @@ async fn async_upsert_pipelines_then_uses_a_wait_true_barrier() {
         .mock_async(|when, then| {
             when.method("PUT")
                 .path("/collections/axon-test/points")
-                .query_param("wait", "true");
+                .query_param("wait", "true")
+                .query_param("ordering", "strong");
             then.status(200);
         })
         .await;
     let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
     configure_async_writes(&mut store, true);
+    crate::qdrant::configure_point_buffer(&mut store, 2);
     let http = store.http().unwrap();
 
     upsert_batches_rest(
         &store,
         &http,
         &test_collection_spec(),
-        valid_batch(1),
+        valid_batch(5),
         ErrorStage::Upserting,
     )
     .await
     .unwrap();
-    upsert.assert_calls_async(1).await;
+    upsert.assert_calls_async(3).await;
     barrier.assert_calls_async(1).await;
 }
 

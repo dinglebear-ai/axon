@@ -30,23 +30,8 @@ pub(super) async fn process(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
-    ensure_generation_collection(runtime, input, collection).await?;
     if changed_total == 0 {
-        return process_inner(
-            runtime,
-            input,
-            emitter,
-            generation,
-            collection,
-            diff,
-            archive_requested,
-            changed_total,
-            coordinator,
-            stage,
-            accumulated,
-            artifact_cleanup,
-        )
-        .await;
+        return ensure_generation_collection(runtime, input, collection).await;
     }
     crate::reserved_call::begin_bulk_load(
         runtime,
@@ -69,20 +54,14 @@ pub(super) async fn process(
         artifact_cleanup,
     )
     .await;
-    let finishing = crate::reserved_call::finish_bulk_load(
+    super::complete_bulk_load(
         runtime,
-        super::bulk_context(input, collection, "finish-bulk-load"),
-        collection.collection.clone(),
+        input,
+        collection,
+        "restoring Qdrant indexing after the failed scheduled pipeline also failed",
+        processing,
     )
-    .await;
-    match (processing, finishing) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(()), Err(error)) => Err(error.into()),
-        (Err(error), Err(finish_error)) => Err(error.context(format!(
-            "restoring Qdrant indexing after the failed scheduled pipeline also failed: {finish_error}"
-        ))),
-    }
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -213,7 +192,7 @@ async fn produce(
             is_final: index + 1 == batch_count,
         });
     let Some(first) = batches.next() else {
-        return ensure_generation_collection(runtime, input, collection).await;
+        anyhow::bail!("scheduled generation had changed items but produced no batches");
     };
     anyhow::ensure!(
         !cancel.is_cancelled(),
