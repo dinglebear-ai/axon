@@ -11,6 +11,51 @@ use crate::store::Result;
 const OPTIMIZER_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const OPTIMIZER_READY_TIMEOUT: Duration = Duration::from_secs(300);
 
+enum CancelAction {
+    RollBackBegin,
+    CompleteFinish,
+}
+
+struct TransitionGuard {
+    store: QdrantVectorStore,
+    collection: String,
+    key: String,
+    entry: std::sync::Arc<tokio::sync::Mutex<usize>>,
+    action: CancelAction,
+    armed: bool,
+}
+
+impl TransitionGuard {
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TransitionGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let store = self.store.clone();
+        let collection = self.collection.clone();
+        let key = self.key.clone();
+        let entry = self.entry.clone();
+        let roll_back = matches!(self.action, CancelAction::RollBackBegin);
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                let mut count = entry.lock().await;
+                if roll_back {
+                    *count = count.saturating_sub(1);
+                }
+                if *count == 0 {
+                    let _ = store.restore_normal_indexing(&collection).await;
+                    remove_idle_entry(&key, &entry, *count).await;
+                }
+            });
+        }
+    }
+}
+
 async fn remove_idle_entry(
     key: &str,
     entry: &std::sync::Arc<tokio::sync::Mutex<usize>>,
@@ -47,14 +92,28 @@ impl QdrantVectorStore {
         if *count > 1 {
             return Ok(());
         }
-        if let Err(error) = self
+        let mut guard = TransitionGuard {
+            store: self.clone(),
+            collection: collection.to_string(),
+            key: key.clone(),
+            entry: entry.clone(),
+            action: CancelAction::RollBackBegin,
+            armed: true,
+        };
+        if let Err(mut error) = self
             .set_indexing_threshold(collection, self.bulk_indexing_threshold)
             .await
         {
             *count = count.saturating_sub(1);
+            if let Err(compensation) = self.restore_normal_indexing(collection).await {
+                error = error.with_context("compensation_error", compensation.to_string());
+            }
+            guard.disarm();
+            drop(guard);
             remove_idle_entry(&key, &entry, *count).await;
             return Err(error);
         }
+        guard.disarm();
         Ok(())
     }
 
@@ -79,14 +138,25 @@ impl QdrantVectorStore {
         if *count > 0 {
             return Ok(());
         }
-        let restoring = async {
-            self.set_indexing_threshold(collection, self.normal_indexing_threshold)
-                .await?;
-            self.wait_for_optimizer_ready(collection).await
-        }
-        .await;
+        let mut guard = TransitionGuard {
+            store: self.clone(),
+            collection: collection.to_string(),
+            key: key.clone(),
+            entry: entry.clone(),
+            action: CancelAction::CompleteFinish,
+            armed: true,
+        };
+        let restoring = self.restore_normal_indexing(collection).await;
+        guard.disarm();
+        drop(guard);
         remove_idle_entry(&key, &entry, *count).await;
         restoring
+    }
+
+    async fn restore_normal_indexing(&self, collection: &str) -> Result<()> {
+        self.set_indexing_threshold(collection, self.normal_indexing_threshold)
+            .await?;
+        self.wait_for_optimizer_ready(collection).await
     }
 
     async fn set_indexing_threshold(&self, collection: &str, threshold: u64) -> Result<()> {

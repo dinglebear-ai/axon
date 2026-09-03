@@ -286,10 +286,11 @@ def main() -> int:
             if not args.keep_collections:
                 for repetition, variant in interleaved_runs(variants, args.repetitions):
                     delete_owned_collection(args.qdrant_url, owned_collection(args.run_id, f"{variant.name}-r{repetition}"))
-    baseline = next(row["query_results"] for row in rows if "query_results" in row)
-    for row in rows:
-        if "query_results" in row:
-            row["recall_overlap_at_10"] = round(mean_overlap(baseline, row.pop("query_results")), 4)
+    baseline = next((row["query_results"] for row in rows if "query_results" in row), None)
+    if baseline is not None:
+        for row in rows:
+            if "query_results" in row:
+                row["recall_overlap_at_10"] = round(mean_overlap(baseline, row.pop("query_results")), 4)
     report = {
         "run_id": args.run_id,
         "documents": document_count,
@@ -313,7 +314,7 @@ def main() -> int:
     if args.output:
         args.output.write_text(rendered)
     print(rendered, end="")
-    return 0
+    return 0 if report["equivalence"]["valid"] else 2
 
 
 if __name__ == "__main__":

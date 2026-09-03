@@ -34,33 +34,25 @@ pub(super) async fn process(
         return ensure_generation_collection(runtime, input, collection).await;
     }
     ensure_generation_collection(runtime, input, collection).await?;
-    crate::reserved_call::begin_bulk_load(
-        runtime,
-        super::bulk_context(input, collection, "begin-bulk-load"),
-        collection.collection.clone(),
-    )
-    .await?;
-    let processing = process_inner(
-        runtime,
-        input,
-        emitter,
-        generation,
-        collection,
-        diff,
-        archive_requested,
-        changed_total,
-        coordinator,
-        stage,
-        accumulated,
-        artifact_cleanup,
-    )
-    .await;
-    super::complete_bulk_load(
+    super::with_bulk_load(
         runtime,
         input,
         collection,
         "restoring Qdrant indexing after the failed scheduled pipeline also failed",
-        processing,
+        process_inner(
+            runtime,
+            input,
+            emitter,
+            generation,
+            collection,
+            diff,
+            archive_requested,
+            changed_total,
+            coordinator,
+            stage,
+            accumulated,
+            artifact_cleanup,
+        ),
     )
     .await
 }

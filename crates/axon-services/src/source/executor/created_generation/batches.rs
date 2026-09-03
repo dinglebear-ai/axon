@@ -166,47 +166,49 @@ pub(super) async fn process_generation_batches(
         ),
     )
     .await?;
+    // Keep the large prepare/embed/publish future off Tokio's test/runtime
+    // worker stack now that the bulk lifecycle wraps it with additional state.
+    with_bulk_load(
+        runtime,
+        input,
+        collection,
+        "restoring Qdrant indexing after the failed batch also failed",
+        Box::pin(process_acquired_batches(
+            runtime,
+            input,
+            emitter,
+            generation,
+            collection,
+            archive_requested,
+            changed_total,
+            coordinator,
+            stage,
+            accumulated,
+            artifact_cleanup,
+            acquired,
+            batches,
+        )),
+    )
+    .await
+}
+
+async fn with_bulk_load<F>(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    collection: &CollectionSpec,
+    failure_context: &str,
+    processing: F,
+) -> anyhow::Result<()>
+where
+    F: Future<Output = anyhow::Result<()>>,
+{
     reserved_call::begin_bulk_load(
         runtime,
         bulk_context(input, collection, "begin-bulk-load"),
         collection.collection.clone(),
     )
     .await?;
-    // Keep the large prepare/embed/publish future off Tokio's test/runtime
-    // worker stack now that the bulk lifecycle wraps it with additional state.
-    let processing = Box::pin(process_acquired_batches(
-        runtime,
-        input,
-        emitter,
-        generation,
-        collection,
-        archive_requested,
-        changed_total,
-        coordinator,
-        stage,
-        accumulated,
-        artifact_cleanup,
-        acquired,
-        batches,
-    ))
-    .await;
-    complete_bulk_load(
-        runtime,
-        input,
-        collection,
-        "restoring Qdrant indexing after the failed batch also failed",
-        processing,
-    )
-    .await
-}
-
-async fn complete_bulk_load(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    collection: &CollectionSpec,
-    failure_context: &str,
-    processing: anyhow::Result<()>,
-) -> anyhow::Result<()> {
+    let processing = processing.await;
     let finishing = reserved_call::finish_bulk_load(
         runtime,
         bulk_context(input, collection, "finish-bulk-load"),

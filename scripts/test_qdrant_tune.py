@@ -1,6 +1,7 @@
 import importlib.util
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -123,6 +124,24 @@ class QdrantTuneTests(unittest.TestCase):
         report = qdrant_tune.equivalence_report(rows, 1)
         self.assertFalse(report["valid"])
         self.assertIn("retrieval overlap is below 1.0000", report["reasons"])
+
+    def test_main_returns_nonzero_for_invalid_equivalence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "axon"
+            binary.write_bytes(b"binary")
+            source = root / "source"
+            source.mkdir()
+            (source / "code-claude-com-one.md").write_text("one")
+            argv = [
+                "qdrant-tune.py", "--execute", "--binary", str(binary),
+                "--source", str(source), "--variant", "rest-p1", "--repetitions", "2",
+            ]
+            with mock.patch("sys.argv", argv), \
+                 mock.patch.object(qdrant_tune, "run_variant", side_effect=RuntimeError("failed")), \
+                 mock.patch.object(qdrant_tune, "delete_owned_collection"), \
+                 mock.patch.object(qdrant_tune, "service_identity", return_value={}):
+                self.assertEqual(qdrant_tune.main(), 2)
 
 
 if __name__ == "__main__":

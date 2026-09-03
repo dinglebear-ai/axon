@@ -121,7 +121,9 @@ restricted to names with the `axon_qdrant_bench_` prefix.
 The equivalence gate is deliberately strict: every successful arm must produce
 the same point count, a green collection, the full repetition count, and exact
 top-10 result overlap for every fixed query. A lower overlap is diagnostic
-output, not a valid speed winner.
+output, not a valid speed winner. Invalid evidence is still written for
+diagnosis, but the harness exits with status 2 and emits no timing summaries
+for arms without successful samples.
 
 ## 2026-08-28 evidence gate
 
