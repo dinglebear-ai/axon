@@ -11,6 +11,24 @@ use crate::store::Result;
 const OPTIMIZER_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const OPTIMIZER_READY_TIMEOUT: Duration = Duration::from_secs(300);
 
+async fn remove_idle_entry(
+    key: &str,
+    entry: &std::sync::Arc<tokio::sync::Mutex<usize>>,
+    count: usize,
+) {
+    if count != 0 {
+        return;
+    }
+    let mut users = BULK_LOAD_USERS.lock().await;
+    let removable = users
+        .get(key)
+        .is_some_and(|current| std::sync::Arc::ptr_eq(current, entry))
+        && std::sync::Arc::strong_count(entry) == 2;
+    if removable {
+        users.remove(key);
+    }
+}
+
 impl QdrantVectorStore {
     pub(super) async fn begin_bulk_load_inner(&self, collection: &str) -> Result<()> {
         if !self.bulk_load_enabled {
@@ -34,6 +52,7 @@ impl QdrantVectorStore {
             .await
         {
             *count = count.saturating_sub(1);
+            remove_idle_entry(&key, &entry, *count).await;
             return Err(error);
         }
         Ok(())
@@ -60,10 +79,14 @@ impl QdrantVectorStore {
         if *count > 0 {
             return Ok(());
         }
-        self.set_indexing_threshold(collection, self.normal_indexing_threshold)
-            .await?;
-        self.wait_for_optimizer_ready(collection).await?;
-        Ok(())
+        let restoring = async {
+            self.set_indexing_threshold(collection, self.normal_indexing_threshold)
+                .await?;
+            self.wait_for_optimizer_ready(collection).await
+        }
+        .await;
+        remove_idle_entry(&key, &entry, *count).await;
+        restoring
     }
 
     async fn set_indexing_threshold(&self, collection: &str, threshold: u64) -> Result<()> {

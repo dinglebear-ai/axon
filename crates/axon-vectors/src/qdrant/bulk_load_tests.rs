@@ -80,3 +80,30 @@ async fn unrelated_collections_do_not_hold_the_registry_during_provider_io() {
         .expect("provider I/O must not retain the global registry lock");
     pending.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn completed_bulk_load_removes_its_idle_registry_entry() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("PATCH").path("/collections/cleanup-entry");
+            then.status(200);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("GET").path("/collections/cleanup-entry");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"status": "green", "optimizer_status": "ok"}
+            }));
+        })
+        .await;
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    configure_bulk_load(&mut store, true, 10_485_760, 20_000);
+    let key = format!("{}\0cleanup-entry", server.base_url());
+
+    store.begin_bulk_load_inner("cleanup-entry").await.unwrap();
+    store.finish_bulk_load_inner("cleanup-entry").await.unwrap();
+
+    assert!(!BULK_LOAD_USERS.lock().await.contains_key(&key));
+}

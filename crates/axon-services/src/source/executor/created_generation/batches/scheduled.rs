@@ -33,6 +33,7 @@ pub(super) async fn process(
     if changed_total == 0 {
         return ensure_generation_collection(runtime, input, collection).await;
     }
+    ensure_generation_collection(runtime, input, collection).await?;
     crate::reserved_call::begin_bulk_load(
         runtime,
         super::bulk_context(input, collection, "begin-bulk-load"),
@@ -92,7 +93,6 @@ async fn process_inner(
         input,
         emitter,
         generation,
-        collection,
         diff,
         archive_requested,
         changed_total,
@@ -167,7 +167,6 @@ async fn produce(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     generation: &SourceGenerationId,
-    collection: &CollectionSpec,
     diff: &SourceManifestDiff,
     archive_requested: bool,
     changed_total: u64,
@@ -201,17 +200,14 @@ async fn produce(
     // Once acquisition starts, let it settle so any returned artifacts can be
     // registered with the cleanup guard. Cancellation prevents new admission
     // and channel sends; it must not drop a mutation-bearing provider future.
-    let mut acquired = super::join_collection_setup_and_first_acquisition(
-        ensure_generation_collection(runtime, input, collection),
-        acquire_changed_batch(
-            input,
-            first,
-            changed_total,
-            stage.acquired_items,
-            stage.acquired_documents,
-            coordinator,
-            true,
-        ),
+    let mut acquired = acquire_changed_batch(
+        input,
+        first,
+        changed_total,
+        stage.acquired_items,
+        stage.acquired_documents,
+        coordinator,
+        true,
     )
     .await?;
     loop {

@@ -186,7 +186,7 @@ def summarize_rows(rows: list[dict]) -> list[dict]:
     return summaries
 
 
-def equivalence_report(rows: list[dict], repetitions: int) -> dict:
+def equivalence_report(rows: list[dict], repetitions: int, minimum_overlap: float = 1.0) -> dict:
     successful = [row for row in rows if "seconds" in row]
     reasons = []
     if len(successful) != len(rows):
@@ -202,6 +202,9 @@ def equivalence_report(rows: list[dict], repetitions: int) -> dict:
         reasons.append("point counts differ or are missing")
     if any(row.get("status") != "green" for row in successful):
         reasons.append("one or more collections are not green")
+    overlaps = [row.get("recall_overlap_at_10") for row in successful]
+    if any(overlap is None or overlap < minimum_overlap for overlap in overlaps):
+        reasons.append(f"retrieval overlap is below {minimum_overlap:.4f}")
     return {"valid": not reasons, "reasons": reasons, "point_count": next(iter(points), None)}
 
 

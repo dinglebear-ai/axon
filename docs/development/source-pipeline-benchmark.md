@@ -118,6 +118,11 @@ collections, or variants with fewer than the requested samples. Collections
 are deleted on exit unless `--keep-collections` is supplied; deletion is
 restricted to names with the `axon_qdrant_bench_` prefix.
 
+The equivalence gate is deliberately strict: every successful arm must produce
+the same point count, a green collection, the full repetition count, and exact
+top-10 result overlap for every fixed query. A lower overlap is diagnostic
+output, not a valid speed winner.
+
 ## 2026-08-28 evidence gate
 
 A fresh live `code.claude.com` baseline used an empty Axon state, a unique

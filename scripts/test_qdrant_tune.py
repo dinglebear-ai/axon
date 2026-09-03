@@ -102,14 +102,27 @@ class QdrantTuneTests(unittest.TestCase):
     def test_equivalence_requires_complete_green_equal_point_runs(self):
         first, second = [variant._asdict() for variant in qdrant_tune.default_variants()[:2]]
         rows = [
-            {"variant": first, "seconds": 1.0, "points": 10, "status": "green"},
-            {"variant": second, "seconds": 2.0, "points": 10, "status": "green"},
+            {"variant": first, "seconds": 1.0, "points": 10, "status": "green", "recall_overlap_at_10": 1.0},
+            {"variant": second, "seconds": 2.0, "points": 10, "status": "green", "recall_overlap_at_10": 1.0},
         ]
         self.assertTrue(qdrant_tune.equivalence_report(rows, 1)["valid"])
         rows[1]["points"] = 9
         report = qdrant_tune.equivalence_report(rows, 1)
         self.assertFalse(report["valid"])
         self.assertIn("point counts differ or are missing", report["reasons"])
+
+    def test_equivalence_rejects_divergent_retrieval(self):
+        variant = qdrant_tune.default_variants()[0]._asdict()
+        rows = [{
+            "variant": variant,
+            "seconds": 1.0,
+            "points": 10,
+            "status": "green",
+            "recall_overlap_at_10": 0.8,
+        }]
+        report = qdrant_tune.equivalence_report(rows, 1)
+        self.assertFalse(report["valid"])
+        self.assertIn("retrieval overlap is below 1.0000", report["reasons"])
 
 
 if __name__ == "__main__":
