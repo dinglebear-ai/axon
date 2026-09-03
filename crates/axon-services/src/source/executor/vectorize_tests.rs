@@ -85,6 +85,13 @@ fn empty_range() -> SourceRange {
 }
 
 #[test]
+fn only_the_last_vector_pool_of_the_final_source_batch_is_final() {
+    assert!(!is_final_vector_batch(false, 1, 2));
+    assert!(!is_final_vector_batch(true, 0, 2));
+    assert!(is_final_vector_batch(true, 1, 2));
+}
+
+#[test]
 fn oversized_document_is_split_into_bounded_chunk_windows() {
     let max_chunks = 512;
     let chunk_count = max_chunks * 2 + 1;

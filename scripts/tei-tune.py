@@ -20,14 +20,14 @@ import urllib.request
 
 PRESETS = {
     "rtx4070-axon": {
-        "max-concurrent-requests": 128,
+        "max-concurrent-requests": 1024,
         "max-batch-tokens": 163840,
         "max-batch-requests": 16,
         "max-client-batch-size": 128,
         "tokenization-workers": 16,
     },
     "stable": {
-        "max-concurrent-requests": 128,
+        "max-concurrent-requests": 1024,
         "max-batch-tokens": 163840,
         "max-batch-requests": 16,
         "max-client-batch-size": 128,

@@ -13,7 +13,7 @@ use axon_core::sqlite::ImmediateTx;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 
 use super::header::{now_timestamp, stage_header};
-use super::row::{authority_to_str, metadata_to_json, range_to_json, source_ids_to_json};
+use super::row::{authority_to_str, metadata_to_json, range_to_json};
 use crate::authority::{Authority, resolve_authority};
 use crate::candidate::validate_candidate;
 use crate::error::graph_storage_error;
@@ -27,6 +27,7 @@ type StoreResult<T> = Result<T, axon_api::source::ApiError>;
 
 mod baseline;
 use baseline::upsert_source_baseline;
+mod nodes;
 
 /// Write a batch of validated candidates into the durable graph.
 ///
@@ -83,10 +84,14 @@ where
             .map(|evidence| (evidence.evidence_id.as_str(), evidence))
             .collect::<HashMap<_, _>>();
 
-        for node in &resolved_nodes {
-            upsert_node(&mut tx, node, &candidate.source_id, candidate.confidence).await?;
-            nodes_upserted += 1;
-        }
+        nodes::upsert_nodes(
+            &mut tx,
+            &resolved_nodes,
+            &candidate.source_id,
+            candidate.confidence,
+        )
+        .await?;
+        nodes_upserted = nodes_upserted.saturating_add(resolved_nodes.len() as u64);
         upsert_aliases(&mut tx, &resolved_nodes).await?;
 
         let mut pending_evidence = Vec::new();
@@ -178,84 +183,64 @@ fn resolve_edge_indexed(
     })
 }
 
-/// Upsert one node by (kind, stable_key), merging authority under the
-/// keep-highest-authority policy and unioning source ids.
-async fn upsert_node(
-    tx: &mut sqlx::SqliteConnection,
-    node: &ResolvedNode,
-    source_id: &SourceId,
-    fallback_confidence: f32,
-) -> StoreResult<()> {
+/// Upsert one edge by (kind, from, to). On conflict the authority is resolved
+/// under keep-highest-authority; equal authoritative claims record a conflict.
+async fn upsert_edge(tx: &mut sqlx::SqliteConnection, edge: &ResolvedEdge) -> StoreResult<()> {
     let now = now_timestamp();
-    // Fail-closed redaction boundary: node properties are adapter-supplied
-    // evidence metadata surfaced back through graph queries — scrub before
-    // the write, not after.
     let (redacted_properties, redaction_report) = redact_metadata_checked(
-        node.properties.clone(),
+        edge.properties.clone(),
         &RedactionContext::graph_evidence(),
         &DefaultRedactor::new(),
     )?;
     let redacted_properties = stamp_redaction_metadata(redacted_properties, &redaction_report);
-    // Read the existing node (if any) to merge authority + source ids.
-    let existing = sqlx::query(
-        "SELECT authority, source_ids_json, confidence FROM graph_nodes WHERE node_id = ?",
-    )
-    .bind(&node.node_id.0)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|e| graph_storage_error(format!("failed to read node for upsert: {e}")))?;
+    let existing = sqlx::query("SELECT authority, confidence FROM graph_edges WHERE edge_id = ?")
+        .bind(&edge.edge_id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| graph_storage_error(format!("failed to read edge for upsert: {e}")))?;
 
-    let (authority, confidence, source_ids_json) = match existing {
+    let (authority, confidence) = match existing {
         Some(row) => {
             use sqlx::Row;
             let prior = Authority::from_level(super::row::authority_from_str(
                 &row.get::<String, _>("authority"),
             ));
-            let winner = resolve_authority(prior, node.authority).winner;
+            let decision = resolve_authority(prior, edge.authority);
             let prior_conf = row.get::<f64, _>("confidence") as f32;
-            let conf = prior_conf.max(fallback_confidence).clamp(0.0, 1.0);
-            let mut ids =
-                super::row::source_ids_from_json(&row.get::<String, _>("source_ids_json"))?;
-            if !ids.contains(source_id) {
-                ids.push(source_id.clone());
-            }
-            (winner, conf, source_ids_to_json(&ids)?)
+            let winner = if decision.conflict {
+                super::conflict::record_edge_conflict(tx, edge, prior).await?;
+                axon_api::source::AuthorityLevel::Conflicting
+            } else {
+                decision.winner.to_level()
+            };
+            (winner, prior_conf.max(edge.confidence).clamp(0.0, 1.0))
         }
-        None => (
-            node.authority,
-            fallback_confidence.clamp(0.0, 1.0),
-            source_ids_to_json(std::slice::from_ref(source_id))?,
-        ),
+        None => (edge.authority.to_level(), edge.confidence.clamp(0.0, 1.0)),
     };
 
     sqlx::query(
-        "INSERT INTO graph_nodes (
-            node_id, kind, stable_key, canonical_uri, display_name, authority,
-            confidence, metadata_json, source_ids_json, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(node_id) DO UPDATE SET
-            canonical_uri = excluded.canonical_uri,
-            display_name  = excluded.display_name,
+        "INSERT INTO graph_edges (
+            edge_id, kind, from_node_id, to_node_id, authority, confidence,
+            metadata_json, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(edge_id) DO UPDATE SET
             authority     = excluded.authority,
             confidence    = excluded.confidence,
             metadata_json = excluded.metadata_json,
-            source_ids_json = excluded.source_ids_json,
             updated_at    = excluded.updated_at",
     )
-    .bind(&node.node_id.0)
-    .bind(&node.kind)
-    .bind(&node.stable_key)
-    .bind(&node.canonical_uri)
-    .bind(&node.label)
-    .bind(authority_to_str(authority.to_level()))
+    .bind(&edge.edge_id.0)
+    .bind(&edge.kind)
+    .bind(&edge.from_node_id.0)
+    .bind(&edge.to_node_id.0)
+    .bind(authority_to_str(authority))
     .bind(confidence as f64)
     .bind(metadata_to_json(&redacted_properties)?)
-    .bind(source_ids_json)
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
     .await
-    .map_err(|e| graph_storage_error(format!("failed to upsert node: {e}")))?;
+    .map_err(|e| graph_storage_error(format!("failed to upsert edge: {e}")))?;
 
     Ok(())
 }
@@ -301,70 +286,6 @@ async fn execute_alias_batch(
         .execute(&mut *tx)
         .await
         .map_err(|e| graph_storage_error(format!("failed to batch upsert aliases: {e}")))?;
-    Ok(())
-}
-
-/// Upsert one edge by (kind, from, to). On conflict the authority is resolved
-/// under keep-highest-authority; equal authoritative claims record a conflict.
-async fn upsert_edge(tx: &mut sqlx::SqliteConnection, edge: &ResolvedEdge) -> StoreResult<()> {
-    let now = now_timestamp();
-    let (redacted_properties, redaction_report) = redact_metadata_checked(
-        edge.properties.clone(),
-        &RedactionContext::graph_evidence(),
-        &DefaultRedactor::new(),
-    )?;
-    let redacted_properties = stamp_redaction_metadata(redacted_properties, &redaction_report);
-    let existing = sqlx::query("SELECT authority, confidence FROM graph_edges WHERE edge_id = ?")
-        .bind(&edge.edge_id.0)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| graph_storage_error(format!("failed to read edge for upsert: {e}")))?;
-
-    let (authority, confidence) = match existing {
-        Some(row) => {
-            use sqlx::Row;
-            let prior = Authority::from_level(super::row::authority_from_str(
-                &row.get::<String, _>("authority"),
-            ));
-            let decision = resolve_authority(prior, edge.authority);
-            let prior_conf = row.get::<f64, _>("confidence") as f32;
-            let winner = if decision.conflict {
-                super::conflict::record_edge_conflict(tx, edge, prior).await?;
-                // Preserve the existing authoritative claim; mark the edge as
-                // conflicting so downstream never silently trusts one side.
-                axon_api::source::AuthorityLevel::Conflicting
-            } else {
-                decision.winner.to_level()
-            };
-            (winner, prior_conf.max(edge.confidence).clamp(0.0, 1.0))
-        }
-        None => (edge.authority.to_level(), edge.confidence.clamp(0.0, 1.0)),
-    };
-
-    sqlx::query(
-        "INSERT INTO graph_edges (
-            edge_id, kind, from_node_id, to_node_id, authority, confidence,
-            metadata_json, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(edge_id) DO UPDATE SET
-            authority     = excluded.authority,
-            confidence    = excluded.confidence,
-            metadata_json = excluded.metadata_json,
-            updated_at    = excluded.updated_at",
-    )
-    .bind(&edge.edge_id.0)
-    .bind(&edge.kind)
-    .bind(&edge.from_node_id.0)
-    .bind(&edge.to_node_id.0)
-    .bind(authority_to_str(authority))
-    .bind(confidence as f64)
-    .bind(metadata_to_json(&redacted_properties)?)
-    .bind(&now)
-    .bind(&now)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| graph_storage_error(format!("failed to upsert edge: {e}")))?;
-
     Ok(())
 }
 

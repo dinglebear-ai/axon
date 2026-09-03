@@ -78,12 +78,16 @@ class TeiTuneTests(unittest.TestCase):
         config = tei_tune.resolve_config("rtx4070-axon", [], False)
         self.assertEqual(config["max-batch-tokens"], 163840)
         self.assertEqual(config["max-batch-requests"], 16)
-        self.assertEqual(config["max-concurrent-requests"], 128)
+        self.assertEqual(config["max-concurrent-requests"], 1024)
         self.assertEqual(config["tokenization-workers"], 16)
 
     def test_stable_command_contains_proven_gpu_safe_limits(self):
         command = tei_tune.command_for(tei_tune.resolve_config("stable", [], False))
         self.assertIn("163840", command)
+        self.assertEqual(
+            command[command.index("--max-concurrent-requests") + 1],
+            "1024",
+        )
         self.assertEqual(command[-1], "--auto-truncate")
 
     def test_arbitrary_override_accepts_underscore_alias(self):
