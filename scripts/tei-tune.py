@@ -4,14 +4,11 @@
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import contextlib
 import fcntl
 import json
 import os
 from pathlib import Path
-import math
-import statistics
 import shlex
 import subprocess
 import sys
@@ -19,125 +16,33 @@ import time
 import urllib.error
 import urllib.request
 
+import tei_tune_benchmark
+from tei_tune_benchmark import (
+    benchmark,
+    benchmark_once,
+    benchmark_sample,
+    command_for,
+    entrypoint_from_snapshot,
+    fixed_input_shape,
+    percentile,
+    request_embeddings,
+    sweep_client,
+)
 
-PRESETS = {
-    "rtx4070-axon": {
-        "max-concurrent-requests": 1024,
-        "max-batch-tokens": 163840,
-        "max-batch-requests": 16,
-        "max-client-batch-size": 128,
-        "tokenization-workers": 16,
-    },
-    "stable": {
-        "max-concurrent-requests": 1024,
-        "max-batch-tokens": 163840,
-        "max-batch-requests": 16,
-        "max-client-batch-size": 128,
-        "tokenization-workers": 16,
-    },
-    "admission": {
-        "max-concurrent-requests": 1024,
-        "max-batch-tokens": 196608,
-        "max-batch-requests": 1024,
-        "max-client-batch-size": 256,
-        "tokenization-workers": 32,
-    },
-    "probe-212k": {
-        "max-concurrent-requests": 1024,
-        "max-batch-tokens": 212992,
-        "max-batch-requests": 1024,
-        "max-client-batch-size": 256,
-        "tokenization-workers": 32,
-    },
-}
-KNOBS = frozenset(next(iter(PRESETS.values())))
-FIXED_ARGS = [
-    "--model-id", "Qwen/Qwen3-Embedding-0.6B",
-    "--dtype", "float16",
-    "--pooling", "last-token",
-    "--auto-truncate",
-]
-
-
-def positive_int(value: str) -> int:
-    parsed = int(value)
-    if parsed <= 0:
-        raise ValueError("must be a positive integer")
-    return parsed
-
-
-def resolve_config(preset: str, overrides: list[str], allow_unsafe: bool) -> dict[str, int]:
-    config = dict(PRESETS[preset])
-    for item in overrides:
-        if "=" not in item:
-            raise ValueError(f"override must be KEY=VALUE: {item}")
-        key, value = item.split("=", 1)
-        key = key.strip().replace("_", "-")
-        if key not in KNOBS:
-            raise ValueError(f"unknown knob {key!r}; choose from {', '.join(sorted(KNOBS))}")
-        config[key] = positive_int(value)
-    if config["max-batch-tokens"] > 212992 and not allow_unsafe:
-        raise ValueError(
-            "max-batch-tokens above 212992 requires --allow-unsafe; 262144 caused CUDA OOM on the RTX 4070"
-        )
-    return config
-
-
-def command_for(config: dict[str, int]) -> list[str]:
-    args = FIXED_ARGS[:4]
-    for key in (
-        "max-concurrent-requests", "max-batch-tokens", "max-batch-requests",
-        "max-client-batch-size", "tokenization-workers",
-    ):
-        args.extend((f"--{key}", str(config[key])))
-    args.extend(FIXED_ARGS[4:])
-    return args
-
-
-def docker_run_from_snapshot(container: str, snapshot: dict) -> list[str]:
-    config = snapshot.get("config", {})
-    host = snapshot.get("host_config", {})
-    run = ["docker", "run", "-d", "--name", container]
-    restart = host.get("RestartPolicy", {}).get("Name")
-    if restart and restart != "no":
-        run.extend(("--restart", restart))
-    network = snapshot.get("network_mode")
-    if network:
-        run.extend(("--network", network))
-    runtime = host.get("Runtime")
-    if runtime:
-        run.extend(("--runtime", runtime))
-    requests = host.get("DeviceRequests") or []
-    if requests and requests[0].get("Driver") == "nvidia":
-        device_ids = requests[0].get("DeviceIDs") or []
-        run.extend(("--gpus", f"device={','.join(device_ids)}" if device_ids else "all"))
-    for container_port, bindings in (host.get("PortBindings") or {}).items():
-        for binding in bindings or []:
-            published = f"{binding.get('HostIp')}:{binding['HostPort']}:{container_port}" if binding.get("HostIp") else f"{binding['HostPort']}:{container_port}"
-            run.extend(("-p", published))
-    for bind in host.get("Binds") or []:
-        run.extend(("-v", bind))
-    for env in config.get("Env") or []:
-        run.extend(("-e", env))
-    for key, value in (config.get("Labels") or {}).items():
-        run.extend(("--label", f"{key}={value}"))
-    if config.get("User"):
-        run.extend(("--user", config["User"]))
-    if config.get("WorkingDir"):
-        run.extend(("--workdir", config["WorkingDir"]))
-    entrypoint = snapshot.get("entrypoint") or []
-    if entrypoint:
-        run.extend(("--entrypoint", entrypoint[0]))
-    run.append(snapshot["image"])
-    run.extend(entrypoint[1:])
-    run.extend(snapshot.get("cmd") or [])
-    return run
+from tei_tune_runtime import (
+    PRESETS,
+    docker_run_from_snapshot,
+    resolve_config,
+    secondary_network_commands,
+    validate_container_name,
+    validate_ssh_host,
+)
 
 
 class Tei:
     def __init__(self, args: argparse.Namespace):
-        self.host = args.host
-        self.container = args.container
+        self.host = validate_ssh_host(args.host)
+        self.container = validate_container_name(args.container)
         self.url = args.url.rstrip("/")
         self.image = args.image
         self.port = args.port
@@ -148,10 +53,57 @@ class Tei:
         state_name = f"{self.host}-{self.container}".replace("/", "_") + ".json"
         self.state = Path(args.state_dir).expanduser() / state_name
 
-    def remote(self, argv: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["ssh", self.host, shlex.join(argv)], text=True, capture_output=True, check=check
+    def remote(
+        self, argv: list[str], check: bool = True, input_text: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        validate_ssh_host(self.host)
+        holder = getattr(self, "_remote_lock_holder", None)
+        if holder is not None and holder.poll() is not None:
+            raise RuntimeError(
+                f"remote TEI mutation lock was lost for {self.host}/{self.container}; refusing further mutation"
+            )
+        operation_lock = getattr(self, "_remote_operation_lock", None)
+        remote_argv = (
+            ["flock", "-s", operation_lock, "--", *argv]
+            if holder is not None and operation_lock is not None
+            else argv
         )
+        command = ["ssh", self.host, shlex.join(remote_argv)]
+        if holder is None:
+            return subprocess.run(
+                command, text=True, capture_output=True, check=check, input=input_text,
+            )
+        process = subprocess.Popen(
+            command,
+            text=True,
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        first_wait = True
+        while True:
+            try:
+                stdout, stderr = process.communicate(
+                    input=input_text if first_wait else None,
+                    timeout=0.1,
+                )
+                break
+            except subprocess.TimeoutExpired:
+                first_wait = False
+                if holder.poll() is not None:
+                    process.terminate()
+                    process.communicate()
+                    raise RuntimeError(
+                        f"remote TEI mutation lock was lost for {self.host}/{self.container}; "
+                        "stopped waiting locally; remote state is uncertain, but the operation "
+                        "lock prevents a successor from racing this command"
+                    )
+        result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        if check and result.returncode:
+            raise subprocess.CalledProcessError(
+                result.returncode, command, output=stdout, stderr=stderr
+            )
+        return result
 
     def inspect(self) -> dict:
         result = self.remote(["docker", "inspect", self.container])
@@ -167,7 +119,8 @@ class Tei:
             "entrypoint": inspected["Config"].get("Entrypoint"),
             "config": inspected["Config"],
             "host_config": inspected["HostConfig"],
-            "network_mode": next(iter(inspected["NetworkSettings"]["Networks"]), "bridge"),
+            "network_mode": inspected["HostConfig"].get("NetworkMode", "bridge"),
+            "networks": inspected["NetworkSettings"].get("Networks", {}),
         }
 
     def save_snapshot(self, snapshot: dict) -> None:
@@ -196,7 +149,51 @@ class Tei:
                     f"another TEI mutation is already running for {self.host}/{self.container}"
                 ) from error
             try:
-                yield
+                lock_prefix = f"/tmp/axon-tei-tune-{validate_container_name(container)}"
+                owner_lock = f"{lock_prefix}.owner.lock"
+                operation_lock = f"{lock_prefix}.operation.lock"
+                ready_command = shlex.join([
+                    "flock", operation_lock, "sh", "-c",
+                    "printf 'axon-tei-tune-locked\\n'",
+                ])
+                lock_command = shlex.join([
+                    "flock", "-n", owner_lock, "sh", "-c",
+                    f"{ready_command}; cat >/dev/null",
+                ])
+                holder = subprocess.Popen(
+                    ["ssh", validate_ssh_host(host), lock_command],
+                    text=True,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                acquired = holder.stdout.readline() if holder.stdout else ""
+                if acquired != "axon-tei-tune-locked\n":
+                    _, error = holder.communicate()
+                    raise RuntimeError(
+                        f"another TEI mutation is already running for {self.host}/{self.container}: {error.strip()}"
+                    )
+                self._remote_lock_holder = holder
+                self._remote_operation_lock = operation_lock
+                try:
+                    if holder.poll() is not None:
+                        raise RuntimeError(
+                            f"remote TEI mutation lock was lost for {self.host}/{self.container}; refusing mutation"
+                        )
+                    yield
+                    if holder.poll() is not None:
+                        raise RuntimeError(
+                            f"remote TEI mutation lock was lost for {self.host}/{self.container}; mutation result is uncertain"
+                        )
+                finally:
+                    self._remote_lock_holder = None
+                    self._remote_operation_lock = None
+                    if holder.stdin:
+                        holder.stdin.close()
+                    holder.wait()
+                    if holder.returncode:
+                        error = holder.stderr.read().strip() if holder.stderr else ""
+                        print(f"warning: remote TEI mutation lock ended with an error: {error}", file=sys.stderr)
             finally:
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
 
@@ -222,6 +219,16 @@ class Tei:
 
     def discard_parked(self) -> None:
         self.remote(["docker", "rm", "-f", self.parked_container])
+
+    def discard_parked_after_success(self, outcome: str) -> None:
+        try:
+            self.discard_parked()
+        except Exception as error:
+            recovery = shlex.join(["ssh", self.host, "docker", "rm", "-f", self.parked_container])
+            raise RuntimeError(
+                f"{outcome} succeeded and is live, but cleanup of parked container "
+                f"{self.parked_container!r} failed ({error}); retry safely with: {recovery}"
+            ) from error
 
     def restore_after_failure(self, primary: str) -> None:
         try:
@@ -249,9 +256,12 @@ class Tei:
                 raise RuntimeError(
                     f"saving the prior configuration failed ({save_error}); current TEI configuration restored"
                 ) from save_error
-            self.discard_parked()
+            self.discard_parked_after_success("saved rollback configuration")
 
     def _rollback_to_snapshot(self, snapshot: dict, *, discard_parked: bool = True) -> None:
+        # Validate every unsupported setting before stopping the current service.
+        docker_run_from_snapshot(self.container, snapshot)
+        secondary_network_commands(self.container, snapshot)
         self.park_current()
         try:
             self.deploy_snapshot(snapshot)
@@ -263,7 +273,7 @@ class Tei:
         ok, detail = self.ready()
         if ok:
             if discard_parked:
-                self.discard_parked()
+                self.discard_parked_after_success("rollback configuration")
             return
         self.restore_after_failure(f"rollback target failed readiness ({detail})")
         restored, restore_detail = self.ready()
@@ -293,10 +303,23 @@ class Tei:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip())
 
     def deploy_snapshot(self, snapshot: dict) -> None:
+        run_command = docker_run_from_snapshot(self.container, snapshot)
+        network_commands = secondary_network_commands(self.container, snapshot)
         self.remote(["docker", "rm", "-f", self.container], check=False)
-        result = self.remote(docker_run_from_snapshot(self.container, snapshot), check=False)
+        environment = snapshot.get("config", {}).get("Env") or []
+        input_text = "\n".join(environment) + ("\n" if environment else "")
+        result = self.remote(
+            run_command,
+            check=False,
+            input_text=input_text,
+        )
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+        for command in network_commands:
+            result = self.remote(command, check=False)
+            if result.returncode:
+                detail = result.stderr.strip() or result.stdout.strip()
+                raise RuntimeError(f"failed to attach rollback network {command[-2]}: {detail}")
 
     def ready(self, timeout: int = 90) -> tuple[bool, str]:
         deadline = time.monotonic() + timeout
@@ -343,7 +366,7 @@ class Tei:
             ) from deploy_error
         ok, detail = self.ready()
         if ok:
-            self.discard_parked()
+            self.discard_parked_after_success("new TEI configuration")
             print("TEI is ready; new configuration retained.")
             return
         print(f"New configuration failed readiness: {detail}", file=sys.stderr)
@@ -353,113 +376,6 @@ class Tei:
         if not restored:
             raise RuntimeError(f"automatic rollback also failed: {restore_detail}")
         raise RuntimeError("new configuration rejected; previous TEI configuration restored")
-
-
-def request_embeddings(url: str, inputs: list[str]) -> int:
-    body = json.dumps({"inputs": inputs, "truncate": True}).encode()
-    request = urllib.request.Request(
-        f"{url}/embed", data=body, headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        payload = json.loads(response.read())
-    return len(payload)
-
-
-def entrypoint_from_snapshot(snapshot: dict) -> str | None:
-    entrypoint = snapshot.get("entrypoint")
-    if not entrypoint:
-        return None
-    if not isinstance(entrypoint, list) or len(entrypoint) != 1:
-        raise ValueError(f"unsupported Docker entrypoint snapshot: {entrypoint!r}")
-    return str(entrypoint[0])
-
-
-def percentile(values: list[float], quantile: float) -> float:
-    ordered = sorted(values)
-    return ordered[max(0, math.ceil(len(ordered) * quantile) - 1)]
-
-
-def fixed_input_shape(total_inputs: int, batch_size: int) -> tuple[int, int]:
-    requests = math.ceil(total_inputs / batch_size)
-    return requests, requests * batch_size
-
-
-def benchmark_sample(sample_chars: int) -> str:
-    base = (
-        "Text embeddings inference benchmark for source acquisition, document chunking, "
-        "hybrid retrieval, vector publication, and technical documentation. "
-    )
-    return (base * math.ceil(sample_chars / len(base)))[:sample_chars]
-
-
-def benchmark_once(tei: Tei, requests: int, batch_size: int, concurrency: int,
-                   sample_chars: int = 1168) -> dict:
-    sample = benchmark_sample(sample_chars)
-    batch = [sample] * batch_size
-    latencies: list[float] = []
-    errors: list[str] = []
-
-    def measured_request(_: int) -> int:
-        started = time.perf_counter()
-        try:
-            return request_embeddings(tei.url, batch)
-        except Exception as error:  # Report every failed candidate instead of losing the sweep.
-            errors.append(str(error))
-            return 0
-        finally:
-            latencies.append((time.perf_counter() - started) * 1000)
-
-    started = time.perf_counter()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
-        counts = list(pool.map(measured_request, range(requests)))
-    elapsed = time.perf_counter() - started
-    total = sum(counts)
-    return {
-        "requests": requests, "batch_size": batch_size, "concurrency": concurrency,
-        "sample_chars": sample_chars,
-        "inputs": total, "seconds": round(elapsed, 3),
-        "inputs_per_second": round(total / elapsed, 2) if elapsed else 0,
-        "latency_ms_p50": round(percentile(latencies, 0.50), 2),
-        "latency_ms_p95": round(percentile(latencies, 0.95), 2),
-        "latency_ms_p99": round(percentile(latencies, 0.99), 2),
-        "errors": len(errors), "error_samples": errors[:3],
-    }
-
-
-def benchmark(tei: Tei, requests: int, batch_size: int, concurrency: int,
-              sample_chars: int) -> None:
-    print(json.dumps(
-        benchmark_once(tei, requests, batch_size, concurrency, sample_chars), indent=2
-    ))
-
-
-def sweep_client(tei: Tei, total_inputs: int, repeats: int, batch_sizes: list[int],
-                 concurrencies: list[int], output: Path | None,
-                 sample_chars: int = 1168) -> None:
-    results = []
-    for batch_size in batch_sizes:
-        requests, actual_inputs = fixed_input_shape(total_inputs, batch_size)
-        for concurrency in concurrencies:
-            benchmark_once(
-                tei, max(1, concurrency), batch_size, concurrency, sample_chars
-            )
-            trials = [
-                benchmark_once(tei, requests, batch_size, concurrency, sample_chars)
-                for _ in range(repeats)
-            ]
-            rates = [trial["inputs_per_second"] for trial in trials if trial["errors"] == 0]
-            result = {
-                "batch_size": batch_size, "concurrency": concurrency,
-                "requested_inputs": total_inputs, "actual_inputs": actual_inputs,
-                "repeats": repeats, "trials": trials,
-                "median_inputs_per_second": round(statistics.median(rates), 2) if rates else 0,
-            }
-            results.append(result)
-            print(json.dumps(result), flush=True)
-    report = {"kind": "tei-http-client-sweep", "results": results}
-    if output:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2) + "\n")
 
 
 def parser() -> argparse.ArgumentParser:

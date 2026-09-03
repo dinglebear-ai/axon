@@ -25,13 +25,13 @@ mod support;
 mod vector;
 
 use support::{map_reserved, record_provider_heartbeat, scheduler_error};
-#[cfg(test)]
-pub(crate) use vector::test_bulk_load_cleanup_lifecycle;
 pub use vector::{
     begin_bulk_load, delete_vectors, drain_bulk_load_cleanups, finish_bulk_load,
     mark_generation_committed, mark_unchanged_items_committed, retire_generation, vector_operation,
     with_bulk_load,
 };
+#[cfg(test)]
+pub(crate) use vector::{test_bulk_load_cleanup_lifecycle, test_bulk_load_finish_handoff};
 
 /// Drains cancellation-triggered Qdrant restoration before a process runtime exits.
 pub struct BulkLoadCleanupDrain;

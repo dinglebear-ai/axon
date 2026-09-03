@@ -106,7 +106,7 @@ impl QdrantEndpoint {
         &self.base
     }
 
-    fn api_key(&self) -> Option<&str> {
+    pub(super) fn api_key(&self) -> Option<&str> {
         self.api_key.as_deref()
     }
 }

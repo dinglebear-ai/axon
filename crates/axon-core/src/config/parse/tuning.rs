@@ -648,7 +648,7 @@ pub fn qdrant_quantization_enabled() -> bool {
     let toml = load_toml_or_default();
     env_bool_opt("AXON_QDRANT_QUANTIZATION_ENABLED")
         .or(toml.qdrant.quantization_enabled)
-        .unwrap_or(true)
+        .unwrap_or(false)
 }
 
 pub fn qdrant_async_writes() -> bool {

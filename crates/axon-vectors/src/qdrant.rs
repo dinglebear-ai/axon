@@ -350,7 +350,9 @@ pub fn configure_write_transport(
 }
 
 pub fn configure_grpc_transport(store: &mut QdrantVectorStore, url: &str) -> Result<(), ApiError> {
-    let client = Qdrant::from_url(url)
+    let (grpc_url, api_key) = grpc_connection_parts(&store.url, url);
+    let client = Qdrant::from_url(&grpc_url)
+        .api_key(api_key)
         .skip_compatibility_check()
         .build()
         .map_err(|error| {
@@ -363,6 +365,16 @@ pub fn configure_grpc_transport(store: &mut QdrantVectorStore, url: &str) -> Res
     store.grpc_client = Some(Arc::new(client));
     store.write_transport = QdrantWriteTransport::Grpc;
     Ok(())
+}
+
+fn grpc_connection_parts(rest_url: &str, grpc_url: &str) -> (String, Option<String>) {
+    let rest = http::QdrantEndpoint::parse(rest_url);
+    let grpc = http::QdrantEndpoint::parse(grpc_url);
+    let api_key = grpc
+        .api_key()
+        .or_else(|| rest.api_key())
+        .map(ToOwned::to_owned);
+    (grpc.root().to_string(), api_key)
 }
 
 pub fn configure_rest_transport(store: &mut QdrantVectorStore) {

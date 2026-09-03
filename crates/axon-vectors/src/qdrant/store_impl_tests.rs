@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::*;
 use crate::qdrant::{
     configure_grpc_transport, configure_parallelism, configure_rest_transport,
-    configure_write_transport,
+    configure_write_transport, grpc_connection_parts,
 };
 use serde_json::json;
 
@@ -40,6 +40,18 @@ fn qdrant_grpc_transport_is_selectable_without_removing_rest_fallback() {
     assert_eq!(store.write_transport(), QdrantWriteTransport::Grpc);
     configure_rest_transport(&mut store);
     assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
+}
+
+#[test]
+fn qdrant_grpc_transport_reuses_rest_credentials_without_leaking_them_into_url() {
+    let (url, api_key) = grpc_connection_parts(
+        "http://secret-token@qdrant.internal:6333?api_key=ignored",
+        "http://qdrant.internal:6334/path?api_key=grpc-fallback",
+    );
+    assert_eq!(url, "http://qdrant.internal:6334");
+    assert_eq!(api_key.as_deref(), Some("grpc-fallback"));
+    assert!(!url.contains("secret"));
+    assert!(!url.contains("api_key"));
 }
 
 #[test]

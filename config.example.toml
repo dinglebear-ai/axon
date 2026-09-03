@@ -318,7 +318,7 @@
 # hnsw-on-disk = false
 # Enable scalar INT8 quantization for newly created collections.
 # Env: AXON_QDRANT_QUANTIZATION_ENABLED
-# quantization-enabled = true
+# quantization-enabled = false
 # Env: AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
 # quantization-always-ram = true
 # Pipeline point batches with wait=false, then use an ordered wait=true write barrier.

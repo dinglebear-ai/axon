@@ -133,7 +133,7 @@ impl Default for QdrantCollectionSettings {
             hnsw_ef_construct: 256,
             hnsw_on_disk: false,
             indexing_threshold: 20_000,
-            quantization_enabled: true,
+            quantization_enabled: false,
             quantization_quantile: 0.99,
             quantization_always_ram: true,
         }

@@ -87,7 +87,60 @@ pub async fn finish_bulk_load(
     context: ProviderCallContext,
     collection: String,
 ) -> Result<(), ApiError> {
-    bulk_load_operation(runtime, context, collection, true).await
+    finish_bulk_load_with_handoff(runtime, context, collection, || {}).await
+}
+
+async fn finish_bulk_load_with_handoff(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+    handoff: impl FnOnce(),
+) -> Result<(), ApiError> {
+    let store = Arc::clone(&runtime.vector_store);
+    vector_operation(runtime, context, move || {
+        let completion = start_finish_then_handoff(store, collection, handoff);
+        async move {
+            completion.await.map_err(|_| {
+                ApiError::new(
+                    "vector.bulk_load_finish_worker_lost",
+                    ErrorStage::Publishing,
+                    "bulk-load finish worker ended without a result",
+                )
+            })?
+        }
+    })
+    .await
+}
+
+fn start_finish_then_handoff(
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+    handoff: impl FnOnce(),
+) -> tokio::sync::oneshot::Receiver<Result<(), ApiError>> {
+    let completion = start_bulk_load_finish(store, collection);
+    handoff();
+    completion
+}
+
+fn start_bulk_load_finish(
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+) -> tokio::sync::oneshot::Receiver<Result<(), ApiError>> {
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let cleanup = std::thread::spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build bulk-load finish runtime");
+            runtime.block_on(store.finish_bulk_load(&collection))
+        }));
+        if let Ok(result) = result {
+            let _ = result_tx.send(result);
+        }
+    });
+    track_bulk_load_cleanup_in(&BULK_LOAD_CLEANUPS, cleanup);
+    result_rx
 }
 
 pub async fn with_bulk_load<F>(
@@ -105,8 +158,10 @@ where
     let mut guard =
         BulkLoadCompletionGuard::new(Arc::clone(&runtime.vector_store), collection.clone());
     let processing = processing.await;
-    let finishing = finish_bulk_load(runtime, finish_context, collection).await;
-    guard.disarm();
+    let finishing = finish_bulk_load_with_handoff(runtime, finish_context, collection, || {
+        guard.disarm();
+    })
+    .await;
     match (processing, finishing) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(error), Ok(())) => Err(error),
@@ -197,6 +252,31 @@ pub(crate) fn test_bulk_load_cleanup_lifecycle(
     drop(BulkLoadCompletionGuard::with_registry(
         store, collection, cleanups,
     ));
+}
+
+#[cfg(test)]
+pub(crate) async fn test_bulk_load_finish_handoff(
+    store: Arc<axon_vectors::store::FakeVectorStore>,
+    collection: String,
+) {
+    let observer = Arc::clone(&store);
+    let (handoff_tx, handoff_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        let completion = start_finish_then_handoff(store, collection, || {
+            let _ = handoff_tx.send(());
+        });
+        let _ = completion.await;
+    });
+    handoff_rx.await.expect("finish worker must take ownership");
+    task.abort();
+    let _ = task.await;
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while observer.calls().await.is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("owned finish worker must complete after caller cancellation");
 }
 
 async fn bulk_load_operation(

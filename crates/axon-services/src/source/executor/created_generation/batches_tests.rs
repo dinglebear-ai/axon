@@ -12,6 +12,14 @@ async fn draining_bulk_lifecycle_cleanup_waits_for_finish() {
         ["finish_bulk_load", "finish_bulk_load"]
     );
 }
+
+#[tokio::test]
+async fn finish_handoff_prevents_cancellation_guard_from_finishing_twice() {
+    let vectors = Arc::new(FakeVectorStore::new("bulk-finish-handoff-test"));
+    crate::reserved_call::test_bulk_load_finish_handoff(vectors.clone(), "shared".to_string())
+        .await;
+    assert_eq!(vectors.calls().await, ["finish_bulk_load"]);
+}
 use async_trait::async_trait;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_adapters::{FakeSourceAdapter, SourceAdapter, web::WebSourceAdapter};

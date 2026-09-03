@@ -44,16 +44,7 @@ fn collection_spec_converts_to_named_dense_and_optional_sparse_config() {
     assert_eq!(hnsw.m, Some(32));
     assert_eq!(hnsw.ef_construct, Some(256));
     assert_eq!(hnsw.on_disk, Some(false));
-    let quantization = request
-        .quantization_config
-        .and_then(|config| config.quantization)
-        .expect("scalar quantization");
-    let qdrant_client::qdrant::quantization_config::Quantization::Scalar(scalar) = quantization
-    else {
-        panic!("expected scalar quantization");
-    };
-    assert_eq!(scalar.quantile, Some(0.99));
-    assert_eq!(scalar.always_ram, Some(true));
+    assert!(request.quantization_config.is_none());
 
     let sparse = request.sparse_vectors_config.unwrap();
     assert_eq!(
