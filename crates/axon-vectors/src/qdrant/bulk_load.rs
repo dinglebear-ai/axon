@@ -11,48 +11,68 @@ use crate::store::Result;
 const OPTIMIZER_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const OPTIMIZER_READY_TIMEOUT: Duration = Duration::from_secs(300);
 
-enum CancelAction {
-    RollBackBegin,
-    CompleteFinish,
+#[derive(Default)]
+struct TransitionWorkers {
+    handles: Vec<std::thread::JoinHandle<()>>,
+    draining: bool,
 }
 
-struct TransitionGuard {
-    store: QdrantVectorStore,
-    collection: String,
-    key: String,
-    entry: std::sync::Arc<tokio::sync::Mutex<usize>>,
-    action: CancelAction,
-    armed: bool,
-}
+static TRANSITION_WORKERS: std::sync::LazyLock<std::sync::Mutex<TransitionWorkers>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(TransitionWorkers::default()));
 
-impl TransitionGuard {
-    fn disarm(&mut self) {
-        self.armed = false;
+fn join_transition_worker(worker: std::thread::JoinHandle<()>) {
+    if worker.join().is_err() {
+        tracing::error!("Qdrant bulk-load transition worker panicked");
     }
 }
 
-impl Drop for TransitionGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
+fn track_transition_worker(worker: std::thread::JoinHandle<()>) {
+    track_transition_worker_in(&TRANSITION_WORKERS, worker);
+}
+
+fn track_transition_worker_in(
+    workers: &std::sync::Mutex<TransitionWorkers>,
+    worker: std::thread::JoinHandle<()>,
+) {
+    let (finished, late_worker) = {
+        let mut registry = workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut finished = Vec::new();
+        let mut index = registry.handles.len();
+        while index > 0 {
+            index -= 1;
+            if registry.handles[index].is_finished() {
+                finished.push(registry.handles.swap_remove(index));
+            }
         }
-        let store = self.store.clone();
-        let collection = self.collection.clone();
-        let key = self.key.clone();
-        let entry = self.entry.clone();
-        let roll_back = matches!(self.action, CancelAction::RollBackBegin);
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-            runtime.spawn(async move {
-                let mut count = entry.lock().await;
-                if roll_back {
-                    *count = count.saturating_sub(1);
-                }
-                if *count == 0 {
-                    let _ = store.restore_normal_indexing(&collection).await;
-                    remove_idle_entry(&key, &entry, *count).await;
-                }
-            });
+        if registry.draining {
+            (finished, Some(worker))
+        } else {
+            registry.handles.push(worker);
+            (finished, None)
         }
+    };
+    for worker in finished.into_iter().chain(late_worker) {
+        join_transition_worker(worker);
+    }
+}
+
+/// Wait for every detached transition worker before process shutdown.
+pub fn drain_bulk_load_transition_workers() {
+    drain_bulk_load_transition_workers_in(&TRANSITION_WORKERS);
+}
+
+fn drain_bulk_load_transition_workers_in(workers: &std::sync::Mutex<TransitionWorkers>) {
+    let workers = {
+        let mut registry = workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        registry.draining = true;
+        std::mem::take(&mut registry.handles)
+    };
+    for worker in workers {
+        join_transition_worker(worker);
     }
 }
 
@@ -79,6 +99,36 @@ impl QdrantVectorStore {
         if !self.bulk_load_enabled {
             return Ok(());
         }
+        let store = self.clone();
+        let collection = collection.to_string();
+        let (completed, receiver) = tokio::sync::oneshot::channel();
+        let worker = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build Qdrant bulk begin runtime");
+            let result = runtime.block_on(store.begin_bulk_load_transition(&collection));
+            if let Err(result) = completed.send(result) {
+                tracing::warn!(%collection, "bulk-load begin completed after caller cancellation");
+                if result.is_ok()
+                    && let Err(error) =
+                        runtime.block_on(store.finish_bulk_load_transition(&collection))
+                {
+                    tracing::error!(%error, %collection, "failed to compensate bulk-load begin after caller cancellation");
+                }
+            }
+        });
+        track_transition_worker(worker);
+        receiver.await.map_err(|_| {
+            ApiError::new(
+                "vector.qdrant.bulk_begin_join",
+                ErrorStage::Upserting,
+                "bulk-load begin worker stopped unexpectedly",
+            )
+        })?
+    }
+
+    async fn begin_bulk_load_transition(&self, collection: &str) -> Result<()> {
         let key = format!("{}\0{collection}", self.url.trim_end_matches('/'));
         let entry = {
             let mut users = BULK_LOAD_USERS.lock().await;
@@ -92,14 +142,6 @@ impl QdrantVectorStore {
         if *count > 1 {
             return Ok(());
         }
-        let mut guard = TransitionGuard {
-            store: self.clone(),
-            collection: collection.to_string(),
-            key: key.clone(),
-            entry: entry.clone(),
-            action: CancelAction::RollBackBegin,
-            armed: true,
-        };
         if let Err(mut error) = self
             .set_indexing_threshold(collection, self.bulk_indexing_threshold)
             .await
@@ -108,12 +150,9 @@ impl QdrantVectorStore {
             if let Err(compensation) = self.restore_normal_indexing(collection).await {
                 error = error.with_context("compensation_error", compensation.to_string());
             }
-            guard.disarm();
-            drop(guard);
             remove_idle_entry(&key, &entry, *count).await;
             return Err(error);
         }
-        guard.disarm();
         Ok(())
     }
 
@@ -121,6 +160,30 @@ impl QdrantVectorStore {
         if !self.bulk_load_enabled {
             return Ok(());
         }
+        let store = self.clone();
+        let collection = collection.to_string();
+        let (completed, receiver) = tokio::sync::oneshot::channel();
+        let worker = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build Qdrant bulk finish runtime");
+            let result = runtime.block_on(store.finish_bulk_load_transition(&collection));
+            if completed.send(result).is_err() {
+                tracing::warn!(%collection, "bulk-load finish completed after caller cancellation");
+            }
+        });
+        track_transition_worker(worker);
+        receiver.await.map_err(|_| {
+            ApiError::new(
+                "vector.qdrant.bulk_finish_join",
+                ErrorStage::Upserting,
+                "bulk-load finish worker stopped unexpectedly",
+            )
+        })?
+    }
+
+    async fn finish_bulk_load_transition(&self, collection: &str) -> Result<()> {
         let key = format!("{}\0{collection}", self.url.trim_end_matches('/'));
         let entry = {
             let users = BULK_LOAD_USERS.lock().await;
@@ -138,17 +201,7 @@ impl QdrantVectorStore {
         if *count > 0 {
             return Ok(());
         }
-        let mut guard = TransitionGuard {
-            store: self.clone(),
-            collection: collection.to_string(),
-            key: key.clone(),
-            entry: entry.clone(),
-            action: CancelAction::CompleteFinish,
-            armed: true,
-        };
         let restoring = self.restore_normal_indexing(collection).await;
-        guard.disarm();
-        drop(guard);
         remove_idle_entry(&key, &entry, *count).await;
         restoring
     }

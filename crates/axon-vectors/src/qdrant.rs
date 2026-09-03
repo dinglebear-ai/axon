@@ -13,6 +13,7 @@
 //!   `axon-vector` (facet, scroll, retrieve-by-url, canonical/prefix purge).
 
 mod bulk_load;
+pub use bulk_load::drain_bulk_load_transition_workers;
 pub(crate) mod commit;
 pub mod convert;
 mod grpc;

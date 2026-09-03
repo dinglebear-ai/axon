@@ -240,6 +240,66 @@ async fn embed_all_replenishes_concurrency_before_a_straggler_finishes() {
     replenished.assert_calls_async(1).await;
 }
 
+#[tokio::test]
+async fn embed_all_preserves_order_when_a_concurrent_batch_splits_after_413() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({
+                    "inputs": ["a", "bb", "ccc", "dddd"], "truncate": false
+                }));
+            then.status(413);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({
+                    "inputs": ["a", "bb"], "truncate": false
+                }));
+            then.status(200)
+                .delay(Duration::from_millis(100))
+                .json_body(serde_json::json!([[1.0_f32], [2.0_f32]]));
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({
+                    "inputs": ["ccc", "dddd"], "truncate": false
+                }));
+            then.status(200)
+                .json_body(serde_json::json!([[3.0_f32], [4.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".into(),
+        max_batch_inputs: 4,
+        max_concurrent_requests: 2,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["a".into(), "bb".into(), "ccc".into(), "dddd".into()])
+        .await
+        .expect("split batch");
+
+    assert_eq!(
+        outcome.vectors,
+        vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0]]
+    );
+    assert_eq!(outcome.requests, 3);
+}
+
 #[test]
 fn is_retryable_status_covers_429_and_5xx_only() {
     assert!(is_retryable_status(StatusCode::TOO_MANY_REQUESTS));

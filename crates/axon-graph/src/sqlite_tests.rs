@@ -161,6 +161,49 @@ async fn large_upsert_crosses_alias_and_evidence_batch_boundaries() {
     assert_eq!(evidence_after, 121);
 }
 
+#[tokio::test]
+async fn node_upsert_crosses_read_and_write_boundaries_without_losing_merges() {
+    let graph = store().await;
+    let mut first = large_repo_candidate(901);
+    first.nodes[0]
+        .properties
+        .insert("api_key".to_string(), serde_json::json!("must-not-persist"));
+    graph
+        .upsert_candidates(vec![first.clone()])
+        .await
+        .expect("initial boundary upsert");
+
+    let mut second = first;
+    second.candidate_id = "gc-large-second-source".to_string();
+    second.source_id = SourceId::new("src-second");
+    for evidence in &mut second.evidence {
+        evidence.source_id = SourceId::new("src-second");
+    }
+    graph
+        .upsert_candidates(vec![second])
+        .await
+        .expect("merged boundary upsert");
+
+    let node_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_nodes")
+        .fetch_one(graph.pool())
+        .await
+        .expect("count nodes");
+    let missing_sources: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM graph_nodes WHERE source_ids_json NOT LIKE '%src%' OR source_ids_json NOT LIKE '%src-second%'",
+    ).fetch_one(graph.pool()).await.expect("verify source union");
+    assert_eq!(node_count, 902);
+    assert_eq!(missing_sources, 0);
+    let (authority, confidence, metadata): (String, f64, String) = sqlx::query_as(
+        "SELECT authority, confidence, metadata_json FROM graph_nodes WHERE stable_key = 'repo:root'",
+    )
+    .fetch_one(graph.pool())
+    .await
+    .expect("inspect merged node");
+    assert_eq!(authority, "inferred");
+    assert!((confidence - 0.95).abs() < 1e-6);
+    assert!(!metadata.contains("must-not-persist"));
+}
+
 fn repo_file_candidate(
     candidate_id: &str,
     candidate_kind: &str,

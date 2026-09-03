@@ -215,6 +215,18 @@ def service_identity(url: str) -> dict:
         return {"unavailable": type(error).__name__}
 
 
+def validate_binary_cli(binary: Path) -> None:
+    completed = subprocess.run(
+        [str(binary), "source", "--help"], text=True, capture_output=True
+    )
+    if completed.returncode:
+        raise RuntimeError(completed.stderr.strip() or "unable to inspect Axon source command")
+    required = {"--collection", "--wait", "--json", "--quiet"}
+    missing = sorted(option for option in required if option not in completed.stdout)
+    if missing:
+        raise RuntimeError(f"Axon source command is missing required options: {', '.join(missing)}")
+
+
 def run_variant(args: argparse.Namespace, variant: Variant, corpus: Path, run_id: str, repetition: int) -> dict:
     collection = owned_collection(run_id, f"{variant.name}-r{repetition}")
     assert_owned_collection(collection)
@@ -268,6 +280,7 @@ def main() -> int:
     args.binary = args.binary.resolve()
     if not args.binary.is_file():
         parser.error(f"binary not found: {args.binary}")
+    validate_binary_cli(args.binary)
     with tempfile.TemporaryDirectory(prefix="axon-code-claude-corpus-") as directory:
         corpus = Path(directory)
         document_count = frozen_corpus(args.source, corpus)

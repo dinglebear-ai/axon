@@ -229,6 +229,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     // background flush thread and tail buffers can be lost from the rolling log file.
     let console_policy = axon_core::ui::ConsolePolicy::for_config(&cfg);
     let _log_guard = init_tracing(console_policy);
+    // Declared after the tracing guard so reverse drop order drains cleanup
+    // threads while tracing is still available for restoration failures.
+    let _bulk_load_cleanup_drain = axon_services::reserved_call::BulkLoadCleanupDrain;
     if let Some(warning) = axon_core::binary_status::stale_binary_warning() {
         eprintln!("warning: {warning}");
     }

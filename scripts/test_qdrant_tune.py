@@ -1,4 +1,5 @@
 import importlib.util
+import argparse
 import tempfile
 import unittest
 from unittest import mock
@@ -129,7 +130,8 @@ class QdrantTuneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             binary = root / "axon"
-            binary.write_bytes(b"binary")
+            binary.write_text("#!/bin/sh\necho --collection --wait --json --quiet\n")
+            binary.chmod(0o700)
             source = root / "source"
             source.mkdir()
             (source / "code-claude-com-one.md").write_text("one")
@@ -142,6 +144,33 @@ class QdrantTuneTests(unittest.TestCase):
                  mock.patch.object(qdrant_tune, "delete_owned_collection"), \
                  mock.patch.object(qdrant_tune, "service_identity", return_value={}):
                 self.assertEqual(qdrant_tune.main(), 2)
+
+    def test_run_variant_executes_supplied_binary_without_unsupported_flags(self):
+        variant = qdrant_tune.default_variants()[0]
+        args = argparse.Namespace(
+            binary=Path("/tmp/verified-axon"), grpc_url="http://qdrant:6334",
+            qdrant_url="http://qdrant:6333", tei_url="http://tei:80",
+            queries=(),
+        )
+        completed = mock.Mock(returncode=0, stderr="")
+        collection_info = {"result": {"points_count": 1, "status": "green"}}
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(qdrant_tune.subprocess, "run", return_value=completed) as run, \
+             mock.patch.object(qdrant_tune, "delete_owned_collection"), \
+             mock.patch.object(qdrant_tune, "request_json", return_value=collection_info):
+            qdrant_tune.run_variant(args, variant, Path(directory), "run", 1)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["/tmp/verified-axon", "source"])
+        self.assertNotIn("--local", command)
+
+    def test_binary_cli_validation_requires_current_source_contract(self):
+        completed = mock.Mock(returncode=0, stdout="--collection --wait --json --quiet", stderr="")
+        with mock.patch.object(qdrant_tune.subprocess, "run", return_value=completed):
+            qdrant_tune.validate_binary_cli(Path("/tmp/axon"))
+        completed.stdout = "--collection --wait"
+        with mock.patch.object(qdrant_tune.subprocess, "run", return_value=completed), \
+             self.assertRaisesRegex(RuntimeError, "missing required options"):
+            qdrant_tune.validate_binary_cli(Path("/tmp/axon"))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -92,6 +94,46 @@ def command_for(config: dict[str, int]) -> list[str]:
     return args
 
 
+def docker_run_from_snapshot(container: str, snapshot: dict) -> list[str]:
+    config = snapshot.get("config", {})
+    host = snapshot.get("host_config", {})
+    run = ["docker", "run", "-d", "--name", container]
+    restart = host.get("RestartPolicy", {}).get("Name")
+    if restart and restart != "no":
+        run.extend(("--restart", restart))
+    network = snapshot.get("network_mode")
+    if network:
+        run.extend(("--network", network))
+    runtime = host.get("Runtime")
+    if runtime:
+        run.extend(("--runtime", runtime))
+    requests = host.get("DeviceRequests") or []
+    if requests and requests[0].get("Driver") == "nvidia":
+        device_ids = requests[0].get("DeviceIDs") or []
+        run.extend(("--gpus", f"device={','.join(device_ids)}" if device_ids else "all"))
+    for container_port, bindings in (host.get("PortBindings") or {}).items():
+        for binding in bindings or []:
+            published = f"{binding.get('HostIp')}:{binding['HostPort']}:{container_port}" if binding.get("HostIp") else f"{binding['HostPort']}:{container_port}"
+            run.extend(("-p", published))
+    for bind in host.get("Binds") or []:
+        run.extend(("-v", bind))
+    for env in config.get("Env") or []:
+        run.extend(("-e", env))
+    for key, value in (config.get("Labels") or {}).items():
+        run.extend(("--label", f"{key}={value}"))
+    if config.get("User"):
+        run.extend(("--user", config["User"]))
+    if config.get("WorkingDir"):
+        run.extend(("--workdir", config["WorkingDir"]))
+    entrypoint = snapshot.get("entrypoint") or []
+    if entrypoint:
+        run.extend(("--entrypoint", entrypoint[0]))
+    run.append(snapshot["image"])
+    run.extend(entrypoint[1:])
+    run.extend(snapshot.get("cmd") or [])
+    return run
+
+
 class Tei:
     def __init__(self, args: argparse.Namespace):
         self.host = args.host
@@ -123,6 +165,9 @@ class Tei:
             "image": inspected["Config"]["Image"],
             "cmd": inspected["Config"]["Cmd"],
             "entrypoint": inspected["Config"].get("Entrypoint"),
+            "config": inspected["Config"],
+            "host_config": inspected["HostConfig"],
+            "network_mode": next(iter(inspected["NetworkSettings"]["Networks"]), "bridge"),
         }
 
     def save_snapshot(self, snapshot: dict) -> None:
@@ -131,6 +176,102 @@ class Tei:
         temporary.write_text(json.dumps(snapshot, indent=2) + "\n")
         temporary.chmod(0o600)
         temporary.replace(self.state)
+
+    @property
+    def parked_container(self) -> str:
+        return f"{self.container}-tei-tune-rollback"
+
+    @contextlib.contextmanager
+    def mutation_lock(self):
+        state = getattr(self, "state", Path("/tmp/tei-tune-state"))
+        host = getattr(self, "host", "unknown-host")
+        container = getattr(self, "container", "axon-tei")
+        lock_path = state.with_name(f"{state.name}.{host}.{container}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+") as lock_file:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise RuntimeError(
+                    f"another TEI mutation is already running for {self.host}/{self.container}"
+                ) from error
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+    def park_current(self) -> None:
+        self.remote(["docker", "rm", "-f", self.parked_container], check=False)
+        self.remote(["docker", "stop", self.container])
+        try:
+            self.remote(["docker", "rename", self.container, self.parked_container])
+        except subprocess.CalledProcessError as rename_error:
+            restarted = self.remote(["docker", "start", self.container], check=False)
+            if restarted.returncode:
+                rename_detail = rename_error.stderr or str(rename_error)
+                restart_detail = restarted.stderr.strip() or restarted.stdout.strip()
+                raise RuntimeError(
+                    f"failed to park TEI ({rename_detail}); restart failed: {restart_detail}"
+                ) from rename_error
+            raise
+
+    def restore_parked(self) -> None:
+        self.remote(["docker", "rm", "-f", self.container], check=False)
+        self.remote(["docker", "rename", self.parked_container, self.container])
+        self.remote(["docker", "start", self.container])
+
+    def discard_parked(self) -> None:
+        self.remote(["docker", "rm", "-f", self.parked_container])
+
+    def restore_after_failure(self, primary: str) -> None:
+        try:
+            self.restore_parked()
+        except Exception as restore_error:
+            raise RuntimeError(
+                f"{primary}; restoring the parked TEI configuration also failed: {restore_error}"
+            ) from restore_error
+
+    def rollback_to_snapshot(self, snapshot: dict) -> None:
+        with self.mutation_lock():
+            self._rollback_to_snapshot(snapshot)
+
+    def swap_with_saved_snapshot(self) -> None:
+        with self.mutation_lock():
+            target = json.loads(self.state.read_text())
+            current = self.snapshot()
+            self._rollback_to_snapshot(target, discard_parked=False)
+            try:
+                self.save_snapshot(current)
+            except Exception as save_error:
+                self.restore_after_failure(
+                    f"rollback target became ready but saving the prior configuration failed ({save_error})"
+                )
+                raise RuntimeError(
+                    f"saving the prior configuration failed ({save_error}); current TEI configuration restored"
+                ) from save_error
+            self.discard_parked()
+
+    def _rollback_to_snapshot(self, snapshot: dict, *, discard_parked: bool = True) -> None:
+        self.park_current()
+        try:
+            self.deploy_snapshot(snapshot)
+        except RuntimeError as deploy_error:
+            self.restore_after_failure(f"rollback target deployment failed ({deploy_error})")
+            raise RuntimeError(
+                f"rollback target deployment failed ({deploy_error}); current TEI configuration restored"
+            ) from deploy_error
+        ok, detail = self.ready()
+        if ok:
+            if discard_parked:
+                self.discard_parked()
+            return
+        self.restore_after_failure(f"rollback target failed readiness ({detail})")
+        restored, restore_detail = self.ready()
+        if not restored:
+            raise RuntimeError(
+                f"rollback target failed readiness ({detail}); restoring current configuration also failed: {restore_detail}"
+            )
+        raise RuntimeError(f"rollback target failed readiness; current config restored: {detail}")
 
     def deploy(
         self, image: str, command: list[str], entrypoint: str | None = None
@@ -148,6 +289,12 @@ class Tei:
             run.extend(("--entrypoint", selected_entrypoint))
         run.extend((image, *command))
         result = self.remote(run, check=False)
+        if result.returncode:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+
+    def deploy_snapshot(self, snapshot: dict) -> None:
+        self.remote(["docker", "rm", "-f", self.container], check=False)
+        result = self.remote(docker_run_from_snapshot(self.container, snapshot), check=False)
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip())
 
@@ -170,24 +317,38 @@ class Tei:
         return False, last
 
     def apply(self, image: str, command: list[str], dry_run: bool) -> None:
-        previous = self.snapshot()
         if dry_run:
             print(shlex.join(["docker", "run", "…", image, *command]))
             return
+        with self.mutation_lock():
+            self._apply(image, command)
+
+    def _apply(self, image: str, command: list[str]) -> None:
+        previous = self.snapshot()
         self.save_snapshot(previous)
         print(f"Saved rollback snapshot to {self.state}")
-        self.deploy(image, command)
+        self.park_current()
+        try:
+            self.deploy(image, command)
+        except RuntimeError as deploy_error:
+            print(f"New configuration failed deployment: {deploy_error}", file=sys.stderr)
+            self.restore_after_failure(f"replacement deployment failed ({deploy_error})")
+            restored, restore_detail = self.ready()
+            if not restored:
+                raise RuntimeError(
+                    f"replacement deployment failed ({deploy_error}); automatic rollback also failed: {restore_detail}"
+                ) from deploy_error
+            raise RuntimeError(
+                f"replacement deployment failed ({deploy_error}); previous TEI configuration restored"
+            ) from deploy_error
         ok, detail = self.ready()
         if ok:
+            self.discard_parked()
             print("TEI is ready; new configuration retained.")
             return
         print(f"New configuration failed readiness: {detail}", file=sys.stderr)
         print("Rolling back the previous image and command…", file=sys.stderr)
-        self.deploy(
-            previous["image"],
-            previous["cmd"],
-            entrypoint=entrypoint_from_snapshot(previous),
-        )
+        self.restore_after_failure(f"replacement failed readiness ({detail})")
         restored, restore_detail = self.ready()
         if not restored:
             raise RuntimeError(f"automatic rollback also failed: {restore_detail}")
@@ -355,22 +516,7 @@ def main() -> int:
             config = resolve_config(args.preset, args.set, args.allow_unsafe)
             tei.apply(args.image, command_for(config), args.dry_run)
         elif args.action == "rollback":
-            snapshot = json.loads(tei.state.read_text())
-            current = tei.snapshot()
-            tei.deploy(
-                snapshot["image"],
-                snapshot["cmd"],
-                entrypoint=entrypoint_from_snapshot(snapshot),
-            )
-            ok, detail = tei.ready()
-            if not ok:
-                tei.deploy(
-                    current["image"],
-                    current["cmd"],
-                    entrypoint=entrypoint_from_snapshot(current),
-                )
-                raise RuntimeError(f"rollback target failed readiness; current config restored: {detail}")
-            tei.save_snapshot(current)
+            tei.swap_with_saved_snapshot()
             print("Rollback target is ready; prior current configuration is now the rollback snapshot.")
         elif args.action == "benchmark":
             for value, name in ((args.requests, "requests"), (args.batch_size, "batch-size"), (args.concurrency, "concurrency")):

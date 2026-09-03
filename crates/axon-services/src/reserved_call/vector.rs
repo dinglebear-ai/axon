@@ -13,6 +13,67 @@ use crate::context::TargetLocalSourceRuntime;
 
 use super::{ProviderCallContext, VectorLane, map_reserved};
 
+#[derive(Default)]
+struct CleanupRegistry {
+    handles: Vec<std::thread::JoinHandle<()>>,
+    draining: bool,
+}
+
+static BULK_LOAD_CLEANUPS: std::sync::LazyLock<Arc<std::sync::Mutex<CleanupRegistry>>> =
+    std::sync::LazyLock::new(|| Arc::new(std::sync::Mutex::new(CleanupRegistry::default())));
+
+pub fn drain_bulk_load_cleanups() {
+    // Mark the lower-level transition registry as draining first. Any
+    // transition started by a service cleanup below is then joined inline.
+    axon_vectors::qdrant::drain_bulk_load_transition_workers();
+    drain_bulk_load_cleanups_in(&BULK_LOAD_CLEANUPS);
+}
+
+fn drain_bulk_load_cleanups_in(cleanups: &std::sync::Mutex<CleanupRegistry>) {
+    let cleanups = {
+        let mut pending = cleanups
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        pending.draining = true;
+        std::mem::take(&mut pending.handles)
+    };
+    for cleanup in cleanups {
+        if cleanup.join().is_err() {
+            tracing::error!("bulk-load cancellation cleanup thread panicked");
+        }
+    }
+}
+
+fn track_bulk_load_cleanup_in(
+    cleanups: &std::sync::Mutex<CleanupRegistry>,
+    cleanup: std::thread::JoinHandle<()>,
+) {
+    let (finished, late_cleanup) = {
+        let mut pending = cleanups
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut finished = Vec::new();
+        let mut index = pending.handles.len();
+        while index > 0 {
+            index -= 1;
+            if pending.handles[index].is_finished() {
+                finished.push(pending.handles.swap_remove(index));
+            }
+        }
+        if pending.draining {
+            (finished, Some(cleanup))
+        } else {
+            pending.handles.push(cleanup);
+            (finished, None)
+        }
+    };
+    for cleanup in finished.into_iter().chain(late_cleanup) {
+        if cleanup.join().is_err() {
+            tracing::error!("bulk-load cancellation cleanup thread panicked");
+        }
+    }
+}
+
 pub async fn begin_bulk_load(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
@@ -59,6 +120,7 @@ where
 struct BulkLoadCompletionGuard {
     store: Arc<dyn axon_vectors::store::VectorStore>,
     collection: String,
+    cleanups: Arc<std::sync::Mutex<CleanupRegistry>>,
     armed: bool,
 }
 
@@ -67,6 +129,21 @@ impl BulkLoadCompletionGuard {
         Self {
             store,
             collection,
+            cleanups: Arc::clone(&BULK_LOAD_CLEANUPS),
+            armed: true,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_registry(
+        store: Arc<dyn axon_vectors::store::VectorStore>,
+        collection: String,
+        cleanups: Arc<std::sync::Mutex<CleanupRegistry>>,
+    ) -> Self {
+        Self {
+            store,
+            collection,
+            cleanups,
             armed: true,
         }
     }
@@ -83,22 +160,43 @@ impl Drop for BulkLoadCompletionGuard {
         }
         let store = Arc::clone(&self.store);
         let collection = self.collection.clone();
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-            runtime.spawn(async move {
-                if let Err(error) = store.finish_bulk_load(&collection).await {
-                    tracing::error!(%error, %collection, "failed to restore bulk-load state after pipeline cancellation");
-                }
-            });
-        }
+        let cleanups = Arc::clone(&self.cleanups);
+        let failure_collection = collection.clone();
+        let cleanup = std::thread::spawn(move || {
+            let cleanup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("build bulk-load cancellation cleanup runtime");
+                runtime.block_on(async move {
+                    if let Err(error) = store.finish_bulk_load(&collection).await {
+                        tracing::error!(%error, %collection, "failed to restore bulk-load state after pipeline cancellation");
+                    }
+                });
+            }));
+            if cleanup.is_err() {
+                tracing::error!(collection = %failure_collection, "bulk-load cancellation cleanup thread panicked");
+            }
+        });
+        track_bulk_load_cleanup_in(&cleanups, cleanup);
     }
 }
 
 #[cfg(test)]
-pub(crate) fn test_bulk_load_completion_guard(
+pub(crate) fn test_bulk_load_cleanup_lifecycle(
     store: Arc<dyn axon_vectors::store::VectorStore>,
     collection: String,
-) -> impl Drop {
-    BulkLoadCompletionGuard::new(store, collection)
+) {
+    let cleanups = Arc::new(std::sync::Mutex::new(CleanupRegistry::default()));
+    drop(BulkLoadCompletionGuard::with_registry(
+        Arc::clone(&store),
+        collection.clone(),
+        Arc::clone(&cleanups),
+    ));
+    drain_bulk_load_cleanups_in(&cleanups);
+    drop(BulkLoadCompletionGuard::with_registry(
+        store, collection, cleanups,
+    ));
 }
 
 async fn bulk_load_operation(

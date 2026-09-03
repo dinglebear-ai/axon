@@ -230,11 +230,16 @@ for phase, first_at, last_at, count in event_rows:
         "last_offset_seconds": round((last - benchmark_started).total_seconds(), 6),
         "events": count,
     }
-print(json.dumps({
+report = {
     "job_id": job_id,
     "wall_seconds": (int(end_ns) - int(start_ns)) / 1_000_000_000,
     "corpus_hash": corpus_hash,
-    "model_contract": {"dimensions": 1024, "truncation": False},
+    "model_contract": {
+        "dimensions": None,
+        "truncation": False,
+        "dimensions_status": "not asserted; verify against the indexed collection",
+        "truncation_source": "Axon TEI provider request contract",
+    },
     "metrics_epoch": delta.epoch,
     "padding_ratio": delta.padding_ratio,
     "row_occupancy": delta.row_occupancy,
@@ -245,7 +250,10 @@ print(json.dumps({
     "stage_seconds": stage_seconds,
     "phase_windows": phase_windows,
     "acquisition_batches": acquisition_batches,
-}, sort_keys=True))
+}
+print(json.dumps(report, sort_keys=True))
+if not passed:
+    raise SystemExit(4)
 PY
 
   cleanup_work_dir
