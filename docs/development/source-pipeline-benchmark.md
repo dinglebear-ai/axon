@@ -1,10 +1,41 @@
 ---
 title: "Source Pipeline Scheduler Benchmark"
 created: 2026-08-28
-updated: 2026-08-29
+updated: 2026-09-03
 ---
 
 # Source pipeline scheduler benchmark
+
+`scripts/bench-source-pipeline.sh` is the controlled source-pipeline harness.
+It runs the locally built release binary in-process with a private Axon state
+directory, a caller-selected Qdrant collection, and embedding-cache reads and
+writes disabled. It is not a generic production smoke test.
+
+## Reproducibility contract
+
+Before collecting evidence:
+
+1. Build the root binary with `cargo build --release --bin axon`. Building a
+   library crate does not relink `target/release/axon`; the harness rejects a
+   binary older than Rust sources or Cargo manifests.
+2. Use an exclusive embedding endpoint. The automated evidence gate currently
+   requires the loopback MLX compatibility server because its `/metrics`
+   endpoint supplies epoch-scoped accelerator counters.
+3. Use a unique Qdrant collection for each arm and the same tuned
+   `config.toml`. Set `AXON_BENCH_COLLECTION` and `AXON_BENCH_CONFIG_PATH`
+   explicitly when the defaults are not dedicated to the benchmark.
+4. Keep the service warm but the corpus cold: the model may already reside on
+   the accelerator, while Axon receives a new state directory and runs with
+   `--cache false`. This measures full acquisition, preparation, embedding,
+   publication, and graph finalization without model-download startup.
+5. Compare only runs with the same committed-corpus hash and equivalent
+   document, chunk, vector, and graph counts. A partial crawl or provider error
+   is not a performance result.
+
+The root binary no longer proxies source commands to a separate server. The
+harness invokes `target/release/axon` directly and therefore measures the
+checked-out code. Do not substitute an installed `axon` binary unless its
+revision is recorded and matches the intended arm.
 
 The evidence phase uses a pinned local replay and aggregate MLX metric deltas.
 It is intentionally smaller than the final acceptance matrix: if the telemetry
@@ -22,8 +53,38 @@ as one uncontaminated aggregate delta.
 ```bash
 AXON_BENCH_SOURCE=https://code.claude.com \
 AXON_BENCH_AXON_BIN=target/release/axon \
+AXON_BENCH_COLLECTION=axon_scheduler_evidence_$(date +%s) \
 bash scripts/bench-source-pipeline.sh
 ```
+
+The JSON result contains wall time, committed-corpus hash, SQLite stage and
+phase windows, per-wave acquisition latency/occupancy, and MLX aggregate
+padding, occupancy, and idle ratios. Raw source content and URLs are not
+included. Temporary state is removed on exit.
+
+## Interpreting live crawl results
+
+Live `code.claude.com` acquisition is deliberately retained because it exposes
+pipeline starvation, but it is not deterministic. Cloudflare responses and
+network latency have moved the fetch phase by tens of seconds across otherwise
+equivalent runs. Use paired, interleaved arms and repeated medians; never rank a
+change from one absolute wall-clock sample.
+
+For tootie's RTX 4070 TEI deployment, use the manual cold-crawl control in
+`docs/perf/code-claude-cold-crawl-2026-08-12.md`. Record the exact TEI container
+image and command, GPU identity/activity, relevant TEI 429/restart counts, Axon
+configuration, collection name, state directory, and result counts. The MLX
+accelerator fields emitted by this harness are not interchangeable with NVIDIA
+telemetry.
+
+The 2026-09-03 RTX 4070 validation used 189 documents, 6,876 vector points,
+9,124 graph nodes, and 4,656 edges/evidence records. Raising TEI's input
+admission capacity from 128 to 1,024 eliminated `no permits available` 429s.
+Batching parser-produced graph node reads/writes reduced the comparable
+publishing-to-graph-tracking interval from 9.27 seconds to 2.47 seconds. A
+dynamic edge-batching experiment regressed that interval to 4.47 seconds and
+was rejected. These phase comparisons are diagnostic evidence, not a claim
+that unrelated live crawl wall times are directly comparable.
 
 The final scheduler comparison, if earned by this gate, separately measures a
 pinned fresh-corpus/warm-service run, cold-service startup, and a live full

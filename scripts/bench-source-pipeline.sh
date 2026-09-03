@@ -155,7 +155,7 @@ run_benchmark() {
   AXON_DATA_DIR="$state_dir" AXON_SQLITE_PATH="$state_dir/jobs.db" \
     AXON_CONFIG_PATH="$config_path" \
     "$axon_bin" source "$source" --scope site --max-pages 200 --wait true \
-    --json --performance-profile max --quiet --collection "$collection" \
+    --cache false --json --performance-profile max --quiet --collection "$collection" \
     >"$stdout_file" 2>"$stderr_file"
   status=$?
   set -e

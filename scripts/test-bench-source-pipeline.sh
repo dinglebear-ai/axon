@@ -63,6 +63,7 @@ printf '%s\n' '{"message":"web acquisition batch timing","item_count":"invalid"}
 
 grep -q 'umask 077' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail umask
 grep -q 'mktemp -d' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail private-temp
+grep -q -- '--cache false' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail embedding-cache-disabled
 ! grep -Eq '(^|[[:space:]])set -x([[:space:]]|$)' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail xtrace
 ! grep -Eq '(^|[[:space:]])eval([[:space:]]|$)' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail dynamic-evaluation
 
