@@ -5,8 +5,12 @@ use crate::source::executor::generation_work::PreparedBatchSideEffects;
 use std::future::Future;
 use std::time::Instant;
 
+#[path = "batches/bulk_load.rs"]
+mod bulk_load;
 #[path = "batches/scheduled.rs"]
 mod scheduled;
+
+use bulk_load::with_bulk_load;
 
 struct ChangedBatch {
     diff: SourceManifestDiff,
@@ -18,20 +22,6 @@ struct AcquiredChangedBatch {
     acquisition: SourceAcquisition,
     items: u64,
     documents: u64,
-}
-
-fn bulk_context(
-    input: &SourcePipelineInput<'_>,
-    collection: &CollectionSpec,
-    action: &str,
-) -> ProviderCallContext {
-    ProviderCallContext::for_phase(
-        input.plan.job_id,
-        input.execution.attempt,
-        PipelinePhase::Upserting,
-        input.execution.priority,
-        format!("{action}:{}", collection.collection),
-    )
 }
 
 async fn process_and_acquire_next<P, A, Process, Acquire>(
@@ -190,39 +180,6 @@ pub(super) async fn process_generation_batches(
         )),
     )
     .await
-}
-
-async fn with_bulk_load<F>(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    collection: &CollectionSpec,
-    failure_context: &str,
-    processing: F,
-) -> anyhow::Result<()>
-where
-    F: Future<Output = anyhow::Result<()>>,
-{
-    reserved_call::begin_bulk_load(
-        runtime,
-        bulk_context(input, collection, "begin-bulk-load"),
-        collection.collection.clone(),
-    )
-    .await?;
-    let processing = processing.await;
-    let finishing = reserved_call::finish_bulk_load(
-        runtime,
-        bulk_context(input, collection, "finish-bulk-load"),
-        collection.collection.clone(),
-    )
-    .await;
-    match (processing, finishing) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(()), Err(error)) => Err(error.into()),
-        (Err(error), Err(finish_error)) => {
-            Err(error.context(format!("{failure_context}: {finish_error}")))
-        }
-    }
 }
 
 #[allow(clippy::too_many_arguments)]

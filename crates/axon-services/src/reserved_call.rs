@@ -25,9 +25,11 @@ mod support;
 mod vector;
 
 use support::{map_reserved, record_provider_heartbeat, scheduler_error};
+#[cfg(test)]
+pub(crate) use vector::test_bulk_load_completion_guard;
 pub use vector::{
     begin_bulk_load, delete_vectors, finish_bulk_load, mark_generation_committed,
-    mark_unchanged_items_committed, retire_generation, vector_operation,
+    mark_unchanged_items_committed, retire_generation, vector_operation, with_bulk_load,
 };
 
 #[derive(Debug, Clone)]

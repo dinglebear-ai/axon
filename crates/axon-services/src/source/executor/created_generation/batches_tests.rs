@@ -1,4 +1,24 @@
 use super::*;
+
+#[tokio::test]
+async fn dropping_bulk_lifecycle_guard_schedules_finish() {
+    let vectors = Arc::new(FakeVectorStore::new("bulk-cancel-test"));
+    drop(crate::reserved_call::test_bulk_load_completion_guard(
+        vectors.clone(),
+        "cancelled".to_string(),
+    ));
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if vectors.calls().await == ["finish_bulk_load"] {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("dropping the lifecycle guard must restore bulk-load state");
+}
 use async_trait::async_trait;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_adapters::{FakeSourceAdapter, SourceAdapter, web::WebSourceAdapter};

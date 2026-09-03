@@ -29,6 +29,78 @@ pub async fn finish_bulk_load(
     bulk_load_operation(runtime, context, collection, true).await
 }
 
+pub async fn with_bulk_load<F>(
+    runtime: &TargetLocalSourceRuntime,
+    begin_context: ProviderCallContext,
+    finish_context: ProviderCallContext,
+    collection: String,
+    failure_context: &str,
+    processing: F,
+) -> anyhow::Result<()>
+where
+    F: Future<Output = anyhow::Result<()>>,
+{
+    begin_bulk_load(runtime, begin_context, collection.clone()).await?;
+    let mut guard =
+        BulkLoadCompletionGuard::new(Arc::clone(&runtime.vector_store), collection.clone());
+    let processing = processing.await;
+    let finishing = finish_bulk_load(runtime, finish_context, collection).await;
+    guard.disarm();
+    match (processing, finishing) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error.into()),
+        (Err(error), Err(finish_error)) => {
+            Err(error.context(format!("{failure_context}: {finish_error}")))
+        }
+    }
+}
+
+struct BulkLoadCompletionGuard {
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+    armed: bool,
+}
+
+impl BulkLoadCompletionGuard {
+    fn new(store: Arc<dyn axon_vectors::store::VectorStore>, collection: String) -> Self {
+        Self {
+            store,
+            collection,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for BulkLoadCompletionGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let store = Arc::clone(&self.store);
+        let collection = self.collection.clone();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                if let Err(error) = store.finish_bulk_load(&collection).await {
+                    tracing::error!(%error, %collection, "failed to restore bulk-load state after pipeline cancellation");
+                }
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_bulk_load_completion_guard(
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+) -> impl Drop {
+    BulkLoadCompletionGuard::new(store, collection)
+}
+
 async fn bulk_load_operation(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
