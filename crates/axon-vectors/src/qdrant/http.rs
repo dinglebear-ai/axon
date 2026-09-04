@@ -9,6 +9,7 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
+use reqwest::header::HeaderValue;
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -169,6 +170,18 @@ impl QdrantHttp {
                 "vector.qdrant.insecure_credentials",
                 axon_error::ErrorStage::Authorizing,
                 "Qdrant credentials require HTTPS for non-loopback endpoints",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(provider_id));
+        }
+        if endpoint
+            .api_key()
+            .is_some_and(|key| HeaderValue::from_str(key).is_err())
+        {
+            return Err(ApiError::new(
+                "vector.qdrant.invalid_credentials",
+                axon_error::ErrorStage::Authorizing,
+                "Qdrant API key is not a valid HTTP header value",
             )
             .with_context("endpoint", ENDPOINT_MARKER)
             .with_provider_id(provider_id));
@@ -416,7 +429,12 @@ impl<'a> AuthedBuilder<'a> {
 
     fn apply(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
         match self.api_key {
-            Some(key) => builder.header("api-key", key),
+            Some(key) => {
+                let mut value = HeaderValue::from_str(key)
+                    .expect("QdrantHttp validates API keys during construction");
+                value.set_sensitive(true);
+                builder.header("api-key", value)
+            }
             None => builder,
         }
     }

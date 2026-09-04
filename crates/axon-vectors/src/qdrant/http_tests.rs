@@ -36,6 +36,29 @@ fn loopback_plaintext_endpoint_allows_credentials_for_local_development() {
 }
 
 #[test]
+fn api_key_header_is_marked_sensitive_before_request_debugging() {
+    let http = QdrantHttp::new("http://super-secret@127.0.0.1:6333", "qdrant")
+        .expect("loopback credential");
+    let request = http
+        .request(Method::GET)
+        .get("http://127.0.0.1:6333/collections/axon")
+        .build()
+        .expect("request");
+    let debug = format!("{request:?}");
+    assert!(!debug.contains("super-secret"));
+    assert!(request.headers()["api-key"].is_sensitive());
+}
+
+#[test]
+fn invalid_api_key_header_fails_without_echoing_the_credential() {
+    let error = QdrantHttp::new("http://127.0.0.1:6333?api_key=bad%0Asecret", "qdrant")
+        .expect_err("invalid header value must fail during construction");
+    assert_eq!(error.code.0, "vector.qdrant.invalid_credentials");
+    assert!(!error.to_string().contains("bad"));
+    assert!(!error.to_string().contains("secret"));
+}
+
+#[test]
 fn endpoint_bare_token_userinfo_is_treated_as_api_key() {
     let endpoint = QdrantEndpoint::parse("http://sometoken@host:6333");
     assert_eq!(endpoint.api_key(), Some("sometoken"));
