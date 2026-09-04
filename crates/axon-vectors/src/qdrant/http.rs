@@ -167,6 +167,7 @@ impl QdrantEndpoint {
 pub struct QdrantHttp {
     client: Client,
     endpoint: QdrantEndpoint,
+    api_key_header: Option<HeaderValue>,
     provider_id: String,
 }
 
@@ -184,21 +185,27 @@ impl QdrantHttp {
             .with_context("endpoint", ENDPOINT_MARKER)
             .with_provider_id(provider_id));
         }
-        if endpoint
+        let api_key_header = endpoint
             .api_key()
-            .is_some_and(|key| HeaderValue::from_str(key).is_err())
-        {
-            return Err(ApiError::new(
-                "vector.qdrant.invalid_credentials",
-                axon_error::ErrorStage::Authorizing,
-                "Qdrant API key is not a valid HTTP header value",
-            )
-            .with_context("endpoint", ENDPOINT_MARKER)
-            .with_provider_id(provider_id));
-        }
+            .map(HeaderValue::from_str)
+            .transpose()
+            .map_err(|_| {
+                ApiError::new(
+                    "vector.qdrant.invalid_credentials",
+                    axon_error::ErrorStage::Authorizing,
+                    "Qdrant API key is not a valid HTTP header value",
+                )
+                .with_context("endpoint", ENDPOINT_MARKER)
+                .with_provider_id(provider_id)
+            })?
+            .map(|mut value| {
+                value.set_sensitive(true);
+                value
+            });
         Ok(Self {
             client: SHARED_CLIENT.clone(),
             endpoint,
+            api_key_header,
             provider_id: provider_id.to_string(),
         })
     }
@@ -373,7 +380,7 @@ impl QdrantHttp {
     fn request(&self, _method: Method) -> AuthedBuilder<'_> {
         AuthedBuilder {
             client: &self.client,
-            api_key: self.endpoint.api_key(),
+            api_key_header: self.api_key_header.as_ref(),
         }
     }
 
@@ -417,7 +424,7 @@ impl QdrantHttp {
 /// Small builder that injects the `api-key` header when configured.
 struct AuthedBuilder<'a> {
     client: &'a Client,
-    api_key: Option<&'a str>,
+    api_key_header: Option<&'a HeaderValue>,
 }
 
 impl<'a> AuthedBuilder<'a> {
@@ -438,13 +445,8 @@ impl<'a> AuthedBuilder<'a> {
     }
 
     fn apply(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match self.api_key {
-            Some(key) => {
-                let mut value = HeaderValue::from_str(key)
-                    .expect("QdrantHttp validates API keys during construction");
-                value.set_sensitive(true);
-                builder.header("api-key", value)
-            }
+        match self.api_key_header {
+            Some(value) => builder.header("api-key", value.clone()),
             None => builder,
         }
     }
