@@ -29,6 +29,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -37,6 +38,7 @@ use crate::persistence::atomic_write;
 /// Files larger than this are rejected for read/write — the palette's preview
 /// pane is not a general-purpose file manager for large binaries/archives.
 const MAX_TEXT_FILE_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_PREVIEW_FILE_BYTES: u64 = 20 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,6 +65,10 @@ pub(crate) struct FileContents {
     pub path: String,
     pub content: String,
     pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_url: Option<String>,
 }
 
 fn files_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -262,6 +268,56 @@ pub(crate) fn files_read_file(app: AppHandle, path: String) -> Result<FileConten
         path: relative.to_string_lossy().into_owned(),
         content,
         size: metadata.len(),
+        media_type: None,
+        data_url: None,
+    })
+}
+
+#[tauri::command]
+pub(crate) fn files_read_preview(app: AppHandle, path: String) -> Result<FileContents, String> {
+    crate::require_desktop_feature("Files")?;
+    let root = files_root(&app)?;
+    let target = resolve_within_root(&root, &path)?;
+    let metadata = fs::metadata(&target).map_err(|err| err.to_string())?;
+    if metadata.is_dir() {
+        return Err("path is a directory, not a file".to_string());
+    }
+    if metadata.len() > MAX_PREVIEW_FILE_BYTES {
+        return Err(format!(
+            "file is too large to preview ({} bytes, limit {MAX_PREVIEW_FILE_BYTES})",
+            metadata.len()
+        ));
+    }
+    let extension = target
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let media_type = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        _ => return Err("this file type does not support an inline preview".to_string()),
+    };
+    let bytes = fs::read(&target).map_err(|err| err.to_string())?;
+    let relative = target.strip_prefix(&root).unwrap_or(&target);
+    Ok(FileContents {
+        path: relative.to_string_lossy().into_owned(),
+        content: String::new(),
+        size: metadata.len(),
+        media_type: Some(media_type.to_string()),
+        data_url: Some(format!(
+            "data:{media_type};base64,{}",
+            STANDARD.encode(bytes)
+        )),
     })
 }
 
@@ -290,6 +346,8 @@ pub(crate) fn files_write_file(
         path: relative.to_string_lossy().into_owned(),
         content,
         size: metadata.len(),
+        media_type: None,
+        data_url: None,
     })
 }
 

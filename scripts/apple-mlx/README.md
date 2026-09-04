@@ -3,6 +3,13 @@
 This server preserves the deployed single-dispatcher MLX pipeline while adding
 aggregate performance telemetry and strict non-truncating request limits.
 
+`/metrics` reports one epoch-wide accelerator interval union. Concurrent
+requests never double-count overlapping Metal work: `request_wall_us` is the
+first-request-start to last-request-completion window, `metal_busy_us` is the
+union of every dispatch interval in that window, and `dispatcher_idle_us` is
+the remainder. Benchmark consumers require a fresh epoch with zero prior
+requests so snapshot subtraction remains an exclusive measurement.
+
 Launch locally:
 
 ```bash

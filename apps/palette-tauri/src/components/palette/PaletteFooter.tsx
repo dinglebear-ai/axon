@@ -86,36 +86,37 @@ export function PaletteFooter({
     );
   }
 
+  // On desktop this surface exists solely as the optional keyboard-hint rail.
+  // Rendering an empty spacer preserved its fixed height after the user turned
+  // hints off, leaving a blank 40px strip at the bottom of every result.
+  if (!showHints) return null;
+
   return (
     <footer className="palette-footer">
-      {showHints ? (
-        <span className="palette-footer-hints">
-          <Button
-            variant="plain"
-            size="unstyled"
-            className="palette-recent"
-            type="button"
-            onClick={onRecent}
-          >
-            ↺ recent
-          </Button>
-          <span className="palette-hint-group">
-            <Kbd unstyled>↑</Kbd>
-            <Kbd unstyled>↓</Kbd> navigate
-          </span>
-          <span className="palette-hint-group">
-            <Kbd unstyled>tab</Kbd> select
-          </span>
-          <span className="palette-hint-group">
-            <Kbd unstyled>↵</Kbd> run
-          </span>
-          <span className="palette-hint-group">
-            <Kbd unstyled>esc</Kbd> close
-          </span>
+      <span className="palette-footer-hints">
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="palette-recent"
+          type="button"
+          onClick={onRecent}
+        >
+          ↺ recent
+        </Button>
+        <span className="palette-hint-group">
+          <Kbd unstyled>↑</Kbd>
+          <Kbd unstyled>↓</Kbd> navigate
         </span>
-      ) : (
-        <span className="palette-footer-spacer" aria-hidden="true" />
-      )}
+        <span className="palette-hint-group">
+          <Kbd unstyled>tab</Kbd> select
+        </span>
+        <span className="palette-hint-group">
+          <Kbd unstyled>↵</Kbd> run
+        </span>
+        <span className="palette-hint-group">
+          <Kbd unstyled>esc</Kbd> close
+        </span>
+      </span>
       <span className="palette-status">
         {config ? (
           <StatusIndicator

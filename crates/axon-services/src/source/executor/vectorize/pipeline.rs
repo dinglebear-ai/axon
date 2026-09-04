@@ -15,15 +15,13 @@ pub(super) struct BuiltVectorBatch {
 async fn join_upsert_and_embedding<Write, Embeddings, Upsert, Embed>(
     upsert: Upsert,
     embedding: Embed,
+    overlap: bool,
 ) -> (anyhow::Result<Write>, anyhow::Result<Embeddings>)
 where
     Upsert: Future<Output = anyhow::Result<Write>>,
     Embed: Future<Output = anyhow::Result<Embeddings>>,
 {
-    let overlap = std::env::var("AXON_VECTOR_UPSERT_EMBED_OVERLAP")
-        .ok()
-        .and_then(|value| value.parse::<bool>().ok())
-        .unwrap_or(true);
+    tracing::debug!(overlap, "resolved vector upsert/embedding overlap mode");
     if overlap {
         tokio::join!(upsert, embedding)
     } else {
@@ -105,7 +103,7 @@ pub(super) async fn embed_and_build_batch(
     .await
 }
 
-async fn build_vector_batch(
+pub(super) async fn build_vector_batch(
     documents: Vec<PreparedDocument>,
     collection: CollectionSpec,
     embeddings: &mut EmbeddingResult,
@@ -175,7 +173,8 @@ pub(super) async fn publish_and_build_next(
         PipelinePhase::Upserting,
         heartbeat_counts,
     );
-    let (write, embeddings) = join_upsert_and_embedding(upsert, embedding).await;
+    let (write, embeddings) =
+        join_upsert_and_embedding(upsert, embedding, runtime.vector_upsert_embed_overlap).await;
 
     // Preserve batch ordering even though provider work overlaps: account for
     // the current publication before exposing the next embedding result.
@@ -252,7 +251,7 @@ async fn embed_prepared_batch(
     Ok(result)
 }
 
-async fn begin_embedding(
+pub(super) async fn begin_embedding(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &PipelineProgress,
@@ -269,7 +268,7 @@ async fn begin_embedding(
     counts
 }
 
-async fn finish_embedding(
+pub(super) async fn finish_embedding(
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
     result: &EmbeddingResult,
@@ -283,7 +282,7 @@ async fn finish_embedding(
         .await;
 }
 
-async fn call_embedding(
+pub(super) async fn call_embedding(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     documents: &[PreparedDocument],

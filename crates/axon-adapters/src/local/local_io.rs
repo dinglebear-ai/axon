@@ -1,5 +1,7 @@
 use std::fs::{self, File};
 use std::io::{Read, Seek};
+#[cfg(all(unix, not(target_os = "linux")))]
+use std::os::fd::{AsFd, BorrowedFd};
 use std::path::{Component, Path, PathBuf};
 
 use axon_api::source::{ApiError, ContentRef, SourceScope};
@@ -10,14 +12,18 @@ use sha2::{Digest, Sha256};
 use crate::adapter::Result;
 use crate::local_select::LocalOptions;
 
+#[cfg(all(unix, not(target_os = "linux")))]
+use rustix::fs::openat;
+#[cfg(unix)]
+use rustix::fs::{Mode, OFlags, open};
 #[cfg(target_os = "linux")]
-use rustix::fs::{Mode, OFlags, ResolveFlags, open, openat2};
+use rustix::fs::{ResolveFlags, openat2};
 
 #[derive(Debug)]
 pub(crate) struct LocalRootHandle {
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     directory: rustix::fd::OwnedFd,
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(unix))]
     directory: PathBuf,
 }
 
@@ -123,7 +129,7 @@ impl LocalRootHandle {
 
     pub(crate) fn open(root: &Path) -> Result<Self> {
         reject_unsafe_root(root)?;
-        #[cfg(target_os = "linux")]
+        #[cfg(unix)]
         {
             let directory = open(
                 root,
@@ -133,7 +139,7 @@ impl LocalRootHandle {
             .map_err(|err| root_unsafe(root, err.into()))?;
             Ok(Self { directory })
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(unix))]
         {
             let directory = fs::canonicalize(root)
                 .map_err(|err| fs_error("adapter.local.root_stat_failed", root, err))?;
@@ -159,10 +165,54 @@ impl LocalRootHandle {
             Ok(fd.into())
         }
         #[cfg(not(target_os = "linux"))]
+        #[cfg(unix)]
+        {
+            open_file_beneath(&self.directory, item_key)
+        }
+        #[cfg(not(unix))]
         {
             let path = safe_item_path(&self.directory, item_key)?;
             File::open(&path).map_err(|err| fs_error("adapter.local.read_failed", &path, err))
         }
+    }
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn open_file_beneath(directory: &rustix::fd::OwnedFd, item_key: &str) -> Result<File> {
+    let components = Path::new(item_key)
+        .components()
+        .map(|component| match component {
+            Component::Normal(name) => Ok(name.to_owned()),
+            _ => Err(containment_denied(Path::new(item_key))),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    open_components(directory.as_fd(), &components, item_key)
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn open_components(
+    parent: BorrowedFd<'_>,
+    components: &[std::ffi::OsString],
+    item_key: &str,
+) -> Result<File> {
+    let Some((name, remaining)) = components.split_first() else {
+        return Err(containment_denied(Path::new(item_key)));
+    };
+    let is_file = remaining.is_empty();
+    let flags = OFlags::RDONLY
+        | OFlags::CLOEXEC
+        | OFlags::NOFOLLOW
+        | if is_file {
+            OFlags::empty()
+        } else {
+            OFlags::DIRECTORY
+        };
+    let opened = openat(parent, name, flags, Mode::empty())
+        .map_err(|_| containment_denied(Path::new(item_key)))?;
+    if is_file {
+        Ok(opened.into())
+    } else {
+        open_components(opened.as_fd(), remaining, item_key)
     }
 }
 
@@ -300,7 +350,11 @@ fn root_unsafe(path: &Path, _err: std::io::Error) -> ApiError {
     .with_context("path_hint", public_path_hint(path))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(test)]
+#[path = "local_io_tests.rs"]
+mod tests;
+
+#[cfg(unix)]
 fn containment_denied(path: &Path) -> ApiError {
     ApiError::new(
         "adapter.local.item_key.escape",

@@ -1,8 +1,8 @@
 use axon_api::source::*;
 
 use super::QdrantVectorStore;
+use super::collection_spec::detect_collection_spec;
 use super::http::QdrantHttp;
-use super::store_impl::detect_collection_spec;
 use crate::store::Result;
 
 impl QdrantVectorStore {
@@ -36,7 +36,10 @@ impl QdrantVectorStore {
     ) -> Result<Option<CollectionSpec>> {
         let url = http.endpoint().collection_path(collection, "");
         let body = http.get_json(stage, &url, "qdrant_get_collection").await?;
-        Ok(body.and_then(|body| detect_collection_spec(collection, &body)))
+        match body {
+            Some(body) => detect_collection_spec(collection, &body, stage),
+            None => Ok(None),
+        }
     }
 
     pub(super) async fn require_collection_spec(

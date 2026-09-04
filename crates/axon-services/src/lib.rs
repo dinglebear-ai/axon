@@ -18,6 +18,7 @@
 )]
 
 pub mod action_api;
+pub mod agent_runtime;
 mod artifact_candidate_outbox;
 pub mod artifacts;
 pub mod brand;
@@ -36,6 +37,7 @@ pub mod feed_target;
 pub mod graph;
 pub use feed_target::{is_feed_target, normalize_feed_target};
 pub mod jobs;
+pub mod loadout_context;
 pub mod map;
 pub mod memory;
 pub mod migrate;

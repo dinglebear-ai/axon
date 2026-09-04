@@ -119,6 +119,12 @@ pub struct QdrantHttp {
     provider_id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PutCreateOutcome {
+    Created,
+    AlreadyExists,
+}
+
 impl QdrantHttp {
     /// Construct a transport for the configured Qdrant URL, attributing every
     /// surfaced error to `provider_id`.
@@ -163,7 +169,8 @@ impl QdrantHttp {
         Ok(Some(body))
     }
 
-    /// PUT a JSON body, tolerating 409 (collection already exists).
+    /// PUT a JSON body. Conflict is an error for data mutations; callers that
+    /// create idempotent resources must opt into conflict acceptance.
     pub async fn put_json<B: Serialize + ?Sized>(
         &self,
         stage: axon_error::ErrorStage,
@@ -171,21 +178,28 @@ impl QdrantHttp {
         body: &B,
         context: &str,
     ) -> Result<(), ApiError> {
-        let resp = self
-            .request(Method::PUT)
-            .put(url)
-            .json(body)
-            .send()
-            .await
-            .map_err(|err| self.transport(stage, context, &err))?;
-        let status = resp.status();
-        if status == StatusCode::CONFLICT || status.is_success() {
-            return Ok(());
-        }
-        Err(self.status_error(stage, context, status))
+        let request = self.request(Method::PUT).put(url).json(body);
+        self.send_put(request, stage, context).await
     }
 
-    /// PUT an already encoded JSON body, tolerating 409. This is used by the
+    /// PUT an idempotently-created resource, accepting a conflict that means
+    /// another caller already created the same collection or payload index.
+    pub async fn put_json_idempotent_create<B: Serialize + ?Sized>(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        body: &B,
+        context: &str,
+    ) -> Result<PutCreateOutcome, ApiError> {
+        let request = self.request(Method::PUT).put(url).json(body);
+        match self.send_put_status(request, stage, context).await? {
+            status if status.is_success() => Ok(PutCreateOutcome::Created),
+            StatusCode::CONFLICT => Ok(PutCreateOutcome::AlreadyExists),
+            status => Err(self.status_error(stage, context, status)),
+        }
+    }
+
+    /// PUT an already encoded JSON body. This is used by the
     /// vector hot path after enforcing the exact encoded-byte ceiling, avoiding
     /// a second serialization pass inside reqwest.
     pub async fn put_json_bytes(
@@ -195,19 +209,38 @@ impl QdrantHttp {
         body: Vec<u8>,
         context: &str,
     ) -> Result<(), ApiError> {
-        let resp = self
+        let request = self
             .request(Method::PUT)
             .put(url)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(body)
-            .send()
-            .await
-            .map_err(|err| self.transport(stage, context, &err))?;
-        let status = resp.status();
-        if status == StatusCode::CONFLICT || status.is_success() {
+            .body(body);
+        self.send_put(request, stage, context).await
+    }
+
+    async fn send_put(
+        &self,
+        request: reqwest::RequestBuilder,
+        stage: axon_error::ErrorStage,
+        context: &str,
+    ) -> Result<(), ApiError> {
+        let status = self.send_put_status(request, stage, context).await?;
+        if status.is_success() {
             return Ok(());
         }
         Err(self.status_error(stage, context, status))
+    }
+
+    async fn send_put_status(
+        &self,
+        request: reqwest::RequestBuilder,
+        stage: axon_error::ErrorStage,
+        context: &str,
+    ) -> Result<StatusCode, ApiError> {
+        request
+            .send()
+            .await
+            .map(|response| response.status())
+            .map_err(|err| self.transport(stage, context, &err))
     }
 
     /// POST a JSON body and parse the response, retrying on 429/5xx.

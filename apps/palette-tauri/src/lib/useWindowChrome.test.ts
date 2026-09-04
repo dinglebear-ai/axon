@@ -62,6 +62,26 @@ describe("resolvePaletteWindowSize", () => {
       ),
     ).toEqual({ width: 720, height: 140 });
   });
+
+  it("uses the roomy result window for the in-palette browser view", () => {
+    expect(
+      resolvePaletteWindowSize(
+        {
+          actionSwitcherOpen: false,
+          jobExpanded: false,
+          jobMinimized: false,
+          settingsOpen: false,
+          historyOpen: false,
+          browserOpen: true,
+          showResultsLayout: false,
+          showContent: false,
+          filteredLength: 0,
+        },
+        { width: 2560, height: 1440 },
+        () => 468,
+      ),
+    ).toEqual({ width: 1280, height: 860 });
+  });
 });
 
 describe("source job layout CSS contract", () => {

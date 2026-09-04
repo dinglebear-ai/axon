@@ -12,6 +12,7 @@
 //! - [`read`] — raw-payload read/query primitives ported from legacy
 //!   `axon-vector` (facet, scroll, retrieve-by-url, canonical/prefix purge).
 
+mod collection_spec;
 pub(crate) mod commit;
 pub mod convert;
 mod http;

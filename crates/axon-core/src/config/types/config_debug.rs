@@ -269,7 +269,26 @@ impl fmt::Debug for Config {
             .field("embed_cache_enabled", &self.embed_cache_enabled)
             .field("embed_cache_max_entries", &self.embed_cache_max_entries)
             .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
+            .field("document_batch_size", &self.document_batch_size)
+            .field(
+                "document_status_batch_size",
+                &self.document_status_batch_size,
+            )
+            .field(
+                "embed_tei_max_batch_tokens",
+                &self.embed_tei_max_batch_tokens,
+            )
+            .field("embed_scheduler_enabled", &self.embed_scheduler_enabled)
+            .field(
+                "vector_upsert_embed_overlap",
+                &self.vector_upsert_embed_overlap,
+            )
             .field("embed_prep_concurrency", &self.embed_prep_concurrency)
+            .field(
+                "embed_prep_max_in_flight_bytes",
+                &self.embed_prep_max_in_flight_bytes,
+            )
+            .field("embed_scheduler_flush_ms", &self.embed_scheduler_flush_ms)
             .field(
                 "chunking_markdown_max_chars",
                 &self.chunking_markdown_max_chars,

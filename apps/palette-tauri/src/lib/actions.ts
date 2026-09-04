@@ -77,7 +77,8 @@ const STATIC_ACTIONS = [
     kind: "local",
     argMode: "optionalSingle",
     aliases: ["browser", "web", "browse-url"],
-    description: "Open a real in-app browser window — navigate to a URL or search the web. Desktop app only.",
+    description:
+      "Open a real in-app browser window — navigate to a URL or search the web. Desktop app only.",
     example: "browser docs.rs/serde",
     tone: "info",
   },
@@ -87,7 +88,8 @@ const STATIC_ACTIONS = [
     kind: "local",
     argMode: "none",
     aliases: ["files", "browse-files", "filesystem", "explorer"],
-    description: "Browse the local filesystem, preview or edit a file, and index it into the collection. Desktop app only.",
+    description:
+      "Browse the local filesystem, preview or edit a file, and index it into the collection. Desktop app only.",
     example: "files",
     tone: "orange",
   },
@@ -97,7 +99,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "split",
     aliases: ["scrape", "fetch", "page", "url"],
-    description: "Fetch a single page, convert it to clean markdown, and optionally embed it into the collection.",
+    description:
+      "Fetch a single page, convert it to clean markdown, and optionally embed it into the collection.",
     example: "scrape https://docs.rs/serde",
     tone: "info",
   },
@@ -107,7 +110,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "split",
     aliases: ["site", "index-site", "docs"],
-    description: "Index a site through the unified source pipeline. Returns a job you can inspect or cancel.",
+    description:
+      "Index a site through the unified source pipeline. Returns a job you can inspect or cancel.",
     example: "source-site https://docs.anthropic.com",
     tone: "warn",
   },
@@ -117,7 +121,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "split",
     aliases: ["map", "links", "discover"],
-    description: "Walk a domain and return the URL graph without fetching page bodies. Fast reconnaissance.",
+    description:
+      "Walk a domain and return the URL graph without fetching page bodies. Fast reconnaissance.",
     example: "map https://code.claude.com/docs",
     tone: "info",
   },
@@ -167,7 +172,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "split",
     aliases: ["retrieve", "chunks", "document"],
-    description: "Return the embedded chunks already stored for a URL, paged. Inline-first reading action.",
+    description:
+      "Return the embedded chunks already stored for a URL, paged. Inline-first reading action.",
     example: "retrieve https://docs.rs/serde",
     tone: "neutral",
   },
@@ -217,7 +223,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "single",
     aliases: ["source", "index", "add-source"],
-    description: "Index a URL, repository, feed, session selector, file, or directory through the unified source pipeline.",
+    description:
+      "Index a URL, repository, feed, session selector, file, or directory through the unified source pipeline.",
     example: "source https://docs.rs/serde",
     tone: "orange",
   },
@@ -322,7 +329,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "split",
     aliases: ["diff", "compare", "changes"],
-    description: "Render two URLs and diff their extracted content — track what changed between versions.",
+    description:
+      "Render two URLs and diff their extracted content — track what changed between versions.",
     example: "diff https://example.com/a https://example.com/b",
     tone: "info",
   },
@@ -332,7 +340,8 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "split",
     aliases: ["screenshot", "capture", "shot", "png"],
-    description: "Render a URL in Chrome and capture a full-page screenshot using the default viewport.",
+    description:
+      "Render a URL in Chrome and capture a full-page screenshot using the default viewport.",
     example: "screenshot https://example.com",
     tone: "info",
   },
@@ -367,18 +376,27 @@ const STATIC_ACTIONS = [
     example: "watch-run 00000000-0000-4000-8000-000000000000",
     tone: "info",
   },
-  { label: "Terminal", subcommand: "terminal", kind: "local", argMode: "none", aliases: ["terminal", "shell", "sh", "console", "cmd"], description: "Run real shell commands in a persistent session with your actual working directory. Desktop app only.", example: "terminal", tone: "neutral", autoRunOnSwitch: true },
+  {
+    label: "Terminal",
+    subcommand: "terminal",
+    kind: "local",
+    argMode: "none",
+    aliases: ["terminal", "shell", "sh", "console", "cmd"],
+    description:
+      "Run real shell commands in a persistent session with your actual working directory. Desktop app only.",
+    example: "terminal",
+    tone: "neutral",
+  },
 ] as const satisfies readonly PaletteAction[];
 
 type StaticSubcommand = Exclude<PaletteSubcommand, JobSubcommand>;
 type ListedStaticSubcommand = (typeof STATIC_ACTIONS)[number]["subcommand"];
-const _allStaticActionsListed: Exclude<StaticSubcommand, ListedStaticSubcommand> extends never ? true : never = true;
+const _allStaticActionsListed: Exclude<StaticSubcommand, ListedStaticSubcommand> extends never
+  ? true
+  : never = true;
 void _allStaticActionsListed;
 
-export const ACTIONS: PaletteAction[] = [
-  ...STATIC_ACTIONS,
-  ...jobLifecycleActions(),
-];
+export const ACTIONS: PaletteAction[] = [...STATIC_ACTIONS, ...jobLifecycleActions()];
 
 const MOBILE_UNAVAILABLE_SUBCOMMANDS = new Set<PaletteSubcommand>(["browser", "files", "terminal"]);
 
@@ -456,8 +474,8 @@ function jobLifecycleActions(): PaletteAction[] {
 }
 
 export {
-  actionMatches,
-  actionInvokedBy,
   acceptsDirectUrl,
+  actionInvokedBy,
+  actionMatches,
   coercesArgumentToUrl,
 } from "./actionPredicates";

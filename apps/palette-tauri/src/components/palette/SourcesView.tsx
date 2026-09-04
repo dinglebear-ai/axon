@@ -1,6 +1,10 @@
-import { ArrowDownUp, Download, Search } from "lucide-react";
+import { ArrowDownUp, Database, Download, Search, SearchX } from "lucide-react";
 import { memo } from "react";
-
+import {
+  WorkspaceEmpty,
+  WorkspaceHeader,
+  WorkspaceSurface,
+} from "@/components/palette/WorkspaceSurface";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import type { SourceRow, SourceSortMode, SourcesModel } from "@/lib/sourcesModel";
@@ -29,9 +33,19 @@ export const SourcesView = memo(function SourcesView({
   onSortChange,
   onGroupedChange,
 }: SourcesViewProps) {
-  const { rows, filtered, groups, totalChunks } = model;
+  const { filtered, groups, totalChunks } = model;
   return (
-    <div className="output-body sources-view aurora-scrollbar">
+    <WorkspaceSurface className="output-body sources-view">
+      <WorkspaceHeader
+        icon={Database}
+        eyebrow="Knowledge Inventory"
+        title="Indexed Sources"
+        description="Review stored URLs, chunk coverage, and source actions."
+        metrics={[
+          { label: "URLs", value: filtered.length.toLocaleString() },
+          { label: "Chunks", value: totalChunks.toLocaleString() },
+        ]}
+      />
       <div className="sources-toolbar">
         <Input
           className="sources-search"
@@ -65,18 +79,12 @@ export const SourcesView = memo(function SourcesView({
         </Button>
       </div>
 
-      <div className="sources-summary">
-        <span>
-          <strong>{filtered.length.toLocaleString()}</strong>
-          {filtered.length === rows.length ? " URLs" : ` / ${rows.length.toLocaleString()} URLs`}
-        </span>
-        <span>
-          <strong>{totalChunks.toLocaleString()}</strong> chunks
-        </span>
-      </div>
-
       {filtered.length === 0 ? (
-        <div className="status-empty">No sources match.</div>
+        <WorkspaceEmpty
+          icon={SearchX}
+          title="No sources match."
+          description="Clear the filter or search for another URL or domain."
+        />
       ) : groups ? (
         groups.map((group) => (
           <section key={group.domain} className="sources-group">
@@ -97,7 +105,7 @@ export const SourcesView = memo(function SourcesView({
           ))}
         </div>
       )}
-    </div>
+    </WorkspaceSurface>
   );
 });
 

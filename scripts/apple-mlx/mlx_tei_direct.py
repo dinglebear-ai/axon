@@ -9,7 +9,7 @@ import os
 import secrets
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Any
 
@@ -80,24 +80,37 @@ def summarize_shapes(
 
 
 def interval_union_us(intervals_ns: list[tuple[int, int]]) -> int:
+    return sum(end - start for start, end in merge_intervals(intervals_ns)) // 1_000
+
+
+def merge_intervals(intervals_ns: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Return disjoint accelerator intervals without double-counting overlap."""
     valid = sorted((start, end) for start, end in intervals_ns if end >= start)
     if not valid:
-        return 0
-    total = 0
+        return []
+    merged = []
     current_start, current_end = valid[0]
     for start, end in valid[1:]:
         if start <= current_end:
             current_end = max(current_end, end)
         else:
-            total += current_end - current_start
+            merged.append((current_start, current_end))
             current_start, current_end = start, end
-    total += current_end - current_start
-    return total // 1_000
+    merged.append((current_start, current_end))
+    return merged
 
 
 def interval_idle_us(intervals_ns: list[tuple[int, int]], start_ns: int, end_ns: int) -> int:
     span_us = max(0, end_ns - start_ns) // 1_000
     return max(0, span_us - interval_union_us(intervals_ns))
+
+
+def interval_window_metrics(
+    intervals_ns: list[tuple[int, int]], start_ns: int, end_ns: int
+) -> tuple[int, int, int]:
+    wall_us = max(0, end_ns - start_ns) // 1_000
+    busy_us = interval_union_us(intervals_ns)
+    return wall_us, busy_us, max(0, wall_us - busy_us)
 
 
 def validate_bind(host: str, token: str) -> None:
@@ -168,6 +181,9 @@ if not TEST_MODE:
     EMBED_STREAM = None
     WORK: queue.Queue = queue.Queue()
     METRICS_LOCK = threading.Lock()
+    METRIC_INTERVALS: list[tuple[int, int]] = []
+    METRIC_WINDOW_START_NS: int | None = None
+    METRIC_WINDOW_END_NS: int | None = None
     METRICS: dict[str, int | str] = {
         "epoch": secrets.token_hex(16),
         "requests": 0,
@@ -186,9 +202,7 @@ if not TEST_MODE:
     }
 
     class RequestState:
-        __slots__ = (
-            "vectors", "remaining", "done", "error", "intervals", "lock"
-        )
+        __slots__ = ("done", "error", "intervals", "lock", "remaining", "vectors")
 
         def __init__(self, count: int, batches: int):
             self.vectors = np.empty((count, DIM), dtype=np.float32)
@@ -297,7 +311,9 @@ if not TEST_MODE:
             output.append((np.array(indices), ids, mask, shape))
         return output
 
-    def embed_texts(texts: list[str]) -> tuple[np.ndarray, dict[str, int]]:
+    def embed_texts(
+        texts: list[str],
+    ) -> tuple[np.ndarray, dict[str, int], list[tuple[int, int]], int, int]:
         request_start = time.perf_counter_ns()
         tokenize_start = request_start
         encodings = RAW_TOKENIZER.encode_batch_fast(texts)
@@ -330,13 +346,38 @@ if not TEST_MODE:
             "metal_busy_us": interval_union_us(state.intervals),
             "dispatcher_idle_us": interval_idle_us(state.intervals, request_start, request_end),
         }
-        return state.vectors, measurement
+        return state.vectors, measurement, state.intervals, request_start, request_end
 
-    def record_metrics(measurement: dict[str, int]) -> None:
+    def record_metrics(
+        measurement: dict[str, int],
+        intervals: list[tuple[int, int]],
+        request_start_ns: int,
+        request_end_ns: int,
+    ) -> None:
+        global METRIC_INTERVALS, METRIC_WINDOW_START_NS, METRIC_WINDOW_END_NS
         with METRICS_LOCK:
             METRICS["requests"] = int(METRICS["requests"]) + 1
             for key, value in measurement.items():
+                if key in {"request_wall_us", "metal_busy_us", "dispatcher_idle_us"}:
+                    continue
                 METRICS[key] = int(METRICS.get(key, 0)) + value
+            METRIC_INTERVALS = merge_intervals([*METRIC_INTERVALS, *intervals])
+            METRIC_WINDOW_START_NS = (
+                request_start_ns
+                if METRIC_WINDOW_START_NS is None
+                else min(METRIC_WINDOW_START_NS, request_start_ns)
+            )
+            METRIC_WINDOW_END_NS = (
+                request_end_ns
+                if METRIC_WINDOW_END_NS is None
+                else max(METRIC_WINDOW_END_NS, request_end_ns)
+            )
+            window_us, busy_us, idle_us = interval_window_metrics(
+                METRIC_INTERVALS, METRIC_WINDOW_START_NS, METRIC_WINDOW_END_NS
+            )
+            METRICS["request_wall_us"] = window_us
+            METRICS["metal_busy_us"] = busy_us
+            METRICS["dispatcher_idle_us"] = idle_us
 
     def load_model() -> None:
         global MODEL, TOKENIZER, RAW_TOKENIZER, PAD_ID
@@ -416,13 +457,13 @@ if not TEST_MODE:
         try:
             payload = orjson.loads(await read_limited_body(request))
             texts = validate_payload(payload)
-            vectors, measurement = await anyio.to_thread.run_sync(
+            vectors, measurement, intervals, request_start_ns, request_end_ns = await anyio.to_thread.run_sync(
                 embed_texts, texts, abandon_on_cancel=False
             )
             serialize_start = time.perf_counter_ns()
             encoded = orjson.dumps(vectors, option=orjson.OPT_SERIALIZE_NUMPY)
             measurement["serialize_us"] = (time.perf_counter_ns() - serialize_start) // 1_000
-            record_metrics(measurement)
+            record_metrics(measurement, intervals, request_start_ns, request_end_ns)
             return Response(encoded, media_type="application/json")
         except (RequestLimitError, orjson.JSONDecodeError, UnicodeDecodeError, ValueError):
             return ORJSONResponse({"error": "invalid or oversized request"}, status_code=400)

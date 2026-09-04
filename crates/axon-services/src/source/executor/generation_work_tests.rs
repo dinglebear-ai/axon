@@ -1,25 +1,11 @@
 use super::*;
 
 #[test]
-fn prepared_batch_counts_all_chunks() {
-    let batch = PreparedGenerationBatch {
-        sequence: 7,
-        prepared: Vec::new(),
-        side_effects: PreparedBatchSideEffects {
-            acquisition_artifacts: Vec::new(),
-            enrichment_artifacts: Vec::new(),
-            clean_output: SourceOutput::default(),
-            archive_items: Vec::new(),
-            artifact_candidates: Vec::new(),
-            warnings: Vec::new(),
-            reused_item_keys: Vec::new(),
-            refreshed_manifest_items: Vec::new(),
-        },
-        is_final: true,
-    };
-    assert_eq!(batch.sequence, 7);
-    assert!(batch.is_final);
-    assert_eq!(batch.chunk_count(), 0);
+fn resident_estimate_tracks_chunk_payload_without_serializing() {
+    let small = prepared_resident_bytes(&[prepared_document(1)]);
+    let large = prepared_resident_bytes(&[prepared_document(4)]);
+    assert!(small > 0);
+    assert!(large > small);
 }
 
 #[tokio::test]
@@ -65,6 +51,56 @@ async fn cancellation_interrupts_send() {
         .await
         .expect("sender remains usable after pre-send cancellation");
     assert_eq!(receiver.recv().await.unwrap().sequence, 0);
+}
+
+#[tokio::test]
+async fn concurrent_channels_share_process_budget_and_cancellation_recovers_permits() {
+    let shared = Arc::new(Semaphore::new(1));
+    let (mut first_sender, mut first_receiver) = prepared_work_channel(4).unwrap();
+    let (mut second_sender, _second_receiver) = prepared_work_channel(4).unwrap();
+    first_sender.process_byte_permits = Arc::clone(&shared);
+    second_sender.process_byte_permits = Arc::clone(&shared);
+
+    first_sender
+        .send(Vec::new(), empty_side_effects(), &CancellationToken::new())
+        .await
+        .expect("first channel acquires shared budget");
+    let first = first_receiver.recv().await.expect("first envelope");
+
+    let cancel = CancellationToken::new();
+    let cancel_wait = cancel.clone();
+    let blocked = tokio::spawn(async move {
+        second_sender
+            .send(Vec::new(), empty_side_effects(), &cancel_wait)
+            .await
+            .map(|_| second_sender)
+    });
+    tokio::task::yield_now().await;
+    assert!(
+        !blocked.is_finished(),
+        "second job must share the process gate"
+    );
+    cancel.cancel();
+    let (mut second_sender, mut recovery_receiver) =
+        match blocked.await.expect("blocked sender task") {
+            Ok(_) => panic!("cancellation must interrupt shared admission"),
+            Err(error) => {
+                assert!(error.to_string().contains("canceled"));
+                // Recreate the sender after the canceled future consumed it while
+                // retaining the exact same process gate for the recovery proof.
+                let (mut sender, receiver) = prepared_work_channel(4).unwrap();
+                sender.process_byte_permits = Arc::clone(&shared);
+                (sender, receiver)
+            }
+        };
+
+    drop(first);
+    second_sender
+        .send(Vec::new(), empty_side_effects(), &CancellationToken::new())
+        .await
+        .expect("canceled acquisition did not leak either byte permit");
+    drop(recovery_receiver.recv().await.expect("second envelope"));
+    assert_eq!(shared.available_permits(), 1);
 }
 
 #[tokio::test]
@@ -162,6 +198,49 @@ async fn consuming_envelopes_releases_capacity_for_a_blocked_sender() {
     for _ in 0..3 {
         drop(receiver.recv().await.expect("remaining envelope"));
     }
+    send.await.expect("send task").expect("send batch");
+}
+
+#[tokio::test]
+async fn zero_chunk_documents_retain_per_document_capacity_across_envelopes() {
+    let (mut sender, mut receiver) = prepared_work_channel(2).unwrap();
+    let cancel = CancellationToken::new();
+    let send = tokio::spawn({
+        let cancel = cancel.clone();
+        async move {
+            sender
+                .send(
+                    (0..8).map(|_| prepared_document(0)).collect(),
+                    empty_side_effects(),
+                    &cancel,
+                )
+                .await
+        }
+    });
+
+    // Three two-document envelopes consume all six charged-document permits.
+    // Holding them must backpressure the fourth envelope even though none of
+    // the documents contains a vector chunk.
+    let mut held = Vec::new();
+    for _ in 0..3 {
+        held.push(receiver.recv().await.expect("zero-chunk envelope"));
+    }
+    assert!(held.iter().all(|envelope| envelope.prepared.len() == 2));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(20), receiver.recv())
+            .await
+            .is_err(),
+        "the fourth envelope must wait for a per-document permit"
+    );
+
+    drop(held.remove(0));
+    let final_envelope = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .expect("released permit should unblock sender")
+        .expect("fourth zero-chunk envelope");
+    assert_eq!(final_envelope.prepared.len(), 2);
+    drop(final_envelope);
+    drop(held);
     send.await.expect("send task").expect("send batch");
 }
 

@@ -8,6 +8,30 @@ import { PaletteFooter } from "./PaletteFooter";
 afterEach(() => cleanup());
 
 describe("PaletteFooter", () => {
+  it("removes the desktop footer from layout when hints are disabled", () => {
+    const { container } = render(
+      <PaletteFooter
+        config={{
+          serverUrl: "http://127.0.0.1:8001",
+          token: null,
+          shortcut: "Ctrl+Space",
+          collection: "axon",
+          resultLimit: 10,
+          theme: "dark",
+          hideOnBlur: false,
+          showFooterHints: false,
+        }}
+        configError={null}
+        onRecent={vi.fn()}
+        onSettings={vi.fn()}
+        onCodex={vi.fn()}
+        onHide={vi.fn()}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("hides the desktop-only hide control on mobile", () => {
     render(
       <PaletteFooter
@@ -36,7 +60,16 @@ describe("PaletteFooter", () => {
     const onCodex = vi.fn();
     render(
       <PaletteFooter
-        config={null}
+        config={{
+          serverUrl: "http://127.0.0.1:8001",
+          token: null,
+          shortcut: "Ctrl+Space",
+          collection: "axon",
+          resultLimit: 10,
+          theme: "dark",
+          hideOnBlur: false,
+          showFooterHints: true,
+        }}
         configError={null}
         onRecent={vi.fn()}
         onSettings={vi.fn()}

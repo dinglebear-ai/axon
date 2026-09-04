@@ -7,6 +7,97 @@ use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 
 use crate::reserved_call::ArtifactCleanupGuard;
 
+fn export_document(url: &str, key: &str, text: &str) -> SourceDocument {
+    SourceDocument {
+        document_id: DocumentId::new(format!("doc_{key}")),
+        source_id: SourceId::new("src_export"),
+        source_item_key: SourceItemKey::new(key),
+        canonical_uri: url.to_string(),
+        content_kind: ContentKind::Markdown,
+        content: ContentRef::InlineText { text: text.into() },
+        metadata: MetadataMap::new(),
+        title: None,
+        language: None,
+        path: None,
+        mime_type: Some("text/markdown".to_string()),
+        structured_payload: None,
+        artifact_id: None,
+        chunk_hints: Vec::new(),
+        parser_hints: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn durable_export_is_usable_before_generation_publication() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    super::initialize_durable_export_dir(temp.path())
+        .await
+        .expect("initialize checkpoint");
+    super::checkpoint_durable_export_dir(
+        temp.path(),
+        &[export_document(
+            "https://example.com/guide",
+            "guide",
+            "# Durable guide\n",
+        )],
+    )
+    .await
+    .expect("checkpoint document");
+
+    let manifest = tokio::fs::read_to_string(temp.path().join("manifest.jsonl"))
+        .await
+        .expect("manifest exists without publication");
+    let entry: serde_json::Value =
+        serde_json::from_str(manifest.trim()).expect("valid checkpoint JSONL");
+    let relative = entry["relative_path"].as_str().expect("relative path");
+    assert_eq!(entry["url"], "https://example.com/guide");
+    assert_eq!(
+        tokio::fs::read_to_string(temp.path().join(relative))
+            .await
+            .expect("manifest never precedes content"),
+        "# Durable guide\n"
+    );
+}
+
+#[tokio::test]
+async fn initializing_next_generation_discards_stale_manifest_not_content() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    super::initialize_durable_export_dir(temp.path())
+        .await
+        .unwrap();
+    super::checkpoint_durable_export_dir(
+        temp.path(),
+        &[export_document("https://example.com/old", "old", "old")],
+    )
+    .await
+    .unwrap();
+    let old_manifest: serde_json::Value = serde_json::from_str(
+        tokio::fs::read_to_string(temp.path().join("manifest.jsonl"))
+            .await
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
+    let old_content = temp
+        .path()
+        .join(old_manifest["relative_path"].as_str().unwrap());
+
+    super::initialize_durable_export_dir(temp.path())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        tokio::fs::read(temp.path().join("manifest.jsonl"))
+            .await
+            .unwrap(),
+        b""
+    );
+    assert!(
+        old_content.exists(),
+        "generation reset must not delete content"
+    );
+}
+
 async fn stored_artifact(core: &FakeCoreBoundaries, suffix: &str) -> ArtifactRef {
     let handle = core
         .put(ArtifactWriteRequest {

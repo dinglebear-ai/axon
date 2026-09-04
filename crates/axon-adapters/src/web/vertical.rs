@@ -48,16 +48,20 @@ pub(super) async fn try_acquire(
     match crate::vertical_registry::dispatch_by_url(&item.canonical_uri, &ctx).await {
         None => VerticalAcquire::Unsupported,
         Some(Ok(doc)) => VerticalAcquire::Handled(acquired_from_doc(item, doc, job_id)),
-        Some(Err(err)) => VerticalAcquire::Degraded(SourceWarning {
-            code: "web.vertical.extractor_failed".to_string(),
-            severity: Severity::Warning,
-            message: format!(
-                "vertical extractor failed for {}; falling back to generic web acquisition: {err}",
-                item.canonical_uri
-            ),
-            source_item_key: Some(item.source_item_key.clone()),
-            retryable: true,
-        }),
+        Some(Err(_err)) => VerticalAcquire::Degraded(degraded_warning(item)),
+    }
+}
+
+pub(super) fn degraded_warning(item: &ManifestItem) -> SourceWarning {
+    SourceWarning {
+        code: "web.vertical.extractor_failed".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "vertical extractor failed for {}; falling back to generic web acquisition",
+            crate::web_engine::engine::url_utils::sanitize_url_for_reporting(&item.canonical_uri)
+        ),
+        source_item_key: Some(item.source_item_key.clone()),
+        retryable: true,
     }
 }
 

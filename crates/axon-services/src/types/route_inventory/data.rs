@@ -497,3 +497,7 @@ pub(super) use projection_routes::PROJECTION_ROUTES;
 #[path = "data/codex_routes.rs"]
 mod codex_routes;
 pub(super) use codex_routes::CODEX_ROUTES;
+
+#[path = "data/agent_turn_routes.rs"]
+mod agent_turn_routes;
+pub(super) use agent_turn_routes::AGENT_TURN_ROUTES;

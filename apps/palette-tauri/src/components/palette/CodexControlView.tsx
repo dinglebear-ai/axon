@@ -145,10 +145,6 @@ export function CodexControlView({
     setOperation(null);
     setCapability("");
   }, [inputRevision]);
-  useEffect(() => {
-    setOperation(null);
-    setCapability("");
-  }, [client]);
   const pendingRequests = events.filter((event) => event.event.kind === "server_request");
 
   async function prepare() {
@@ -228,12 +224,14 @@ export function CodexControlView({
                   Typed response (JSON)
                   <textarea
                     value={serverResponses[event.event.request_id] ?? ""}
-                    onChange={(change) =>
+                    onChange={(change) => {
+                      const requestId = event.event.request_id;
+                      if (requestId == null) return;
                       setServerResponses((previous) => ({
                         ...previous,
-                        [event.event.request_id!]: change.target.value,
-                      }))
-                    }
+                        [requestId]: change.target.value,
+                      }));
+                    }}
                     placeholder={typedResponsePlaceholder(event.event.method)}
                   />
                 </label>

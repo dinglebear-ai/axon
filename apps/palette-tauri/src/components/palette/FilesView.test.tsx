@@ -128,6 +128,44 @@ describe("FilesView — directory listing", () => {
       expect(screen.getByText(/path escapes the allowed files root/)).toBeInTheDocument(),
     );
   });
+
+  it("offers contextual actions for file rows", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "files_list_dir") return Promise.resolve(rootListing);
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilesView client={client} config={config} />);
+    await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+
+    expect(screen.getByRole("menu", { name: "README.md actions" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open preview" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Select for indexing" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Show in Finder" })).toBeInTheDocument();
+  });
+
+  it("offers content, edit, and index actions from the document context menu", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "files_list_dir") return Promise.resolve(rootListing);
+      if (command === "files_read_file") return Promise.resolve(readmeContents);
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<FilesView client={client} config={config} />);
+    await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("README.md"));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument());
+
+    fireEvent.contextMenu(screen.getByRole("heading", { name: "Hello" }));
+
+    expect(screen.getByRole("menuitem", { name: "Copy contents" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit with Axon" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Index file" })).toBeInTheDocument();
+  });
 });
 
 describe("FilesView — source indexing wiring", () => {
@@ -170,8 +208,8 @@ describe("FilesView — source indexing wiring", () => {
   it("does not offer indexing for a non-indexable (binary) file", async () => {
     invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
       if (command === "files_list_dir") return Promise.resolve(rootListing);
-      if (command === "files_read_file" && args?.path === "photo.png") {
-        return Promise.reject(new Error("file is not valid UTF-8 text"));
+      if (command === "files_read_preview" && args?.path === "photo.png") {
+        return Promise.reject(new Error("this file type does not support an inline preview"));
       }
       throw new Error(`unexpected command: ${command}`);
     });
@@ -180,7 +218,7 @@ describe("FilesView — source indexing wiring", () => {
     await waitFor(() => expect(screen.getByText("photo.png")).toBeInTheDocument());
     fireEvent.click(screen.getByText("photo.png"));
 
-    await waitFor(() => expect(screen.getByText(/not valid UTF-8/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/does not support an inline preview/)).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /index/i })).not.toBeInTheDocument();
   });
 
@@ -686,7 +724,7 @@ describe("FilesView — SFTP entries gate manual and AI-assisted edit", () => {
 
     await waitFor(() => expect(screen.getByText("remote.md")).toBeInTheDocument());
     fireEvent.click(screen.getByText("remote.md"));
-    await waitFor(() => expect(screen.getByText(/# remote/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "remote" })).toBeInTheDocument());
 
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /edit with the model/i })).not.toBeInTheDocument();
@@ -738,7 +776,7 @@ describe("FilesView — SFTP open race (P2 #6 regression)", () => {
     // it resolves.
     fireEvent.click(screen.getByText("remote.md"));
     fireEvent.click(screen.getByText("README.md"));
-    await waitFor(() => expect(screen.getByText(/# Hello/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument());
 
     // Now let the stale SFTP read resolve — it must NOT overwrite the local
     // file that was opened after it started.
@@ -746,7 +784,7 @@ describe("FilesView — SFTP open race (P2 #6 regression)", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(screen.getByText(/# Hello/)).toBeInTheDocument();
-    expect(screen.queryByText(/# remote/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /remote/ })).not.toBeInTheDocument();
   });
 });

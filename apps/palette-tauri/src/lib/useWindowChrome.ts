@@ -8,6 +8,7 @@ interface WindowChromeArgs {
   jobMinimized: boolean;
   settingsOpen: boolean;
   historyOpen: boolean;
+  browserOpen?: boolean;
   showResultsLayout: boolean;
   showContent: boolean;
   filteredLength: number;
@@ -70,6 +71,7 @@ export function resolvePaletteWindowSize(
     jobMinimized,
     settingsOpen,
     historyOpen,
+    browserOpen,
     showResultsLayout,
     showContent,
   }: Omit<WindowChromeArgs, "shownTick">,
@@ -79,6 +81,12 @@ export function resolvePaletteWindowSize(
   if (jobMinimized) return TRAY;
   if (settingsOpen) return SETTINGS;
   if (historyOpen) return HISTORY;
+  if (browserOpen) {
+    return {
+      width: Math.min(RESULTS_MAX.width, screen.width - SCREEN_MARGIN),
+      height: Math.min(RESULTS_MAX.height, screen.height - SCREEN_MARGIN),
+    };
+  }
   if (jobExpanded) {
     return {
       width: Math.min(JOB_MAX.width, screen.width - SCREEN_MARGIN),
@@ -118,6 +126,7 @@ export function useWindowChrome({
   jobMinimized,
   settingsOpen,
   historyOpen,
+  browserOpen = false,
   showResultsLayout,
   showContent,
   filteredLength,
@@ -145,6 +154,7 @@ export function useWindowChrome({
         jobMinimized,
         settingsOpen,
         historyOpen,
+        browserOpen,
         showResultsLayout,
         showContent,
         actionSwitcherOpen,
@@ -189,6 +199,7 @@ export function useWindowChrome({
     jobMinimized,
     settingsOpen,
     historyOpen,
+    browserOpen,
     showResultsLayout,
     showContent,
     filteredLength,
@@ -199,6 +210,6 @@ export function useWindowChrome({
   // result/settings/history view is open we keep the window up so resizing it
   // (which can steal focus) or copying from another window won't make it vanish.
   useEffect(() => {
-    void invoke("set_blur_dismiss", { enabled: !showResultsLayout });
-  }, [showResultsLayout]);
+    void invoke("set_blur_dismiss", { enabled: !showResultsLayout && !browserOpen });
+  }, [showResultsLayout, browserOpen]);
 }

@@ -13,6 +13,12 @@ use std::path::PathBuf;
 impl Default for Config {
     fn default() -> Self {
         Self {
+            labby_url: None,
+            labby_service_token: None,
+            labby_integration_id: None,
+            labby_runtime_identity: None,
+            labby_resolution_timeout_ms: 2_000,
+            labby_resolution_max_bytes: 256 * 1024,
             command: CommandKind::Status,
             start_url: String::new(),
             positional: Vec::new(),
@@ -206,10 +212,17 @@ impl Default for Config {
             embed_cache_enabled: false,
             embed_cache_max_entries: 100_000,
             embed_pool_max_inputs: 512,
+            document_batch_size: 16,
+            document_status_batch_size: 64,
+            embed_tei_max_batch_tokens: 65_536,
+            embed_scheduler_enabled: true,
+            vector_upsert_embed_overlap: true,
             embed_prep_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(8)
                 .clamp(2, 16),
+            embed_prep_max_in_flight_bytes: 64 * 1024 * 1024,
+            embed_scheduler_flush_ms: 1_500,
             chunking_markdown_max_chars: 2_000,
             chunking_markdown_min_chars: 500,
             chunking_overlap_chars: 200,

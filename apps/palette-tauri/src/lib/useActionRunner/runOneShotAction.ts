@@ -1,6 +1,6 @@
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import type { RemotePaletteAction } from "@/lib/actions";
-import { answerParts, appendAskPendingTurn, completeLastAssistantTurn } from "@/lib/askTranscript";
+import { answerParts, appendAskPendingTurn, attachResponseMetadata, completeLastAssistantTurn } from "@/lib/askTranscript";
 import { executeAction, type Client, type PaletteConfig, type PaletteResult } from "@/lib/axonClient";
 import { formatPayload, outputKindFor, type OutputKind } from "@/lib/format";
 import type { AskTurn, RunState } from "@/lib/runState";
@@ -68,6 +68,7 @@ export async function runOneShotAction({
     const completedTranscript = isConversation
       ? completeLastAssistantTurn(pendingTranscript, text, parts.sources)
       : undefined;
+    const enrichedTranscript = attachResponseMetadata(completedTranscript, result.payload);
     pushHistory(action, argument || action.subcommand, {
       status: result.status,
       title,
@@ -76,7 +77,7 @@ export async function runOneShotAction({
       outputKind: outputKindFor(action.subcommand),
       result,
       prompt: isConversation ? argument : undefined,
-      transcript: completedTranscript,
+      transcript: enrichedTranscript,
     });
     const next: RunState = {
       kind: result.ok ? "success" : "error",
@@ -85,7 +86,7 @@ export async function runOneShotAction({
       text,
       outputKind: outputKindFor(action.subcommand),
       prompt: isConversation ? argument : undefined,
-      transcript: completedTranscript,
+      transcript: enrichedTranscript,
       result,
     };
     setTerminal(next);

@@ -66,13 +66,19 @@ describe("BrowserView — Tauri runtime", () => {
   it("opens the browser window on mount with the normalized initial target", () => {
     render(<BrowserView initialTarget="example.com" onClose={() => {}} />);
 
-    expect(invokeMock).toHaveBeenCalledWith("browser_open", { url: "https://example.com" });
+    expect(invokeMock).toHaveBeenCalledWith("browser_open", {
+      url: "https://example.com",
+      bounds: undefined,
+    });
   });
 
   it("opens to the home sentinel when no initial target is given", () => {
     render(<BrowserView initialTarget={null} onClose={() => {}} />);
 
-    expect(invokeMock).toHaveBeenCalledWith("browser_open", { url: "about:blank" });
+    expect(invokeMock).toHaveBeenCalledWith("browser_open", {
+      url: "about:blank",
+      bounds: undefined,
+    });
   });
 
   it("closes the browser window on unmount", () => {
@@ -92,7 +98,10 @@ describe("BrowserView — Tauri runtime", () => {
     fireEvent.change(input, { target: { value: "docs.rs/serde" } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
 
-    expect(invokeMock).toHaveBeenCalledWith("browser_navigate", { url: "https://docs.rs/serde" });
+    expect(invokeMock).toHaveBeenCalledWith("browser_navigate", {
+      url: "https://docs.rs/serde",
+      bounds: undefined,
+    });
   });
 
   it("opens a new tab and navigates the browser window to its home state", () => {
@@ -101,7 +110,10 @@ describe("BrowserView — Tauri runtime", () => {
 
     fireEvent.click(screen.getByLabelText(/^new tab$/i));
 
-    expect(invokeMock).toHaveBeenCalledWith("browser_navigate", { url: "about:blank" });
+    expect(invokeMock).toHaveBeenCalledWith("browser_navigate", {
+      url: "about:blank",
+      bounds: undefined,
+    });
     expect(screen.getAllByText("New Tab").length).toBeGreaterThan(0);
   });
 

@@ -5,7 +5,9 @@
 // thin. No network calls or JSX here — pure shaping only.
 
 import type { components } from "./axon-api";
+import { activeProfile } from "./backendProfiles/model";
 import type { PaletteConfig } from "./axonClient";
+import { loadoutRequestFields } from "./labby/loadoutSelection";
 import { splitShellWords } from "./shellWords";
 
 /**
@@ -28,6 +30,7 @@ export type ArgMode = "none" | "optionalSingle" | "single" | "split";
 
 /** Everything a body builder needs, derived once from the raw arg + config. */
 export interface RequestContext {
+  config: PaletteConfig;
   /** Raw argument string as typed by the user (used by JSON-body actions). */
   arg: string;
   /** Tokenized argument words, per the action's `argMode`. */
@@ -40,9 +43,14 @@ export interface RequestContext {
   limit: number;
 }
 
-export function buildRequestContext(argMode: ArgMode, arg: string, config: PaletteConfig): RequestContext {
+export function buildRequestContext(
+  argMode: ArgMode,
+  arg: string,
+  config: PaletteConfig,
+): RequestContext {
   const collection = config.collection.trim();
   return {
+    config,
     arg,
     words: wordsFor(argMode, arg),
     collectionBody: collection ? { collection } : {},
@@ -92,21 +100,49 @@ export const sourceSiteBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
   scope: "site",
   ...ctx.collectionBody,
 });
-export const mapBody: BodyBuilder<Req["RestMapRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
-export const summarizeBody: BodyBuilder<Req["RestSummarizeRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls") });
+export const mapBody: BodyBuilder<Req["RestMapRequest"]> = (ctx) => ({
+  url: first(ctx.words, "url"),
+});
+export const summarizeBody: BodyBuilder<Req["RestSummarizeRequest"]> = (ctx) => ({
+  urls: required(ctx.words, "urls"),
+});
 export const askBody: BodyBuilder<Req["RestAskRequest"]> = (ctx) => ({
   query: first(ctx.words, "query"),
   explain: false,
   diagnostics: false,
   ...ctx.collectionBody,
+  ...loadoutRequestFields(
+    activeProfile(ctx.config.backendProfiles, ctx.config.activeBackendProfiles, "labby"),
+  ),
 });
-export const chatBody: BodyBuilder<Req["RestChatRequest"]> = (ctx) => ({ message: first(ctx.words, "message") });
-export const queryBody: BodyBuilder<Req["RestQueryRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit, ...ctx.collectionBody });
-export const retrieveBody: BodyBuilder<Req["RestRetrieveRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), ...ctx.collectionBody });
-export const suggestBody: BodyBuilder<Req["RestSuggestRequest"]> = (ctx) => (ctx.words[0] ? { focus: ctx.words[0] } : {});
-export const evaluateBody: BodyBuilder<Req["RestEvaluateRequest"]> = (ctx) => ({ question: first(ctx.words, "question") });
-export const searchBody: BodyBuilder<Req["RestSearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
-export const researchBody: BodyBuilder<Req["RestResearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
+export const chatBody: BodyBuilder<Req["RestChatRequest"]> = (ctx) => ({
+  message: first(ctx.words, "message"),
+  ...loadoutRequestFields(
+    activeProfile(ctx.config.backendProfiles, ctx.config.activeBackendProfiles, "labby"),
+  ),
+});
+export const queryBody: BodyBuilder<Req["RestQueryRequest"]> = (ctx) => ({
+  query: first(ctx.words, "query"),
+  limit: ctx.limit,
+  ...ctx.collectionBody,
+});
+export const retrieveBody: BodyBuilder<Req["RestRetrieveRequest"]> = (ctx) => ({
+  url: first(ctx.words, "url"),
+  ...ctx.collectionBody,
+});
+export const suggestBody: BodyBuilder<Req["RestSuggestRequest"]> = (ctx) =>
+  ctx.words[0] ? { focus: ctx.words[0] } : {};
+export const evaluateBody: BodyBuilder<Req["RestEvaluateRequest"]> = (ctx) => ({
+  question: first(ctx.words, "question"),
+});
+export const searchBody: BodyBuilder<Req["RestSearchRequest"]> = (ctx) => ({
+  query: first(ctx.words, "query"),
+  limit: ctx.limit,
+});
+export const researchBody: BodyBuilder<Req["RestResearchRequest"]> = (ctx) => ({
+  query: first(ctx.words, "query"),
+  limit: ctx.limit,
+});
 // General sources also route through `POST /v1/sources` (see the page/site
 // comment above). The request does not set `scope`; the server auto-detects local path
 // vs. URL vs. git/reddit/youtube/feed target via the canonical shared
@@ -118,12 +154,23 @@ export const sourceBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
   source: first(ctx.words, "input"),
   ...ctx.collectionBody,
 });
-export const extractBody: BodyBuilder<Req["RestExtractRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
-export const endpointsBody: BodyBuilder<Req["EndpointsRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
-export const brandBody: BodyBuilder<Req["RestBrandRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
+export const extractBody: BodyBuilder<Req["RestExtractRequest"]> = (ctx) => ({
+  urls: required(ctx.words, "urls"),
+  ...ctx.collectionBody,
+});
+export const endpointsBody: BodyBuilder<Req["EndpointsRequest"]> = (ctx) => ({
+  url: first(ctx.words, "url"),
+});
+export const brandBody: BodyBuilder<Req["RestBrandRequest"]> = (ctx) => ({
+  url: first(ctx.words, "url"),
+});
 export const diffBody: BodyBuilder<Req["RestDiffRequest"]> = (ctx) => diffRequestBody(ctx.words);
-export const screenshotBody: BodyBuilder<Req["RestScreenshotRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), full_page: true });
-export const watchCreateBody: BodyBuilder<Req["WatchRequest"]> = (ctx) => watchCreateRequestBody(ctx.words);
+export const screenshotBody: BodyBuilder<Req["RestScreenshotRequest"]> = (ctx) => ({
+  url: first(ctx.words, "url"),
+  full_page: true,
+});
+export const watchCreateBody: BodyBuilder<Req["WatchRequest"]> = (ctx) =>
+  watchCreateRequestBody(ctx.words);
 // `github` takes a bare owner[/repo[/path...]] target (NOT a URL — see
 // `BARE_TARGET_SUBCOMMANDS`-style handling in actions.ts, though github is
 // simply absent from `acceptsDirectUrl` so no coercion ever applies). This
