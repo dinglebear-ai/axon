@@ -39,3 +39,11 @@ fn held_root_descriptor_keeps_original_directory_after_path_swap() {
     file.read_to_string(&mut text).expect("read held file");
     assert_eq!(text, "original");
 }
+
+#[test]
+fn bounded_reader_rejects_bytes_arriving_past_the_metadata_size_check() {
+    let reader = std::io::Cursor::new(b"sixteen bytes!!!".to_vec());
+    let error = read_bounded(reader, Path::new("growing.txt"), 5)
+        .expect_err("bytes beyond the admitted limit must be rejected while reading");
+    assert_eq!(error.code.to_string(), "adapter.local.file_too_large");
+}

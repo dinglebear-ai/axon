@@ -121,6 +121,10 @@ fn embedding_tuning_env_keys_map_to_clean_break_provider_section() {
             "providers.embedding.vector-upsert-overlap-enabled",
         ),
         (
+            "AXON_EMBED_PREPARED_BYTE_BUDGET",
+            "providers.embedding.prepared-byte-budget",
+        ),
+        (
             "AXON_EMBED_PREP_CONCURRENCY",
             "providers.embedding.prep-concurrency",
         ),

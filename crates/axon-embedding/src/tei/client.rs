@@ -85,7 +85,7 @@ pub struct TeiClientParams {
 /// Wire shape for a lossless TEI `/embed` request body.
 #[derive(serde::Serialize)]
 struct EmbedRequest<'a> {
-    inputs: &'a [String],
+    inputs: &'a [&'a str],
     truncate: bool,
 }
 
@@ -96,7 +96,7 @@ enum ChunkOutcome {
     Split,
 }
 
-type IndexedBatch = (Vec<usize>, Vec<String>);
+type IndexedBatch<'a> = (Vec<usize>, Vec<&'a str>);
 
 #[derive(Debug, Clone, Copy)]
 struct BatchLimits {
@@ -105,7 +105,6 @@ struct BatchLimits {
     max_batch_tokens: usize,
     max_batch_bytes: usize,
 }
-
 /// Result of an `embed_all` call: the ordered vectors plus how many HTTP
 /// requests were actually issued (initial batches + retries + 413 splits).
 #[derive(Debug)]
@@ -317,7 +316,7 @@ impl TeiClient {
     /// see "Cooling" in `docs/pipeline-unification/runtime/provider-contract.md`.
     async fn send_chunk_with_retries(
         &self,
-        chunk: &[String],
+        chunk: &[&str],
         invocation_requests: &AtomicU64,
     ) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
@@ -496,7 +495,10 @@ fn estimated_tokens(text: &str) -> usize {
 /// Inputs estimated above the per-input model limit are isolated as singletons,
 /// allowing TEI to make the final tokenization decision without contaminating a
 /// following normal batch.
-fn pack_batches(inputs: &[String], limits: BatchLimits) -> Result<Vec<IndexedBatch>, &'static str> {
+fn pack_batches(
+    inputs: &[String],
+    limits: BatchLimits,
+) -> Result<Vec<IndexedBatch<'_>>, &'static str> {
     let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
     ordered.sort_by_key(|(index, text)| (estimated_tokens(text), text.chars().count(), *index));
 
@@ -515,7 +517,7 @@ fn pack_batches(inputs: &[String], limits: BatchLimits) -> Result<Vec<IndexedBat
 
         if tokens > limits.max_input_tokens {
             push_batch(&mut batches, &mut indices, &mut texts);
-            batches.push((vec![index], vec![text.clone()]));
+            batches.push((vec![index], vec![text.as_str()]));
             batch_tokens = 0;
             batch_bytes = 0;
             continue;
@@ -531,7 +533,7 @@ fn pack_batches(inputs: &[String], limits: BatchLimits) -> Result<Vec<IndexedBat
             batch_bytes = 0;
         }
         indices.push(index);
-        texts.push(text.clone());
+        texts.push(text.as_str());
         batch_tokens = batch_tokens.saturating_add(tokens);
         batch_bytes = batch_bytes.saturating_add(bytes);
     }
@@ -539,7 +541,11 @@ fn pack_batches(inputs: &[String], limits: BatchLimits) -> Result<Vec<IndexedBat
     Ok(batches)
 }
 
-fn push_batch(batches: &mut Vec<IndexedBatch>, indices: &mut Vec<usize>, texts: &mut Vec<String>) {
+fn push_batch<'a>(
+    batches: &mut Vec<IndexedBatch<'a>>,
+    indices: &mut Vec<usize>,
+    texts: &mut Vec<&'a str>,
+) {
     if !texts.is_empty() {
         batches.push((std::mem::take(indices), std::mem::take(texts)));
     }

@@ -4,6 +4,8 @@ use super::{GenerationPublisher, InMemoryGenerationPublisher};
 
 fn request(source: &str, generation: &str) -> PublishGenerationRequest {
     PublishGenerationRequest {
+        job_id: axon_api::source::JobId::new(uuid::Uuid::nil()),
+        attempt: 1,
         source_id: SourceId::from(source),
         generation: SourceGenerationId::from(generation),
         expected_previous_generation: None,

@@ -4,9 +4,11 @@ use walkdir::{DirEntry, WalkDir};
 
 // `.worktrees` is the documented home for sibling worktrees in this repo
 // (see CLAUDE.md). Recursing into it would surface symlink failures that
-// belong to other branch checkouts, not the current one.
+// belong to other branch checkouts, not the current one. `.full-review`
+// contains immutable review snapshots rather than live repository content.
 const SKIP_DIRS: &[&str] = &[
     ".git",
+    ".full-review",
     "node_modules",
     "target",
     ".cache",

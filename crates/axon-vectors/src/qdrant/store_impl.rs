@@ -6,10 +6,12 @@ use axon_api::source::*;
 use futures_util::{StreamExt, stream};
 
 use super::QdrantVectorStore;
+use super::QdrantWriteTransport;
 use super::convert::{
-    canonical_uri_filter_json, collection_create_json, eq_filter_json, eq2_filter_json,
-    payload_index_json,
+    canonical_uri_filter_json, collection_create_json_with_settings, eq_filter_json,
+    eq2_filter_json, payload_index_json,
 };
+use super::grpc::upsert_batches_grpc;
 use super::http::{PutCreateOutcome, QdrantHttp};
 use super::search::qdrant_search;
 use super::upsert::upsert_batches_rest;
@@ -23,6 +25,7 @@ use crate::store_helpers::delete_result;
 
 impl QdrantVectorStore {
     pub(super) async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
+        self.recover_bulk_load_transitions().await?;
         let stage = ErrorStage::Upserting;
         let http = self.http()?;
         let spec = normalize_collection_spec(spec);
@@ -46,7 +49,7 @@ impl QdrantVectorStore {
                 .put_json_idempotent_create(
                     stage,
                     &url,
-                    &collection_create_json(&spec),
+                    &collection_create_json_with_settings(&spec, self.collection_settings()),
                     "qdrant_create_collection",
                 )
                 .await?;
@@ -78,7 +81,12 @@ impl QdrantVectorStore {
         let spec = self
             .require_collection_spec(&http, &batch.collection, stage)
             .await?;
-        upsert_batches_rest(self, &http, &spec, batch, stage).await
+        match self.write_transport() {
+            QdrantWriteTransport::Rest => {
+                upsert_batches_rest(self, &http, &spec, batch, stage).await
+            }
+            QdrantWriteTransport::Grpc => upsert_batches_grpc(self, &spec, batch).await,
+        }
     }
 
     pub(super) async fn delete_inner(

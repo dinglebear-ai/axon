@@ -213,6 +213,10 @@ pub(super) async fn publish_generation(
         )
         .await?,
     );
+    for debt in &mut cleanup_debt {
+        debt.job_id = request.job_id;
+        debt.origin_attempt = request.attempt;
+    }
     committed_generation.publish_state = if cleanup_debt.is_empty() {
         PublishState::Committed
     } else {

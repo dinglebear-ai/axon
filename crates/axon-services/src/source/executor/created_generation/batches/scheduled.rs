@@ -2,8 +2,9 @@ use super::*;
 use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
+use crate::source::executor::created_generation::setup::ensure_generation_collection;
 use crate::source::executor::generation_work::{
-    PreparedBatchSender, PreparedBatchSideEffects, prepared_work_channel,
+    PreparedBatchSender, PreparedBatchSideEffects, prepared_work_channel_with_byte_budget,
 };
 use crate::source::executor::progress::PipelineProgress;
 
@@ -12,55 +13,85 @@ const COUNTERPART_CANCEL_GRACE: std::time::Duration = std::time::Duration::from_
 #[cfg(test)]
 const COUNTERPART_CANCEL_GRACE: std::time::Duration = std::time::Duration::from_millis(50);
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy)]
+pub(super) struct ScheduledGenerationContext<'a, 'input> {
+    pub(super) runtime: &'a TargetLocalSourceRuntime,
+    pub(super) input: &'a SourcePipelineInput<'input>,
+    pub(super) emitter: &'a SourceEventEmitter,
+    pub(super) generation: &'a SourceGenerationId,
+    pub(super) collection: &'a CollectionSpec,
+    pub(super) diff: &'a SourceManifestDiff,
+    pub(super) archive_requested: bool,
+    pub(super) changed_total: u64,
+    pub(super) coordinator: &'a ProgressCoordinator,
+}
+
+pub(super) struct ScheduledGenerationState<'a> {
+    pub(super) stage: &'a mut GenerationStageProgress,
+    pub(super) accumulated: &'a mut GenerationAccumulator,
+    pub(super) artifact_cleanup: &'a mut ArtifactCleanupGuard,
+}
+
+// LEARNED: forwarding a dozen positional arguments through each scheduler
+// layer made otherwise local changes touch every call site.
+// PATTERN: group immutable generation inputs separately from mutable progress
+// state, so concurrency boundaries make their borrowing and ownership visible.
 pub(super) async fn process(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
-    collection: &CollectionSpec,
-    diff: &SourceManifestDiff,
-    archive_requested: bool,
-    changed_total: u64,
-    coordinator: &ProgressCoordinator,
-    stage: &mut GenerationStageProgress,
-    accumulated: &mut GenerationAccumulator,
-    artifact_cleanup: &mut ArtifactCleanupGuard,
+    context: ScheduledGenerationContext<'_, '_>,
+    state: ScheduledGenerationState<'_>,
 ) -> anyhow::Result<()> {
-    let (sender, receiver) = prepared_work_channel(runtime.embed_pool_max_inputs)?;
+    if context.changed_total == 0 {
+        return ensure_generation_collection(context.runtime, context.input, context.collection)
+            .await;
+    }
+    ensure_generation_collection(context.runtime, context.input, context.collection).await?;
+    super::with_bulk_load(
+        context.runtime,
+        context.input,
+        context.collection,
+        "restoring Qdrant indexing after the failed scheduled pipeline also failed",
+        process_inner(context, state),
+    )
+    .await
+}
+
+async fn process_inner(
+    context: ScheduledGenerationContext<'_, '_>,
+    state: ScheduledGenerationState<'_>,
+) -> anyhow::Result<()> {
+    let (sender, receiver) = prepared_work_channel_with_byte_budget(
+        context.runtime.embed_pool_max_inputs,
+        context.runtime.embed_prepared_byte_budget,
+    )?;
     tracing::info!(
-        chunk_capacity = runtime.embed_pool_max_inputs.saturating_mul(3),
+        chunk_capacity = context.runtime.embed_pool_max_inputs.saturating_mul(3),
         queue_capacity = 2,
-        byte_capacity_kib = 1_048_576_u64,
+        byte_capacity_kib = context.runtime.embed_prepared_byte_budget.div_ceil(1024),
         "enabled bounded generation embedding scheduler"
     );
     let cancel = CancellationToken::new();
+    // Heap-pin both deep pipeline futures before joining them. Keeping either
+    // concrete future inline makes the combined debug/test poll frame exceed
+    // the default test-thread stack for real scheduled generation paths.
     let producer = Box::pin(produce(
-        runtime,
-        input,
-        emitter,
-        generation,
-        diff,
-        archive_requested,
-        changed_total,
-        coordinator,
-        stage,
-        artifact_cleanup,
+        context,
+        state.stage,
+        state.artifact_cleanup,
         sender,
         &cancel,
     ));
     let mut scheduler_progress = PipelineProgress::default();
-    let consumer = super::super::scheduler::run_generation_scheduler(
-        runtime,
-        input,
-        emitter,
-        coordinator,
-        collection.clone(),
+    let consumer = Box::pin(super::super::scheduler::run_generation_scheduler(
+        context.runtime,
+        context.input,
+        context.emitter,
+        context.coordinator,
+        context.collection.clone(),
         receiver,
-        accumulated,
+        state.accumulated,
         &mut scheduler_progress,
         &cancel,
-    );
+    ));
     join_cancel_on_error(producer, consumer, &cancel).await
 }
 
@@ -116,21 +147,24 @@ fn resolve_scheduler_results(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn produce(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
-    diff: &SourceManifestDiff,
-    archive_requested: bool,
-    changed_total: u64,
-    coordinator: &ProgressCoordinator,
+    context: ScheduledGenerationContext<'_, '_>,
     stage: &mut GenerationStageProgress,
     artifact_cleanup: &mut ArtifactCleanupGuard,
     mut sender: PreparedBatchSender,
     cancel: &CancellationToken,
 ) -> anyhow::Result<()> {
+    let ScheduledGenerationContext {
+        runtime,
+        input,
+        emitter,
+        generation,
+        diff,
+        archive_requested,
+        changed_total,
+        coordinator,
+        ..
+    } = context;
     let acquire_batch_size = acquire_batch_size();
     let first_batch_size = first_acquire_batch_size(acquire_batch_size);
     let changed = usize::try_from(changed_total).unwrap_or(usize::MAX);
@@ -232,6 +266,15 @@ async fn stream_prepare_batch(
         let mut first_error = None;
         let mut batch_documents = 0_u64;
         while let Some(streamed) = rx.recv().await {
+            // Retain cleanup ownership even when an earlier streamed item failed.
+            if let Err(error) = artifact_cleanup
+                .track(&streamed.acquisition.artifacts)
+                .await
+            {
+                if first_error.is_none() {
+                    first_error = Some(anyhow::Error::new(error));
+                }
+            }
             if first_error.is_some() {
                 continue;
             }

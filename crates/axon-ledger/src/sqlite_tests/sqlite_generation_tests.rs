@@ -337,6 +337,11 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
         .iter()
         .find(|debt| debt.kind == CleanupDebtKind::VectorDelete)
         .expect("vector delete debt");
+    assert!(
+        !vector_debt.job_id.0.is_nil(),
+        "cleanup debt must retain its owning job"
+    );
+    assert_eq!(vector_debt.origin_attempt, 1);
     assert_eq!(vector_debt.generation, Some(gen1.generation.clone()));
     assert_eq!(
         vector_debt.selector,

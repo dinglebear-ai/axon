@@ -1,6 +1,6 @@
 use axon_api::source::{
-    ChunkProfile, ContentKind, ContentRef, DocumentId, MetadataMap, SourceDocument, SourceId,
-    SourceItemKey,
+    ChunkProfile, ContentKind, ContentRef, DocumentId, MetadataMap, SourceDocument,
+    SourceGenerationId, SourceId, SourceItemKey,
 };
 
 use super::*;
@@ -28,10 +28,22 @@ fn source_doc() -> SourceDocument {
     }
 }
 
+fn request() -> PrepareSourceDocumentRequest {
+    PrepareSourceDocumentRequest {
+        document: source_doc(),
+        generation: SourceGenerationId::new("test-generation"),
+        profile: None,
+        parse_facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
+    }
+}
+
 #[tokio::test]
 async fn fake_document_preparer_default_is_success() {
     let fake = FakeDocumentPreparer::new();
-    let prepared = fake.prepare(source_doc()).await.expect("default success");
+    let prepared = fake.prepare(request()).await.expect("default success");
     assert!(prepared.warnings.is_empty());
     assert_eq!(fake.calls().len(), 1);
 }
@@ -39,7 +51,7 @@ async fn fake_document_preparer_default_is_success() {
 #[tokio::test]
 async fn fake_document_preparer_prepare_many_records_all_calls() {
     let fake = FakeDocumentPreparer::new();
-    let docs = vec![source_doc(), source_doc()];
+    let docs = vec![request(), request()];
     let prepared = fake.prepare_many(docs).await.expect("prepare_many ok");
     assert_eq!(prepared.len(), 2);
     assert_eq!(fake.calls().len(), 2);

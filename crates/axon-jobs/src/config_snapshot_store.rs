@@ -8,25 +8,14 @@
 //! own doc comment for the full contract citation. This module is the
 //! store/read API the audit finding asked for.
 //!
-//! `config_snapshot_id` is a deterministic hash of `config_json` (see
-//! `axon-services::config_snapshot_hash`), so [`upsert_config_snapshot`] is a
-//! plain `INSERT OR IGNORE`: the same id can only ever pair with the same
-//! content, so a duplicate write from a second job is a no-op, not an error.
-//!
-//! **Not yet called from the unified job-creation path**
-//! (`unified::ops::create_job`): `JobCreateRequest` (the shared CLI/MCP/REST
-//! wire DTO) carries only `config_snapshot_id`, not the JSON body that
-//! produced it, and most of the ~15 job-kind builders that stamp a
-//! `config_snapshot_id` onto a `JobCreateRequest` derive it from small
-//! per-kind "material" structs (`axon-services::config_snapshot_hash::JobConfigSnapshot`),
-//! not the full `Config` — so there isn't always a JSON body available to
-//! store at that call site today. Wiring every builder to also persist its
-//! material is a deliberate follow-up needing either a `JobCreateRequest` DTO
-//! field (touches the CLI/MCP/REST wire contract and OpenAPI) or a new
-//! `ServiceJobRuntime` method threaded through each builder — a separate,
-//! properly-scoped change, not a same-pass rewrite of the wire contract.
+//! `config_snapshot_id` is a deterministic hash of `config_json`. This module
+//! recomputes that identity and rejects forged/conflicting pairs. Canonical
+//! job creation passes material through `JobStore::create_with_config_snapshot`,
+//! which persists the snapshot and referencing job in one transaction without
+//! exposing snapshot material on the transport DTO.
 
 use axon_api::source::*;
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
 use crate::boundary::Result;
@@ -34,12 +23,8 @@ use crate::unified_codec::{now_timestamp, sql_error};
 
 /// Idempotently store a config snapshot's serialized content by id.
 ///
-/// `config_snapshot_id` is expected to be the deterministic hash of
-/// `config_json` (see `axon-services::config_snapshot_hash`); this function
-/// does not itself verify that pairing — a caller that mismatches id and
-/// content will silently keep whichever content was written first for that
-/// id (matching the "content-addressed" contract documented on the
-/// migration).
+/// The id is recomputed from `config_json`; forged ids and existing rows bound
+/// to different bytes are rejected.
 pub async fn upsert_config_snapshot(
     pool: &SqlitePool,
     config_snapshot_id: &str,
@@ -52,10 +37,20 @@ pub async fn upsert_config_snapshot(
             "config_snapshot_id must not be empty",
         ));
     }
+    let expected_id = config_snapshot_id_from_json(config_json);
+    if config_snapshot_id != expected_id {
+        return Err(ApiError::new(
+            "config_snapshot.digest_mismatch",
+            ErrorStage::Publishing,
+            format!(
+                "config snapshot id {config_snapshot_id} does not match its content digest {expected_id}"
+            ),
+        ));
+    }
     let now = now_timestamp();
-    sqlx::query(
-        "INSERT OR IGNORE INTO config_snapshots (config_snapshot_id, config_json, created_at) \
-         VALUES (?, ?, ?)",
+    let result = sqlx::query(
+        "INSERT INTO config_snapshots (config_snapshot_id, config_json, created_at) VALUES (?, ?, ?) \
+         ON CONFLICT(config_snapshot_id) DO NOTHING",
     )
     .bind(config_snapshot_id)
     .bind(config_json)
@@ -63,15 +58,42 @@ pub async fn upsert_config_snapshot(
     .execute(pool)
     .await
     .map_err(sql_error)?;
+    if result.rows_affected() == 0 {
+        let stored: String = sqlx::query_scalar(
+            "SELECT config_json FROM config_snapshots WHERE config_snapshot_id = ?",
+        )
+        .bind(config_snapshot_id)
+        .fetch_one(pool)
+        .await
+        .map_err(sql_error)?;
+        if stored != config_json {
+            return Err(ApiError::new(
+                "config_snapshot.digest_mismatch",
+                ErrorStage::Publishing,
+                format!(
+                    "config snapshot id {config_snapshot_id} is already bound to different content"
+                ),
+            ));
+        }
+    }
     Ok(())
+}
+
+/// Derive the canonical content-addressed identifier for serialized snapshot material.
+pub fn config_snapshot_id_from_json(config_json: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(config_json.as_bytes());
+    let digest = hasher.finalize();
+    let short = digest[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("cfg_{short}")
 }
 
 /// Fetch a previously stored config snapshot's raw JSON by id.
 ///
-/// Returns `Ok(None)` for an id that was never stored (e.g. any job kind
-/// whose builder has not yet been wired to call [`upsert_config_snapshot`] —
-/// see the module doc comment) rather than treating that as an error: an
-/// unresolved `config_snapshot_id` is a known, current gap, not corruption.
+/// Returns `Ok(None)` for an id that was never stored.
 pub async fn get_config_snapshot(
     pool: &SqlitePool,
     config_snapshot_id: &str,

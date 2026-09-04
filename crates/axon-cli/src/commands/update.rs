@@ -19,7 +19,7 @@ const UPDATE_FILE_RELEASE_DIR: &str = "AXON_UPDATE_FILE_RELEASE_DIR";
 const UPDATE_INSTALL_PATH: &str = "AXON_UPDATE_INSTALL_PATH";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
-// Release-artifact integrity (SHA256 + optional OPS-H3 signature) lives in the
+// Release-artifact integrity (SHA256 + mandatory minisign signature) lives in the
 // integrity submodule. Re-exported so the sidecar tests' `super::*` resolves
 // the verification helpers unchanged.
 mod container_sync;
@@ -34,9 +34,7 @@ use container_sync::{
 use container_sync::{resolve_compose_paths, sync_container_from_installed_binary};
 #[cfg(test)]
 use integrity::verify_sha256;
-use integrity::{
-    parse_sha256_sidecar, resolve_optional_signature, verify_optional_signature, verify_sha256_file,
-};
+use integrity::{parse_sha256_sidecar, resolve_signature, verify_sha256_file, verify_signature};
 #[cfg(test)]
 use release::select_latest_compatible_release;
 use release::{
@@ -47,8 +45,7 @@ use release::{
 struct ReleaseAssetNames {
     archive: &'static str,
     checksum: &'static str,
-    /// Optional detached minisign signature sidecar (OPS-H3). Present in the
-    /// release only once signing is enabled; the updater treats it as optional.
+    /// Required detached minisign signature sidecar.
     signature: &'static str,
 }
 
@@ -191,7 +188,34 @@ fn default_install_path() -> PathBuf {
 }
 
 async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn Error>> {
-    let names = release_asset_names(env::consts::OS, env::consts::ARCH)?;
+    perform_update_inner(
+        options,
+        env::consts::OS,
+        env::consts::ARCH,
+        SignaturePolicy::Required,
+    )
+    .await
+}
+
+#[derive(Clone, Copy)]
+enum SignaturePolicy {
+    Required,
+    #[cfg(test)]
+    SkipForFixture,
+}
+
+#[cfg(test)]
+async fn perform_fixture_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn Error>> {
+    perform_update_inner(options, "linux", "x86_64", SignaturePolicy::SkipForFixture).await
+}
+
+async fn perform_update_inner(
+    options: UpdateOptions,
+    os: &str,
+    arch: &str,
+    signature_policy: SignaturePolicy,
+) -> Result<UpdateReport, Box<dyn Error>> {
+    let names = release_asset_names(os, arch)?;
     let client = if options.file_release_dir.is_none() {
         Some(http_client()?)
     } else {
@@ -264,15 +288,13 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
     let expected = parse_sha256_sidecar(&checksum_body)?;
     verify_sha256_file(&archive_path, &expected)?;
 
-    // OPS-H3 (bounded): optional, independent-trust-root signature check on top
-    // of the SHA256 (which shares a trust root with the binary). Resolves the
-    // detached signature best-effort; verification is enforced only when a
-    // public key is configured AND a signature is present — otherwise inert.
-    let signature_path = temp.path().join(names.signature);
-    let signature_available =
-        resolve_optional_signature(&options, &names, selected_release.as_ref(), &signature_path)
-            .await?;
-    verify_optional_signature(&archive_path, &signature_path, signature_available)?;
+    // Mandatory independent-trust-root signature check on top of SHA256.
+    if matches!(signature_policy, SignaturePolicy::Required) {
+        let signature_path = temp.path().join(names.signature);
+        let signature_available =
+            resolve_signature(&options, &names, selected_release.as_ref(), &signature_path).await?;
+        verify_signature(&archive_path, &signature_path, signature_available)?;
+    }
 
     let already_current =
         !options.force && installed_binary_reports_version(&options.install_path, &version).await;

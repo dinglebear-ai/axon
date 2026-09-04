@@ -125,18 +125,9 @@ pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) 
             None => PruneEstimate::default(),
         },
     };
-    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate))
+    let planner = PrunePlanner::new(PrefetchedScopeSource(estimate, source_fence.clone()))
         .with_collection(ctx.cfg().collection.clone());
     let mut plan = planner.resolve(&request.selector);
-    // A source selector deletes every vector generation. Stamp the committed
-    // generation observed during planning onto each source step as an
-    // optimistic fence. Execution acquires the source lease and requires this
-    // exact generation to still be current before any delete starts.
-    if let Some(generation) = source_fence {
-        for step in &mut plan.steps {
-            step.generation = Some(generation.clone());
-        }
-    }
     warn_if_unsupported(&mut plan);
     plan
 }
@@ -260,11 +251,15 @@ fn warn_if_unsupported(plan: &mut PrunePlan) {
 /// regardless of the selector passed to `estimate()`. Valid because a caller
 /// only ever resolves one selector per [`PrunePlanner::resolve`] call — the
 /// async ledger read happens once, up front, in [`prune_plan_estimated`].
-struct PrefetchedScopeSource(PruneEstimate);
+struct PrefetchedScopeSource(PruneEstimate, Option<SourceGenerationId>);
 
 impl PruneScopeSource for PrefetchedScopeSource {
     fn estimate(&self, _selector: &PruneSelector) -> PruneEstimate {
         self.0.clone()
+    }
+
+    fn current_generation(&self, _source_id: &SourceId) -> Option<SourceGenerationId> {
+        self.1.clone()
     }
 }
 

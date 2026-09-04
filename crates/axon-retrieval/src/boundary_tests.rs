@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axon_api::mcp_schema::AskRequest;
+use crate::ask_context::AskContextRequest;
 use axon_api::source::{
     BatchId, ChunkId, HealthStatus, MetadataMap, ProviderId, VectorPoint, VectorPointBatch,
     VectorPointId,
@@ -206,11 +206,11 @@ async fn build_ask_context_composes_context_bundle_and_citations() {
     let engine = seeded_engine().await;
 
     let ask_context = engine
-        .build_ask_context(AskRequest {
+        .build_ask_context(AskContextRequest {
             query: Some("alpha chunk body".to_string()),
             collection: Some("axon-test".to_string()),
-            ask_chunk_limit: Some(3),
-            ..AskRequest::default()
+            chunk_limit: Some(3),
+            ..AskContextRequest::default()
         })
         .await
         .unwrap();

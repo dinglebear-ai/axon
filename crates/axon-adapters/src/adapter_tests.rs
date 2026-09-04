@@ -65,6 +65,19 @@ async fn default_streaming_contract_emits_one_complete_aggregate() {
 #[derive(Default)]
 struct RecordingProgress(Mutex<Vec<AcquisitionProgress>>);
 
+#[test]
+fn stateless_adapter_release_is_an_explicit_success_result() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone());
+    let plan = source_plan(route);
+    let result: crate::adapter::Result<()> = adapter.release(&AdapterReleaseRequest {
+        job_id: plan.job_id,
+        source_id: plan.route.source.source_id.clone(),
+        source_kind: plan.route.source.source_kind,
+    });
+    result.expect("default release should succeed explicitly");
+}
+
 #[async_trait::async_trait]
 impl AcquisitionProgressSink for RecordingProgress {
     async fn report(&self, progress: AcquisitionProgress) {

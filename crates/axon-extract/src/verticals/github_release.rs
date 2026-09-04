@@ -152,9 +152,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
 
-    if let Ok(token) = std::env::var("GITHUB_TOKEN")
-        && !token.is_empty()
-    {
+    if let Some(token) = ctx.github_token().filter(|token| !token.is_empty()) {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
 

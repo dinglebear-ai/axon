@@ -83,7 +83,7 @@ impl SqliteWatchStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(sqlite_err)?;
-        Ok(row.as_ref().map(row_to_result))
+        row.as_ref().map(row_to_result).transpose()
     }
 
     pub async fn create_with_auth(
@@ -226,7 +226,7 @@ impl WatchStore for SqliteWatchStore {
             .fetch_optional(&self.pool)
             .await
             .map_err(sqlite_err)?;
-        Ok(row.as_ref().map(row_to_result))
+        row.as_ref().map(row_to_result).transpose()
     }
 
     async fn list(&self, request: WatchListRequest) -> Result<Page<WatchSummary>> {
@@ -299,7 +299,10 @@ impl WatchStore for SqliteWatchStore {
 
         let rows = query.fetch_all(&self.pool).await.map_err(sqlite_err)?;
         let has_more = rows.len() > limit as usize;
-        let mut items = rows.iter().map(row_to_summary).collect::<Vec<_>>();
+        let mut items = rows
+            .iter()
+            .map(row_to_summary)
+            .collect::<Result<Vec<_>>>()?;
         if has_more {
             items.truncate(limit as usize);
         }
@@ -393,7 +396,7 @@ impl WatchStore for SqliteWatchStore {
                 let status: Option<String> = row.get("status");
                 synth_descriptor(&job_id, status.as_deref())
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
         let next_cursor = if has_more {
             rows.get(limit as usize - 1).map(|row| {
                 encode_watch_history_cursor(&WatchHistoryCursor {

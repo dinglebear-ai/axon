@@ -211,6 +211,13 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.vector_upsert_embed_overlap = env_bool_opt("AXON_VECTOR_UPSERT_EMBED_OVERLAP")
         .or(toml.embed.vector_upsert_overlap_enabled)
         .unwrap_or(true);
+    cfg.embed_prepared_byte_budget = resolve_clamped_usize(
+        "AXON_EMBED_PREPARED_BYTE_BUDGET",
+        toml.embed.prepared_byte_budget,
+        128 * 1024 * 1024,
+        1024 * 1024,
+        4 * 1024 * 1024 * 1024,
+    );
     cfg.embed_prep_concurrency = resolve_clamped_usize(
         "AXON_EMBED_PREP_CONCURRENCY",
         toml.embed.prep_concurrency,
@@ -586,7 +593,7 @@ pub fn qdrant_upsert_parallelism() -> usize {
     resolve_clamped_usize(
         "AXON_QDRANT_UPSERT_PARALLELISM",
         toml.qdrant.upsert_parallelism,
-        1,
+        2,
         1,
         16,
     )
@@ -637,13 +644,35 @@ pub fn qdrant_hnsw_ef_construct() -> usize {
     )
 }
 
-pub fn qdrant_payload_index_profile() -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QdrantPayloadIndexProfile {
+    Core,
+    Full,
+}
+
+impl QdrantPayloadIndexProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Full => "full",
+        }
+    }
+}
+
+pub fn qdrant_payload_index_profile() -> Result<QdrantPayloadIndexProfile, String> {
     let toml = load_toml_or_default();
-    std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
+    match std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or(toml.qdrant.payload_index_profile)
         .unwrap_or_else(|| "full".to_string())
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "core" => Ok(QdrantPayloadIndexProfile::Core),
+        "full" => Ok(QdrantPayloadIndexProfile::Full),
+        value => Err(format!("invalid Qdrant payload index profile {value:?}")),
+    }
 }
 
 pub fn qdrant_payload_index_parallelism() -> usize {
@@ -669,6 +698,57 @@ pub fn qdrant_quantization_always_ram() -> bool {
     env_bool_opt("AXON_QDRANT_QUANTIZATION_ALWAYS_RAM")
         .or(toml.qdrant.quantization_always_ram)
         .unwrap_or(true)
+}
+
+pub fn qdrant_quantization_enabled() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_QUANTIZATION_ENABLED")
+        .or(toml.qdrant.quantization_enabled)
+        .unwrap_or(false)
+}
+
+pub fn qdrant_async_writes() -> bool {
+    let toml = load_toml_or_default();
+    env_bool_opt("AXON_QDRANT_ASYNC_WRITES")
+        .or(toml.qdrant.async_writes)
+        .unwrap_or(false)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QdrantWriteTransport {
+    Rest,
+    Grpc,
+}
+
+impl QdrantWriteTransport {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rest => "rest",
+            Self::Grpc => "grpc",
+        }
+    }
+}
+
+pub fn qdrant_write_transport() -> Result<QdrantWriteTransport, String> {
+    let toml = load_toml_or_default();
+    match std::env::var("AXON_QDRANT_TRANSPORT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or(toml.qdrant.transport)
+        .unwrap_or_else(|| "rest".to_string())
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "rest" => Ok(QdrantWriteTransport::Rest),
+        "grpc" => Ok(QdrantWriteTransport::Grpc),
+        value => Err(format!("invalid Qdrant transport {value:?}")),
+    }
+}
+
+pub fn qdrant_grpc_url() -> Option<String> {
+    std::env::var("QDRANT_GRPC_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 pub fn code_search_freshness_ttl_secs() -> u64 {

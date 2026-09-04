@@ -147,7 +147,9 @@ pub trait SourceAdapter: Send + Sync {
     /// Release adapter-owned state retained for this job after the pipeline
     /// reaches a terminal outcome. The shared runner calls this on success
     /// and failure; stateless adapters use the default no-op.
-    fn release(&self, _plan: &SourcePlan) {}
+    fn release(&self, _request: &AdapterReleaseRequest) -> Result<()> {
+        Ok(())
+    }
 
     /// Adapter-owned materialization, run once before `discover`/`acquire`/
     /// `normalize`. Most families need this to validate/prepare acquisition

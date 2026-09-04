@@ -86,9 +86,11 @@ async fn sqlite_cleanup_debt_requires_existing_generation() {
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-missing-generation"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("src_sqlite"),
             generation: Some(SourceGenerationId::new("gen_missing")),
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Generation {
                 source_id: SourceId::new("src_sqlite"),
                 generation: SourceGenerationId::new("gen_missing"),
@@ -210,9 +212,11 @@ async fn sqlite_scalar_status_columns_use_schema_wire_values() {
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-sqlite"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("src_sqlite"),
             generation: Some(gen1.generation),
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Document {
                 document_id: DocumentId::new("doc-sqlite"),
             },

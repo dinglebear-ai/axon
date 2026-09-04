@@ -478,11 +478,22 @@ cargo test --workspace --features test-helpers
 `just fix` (fmt + clippy --fix), `just precommit` (full pre-PR gate),
 `just watch-check` (check + test-lib on save).
 
-Local dev infra (Qdrant/TEI/Chrome): `just services-up` / `just services-down`,
-or directly `docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d`.
+Local dev infra is explicit about Qdrant ownership. `just services-up` (an alias
+for `just services-up-local`) starts a self-contained Qdrant/TEI/Chrome stack;
+`just services-up-external-qdrant` requires `AXON_EXTERNAL_QDRANT_URL` and starts
+only TEI/Chrome. `just services-down` removes the local infrastructure services.
+Published Qdrant and TEI ports bind to host loopback only; remote access must go
+through a separately secured network path rather than an unauthenticated LAN
+listener. Production startup also creates the configured external Docker network
+idempotently before Compose starts, and production images are pinned by digest.
 The dev compose file runs the locally built debug binary from `target/debug`
 inside the `axon:dev-runtime` image — this is a dev convenience, not the axon
 deployment path.
+
+`axon setup init` accepts only non-secret bootstrap values on its command line.
+Set tokens, API keys, and OAuth client secrets through the protected process
+environment or the mode-0600 `~/.axon/.env`; Axon never places those values in
+process arguments.
 
 **Module layout:** Rust 2018+ file-per-module — no `mod.rs`. Module roots live
 in `foo.rs`; submodules in `foo/bar.rs`. Tests live in sibling `foo_tests.rs`

@@ -1,9 +1,13 @@
 use super::*;
 
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
+use axon_adapters::{FakeSourceAdapter, FakeSourceAdapterMode, SourceAdapterRegistry};
 use axon_api::source::{
-    AdapterRef, ApiError, AuthSnapshot, AuthorityLevel, CleanupDebt, CleanupDebtId,
+    AdapterRef, ApiError, ArtifactHandle, AuthSnapshot, AuthorityLevel, CleanupDebt, CleanupDebtId,
     CleanupDebtKind, CleanupSelector, CollectionSpec, ConfigSnapshotId, DocumentCounts, ErrorStage,
     GraphCandidate, GraphCandidateProducer, GraphNodeCandidate, GraphNodeId, ItemCounts, ItemKind,
     JobCreateRequest, JobId, JobIntent, JobKind, JobPriority, JobStatusUpdate, LifecycleStatus,
@@ -22,6 +26,128 @@ use uuid::Uuid;
 
 const SRC: &str = "src_drain";
 const COLLECTION: &str = "axon-drain-test";
+
+struct TestCleanupProviderOps<'a> {
+    vector: &'a dyn VectorStore,
+    graph: Option<&'a dyn GraphStore>,
+    artifact: Option<&'a dyn axon_core::boundary::ArtifactStore>,
+}
+
+#[async_trait]
+impl CleanupProviderOps for TestCleanupProviderOps<'_> {
+    async fn vector_delete(
+        &self,
+        selector: VectorDeleteSelector,
+    ) -> Result<VectorStoreDeleteResult, ApiError> {
+        self.vector.delete(selector).await
+    }
+
+    async fn graph_delete_nodes(
+        &self,
+        stable_keys: Vec<String>,
+    ) -> Result<axon_api::source::GraphDeleteResult, ApiError> {
+        self.graph
+            .ok_or_else(|| ApiError::new("test.graph_unwired", ErrorStage::Cleaning, "unwired"))?
+            .delete_nodes(stable_keys)
+            .await
+    }
+
+    async fn graph_delete_edges(
+        &self,
+        edge_ids: Vec<axon_api::source::GraphEdgeId>,
+    ) -> Result<axon_api::source::GraphDeleteResult, ApiError> {
+        self.graph
+            .ok_or_else(|| ApiError::new("test.graph_unwired", ErrorStage::Cleaning, "unwired"))?
+            .delete_edges(edge_ids)
+            .await
+    }
+
+    async fn artifact_delete(&self, handle: ArtifactHandle) -> Result<(), ApiError> {
+        self.artifact
+            .ok_or_else(|| ApiError::new("test.artifact_unwired", ErrorStage::Cleaning, "unwired"))?
+            .delete(handle)
+            .await
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn drain_cleanup_debt_full_with_boundaries(
+    ledger: &dyn LedgerStore,
+    vector: &dyn VectorStore,
+    graph: Option<&dyn GraphStore>,
+    memory: Option<&dyn MemoryStore>,
+    jobs: Option<&dyn JobStore>,
+    artifact: Option<&dyn axon_core::boundary::ArtifactStore>,
+    cache: Option<&dyn axon_core::boundary::DocumentCache>,
+    registry: Option<&SourceAdapterRegistry>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    let providers = TestCleanupProviderOps {
+        vector,
+        graph,
+        artifact,
+    };
+    drain_cleanup_debt_with_provider_ops(
+        ledger, &providers, memory, jobs, cache, registry, collection, counts,
+    )
+    .await
+}
+
+async fn drain_cleanup_debt(
+    ledger: &dyn LedgerStore,
+    vector: &dyn VectorStore,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger, vector, None, None, None, None, None, None, collection, counts,
+    )
+    .await
+}
+
+async fn drain_cleanup_debt_full(
+    ledger: &dyn LedgerStore,
+    vector: &dyn VectorStore,
+    graph: Option<&dyn GraphStore>,
+    memory: Option<&dyn MemoryStore>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger, vector, graph, memory, None, None, None, None, collection, counts,
+    )
+    .await
+}
+
+async fn drain_cleanup_debt_full_with_jobs(
+    ledger: &dyn LedgerStore,
+    vector: &dyn VectorStore,
+    graph: Option<&dyn GraphStore>,
+    memory: Option<&dyn MemoryStore>,
+    jobs: Option<&dyn JobStore>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger, vector, graph, memory, jobs, None, None, None, collection, counts,
+    )
+    .await
+}
+
+#[test]
+fn failed_pending_debt_lookup_is_an_explicit_degraded_summary() {
+    let result = pending_debt_or_degraded(Err(ApiError::new(
+        "ledger.cleanup_list_failed",
+        ErrorStage::Cleaning,
+        "injected cleanup enumeration failure",
+    )));
+
+    let (_, summary) = result.expect_err("enumeration error must not look like an empty debt list");
+    assert!(summary.enumeration_failed);
+    assert_eq!(summary.resolved, 0);
+    assert_eq!(summary.failed, 0);
+}
 
 fn ts() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())
@@ -115,6 +241,8 @@ async fn publish(ledger: &FakeLedgerStore, generation: SourceGeneration) -> Sour
     let done = ledger.complete_generation(generation).await.unwrap();
     ledger
         .publish_generation(PublishGenerationRequest {
+            job_id: JobId::new(Uuid::from_u128(1)),
+            attempt: 1,
             source_id: done.source_id.clone(),
             generation: done.generation.clone(),
             expected_previous_generation: done.previous_generation.clone(),
@@ -127,6 +255,16 @@ async fn publish(ledger: &FakeLedgerStore, generation: SourceGeneration) -> Sour
 /// second, producing exactly one superseded-item cleanup debt. Returns the
 /// `(previous_generation, committed_generation)` pair.
 async fn seed_two_generations(
+    ledger: &FakeLedgerStore,
+) -> (SourceGenerationId, SourceGenerationId) {
+    let generations = seed_two_generations_unbound(ledger).await;
+    bind_vector_cleanup_collection(ledger, &SourceId::new(SRC), COLLECTION)
+        .await
+        .unwrap();
+    generations
+}
+
+async fn seed_two_generations_unbound(
     ledger: &FakeLedgerStore,
 ) -> (SourceGenerationId, SourceGenerationId) {
     ledger.upsert_source(source()).await.unwrap();
@@ -177,6 +315,9 @@ async fn seed_generation_with_multiple_vector_debts(
         .await
         .unwrap();
     let published = publish(ledger, completed(gen2)).await;
+    bind_vector_cleanup_collection(ledger, &SourceId::new(SRC), COLLECTION)
+        .await
+        .unwrap();
     (gen1.generation, published.generation)
 }
 
@@ -206,7 +347,7 @@ fn index_counts(committed: &SourceGenerationId) -> IndexCounts {
 #[derive(Default)]
 struct RecordingVectorStore {
     deletes: Mutex<Vec<VectorDeleteSelector>>,
-    delete_should_fail: bool,
+    delete_should_fail: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -243,7 +384,7 @@ impl VectorStore for RecordingVectorStore {
         &self,
         selector: VectorDeleteSelector,
     ) -> VectorResult<VectorStoreDeleteResult> {
-        if self.delete_should_fail {
+        if self.delete_should_fail.load(Ordering::SeqCst) {
             return Err(ApiError::new(
                 "provider.delete_failed",
                 ErrorStage::Cleaning,
@@ -398,7 +539,7 @@ async fn source_prune_ledger_error_fails_closed() {
     let ledger = FakeLedgerStore::new();
     let (_previous, committed) = seed_two_generations(&ledger).await;
     let vector = RecordingVectorStore {
-        delete_should_fail: true,
+        delete_should_fail: AtomicBool::new(true),
         ..Default::default()
     };
 
@@ -453,10 +594,12 @@ fn cleanup_debt(kind: CleanupDebtKind, selector: CleanupSelector) -> CleanupDebt
     CleanupDebt {
         debt_id: CleanupDebtId::new(format!("debt_{kind:?}")),
         job_id: JobId::new(Uuid::from_u128(0)),
+        origin_attempt: 0,
         source_id: SourceId::new(SRC),
         generation: None,
         kind,
         selector,
+        vector_collection: None,
         status: LifecycleStatus::Pending,
         created_at: ts(),
         attempts: 0,
@@ -464,6 +607,155 @@ fn cleanup_debt(kind: CleanupDebtKind, selector: CleanupSelector) -> CleanupDebt
         next_retry_at: None,
         completed_at: None,
     }
+}
+
+#[tokio::test]
+async fn canonical_drain_retries_adapter_release_and_persists_backoff() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::AdapterRelease,
+            CleanupSelector::Source {
+                source_id: SourceId::new(SRC),
+            },
+        ))
+        .await
+        .unwrap();
+    let registry = SourceAdapterRegistry::from_adapters(vec![
+        FakeSourceAdapter::new(AdapterRef {
+            name: "web".into(),
+            version: "test".into(),
+        })
+        .with_mode(FakeSourceAdapterMode::Failure),
+    ]);
+    let vector = RecordingVectorStore::default();
+
+    let summary = drain_cleanup_debt_full_with_boundaries(
+        &ledger,
+        &vector,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(&registry),
+        COLLECTION,
+        &index_counts(&SourceGenerationId::new("gen_current")),
+    )
+    .await;
+
+    assert_eq!(summary.failed, 1);
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert_eq!(pending[0].attempts, 1);
+    assert!(pending[0].next_retry_at.is_some());
+}
+
+#[tokio::test]
+async fn adapter_release_without_compatible_adapter_persists_retry_state() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::AdapterRelease,
+            CleanupSelector::Source {
+                source_id: SourceId::new(SRC),
+            },
+        ))
+        .await
+        .unwrap();
+    let registry = SourceAdapterRegistry::from_adapters(Vec::<FakeSourceAdapter>::new());
+
+    let mut summary = DebtDrainSummary::default();
+    drain_adapter_release(
+        &ledger,
+        Some(&registry),
+        &cleanup_debt(
+            CleanupDebtKind::AdapterRelease,
+            CleanupSelector::Source {
+                source_id: SourceId::new(SRC),
+            },
+        ),
+        &mut summary,
+    )
+    .await;
+
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert_eq!(summary.failed, 1);
+    assert_eq!(pending[0].attempts, 1);
+    assert!(pending[0].next_retry_at.is_some());
+    assert_eq!(
+        pending[0]
+            .last_error
+            .as_ref()
+            .map(|error| error.code.as_str()),
+        Some("source.cleanup.adapter_release_adapter_unavailable")
+    );
+}
+
+#[tokio::test]
+async fn adapter_release_unavailable_is_dead_lettered_after_bounded_attempts() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    let mut debt = cleanup_debt(
+        CleanupDebtKind::AdapterRelease,
+        CleanupSelector::Source {
+            source_id: SourceId::new(SRC),
+        },
+    );
+    debt.attempts = ADAPTER_RELEASE_MAX_ATTEMPTS - 1;
+    ledger.record_cleanup_debt(debt.clone()).await.unwrap();
+    let registry = SourceAdapterRegistry::from_adapters(Vec::<FakeSourceAdapter>::new());
+    let mut summary = DebtDrainSummary::default();
+
+    drain_adapter_release(&ledger, Some(&registry), &debt, &mut summary).await;
+
+    assert_eq!(summary.failed, 1);
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn recovery_drain_releases_adapter_debt_without_a_source_run() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::AdapterRelease,
+            CleanupSelector::Source {
+                source_id: SourceId::new(SRC),
+            },
+        ))
+        .await
+        .unwrap();
+    let adapter = FakeSourceAdapter::new(AdapterRef {
+        name: "web".into(),
+        version: "test".into(),
+    });
+    let calls = adapter.clone();
+    let registry = SourceAdapterRegistry::from_adapters(vec![adapter]);
+
+    drain_due_adapter_releases(&ledger, &registry, 256).await;
+
+    assert!(calls.calls().contains(&"release"));
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -942,5 +1234,93 @@ async fn drain_full_resolves_job_retention_debt_even_when_a_named_row_is_still_l
     assert!(
         JobStore::get(&jobs, live_id).await.unwrap().is_some(),
         "a live job must survive the drain even when its debt resolves"
+    );
+}
+
+#[tokio::test]
+async fn autonomous_sweep_retries_stale_vector_debt_without_another_publication() {
+    let ledger = FakeLedgerStore::new();
+    let (retired, committed) = seed_two_generations_unbound(&ledger).await;
+    let vector = RecordingVectorStore {
+        delete_should_fail: AtomicBool::new(true),
+        ..Default::default()
+    };
+
+    bind_vector_cleanup_collection(&ledger, &SourceId::new(SRC), "custom-vectors")
+        .await
+        .unwrap();
+
+    let first = drain_all_cleanup_debt(&ledger, 1, |counts| {
+        let ledger = &ledger;
+        let vector = &vector;
+        async move { drain_cleanup_debt(ledger, vector, "default-vectors", &counts).await }
+    })
+    .await;
+    assert!(
+        first.failed > 0,
+        "provider failure must leave debt retryable"
+    );
+    assert!(vector.deletes.lock().unwrap().is_empty());
+
+    vector.delete_should_fail.store(false, Ordering::SeqCst);
+    let second = drain_all_cleanup_debt(&ledger, 1, |counts| {
+        let ledger = &ledger;
+        let vector = &vector;
+        async move { drain_cleanup_debt(ledger, vector, "default-vectors", &counts).await }
+    })
+    .await;
+
+    assert!(second.resolved > 0);
+    assert_eq!(
+        ledger.committed_generation(&SourceId::new(SRC)).await,
+        Some(committed),
+        "the autonomous retry must preserve the committed-generation fence"
+    );
+    assert!(vector.deletes.lock().unwrap().iter().any(|selector| {
+        matches!(
+            selector,
+            VectorDeleteSelector::Generation { collection, generation, .. }
+                if collection == "custom-vectors" && generation == &retired
+        )
+    }));
+    assert!(vector.deletes.lock().unwrap().iter().all(|selector| {
+        !matches!(
+            selector,
+            VectorDeleteSelector::Generation { collection, .. }
+                if collection == "default-vectors"
+        )
+    }));
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .iter()
+            .all(|debt| debt.kind != CleanupDebtKind::VectorDelete),
+        "recovery must resolve stale vector debt without another publication"
+    );
+}
+
+#[tokio::test]
+async fn autonomous_sweep_fails_closed_for_legacy_vector_debt_without_collection() {
+    let ledger = FakeLedgerStore::new();
+    let (_retired, _committed) = seed_two_generations_unbound(&ledger).await;
+    let vector = RecordingVectorStore::default();
+    let summary = drain_all_cleanup_debt(&ledger, 1, |counts| {
+        let ledger = &ledger;
+        let vector = &vector;
+        async move { drain_cleanup_debt(ledger, vector, "default-vectors", &counts).await }
+    })
+    .await;
+
+    assert!(summary.failed > 0);
+    assert!(vector.deletes.lock().unwrap().is_empty());
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .iter()
+            .any(|debt| debt.kind == CleanupDebtKind::VectorDelete)
     );
 }

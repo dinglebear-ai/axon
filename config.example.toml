@@ -264,6 +264,10 @@
 # scheduler-enabled = true
 # Env: AXON_VECTOR_UPSERT_EMBED_OVERLAP
 # vector-upsert-overlap-enabled = true
+# Maximum retained bytes admitted to the prepared-generation channel. Defaults
+# to 128 MiB and is clamped from 1 MiB through 4 GiB.
+# Env: AXON_EMBED_PREPARED_BYTE_BUDGET
+# prepared-byte-budget = 134217728
 # Concurrent source-document preparation tasks before embedding.
 # Env: AXON_EMBED_PREP_CONCURRENCY
 # prep-concurrency = 8
@@ -299,7 +303,7 @@
 # Env: AXON_QDRANT_UPSERT_BATCH_SIZE
 # upsert-batch-points = 1024
 # Env: AXON_QDRANT_UPSERT_PARALLELISM
-# write-concurrency = 1
+# write-concurrency = 2
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
 # Env: AXON_HYBRID_SEARCH
 # hybrid-enabled = true
@@ -329,8 +333,18 @@
 # Collection memory/latency tradeoffs for newly created collections.
 # Env: AXON_QDRANT_HNSW_ON_DISK
 # hnsw-on-disk = false
+# Enable scalar INT8 quantization for newly created collections.
+# Env: AXON_QDRANT_QUANTIZATION_ENABLED
+# quantization-enabled = false
 # Env: AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
 # quantization-always-ram = true
+# Pipeline point batches with wait=false, then use an ordered wait=true write barrier.
+# Env: AXON_QDRANT_ASYNC_WRITES
+# async-writes = false
+# Point publication transport: "rest" or "grpc".
+# Env: AXON_QDRANT_TRANSPORT
+# transport = "rest"
+# Required when transport = "grpc": QDRANT_GRPC_URL (kept in ~/.axon/.env).
 
 [providers.llm]
 # Completion backend. AXON_LLM_BACKEND overrides this value.

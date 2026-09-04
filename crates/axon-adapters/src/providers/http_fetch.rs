@@ -24,6 +24,7 @@ use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationMa
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::Utc;
+use futures_util::StreamExt;
 use reqwest::Method;
 
 use crate::boundary::{FetchProvider, Result};
@@ -57,6 +58,18 @@ const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 /// consecutive 429s.
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 2;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
+const DEFAULT_MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
+
+fn redirect_can_forward_credentials(original: &reqwest::Url, next: &reqwest::Url) -> bool {
+    original.scheme() == next.scheme()
+        && original.host_str() == next.host_str()
+        && original.port_or_known_default() == next.port_or_known_default()
+        && !(original.scheme() == "https" && next.scheme() != "https")
+}
+
+fn request_carries_credentials(request: &FetchRequest) -> bool {
+    !request.credential_refs.is_empty() || !request.headers.headers.is_empty()
+}
 
 #[derive(Debug, Clone)]
 pub struct HttpFetchConfig {
@@ -69,7 +82,7 @@ impl Default for HttpFetchConfig {
     fn default() -> Self {
         Self {
             timeout: Duration::from_secs(30),
-            max_bytes: None,
+            max_bytes: Some(DEFAULT_MAX_RESPONSE_BYTES),
             user_agent: None,
         }
     }
@@ -114,6 +127,14 @@ impl HttpFetchProvider {
         &self.config
     }
 
+    fn effective_max_bytes(&self, request: &FetchRequest) -> u64 {
+        request
+            .max_bytes
+            .or(self.config.max_bytes)
+            .unwrap_or(DEFAULT_MAX_RESPONSE_BYTES)
+            .min(DEFAULT_MAX_RESPONSE_BYTES)
+    }
+
     fn error(&self, code: &str, message: impl Into<String>) -> ApiError {
         ApiError::new(code, ErrorStage::Fetching, message.into()).with_provider_id(PROVIDER_ID)
     }
@@ -125,6 +146,8 @@ impl HttpFetchProvider {
     fn build_client(
         &self,
         redirect_chain: Arc<Mutex<Vec<String>>>,
+        original_url: reqwest::Url,
+        carries_credentials: bool,
     ) -> std::result::Result<reqwest::Client, ApiError> {
         let ua = self
             .config
@@ -140,6 +163,12 @@ impl HttpFetchProvider {
             }
             if attempt.previous().len() >= MAX_REDIRECTS {
                 return attempt.error("too many redirects");
+            }
+            if carries_credentials
+                && !redirect_can_forward_credentials(&original_url, attempt.url())
+            {
+                return attempt
+                    .error("refusing to follow a credentialed redirect across an origin boundary");
             }
             redirect_chain
                 .lock()
@@ -268,20 +297,30 @@ impl HttpFetchProvider {
             .map(str::to_string);
         let headers = self.redact_headers(response.headers());
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|err| self.error("fetch.body_read", err.to_string()))?;
-        let effective_max_bytes = request.max_bytes.or(self.config.max_bytes);
-        if effective_max_bytes.is_some_and(|max_bytes| bytes.len() as u64 > max_bytes) {
-            let max_bytes = effective_max_bytes.expect("checked by is_some_and above");
+        let effective_max_bytes = self.effective_max_bytes(&request);
+        if let Some(length) = response.content_length()
+            && length > effective_max_bytes
+        {
             return Err(self.error(
                 "fetch.response_too_large",
-                format!(
-                    "response body {} bytes exceeds max_bytes {max_bytes}",
-                    bytes.len()
-                ),
+                format!("response body {length} bytes exceeds max_bytes {effective_max_bytes}"),
             ));
+        }
+        let initial_capacity = response
+            .content_length()
+            .unwrap_or(0)
+            .min(effective_max_bytes.min(1024 * 1024)) as usize;
+        let mut bytes = Vec::with_capacity(initial_capacity);
+        let mut body = response.bytes_stream();
+        while let Some(chunk) = body.next().await {
+            let chunk = chunk.map_err(|err| self.error("fetch.body_read", err.to_string()))?;
+            if bytes.len() as u64 + chunk.len() as u64 > effective_max_bytes {
+                return Err(self.error(
+                    "fetch.response_too_large",
+                    format!("response body exceeds max_bytes {}", effective_max_bytes),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
         }
 
         self.health.record_success().await;
@@ -310,7 +349,13 @@ impl FetchProvider for HttpFetchProvider {
             .map_err(|err| self.error("fetch.invalid_uri", err.to_string()))?;
 
         let redirect_chain = Arc::new(Mutex::new(Vec::new()));
-        let client = self.build_client(Arc::clone(&redirect_chain))?;
+        let original_url = reqwest::Url::parse(&request.uri)
+            .map_err(|err| self.error("fetch.invalid_uri", err.to_string()))?;
+        let client = self.build_client(
+            Arc::clone(&redirect_chain),
+            original_url,
+            request_carries_credentials(&request),
+        )?;
         let method = self.method(&request.method)?;
 
         let mut builder = client.request(method, &request.uri);

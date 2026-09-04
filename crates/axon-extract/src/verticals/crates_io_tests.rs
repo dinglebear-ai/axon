@@ -49,6 +49,20 @@ fn crates_io_extra_empty_optional_fields_absent() {
 }
 
 #[test]
+fn malformed_crates_io_payload_without_a_version_is_rejected() {
+    for payload in [
+        serde_json::json!({"crate": {"name": "broken"}, "versions": []}),
+        serde_json::json!({"crate": {"name": "broken"}}),
+        serde_json::json!({"crate": {"name": "broken"}, "versions": "invalid"}),
+    ] {
+        assert!(matches!(
+            validate_crate_payload(&payload),
+            Err(VerticalError::StructuredDataMalformed { .. })
+        ));
+    }
+}
+
+#[test]
 fn matches_crate_root() {
     assert!(matches("https://crates.io/crates/serde"));
 }

@@ -26,6 +26,7 @@ pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
         | CleanupDebtKind::JobRetention => "drained (should not reach the skip path)",
         CleanupDebtKind::ArtifactDelete => "no ArtifactStore wired for this drain",
         CleanupDebtKind::CachePrune => "no DocumentCache wired for this drain",
+        CleanupDebtKind::AdapterRelease => "retried by the source adapter registry on next run",
     }
 }
 
@@ -42,10 +43,11 @@ pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
 /// (re)constructed per debt precisely so it can hold that per-debt value.
 /// Returns `None` for any other kind, or when the selector doesn't carry the
 /// identity the kind needs.
-pub(super) fn debt_to_step(debt: &CleanupDebt, collection: &str) -> Option<PruneStep> {
+pub(super) fn debt_to_step(debt: &CleanupDebt) -> Option<PruneStep> {
     match debt.kind {
         CleanupDebtKind::VectorDelete => {
             let (source_id, generation) = debt_scope(debt)?;
+            let collection = debt.vector_collection.as_ref()?;
             Some(PruneStep {
                 target: PruneTargetKind::Vector,
                 description: format!(
@@ -54,7 +56,7 @@ pub(super) fn debt_to_step(debt: &CleanupDebt, collection: &str) -> Option<Prune
                 ),
                 estimated_deletes: 1,
                 vector_selector: Some(VectorDeleteSelector::Generation {
-                    collection: collection.to_string(),
+                    collection: collection.clone(),
                     source_id: source_id.clone(),
                     generation: generation.clone(),
                 }),
@@ -136,6 +138,7 @@ pub(super) fn debt_to_step(debt: &CleanupDebt, collection: &str) -> Option<Prune
                 memory_ids: None,
             })
         }
+        CleanupDebtKind::AdapterRelease => None,
         _ => None,
     }
 }

@@ -33,7 +33,7 @@ def snapshot(**overrides):
 
 
 class MlxMetricsTests(unittest.TestCase):
-    def test_valid_delta_and_gate(self):
+    def test_invalid_delta_fails_evidence_gate_with_reasons(self):
         after = snapshot(
             requests=1, useful_tokens=70, padded_tokens=100,
             dispatches=2, partial_dispatches=1, rows_total=20,
@@ -41,7 +41,17 @@ class MlxMetricsTests(unittest.TestCase):
             metal_busy_us=90, dispatcher_idle_us=10,
         )
         delta = METRICS.metrics_delta(snapshot(), after, 1)
-        self.assertEqual(METRICS.evidence_gate(delta), (True, ("padding", "occupancy", "metal_idle")))
+        self.assertEqual(METRICS.evidence_gate(delta), (False, ("padding", "occupancy", "metal_idle")))
+
+    def test_healthy_delta_passes_evidence_gate(self):
+        after = snapshot(
+            requests=1, useful_tokens=95, padded_tokens=100,
+            dispatches=1, rows_total=95, row_capacity=100,
+            token_capacity=110, request_wall_us=100,
+            metal_busy_us=98, dispatcher_idle_us=2,
+        )
+        delta = METRICS.metrics_delta(snapshot(), after, 1)
+        self.assertEqual(METRICS.evidence_gate(delta), (True, ()))
 
     def test_epoch_change_fails_closed(self):
         with self.assertRaisesRegex(METRICS.MetricsValidationError, "metrics_epoch_changed"):
