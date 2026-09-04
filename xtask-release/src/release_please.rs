@@ -6,11 +6,11 @@ use std::process::Command;
 use super::{
     Component, ReleaseContext, ReleaseResult, VersionKind, read_version, write_version_file,
 };
-use crate::checks::release_versions::files::{
+use crate::files::{
     increment_gradle_version_code_above, read_gradle_version_code, read_gradle_version_name,
     replace_gradle_version_name,
 };
-use crate::checks::release_versions::git::git_show;
+use crate::git::git_show;
 
 mod ownership;
 

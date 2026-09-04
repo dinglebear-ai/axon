@@ -41,6 +41,7 @@ syn = { version = "2", features = ["full", "parsing", "visit"] }
 tempfile = "3"
 toml = "0.9"
 walkdir = "2"
+xtask-release = { path = "../xtask-release" }
 
 [features]
 default = ["openapi-drift"]

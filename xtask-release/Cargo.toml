@@ -1,0 +1,29 @@
+[package]
+name = "xtask-release"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Component release gating, version bumping, and release-please postprocessing for Axon."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+# Deliberately depends on no axon crate. Release bookkeeping is pure text,
+# manifest, and git-metadata work, so CI jobs that only need it must not have
+# to compile the product. See xtask-release/src/lib.rs for the rationale.
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

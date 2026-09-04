@@ -20,7 +20,6 @@ pub mod no_mod_rs;
 pub mod openapi_drift;
 pub mod public_api;
 pub mod redaction_logs;
-pub mod release_versions;
 pub mod repo_structure;
 pub mod repo_structure_spec;
 pub mod secrets;
@@ -53,7 +52,7 @@ pub fn check(root: &Path) -> Result<()> {
     sqlite_migrations::check(root)?;
     secrets::check(root)?;
     audit_ignore_sync::check(root)?;
-    release_versions::check_local(root)?;
+    xtask_release::check_local(root)?;
     println!("All checks passed.");
     Ok(())
 }

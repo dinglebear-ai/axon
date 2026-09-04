@@ -1,5 +1,5 @@
 use super::*;
-use crate::checks::release_versions::{Component, ReleaseDriver, VersionFile, VersionKind};
+use crate::{Component, ReleaseDriver, VersionFile, VersionKind};
 
 fn component(id: &str, path: &str, release_driver: ReleaseDriver) -> Component {
     let version_path = if path == "." {

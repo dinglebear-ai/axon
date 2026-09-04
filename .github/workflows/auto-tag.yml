@@ -66,7 +66,8 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-24.04
     # The workflow_run path is API-only and finishes in seconds. The reconciler
-    # path builds xtask so the plan comes from the same source of truth CI uses.
+    # path builds xtask-release so the plan comes from the same source of truth
+    # CI uses.
     timeout-minutes: 40
     permissions:
       actions: read
@@ -140,9 +141,16 @@ jobs:
           # The workflow_run path gets this guarantee from its trigger. The
           # reconciler must prove it explicitly: never tag a commit whose CI is
           # not green, matching the OPS-M1 release gate above.
+          #
+          # Any CI run against the branch tree is valid evidence, not just the
+          # push-triggered one: schedule and workflow_dispatch runs build the
+          # identical commit. Requiring `event == "push"` stranded a bumped-but-
+          # untagged CLI indefinitely when the push run failed and a later
+          # scheduled run on the same SHA passed. pull_request runs are excluded
+          # because their tree is a merge preview, not this commit.
           conclusion="$(gh api --paginate \
             "repos/${{ github.repository }}/actions/runs?head_sha=$TARGET_SHA" \
-            --jq '[.workflow_runs[] | select(.name == "CI" and .event == "push")] | sort_by(.run_started_at) | last | .conclusion // empty')"
+            --jq '[.workflow_runs[] | select(.name == "CI" and .event != "pull_request")] | sort_by(.run_started_at) | last | .conclusion // empty')"
           if [ "$conclusion" != "success" ]; then
             echo "::notice::no green push CI run for $TARGET_SHA (conclusion: ${conclusion:-none}); reconciler will not tag"
             echo "RECONCILE_BLOCKED=1" >> "$GITHUB_ENV"
@@ -156,13 +164,8 @@ jobs:
         if: ${{ github.event_name != 'workflow_run' && env.RECONCILE_BLOCKED != '1' }}
         run: |
           set -euo pipefail
-          cargo build -p xtask --locked
-          ./target/debug/xtask check-release-versions --head HEAD --mode main --json > release-plan.json
-          if [ "$matrix" = '{"include":[]}' ]; then
-            echo "::notice::no axon-native component is bumped-but-untagged; nothing to reconcile"
-          else
-            echo "::notice::reconciler found an untagged bump on main: $matrix"
-          fi
+          cargo build -p xtask-release --locked
+          ./target/debug/xtask-release check-release-versions --head HEAD --mode main --json > release-plan.json
 
       # Single owner of validation and of the matrix selector. Both paths above
       # only *produce* release-plan.json; exactly one selector turns it into a
