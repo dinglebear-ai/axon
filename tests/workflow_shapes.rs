@@ -1666,7 +1666,7 @@ fn codeql_pull_requests_scan_every_default_branch_configuration() {
     let workflow = include_str!("../.github/workflows/codeql.yml");
     assert!(workflow.contains("FULL_PR_SCAN: ${{ github.event_name == 'pull_request' }}"));
     assert_eq!(
-        workflow.matches("$full_pr == \"true\" ||").count(),
+        workflow.matches("$full_pr == \"true\" or").count(),
         5,
         "every configured CodeQL language must run on pull requests so GitHub's native completeness check can compare the PR with main"
     );

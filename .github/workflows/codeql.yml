@@ -114,11 +114,11 @@ jobs:
             '{
               include:
                 ([]
-                + (if $full_pr == "true" || $actions == "true" then [{language:"actions", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" || $js == "true" then [{language:"javascript-typescript", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" || $py == "true" then [{language:"python", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" || $rust == "true" then [{language:"rust", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" || $kotlin == "true" then [{language:"java-kotlin", build_mode:"manual"}] else [] end))
+                + (if $full_pr == "true" or $actions == "true" then [{language:"actions", build_mode:"none"}] else [] end)
+                + (if $full_pr == "true" or $js == "true" then [{language:"javascript-typescript", build_mode:"none"}] else [] end)
+                + (if $full_pr == "true" or $py == "true" then [{language:"python", build_mode:"none"}] else [] end)
+                + (if $full_pr == "true" or $rust == "true" then [{language:"rust", build_mode:"none"}] else [] end)
+                + (if $full_pr == "true" or $kotlin == "true" then [{language:"java-kotlin", build_mode:"manual"}] else [] end))
             }' > matrix.json
           if [[ "$(jq '.include | length' matrix.json)" == "0" ]]; then
             echo "has_work=false" >> "$GITHUB_OUTPUT"
