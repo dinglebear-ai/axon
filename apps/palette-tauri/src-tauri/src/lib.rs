@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
 use tauri::{
-    LogicalSize, PhysicalPosition, Position, Size,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
@@ -30,6 +29,7 @@ mod sftp_bridge;
 mod sftp_known_hosts;
 mod stream;
 mod terminal;
+mod window_commands;
 #[cfg(desktop)]
 mod window_events;
 
@@ -40,6 +40,11 @@ use github_bridge::GitHubClient;
 use persistence::*;
 use stream::axon_http_stream_request;
 use terminal::TerminalState;
+#[cfg(all(test, desktop))]
+use window_commands::center_position;
+#[cfg(desktop)]
+use window_commands::resize_and_center;
+use window_commands::{hide_palette, resize_palette, show_palette, toggle_maximize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -172,107 +177,6 @@ fn update_shortcut(app: &AppHandle, settings: &PaletteSettings) -> Result<(), St
 
 #[cfg(mobile)]
 fn update_shortcut(_app: &AppHandle, _settings: &PaletteSettings) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn hide_palette(app: AppHandle) -> Result<(), String> {
-    app.get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?
-        .hide()
-        .map_err(|err| err.to_string())
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-fn hide_palette(_app: AppHandle) -> Result<(), String> {
-    Ok(())
-}
-
-#[tauri::command]
-fn show_palette(app: AppHandle) -> Result<(), String> {
-    show_main_window(&app)
-}
-
-#[cfg(desktop)]
-fn center_position(
-    monitor_position: (i32, i32),
-    monitor_size: (u32, u32),
-    scale_factor: f64,
-    window_size: (f64, f64),
-) -> (i32, i32) {
-    let window_width = window_size.0 * scale_factor;
-    let window_height = window_size.1 * scale_factor;
-    (
-        monitor_position.0 + ((monitor_size.0 as f64 - window_width) / 2.0).round() as i32,
-        monitor_position.1 + ((monitor_size.1 as f64 - window_height) / 2.0).round() as i32,
-    )
-}
-
-#[cfg(desktop)]
-fn resize_and_center(window: &tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
-    let monitor = window.current_monitor().map_err(|err| err.to_string())?;
-    window
-        .set_size(Size::Logical(LogicalSize { width, height }))
-        .map_err(|err| err.to_string())?;
-
-    if let Some(monitor) = monitor {
-        let position = monitor.position();
-        let size = monitor.size();
-        let (x, y) = center_position(
-            (position.x, position.y),
-            (size.width, size.height),
-            monitor.scale_factor(),
-            (width, height),
-        );
-        window
-            .set_position(Position::Physical(PhysicalPosition::new(x, y)))
-            .map_err(|err| err.to_string())
-    } else {
-        window.center().map_err(|err| err.to_string())
-    }
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    // A maximized window ignores set_size on Windows; drop maximize first so the
-    // auto-sizer (and the next launcher open) always lands at the intended size.
-    if window.is_maximized().unwrap_or(false) {
-        let _ = window.unmaximize();
-    }
-    resize_and_center(&window, width, height)?;
-    // Per-view native shadow toggle (see useWindowChrome.ts for the policy).
-    let _ = window.set_shadow(shadow);
-    Ok(())
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-fn resize_palette(_app: AppHandle, _width: f64, _height: f64, _shadow: bool) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn toggle_maximize(app: AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    if window.is_maximized().map_err(|err| err.to_string())? {
-        window.unmaximize().map_err(|err| err.to_string())
-    } else {
-        window.maximize().map_err(|err| err.to_string())
-    }
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-fn toggle_maximize(_app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 

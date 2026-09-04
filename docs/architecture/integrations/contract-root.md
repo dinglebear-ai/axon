@@ -1,3 +1,9 @@
+---
+title: Palette integration contract root
+created: 2026-08-29
+updated: 2026-09-04
+---
+
 # Palette integration contract root
 
 Status: accepted for `axon_rust-1p6q8.1`. This document is deliberately a profile and compatibility root, not a universal DTO authority.

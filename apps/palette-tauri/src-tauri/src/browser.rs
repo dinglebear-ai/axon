@@ -10,9 +10,9 @@
 // - The child webview position and size track `.browser-surface` via
 //   `browser_set_bounds` dynamically.
 use serde::Deserialize;
-use tauri::{
-    AppHandle, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewBuilder, WebviewUrl,
-};
+use tauri::{AppHandle, Manager, WebviewUrl};
+#[cfg(desktop)]
+use tauri::{LogicalPosition, LogicalSize, Position, Size, WebviewBuilder};
 
 /// Label of the embedded child browser webview attached to the main window.
 pub(crate) const BROWSER_WEBVIEW_LABEL: &str = "browser_content";
@@ -63,47 +63,56 @@ pub(crate) async fn browser_open(
     bounds: Option<BrowserBounds>,
 ) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    let validated = validate_browser_url(&url)?;
-    let parsed_url =
-        url::Url::parse(&validated).map_err(|err| format!("invalid browser URL: {err}"))?;
+    #[cfg(mobile)]
+    {
+        let _ = (app, url, bounds);
+        return Err("Browser is only available in the desktop app".to_string());
+    }
 
-    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
-        if let Some(b) = bounds {
-            let _ = webview.set_position(Position::Logical(LogicalPosition::new(b.x, b.y)));
-            let _ = webview.set_size(Size::Logical(LogicalSize::new(b.width, b.height)));
+    #[cfg(desktop)]
+    {
+        let validated = validate_browser_url(&url)?;
+        let parsed_url =
+            url::Url::parse(&validated).map_err(|err| format!("invalid browser URL: {err}"))?;
+
+        if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+            if let Some(b) = bounds {
+                let _ = webview.set_position(Position::Logical(LogicalPosition::new(b.x, b.y)));
+                let _ = webview.set_size(Size::Logical(LogicalSize::new(b.width, b.height)));
+            }
+            let _ = webview.show();
+            webview
+                .navigate(parsed_url)
+                .map_err(|err| err.to_string())?;
+            let _ = webview.set_focus();
+            return Ok(());
         }
-        let _ = webview.show();
-        webview
-            .navigate(parsed_url)
+
+        let main_window = app.get_window("main").ok_or("main window not found")?;
+        let webview_url = webview_url_for(&validated)?;
+        let builder = WebviewBuilder::new(BROWSER_WEBVIEW_LABEL, webview_url);
+
+        let (pos, size) = if let Some(b) = bounds.filter(|b| b.width > 0.0 && b.height > 0.0) {
+            (
+                LogicalPosition::new(b.x, b.y),
+                LogicalSize::new(b.width, b.height),
+            )
+        } else {
+            (
+                LogicalPosition::new(0.0, 80.0),
+                LogicalSize::new(1280.0, 780.0),
+            )
+        };
+
+        main_window
+            .add_child(builder, pos, size)
             .map_err(|err| err.to_string())?;
-        let _ = webview.set_focus();
-        return Ok(());
+
+        if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+            let _ = webview.set_focus();
+        }
+        Ok(())
     }
-
-    let main_window = app.get_window("main").ok_or("main window not found")?;
-    let webview_url = webview_url_for(&validated)?;
-    let builder = WebviewBuilder::new(BROWSER_WEBVIEW_LABEL, webview_url);
-
-    let (pos, size) = if let Some(b) = bounds.filter(|b| b.width > 0.0 && b.height > 0.0) {
-        (
-            LogicalPosition::new(b.x, b.y),
-            LogicalSize::new(b.width, b.height),
-        )
-    } else {
-        (
-            LogicalPosition::new(0.0, 80.0),
-            LogicalSize::new(1280.0, 780.0),
-        )
-    };
-
-    main_window
-        .add_child(builder, pos, size)
-        .map_err(|err| err.to_string())?;
-
-    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
-        let _ = webview.set_focus();
-    }
-    Ok(())
 }
 
 /// Navigate the existing embedded browser to a new URL. Opens/attaches it
@@ -122,18 +131,27 @@ pub(crate) async fn browser_navigate(
 #[tauri::command]
 pub(crate) fn browser_set_bounds(app: AppHandle, bounds: BrowserBounds) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    if bounds.width <= 0.0 || bounds.height <= 0.0 {
-        return Ok(());
+    #[cfg(mobile)]
+    {
+        let _ = (app, bounds);
+        return Err("Browser is only available in the desktop app".to_string());
     }
-    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
-        webview
-            .set_position(Position::Logical(LogicalPosition::new(bounds.x, bounds.y)))
-            .map_err(|err| err.to_string())?;
-        webview
-            .set_size(Size::Logical(LogicalSize::new(bounds.width, bounds.height)))
-            .map_err(|err| err.to_string())?;
+
+    #[cfg(desktop)]
+    {
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return Ok(());
+        }
+        if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+            webview
+                .set_position(Position::Logical(LogicalPosition::new(bounds.x, bounds.y)))
+                .map_err(|err| err.to_string())?;
+            webview
+                .set_size(Size::Logical(LogicalSize::new(bounds.width, bounds.height)))
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Drive the loaded page's own back-navigation. A no-op (not an error) if
@@ -174,10 +192,19 @@ pub(crate) fn browser_reload(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub(crate) fn browser_close(app: AppHandle) -> Result<(), String> {
     crate::require_desktop_feature("Browser")?;
-    if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
-        webview.close().map_err(|err| err.to_string())?;
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        return Err("Browser is only available in the desktop app".to_string());
     }
-    Ok(())
+
+    #[cfg(desktop)]
+    {
+        if let Some(webview) = app.get_webview(BROWSER_WEBVIEW_LABEL) {
+            webview.close().map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
 }
 
 fn with_browser_webview(

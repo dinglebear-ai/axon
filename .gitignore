@@ -135,6 +135,7 @@ npm-debug.log*
 apps/android/local.properties
 
 # ── Repo-specific ────────────────────────────────────────────────────────────
+/.axon/
 /output/
 tmp/
 tmp_manifest*.jsonl

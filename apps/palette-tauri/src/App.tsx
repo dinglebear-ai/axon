@@ -9,19 +9,12 @@ import {
   type PendingActionConfirmation,
 } from "@/lib/actionGuard";
 import { actionMatches, type PaletteAction } from "@/lib/actions";
+import { endpointState, shouldAutoRunOnSwitch } from "@/lib/appDerived";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient } from "@/lib/axonClient";
-import { useProductWorkspace } from "@/lib/backendProfiles/useProductWorkspace";
-import {
-  androidRuntime,
-  initialWorkspace,
-  mobileRuntime,
-  runtimeActions,
-  shortcutOptions,
-} from "@/lib/runtimeUi";
 import type { BackendProduct } from "@/lib/backendProfiles/model";
+import { useProductWorkspace } from "@/lib/backendProfiles/useProductWorkspace";
 import { outputKindFor } from "@/lib/format";
-import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke } from "@/lib/invoke";
 import { loadPaletteHistory, persistPaletteHistory } from "@/lib/paletteHistoryStorage";
 import { argumentFor, focusInput, validationMessage } from "@/lib/paletteView";
@@ -37,9 +30,16 @@ import {
   viewReducer,
 } from "@/lib/paletteViewState";
 import type { RunState } from "@/lib/runState";
-import { hostLabel } from "@/lib/url";
+import {
+  androidRuntime,
+  initialWorkspace,
+  mobileRuntime,
+  runtimeActions,
+  shortcutOptions,
+} from "@/lib/runtimeUi";
 import { useActionRunner } from "@/lib/useActionRunner";
 import { useAndroidBackButton } from "@/lib/useAndroidBackButton";
+import { useAppHistoryCallbacks } from "@/lib/useAppHistoryCallbacks";
 import { useAskHistoryRecorder } from "@/lib/useAskHistoryRecorder";
 import { useChatToolRunner } from "@/lib/useChatToolRunner";
 import { handlePaletteBack, useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
@@ -79,13 +79,11 @@ export default function App() {
   const browseOpen = isBrowseOpen(view);
   const browserOpen = isBrowserOpen(view);
   const codexOpen = isCodexOpen(view);
-  const browserInitialTargetValue = browserInitialTarget(view);
   usePaletteLifecycle(dispatchView, setShownTick);
 
   useEffect(() => {
     persistPaletteHistory(history);
   }, [history]);
-
   const keyStateRef = useRef({ settingsOpen, historyOpen, browseOpen, query, modeAction, run });
   keyStateRef.current = { settingsOpen, historyOpen, browseOpen, query, modeAction, run };
   const copyOutput = useCallback((text: string) => {
@@ -176,7 +174,9 @@ export default function App() {
 
   const client = useMemo(() => (config ? createAxonClient(config) : null), [config]);
   const invalidateProductState = useCallback(() => {
-    setPendingConfirmation(null); setRun({ kind: "idle" }); setQuery("");
+    setPendingConfirmation(null);
+    setRun({ kind: "idle" });
+    setQuery("");
   }, []);
   const { availableProducts, cortexProfile, labbyProfile, selectBackendProfile, selectWorkspace } =
     useProductWorkspace(config, setDraftConfig, invalidateProductState, setWorkspace);
@@ -186,7 +186,6 @@ export default function App() {
   }, [modeAction?.subcommand]);
 
   useAskHistoryRecorder({ active, run, setHistory });
-
   const enterModeForRun = useCallback((action: PaletteAction, argument: string) => {
     dispatchView({ type: "enterModeForRun", action });
     setQuery(argument);
@@ -213,12 +212,6 @@ export default function App() {
   const requestSubmit = useCallback(
     (action: PaletteAction, argumentOverride?: string) => {
       const argument = argumentOverride ?? argumentFor(action, modeAction, parsed, query);
-      // Browser is a local, window-driven action: it never issues an HTTP
-      // request (unlike other `kind: "local"` actions such as `help`, which
-      // `useActionRunner.submit` special-cases into a synthetic RunState), so
-      // it is intercepted here and routed straight to its own overlay
-      // instead of falling into `submit()`'s generic `kind === "local"`
-      // no-op path.
       if (action.subcommand === "browser") {
         setPendingConfirmation(null);
         dispatchView({ type: "openBrowser", initialTarget: argument.trim() || null });
@@ -235,9 +228,6 @@ export default function App() {
       } else if (pendingConfirmation) {
         setPendingConfirmation(null);
       }
-      // Keep the argument validated above as the authoritative snapshot. If we
-      // ask the runner to derive it again from render state, a fast first Enter
-      // can observe the previous query and only the second Enter will execute.
       void submit(action, argument);
     },
     [modeAction, parsed, pendingConfirmation, query, submit],
@@ -298,10 +288,6 @@ export default function App() {
     focusInput(true);
   }
 
-  function shouldAutoRunOnSwitch(action: PaletteAction) {
-    return action.argMode === "none" && action.autoRunOnSwitch === true;
-  }
-
   function switchActionMode(action: PaletteAction) {
     if (shouldAutoRunOnSwitch(action)) {
       setQuery("");
@@ -342,12 +328,7 @@ export default function App() {
 
   const outputKind =
     "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
-  const endpointLabel = config
-    ? hostLabel(config.serverUrl)
-    : configError
-      ? "Config error"
-      : "Loading";
-  const endpointTone = configError ? "error" : "syncing";
+  const { label: endpointLabel, tone: endpointTone } = endpointState(config, configError);
   const showBackButton = settingsOpen || historyOpen || browserOpen || codexOpen || showOutput;
   const currentTarget = currentOutputTarget(run, active, query);
   const { pinnedTargets, togglePin: onTogglePin } = usePalettePins(setHistory, currentTarget);
@@ -370,7 +351,6 @@ export default function App() {
     focusInput(true);
   }, []);
 
-  // P-M2 — stable callbacks for the memoized children (CommandBar/OutputPanel).
   const onSubmitAction = useCallback(
     (action: PaletteAction) => requestSubmit(action),
     [requestSubmit],
@@ -386,9 +366,6 @@ export default function App() {
   const onToggleMaximize = useCallback(() => void invoke("toggle_maximize"), []);
   const onQueryChange = useCallback(
     (value: string) => {
-      // Typing over any completed/running result starts a fresh command search.
-      // Keeping an argument-taking action mode alive here made the new text run
-      // against stale action state, unlike no-input actions which already reset.
       if (run.kind !== "idle") {
         setRun({ kind: "idle" });
         setPendingConfirmation(null);
@@ -398,7 +375,6 @@ export default function App() {
     },
     [run.kind],
   );
-  const onCopy = copyOutput;
   const onRetry = useCallback(() => active && void submit(active), [active, submit]);
   const onFollowUp = useCallback(
     (text: string) => {
@@ -422,23 +398,13 @@ export default function App() {
     onFallbackRunAction: onRunAction,
   });
   const onSuggestMessage = useSuggestMessage(client, config);
-  const onHistory = useCallback(() => {
-    setRun({ kind: "idle" });
-    dispatchView({ type: "openHistory" });
-  }, []);
-  const onResumeAskSession = useCallback((item: HistoryItem) => {
-    setPendingConfirmation(null);
-    setAskSessionsOpen(false);
-    dispatchView({ type: "openHistoryItem", action: item.action });
-    setQuery(item.prompt ?? item.target);
-    const historyRun = runStateFromHistory(item);
-    setRun(historyRun ?? { kind: "idle" });
-  }, []);
-  const onCollapse = useCallback(() => {
-    setRun({ kind: "idle" });
-    setQuery("");
-    dispatchView({ type: "collapse" });
-  }, []);
+  const { onCollapse, onHistory, onResumeAskSession } = useAppHistoryCallbacks(
+    dispatchView,
+    setRun,
+    setPendingConfirmation,
+    setAskSessionsOpen,
+    setQuery,
+  );
   return (
     <ProductWorkspaceFrame
       workspace={workspace}
@@ -456,7 +422,7 @@ export default function App() {
           actions: runtimeActions,
           activeDescendantId,
           browserFocusRef,
-          browserInitialTarget: browserInitialTargetValue,
+          browserInitialTarget: browserInitialTarget(view),
           browserOpen,
           codexOpen,
           cancelAsyncJob,
@@ -492,7 +458,7 @@ export default function App() {
           onCloseBrowser,
           onCloseCodex: () => dispatchView({ type: "closeCodex" }),
           onCollapse,
-          onCopy,
+          onCopy: copyOutput,
           onDrillDomain,
           onFollowUp,
           onHistory,
