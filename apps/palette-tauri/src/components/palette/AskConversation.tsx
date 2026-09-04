@@ -1,18 +1,9 @@
-import { Paperclip, Send, X } from "lucide-react";
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { Download, GitBranch, Layers3, Paperclip, Quote, Send, X } from "lucide-react";
+import { Fragment, memo, useEffect, useMemo, useState } from "react";
 
-import { Message, MessageContent } from "@/components/aurora/ai/message";
-import { Response } from "@/components/aurora/ai/response";
 import { actionIcon } from "@/components/palette/ActionIcon";
-import { AgentTurnControls } from "@/components/palette/AgentTurnControls";
-import { ActivityTrail, SourceStrip } from "@/components/palette/AskConversationBits";
-import { AxonMark } from "@/components/palette/AxonMark";
-import {
-  ChatMessageActions,
-  ChatSuggestionPanel,
-  type SuggestionState,
-} from "@/components/palette/ChatMessageAffordances";
-import { MarkdownBody } from "@/components/palette/MarkdownBody";
+import type { SuggestionState } from "@/components/palette/ChatMessageAffordances";
+import { ConversationThread } from "@/components/palette/ConversationThread";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { actionDisplayMeta } from "@/lib/actionMeta";
@@ -21,187 +12,7 @@ import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { sortActionsByRelevance } from "@/lib/paletteView";
 import type { AskTurn, ChatSuggestion } from "@/lib/runState";
 
-// A read-only question→answer pair rendered with the ask bubble styling. Reused
-// by the live ask view and the side-by-side evaluate view. Memoized so unrelated
-// App re-renders during a stream don't recompute the thread (P-M1).
-export const ConversationThread = memo(function ConversationThread({
-  prompt,
-  answer,
-  turns,
-  waiting = "Waiting for response...",
-  reader = false,
-  suggestionsEnabled = false,
-  suggestionsByTurn = {},
-  onSuggestTurn,
-  onEditTurn,
-  onRegenerateTurn,
-  agentBubbles = false,
-  client = null,
-  config = null,
-}: {
-  prompt?: string;
-  answer: string;
-  turns?: AskTurn[];
-  waiting?: string;
-  reader?: boolean;
-  suggestionsEnabled?: boolean;
-  suggestionsByTurn?: Record<string, SuggestionState>;
-  onSuggestTurn?: (turn: AskTurn) => void;
-  onEditTurn?: (turn: AskTurn) => void;
-  onRegenerateTurn?: (turn: AskTurn) => void;
-  agentBubbles?: boolean;
-  client?: Client | null;
-  config?: PaletteConfig | null;
-  action?: "ask" | "chat";
-}) {
-  const threadTurns = useMemo<AskTurn[]>(
-    () =>
-      turns?.length
-        ? turns
-        : [
-            ...(prompt ? [{ id: "legacy:user", role: "user" as const, content: prompt }] : []),
-            { id: "legacy:assistant", role: "assistant" as const, content: answer },
-          ],
-    [answer, prompt, turns],
-  );
-  const threadRef = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
-  const signature = threadTurns
-    .map((turn) => `${turn.id}:${turn.content.length}:${turn.pending ? "pending" : "done"}`)
-    .join("|");
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the derived turn signature is the scroll trigger.
-  useEffect(() => {
-    const element = threadRef.current;
-    if (!element || !stickToBottom.current) return;
-    element.scrollTop = element.scrollHeight;
-  }, [signature]);
-
-  function onThreadScroll() {
-    const element = threadRef.current;
-    if (!element) return;
-    const distanceFromBottom = element.scrollHeight - element.clientHeight - element.scrollTop;
-    stickToBottom.current = distanceFromBottom < 36;
-  }
-
-  function previousUserTurn(turnIndex: number): AskTurn | undefined {
-    for (let index = turnIndex - 1; index >= 0; index -= 1) {
-      if (threadTurns[index]?.role === "user") return threadTurns[index];
-    }
-    return undefined;
-  }
-
-  if (reader) {
-    return (
-      <div className="ask-thread ask-thread-reader aurora-scrollbar">
-        {prompt ? (
-          <div className="ask-prompt-strip">
-            <span>Question</span>
-            <p>{prompt}</p>
-          </div>
-        ) : null}
-        <div className="ask-answer ask-answer-reader">
-          {answer ? (
-            <MarkdownBody>{answer}</MarkdownBody>
-          ) : (
-            <span className="ask-waiting">{waiting}</span>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: named scroll region used by tests and assistive tech to identify the conversation transcript.
-    <div
-      ref={threadRef}
-      className="ask-thread aurora-scrollbar"
-      role="group"
-      aria-label="Ask conversation"
-      onScroll={onThreadScroll}
-    >
-      {threadTurns.map((turn, turnIndex) =>
-        turn.role === "user" ? (
-          <Fragment key={turn.id}>
-            <Message
-              className="ask-message ask-message-user"
-              data-role="user"
-              time="now"
-              actions={
-                <ChatMessageActions
-                  enabled={suggestionsEnabled}
-                  turn={turn}
-                  suggestion={suggestionsByTurn[turn.id]}
-                  onSuggest={onSuggestTurn}
-                  onEdit={onEditTurn}
-                  onRegenerate={onRegenerateTurn}
-                />
-              }
-            >
-              <MessageContent tone="user">
-                <p>{turn.content}</p>
-              </MessageContent>
-            </Message>
-            <ChatSuggestionPanel align="end" suggestion={suggestionsByTurn[turn.id]} />
-          </Fragment>
-        ) : (
-          <Fragment key={turn.id}>
-            {(() => {
-              const regenerateSource = previousUserTurn(turnIndex);
-              return (
-                <Message
-                  className="ask-message ask-message-assistant"
-                  data-role="assistant"
-                  time="now"
-                  actions={
-                    <ChatMessageActions
-                      enabled={suggestionsEnabled}
-                      turn={turn}
-                      suggestion={suggestionsByTurn[turn.id]}
-                      onSuggest={onSuggestTurn}
-                      onEdit={onEditTurn}
-                      onRegenerate={
-                        regenerateSource ? () => onRegenerateTurn?.(regenerateSource) : undefined
-                      }
-                    />
-                  }
-                >
-                  <span className="ask-assistant-avatar" role="img" aria-label="Axon" title="Axon">
-                    <AxonMark size={18} />
-                  </span>
-                  <div className="ask-assistant-stack">
-                    <ActivityTrail activities={turn.activities} pending={turn.pending} />
-                    <MessageContent
-                      tone="assistant"
-                      streaming={Boolean(turn.pending)}
-                      className={agentBubbles ? undefined : "aurora-message-content-plain"}
-                    >
-                      {turn.content ? (
-                        <Response markdown={turn.content} streaming={Boolean(turn.pending)} />
-                      ) : (
-                        <span className="ask-waiting">{waiting}</span>
-                      )}
-                    </MessageContent>
-                    <SourceStrip sources={turn.sources} />
-                    {turn.agent ? (
-                      <AgentTurnControls
-                        agent={turn.agent}
-                        loadout={turn.loadout}
-                        client={client}
-                        config={config}
-                      />
-                    ) : null}
-                  </div>
-                </Message>
-              );
-            })()}
-            <ChatSuggestionPanel align="start" suggestion={suggestionsByTurn[turn.id]} />
-          </Fragment>
-        ),
-      )}
-    </div>
-  );
-});
+export { ConversationThread } from "@/components/palette/ConversationThread";
 
 // The full ask view: a conversation thread plus a follow-up compose box.
 export const AskConversation = memo(function AskConversation({
@@ -234,7 +45,25 @@ export const AskConversation = memo(function AskConversation({
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [selectedSlashAction, setSelectedSlashAction] = useState<PaletteAction | null>(null);
   const [suggestionsByTurn, setSuggestionsByTurn] = useState<Record<string, SuggestionState>>({});
+  const [contextOpen, setContextOpen] = useState(false);
+  const [branches, setBranches] = useState<Array<{ id: string; label: string; turns: AskTurn[] }>>(
+    [],
+  );
+  const [activeBranch, setActiveBranch] = useState("main");
   const canSend = draft.trim().length > 0 && !pending;
+  const visibleTranscript =
+    activeBranch === "main"
+      ? transcript
+      : (branches.find((branch) => branch.id === activeBranch)?.turns ?? transcript);
+  const contextSources = useMemo(
+    () => visibleTranscript?.flatMap((turn) => turn.sources ?? []) ?? [],
+    [visibleTranscript],
+  );
+  const activityCount = useMemo(
+    () =>
+      visibleTranscript?.reduce((total, turn) => total + (turn.activities?.length ?? 0), 0) ?? 0,
+    [visibleTranscript],
+  );
   const slashQuery =
     !selectedSlashAction && draft.startsWith("/") ? draft.slice(1).trimStart() : null;
   const slashMenuOpen = slashQuery !== null && !pending && Boolean(onRunAction);
@@ -273,6 +102,15 @@ export const AskConversation = memo(function AskConversation({
   useEffect(() => {
     setSelectedCommand(0);
   }, [slashQuery]);
+
+  useEffect(() => {
+    if (activeBranch === "main" || !transcript) return;
+    setBranches((current) =>
+      current.map((branch) =>
+        branch.id === activeBranch ? { ...branch, turns: [...transcript] } : branch,
+      ),
+    );
+  }, [activeBranch, transcript]);
 
   function resetSlashAction() {
     setSelectedSlashAction(null);
@@ -351,12 +189,100 @@ export const AskConversation = memo(function AskConversation({
     onFollowUp(value);
   }
 
+  function downloadConversation() {
+    const markdown = (visibleTranscript ?? [])
+      .map((turn) => `## ${turn.role === "user" ? "You" : "Axon"}\n\n${turn.content}`)
+      .join("\n\n---\n\n");
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `axon-conversation-${new Date().toISOString().slice(0, 10)}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function forkConversation() {
+    const id = `branch-${branches.length + 1}`;
+    setBranches((current) => [
+      ...current,
+      { id, label: `Branch ${current.length + 1}`, turns: [...(visibleTranscript ?? [])] },
+    ]);
+    setActiveBranch(id);
+  }
+
+  function quoteSelection() {
+    const selection = window.getSelection()?.toString().trim();
+    if (!selection) return;
+    setDraft(
+      (current) => `${current}${current ? "\n\n" : ""}> ${selection.replace(/\n/g, "\n> ")}\n\n`,
+    );
+  }
+
   return (
     <div className="ask-body">
+      <div className="ask-workspace-toolbar">
+        <div className="ask-branch-control">
+          <GitBranch size={13} />
+          <select
+            value={activeBranch}
+            onChange={(event) => setActiveBranch(event.target.value)}
+            aria-label="Conversation branch"
+          >
+            <option value="main">Main</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.label}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={forkConversation}>
+            Branch
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setContextOpen((value) => !value)}
+          className={contextOpen ? "is-active" : ""}
+        >
+          <Layers3 size={13} /> Context <span>{contextSources.length}</span>
+        </button>
+        <button type="button" onClick={quoteSelection} title="Quote selected answer text">
+          <Quote size={13} /> Quote
+        </button>
+        <button
+          type="button"
+          onClick={downloadConversation}
+          disabled={!visibleTranscript?.length}
+          title="Save conversation as Markdown"
+        >
+          <Download size={13} /> Save
+        </button>
+      </div>
+      {contextOpen ? (
+        <aside className="ask-context-panel">
+          <header>
+            <strong>Context used</strong>
+            <span>
+              {contextSources.length} sources · {activityCount} activity steps
+            </span>
+          </header>
+          {contextSources.length ? (
+            <div>
+              {contextSources.map((source) => (
+                <span key={`${source.url ?? source.label}:${source.title ?? "source"}`}>
+                  {source.title ?? source.label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p>No retrieval sources were attached to this answer.</p>
+          )}
+        </aside>
+      ) : null}
       <ConversationThread
         prompt={prompt}
         answer={answer ?? ""}
-        turns={transcript}
+        turns={visibleTranscript}
         suggestionsEnabled={suggestionsEnabled && Boolean(onSuggestMessage)}
         suggestionsByTurn={suggestionsByTurn}
         onSuggestTurn={suggestTurn}

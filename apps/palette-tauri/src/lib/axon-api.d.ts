@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/turns/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["v1_agent_resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts": {
         parameters: {
             query?: never;
@@ -1715,6 +1731,9 @@ export interface components {
             /** Format: int64 */
             sequence: number;
         };
+        AgentResumeRequest: {
+            approvalTokens?: components["schemas"]["AgentApprovalToken"][];
+        };
         AgentToolProposal: {
             arguments: unknown;
             contractHash: string;
@@ -1739,7 +1758,7 @@ export interface components {
             turnId: string;
         };
         /** @enum {string} */
-        AgentTurnStatus: "pending" | "proposing" | "awaiting_approval" | "executing" | "continuing" | "succeeded" | "failed" | "cancelled" | "timed_out" | "interrupted";
+        AgentTurnStatus: "pending" | "proposing" | "awaiting_approval" | "executing" | "continuing" | "succeeded" | "failed" | "cancelled" | "timed_out" | "interrupted" | "cancel_unconfirmed";
         /**
          * @description The shared, transport-neutral error shape.
          *
@@ -4087,6 +4106,24 @@ export interface operations {
                     "application/json": components["schemas"]["AgentTurnResult"];
                 };
             };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4114,6 +4151,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentTurnResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             502: {
@@ -4146,7 +4201,68 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    v1_agent_resume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentResumeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTurnResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

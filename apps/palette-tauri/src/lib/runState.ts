@@ -6,6 +6,8 @@ export interface AskSource {
   label: string;
   url?: string;
   title?: string;
+  snippet?: string;
+  score?: number;
 }
 
 export interface AskActivity {

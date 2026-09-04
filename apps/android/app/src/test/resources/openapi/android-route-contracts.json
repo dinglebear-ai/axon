@@ -548,5 +548,25 @@
     "method": "POST",
     "path": "/v1/codex/operations/{id}/reconcile",
     "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/agent/turns/{id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/agent/turns/{id}/events",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/agent/turns/{id}/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/agent/turns/{id}/resume",
+    "requiresAuth": true
   }
 ]

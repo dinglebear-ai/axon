@@ -25,6 +25,10 @@ export function ProductWorkspaceFrame({
   onSelectProfile: (product: BackendProduct, id: string) => void;
   children: ReactNode;
 }) {
+  if (workspace === "axon") {
+    return <>{children}</>;
+  }
+
   let content = children;
   if (workspace === "labby")
     content = labbyProfile ? (

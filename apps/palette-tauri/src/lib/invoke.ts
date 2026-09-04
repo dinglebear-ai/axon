@@ -18,6 +18,7 @@ export const appWindow = isTauriRuntime
   ? getCurrentWindow()
   : {
       listen: async () => () => undefined,
+      startDragging: async () => undefined,
     };
 
 export async function invoke<T = unknown>(

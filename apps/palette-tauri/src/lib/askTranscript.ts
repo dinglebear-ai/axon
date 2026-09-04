@@ -232,8 +232,20 @@ function sourceFromUnknown(value: unknown): AskSource[] {
   const label =
     stringValue(record.label ?? record.title ?? record.name ?? record.src ?? record.source) ??
     (url ? hostLabel(url) : undefined);
+  const scoreValue = record.score ?? record.relevance ?? record.similarity;
+  const score = typeof scoreValue === "number" ? scoreValue : undefined;
   return label || url
-    ? [{ label: label ?? hostLabel(url ?? ""), url, title: stringValue(record.title) }]
+    ? [
+        {
+          label: label ?? hostLabel(url ?? ""),
+          url,
+          title: stringValue(record.title),
+          snippet: stringValue(
+            record.snippet ?? record.excerpt ?? record.description ?? record.text,
+          ),
+          score,
+        },
+      ]
     : [];
 }
 

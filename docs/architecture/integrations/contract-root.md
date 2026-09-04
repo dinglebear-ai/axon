@@ -1,7 +1,7 @@
 ---
-title: "Palette Integration Contract Root"
-created: 2026-08-30
-updated: 2026-08-30
+title: Palette integration contract root
+created: 2026-08-29
+updated: 2026-09-04
 ---
 
 # Palette integration contract root

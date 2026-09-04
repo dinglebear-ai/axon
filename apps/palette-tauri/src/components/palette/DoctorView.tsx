@@ -1,5 +1,7 @@
+import { Activity, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { memo } from "react";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+
+import { WorkspaceHeader, WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
 
 import { arrField, boolField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
 
@@ -51,18 +53,34 @@ export const DoctorView = memo(function DoctorView({ payload }: { payload: unkno
   const allOk = boolField(report, "all_ok") ?? false;
   const services = isRecord(report.services) ? serviceRows(report.services) : [];
   const caps = capabilities(arrField(report, "capabilities"));
-  const recommendations = arrField(report, "recommendations").filter((s): s is string => typeof s === "string");
+  const recommendations = arrField(report, "recommendations").filter(
+    (s): s is string => typeof s === "string",
+  );
   const pipelines = isRecord(report.pipelines) ? report.pipelines : {};
   const pendingJobs = numField(report, "pending_jobs");
 
   return (
-    <div className="output-body doctor-view aurora-scrollbar">
+    <WorkspaceSurface className="output-body doctor-view">
+      <WorkspaceHeader
+        icon={Activity}
+        eyebrow="Runtime Diagnostics"
+        title={allOk ? "All Systems Healthy" : "Service Degradation Detected"}
+        description="Provider health, capability readiness, and corrective actions."
+        metrics={[
+          { label: "Services", value: services.length },
+          { label: "Pending Jobs", value: pendingJobs ?? 0 },
+        ]}
+      />
       <div className="doctor-summary">
-        <span className={allOk ? "status-health status-health-ok" : "status-health status-health-bad"}>
+        <span
+          className={allOk ? "status-health status-health-ok" : "status-health status-health-bad"}
+        >
           {allOk ? "All systems healthy" : "Degraded"}
         </span>
         {pendingJobs !== undefined ? (
-          <span className="doctor-summary-meta">{pendingJobs} pending job{pendingJobs === 1 ? "" : "s"}</span>
+          <span className="doctor-summary-meta">
+            {pendingJobs} pending job{pendingJobs === 1 ? "" : "s"}
+          </span>
         ) : null}
       </div>
 
@@ -71,7 +89,10 @@ export const DoctorView = memo(function DoctorView({ payload }: { payload: unkno
         <div className="doctor-service-list">
           {services.map((svc) => (
             <div key={svc.name} className="doctor-service">
-              <span className={svc.ok ? "doctor-dot doctor-dot-ok" : "doctor-dot doctor-dot-bad"} aria-hidden="true" />
+              <span
+                className={svc.ok ? "doctor-dot doctor-dot-ok" : "doctor-dot doctor-dot-bad"}
+                aria-hidden="true"
+              />
               <span className="doctor-service-name">{svc.name}</span>
               <span className="doctor-service-detail" title={svc.url}>
                 {svc.model ?? svc.detail ?? svc.url ?? ""}
@@ -89,7 +110,10 @@ export const DoctorView = memo(function DoctorView({ payload }: { payload: unkno
           <h3 className="stats-heading">Capabilities</h3>
           <div className="doctor-cap-list">
             {caps.map((cap) => (
-              <div key={cap.tier} className={cap.available ? "doctor-cap doctor-cap-ok" : "doctor-cap doctor-cap-bad"}>
+              <div
+                key={cap.tier}
+                className={cap.available ? "doctor-cap doctor-cap-ok" : "doctor-cap doctor-cap-bad"}
+              >
                 <span className="doctor-cap-head">
                   {cap.available ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
                   {prettyTier(cap.tier)}
@@ -111,7 +135,12 @@ export const DoctorView = memo(function DoctorView({ payload }: { payload: unkno
           <h3 className="stats-heading">Pipelines</h3>
           <div className="doctor-pipelines">
             {Object.entries(pipelines).map(([name, ready]) => (
-              <span key={name} className={ready === true ? "doctor-pill doctor-pill-ok" : "doctor-pill doctor-pill-bad"}>
+              <span
+                key={name}
+                className={
+                  ready === true ? "doctor-pill doctor-pill-ok" : "doctor-pill doctor-pill-bad"
+                }
+              >
                 {name.replace(/_/g, " ")}
               </span>
             ))}
@@ -132,6 +161,6 @@ export const DoctorView = memo(function DoctorView({ payload }: { payload: unkno
           </ul>
         </section>
       )}
-    </div>
+    </WorkspaceSurface>
   );
 });

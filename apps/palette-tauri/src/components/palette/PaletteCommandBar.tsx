@@ -12,6 +12,7 @@ import { Kbd } from "@/components/ui/aurora/kbd";
 import { actionDisplayMeta } from "@/lib/actionMeta";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import type { PaletteConfig } from "@/lib/axonClient";
+import { appWindow } from "@/lib/invoke";
 import { argumentPlaceholder, focusInput, sortActionsForDisplay } from "@/lib/paletteView";
 
 interface PaletteCommandBarProps {
@@ -199,6 +200,16 @@ export function PaletteCommandBar({
     // biome-ignore lint/a11y/noStaticElementInteractions: command-bar is a layout container; double-click toggles window chrome, not an interactive widget
     <section
       className="command-bar"
+      onMouseDown={(event) => {
+        if (mobile || event.button !== 0) return;
+        if (
+          (event.target as HTMLElement).closest(
+            "button, input, a, select, textarea, [role='button'], [contenteditable='true']",
+          )
+        )
+          return;
+        void appWindow.startDragging();
+      }}
       onDoubleClick={(event) => {
         if ((event.target as HTMLElement).closest("input, button, a")) return;
         onToggleMaximize();
@@ -331,13 +342,17 @@ export function PaletteCommandBar({
         )}
         <Input
           unstyled
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onFocus={() => {
             if (modeAction?.subcommand === "ask" && askSessions.length > 0)
               onAskSessionsOpenChange(true);
           }}
-          onKeyDown={onCommandInputKeyDown}
+          onKeyDownCapture={onCommandInputKeyDown}
           placeholder={
             modeAction
               ? argumentPlaceholder(modeAction)

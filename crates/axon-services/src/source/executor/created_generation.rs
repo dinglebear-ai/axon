@@ -63,6 +63,7 @@ pub(super) async fn run_created_generation(
         generation.generation.clone(),
     );
     ensure_generation_collection(runtime, input, &collection).await?;
+    output::initialize_durable_export(&input.plan).await?;
 
     let archive_requested = input.adapter.wants_archive(&input.plan);
     let mut accumulated = GenerationAccumulator::new(&generation.generation);

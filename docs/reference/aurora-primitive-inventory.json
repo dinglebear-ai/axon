@@ -331,6 +331,10 @@
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "input" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "select" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspace.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspaceView.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspaceView.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspaceView.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/ArtifactWorkspaceView.tsx", "tag": "textarea" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "button" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "input" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/GatewayWorkspace.tsx", "tag": "select" }
@@ -344,6 +348,24 @@
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutSelector.tsx", "tag": "select" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutWorkspace.tsx", "tag": "button" }
     ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/labby/LoadoutWorkspace.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/AskConversation.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/AskConversation.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/FilesContextMenu.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/FilesPaneView.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/FilePreview.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/FilePreview.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/FilePreview.tsx", "tag": "select" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/HighlightedCodeEditor.tsx", "tag": "textarea" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/LabbyCortexFixture.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/LabbyCortexFixture.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/LabbyCortexFixture.tsx", "tag": "kbd" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/LabbyCortexFixtureViews.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/LabbyCortexFixtureViews.tsx", "tag": "input" }
+    ,{ "row_id": "W-PAL-008", "file_path": "apps/palette-tauri/src/components/palette/LabbyCortexFixtureViews.tsx", "tag": "kbd" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/OperationResultView.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/OperationResultPrimaryViews.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-005", "file_path": "apps/palette-tauri/src/components/palette/OperationResultViewShared.tsx", "tag": "button" }
+    ,{ "row_id": "W-PAL-007", "file_path": "apps/palette-tauri/src/components/palette/SearchResultViews.tsx", "tag": "button" }
   ],
   "android_reusable_control_allowlist": [
     { "row_id": "A-AND-001", "file_path": "apps/android/app/src/main/java/com/axon/app/feature/ask/AskPromptBar.kt", "pattern": "BasicTextField" },

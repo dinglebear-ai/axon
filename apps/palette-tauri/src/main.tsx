@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App";
 import { AskStreamTransitionFixture } from "./components/palette/AskStreamTransitionFixture";
+import { LabbyCortexFixture } from "./components/palette/LabbyCortexFixture";
 import { OperationResultFixture } from "./components/palette/OperationResultFixture";
 import "./fonts.css";
 import "./styles.css";
@@ -13,7 +14,9 @@ const Root =
     ? OperationResultFixture
     : fixture === "ask-stream-transition"
       ? AskStreamTransitionFixture
-      : App;
+      : fixture === "labby-cortex"
+        ? LabbyCortexFixture
+        : App;
 
 if (fixture) {
   document.body.dataset.fixture = fixture;
