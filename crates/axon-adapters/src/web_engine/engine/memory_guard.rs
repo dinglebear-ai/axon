@@ -8,6 +8,7 @@ use axon_core::logging::log_warn;
 
 pub(crate) const MEMORY_ABORT_PREFIX: &str = "crawl memory guard tripped";
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
+const MAX_TELEMETRY_FAILURES: u32 = 3;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MemorySnapshot {
@@ -27,6 +28,10 @@ pub(crate) struct MemorySnapshot {
 pub(crate) fn should_abort_for_usage(snapshot: MemorySnapshot, abort_percent: f64) -> bool {
     let used_percent = (snapshot.rss_bytes as f64 / snapshot.total_bytes.get() as f64) * 100.0;
     used_percent >= abort_percent
+}
+
+pub(crate) fn should_fail_closed_for_telemetry_failures(failures: u32) -> bool {
+    failures >= MAX_TELEMETRY_FAILURES
 }
 
 pub fn is_memory_abort_message(message: &str) -> bool {
@@ -57,17 +62,31 @@ impl CrawlMemoryGuard {
             let mut ticker = tokio::time::interval(POLL_INTERVAL);
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             let mut snapshot_warning_logged = false;
+            let mut telemetry_failures = 0_u32;
             loop {
                 tokio::select! {
                     _ = cancel_task.cancelled() => break,
                     _ = ticker.tick() => {
-                        let Some(snapshot) = linux_memory_snapshot() else {
+                        let Some(snapshot) = platform_memory_snapshot() else {
+                            telemetry_failures = telemetry_failures.saturating_add(1);
                             if !snapshot_warning_logged {
-                                log_warn("crawl memory guard could not read RSS/limit telemetry; guard will retry on the next poll");
+                                log_warn("crawl memory guard could not read RSS/limit telemetry; uncapped crawl will fail closed after bounded retries");
                                 snapshot_warning_logged = true;
+                            }
+                            if should_fail_closed_for_telemetry_failures(telemetry_failures) {
+                                let reason = format!(
+                                    "{MEMORY_ABORT_PREFIX} for {url}: memory telemetry unavailable after {telemetry_failures} attempts"
+                                );
+                                log_warn(&reason);
+                                if let Ok(mut slot) = reason_task.lock() {
+                                    *slot = Some(reason);
+                                }
+                                spider::utils::shutdown(&target).await;
+                                break;
                             }
                             continue;
                         };
+                        telemetry_failures = 0;
                         if !should_abort_for_usage(snapshot, abort_percent) {
                             continue;
                         }
@@ -108,7 +127,7 @@ impl Drop for CrawlMemoryGuard {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_memory_snapshot() -> Option<MemorySnapshot> {
+pub(crate) fn platform_memory_snapshot() -> Option<MemorySnapshot> {
     let rss_bytes = read_status_rss_bytes()?;
     // A zero total is meaningless and would make the percentage undefined;
     // treat it as "no telemetry" so the guard simply retries.
@@ -119,9 +138,36 @@ fn linux_memory_snapshot() -> Option<MemorySnapshot> {
     })
 }
 
-#[cfg(not(target_os = "linux"))]
-fn linux_memory_snapshot() -> Option<MemorySnapshot> {
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+pub(crate) fn platform_memory_snapshot() -> Option<MemorySnapshot> {
     None
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn platform_memory_snapshot() -> Option<MemorySnapshot> {
+    use std::process::Command;
+
+    let total = Command::new("/usr/sbin/sysctl")
+        .args(["-n", "hw.memsize"])
+        .output()
+        .ok()?;
+    let total_bytes = NonZeroU64::new(
+        std::str::from_utf8(&total.stdout)
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?,
+    )?;
+    let pid = std::process::id().to_string();
+    let rss = Command::new("/bin/ps")
+        .args(["-o", "rss=", "-p", &pid])
+        .output()
+        .ok()?;
+    let rss_kib: u64 = std::str::from_utf8(&rss.stdout).ok()?.trim().parse().ok()?;
+    Some(MemorySnapshot {
+        rss_bytes: rss_kib.checked_mul(1024)?,
+        total_bytes,
+    })
 }
 
 #[cfg(target_os = "linux")]

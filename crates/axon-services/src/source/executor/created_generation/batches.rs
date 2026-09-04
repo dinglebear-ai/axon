@@ -83,7 +83,7 @@ pub(super) async fn process_generation_batches(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
-    if scheduled::enabled() {
+    if runtime.embed_scheduler_enabled {
         return scheduled::process(
             runtime,
             input,

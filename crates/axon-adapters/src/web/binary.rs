@@ -29,6 +29,9 @@ pub(super) fn reject_binary_rendered_payload(item: &ManifestItem, content: &str)
         "render provider returned binary content as markdown",
     )
     .with_source_id(item.source_id.0.clone())
-    .with_context("uri", item.canonical_uri.clone())
+    .with_context(
+        "uri",
+        crate::web_engine::engine::url_utils::sanitize_url_for_reporting(&item.canonical_uri),
+    )
     .with_context("sample_bytes", sample.len().to_string()))
 }

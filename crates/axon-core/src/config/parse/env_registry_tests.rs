@@ -109,8 +109,28 @@ fn embedding_tuning_env_keys_map_to_clean_break_provider_section() {
             "providers.embedding.pool-max-inputs",
         ),
         (
+            "AXON_TEI_CLIENT_MAX_BATCH_TOKENS",
+            "providers.embedding.max-batch-tokens",
+        ),
+        (
+            "AXON_EMBED_SCHEDULER_ENABLED",
+            "providers.embedding.scheduler-enabled",
+        ),
+        (
+            "AXON_VECTOR_UPSERT_EMBED_OVERLAP",
+            "providers.embedding.vector-upsert-overlap-enabled",
+        ),
+        (
             "AXON_EMBED_PREP_CONCURRENCY",
             "providers.embedding.prep-concurrency",
+        ),
+        (
+            "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+            "providers.embedding.prep-max-in-flight-bytes",
+        ),
+        (
+            "AXON_EMBED_SCHEDULER_FLUSH_MS",
+            "providers.embedding.scheduler-flush-ms",
         ),
         (
             "AXON_EMBED_MAX_CHUNKS_PER_DOC",
@@ -164,7 +184,12 @@ fn implemented_env_keys_are_registered() {
         "AXON_TEI_MAX_CONCURRENT",
         "AXON_TEI_MAX_IN_FLIGHT_INPUTS",
         "AXON_EMBED_POOL_MAX_INPUTS",
+        "AXON_TEI_CLIENT_MAX_BATCH_TOKENS",
+        "AXON_EMBED_SCHEDULER_ENABLED",
+        "AXON_VECTOR_UPSERT_EMBED_OVERLAP",
         "AXON_EMBED_PREP_CONCURRENCY",
+        "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+        "AXON_EMBED_SCHEDULER_FLUSH_MS",
         "AXON_EMBED_MAX_CHUNKS_PER_DOC",
         "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC",
         "AXON_EMBED_DEDUPE_EXACT_CHUNKS",

@@ -514,12 +514,7 @@ async fn cache_and_scheduler_share_writer_admission_before_pool_acquisition() {
             instance_id: "tei".into(),
             authority_id: "test".into(),
         },
-        SchedulerConfig {
-            capacity: 1,
-            interactive_reserve: 0,
-            max_entries: 16,
-            max_units: 16,
-        },
+        SchedulerConfig::new(1, 0, 16, 16).expect("valid scheduler configuration"),
         gate.clone(),
     )
     .unwrap();

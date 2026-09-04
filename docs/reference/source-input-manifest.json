@@ -27,7 +27,7 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:5e0cc6d66ce0a9c36cd4dc08cc7f43ddfbd69040d7372eaff8b7889f1b043af8"
+          "checksum": "sha256:678e0c423ab155f127ff34d6d84579925555f5e53304fc94397bf9647caaed48"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
@@ -45,7 +45,7 @@
           "checksum": "sha256:0468d29d96b581762ceee6f32adb7b3b091d1fa0af4b6d71c33b7c4e2819ac7f"
         }
       ],
-      "manifest_checksum": "b5f3af9a9ee78cff345abdbd0e983d4ad09c13abf7a72cd0bf236fb234272ddb"
+      "manifest_checksum": "1148f16f4cac9a4f244804332e47e1631eee41bc20a137a3e6eb9e558f7655cd"
     },
     {
       "family": "api",
@@ -393,10 +393,10 @@
         {
           "path": "xtask/src/schemas/config_schema_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:f4935fa62f88bb7af9e700880dd1f1ddb2bc28df430409c5a808bf64568d190f"
+          "checksum": "sha256:081883440d2a40e18e5951bb0772ac5b5784d49b9e00c317fc9ac885555ae493"
         }
       ],
-      "manifest_checksum": "5c892972ed1a58d90f6b7cc4d5a1f92b2cae4386d7cbd72ef82e06066c508719"
+      "manifest_checksum": "65e73298f8959236b63cd9ac3f858866fd2304ec1e52b5d07371b8999f3e3ce9"
     },
     {
       "family": "database",

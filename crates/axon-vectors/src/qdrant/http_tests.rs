@@ -1,4 +1,5 @@
 use super::*;
+use httpmock::{Method::PUT, MockServer};
 
 #[test]
 fn endpoint_strips_userinfo_and_query_into_base_and_key() {
@@ -66,4 +67,51 @@ fn qdrant_http_new_reuses_the_shared_client_across_many_constructions() {
         after,
         "later QdrantHttp::new calls must keep reusing the same client"
     );
+}
+
+#[tokio::test]
+async fn data_put_rejects_conflict_but_idempotent_create_accepts_it() {
+    let server = MockServer::start_async().await;
+    let conflict = server
+        .mock_async(|when, then| {
+            when.method(PUT).path("/conflict");
+            then.status(409);
+        })
+        .await;
+    let http = QdrantHttp::new(&server.base_url(), "qdrant-test").expect("client");
+    let url = format!("{}/conflict", server.base_url());
+
+    let error = http
+        .put_json(
+            axon_error::ErrorStage::Upserting,
+            &url,
+            &serde_json::json!({"points": []}),
+            "qdrant_upsert",
+        )
+        .await
+        .expect_err("data mutation conflict must fail");
+    assert!(error.to_string().contains("409"));
+
+    let error = http
+        .put_json(
+            axon_error::ErrorStage::Upserting,
+            &url,
+            &serde_json::json!({"points": []}),
+            "qdrant_mark_unchanged_items_committed",
+        )
+        .await
+        .expect_err("carry-forward data conflict must fail");
+    assert!(error.to_string().contains("409"));
+
+    let outcome = http
+        .put_json_idempotent_create(
+            axon_error::ErrorStage::Upserting,
+            &url,
+            &serde_json::json!({"field_name": "source_id"}),
+            "qdrant_payload_index",
+        )
+        .await
+        .expect("idempotent resource creation accepts conflict");
+    assert_eq!(outcome, PutCreateOutcome::AlreadyExists);
+    conflict.assert_calls_async(3).await;
 }

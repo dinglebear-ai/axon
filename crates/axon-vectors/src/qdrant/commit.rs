@@ -110,9 +110,9 @@ pub async fn retire_generation_rest(
 
 /// Copy unchanged carried-forward points into the newly committed generation.
 ///
-/// Scrolls every point whose `source_id` + `committed_generation` match the
-/// previous generation and whose `source_item_key` is in `source_item_keys`,
-/// then re-upserts a copy with a generation-suffixed id and the new
+/// Selectively scrolls points whose `source_id` + `committed_generation` match
+/// the previous generation and whose `source_item_key` is in a bounded key
+/// batch, then re-upserts a copy with a generation-suffixed id and the new
 /// generation/status stamped — leaving the previous generation intact.
 pub async fn mark_unchanged_items_committed_rest(
     store: &QdrantVectorStore,
@@ -128,8 +128,12 @@ pub async fn mark_unchanged_items_committed_rest(
         .require_collection_spec(http, &collection, stage)
         .await?;
 
-    let live_keys: std::collections::BTreeSet<String> =
-        source_item_keys.into_iter().map(|key| key.0).collect();
+    let live_keys = source_item_keys
+        .into_iter()
+        .map(|key| key.0)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
     if live_keys.is_empty() {
         return Ok(empty_commit(collection));
     }
@@ -138,76 +142,71 @@ pub async fn mark_unchanged_items_committed_rest(
         generation_payload_i64(&previous_generation, "committed_generation")?;
     let committed_generation_value =
         generation_payload_i64(&committed_generation, "committed_generation")?;
-    let filter = super::convert::eq2_filter_json(
-        "source_id",
-        &source_id.0,
-        "committed_generation",
-        previous_generation_value,
-    );
     let scroll_url = http
         .endpoint()
         .collection_path(&collection, "points/scroll");
     let upsert_url = http
         .endpoint()
         .collection_path(&collection, "points?wait=true");
-    let mut offset: Option<serde_json::Value> = None;
     let mut attempted = 0u64;
     let mut requests = 0u64;
-    loop {
-        let mut body = serde_json::json!({
-            "filter": filter,
-            "limit": SCROLL_PAGE_LIMIT,
-            "with_payload": true,
-            "with_vector": true,
-        });
-        if let Some(offset) = &offset {
-            body["offset"] = offset.clone();
-        }
-        let response: ScrollResponse = http
-            .post_json(stage, &scroll_url, &body, "qdrant_scroll")
-            .await?;
-        requests = requests.saturating_add(1);
-
-        let next_page_offset = response.result.next_page_offset;
-        let mut carried = Vec::with_capacity(response.result.points.len());
-        for point in response.result.points {
-            let mut payload = point.payload;
-            let item = payload.get("source_item_key").and_then(|v| v.as_str());
-            if item.is_none_or(|item| !live_keys.contains(item)) {
-                continue;
+    // Qdrant's `match.any` request size is bounded here so sparse carry-forward
+    // scales with selected item keys rather than the complete prior generation.
+    for key_batch in live_keys.chunks(CARRY_FORWARD_KEY_BATCH_SIZE) {
+        let filter = carry_forward_filter(&source_id, previous_generation_value, key_batch);
+        let mut offset: Option<serde_json::Value> = None;
+        loop {
+            let mut body = serde_json::json!({
+                "filter": filter,
+                "limit": SCROLL_PAGE_LIMIT,
+                "with_payload": true,
+                "with_vector": true,
+            });
+            if let Some(offset) = &offset {
+                body["offset"] = offset.clone();
             }
-            payload.insert(
-                "source_generation".to_string(),
-                serde_json::Value::from(committed_generation_value),
-            );
-            payload.insert(
-                "committed_generation".to_string(),
-                serde_json::Value::from(committed_generation_value),
-            );
-            payload.insert(
-                "document_status".to_string(),
-                serde_json::Value::from("published"),
-            );
-            let new_id = carried_point_id(&point_id_string(&point.id), &committed_generation);
-            payload.insert(
-                "vector_point_id".to_string(),
-                serde_json::Value::from(new_id.0.clone()),
-            );
-            carried.push(serde_json::json!({
-                "id": new_id.0,
-                "vector": point.vector,
-                "payload": payload,
-            }));
-        }
+            let response: ScrollResponse = http
+                .post_json(stage, &scroll_url, &body, "qdrant_scroll")
+                .await?;
+            requests = requests.saturating_add(1);
 
-        attempted = attempted.saturating_add(carried.len() as u64);
-        let upsert_requests =
-            upsert_carried_points(store, http, &upsert_url, carried, stage).await?;
-        requests = requests.saturating_add(upsert_requests);
+            let next_page_offset = response.result.next_page_offset;
+            let mut carried = Vec::with_capacity(response.result.points.len());
+            for point in response.result.points {
+                let mut payload = point.payload;
+                payload.insert(
+                    "source_generation".to_string(),
+                    serde_json::Value::from(committed_generation_value),
+                );
+                payload.insert(
+                    "committed_generation".to_string(),
+                    serde_json::Value::from(committed_generation_value),
+                );
+                payload.insert(
+                    "document_status".to_string(),
+                    serde_json::Value::from("published"),
+                );
+                let new_id = carried_point_id(&point_id_string(&point.id), &committed_generation);
+                payload.insert(
+                    "vector_point_id".to_string(),
+                    serde_json::Value::from(new_id.0.clone()),
+                );
+                carried.push(serde_json::json!({
+                    "id": new_id.0,
+                    "vector": point.vector,
+                    "payload": payload,
+                }));
+            }
 
-        match next_page_offset {
-            Some(next) if !next.is_null() => offset = Some(next),
-            _ => break,
+            attempted = attempted.saturating_add(carried.len() as u64);
+            let upsert_requests =
+                upsert_carried_points(store, http, &upsert_url, carried, stage).await?;
+            requests = requests.saturating_add(upsert_requests);
+
+            match next_page_offset {
+                Some(next) if !next.is_null() => offset = Some(next),
+                _ => break,
+            }
         }
     }
 
@@ -220,6 +219,26 @@ pub async fn mark_unchanged_items_committed_rest(
         usage: request_usage(requests),
     })
 }
+
+const CARRY_FORWARD_KEY_BATCH_SIZE: usize = 256;
+
+fn carry_forward_filter(
+    source_id: &SourceId,
+    previous_generation: i64,
+    keys: &[String],
+) -> serde_json::Value {
+    serde_json::json!({
+        "must": [
+            { "key": "source_id", "match": { "value": &source_id.0 } },
+            { "key": "committed_generation", "match": { "value": previous_generation } },
+            { "key": "source_item_key", "match": { "any": keys } },
+        ]
+    })
+}
+
+#[cfg(test)]
+#[path = "commit_tests.rs"]
+mod tests;
 
 async fn upsert_carried_points(
     store: &QdrantVectorStore,

@@ -1,6 +1,7 @@
 //! Real-client integration tests for [`TeiEmbeddingProvider`] against a mock
 //! HTTP server (httpmock). No live TEI is required.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use axon_api::source::*;
@@ -455,4 +456,63 @@ async fn max_attempts_from_config_bounds_real_retry_count_without_test_override(
         .expect_err("persistent 503 must exhaust the configured retry budget");
 
     mock.assert_calls_async(2).await;
+}
+
+#[tokio::test]
+async fn logical_jobs_share_authoritative_http_request_admission() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(200)
+                .delay(Duration::from_millis(500))
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32]]));
+        })
+        .await;
+    let mut provider_config = config(server.base_url(), 2, InstructionSupport::None);
+    provider_config.max_batch_inputs = 1;
+    provider_config.max_concurrent_requests = 2;
+    provider_config.max_in_flight_inputs = 2;
+    let first = Arc::new(TeiEmbeddingProvider::new(provider_config.clone()));
+    let second = Arc::new(TeiEmbeddingProvider::new(provider_config));
+
+    let first_task = tokio::spawn({
+        let provider = Arc::clone(&first);
+        async move {
+            provider
+                .embed(batch(
+                    vec![input("first-a", "a"), input("first-b", "b")],
+                    None,
+                ))
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while endpoint.calls_async().await < 2 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("one logical call saturates both HTTP request slots");
+
+    let second_task = tokio::spawn({
+        let provider = Arc::clone(&second);
+        async move {
+            provider
+                .embed(batch(vec![input("second", "c")], None))
+                .await
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        endpoint.calls_async().await,
+        2,
+        "a second logical job must not multiply endpoint HTTP concurrency"
+    );
+    first_task.await.expect("first task").expect("first embed");
+    second_task
+        .await
+        .expect("second task")
+        .expect("second embed");
+    endpoint.assert_calls_async(3).await;
 }

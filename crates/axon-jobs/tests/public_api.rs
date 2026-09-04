@@ -14,12 +14,7 @@ async fn provider_scheduler_public_contract_is_constructible() {
             instance_id: "integration-tei".into(),
             authority_id: "integration-authority".into(),
         },
-        SchedulerConfig {
-            capacity: 2,
-            interactive_reserve: 1,
-            max_entries: 16,
-            max_units: 16,
-        },
+        SchedulerConfig::new(2, 1, 16, 16).expect("valid scheduler configuration"),
     );
     assert!(scheduler.is_ok());
 }

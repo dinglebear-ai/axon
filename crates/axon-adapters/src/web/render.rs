@@ -6,7 +6,7 @@ use axon_core::logging::log_warn;
 use crate::adapter::Result;
 use crate::boundary::RenderProvider;
 
-use super::acquire::AcquiredItem;
+use super::acquire::{AcquiredItem, sanitize_provider_error};
 use super::binary::reject_binary_rendered_payload;
 
 pub(super) async fn acquire_via_auto_switch(
@@ -24,7 +24,8 @@ pub(super) async fn acquire_via_auto_switch(
             automation_script.clone(),
             render_metadata.clone(),
         ))
-        .await?;
+        .await
+        .map_err(|error| sanitize_provider_error(error, &item.canonical_uri))?;
     if first.markdown.chars().count() >= min_markdown_chars {
         return Ok(AcquiredItem {
             item: Some(acquired_from_rendered(item, first, "auto_switch_http")?),
@@ -49,16 +50,19 @@ pub(super) async fn acquire_via_auto_switch(
             warnings,
         }),
         Err(err) => {
+            let report_uri = crate::web_engine::engine::url_utils::sanitize_url_for_reporting(
+                &item.canonical_uri,
+            );
             log_warn(&format!(
-                "auto_switch: chrome re-render failed for {} — keeping HTTP result: {err}",
-                item.canonical_uri
+                "auto_switch: chrome re-render failed for {report_uri} — keeping HTTP result: {}",
+                err.code
             ));
             warnings.push(SourceWarning {
                 code: "web.auto_switch.chrome_fallback_failed".to_string(),
                 severity: Severity::Warning,
                 message: format!(
-                    "chrome re-render failed for {} — kept HTTP result: {err}",
-                    item.canonical_uri
+                    "chrome re-render failed for {report_uri} — kept HTTP result: {}",
+                    err.code
                 ),
                 source_item_key: Some(item.source_item_key.clone()),
                 retryable: err.retryable,

@@ -365,6 +365,37 @@ async fn qdrant_upsert_rejects_indivisible_oversized_point() {
 }
 
 #[tokio::test]
+async fn qdrant_upsert_chunk_rejects_conflict() {
+    let server = MockServer::start_async().await;
+    let conflict = server
+        .mock_async(|when, then| {
+            when.method("PUT").path("/collections/axon-test/points");
+            then.status(409);
+        })
+        .await;
+    let http = QdrantHttp::new(&server.base_url(), "qdrant-test").expect("http");
+    let spec = test_collection_spec();
+    let chunk = batch(1);
+    let url = http
+        .endpoint()
+        .collection_path("axon-test", "points?wait=true");
+
+    let error = upsert_chunk_rest(
+        &http,
+        &spec,
+        &chunk,
+        &url,
+        ErrorStage::Upserting,
+        MAX_UPSERT_REQUEST_BYTES,
+    )
+    .await
+    .expect_err("upsert conflict must fail");
+
+    assert!(error.to_string().contains("409"));
+    conflict.assert_calls_async(1).await;
+}
+
+#[tokio::test]
 async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
     // Do not use httpmock delay timing here. Its delayed-response machinery can
     // serialize requests internally, which makes the mock server itself the
