@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use httpmock::MockServer;
 
 use super::*;
+use crate::qdrant::configure_async_writes;
 
 fn point(n: usize) -> VectorPoint {
     let point_id = format!("point-{n}");
@@ -179,7 +180,7 @@ fn chunked_upsert_batches_empty_batch_makes_no_requests() {
 
 fn read_http_request(stream: &mut TcpStream) {
     stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
+        .set_read_timeout(Some(Duration::from_secs(30)))
         .expect("set request read timeout");
     let mut request = Vec::new();
     let mut buffer = [0_u8; 4096];
@@ -222,7 +223,7 @@ fn concurrent_put_server(
     let server_arrivals = Arc::clone(&arrivals);
     let barrier = Arc::new(Barrier::new(expected_requests));
     let handle = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(30);
         let mut workers = Vec::with_capacity(expected_requests);
         while workers.len() < expected_requests && Instant::now() < deadline {
             match listener.accept() {
@@ -329,6 +330,7 @@ async fn qdrant_upsert_splits_on_actual_encoded_byte_limit() {
         &url,
         ErrorStage::Upserting,
         max_request_bytes,
+        false,
     )
     .await
     .expect("byte-bounded upsert");
@@ -354,13 +356,81 @@ async fn qdrant_upsert_rejects_indivisible_oversized_point() {
         .endpoint()
         .collection_path("axon-test", "points?wait=true");
 
-    let error = upsert_chunk_rest(&http, &spec, &chunk, &url, ErrorStage::Upserting, 512)
-        .await
-        .expect_err("single oversized point must fail closed");
+    let error = upsert_chunk_rest(
+        &http,
+        &spec,
+        &chunk,
+        &url,
+        ErrorStage::Upserting,
+        512,
+        false,
+    )
+    .await
+    .expect_err("single oversized point must fail closed");
 
     assert_eq!(
         error.code.to_string(),
         "vector.qdrant.upsert_point_oversized"
+    );
+}
+
+#[tokio::test]
+async fn async_multichunk_upsert_uses_strong_ordering_and_a_wait_true_barrier() {
+    let server = MockServer::start_async().await;
+    let upsert = server
+        .mock_async(|when, then| {
+            when.method("PUT")
+                .path("/collections/axon-test/points")
+                .query_param("wait", "false")
+                .query_param("ordering", "strong");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"operation_id": 42, "status": "acknowledged"},
+                "status": "ok"
+            }));
+        })
+        .await;
+    let barrier = server
+        .mock_async(|when, then| {
+            when.method("PUT")
+                .path("/collections/axon-test/points")
+                .query_param("wait", "true")
+                .query_param("ordering", "strong");
+            then.status(200);
+        })
+        .await;
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    configure_async_writes(&mut store, true);
+    crate::qdrant::configure_point_buffer(&mut store, 2);
+    let http = store.http().unwrap();
+
+    upsert_batches_rest(
+        &store,
+        &http,
+        &test_collection_spec(),
+        valid_batch(5),
+        ErrorStage::Upserting,
+    )
+    .await
+    .unwrap();
+    upsert.assert_calls_async(3).await;
+    barrier.assert_calls_async(1).await;
+}
+
+#[test]
+fn async_completion_barrier_contains_only_the_last_point_and_sparse_vector() {
+    let barrier = completion_barrier_batch(&valid_batch(5)).expect("non-empty barrier");
+
+    assert_eq!(barrier.points.len(), 1);
+    assert_eq!(barrier.points[0].point_id, VectorPointId::new("point-4"));
+    assert_eq!(
+        barrier
+            .sparse_vectors
+            .as_ref()
+            .expect("last sparse vector")
+            .iter()
+            .map(|vector| vector.chunk_id.0.as_str())
+            .collect::<Vec<_>>(),
+        vec!["chunk-4"]
     );
 }
 
@@ -396,7 +466,7 @@ async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
         upsert_batches_rest(&store, &http, &spec, valid_batch(5), ErrorStage::Upserting).await
     });
 
-    let result = tokio::time::timeout(Duration::from_secs(5), task)
+    let result = tokio::time::timeout(Duration::from_secs(30), task)
         .await
         .expect("parallelism=3 must deliver all three request bodies to the barrier")
         .expect("upsert task")

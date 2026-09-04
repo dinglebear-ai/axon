@@ -357,15 +357,10 @@ fn parse_init_options(args: &[String]) -> Result<LocalSetupInitOptions, Box<dyn 
                 }
                 options.auth_mode = Some(value);
             }
-            "--mcp-token" => options.mcp_token = Some(value),
             "--oauth-public-url" => options.oauth_public_url = Some(value),
             "--google-client-id" => options.google_client_id = Some(value),
-            "--google-client-secret" => options.google_client_secret = Some(value),
             "--auth-admin-email" => options.auth_admin_email = Some(value),
-            "--tavily-api-key" => options.tavily_api_key = Some(value),
-            "--github-token" => options.github_token = Some(value),
             "--reddit-client-id" => options.reddit_client_id = Some(value),
-            "--reddit-client-secret" => options.reddit_client_secret = Some(value),
             _ => return Err(format!("unknown setup init option {flag}").into()),
         }
     }

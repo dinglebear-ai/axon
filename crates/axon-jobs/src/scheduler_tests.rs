@@ -9,6 +9,28 @@ fn priority_serialization_matches_scheduler_lane_order() {
     assert_eq!(enum_name(JobPriority::Maintenance).unwrap(), "maintenance");
 }
 
+#[test]
+fn shared_dispatch_signal_elects_only_one_recovery_dispatcher() {
+    let signal = Arc::new(DispatchSignal::default());
+    let first = signal.try_claim_recovery().expect("first waiter is leader");
+    assert!(
+        signal.try_claim_recovery().is_none(),
+        "a second waiter must not start another recovery poll"
+    );
+    drop(first);
+    assert!(signal.try_claim_recovery().is_some());
+}
+
+#[test]
+fn shared_dispatch_signal_spans_authorities_in_one_capacity_domain() {
+    let first = shared_dispatch_signal("authority-a", "vector", "shared-qdrant");
+    let second = shared_dispatch_signal("authority-b", "vector", "shared-qdrant");
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "authorities sharing provider capacity must wake the same waiters"
+    );
+}
+
 #[tokio::test]
 async fn invalid_scheduler_capacity_is_rejected() {
     let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
@@ -439,6 +461,281 @@ async fn waiter_on_second_pool_observes_release_without_shared_notification() {
             .await
             .expect("queued count");
     assert_eq!(queued, 0);
+}
+
+#[tokio::test]
+async fn cross_process_recovery_is_independent_for_domains_sharing_an_authority() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("scheduler-domains.db");
+    let pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("scheduler pool");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('domain-source', '{}', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("source");
+    for suffix in [31_u128, 32_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'domain-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let embedding = ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei".into(),
+            authority_id: "shared-authority".into(),
+        },
+        config,
+    )
+    .expect("embedding scheduler");
+    let vector = ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Vector,
+            instance_id: "qdrant".into(),
+            authority_id: "shared-authority".into(),
+        },
+        config,
+    )
+    .expect("vector scheduler");
+    let held = vector
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(31)),
+            stage_id: None,
+            attempt: 1,
+            fence: "vector-held".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("held vector grant");
+
+    // Model another provider domain whose recovery pass is stalled. This must
+    // not prevent the vector domain from electing its own recovery dispatcher.
+    let unrelated_recovery = embedding
+        .dispatch_signal
+        .try_claim_recovery()
+        .expect("embedding recovery leader");
+    let waiter = tokio::spawn(async move {
+        call_reserved::<(), _, &'static str, _, _>(
+            &vector,
+            ReservationRequest {
+                job_id: JobId::new(Uuid::from_u128(32)),
+                stage_id: None,
+                attempt: 1,
+                fence: "vector-waiter".into(),
+                priority: JobPriority::Normal,
+                units: 1,
+            },
+            |_lease| async { Ok("vector-ran") },
+        )
+        .await
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    sqlx::query(
+        "UPDATE provider_reservations SET status = 'released', granted_units = 0
+         WHERE reservation_id = ?",
+    )
+    .bind(&held.reservation_id)
+    .execute(&pool)
+    .await
+    .expect("external release");
+
+    let result = tokio::time::timeout(Duration::from_secs(7), waiter)
+        .await
+        .expect("vector domain recovered independently")
+        .expect("waiter task")
+        .expect("reserved call");
+    assert_eq!(result, "vector-ran");
+    drop(unrelated_recovery);
+}
+
+#[tokio::test]
+async fn cross_process_dispatch_preserves_the_waiters_authority() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("scheduler-authorities.db");
+    let owner_pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("owner pool");
+    let dispatcher_pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("dispatcher pool");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('authority-source', '{}', '', '')",
+    )
+    .execute(&owner_pool)
+    .await
+    .expect("source");
+    for suffix in [41_u128, 42_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'authority-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&owner_pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let dispatcher = ProviderScheduler::new(
+        dispatcher_pool,
+        ProviderCapacityDomain {
+            kind: ProviderKind::Vector,
+            instance_id: "shared-qdrant".into(),
+            authority_id: "dispatcher-authority".into(),
+        },
+        config,
+    )
+    .expect("dispatcher scheduler");
+    let owner = ProviderScheduler::new(
+        owner_pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Vector,
+            instance_id: "shared-qdrant".into(),
+            authority_id: "waiter-authority".into(),
+        },
+        config,
+    )
+    .expect("owner scheduler");
+    let held = dispatcher
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(41)),
+            stage_id: None,
+            attempt: 1,
+            fence: "dispatcher-held".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("held grant");
+    let queued = owner
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(42)),
+            stage_id: None,
+            attempt: 1,
+            fence: "owner-fence".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("queued reservation");
+    assert!(!queued.granted);
+
+    dispatcher
+        .complete(&held.reservation_id, "dispatcher-held")
+        .await
+        .expect("release capacity");
+    dispatcher
+        .dispatch_queued()
+        .await
+        .expect("cross-process dispatch");
+
+    let grant = owner
+        .reservation_grant(&queued.reservation_id)
+        .await
+        .expect("original authority still owns grant");
+    assert!(grant.granted);
+    owner
+        .activate(&queued.reservation_id, "owner-fence")
+        .await
+        .expect("original authority activates grant");
+    owner
+        .complete(&queued.reservation_id, "owner-fence")
+        .await
+        .expect("original authority releases capacity");
+    let active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_reservations
+         WHERE status IN ('granted', 'active') AND granted_units > 0",
+    )
+    .fetch_one(&owner_pool)
+    .await
+    .expect("active capacity count");
+    assert_eq!(active, 0);
+}
+
+#[tokio::test]
+async fn capacity_release_wakes_a_waiter_owned_by_another_authority() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('cross-authority-source', '{}', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("source");
+    for suffix in [81_u128, 82_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'cross-authority-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let make = |authority: &str| {
+        ProviderScheduler::new(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: ProviderKind::Vector,
+                instance_id: "cross-authority-qdrant".into(),
+                authority_id: authority.into(),
+            },
+            config,
+        )
+        .expect("scheduler")
+    };
+    let owner = make("owner-authority");
+    let waiter_scheduler = make("waiter-authority");
+    let held = owner
+        .reserve(request(81, "owner-held", JobPriority::Normal))
+        .await
+        .expect("held");
+    assert!(held.granted);
+
+    let waiter = tokio::spawn(async move {
+        waiter_scheduler
+            .reserve_wait(request(82, "other-waiter", JobPriority::Normal))
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    owner
+        .complete(&held.reservation_id, "owner-held")
+        .await
+        .expect("release");
+    let grant = tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .expect("cross-authority waiter should wake without recovery poll")
+        .expect("waiter task")
+        .expect("grant");
+    assert!(grant.granted);
 }
 
 #[tokio::test]

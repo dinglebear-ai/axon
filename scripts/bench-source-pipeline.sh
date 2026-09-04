@@ -45,6 +45,25 @@ validate_safe_source() {
   [[ $source != *'`'* ]] || return 1
 }
 
+benchmark_config_path() {
+  printf '%s\n' "${AXON_BENCH_CONFIG_PATH:-${AXON_CONFIG_PATH:-${HOME}/.axon/config.toml}}"
+}
+
+# This harness executes one live crawl. It can diagnose one arm, but it cannot
+# establish that two arms published equivalent documents, chunks, vectors, or
+# graph state. Keep that limitation machine-readable so its wall time cannot be
+# mistaken for comparative benchmark evidence.
+benchmark_claim_scope() {
+  jq -nc '{
+    evidence_scope: "single_arm_diagnostic",
+    ranking_eligible: false,
+    equivalence_gate: {
+      status: "not_evaluated",
+      reason: "paired authoritative document, chunk, vector, and graph counts and digests are not captured"
+    }
+  }'
+}
+
 corpus_hash_from_sqlite() {
   local database=$1
   local job_id=$2
@@ -117,12 +136,18 @@ run_benchmark() {
   local axon_bin=${AXON_BENCH_AXON_BIN:-target/release/axon}
   local collection=${AXON_BENCH_COLLECTION:-axon_scheduler_evidence}
   local output=${AXON_BENCH_OUTPUT:-/dev/stdout}
-  local work_dir stdout_file stderr_file before_file after_file state_dir acquisition_file
+  local work_dir stdout_file stderr_file before_file after_file state_dir acquisition_file claim_file config_path
 
   [[ -n $source ]] || { echo 'AXON_BENCH_SOURCE is required' >&2; return 2; }
   validate_safe_source "$source" || { echo 'source rejected by benchmark safety policy' >&2; return 2; }
   [[ -x $axon_bin ]] || { echo 'benchmark binary is not executable' >&2; return 2; }
   reject_stale_binary "$axon_bin" || return 2
+  config_path=$(benchmark_config_path)
+  [[ -f $config_path ]] || {
+    echo "benchmark config is missing: $config_path" >&2
+    echo 'set AXON_BENCH_CONFIG_PATH to the tuned config.toml to benchmark' >&2
+    return 2
+  }
 
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/axon-source-bench.XXXXXX")
   BENCH_WORK_DIR=$work_dir
@@ -132,6 +157,7 @@ run_benchmark() {
   before_file=$work_dir/metrics-before.json
   after_file=$work_dir/metrics-after.json
   acquisition_file=$work_dir/acquisition-timings.json
+  claim_file=$work_dir/claim-scope.json
   state_dir=$work_dir/state
   mkdir -m 700 "$state_dir"
 
@@ -143,8 +169,9 @@ run_benchmark() {
   start_ns=$(python3 -c 'import time; print(time.time_ns())')
   set +e
   AXON_DATA_DIR="$state_dir" AXON_SQLITE_PATH="$state_dir/jobs.db" \
+    AXON_CONFIG_PATH="$config_path" \
     "$axon_bin" source "$source" --scope site --max-pages 200 --wait true \
-    --json --performance-profile max --quiet --collection "$collection" \
+    --cache false --json --performance-profile max --quiet --collection "$collection" \
     >"$stdout_file" 2>"$stderr_file"
   status=$?
   set -e
@@ -160,23 +187,26 @@ run_benchmark() {
 
   corpus_hash=$(corpus_hash_from_sqlite "$state_dir/jobs.db" "$job_id")
   acquisition_timings_from_log "$state_dir/logs/axon.log" >"$acquisition_file"
+  benchmark_claim_scope >"$claim_file"
 
   PYTHONPATH="$SCRIPT_DIR" python3 - "$before_file" "$after_file" "$job_id" \
     "$corpus_hash" "$start_ns" "$end_ns" "$state_dir/jobs.db" \
-    "$acquisition_file" >"$output" <<'PY'
+    "$acquisition_file" "$claim_file" >"$output" <<'PY'
 from datetime import datetime
 import json
 import sqlite3
 import sys
 from mlx_metrics import evidence_gate, metrics_delta
 
-before_path, after_path, job_id, corpus_hash, start_ns, end_ns, database, acquisition_path = sys.argv[1:]
+before_path, after_path, job_id, corpus_hash, start_ns, end_ns, database, acquisition_path, claim_path = sys.argv[1:]
 with open(before_path, encoding="utf-8") as handle:
     before = json.load(handle)
 with open(after_path, encoding="utf-8") as handle:
     after = json.load(handle)
 with open(acquisition_path, encoding="utf-8") as handle:
     acquisition_batches = json.load(handle)
+with open(claim_path, encoding="utf-8") as handle:
+    claim_scope = json.load(handle)
 if before.get("requests") != 0:
     raise SystemExit("exclusive MLX benchmark service was already used")
 expected_requests = after.get("requests", 0) - before.get("requests", 0)
@@ -219,11 +249,16 @@ for phase, first_at, last_at, count in event_rows:
         "last_offset_seconds": round((last - benchmark_started).total_seconds(), 6),
         "events": count,
     }
-print(json.dumps({
+report = {
     "job_id": job_id,
     "wall_seconds": (int(end_ns) - int(start_ns)) / 1_000_000_000,
     "corpus_hash": corpus_hash,
-    "model_contract": {"dimensions": 1024, "truncation": False},
+    "model_contract": {
+        "dimensions": None,
+        "truncation": False,
+        "dimensions_status": "not asserted; verify against the indexed collection",
+        "truncation_source": "Axon TEI provider request contract",
+    },
     "metrics_epoch": delta.epoch,
     "padding_ratio": delta.padding_ratio,
     "row_occupancy": delta.row_occupancy,
@@ -234,7 +269,11 @@ print(json.dumps({
     "stage_seconds": stage_seconds,
     "phase_windows": phase_windows,
     "acquisition_batches": acquisition_batches,
-}, sort_keys=True))
+    **claim_scope,
+}
+print(json.dumps(report, sort_keys=True))
+if not passed:
+    raise SystemExit(4)
 PY
 
   cleanup_work_dir

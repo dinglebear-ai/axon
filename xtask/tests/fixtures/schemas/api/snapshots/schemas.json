@@ -1790,6 +1790,12 @@
             "null"
           ]
         },
+        "origin_attempt": {
+          "description": "Attempt of `job_id` that created this debt, for durable audit joins.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "selector": {
           "$ref": "#/$defs/CleanupDebt_CleanupSelector"
         },
@@ -1798,11 +1804,19 @@
         },
         "status": {
           "$ref": "#/$defs/CleanupDebt_LifecycleStatus"
+        },
+        "vector_collection": {
+          "description": "Immutable vector collection identity for `VectorDelete` debt. Legacy\nrows deserialize as `None` and must fail closed during autonomous retry.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "debt_id",
         "job_id",
+        "origin_attempt",
         "source_id",
         "kind",
         "selector",
@@ -1830,7 +1844,8 @@
         "graph_prune",
         "memory_prune",
         "job_retention",
-        "cache_prune"
+        "cache_prune",
+        "adapter_release"
       ],
       "type": "string"
     },
@@ -11890,7 +11905,8 @@
         "graph_prune",
         "memory_prune",
         "job_retention",
-        "cache_prune"
+        "cache_prune",
+        "adapter_release"
       ],
       "type": "string"
     },
@@ -14984,6 +15000,11 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "expected_previous_generation": {
           "anyOf": [
             {
@@ -14997,16 +15018,25 @@
         "generation": {
           "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
         },
+        "job_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_JobId"
+        },
         "source_id": {
           "$ref": "#/$defs/PublishGenerationRequest_SourceId"
         }
       },
       "required": [
+        "job_id",
+        "attempt",
         "source_id",
         "generation"
       ],
       "title": "PublishGenerationRequest",
       "type": "object"
+    },
+    "PublishGenerationRequest_JobId": {
+      "format": "uuid",
+      "type": "string"
     },
     "PublishGenerationRequest_SourceGenerationId": {
       "type": "string"
@@ -17331,6 +17361,12 @@
             "null"
           ]
         },
+        "origin_attempt": {
+          "description": "Attempt of `job_id` that created this debt, for durable audit joins.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "selector": {
           "$ref": "#/$defs/SourceGenerationDetail_CleanupSelector"
         },
@@ -17339,11 +17375,19 @@
         },
         "status": {
           "$ref": "#/$defs/SourceGenerationDetail_LifecycleStatus"
+        },
+        "vector_collection": {
+          "description": "Immutable vector collection identity for `VectorDelete` debt. Legacy\nrows deserialize as `None` and must fail closed during autonomous retry.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "debt_id",
         "job_id",
+        "origin_attempt",
         "source_id",
         "kind",
         "selector",
@@ -17364,7 +17408,8 @@
         "graph_prune",
         "memory_prune",
         "job_retention",
-        "cache_prune"
+        "cache_prune",
+        "adapter_release"
       ],
       "type": "string"
     },
@@ -28865,7 +28910,8 @@
           "graph_prune",
           "memory_prune",
           "job_retention",
-          "cache_prune"
+          "cache_prune",
+          "adapter_release"
         ],
         "type": "string",
         "x-axon": {
@@ -29389,7 +29435,7 @@
         "path": "crates/axon-api/src/source/enums/pipeline_phase.rs"
       },
       {
-        "checksum": "sha256:bb9d8b2ee6d755e5f3d392ee21cda60ee0de18ad04c9f78a751bd4354b04b435",
+        "checksum": "sha256:f345f86201ac3fef08fb889695fd11735a42f880e1c7712234c85f41389389c6",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums/runtime.rs"
       },
@@ -29419,7 +29465,7 @@
         "path": "crates/axon-api/src/source/job_policy.rs"
       },
       {
-        "checksum": "sha256:476e1beaf6df536d05126c2ff3ef5570bdab4408989e299c8c4345031011d87b",
+        "checksum": "sha256:557da00d71ed8c72c6d21a8a65000a8a27e452e8c11ddf766dcd29591d2c30c1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
@@ -29474,7 +29520,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:e63a61305335e11cbdec0efba913d890cf482e9356543ca9647a461f8f7d7127",
+        "checksum": "sha256:0e0a13dd0acbdaf8b4de2a8b309a279a3a423d286a0bad6133461c7be99bd860",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },
@@ -29579,7 +29625,7 @@
         "path": "xtask/src/schemas/registry.rs"
       },
       {
-        "checksum": "sha256:a3b8a626e1f5a9b0b8c871f789a739554a0e5bd75e2782f79faed44e7738c9de",
+        "checksum": "sha256:4958876459f54085e8e9d323bf9b8d3c4bade8d565a4dc34e5f0e7d1740789fa",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry/canonical_enums.rs"
       },

@@ -257,6 +257,7 @@ pub(in crate::config) struct RawEmbeddingSection {
     pub cache_enabled: Option<bool>,
     pub cache_max_entries: Option<usize>,
     pub pool_max_inputs: Option<usize>,
+    pub prepared_byte_budget: Option<usize>,
     pub prep_concurrency: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,
     pub max_source_chunks_per_doc: Option<usize>,
@@ -287,10 +288,45 @@ pub(in crate::config) struct RawVectorSection {
     pub indexing_threshold_kb: Option<usize>,
     pub hnsw_m: Option<usize>,
     pub hnsw_ef_construct: Option<usize>,
-    pub payload_index_profile: Option<String>,
+    pub payload_index_profile: Option<RawPayloadIndexProfile>,
     pub payload_index_parallelism: Option<usize>,
     pub hnsw_on_disk: Option<bool>,
+    pub quantization_enabled: Option<bool>,
     pub quantization_always_ram: Option<bool>,
+    pub async_writes: Option<bool>,
+    pub transport: Option<RawQdrantTransport>,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(in crate::config) enum RawPayloadIndexProfile {
+    Core,
+    Full,
+}
+
+impl RawPayloadIndexProfile {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Full => "full",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(in crate::config) enum RawQdrantTransport {
+    Rest,
+    Grpc,
+}
+
+impl RawQdrantTransport {
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rest => "rest",
+            Self::Grpc => "grpc",
+        }
+    }
 }
 
 #[derive(Deserialize, Default)]

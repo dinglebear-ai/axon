@@ -30,6 +30,7 @@ pub mod enqueue;
 pub(crate) mod events;
 pub(crate) mod execution;
 mod executor;
+mod family_dispatch;
 
 pub(crate) fn spawn_artifact_candidate_outbox_drain(
     runtime: &crate::context::TargetLocalSourceRuntime,
@@ -57,13 +58,14 @@ use std::sync::Arc;
 
 use axon_adapters::SourceAdapter;
 use axon_api::source::{
-    AuthSnapshot, ExecutionAffinity, PipelinePhase, RoutePlan, SourceKind, SourceRequest,
-    SourceResult, SourceScope,
+    AuthSnapshot, ExecutionAffinity, LifecycleStatus, PipelinePhase, RoutePlan, Severity,
+    SourceKind, SourceRequest, SourceResult, SourceScope, SourceWarning,
 };
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::reserved_call::{self, ProviderCallContext};
 pub(crate) use execution::SourceExecutionContext;
+use family_dispatch::{adapter_name_for, dispatch_item_limited_kind, dispatch_web_kind};
 use result_map::{IndexCounts, to_source_result_with_counts};
 
 /// Stable owner id used to lease sources indexed through this orchestrator when
@@ -202,7 +204,9 @@ async fn index_source_inner(
     ))
     .await?;
 
-    finalize_source_index(
+    let terminal_counts = counts.clone();
+    let adapter_name = adapter.name.clone();
+    let result = finalize_source_index(
         ctx,
         runtime,
         &execution,
@@ -213,7 +217,60 @@ async fn index_source_inner(
         counts,
         &event_emitter,
     )
-    .await
+    .await;
+    finalize_owned_source_job(runtime, &execution, &adapter_name, terminal_counts, result).await
+}
+
+async fn finalize_owned_source_job(
+    runtime: &TargetLocalSourceRuntime,
+    execution: &SourceExecutionContext,
+    adapter_name: &str,
+    mut counts: IndexCounts,
+    result: anyhow::Result<SourceResult>,
+) -> anyhow::Result<SourceResult> {
+    if execution.existing_job_id.is_some() {
+        return result;
+    }
+    match result {
+        Ok(mut output) => {
+            // Post-publication audit warnings are produced after the dispatch
+            // counts snapshot was taken. Terminalize from the authoritative
+            // result warnings so the durable job cannot claim clean success
+            // while the caller sees degraded completion.
+            counts.warnings = output.warnings.clone();
+            if let Err(status_error) =
+                executor::record_completed_status(runtime.jobs.as_ref(), &counts, adapter_name)
+                    .await
+            {
+                let warning = SourceWarning {
+                    code: "source.job.terminal_status_deferred".to_string(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "generation {} was published, but persisting the terminal job status failed: {status_error}",
+                        counts.generation.0
+                    ),
+                    source_item_key: None,
+                    retryable: true,
+                };
+                counts.warnings.push(warning.clone());
+                executor::persist_degraded_summary(runtime, &mut counts).await;
+                output.warnings.push(warning);
+                output.status = LifecycleStatus::CompletedDegraded;
+                output.ledger.status = LifecycleStatus::CompletedDegraded;
+            }
+            Ok(output)
+        }
+        Err(error) => {
+            executor::record_failed_status(runtime.jobs.as_ref(), &counts, adapter_name, &error)
+                .await
+                .map_err(|status_error| {
+                    anyhow::anyhow!(
+                        "{error:#}; terminal job status update also failed: {status_error}"
+                    )
+                })?;
+            Err(error)
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -252,25 +309,39 @@ async fn finalize_source_index(
     )
     .await;
 
-    job_tracking::track_graph_mutation(
-        ctx.job_store(),
+    let graph_audit_warning = job_tracking::track_graph_mutation(
+        Some(runtime.jobs.clone()),
         counts.job_id,
         execution.auth_snapshot.as_ref(),
         &graph,
     )
     .await;
+    record_post_publish_audit_warning(
+        runtime,
+        &mut counts,
+        job_tracking::graph_outcome_warning(&graph),
+    )
+    .await;
+    record_post_publish_audit_warning(runtime, &mut counts, graph_audit_warning).await;
 
     event_emitter
         .running(PipelinePhase::Cleaning, "cleaning source generation debt")
         .await;
     let drain = drain_source_cleanup_debt(ctx, runtime, collection, &counts).await;
-    job_tracking::track_prune(
-        ctx.job_store(),
+    let prune_audit_warning = job_tracking::track_prune(
+        Some(runtime.jobs.clone()),
         counts.job_id,
         execution.auth_snapshot.as_ref(),
         &drain,
     )
     .await;
+    record_post_publish_audit_warning(
+        runtime,
+        &mut counts,
+        job_tracking::prune_outcome_warning(&drain),
+    )
+    .await;
+    record_post_publish_audit_warning(runtime, &mut counts, prune_audit_warning).await;
     event_emitter
         .completed(PipelinePhase::Complete, "source indexing complete")
         .await;
@@ -289,6 +360,17 @@ async fn finalize_source_index(
         graph,
         source_counts,
     ))
+}
+
+async fn record_post_publish_audit_warning(
+    runtime: &TargetLocalSourceRuntime,
+    counts: &mut IndexCounts,
+    warning: Option<SourceWarning>,
+) {
+    if let Some(warning) = warning {
+        counts.warnings.push(warning);
+        executor::persist_degraded_summary(runtime, counts).await;
+    }
 }
 
 fn validated_source_input(request: &SourceRequest) -> Result<String, SourceResult> {
@@ -316,19 +398,20 @@ async fn drain_source_cleanup_debt(
     collection: &str,
     counts: &IndexCounts,
 ) -> prune::DebtDrainSummary {
-    let (graph_store, memory_store) = open_cleanup_debt_stores(ctx).await;
-    prune::drain_cleanup_debt_full_with_boundaries(
+    if let Err(error) = prune::bind_vector_cleanup_collection(
         runtime.ledger.as_ref(),
-        runtime.vector_store.as_ref(),
-        graph_store.as_deref(),
-        memory_store.as_deref(),
-        Some(runtime.jobs.as_ref()),
-        Some(runtime.artifact_store.as_ref()),
-        Some(runtime.document_cache.as_ref()),
+        &counts.source_id,
         collection,
-        counts,
     )
     .await
+    {
+        tracing::warn!(
+            source_id = %counts.source_id.0,
+            error = %error.message,
+            "failed to persist vector cleanup collection identity; vector debt will stay pending"
+        );
+    }
+    crate::reserved_call::drain_source_cleanup_debt(ctx, runtime, collection, counts).await
 }
 
 /// Open the `GraphStore`/`MemoryStore` handles the cleanup-debt drain uses to
@@ -341,7 +424,7 @@ async fn drain_source_cleanup_debt(
 /// SQLite-authoritative store every `memory` subaction uses. The drain also
 /// receives the unified job store so a successful `forget()` enqueues its
 /// canonical terminal `memory://` publication.
-async fn open_cleanup_debt_stores(
+pub(crate) async fn open_cleanup_debt_stores(
     ctx: &ServiceContext,
 ) -> (
     Option<std::sync::Arc<dyn axon_graph::store::GraphStore>>,
@@ -373,150 +456,4 @@ async fn open_cleanup_debt_stores(
     };
 
     (graph_store, memory_store)
-}
-
-/// Route the classified kind to its dispatch function.
-///
-/// `embed` and `limits` come straight from the transport-neutral
-/// [`SourceRequest`] — see `docs/pipeline-unification/foundation/source-pipeline.md`
-/// (`SourceRequest` + Validation Checklist: "`embed=false` never writes
-/// vectors"). Every family bridge receives the real `request.embed` instead of
-/// an implicit `true`. `limits.max_pages` and `limits.max_depth` are honored by
-/// `web` (the only family whose acquisition path supports page/depth bounds);
-/// `limits.max_items` is honored by `feed`/`youtube`/`reddit`/`session`/
-/// `registry`, which each cap their discovered-manifest item count before
-/// diffing. `local`/`git` do not take a `max_items` cap today, so it is not
-/// threaded to them.
-#[allow(clippy::too_many_arguments)]
-async fn dispatch_item_limited_kind(
-    kind: SourceKind,
-    adapter: Arc<dyn SourceAdapter>,
-    runtime: &TargetLocalSourceRuntime,
-    input: &str,
-    collection: &str,
-    owner_id: &str,
-    auth_snapshot: Option<&AuthSnapshot>,
-    embed: bool,
-    max_items: Option<u64>,
-    route: &axon_api::source::RoutePlan,
-    execution: &SourceExecutionContext,
-) -> anyhow::Result<IndexCounts> {
-    match kind {
-        SourceKind::Feed => {
-            dispatch::dispatch_feed(
-                adapter,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                max_items,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceKind::Youtube => {
-            dispatch::dispatch_youtube(
-                adapter,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                max_items,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceKind::Reddit => {
-            dispatch::dispatch_reddit(
-                adapter,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                max_items,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceKind::Registry => {
-            dispatch::dispatch_registry(
-                adapter,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                max_items,
-                route,
-                execution,
-            )
-            .await
-        }
-        _ => Err(anyhow::anyhow!(
-            "source kind does not support max-items dispatch: {kind:?}"
-        )),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn dispatch_web_kind(
-    adapter: Arc<dyn SourceAdapter>,
-    cfg: &axon_core::config::Config,
-    runtime: &TargetLocalSourceRuntime,
-    input: &str,
-    collection: &str,
-    owner_id: &str,
-    scope: SourceScope,
-    auth_snapshot: Option<&AuthSnapshot>,
-    embed: bool,
-    output: &axon_api::source::OutputPolicy,
-    limits: &axon_api::source::SourceLimits,
-    route: &axon_api::source::RoutePlan,
-    execution: &SourceExecutionContext,
-) -> anyhow::Result<IndexCounts> {
-    dispatch::dispatch_web(
-        adapter,
-        cfg,
-        runtime,
-        input,
-        collection,
-        owner_id,
-        scope,
-        auth_snapshot,
-        embed,
-        limits.max_pages,
-        limits.max_depth,
-        output,
-        route,
-        execution,
-    )
-    .await
-}
-
-/// Adapter name reported on the result for each family.
-fn adapter_name_for(kind: SourceKind) -> &'static str {
-    match kind {
-        SourceKind::Local => "local",
-        SourceKind::Git => "git",
-        SourceKind::Feed => "feed",
-        SourceKind::Youtube => "youtube",
-        SourceKind::Reddit => "reddit",
-        SourceKind::Web => "web",
-        SourceKind::Session => "sessions",
-        SourceKind::Registry => "registry",
-        SourceKind::CliTool => "cli_tool",
-        SourceKind::McpTool => "mcp_tool",
-        SourceKind::Memory => "memory",
-        SourceKind::Upload => "upload",
-    }
 }

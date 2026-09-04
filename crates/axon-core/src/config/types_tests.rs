@@ -9,6 +9,14 @@ fn embedding_cache_is_opt_in_and_bounded_by_default() {
     assert_eq!(config.embed_cache_max_entries, 100_000);
 }
 
+#[test]
+fn prepared_generation_memory_default_is_conservative() {
+    assert_eq!(
+        Config::default().embed_prepared_byte_budget,
+        128 * 1024 * 1024
+    );
+}
+
 /// Reuse the crate-wide env-mutation lock instead of relying solely on
 /// `#[serial_test::serial]`. `std::env` is process-global — `serial_test`'s
 /// default key and axon-core's `ENV_LOCK` (in
@@ -237,6 +245,34 @@ fn config_debug_redacts_secrets() {
         debug_output.contains("[REDACTED]"),
         "no [REDACTED] marker found"
     );
+}
+
+#[test]
+fn config_debug_redacts_credentials_embedded_in_service_urls() {
+    let cfg = Config {
+        tei_url: "https://tei-user:tei-password@example.test/embed?token=tei-query#tei-fragment"
+            .into(),
+        qdrant_url: "https://q-user:q-password@example.test/?api_key=q-query#q-fragment".into(),
+        ..Config::default()
+    };
+
+    let debug_output = format!("{cfg:?}");
+    for secret in [
+        "tei-user",
+        "tei-password",
+        "tei-query",
+        "tei-fragment",
+        "q-user",
+        "q-password",
+        "q-query",
+        "q-fragment",
+    ] {
+        assert!(
+            !debug_output.contains(secret),
+            "service URL debug output leaked credential material"
+        );
+    }
+    assert!(debug_output.contains("example.test"));
 }
 
 #[test]

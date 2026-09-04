@@ -2,6 +2,15 @@ use super::*;
 use httpmock::MockServer;
 use std::time::{Duration, Instant};
 
+#[test]
+fn batch_plan_contains_only_indices_into_caller_owned_inputs() {
+    let inputs = vec!["longer".to_string(), "x".to_string(), "mid".to_string()];
+    assert_eq!(
+        batch_indices_by_length(&inputs, 2),
+        vec![vec![1, 2], vec![0]]
+    );
+}
+
 #[tokio::test]
 async fn embed_all_packs_similar_lengths_and_restores_input_order() {
     let server = MockServer::start_async().await;
@@ -163,6 +172,141 @@ async fn embed_all_overlaps_independent_client_batches() {
     assert_eq!(outcome.vectors.len(), 4);
     assert_eq!(outcome.requests, 4);
     endpoint.assert_calls_async(4).await;
+}
+
+#[tokio::test]
+async fn embed_all_replenishes_concurrency_before_a_straggler_finishes() {
+    let server = MockServer::start_async().await;
+    let slow = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["a"], "truncate": false}));
+            then.status(200)
+                .delay(Duration::from_millis(800))
+                .json_body(serde_json::json!([[1.0_f32]]));
+        })
+        .await;
+    let fast = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["bb"], "truncate": false}));
+            then.status(200)
+                .delay(Duration::from_millis(20))
+                .json_body(serde_json::json!([[2.0_f32]]));
+        })
+        .await;
+    let replenished = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({"inputs": ["ccc"], "truncate": false}));
+            then.status(200)
+                .delay(Duration::from_millis(20))
+                .json_body(serde_json::json!([[3.0_f32]]));
+        })
+        .await;
+    let client = Arc::new(
+        TeiClient::new(TeiClientParams {
+            endpoint: server.base_url(),
+            provider_id: "tei".to_string(),
+            max_batch_inputs: 1,
+            max_concurrent_requests: 2,
+            max_in_flight_inputs: 2,
+            max_attempts: 1,
+            request_timeout: Duration::from_secs(2),
+            retry_backoff_base_ms: 1,
+        })
+        .expect("client"),
+    );
+
+    let task_client = Arc::clone(&client);
+    let task = tokio::spawn(async move {
+        task_client
+            .embed_all(&["a".into(), "bb".into(), "ccc".into()])
+            .await
+    });
+    let admitted_while_slow_was_running = tokio::time::timeout(Duration::from_millis(300), async {
+        loop {
+            if replenished.calls_async().await == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .is_ok();
+
+    let outcome = task.await.expect("embed task").expect("embed batches");
+    assert!(
+        admitted_while_slow_was_running,
+        "a completed request must replenish the concurrency window without waiting for a sibling straggler"
+    );
+    assert_eq!(outcome.vectors, vec![vec![1.0], vec![2.0], vec![3.0]]);
+    slow.assert_calls_async(1).await;
+    fast.assert_calls_async(1).await;
+    replenished.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn embed_all_preserves_order_when_a_concurrent_batch_splits_after_413() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({
+                    "inputs": ["a", "bb", "ccc", "dddd"], "truncate": false
+                }));
+            then.status(413);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({
+                    "inputs": ["a", "bb"], "truncate": false
+                }));
+            then.status(200)
+                .delay(Duration::from_millis(100))
+                .json_body(serde_json::json!([[1.0_f32], [2.0_f32]]));
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/embed")
+                .json_body(serde_json::json!({
+                    "inputs": ["ccc", "dddd"], "truncate": false
+                }));
+            then.status(200)
+                .json_body(serde_json::json!([[3.0_f32], [4.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".into(),
+        max_batch_inputs: 4,
+        max_concurrent_requests: 2,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["a".into(), "bb".into(), "ccc".into(), "dddd".into()])
+        .await
+        .expect("split batch");
+
+    assert_eq!(
+        outcome.vectors,
+        vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0]]
+    );
+    assert_eq!(outcome.requests, 3);
 }
 
 #[test]

@@ -431,7 +431,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
+        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nprepared-byte-budget = 67108864\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
     )
     .unwrap();
 
@@ -459,6 +459,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert!(cfg.embed_cache_enabled);
             assert_eq!(cfg.embed_cache_max_entries, 300_000);
             assert_eq!(cfg.embed_pool_max_inputs, 640);
+            assert_eq!(cfg.embed_prepared_byte_budget, 67_108_864);
             assert_eq!(cfg.embed_prep_concurrency, 3);
             assert_eq!(cfg.embed_max_chunks_per_doc, Some(50));
             assert_eq!(cfg.embed_max_source_chunks_per_doc, None);
@@ -468,6 +469,44 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert_eq!(cfg.openai_embed_max_concurrent, 16);
             assert_eq!(cfg.openai_embed_max_in_flight_inputs, 256);
             assert_eq!(cfg.openai_embed_pool_max_inputs, 768);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn scrape_batch_timeout_has_one_default_toml_env_precedence_chain() {
+    let _guard = env_guard();
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_SCRAPE_BATCH_TIMEOUT_SECS"],
+        || unsafe {
+            env::remove_var("AXON_SCRAPE_BATCH_TIMEOUT_SECS");
+            let empty = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+            env::set_var("AXON_CONFIG_PATH", empty.path());
+            assert_eq!(
+                into_config_via_args(&["extract", "https://example.com"])
+                    .unwrap()
+                    .scrape_batch_timeout_secs,
+                120
+            );
+
+            let mut toml = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+            writeln!(toml, "[providers.fetch]\nbatch-timeout-secs = 75").unwrap();
+            env::set_var("AXON_CONFIG_PATH", toml.path());
+            assert_eq!(
+                into_config_via_args(&["extract", "https://example.com"])
+                    .unwrap()
+                    .scrape_batch_timeout_secs,
+                75
+            );
+
+            env::set_var("AXON_SCRAPE_BATCH_TIMEOUT_SECS", "45");
+            assert_eq!(
+                into_config_via_args(&["extract", "https://example.com"])
+                    .unwrap()
+                    .scrape_batch_timeout_secs,
+                45
+            );
         },
     );
 }

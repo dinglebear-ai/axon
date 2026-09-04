@@ -11,7 +11,8 @@ cleanup_live_fixtures() {
     # Fast pid-level path: the spawned leader itself still carries the token.
     # Robust against transient `ps` failures and process churn from
     # concurrently running harness instances.
-    if tr '\0' '\n' <"/proc/$live_chrome_pid/environ" 2>/dev/null \
+    if [ -r "/proc/$live_chrome_pid/environ" ] \
+      && tr '\0' '\n' <"/proc/$live_chrome_pid/environ" 2>/dev/null \
       | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
       return 0
     fi
@@ -23,6 +24,13 @@ cleanup_live_fixtures() {
         return 0
       fi
     done < <(ps -eo pid=,pgid= 2>/dev/null)
+    # macOS exposes neither /proc nor another unprivileged environment view.
+    # The captured PID start identity plus a still-matching dedicated process
+    # group provide the equivalent non-reuse ownership proof there.
+    if [ ! -d /proc ]; then
+      [ "$(ps -o pgid= -p "$live_chrome_pid" 2>/dev/null | tr -d ' ')" = "$live_chrome_pgid" ]
+      return
+    fi
     return 1
   }
   # A single probe can fail transiently (fork pressure, churned /proc entries)
@@ -43,7 +51,11 @@ cleanup_live_fixtures() {
     local _identity_attempt observed_start_time
     [ -n "${live_chrome_start_time:-}" ] || return 1
     for _identity_attempt in 1 2 3; do
-      observed_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+      if [ -r "/proc/$live_chrome_pid/stat" ]; then
+        observed_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+      else
+        observed_start_time="$(ps -o lstart= -p "$live_chrome_pid" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      fi
       if [ -n "$observed_start_time" ]; then
         [ "$observed_start_time" = "$live_chrome_start_time" ]
         return
@@ -98,7 +110,7 @@ cleanup_live_fixtures() {
       >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" \
       || cleanup_warning "Docker network $isolated_compose_network" "$OUTDIR/logs/cleanup-network.stderr.log"
   fi
-  for collection in "${isolated_collections[@]}"; do
+  for collection in ${isolated_collections[@]+"${isolated_collections[@]}"}; do
     if [[ "$collection" == axon_live_* ]] && [ -n "${QDRANT_URL:-}" ]; then
       curl -fsS -X DELETE \
         --connect-timeout 2 --max-time 10 --retry 2 --retry-connrefused \
@@ -117,27 +129,27 @@ trap cleanup_live_fixtures EXIT
 worktree_content_fingerprint() {
   (
     cd "$ROOT_DIR" || exit 1
-    local -a pathspec=("$@")
-
-    # Keep symlink targets distinct from regular-file content. NUL delimiters
-    # preserve unusual but valid path and target bytes without ambiguity.
-    printf 'links\0'
-    while IFS= read -r -d '' path; do
-      [ -L "$path" ] || continue
-      printf '%s\0%s\0' "$path" "$(readlink -- "$path")"
-    done < <(git ls-files -co --exclude-standard -z -- "${pathspec[@]}" | LC_ALL=C sort -z)
-
-    # Hash regular files in batches. The previous implementation launched one
-    # sha256sum process per path, which made the 4,000+ file worktree
-    # fingerprint exceed nextest's 120-second timeout under load.
-    printf 'files\0'
-    while IFS= read -r -d '' path; do
-      if [ -f "$path" ] && [ ! -L "$path" ]; then
-        printf '%s\0' "$path"
-      fi
-    done < <(git ls-files -co --exclude-standard -z -- "${pathspec[@]}" | LC_ALL=C sort -z) \
-      | xargs -0 -r sha256sum -z --
-  ) | sha256sum | awk '{print $1}'
+    if [ "$#" -gt 0 ]; then
+      git ls-files -co --exclude-standard -z -- "$@"
+    else
+      git ls-files -co --exclude-standard -z
+    fi | python3 -c '
+import hashlib, os, sys
+paths = sorted(p for p in sys.stdin.buffer.read().split(b"\0") if p)
+digest = hashlib.sha256()
+for raw in paths:
+    path = os.fsdecode(raw)
+    digest.update(raw + b"\0")
+    if os.path.islink(path):
+        digest.update(b"link\0" + os.fsencode(os.readlink(path)) + b"\0")
+    elif os.path.isfile(path):
+        digest.update(b"file\0")
+        with open(path, "rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        digest.update(b"\0")
+print(digest.hexdigest())'
+  )
 }
 
 record() {

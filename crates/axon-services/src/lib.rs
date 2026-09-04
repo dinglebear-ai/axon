@@ -46,6 +46,7 @@ pub use reddit_target::is_reddit_target;
 pub mod projections;
 pub mod prune;
 pub(crate) mod reserved_call;
+pub use reserved_call::BulkLoadCleanupDrain;
 pub mod reset;
 pub use reset::reset;
 pub mod runtime;

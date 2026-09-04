@@ -160,7 +160,7 @@ impl LocalRootHandle {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let path = safe_item_path(&self.directory, item_key)?;
+            let path = safe_item_path_from_canonical_root(&self.directory, item_key)?;
             File::open(&path).map_err(|err| fs_error("adapter.local.read_failed", &path, err))
         }
     }
@@ -180,42 +180,72 @@ pub(crate) fn read_content_ref(path: &Path, options: &LocalOptions) -> Result<Co
 }
 
 pub(crate) fn read_content_ref_from_file(
-    mut file: File,
+    file: File,
     path_hint: &Path,
     options: &LocalOptions,
 ) -> Result<ContentRef> {
     enforce_read_size_from_file(&file, path_hint, options)?;
+    let bytes = match options.max_file_bytes {
+        Some(max_file_bytes) => read_bounded(file, path_hint, max_file_bytes)?,
+        None => {
+            let mut file = file;
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)
+                .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
+            bytes
+        }
+    };
     if options.includes_binary_body(path_hint) {
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)
-            .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
         return Ok(ContentRef::InlineBytes {
             bytes_base64: BASE64_STANDARD.encode(bytes),
             mime_type: "application/octet-stream".to_string(),
         });
     }
-    let mut text = String::new();
-    file.read_to_string(&mut text)
-        .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
+    let text = String::from_utf8(bytes).map_err(|err| {
+        fs_error(
+            "adapter.local.read_failed",
+            path_hint,
+            std::io::Error::new(std::io::ErrorKind::InvalidData, err),
+        )
+    })?;
     Ok(ContentRef::InlineText { text })
+}
+
+fn read_bounded(reader: impl Read, path_hint: &Path, max_file_bytes: u64) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader
+        .take(max_file_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
+    if bytes.len() as u64 > max_file_bytes {
+        return Err(ApiError::new(
+            "adapter.local.file_too_large",
+            axon_error::ErrorStage::Fetching,
+            "local source item exceeds max_file_bytes while reading",
+        )
+        .with_context("path_hint", public_path_hint(path_hint))
+        .with_context("max_file_bytes", max_file_bytes.to_string()));
+    }
+    Ok(bytes)
 }
 
 pub(crate) fn safe_item_path(root: &Path, item_key: &str) -> Result<PathBuf> {
     validate_item_key(item_key)?;
-    let key = Path::new(item_key);
     let root = fs::canonicalize(root)
         .map_err(|err| fs_error("adapter.local.root_stat_failed", root, err))?;
+    safe_item_path_from_canonical_root(&root, item_key)
+}
+
+fn safe_item_path_from_canonical_root(root: &Path, item_key: &str) -> Result<PathBuf> {
+    validate_item_key(item_key)?;
+    let key = Path::new(item_key);
     let candidate = root.join(key);
     let canonical = fs::canonicalize(&candidate)
         .map_err(|err| fs_error("adapter.local.stat_failed", &candidate, err))?;
-    if canonical.starts_with(&root) {
+    if canonical.starts_with(root) {
         Ok(canonical)
     } else {
-        Err(ApiError::new(
-            "adapter.local.item_key.escape",
-            axon_error::ErrorStage::Fetching,
-            "local source item key escapes the local source root",
-        ))
+        Err(containment_denied(&candidate))
     }
 }
 
@@ -300,7 +330,6 @@ fn root_unsafe(path: &Path, _err: std::io::Error) -> ApiError {
     .with_context("path_hint", public_path_hint(path))
 }
 
-#[cfg(target_os = "linux")]
 fn containment_denied(path: &Path) -> ApiError {
     ApiError::new(
         "adapter.local.item_key.escape",
@@ -321,3 +350,7 @@ pub(crate) fn public_path_hint(path: &Path) -> String {
         .map(ToString::to_string)
         .unwrap_or_else(|| "local-source-item".to_string())
 }
+
+#[cfg(test)]
+#[path = "local_io_tests.rs"]
+mod tests;

@@ -217,13 +217,17 @@ impl SqliteObservabilitySink {
         .await
         .map_err(map_sqlx)?;
 
-        Ok(row.map(|row| ProviderHealthRecord {
-            provider_id: ProviderId(row.get(0)),
-            provider_kind: parse_provider_kind(row.get::<String, _>(1).as_str()),
-            status: row.get(2),
-            cooldown_until: row.get::<Option<String>, _>(3).map(Timestamp),
-            last_error_code: row.get(4),
-        }))
+        row.map(|row| {
+            let raw_kind = row.get::<String, _>(1);
+            Ok(ProviderHealthRecord {
+                provider_id: ProviderId(row.get(0)),
+                provider_kind: parse_provider_kind(&raw_kind)?,
+                status: row.get(2),
+                cooldown_until: row.get::<Option<String>, _>(3).map(Timestamp),
+                last_error_code: row.get(4),
+            })
+        })
+        .transpose()
     }
 }
 
@@ -234,6 +238,13 @@ impl ObservabilitySink for SqliteObservabilitySink {
     }
 
     async fn heartbeat(&self, mut heartbeat: JobHeartbeat) -> Result<()> {
+        let parsed = chrono::DateTime::parse_from_rfc3339(&heartbeat.heartbeat_at.0)
+            .map_err(|error| map_str("observe.invalid_heartbeat_timestamp", error.to_string()))?;
+        heartbeat.heartbeat_at = Timestamp(
+            parsed
+                .with_timezone(&Utc)
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
+        );
         // Stamp the last durable sequence observed for this stream so heartbeat
         // consumers can detect progress even between events.
         if heartbeat.last_event_sequence.is_none() {
@@ -260,7 +271,14 @@ impl ObservabilitySink for SqliteObservabilitySink {
                heartbeat_at = excluded.heartbeat_at, \
                last_event_sequence = excluded.last_event_sequence, \
                heartbeat_json = excluded.heartbeat_json, \
-               updated_at = excluded.updated_at",
+               updated_at = excluded.updated_at \
+             WHERE excluded.attempt > axon_observe_heartbeats.attempt \
+                OR (excluded.attempt = axon_observe_heartbeats.attempt \
+                    AND (COALESCE(excluded.last_event_sequence, 0) > \
+                            COALESCE(axon_observe_heartbeats.last_event_sequence, 0) \
+                        OR (COALESCE(excluded.last_event_sequence, 0) = \
+                                COALESCE(axon_observe_heartbeats.last_event_sequence, 0) \
+                            AND excluded.heartbeat_at > axon_observe_heartbeats.heartbeat_at)))",
         )
         .bind(heartbeat.job_id.0.to_string())
         .bind(i64::from(heartbeat.attempt))
@@ -335,8 +353,13 @@ fn enum_str<T: serde::Serialize>(value: &T) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn parse_provider_kind(raw: &str) -> ProviderKind {
-    serde_json::from_value(json!(raw)).unwrap_or(ProviderKind::HealthProbe)
+fn parse_provider_kind(raw: &str) -> Result<ProviderKind> {
+    serde_json::from_value(json!(raw)).map_err(|error| {
+        map_str(
+            "observe.corrupt_provider_kind",
+            format!("invalid persisted provider kind {raw:?}: {error}"),
+        )
+    })
 }
 
 fn now_ms() -> i64 {

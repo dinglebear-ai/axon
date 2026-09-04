@@ -89,9 +89,11 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
     let debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-sqlite"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_sqlite"),
         generation: Some(gen1),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-sqlite"),
         },
@@ -314,9 +316,11 @@ async fn sqlite_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() 
     let mut debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_sqlite"),
         generation: Some(gen1),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-sqlite"),
         },
@@ -372,9 +376,11 @@ async fn sqlite_cleanup_debt_ignores_stale_replay() {
     let mut debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_sqlite"),
         generation: Some(gen1),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-sqlite"),
         },
@@ -393,6 +399,7 @@ async fn sqlite_cleanup_debt_ignores_stale_replay() {
 
     debt.debt_id = CleanupDebtId::new("debt-b");
     debt.job_id = JobId::new(Uuid::from_u128(2));
+    debt.origin_attempt = 2;
     debt.status = LifecycleStatus::Failed;
     debt.created_at = ts_at(9);
     debt.attempts = 3;
@@ -415,6 +422,7 @@ async fn sqlite_cleanup_debt_ignores_stale_replay() {
     let mut stale = debt;
     stale.debt_id = CleanupDebtId::new("debt-c");
     stale.job_id = JobId::new(Uuid::from_u128(3));
+    stale.origin_attempt = 3;
     stale.status = LifecycleStatus::Pending;
     stale.created_at = ts_at(1);
     stale.attempts = 1;
@@ -460,9 +468,11 @@ async fn sqlite_rejects_document_status_and_cleanup_debt_for_missing_sources() {
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-missing"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("missing"),
             generation: None,
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Document {
                 document_id: DocumentId::new("doc-missing"),
             },
@@ -486,9 +496,11 @@ async fn sqlite_rejects_cleanup_selector_source_or_generation_mismatch() {
     let base = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-mismatch"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_sqlite"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::SourceItem {
             source_id: SourceId::new("other"),
             source_item_key: SourceItemKey::new("src/lib.rs"),

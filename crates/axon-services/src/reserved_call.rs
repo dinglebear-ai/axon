@@ -21,14 +21,42 @@ use sqlx::SqlitePool;
 
 use crate::context::TargetLocalSourceRuntime;
 
+mod artifact_cleanup;
+mod artifact_cleanup_journal;
+mod cleanup;
 mod support;
 mod vector;
 
+use artifact_cleanup::ArtifactCleanupWork;
+#[cfg(test)]
+pub(crate) use artifact_cleanup::drain_artifact_cleanup_workers;
+use artifact_cleanup::spawn_artifact_cleanup_retry;
+#[cfg(test)]
+use artifact_cleanup::{
+    ARTIFACT_CLEANUP_WORKERS, CleanupWorkerFault, UNRESOLVED_ARTIFACT_CLEANUPS,
+    drain_unresolved_artifact_cleanups_inner, spawn_artifact_cleanup_retry_inner,
+    unresolved_cleanup_units,
+};
+pub use artifact_cleanup::{ArtifactCleanupGuard, BulkLoadCleanupDrain};
+pub use cleanup::{drain_source_cleanup_debt, spawn_cleanup_debt_worker};
 use support::{map_reserved, record_provider_heartbeat, scheduler_error};
 pub use vector::{
-    delete_vectors, mark_generation_committed, mark_unchanged_items_committed, retire_generation,
-    vector_operation,
+    begin_bulk_load, delete_vectors, drain_bulk_load_cleanups, mark_generation_committed,
+    mark_unchanged_items_committed, retire_generation, vector_operation, with_bulk_load,
 };
+#[cfg(test)]
+pub(crate) use vector::{test_bulk_load_cleanup_lifecycle, test_bulk_load_finish_handoff};
+
+pub(crate) async fn replay_artifact_cleanup_journals(runtime: &TargetLocalSourceRuntime) {
+    match artifact_cleanup_journal::replay(&artifact_cleanup_journal::default_root(), runtime).await
+    {
+        Ok(summary) if !summary.errors.is_empty() => {
+            tracing::error!(errors = ?summary.errors, "artifact cleanup journal replay completed with errors")
+        }
+        Ok(_) => {}
+        Err(error) => tracing::error!(%error, "artifact cleanup journal replay failed"),
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ProviderCallContext {
@@ -109,107 +137,6 @@ struct VectorLane;
 struct ParseLane;
 struct GraphLane;
 struct ArtifactLane;
-
-pub struct ArtifactCleanupGuard {
-    store: Arc<dyn ArtifactStore>,
-    ledger: Arc<dyn LedgerStore>,
-    source_id: SourceId,
-    generation: SourceGenerationId,
-    artifacts: Vec<ArtifactRef>,
-    armed: bool,
-}
-
-impl ArtifactCleanupGuard {
-    pub fn new(
-        runtime: &TargetLocalSourceRuntime,
-        source_id: SourceId,
-        generation: SourceGenerationId,
-    ) -> Self {
-        Self {
-            store: Arc::clone(&runtime.artifact_store),
-            ledger: Arc::clone(&runtime.ledger),
-            source_id,
-            generation,
-            artifacts: Vec::new(),
-            armed: true,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn new_for_test(
-        store: Arc<dyn ArtifactStore>,
-        ledger: Arc<dyn LedgerStore>,
-        source_id: SourceId,
-        generation: SourceGenerationId,
-    ) -> Self {
-        Self {
-            store,
-            ledger,
-            source_id,
-            generation,
-            artifacts: Vec::new(),
-            armed: true,
-        }
-    }
-
-    pub fn track(&mut self, artifacts: &[ArtifactRef]) {
-        for artifact in artifacts {
-            if self
-                .artifacts
-                .iter()
-                .all(|tracked| tracked.artifact_id != artifact.artifact_id)
-            {
-                self.artifacts.push(artifact.clone());
-            }
-        }
-    }
-
-    pub fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for ArtifactCleanupGuard {
-    fn drop(&mut self) {
-        if !self.armed || self.artifacts.is_empty() {
-            return;
-        }
-        let store = Arc::clone(&self.store);
-        let ledger = Arc::clone(&self.ledger);
-        let source_id = self.source_id.clone();
-        let generation = self.generation.clone();
-        let artifacts = std::mem::take(&mut self.artifacts);
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                match ledger.committed_generation(source_id).await {
-                    Ok(Some(committed)) if committed == generation => return,
-                    Ok(_) => {}
-                    Err(error) => {
-                        tracing::warn!(
-                            error = %error,
-                            "could not verify publication before artifact cleanup; preserving artifacts"
-                        );
-                        return;
-                    }
-                }
-                for artifact in artifacts {
-                    let handle = ArtifactHandle {
-                        artifact_id: artifact.artifact_id.clone(),
-                        artifact_kind: artifact.artifact_kind,
-                        uri: Some(artifact.uri.clone()),
-                    };
-                    if let Err(error) = store.delete(handle).await {
-                        tracing::warn!(
-                            artifact_id = %artifact.artifact_id.0,
-                            error = %error,
-                            "failed to clean artifact from uncommitted source generation"
-                        );
-                    }
-                }
-            });
-        }
-    }
-}
 
 pub async fn ensure_source_providers_ready(
     runtime: &TargetLocalSourceRuntime,

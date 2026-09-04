@@ -1,11 +1,18 @@
 use super::*;
 
-use axon_api::source::{AuthScope, JobKind, JobListRequest, LifecycleStatus, TransportKind};
+use axon_api::source::{
+    AuthScope, JobEventListRequest, JobKind, JobListRequest, JobStatusUpdate, LifecycleStatus,
+    TransportKind,
+};
 use axon_jobs::boundary::FakeJobWatchStore;
 use uuid::Uuid;
 
 fn store() -> Arc<dyn JobStore> {
     Arc::new(FakeJobWatchStore::new())
+}
+
+fn failing_event_store() -> Arc<dyn JobStore> {
+    Arc::new(FakeJobWatchStore::new().with_append_event_failure())
 }
 
 /// A restricted, non-admin caller snapshot — read/write only, no admin/local/
@@ -43,35 +50,70 @@ fn nonempty_drain_summary(failed: u64) -> DebtDrainSummary {
         resolved: 2,
         failed,
         points_deleted: 5,
+        ..DebtDrainSummary::default()
     }
+}
+
+#[test]
+fn degraded_graph_write_produces_retryable_source_warning() {
+    let warning = graph_outcome_warning(&nonempty_graph_summary(true))
+        .expect("degraded graph write must surface on the source result");
+
+    assert_eq!(warning.code, "source.graph.write_degraded");
+    assert_eq!(warning.severity, Severity::Warning);
+    assert!(warning.retryable);
+}
+
+#[test]
+fn partial_cleanup_failure_produces_retryable_source_warning() {
+    let warning = prune_outcome_warning(&nonempty_drain_summary(1))
+        .expect("pending cleanup debt must surface on the source result");
+
+    assert_eq!(warning.code, "source.prune.cleanup_deferred");
+    assert_eq!(warning.severity, Severity::Warning);
+    assert!(warning.retryable);
+}
+
+#[test]
+fn cleanup_enumeration_failure_is_not_a_clean_zero_work_outcome() {
+    let summary = DebtDrainSummary {
+        enumeration_failed: true,
+        ..DebtDrainSummary::default()
+    };
+    let warning = prune_outcome_warning(&summary)
+        .expect("failed debt enumeration must surface on the source result");
+
+    assert_eq!(warning.code, "source.prune.enumeration_deferred");
+    assert!(warning.retryable);
 }
 
 fn empty_drain_summary() -> DebtDrainSummary {
     DebtDrainSummary::default()
 }
 
-async fn only_job(store: &Arc<dyn JobStore>, kind: JobKind) -> axon_api::source::JobSummary {
-    let page = store
-        .list(JobListRequest {
-            status: None,
-            kind: Some(kind),
-            source_id: None,
-            watch_id: None,
-            limit: Some(10),
+async fn audit_events(store: &Arc<dyn JobStore>, job_id: JobId) -> Vec<axon_api::source::JobEvent> {
+    store
+        .events(JobEventListRequest {
+            job_id,
+            after_sequence: None,
+            limit: Some(20),
+            severity: None,
+            visibility: None,
+            phase: None,
+            since_sequence: None,
             cursor: None,
         })
         .await
-        .expect("list jobs");
-    assert_eq!(page.items.len(), 1, "expected exactly one {kind:?} job");
-    page.items.into_iter().next().unwrap()
+        .unwrap()
+        .events
 }
 
 #[tokio::test]
-async fn track_graph_mutation_creates_completed_child_job_on_success() {
+async fn track_graph_mutation_appends_completed_parent_annotation_on_success() {
     let store = store();
-    let parent_job_id = JobId::new(Uuid::new_v4());
+    let parent_job_id = completed_source_job(&store).await;
 
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
@@ -79,18 +121,49 @@ async fn track_graph_mutation_creates_completed_child_job_on_success() {
     )
     .await;
 
-    let job = only_job(&store, JobKind::Graph).await;
-    assert_eq!(job.status, LifecycleStatus::Completed);
-    assert_eq!(job.parent_job_id, Some(parent_job_id));
-    assert_eq!(job.root_job_id, Some(parent_job_id));
+    let events = audit_events(&store, parent_job_id).await;
+    assert_eq!(events.last().unwrap().status, LifecycleStatus::Completed);
+    assert_eq!(events.last().unwrap().phase, PipelinePhase::Graphing);
 }
 
 #[tokio::test]
-async fn track_graph_mutation_marks_degraded_write_as_failed_child_job() {
-    let store = store();
-    let parent_job_id = JobId::new(Uuid::new_v4());
+async fn graph_audit_persistence_failure_returns_retryable_degradation() {
+    let warning = track_graph_mutation(
+        Some(failing_event_store()),
+        JobId::new(Uuid::new_v4()),
+        None,
+        &nonempty_graph_summary(false),
+    )
+    .await
+    .expect("failed audit append must produce a warning");
 
-    track_graph_mutation(
+    assert_eq!(warning.code, "source.graph.audit_deferred");
+    assert!(warning.retryable);
+    assert!(warning.message.contains("injected event append failure"));
+}
+
+#[tokio::test]
+async fn prune_audit_persistence_failure_returns_retryable_degradation() {
+    let warning = track_prune(
+        Some(failing_event_store()),
+        JobId::new(Uuid::new_v4()),
+        None,
+        &nonempty_drain_summary(0),
+    )
+    .await
+    .expect("failed audit append must produce a warning");
+
+    assert_eq!(warning.code, "source.prune.audit_deferred");
+    assert!(warning.retryable);
+    assert!(warning.message.contains("injected event append failure"));
+}
+
+#[tokio::test]
+async fn track_graph_mutation_marks_degraded_write_as_failed_annotation() {
+    let store = store();
+    let parent_job_id = completed_source_job(&store).await;
+
+    let _ = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
@@ -98,8 +171,14 @@ async fn track_graph_mutation_marks_degraded_write_as_failed_child_job() {
     )
     .await;
 
-    let job = only_job(&store, JobKind::Graph).await;
-    assert_eq!(job.status, LifecycleStatus::Failed);
+    assert_eq!(
+        audit_events(&store, parent_job_id)
+            .await
+            .last()
+            .unwrap()
+            .status,
+        LifecycleStatus::Failed
+    );
 }
 
 #[tokio::test]
@@ -107,7 +186,7 @@ async fn track_graph_mutation_skips_job_creation_for_zero_op_write() {
     let store = store();
     let parent_job_id = JobId::new(Uuid::new_v4());
 
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
@@ -136,7 +215,7 @@ async fn track_graph_mutation_skips_job_creation_for_zero_op_write() {
 async fn track_graph_mutation_skips_when_no_job_store() {
     // Must not panic without a job store — this is the degraded/no-data-plane
     // path's shape (no assertions possible beyond "did not panic").
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         None,
         JobId::new(Uuid::new_v4()),
         None,
@@ -148,7 +227,7 @@ async fn track_graph_mutation_skips_when_no_job_store() {
 #[tokio::test]
 async fn track_graph_mutation_skips_nil_parent_job_id() {
     let store = store();
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         JobId::new(Uuid::nil()),
         None,
@@ -174,11 +253,11 @@ async fn track_graph_mutation_skips_nil_parent_job_id() {
 }
 
 #[tokio::test]
-async fn track_prune_creates_completed_child_job_when_all_debt_resolved() {
+async fn track_prune_appends_completed_parent_annotation_when_all_debt_resolved() {
     let store = store();
-    let parent_job_id = JobId::new(Uuid::new_v4());
+    let parent_job_id = completed_source_job(&store).await;
 
-    track_prune(
+    let _ = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
@@ -186,18 +265,17 @@ async fn track_prune_creates_completed_child_job_when_all_debt_resolved() {
     )
     .await;
 
-    let job = only_job(&store, JobKind::Prune).await;
-    assert_eq!(job.status, LifecycleStatus::Completed);
-    assert_eq!(job.parent_job_id, Some(parent_job_id));
-    assert_eq!(job.root_job_id, Some(parent_job_id));
+    let events = audit_events(&store, parent_job_id).await;
+    assert_eq!(events.last().unwrap().status, LifecycleStatus::Completed);
+    assert_eq!(events.last().unwrap().phase, PipelinePhase::Cleaning);
 }
 
 #[tokio::test]
-async fn track_prune_marks_partial_failure_as_failed_child_job() {
+async fn track_prune_marks_partial_failure_as_failed_annotation() {
     let store = store();
-    let parent_job_id = JobId::new(Uuid::new_v4());
+    let parent_job_id = completed_source_job(&store).await;
 
-    track_prune(
+    let _ = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
@@ -205,8 +283,34 @@ async fn track_prune_marks_partial_failure_as_failed_child_job() {
     )
     .await;
 
-    let job = only_job(&store, JobKind::Prune).await;
-    assert_eq!(job.status, LifecycleStatus::Failed);
+    assert_eq!(
+        audit_events(&store, parent_job_id)
+            .await
+            .last()
+            .unwrap()
+            .status,
+        LifecycleStatus::Failed
+    );
+}
+
+#[tokio::test]
+async fn track_prune_marks_enumeration_failure_as_failed_annotation() {
+    let store = store();
+    let parent_job_id = completed_source_job(&store).await;
+    let summary = DebtDrainSummary {
+        enumeration_failed: true,
+        ..DebtDrainSummary::default()
+    };
+
+    let _ = track_prune(Some(store.clone()), parent_job_id, None, &summary).await;
+
+    let event = audit_events(&store, parent_job_id)
+        .await
+        .pop()
+        .expect("enumeration failure must be audited");
+    assert_eq!(event.status, LifecycleStatus::Failed);
+    assert_eq!(event.severity, Severity::Warning);
+    assert!(event.message.contains("enumeration_failed=true"));
 }
 
 #[tokio::test]
@@ -214,13 +318,17 @@ async fn track_prune_skips_job_creation_when_no_debt_touched() {
     let store = store();
     let parent_job_id = JobId::new(Uuid::new_v4());
 
-    track_prune(
+    let warning = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
         &empty_drain_summary(),
     )
     .await;
+    assert!(
+        warning.is_none(),
+        "a clean no-op must not produce a warning"
+    );
 
     let page = store
         .list(JobListRequest {
@@ -242,13 +350,14 @@ async fn track_prune_skips_job_creation_when_no_debt_touched() {
 #[tokio::test]
 async fn track_prune_skips_nil_parent_job_id() {
     let store = store();
-    track_prune(
+    let warning = track_prune(
         Some(store.clone()),
         JobId::new(Uuid::nil()),
         None,
         &nonempty_drain_summary(0),
     )
     .await;
+    assert!(warning.is_none(), "a nil parent cannot persist an audit");
 
     let page = store
         .list(JobListRequest {
@@ -361,19 +470,41 @@ fn child_job_request_without_parent_snapshot_gets_no_elevated_scope() {
 #[tokio::test]
 async fn track_graph_mutation_with_restricted_caller_does_not_create_admin_child_job() {
     let store = store();
-    let parent_job_id = JobId::new(Uuid::new_v4());
+    let parent_job_id = completed_source_job(&store).await;
     let parent = restricted_caller_snapshot();
 
-    track_graph_mutation(
+    let warning = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         Some(&parent),
         &nonempty_graph_summary(false),
     )
     .await;
+    assert!(
+        warning.is_none(),
+        "successful audit must not degrade the source"
+    );
 
-    let job = only_job(&store, JobKind::Graph).await;
-    assert_eq!(job.status, LifecycleStatus::Completed);
+    let page = store
+        .list(JobListRequest {
+            status: None,
+            kind: Some(JobKind::Graph),
+            source_id: None,
+            watch_id: None,
+            limit: Some(10),
+            cursor: None,
+        })
+        .await
+        .unwrap();
+    assert!(page.items.is_empty());
+    assert_eq!(
+        audit_events(&store, parent_job_id)
+            .await
+            .last()
+            .unwrap()
+            .status,
+        LifecycleStatus::Completed
+    );
 }
 
 async fn completed_source_job(store: &Arc<dyn JobStore>) -> JobId {
@@ -437,7 +568,7 @@ async fn completed_source_job(store: &Arc<dyn JobStore>) -> JobId {
 }
 
 #[tokio::test]
-async fn child_jobs_attach_to_an_already_terminal_parent_source_job() {
+async fn post_publish_audits_do_not_create_active_child_jobs() {
     let store = store();
     let parent_job_id = completed_source_job(&store).await;
 
@@ -449,30 +580,51 @@ async fn child_jobs_attach_to_an_already_terminal_parent_source_job() {
         .expect("parent job exists");
     assert_eq!(parent_before.status, LifecycleStatus::Completed);
 
-    track_graph_mutation(
+    let graph_warning = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_graph_summary(false),
     )
     .await;
-    track_prune(
+    let prune_warning = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_drain_summary(0),
     )
     .await;
+    assert!(graph_warning.is_none());
+    assert!(prune_warning.is_none());
 
-    let graph_child = only_job(&store, JobKind::Graph).await;
-    assert_eq!(graph_child.status, LifecycleStatus::Completed);
-    assert_eq!(graph_child.parent_job_id, Some(parent_job_id));
-    assert_eq!(graph_child.root_job_id, Some(parent_job_id));
-
-    let prune_child = only_job(&store, JobKind::Prune).await;
-    assert_eq!(prune_child.status, LifecycleStatus::Completed);
-    assert_eq!(prune_child.parent_job_id, Some(parent_job_id));
-    assert_eq!(prune_child.root_job_id, Some(parent_job_id));
+    for kind in [JobKind::Graph, JobKind::Prune] {
+        let page = store
+            .list(JobListRequest {
+                status: None,
+                kind: Some(kind),
+                source_id: None,
+                watch_id: None,
+                limit: Some(10),
+                cursor: None,
+            })
+            .await
+            .unwrap();
+        assert!(
+            page.items.is_empty(),
+            "audit annotations must not create child jobs"
+        );
+    }
+    let events = audit_events(&store, parent_job_id).await;
+    assert!(
+        events
+            .iter()
+            .any(|event| event.phase == PipelinePhase::Graphing)
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.phase == PipelinePhase::Cleaning)
+    );
 
     // The parent's own row is unaffected by children being created/completed
     // against it after its own terminal transition.

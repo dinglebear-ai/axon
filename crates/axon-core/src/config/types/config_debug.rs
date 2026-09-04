@@ -6,6 +6,17 @@
 use super::config::Config;
 use std::fmt;
 
+fn redacted_url(raw: &str) -> String {
+    let Ok(mut url) = url::Url::parse(raw) else {
+        return "[REDACTED URL]".to_string();
+    };
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.to_string()
+}
+
 impl fmt::Debug for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config")
@@ -33,7 +44,10 @@ impl fmt::Debug for Config {
             .field("warc_output", &self.warc_output)
             .field("automation_script", &self.automation_script)
             .field("render_mode", &self.render_mode)
-            .field("chrome_remote_url", &self.chrome_remote_url)
+            .field(
+                "chrome_remote_url",
+                &self.chrome_remote_url.as_deref().map(redacted_url),
+            )
             // Proxy URLs carry `user:pass@` credentials — never Debug them raw.
             // Presence is preserved (Some/None) so config diagnostics stay useful.
             .field(
@@ -141,8 +155,8 @@ impl fmt::Debug for Config {
             .field("reddit_min_score", &self.reddit_min_score)
             .field("reddit_depth", &self.reddit_depth)
             .field("reddit_scrape_links", &self.reddit_scrape_links)
-            .field("tei_url", &self.tei_url)
-            .field("qdrant_url", &self.qdrant_url)
+            .field("tei_url", &redacted_url(&self.tei_url))
+            .field("qdrant_url", &redacted_url(&self.qdrant_url))
             .field("llm_backend", &self.llm_backend)
             .field("headless_gemini_model", &self.headless_gemini_model)
             .field(
@@ -186,7 +200,7 @@ impl fmt::Debug for Config {
                 "codex_control_skill_writes",
                 &self.codex_control_skill_writes,
             )
-            .field("openai_base_url", &self.openai_base_url)
+            .field("openai_base_url", &redacted_url(&self.openai_base_url))
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)
             .field("synthesis_high_context", &self.synthesis_high_context)
@@ -269,6 +283,10 @@ impl fmt::Debug for Config {
             .field("embed_cache_enabled", &self.embed_cache_enabled)
             .field("embed_cache_max_entries", &self.embed_cache_max_entries)
             .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
+            .field(
+                "embed_prepared_byte_budget",
+                &self.embed_prepared_byte_budget,
+            )
             .field("embed_prep_concurrency", &self.embed_prep_concurrency)
             .field(
                 "chunking_markdown_max_chars",

@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use axon_api::source::{
-    ChunkProfile, ContentKind, ContentRef, DocumentId, MetadataMap, SourceDocument, SourceId,
-    SourceItemKey,
+    ChunkProfile, ContentKind, ContentRef, DocumentId, MetadataMap, SourceDocument,
+    SourceGenerationId, SourceId, SourceItemKey,
 };
 
 use super::{ChunkRouter, DocumentPreparer};
+use crate::PrepareSourceDocumentRequest;
 
 fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
     SourceDocument {
@@ -29,6 +30,18 @@ fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
     }
 }
 
+fn prepare_request(document: SourceDocument, generation: &str) -> PrepareSourceDocumentRequest {
+    PrepareSourceDocumentRequest {
+        document,
+        generation: SourceGenerationId::new(generation),
+        profile: None,
+        parse_facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
+    }
+}
+
 /// The concrete `crate::preparer::DocumentPreparer` struct must satisfy the
 /// `boundary::DocumentPreparer` trait object, non-breakingly, alongside its
 /// existing inherent API.
@@ -39,17 +52,14 @@ async fn concrete_document_preparer_satisfies_boundary_trait() {
 
     let document = source_doc(ContentKind::Markdown, "# Hello\nWorld");
     let prepared = preparer
-        .prepare(document)
+        .prepare(prepare_request(document, "generation-42"))
         .await
-        .expect("boundary prepare should succeed with a synthesized generation");
+        .expect("boundary prepare should preserve required generation lineage");
 
     assert!(!prepared.chunks.is_empty());
-    assert!(
-        prepared
-            .warnings
-            .iter()
-            .any(|w| w.code == "document.prepare.synthetic_generation"),
-        "expected synthetic-generation warning to be stamped"
+    assert_eq!(
+        prepared.generation,
+        SourceGenerationId::new("generation-42")
     );
 
     let capabilities = preparer.capabilities().await.expect("capabilities");
@@ -62,8 +72,8 @@ async fn concrete_document_preparer_prepare_many_short_circuits_on_first_error()
         Arc::new(crate::preparer::DocumentPreparer::default());
 
     let documents = vec![
-        source_doc(ContentKind::Markdown, "# Hello\nWorld"),
-        source_doc(ContentKind::Markdown, "# Second\nDoc"),
+        prepare_request(source_doc(ContentKind::Markdown, "# Hello\nWorld"), "g1"),
+        prepare_request(source_doc(ContentKind::Markdown, "# Second\nDoc"), "g1"),
     ];
     let prepared = preparer
         .prepare_many(documents)
@@ -92,18 +102,24 @@ fn fake_document_preparer_records_calls_and_supports_modes() {
 
     let fake = FakeDocumentPreparer::with_mode(FakeDocumentMode::Success);
     let document = source_doc(ContentKind::PlainText, "hello");
-    let result = tokio_test_prepare(&fake, document.clone());
+    let result = tokio_test_prepare(&fake, prepare_request(document.clone(), "fake-generation"));
     assert!(result.is_ok());
     assert_eq!(fake.calls().len(), 1);
     assert_eq!(fake.calls()[0].document_id, document.document_id);
 
     let failing = FakeDocumentPreparer::with_mode(FakeDocumentMode::Failure);
-    let err = tokio_test_prepare(&failing, source_doc(ContentKind::PlainText, "hello"));
+    let err = tokio_test_prepare(
+        &failing,
+        prepare_request(source_doc(ContentKind::PlainText, "hello"), "g"),
+    );
     assert!(err.is_err());
 
     let degraded = FakeDocumentPreparer::with_mode(FakeDocumentMode::Degraded);
-    let ok = tokio_test_prepare(&degraded, source_doc(ContentKind::PlainText, "hello"))
-        .expect("degraded mode still returns Ok with a warning");
+    let ok = tokio_test_prepare(
+        &degraded,
+        prepare_request(source_doc(ContentKind::PlainText, "hello"), "g"),
+    )
+    .expect("degraded mode still returns Ok with a warning");
     assert!(
         ok.warnings
             .iter()
@@ -129,10 +145,10 @@ fn fake_chunk_router_records_calls_and_supports_fixed_profile() {
 /// pulling `#[tokio::test]` onto every fake-mode assertion.
 fn tokio_test_prepare(
     preparer: &dyn DocumentPreparer,
-    document: SourceDocument,
+    request: PrepareSourceDocumentRequest,
 ) -> super::Result<axon_api::source::PreparedDocument> {
     tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("build current-thread runtime")
-        .block_on(preparer.prepare(document))
+        .block_on(preparer.prepare(request))
 }

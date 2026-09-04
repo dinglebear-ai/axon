@@ -229,6 +229,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     // background flush thread and tail buffers can be lost from the rolling log file.
     let console_policy = axon_core::ui::ConsolePolicy::for_config(&cfg);
     let _log_guard = init_tracing(console_policy);
+    // Declared after the tracing guard so reverse drop order drains cleanup
+    // threads while tracing is still available for restoration failures.
+    let _bulk_load_cleanup_drain = axon_services::BulkLoadCleanupDrain;
     if let Some(warning) = axon_core::binary_status::stale_binary_warning() {
         eprintln!("warning: {warning}");
     }
@@ -309,6 +312,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
     if let Some(every_seconds) = cfg.cron_every_seconds {
         if matches!(command_mode, Some(JobCommandMode::Subcommand { .. })) {
+            service_context.shutdown_background_tasks().await;
             return Err(
                 "--cron-every-seconds is not supported for job subcommands (status/cancel/list/etc)"
                     .into(),
@@ -339,9 +343,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
             cfg.command.as_str(),
             run_count
         ));
+        service_context.shutdown_background_tasks().await;
         return Ok(());
     }
-    run_once(cfg, &start_url, &service_context).await?;
+    let run_result = run_once(cfg, &start_url, &service_context).await;
+    service_context.shutdown_background_tasks().await;
+    run_result?;
 
     if matches!(
         command_mode,

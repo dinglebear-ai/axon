@@ -75,13 +75,8 @@ fn rate_state() -> &'static Mutex<RedditRateState> {
 
 /// Return a valid OAuth Bearer token, reusing the cached one if not yet expired.
 /// Returns None when credentials are absent or the token request fails.
-async fn get_oauth_token() -> Option<String> {
-    let id = std::env::var("REDDIT_CLIENT_ID")
-        .ok()
-        .filter(|s| !s.is_empty())?;
-    let secret = std::env::var("REDDIT_CLIENT_SECRET")
-        .ok()
-        .filter(|s| !s.is_empty())?;
+async fn get_oauth_token(ctx: &VerticalContext) -> Option<String> {
+    let (id, secret) = ctx.reddit_credentials()?;
 
     // Check cache with a short-lived lock — drop the guard before any network I/O
     // to avoid holding the mutex across .await (serializes all Reddit calls on slow responses).
@@ -98,7 +93,7 @@ async fn get_oauth_token() -> Option<String> {
     let client = http_client().ok()?;
     let resp = client
         .post("https://www.reddit.com/api/v1/access_token")
-        .basic_auth(&id, Some(&secret))
+        .basic_auth(id, Some(secret))
         .header("User-Agent", REDDIT_UA)
         .form(&[("grant_type", "client_credentials")])
         .send()
@@ -172,7 +167,7 @@ pub fn matches(url: &str) -> bool {
 
 // ── Extraction ───────────────────────────────────────────────────────────────
 
-pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let Ok(mut parsed) = url::Url::parse(url) else {
         return Err(VerticalError::VerticalUnsupportedUrl {
             vertical: INFO.name,
@@ -188,7 +183,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         status: 0,
     })?;
 
-    let token = get_oauth_token().await;
+    let token = get_oauth_token(ctx).await;
 
     let data = fetch_with_retry(client, &json_url, token.as_deref(), url).await?;
 

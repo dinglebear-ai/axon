@@ -3,6 +3,15 @@
 use super::*;
 
 impl ProviderScheduler {
+    #[cfg(test)]
+    pub(super) async fn try_grant_existing(
+        &self,
+        reservation_id: &str,
+    ) -> Result<ReservationGrant, SchedulerError> {
+        self.dispatch_queued().await?;
+        self.reservation_grant(reservation_id).await
+    }
+
     pub(super) async fn reserve_locked(
         &self,
         connection: &mut PoolConnection<Sqlite>,
@@ -13,40 +22,33 @@ impl ProviderScheduler {
             .await?;
         self.ensure_capacity(connection, &domain, &request).await?;
         let id = self.insert_queued(connection, &domain, &request).await?;
-        self.grant_head_locked(connection, &domain).await?;
+        let _ = self.grant_head_locked(connection, &domain).await?;
         self.reservation_grant_locked(connection, &id).await
     }
 
-    pub(super) async fn try_grant_existing(
+    pub(super) async fn reservation_grant(
         &self,
         reservation_id: &str,
     ) -> Result<ReservationGrant, SchedulerError> {
+        let mut connection = self.pool.acquire().await?;
+        self.reservation_grant_locked(&mut connection, reservation_id)
+            .await
+    }
+
+    pub(super) async fn dispatch_queued(&self) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
         let mut connection = self.pool.acquire().await?;
         begin_immediate(&mut connection).await?;
         let domain = domain_name(self.domain.kind)?;
         let result = async {
-            // Record queued-waiter liveness on every poll. `updated_at` is the
-            // priority-aging clock, so the poll heartbeat lives in
-            // `renewed_at` (unused while queued); abandonment expiry keys off
-            // this heartbeat instead of insertion age.
-            sqlx::query(
-                "UPDATE provider_reservations SET renewed_at = datetime('now')
-                 WHERE reservation_id = ? AND authority_id = ? AND status = 'queued'",
-            )
-            .bind(reservation_id)
-            .bind(&self.domain.authority_id)
-            .execute(&mut *connection)
-            .await?;
-            self.grant_head_locked(&mut connection, &domain).await?;
-            self.reservation_grant_locked(&mut connection, reservation_id)
-                .await
+            while self.grant_head_locked(&mut connection, &domain).await? {}
+            Ok(())
         }
         .await;
         match result {
-            Ok(grant) => {
+            Ok(()) => {
                 sqlx::query("COMMIT").execute(&mut *connection).await?;
-                Ok(grant)
+                Ok(())
             }
             Err(error) => {
                 let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
@@ -59,11 +61,11 @@ impl ProviderScheduler {
         &self,
         connection: &mut PoolConnection<Sqlite>,
         domain: &str,
-    ) -> Result<(), SchedulerError> {
+    ) -> Result<bool, SchedulerError> {
         self.refresh_effective_priorities(connection, domain)
             .await?;
-        let candidate: Option<(String, i64, String)> = sqlx::query_as(
-            "SELECT reservation_id, requested_units, effective_priority
+        let candidate: Option<(String, i64, String, String)> = sqlx::query_as(
+            "SELECT reservation_id, requested_units, effective_priority, authority_id
              FROM provider_reservations
              WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
              ORDER BY CASE effective_priority
@@ -75,8 +77,10 @@ impl ProviderScheduler {
         .bind(&self.domain.instance_id)
         .fetch_optional(&mut **connection)
         .await?;
-        let Some((candidate_id, candidate_units, candidate_priority)) = candidate else {
-            return Ok(());
+        let Some((candidate_id, candidate_units, candidate_priority, candidate_authority)) =
+            candidate
+        else {
+            return Ok(false);
         };
         let active: i64 = sqlx::query_scalar(
             "SELECT COALESCE(SUM(granted_units), 0) FROM provider_reservations
@@ -103,21 +107,21 @@ impl ProviderScheduler {
             self.config.capacity
         };
         if active + candidate_units > i64::from(limit) {
-            return Ok(());
+            return Ok(false);
         }
-        sqlx::query(
+        let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'granted', granted_units = ?,
              acquired_at = datetime('now'), grant_deadline = datetime('now', '+30 seconds'),
-             expires_at = datetime('now', '+300 seconds'), lease_owner = ?, authority_id = ?,
+             expires_at = datetime('now', '+300 seconds'), lease_owner = ?,
              updated_at = datetime('now') WHERE reservation_id = ? AND status = 'queued'",
         )
         .bind(candidate_units)
-        .bind(&self.domain.authority_id)
-        .bind(&self.domain.authority_id)
+        .bind(candidate_authority)
         .bind(candidate_id)
         .execute(&mut **connection)
-        .await?;
-        Ok(())
+        .await?
+        .rows_affected();
+        Ok(changed > 0)
     }
 
     async fn refresh_effective_priorities(

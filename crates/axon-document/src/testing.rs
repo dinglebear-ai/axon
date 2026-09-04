@@ -77,7 +77,11 @@ impl FakeDocumentPreparer {
 
 #[async_trait]
 impl boundary::DocumentPreparer for FakeDocumentPreparer {
-    async fn prepare(&self, document: SourceDocument) -> boundary::Result<PreparedDocument> {
+    async fn prepare(
+        &self,
+        request: PrepareSourceDocumentRequest,
+    ) -> boundary::Result<PreparedDocument> {
+        let document = request.document;
         self.calls
             .lock()
             .expect("FakeDocumentPreparer call log mutex poisoned")
@@ -93,7 +97,7 @@ impl boundary::DocumentPreparer for FakeDocumentPreparer {
             document_id: document.document_id,
             source_id: document.source_id,
             source_item_key: document.source_item_key.clone(),
-            generation: axon_api::source::SourceGenerationId::new("fake-generation"),
+            generation: request.generation,
             canonical_uri: document.canonical_uri,
             prepare_version: "fake-document-preparer".to_string(),
             chunking_profile: crate::profile::ChunkingProfile::PlainTextWindows
@@ -125,11 +129,11 @@ impl boundary::DocumentPreparer for FakeDocumentPreparer {
 
     async fn prepare_many(
         &self,
-        documents: Vec<SourceDocument>,
+        requests: Vec<PrepareSourceDocumentRequest>,
     ) -> boundary::Result<Vec<PreparedDocument>> {
-        let mut prepared = Vec::with_capacity(documents.len());
-        for document in documents {
-            prepared.push(boundary::DocumentPreparer::prepare(self, document).await?);
+        let mut prepared = Vec::with_capacity(requests.len());
+        for request in requests {
+            prepared.push(boundary::DocumentPreparer::prepare(self, request).await?);
         }
         Ok(prepared)
     }

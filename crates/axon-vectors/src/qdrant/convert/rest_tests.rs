@@ -9,6 +9,45 @@
 use super::*;
 
 #[test]
+fn collection_create_json_serializes_runtime_settings() {
+    let spec = CollectionSpec {
+        collection: "axon-test".to_string(),
+        dense: VectorConfig {
+            name: "dense".to_string(),
+            dimensions: 3,
+            distance: VectorDistance::Cosine,
+        },
+        payload_indexes: Vec::new(),
+        sparse: None,
+        aliases: Vec::new(),
+        distance: Some(VectorDistance::Cosine),
+        metadata: MetadataMap::new(),
+    };
+    let settings = QdrantCollectionSettings {
+        dense_on_disk: true,
+        hnsw_m: 16,
+        hnsw_ef_construct: 100,
+        hnsw_on_disk: false,
+        indexing_threshold: 9_999_999,
+        quantization_enabled: true,
+        quantization_quantile: 0.98,
+        quantization_always_ram: true,
+    };
+
+    let body = collection_create_json_with_settings(&spec, settings);
+
+    assert_eq!(body["hnsw_config"]["m"], 16);
+    assert_eq!(body["hnsw_config"]["ef_construct"], 100);
+    assert_eq!(body["optimizers_config"]["indexing_threshold"], 9_999_999);
+    assert_eq!(body["quantization_config"]["scalar"]["type"], "int8");
+    let quantile = body["quantization_config"]["scalar"]["quantile"]
+        .as_f64()
+        .expect("quantile number");
+    assert!((quantile - 0.98).abs() < 1e-6);
+    assert_eq!(body["quantization_config"]["scalar"]["always_ram"], true);
+}
+
+#[test]
 fn upsert_points_body_serializes_dense_sparse_and_payload_without_shape_drift() {
     let spec = CollectionSpec {
         collection: "axon-test".to_string(),
@@ -157,6 +196,41 @@ fn search_filter_json_converts_path_prefix_to_source_path_should_filter() {
     assert_eq!(path_filter[0]["key"], "source_item_key");
     assert_eq!(path_filter[1]["key"], "chunk_locator.path");
     assert_eq!(path_filter[0]["match"]["text"], "src");
+}
+
+#[test]
+fn source_kind_exclusion_rest_filter_requires_provenance() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 2,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap(
+            [
+                (
+                    crate::filter::EXCLUDED_SOURCE_KINDS.to_string(),
+                    serde_json::json!(["memory"]),
+                ),
+                (
+                    crate::filter::REQUIRE_SOURCE_KIND.to_string(),
+                    serde_json::json!(true),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = search_filter_json(&request)
+        .unwrap()
+        .expect("must-not filter");
+    assert_eq!(filter["must_not"].as_array().unwrap().len(), 2);
+    assert_eq!(filter["must_not"][1]["is_empty"]["key"], "source_kind");
 }
 
 #[test]

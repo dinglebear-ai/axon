@@ -323,6 +323,7 @@ pub(super) struct TomlEmbedSection {
     pub cache_enabled: Option<bool>,
     pub cache_max_entries: Option<usize>,
     pub pool_max_inputs: Option<usize>,
+    pub prepared_byte_budget: Option<usize>,
     pub prep_concurrency: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,
     pub max_source_chunks_per_doc: Option<usize>,
@@ -357,7 +358,10 @@ pub(super) struct TomlQdrantSection {
     pub payload_index_profile: Option<String>,
     pub payload_index_parallelism: Option<usize>,
     pub hnsw_on_disk: Option<bool>,
+    pub quantization_enabled: Option<bool>,
     pub quantization_always_ram: Option<bool>,
+    pub async_writes: Option<bool>,
+    pub transport: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

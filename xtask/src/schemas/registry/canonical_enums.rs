@@ -118,6 +118,7 @@ pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
             "memory_prune",
             "job_retention",
             "cache_prune",
+            "adapter_release",
         ],
     ),
     ("SourceRefreshPolicy", &["if_stale", "force", "never"]),

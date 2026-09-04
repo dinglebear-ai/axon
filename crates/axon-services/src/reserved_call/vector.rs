@@ -7,11 +7,236 @@ use axon_api::source::{
     ApiError, ErrorStage, SourceGenerationId, SourceId, SourceItemKey, VectorDeleteSelector,
     VectorStoreDeleteResult, VectorStoreWriteResult,
 };
+use axon_core::detached_workers::DetachedWorkerRegistry;
 use axon_jobs::scheduler::call_reserved;
 
 use crate::context::TargetLocalSourceRuntime;
 
 use super::{ProviderCallContext, VectorLane, map_reserved};
+
+static BULK_LOAD_CLEANUPS: std::sync::LazyLock<Arc<DetachedWorkerRegistry>> =
+    std::sync::LazyLock::new(|| Arc::new(DetachedWorkerRegistry::default()));
+
+pub fn drain_bulk_load_cleanups() {
+    // Mark the lower-level transition registry as draining first. Any
+    // transition started by a service cleanup below is then joined inline.
+    axon_vectors::qdrant::drain_bulk_load_transition_workers();
+    BULK_LOAD_CLEANUPS.drain();
+}
+
+pub async fn begin_bulk_load(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+) -> Result<(), ApiError> {
+    bulk_load_operation(runtime, context, collection, false).await
+}
+
+async fn finish_bulk_load_with_handoff(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+    handoff: impl FnOnce(),
+) -> Result<(), ApiError> {
+    let store = Arc::clone(&runtime.vector_store);
+    vector_operation(runtime, context, move || {
+        let completion = start_finish_then_handoff(store, collection, handoff);
+        async move {
+            completion.await.map_err(|_| {
+                ApiError::new(
+                    "vector.bulk_load_finish_worker_lost",
+                    ErrorStage::Publishing,
+                    "bulk-load finish worker ended without a result",
+                )
+            })?
+        }
+    })
+    .await
+}
+
+fn start_finish_then_handoff(
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+    handoff: impl FnOnce(),
+) -> tokio::sync::oneshot::Receiver<Result<(), ApiError>> {
+    let completion = start_bulk_load_finish(store, collection);
+    handoff();
+    completion
+}
+
+fn start_bulk_load_finish(
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+) -> tokio::sync::oneshot::Receiver<Result<(), ApiError>> {
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let cleanup = std::thread::spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build bulk-load finish runtime");
+            runtime.block_on(store.finish_bulk_load(&collection))
+        }));
+        if let Ok(result) = result {
+            let _ = result_tx.send(result);
+        }
+    });
+    BULK_LOAD_CLEANUPS.track(cleanup);
+    result_rx
+}
+
+pub async fn with_bulk_load<F>(
+    runtime: &TargetLocalSourceRuntime,
+    begin_context: ProviderCallContext,
+    finish_context: ProviderCallContext,
+    collection: String,
+    failure_context: &str,
+    processing: F,
+) -> anyhow::Result<()>
+where
+    F: Future<Output = anyhow::Result<()>>,
+{
+    begin_bulk_load(runtime, begin_context, collection.clone()).await?;
+    let mut guard =
+        BulkLoadCompletionGuard::new(Arc::clone(&runtime.vector_store), collection.clone());
+    let processing = processing.await;
+    let finishing = finish_bulk_load_with_handoff(runtime, finish_context, collection, || {
+        guard.disarm();
+    })
+    .await;
+    match (processing, finishing) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error.into()),
+        (Err(error), Err(finish_error)) => {
+            Err(error.context(format!("{failure_context}: {finish_error}")))
+        }
+    }
+}
+
+struct BulkLoadCompletionGuard {
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+    cleanups: Arc<DetachedWorkerRegistry>,
+    armed: bool,
+}
+
+impl BulkLoadCompletionGuard {
+    fn new(store: Arc<dyn axon_vectors::store::VectorStore>, collection: String) -> Self {
+        Self {
+            store,
+            collection,
+            cleanups: Arc::clone(&BULK_LOAD_CLEANUPS),
+            armed: true,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_registry(
+        store: Arc<dyn axon_vectors::store::VectorStore>,
+        collection: String,
+        cleanups: Arc<DetachedWorkerRegistry>,
+    ) -> Self {
+        Self {
+            store,
+            collection,
+            cleanups,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for BulkLoadCompletionGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let store = Arc::clone(&self.store);
+        let collection = self.collection.clone();
+        let cleanups = Arc::clone(&self.cleanups);
+        let failure_collection = collection.clone();
+        let cleanup = std::thread::spawn(move || {
+            let cleanup = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("build bulk-load cancellation cleanup runtime");
+                runtime.block_on(async move {
+                    if let Err(error) = store.finish_bulk_load(&collection).await {
+                        tracing::error!(%error, %collection, "failed to restore bulk-load state after pipeline cancellation");
+                    }
+                });
+            }));
+            if cleanup.is_err() {
+                tracing::error!(collection = %failure_collection, "bulk-load cancellation cleanup thread panicked");
+            }
+        });
+        cleanups.track(cleanup);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_bulk_load_cleanup_lifecycle(
+    store: Arc<dyn axon_vectors::store::VectorStore>,
+    collection: String,
+) {
+    let cleanups = Arc::new(DetachedWorkerRegistry::default());
+    drop(BulkLoadCompletionGuard::with_registry(
+        Arc::clone(&store),
+        collection.clone(),
+        Arc::clone(&cleanups),
+    ));
+    cleanups.drain();
+    drop(BulkLoadCompletionGuard::with_registry(
+        store, collection, cleanups,
+    ));
+}
+
+#[cfg(test)]
+pub(crate) async fn test_bulk_load_finish_handoff(
+    store: Arc<axon_vectors::store::FakeVectorStore>,
+    collection: String,
+) {
+    let observer = Arc::clone(&store);
+    let (handoff_tx, handoff_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        let completion = start_finish_then_handoff(store, collection, || {
+            let _ = handoff_tx.send(());
+        });
+        let _ = completion.await;
+    });
+    handoff_rx.await.expect("finish worker must take ownership");
+    task.abort();
+    let _ = task.await;
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while observer.calls().await.is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("owned finish worker must complete after caller cancellation");
+}
+
+async fn bulk_load_operation(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+    finish: bool,
+) -> Result<(), ApiError> {
+    let store = Arc::clone(&runtime.vector_store);
+    vector_operation(runtime, context, move || async move {
+        if finish {
+            store.finish_bulk_load(&collection).await
+        } else {
+            store.begin_bulk_load(&collection).await
+        }
+    })
+    .await
+}
 
 /// Run an arbitrary vector-capacity operation under the durable scheduler.
 /// This is used for Qdrant-specific read helpers whose API intentionally sits

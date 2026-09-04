@@ -8,7 +8,8 @@ use crate::collection::{normalize_collection_spec, required_retrieval_payload_in
 use crate::filter::SEARCH_GENERATION_FIELD;
 use crate::point::VectorPointBatchBuilder;
 use crate::qdrant::{
-    QdrantVectorStore, qdrant_collection_request, qdrant_filter, qdrant_payload_index_requests,
+    QdrantCollectionSettings, QdrantVectorStore, qdrant_collection_request,
+    qdrant_collection_request_with_settings, qdrant_filter, qdrant_payload_index_requests,
     qdrant_upsert_points,
 };
 use crate::store::VectorStore;
@@ -50,6 +51,44 @@ fn collection_spec_converts_to_named_dense_and_optional_sparse_config() {
         sparse.map["bm42"].modifier,
         Some(qdrant_client::qdrant::Modifier::Idf as i32)
     );
+}
+
+#[test]
+fn collection_settings_drive_bulk_threshold_hnsw_and_quantization() {
+    let settings = QdrantCollectionSettings {
+        dense_on_disk: true,
+        hnsw_m: 16,
+        hnsw_ef_construct: 100,
+        hnsw_on_disk: false,
+        indexing_threshold: 10_485_760,
+        quantization_enabled: true,
+        quantization_quantile: 0.97,
+        quantization_always_ram: false,
+    };
+
+    let request =
+        qdrant_collection_request_with_settings(&test_collection_spec(3), settings).unwrap();
+
+    assert_eq!(
+        request
+            .optimizers_config
+            .expect("optimizer settings")
+            .indexing_threshold,
+        Some(10_485_760)
+    );
+    let hnsw = request.hnsw_config.expect("HNSW settings");
+    assert_eq!(hnsw.m, Some(16));
+    assert_eq!(hnsw.ef_construct, Some(100));
+    let quantization = request
+        .quantization_config
+        .and_then(|config| config.quantization)
+        .expect("quantization settings");
+    let qdrant_client::qdrant::quantization_config::Quantization::Scalar(scalar) = quantization
+    else {
+        panic!("expected scalar quantization");
+    };
+    assert_eq!(scalar.quantile, Some(0.97));
+    assert_eq!(scalar.always_ram, Some(false));
 }
 
 #[test]
@@ -153,6 +192,42 @@ fn source_generation_and_document_filters_convert_to_qdrant_filters() {
     request.filters.clear();
     request.generation = None;
     assert!(qdrant_filter(&request).unwrap().is_none());
+}
+
+#[test]
+fn source_kind_exclusion_is_a_provider_side_must_not_filter() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 2,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap(
+            [
+                (
+                    crate::filter::EXCLUDED_SOURCE_KINDS.to_string(),
+                    json!(["memory"]),
+                ),
+                (crate::filter::REQUIRE_SOURCE_KIND.to_string(), json!(true)),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = qdrant_filter(&request)
+        .unwrap()
+        .expect("must-not-only filter");
+    assert!(filter.must.is_empty());
+    assert_eq!(filter.must_not.len(), 2);
+    assert!(filter.must_not.iter().any(|condition| matches!(
+        condition.condition_one_of,
+        Some(condition::ConditionOneOf::IsEmpty(_))
+    )));
 }
 
 #[test]
