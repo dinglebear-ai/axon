@@ -268,7 +268,7 @@ async fn later_invalid_candidate_cannot_leave_earlier_candidate_batches_committe
 }
 
 #[tokio::test]
-async fn later_edge_batch_failure_reports_durable_partial_checkpoint() {
+async fn later_edge_batch_failure_rolls_back_the_complete_candidate() {
     let graph = store().await;
     sqlx::query(
         "CREATE TRIGGER fail_later_edge_batch BEFORE INSERT ON graph_edges \
@@ -287,31 +287,23 @@ async fn later_edge_batch_failure_reports_durable_partial_checkpoint() {
         .unwrap_err();
 
     assert!(
-        error.message.contains("graph.partial_write"),
+        !error.message.contains("graph.partial_write"),
         "{}",
         error.message
-    );
-    assert_eq!(
-        error
-            .details
-            .get("committed_edges_at_least")
-            .map(String::as_str),
-        Some("100")
-    );
-    assert_eq!(
-        error.details.get("reconciliation").map(String::as_str),
-        Some("retry_candidate")
     );
     let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
         .fetch_one(graph.pool())
         .await
         .unwrap();
-    assert_eq!(edges, 100);
-    let checkpoint: i64 = sqlx::query_scalar("SELECT next_edge_index FROM graph_write_checkpoints")
+    assert_eq!(
+        edges, 0,
+        "failed candidates must not leave a committed prefix"
+    );
+    let checkpoints: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_write_checkpoints")
         .fetch_one(graph.pool())
         .await
         .unwrap();
-    assert_eq!(checkpoint, 100);
+    assert_eq!(checkpoints, 0);
     sqlx::query("DROP TRIGGER fail_later_edge_batch")
         .execute(graph.pool())
         .await
@@ -327,6 +319,63 @@ async fn later_edge_batch_failure_reports_durable_partial_checkpoint() {
         .await
         .unwrap();
     assert_eq!(checkpoints, 0);
+}
+
+#[tokio::test]
+async fn small_candidate_never_touches_the_legacy_checkpoint_table() {
+    let graph = store().await;
+    sqlx::query(
+        "CREATE TRIGGER reject_checkpoint_insert BEFORE INSERT ON graph_write_checkpoints \
+         BEGIN SELECT RAISE(FAIL, 'checkpoint traffic is forbidden'); END",
+    )
+    .execute(graph.pool())
+    .await
+    .unwrap();
+
+    graph
+        .upsert_candidates(vec![repo_docs_candidate(
+            "small-no-checkpoint",
+            "src",
+            vec![ev("small-evidence", "text_mention", 0.9)],
+        )])
+        .await
+        .expect("an atomic small candidate does not require checkpoint I/O");
+}
+
+#[tokio::test]
+async fn stale_checkpoint_cannot_skip_edges_from_a_changed_candidate() {
+    let graph = store().await;
+    let mut candidate = large_repo_candidate(201);
+    candidate.kind = "repository_snapshot".to_string();
+    sqlx::query(
+        "INSERT INTO graph_write_checkpoints \
+         (job_id, candidate_id, next_edge_index, updated_at) VALUES (?, ?, 100, ?)",
+    )
+    .bind(candidate.job_id.0.to_string())
+    .bind(&candidate.candidate_id)
+    .bind("2026-09-04T00:00:00Z")
+    .execute(graph.pool())
+    .await
+    .unwrap();
+
+    graph.upsert_candidates(vec![candidate]).await.unwrap();
+
+    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
+        .fetch_one(graph.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        edges, 201,
+        "legacy checkpoint state must never suppress writes"
+    );
+    let checkpoints: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_write_checkpoints")
+        .fetch_one(graph.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        checkpoints, 0,
+        "successful reconciliation removes stale state"
+    );
 }
 
 #[tokio::test]
@@ -985,6 +1034,14 @@ async fn multi_source_upsert_unions_node_source_ids() {
     assert_eq!(node.source_ids.len(), 2);
     assert!(node.source_ids.contains(&SourceId::new("src-a")));
     assert!(node.source_ids.contains(&SourceId::new("src-b")));
+}
+
+#[test]
+fn node_source_membership_uses_a_set_without_changing_serialized_order() {
+    let source = include_str!("sqlite/upsert/nodes.rs");
+    assert!(source.contains("source_id_set: HashSet<String>"));
+    assert!(source.contains("source_ids: Vec<SourceId>"));
+    assert!(!source.contains("state.source_ids.contains(source_id)"));
 }
 
 #[tokio::test]

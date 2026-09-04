@@ -6,6 +6,8 @@
 
 use super::*;
 
+pub(super) const ADAPTER_RELEASE_MAX_ATTEMPTS: u32 = 10;
+
 /// Execute one debt entry and, on clean success, mark it resolved. Every
 /// drainable kind (`VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`/
 /// `JobRetention`) routes through the same [`drain_via_executor`] path.
@@ -14,8 +16,8 @@ pub(super) async fn drain_one_debt(
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
     authz: &PruneAuthz,
     debt: &CleanupDebt,
-    collection: &str,
-    artifact_store: Option<&dyn ArtifactStore>,
+    _collection: &str,
+    provider_ops: &dyn CleanupProviderOps,
     document_cache: Option<&dyn DocumentCache>,
     adapter_registry: Option<&SourceAdapterRegistry>,
     summary: &mut DebtDrainSummary,
@@ -26,10 +28,10 @@ pub(super) async fn drain_one_debt(
         | CleanupDebtKind::GraphPrune
         | CleanupDebtKind::MemoryPrune
         | CleanupDebtKind::JobRetention => {
-            drain_via_executor(ledger, executor, authz, debt, collection, summary).await;
+            drain_via_executor(ledger, executor, authz, debt, summary).await;
         }
         CleanupDebtKind::ArtifactDelete => {
-            drain_artifact_delete(ledger, artifact_store, debt, summary).await;
+            drain_artifact_delete(ledger, provider_ops, debt, summary).await;
         }
         CleanupDebtKind::CachePrune => {
             drain_cache_prune(ledger, document_cache, debt, summary).await;
@@ -59,12 +61,46 @@ pub(super) async fn drain_adapter_release(
         trace_unwired(debt);
         return;
     };
-    let Ok(Some(source)) = ledger.get_source(debt.source_id.clone()).await else {
-        summary.failed += 1;
-        return;
+    let source = match ledger.get_source(debt.source_id.clone()).await {
+        Ok(Some(source)) => source,
+        Ok(None) => {
+            persist_adapter_release_failure(
+                ledger,
+                debt,
+                "source.cleanup.adapter_release_source_unavailable",
+                "source is unavailable while retrying adapter release",
+                true,
+                summary,
+            )
+            .await;
+            return;
+        }
+        Err(error) => {
+            persist_adapter_release_failure(
+                ledger,
+                debt,
+                "source.cleanup.adapter_release_lookup_failed",
+                &format!(
+                    "source lookup failed while retrying adapter release: {}",
+                    error.message
+                ),
+                true,
+                summary,
+            )
+            .await;
+            return;
+        }
     };
     let Some(adapter) = registry.adapter_for_source_kind(source.source_kind) else {
-        summary.failed += 1;
+        persist_adapter_release_failure(
+            ledger,
+            debt,
+            "source.cleanup.adapter_release_adapter_unavailable",
+            "no compatible adapter is currently registered",
+            true,
+            summary,
+        )
+        .await;
         return;
     };
     let request = AdapterReleaseRequest {
@@ -75,45 +111,71 @@ pub(super) async fn drain_adapter_release(
     match adapter.release(&request) {
         Ok(()) => resolve_debt(ledger, debt, summary).await,
         Err(error) => {
-            let mut retry = debt.clone();
-            retry.attempts = retry.attempts.saturating_add(1);
-            let delay = 2_u64.saturating_pow(retry.attempts.min(10));
-            retry.next_retry_at = Some(Timestamp::from(
-                chrono::Utc::now() + chrono::Duration::seconds(delay as i64),
-            ));
-            retry.last_error = Some(SourceError {
-                code: error.code.to_string(),
-                severity: Severity::Warning,
-                message: error.message.clone(),
-                source_item_key: None,
-                retryable: error.retryable,
-                provider_id: error.provider_id.clone().map(ProviderId::new),
-                cause: Some(error.to_string()),
-            });
-            if ledger.record_cleanup_debt(retry).await.is_err() {
-                tracing::warn!(debt_id = %debt.debt_id.0, "failed to persist adapter cleanup retry state");
-            }
-            summary.failed += 1;
+            persist_adapter_release_failure(
+                ledger,
+                debt,
+                &error.code.to_string(),
+                &error.message,
+                error.retryable,
+                summary,
+            )
+            .await;
         }
     }
 }
 
+async fn persist_adapter_release_failure(
+    ledger: &dyn LedgerStore,
+    debt: &CleanupDebt,
+    code: &str,
+    message: &str,
+    retryable: bool,
+    summary: &mut DebtDrainSummary,
+) {
+    let now = chrono::Utc::now();
+    let mut retry = debt.clone();
+    retry.attempts = retry.attempts.saturating_add(1);
+    // Release is compensating cleanup: even provider errors marked
+    // non-retryable can become actionable after an adapter/config deployment.
+    // Bound every class uniformly, then retain a terminal audit record.
+    let terminal = retry.attempts >= ADAPTER_RELEASE_MAX_ATTEMPTS;
+    retry.status = if terminal {
+        axon_api::source::LifecycleStatus::Failed
+    } else {
+        axon_api::source::LifecycleStatus::Pending
+    };
+    retry.completed_at = terminal.then(|| Timestamp::from(now));
+    retry.next_retry_at = (!terminal).then(|| {
+        let delay = 2_u64.saturating_pow(retry.attempts.min(10));
+        Timestamp::from(now + chrono::Duration::seconds(delay as i64))
+    });
+    retry.last_error = Some(SourceError {
+        code: code.to_string(),
+        severity: Severity::Warning,
+        message: message.to_string(),
+        source_item_key: None,
+        retryable: retryable && !terminal,
+        provider_id: None,
+        cause: None,
+    });
+    if ledger.record_cleanup_debt(retry).await.is_err() {
+        tracing::warn!(debt_id = %debt.debt_id.0, "failed to persist adapter cleanup retry state");
+    }
+    summary.failed += 1;
+}
+
 pub(super) async fn drain_artifact_delete(
     ledger: &dyn LedgerStore,
-    artifact_store: Option<&dyn ArtifactStore>,
+    provider_ops: &dyn CleanupProviderOps,
     debt: &CleanupDebt,
     summary: &mut DebtDrainSummary,
 ) {
-    let Some(artifact_store) = artifact_store else {
-        trace_unwired(debt);
-        return;
-    };
     let CleanupSelector::Artifact { artifact_id } = &debt.selector else {
         trace_unwired(debt);
         return;
     };
-    let delete = artifact_store
-        .delete(ArtifactHandle {
+    let delete = provider_ops
+        .artifact_delete(ArtifactHandle {
             artifact_id: artifact_id.clone(),
             artifact_kind: ArtifactKind::RawContent,
             uri: None,
@@ -210,10 +272,18 @@ pub(super) async fn drain_via_executor(
     executor: &PruneExecutor<LedgerPruneTarget<'_>>,
     authz: &PruneAuthz,
     debt: &CleanupDebt,
-    collection: &str,
     summary: &mut DebtDrainSummary,
 ) {
-    let Some(step) = debt_to_step(debt, collection) else {
+    if debt.kind == CleanupDebtKind::VectorDelete && debt.vector_collection.is_none() {
+        tracing::warn!(
+            debt_id = %debt.debt_id.0,
+            source_id = %debt.source_id.0,
+            "legacy vector cleanup debt has no persisted collection identity; leaving pending; republish or explicitly bind the debt before retry"
+        );
+        summary.failed += 1;
+        return;
+    }
+    let Some(step) = debt_to_step(debt) else {
         tracing::debug!(
             debt_id = %debt.debt_id.0,
             kind = ?debt.kind,
@@ -273,12 +343,10 @@ pub(super) async fn drain_via_executor(
 /// so `job_ids` can carry the current debt's identity (see that function's
 /// doc comment for why `job_ids` can't instead ride on `PruneStep`).
 pub(super) struct LedgerPruneTarget<'a> {
-    pub(super) vector_store: &'a dyn VectorStore,
+    pub(super) provider_ops: &'a dyn CleanupProviderOps,
     pub(super) ledger: &'a dyn LedgerStore,
-    pub(super) graph_store: Option<&'a dyn GraphStore>,
     pub(super) memory_store: Option<&'a dyn MemoryStore>,
     pub(super) job_store: Option<&'a dyn JobStore>,
-    pub(super) collection: String,
     pub(super) source_id: SourceId,
     pub(super) committed_generation: SourceGenerationId,
     /// Job ids named by the current `JobRetention` debt's
@@ -301,76 +369,9 @@ impl PruneTarget for LedgerPruneTarget<'_> {
     async fn apply(&self, step: &PruneStep) -> Result<StepExecution, String> {
         match step.target {
             PruneTargetKind::Vector | PruneTargetKind::Ledger => {
-                let Some(generation) = &step.generation else {
-                    return Ok(StepExecution::skipped("no generation on step"));
-                };
-                // Defensive: never delete the committed generation even if
-                // fencing was bypassed. The executor already fences, this is
-                // belt-and-suspenders.
-                if generation == &self.committed_generation {
-                    return Ok(StepExecution::skipped(
-                        "refusing to delete committed generation",
-                    ));
-                }
-                match step.target {
-                    PruneTargetKind::Vector => {
-                        let deleted = self
-                            .vector_store
-                            .delete(VectorDeleteSelector::Generation {
-                                collection: self.collection.clone(),
-                                source_id: self.source_id.clone(),
-                                generation: generation.clone(),
-                            })
-                            .await
-                            .map_err(|err| err.message.clone())?;
-                        Ok(StepExecution::deleted(deleted.points_deleted))
-                    }
-                    PruneTargetKind::Ledger => {
-                        let source_id = step
-                            .source_id
-                            .clone()
-                            .unwrap_or_else(|| self.source_id.clone());
-                        let deleted = self
-                            .ledger
-                            .delete_generation(source_id, generation.clone())
-                            .await
-                            .map_err(|err| err.message.clone())?;
-                        Ok(StepExecution::deleted(deleted))
-                    }
-                    _ => unreachable!("outer match already narrowed to Vector | Ledger"),
-                }
+                self.apply_generation_scoped(step).await
             }
-            PruneTargetKind::Graph => {
-                let Some(graph_store) = self.graph_store else {
-                    return Err("no GraphStore wired for this drain".to_string());
-                };
-                let mut deleted = 0u64;
-                let mut touched = false;
-                if let Some(stable_keys) = &step.graph_stable_keys {
-                    if !stable_keys.is_empty() {
-                        touched = true;
-                        let result = graph_store
-                            .delete_nodes(stable_keys.clone())
-                            .await
-                            .map_err(|err| err.message.clone())?;
-                        deleted += result.nodes_deleted;
-                    }
-                }
-                if let Some(edge_ids) = &step.graph_edge_ids {
-                    if !edge_ids.is_empty() {
-                        touched = true;
-                        let result = graph_store
-                            .delete_edges(edge_ids.clone())
-                            .await
-                            .map_err(|err| err.message.clone())?;
-                        deleted += result.edges_deleted;
-                    }
-                }
-                if !touched {
-                    return Ok(StepExecution::skipped("no graph identity on step"));
-                }
-                Ok(StepExecution::deleted(deleted))
-            }
+            PruneTargetKind::Graph => self.apply_graph(step).await,
             PruneTargetKind::Memory => {
                 let Some(memory_store) = self.memory_store else {
                     return Err("no MemoryStore wired for this drain".to_string());
@@ -422,6 +423,89 @@ impl PruneTarget for LedgerPruneTarget<'_> {
 }
 
 impl LedgerPruneTarget<'_> {
+    async fn apply_graph(&self, step: &PruneStep) -> Result<StepExecution, String> {
+        let mut deleted = 0u64;
+        let mut touched = false;
+        if let Some(stable_keys) = &step.graph_stable_keys {
+            if !stable_keys.is_empty() {
+                touched = true;
+                let result = self
+                    .provider_ops
+                    .graph_delete_nodes(stable_keys.clone())
+                    .await
+                    .map_err(|err| err.message.clone())?;
+                deleted += result.nodes_deleted;
+            }
+        }
+        if let Some(edge_ids) = &step.graph_edge_ids {
+            if !edge_ids.is_empty() {
+                touched = true;
+                let result = self
+                    .provider_ops
+                    .graph_delete_edges(edge_ids.clone())
+                    .await
+                    .map_err(|err| err.message.clone())?;
+                deleted += result.edges_deleted;
+            }
+        }
+        if !touched {
+            return Ok(StepExecution::skipped("no graph identity on step"));
+        }
+        Ok(StepExecution::deleted(deleted))
+    }
+
+    /// Apply a vector or ledger generation deletion after a defensive check
+    /// that the requested generation is not the committed generation.
+    async fn apply_generation_scoped(&self, step: &PruneStep) -> Result<StepExecution, String> {
+        let Some(generation) = &step.generation else {
+            return Ok(StepExecution::skipped("no generation on step"));
+        };
+        // The executor already fences this, but keep the target safe if it is
+        // ever invoked through another caller.
+        if generation == &self.committed_generation {
+            return Ok(StepExecution::skipped(
+                "refusing to delete committed generation",
+            ));
+        }
+        match step.target {
+            PruneTargetKind::Vector => {
+                let Some(VectorDeleteSelector::Generation {
+                    collection,
+                    source_id,
+                    generation,
+                }) = &step.vector_selector
+                else {
+                    return Ok(StepExecution::skipped(
+                        "vector cleanup debt is missing exact collection identity",
+                    ));
+                };
+                let deleted = self
+                    .provider_ops
+                    .vector_delete(VectorDeleteSelector::Generation {
+                        collection: collection.clone(),
+                        source_id: source_id.clone(),
+                        generation: generation.clone(),
+                    })
+                    .await
+                    .map_err(|err| err.message.clone())?;
+                Ok(StepExecution::deleted(deleted.points_deleted))
+            }
+            PruneTargetKind::Ledger => {
+                let source_id = step
+                    .source_id
+                    .clone()
+                    .unwrap_or_else(|| self.source_id.clone());
+                let deleted = self
+                    .ledger
+                    .delete_generation(source_id, generation.clone())
+                    .await
+                    .map_err(|err| err.message.clone())?;
+                Ok(StepExecution::deleted(deleted))
+            }
+            _ => unreachable!("caller narrowed target to Vector | Ledger"),
+        }
+    }
+
     /// Drain this debt's `self.job_ids` (a `JobRetention` debt's
     /// `CleanupSelector::JobRows`) via `JobStore::delete_jobs`. Split out of
     /// `apply()` to keep that function under the monolith line cap.

@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "index_tests.rs"]
+mod tests;
+
 pub(in crate::source) async fn index_materialized_source<'a, F, Fut>(
     runtime: &'a TargetLocalSourceRuntime,
     mut input: SourcePipelineInput<'a>,
@@ -65,26 +69,37 @@ where
         .with_optional_foreground(input.execution.foreground.clone());
 
     let result = run_with_lease(runtime, &mut input, &emitter, materialize).await;
-    let status_result = if owns_status {
-        record_terminal_status(runtime.jobs.as_ref(), &input, &result).await
-    } else {
-        Ok(())
-    };
     let release_result = release_adapter(runtime, &input).await;
-    merge_pipeline_results(runtime, result, status_result, release_result).await
+    let merged = merge_pipeline_results(runtime, result, Ok(()), release_result).await;
+    if owns_status && merged.is_err() {
+        let status_result = record_terminal_status(runtime.jobs.as_ref(), &input, &merged).await;
+        return merge_pipeline_results(
+            runtime,
+            merged,
+            status_result,
+            Ok(AdapterReleaseOutcome::Released),
+        )
+        .await;
+    }
+    merged
+}
+
+enum AdapterReleaseOutcome {
+    Released,
+    Deferred(SourceWarning),
 }
 
 async fn release_adapter(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<AdapterReleaseOutcome> {
     let release_request = AdapterReleaseRequest {
         job_id: input.plan.job_id,
         source_id: input.plan.route.source.source_id.clone(),
         source_kind: input.plan.route.source.source_kind,
     };
     match input.adapter.release(&release_request) {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(AdapterReleaseOutcome::Released),
         Err(release_error) => {
             let debt = CleanupDebt {
                 debt_id: CleanupDebtId::new(format!(
@@ -106,6 +121,7 @@ async fn release_adapter(
                 selector: CleanupSelector::Source {
                     source_id: input.plan.route.source.source_id.clone(),
                 },
+                vector_collection: None,
                 status: LifecycleStatus::Pending,
                 created_at: timestamp(),
                 attempts: 1,
@@ -124,8 +140,12 @@ async fn release_adapter(
                 completed_at: None,
             };
             match runtime.ledger.record_cleanup_debt(debt).await {
-                Ok(()) => Err(anyhow::Error::new(release_error)
-                    .context("adapter cleanup was deferred to durable cleanup debt")),
+                Ok(()) => Ok(AdapterReleaseOutcome::Deferred(deferred_warning(
+                    "source.adapter.release_deferred",
+                    format!(
+                        "adapter release failed and was persisted as durable cleanup debt: {release_error}"
+                    ),
+                ))),
                 Err(debt_error) => Err(anyhow::Error::new(release_error).context(format!(
                     "also failed to persist adapter cleanup debt: {debt_error}"
                 ))),
@@ -138,16 +158,24 @@ async fn merge_pipeline_results(
     runtime: &TargetLocalSourceRuntime,
     result: anyhow::Result<IndexCounts>,
     status_result: anyhow::Result<()>,
-    release_result: anyhow::Result<()>,
+    release_result: anyhow::Result<AdapterReleaseOutcome>,
 ) -> anyhow::Result<IndexCounts> {
     match (result, status_result, release_result) {
-        (Ok(output), Ok(()), Ok(())) => Ok(output),
-        (Err(error), Ok(()), Ok(())) => Err(error),
+        (Ok(output), Ok(()), Ok(AdapterReleaseOutcome::Released)) => Ok(output),
+        (Err(error), Ok(()), Ok(_)) => Err(error),
+        (Ok(mut output), Ok(()), Ok(AdapterReleaseOutcome::Deferred(warning))) => {
+            output.warnings.push(warning);
+            persist_degraded_summary(runtime, &mut output).await;
+            Ok(output)
+        }
         (Ok(_), Ok(()), Err(release_error)) => Err(release_error),
         (Err(error), Ok(()), Err(release_error)) => Err(error.context(format!(
             "adapter cleanup also failed: {release_error}"
         ))),
-        (Ok(mut output), Err(status_error), Ok(())) => {
+        (Ok(mut output), Err(status_error), Ok(release_outcome)) => {
+            if let AdapterReleaseOutcome::Deferred(warning) = release_outcome {
+                output.warnings.push(warning);
+            }
             output.warnings.push(deferred_warning(
                 "source.job.terminal_status_deferred",
                 format!(
@@ -158,7 +186,7 @@ async fn merge_pipeline_results(
             persist_degraded_summary(runtime, &mut output).await;
             Ok(output)
         }
-        (Err(error), Err(status_error), Ok(())) => Err(error.context(format!(
+        (Err(error), Err(status_error), Ok(_)) => Err(error.context(format!(
             "terminal job status update also failed: {status_error}"
         ))),
         (Ok(_), Err(status_error), Err(release_error)) => Err(anyhow::anyhow!(

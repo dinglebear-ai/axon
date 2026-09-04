@@ -50,6 +50,9 @@ pub(super) fn apply_cleanup_debt_update(existing: &mut CleanupDebt, next: Cleanu
     }
 
     existing.job_id = next.job_id;
+    if existing.vector_collection.is_none() {
+        existing.vector_collection = next.vector_collection;
+    }
     existing.origin_attempt = next.origin_attempt;
     existing.status = next.status;
     existing.created_at = next.created_at;

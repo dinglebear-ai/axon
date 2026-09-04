@@ -55,6 +55,23 @@ fn qdrant_grpc_transport_reuses_rest_credentials_without_leaking_them_into_url()
 }
 
 #[test]
+fn grpc_transport_rejects_inherited_credentials_over_remote_plaintext() {
+    let mut store =
+        QdrantVectorStore::new("https://rest-secret@qdrant.internal:6333", "qdrant-test");
+    let error = configure_write_transport(&mut store, "grpc", Some("http://qdrant.internal:6334"))
+        .expect_err("inherited credentials over plaintext gRPC must fail closed");
+    assert_eq!(error.code.0, "vector.qdrant.insecure_credentials");
+    assert!(!error.to_string().contains("rest-secret"));
+}
+
+#[test]
+fn grpc_transport_allows_plaintext_credentials_on_loopback() {
+    let mut store = QdrantVectorStore::new("http://local-secret@127.0.0.1:6333", "qdrant-test");
+    configure_write_transport(&mut store, "grpc", Some("http://127.0.0.1:6334"))
+        .expect("loopback plaintext remains supported for local development");
+}
+
+#[test]
 fn qdrant_write_transport_rejects_unknown_values_and_missing_grpc_url() {
     let mut store = QdrantVectorStore::new("http://127.0.0.1:6333", "qdrant-test");
     let unknown = configure_write_transport(&mut store, "magic", None).unwrap_err();

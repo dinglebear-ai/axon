@@ -78,4 +78,12 @@ mkdir -p "$config_root/.axon"
 [[ $(HOME=$config_root AXON_BENCH_CONFIG_PATH=/bench/config.toml benchmark_config_path) == /bench/config.toml ]] \
   || fail benchmark-config-path
 
+claim_scope=$(benchmark_claim_scope)
+[[ $(jq -r '.evidence_scope' <<<"$claim_scope") == single_arm_diagnostic ]] \
+  || fail evidence-scope
+[[ $(jq -r '.ranking_eligible' <<<"$claim_scope") == false ]] \
+  || fail ranking-eligibility
+[[ $(jq -r '.equivalence_gate.status' <<<"$claim_scope") == not_evaluated ]] \
+  || fail equivalence-gate
+
 echo 'bench-source-pipeline tests passed'

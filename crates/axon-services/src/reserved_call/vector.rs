@@ -7,71 +7,21 @@ use axon_api::source::{
     ApiError, ErrorStage, SourceGenerationId, SourceId, SourceItemKey, VectorDeleteSelector,
     VectorStoreDeleteResult, VectorStoreWriteResult,
 };
+use axon_core::detached_workers::DetachedWorkerRegistry;
 use axon_jobs::scheduler::call_reserved;
 
 use crate::context::TargetLocalSourceRuntime;
 
 use super::{ProviderCallContext, VectorLane, map_reserved};
 
-#[derive(Default)]
-struct CleanupRegistry {
-    handles: Vec<std::thread::JoinHandle<()>>,
-    draining: bool,
-}
-
-static BULK_LOAD_CLEANUPS: std::sync::LazyLock<Arc<std::sync::Mutex<CleanupRegistry>>> =
-    std::sync::LazyLock::new(|| Arc::new(std::sync::Mutex::new(CleanupRegistry::default())));
+static BULK_LOAD_CLEANUPS: std::sync::LazyLock<Arc<DetachedWorkerRegistry>> =
+    std::sync::LazyLock::new(|| Arc::new(DetachedWorkerRegistry::default()));
 
 pub fn drain_bulk_load_cleanups() {
     // Mark the lower-level transition registry as draining first. Any
     // transition started by a service cleanup below is then joined inline.
     axon_vectors::qdrant::drain_bulk_load_transition_workers();
-    drain_bulk_load_cleanups_in(&BULK_LOAD_CLEANUPS);
-}
-
-fn drain_bulk_load_cleanups_in(cleanups: &std::sync::Mutex<CleanupRegistry>) {
-    let cleanups = {
-        let mut pending = cleanups
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        pending.draining = true;
-        std::mem::take(&mut pending.handles)
-    };
-    for cleanup in cleanups {
-        if cleanup.join().is_err() {
-            tracing::error!("bulk-load cancellation cleanup thread panicked");
-        }
-    }
-}
-
-fn track_bulk_load_cleanup_in(
-    cleanups: &std::sync::Mutex<CleanupRegistry>,
-    cleanup: std::thread::JoinHandle<()>,
-) {
-    let (finished, late_cleanup) = {
-        let mut pending = cleanups
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut finished = Vec::new();
-        let mut index = pending.handles.len();
-        while index > 0 {
-            index -= 1;
-            if pending.handles[index].is_finished() {
-                finished.push(pending.handles.swap_remove(index));
-            }
-        }
-        if pending.draining {
-            (finished, Some(cleanup))
-        } else {
-            pending.handles.push(cleanup);
-            (finished, None)
-        }
-    };
-    for cleanup in finished.into_iter().chain(late_cleanup) {
-        if cleanup.join().is_err() {
-            tracing::error!("bulk-load cancellation cleanup thread panicked");
-        }
-    }
+    BULK_LOAD_CLEANUPS.drain();
 }
 
 pub async fn begin_bulk_load(
@@ -131,7 +81,7 @@ fn start_bulk_load_finish(
             let _ = result_tx.send(result);
         }
     });
-    track_bulk_load_cleanup_in(&BULK_LOAD_CLEANUPS, cleanup);
+    BULK_LOAD_CLEANUPS.track(cleanup);
     result_rx
 }
 
@@ -167,7 +117,7 @@ where
 struct BulkLoadCompletionGuard {
     store: Arc<dyn axon_vectors::store::VectorStore>,
     collection: String,
-    cleanups: Arc<std::sync::Mutex<CleanupRegistry>>,
+    cleanups: Arc<DetachedWorkerRegistry>,
     armed: bool,
 }
 
@@ -185,7 +135,7 @@ impl BulkLoadCompletionGuard {
     fn with_registry(
         store: Arc<dyn axon_vectors::store::VectorStore>,
         collection: String,
-        cleanups: Arc<std::sync::Mutex<CleanupRegistry>>,
+        cleanups: Arc<DetachedWorkerRegistry>,
     ) -> Self {
         Self {
             store,
@@ -225,7 +175,7 @@ impl Drop for BulkLoadCompletionGuard {
                 tracing::error!(collection = %failure_collection, "bulk-load cancellation cleanup thread panicked");
             }
         });
-        track_bulk_load_cleanup_in(&cleanups, cleanup);
+        cleanups.track(cleanup);
     }
 }
 
@@ -234,13 +184,13 @@ pub(crate) fn test_bulk_load_cleanup_lifecycle(
     store: Arc<dyn axon_vectors::store::VectorStore>,
     collection: String,
 ) {
-    let cleanups = Arc::new(std::sync::Mutex::new(CleanupRegistry::default()));
+    let cleanups = Arc::new(DetachedWorkerRegistry::default());
     drop(BulkLoadCompletionGuard::with_registry(
         Arc::clone(&store),
         collection.clone(),
         Arc::clone(&cleanups),
     ));
-    drain_bulk_load_cleanups_in(&cleanups);
+    cleanups.drain();
     drop(BulkLoadCompletionGuard::with_registry(
         store, collection, cleanups,
     ));

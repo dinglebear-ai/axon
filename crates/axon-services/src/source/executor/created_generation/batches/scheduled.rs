@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::source::executor::created_generation::setup::ensure_generation_collection;
 use crate::source::executor::generation_work::{
-    PreparedBatchSender, PreparedBatchSideEffects, prepared_work_channel,
+    PreparedBatchSender, PreparedBatchSideEffects, prepared_work_channel_with_byte_budget,
 };
 use crate::source::executor::progress::PipelineProgress;
 
@@ -72,11 +72,14 @@ async fn process_inner(
     accumulated: &mut GenerationAccumulator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<()> {
-    let (sender, receiver) = prepared_work_channel(runtime.embed_pool_max_inputs)?;
+    let (sender, receiver) = prepared_work_channel_with_byte_budget(
+        runtime.embed_pool_max_inputs,
+        runtime.embed_prepared_byte_budget,
+    )?;
     tracing::info!(
         chunk_capacity = runtime.embed_pool_max_inputs.saturating_mul(3),
         queue_capacity = 2,
-        byte_capacity_kib = 1_048_576_u64,
+        byte_capacity_kib = runtime.embed_prepared_byte_budget.div_ceil(1024),
         "enabled bounded generation embedding scheduler"
     );
     let cancel = CancellationToken::new();

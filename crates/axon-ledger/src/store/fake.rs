@@ -369,6 +369,14 @@ impl LedgerStore for FakeLedgerStore {
         cleanup::list_pending_cleanup_debt(&self.state, &source_id).await
     }
 
+    async fn list_pending_cleanup_debt_after(
+        &self,
+        after: Option<CleanupDebtId>,
+        limit: usize,
+    ) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_pending_cleanup_debt_after(&self.state, after.as_ref(), limit).await
+    }
+
     async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>> {
         cleanup::list_adapter_release_debt(&self.state, limit).await
     }

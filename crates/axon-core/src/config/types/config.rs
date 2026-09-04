@@ -891,6 +891,10 @@ pub struct Config {
     /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.pool-max-inputs`. Clamped 64–65536. Default: 512.
     pub embed_pool_max_inputs: usize,
 
+    /// Maximum retained bytes admitted to the prepared-generation channel.
+    /// Env: `AXON_EMBED_PREPARED_BYTE_BUDGET`. TOML: `providers.embedding.prepared-byte-budget`. Clamped 1 MiB–4 GiB. Default: 128 MiB.
+    pub embed_prepared_byte_budget: usize,
+
     /// Concurrent source-document preparation tasks before embedding.
     /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `providers.embedding.prep-concurrency`. Clamped 1–64.
     pub embed_prep_concurrency: usize,

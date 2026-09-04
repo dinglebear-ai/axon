@@ -1,6 +1,6 @@
 //! Bounded node reads and writes for parser-produced graph candidates.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axon_api::source::SourceId;
 use axon_core::redact::{
@@ -27,6 +27,7 @@ struct NodeState {
     authority: Authority,
     confidence: f32,
     source_ids: Vec<SourceId>,
+    source_id_set: HashSet<String>,
 }
 
 struct NodeWrite {
@@ -61,10 +62,11 @@ pub(super) async fn upsert_nodes(
                 authority: node.authority,
                 confidence: fallback_confidence.clamp(0.0, 1.0),
                 source_ids: vec![source_id.clone()],
+                source_id_set: HashSet::from([source_id.0.clone()]),
             });
         state.authority = resolve_authority(state.authority, node.authority).winner;
         state.confidence = state.confidence.max(fallback_confidence).clamp(0.0, 1.0);
-        if !state.source_ids.contains(source_id) {
+        if state.source_id_set.insert(source_id.0.clone()) {
             state.source_ids.push(source_id.clone());
         }
 
@@ -114,6 +116,11 @@ async fn fetch_node_states(
             .map_err(|e| graph_storage_error(format!("failed to batch read nodes: {e}")))?;
         for row in rows {
             let node_id: String = row.get("node_id");
+            let source_ids = source_ids_from_json(&row.get::<String, _>("source_ids_json"))?;
+            let source_id_set = source_ids
+                .iter()
+                .map(|source_id| source_id.0.clone())
+                .collect();
             states.insert(
                 node_id,
                 NodeState {
@@ -121,7 +128,8 @@ async fn fetch_node_states(
                         &row.get::<String, _>("authority"),
                     )),
                     confidence: row.get::<f64, _>("confidence") as f32,
-                    source_ids: source_ids_from_json(&row.get::<String, _>("source_ids_json"))?,
+                    source_ids,
+                    source_id_set,
                 },
             );
         }

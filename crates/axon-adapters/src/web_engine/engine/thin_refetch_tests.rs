@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[test]
 fn single_page_chrome_refetch_uses_remote_policy_and_ssrf_blacklists() {
@@ -40,6 +41,7 @@ fn assert_has_loopback_pattern(patterns: &[impl ToString]) {
 #[tokio::test]
 async fn manifest_failures_preserve_prior_valid_output() {
     for failure in [
+        CommitFailurePoint::Metadata,
         CommitFailurePoint::Serialize,
         CommitFailurePoint::Write,
         CommitFailurePoint::Flush,
@@ -88,6 +90,34 @@ async fn manifest_failures_preserve_prior_valid_output() {
             "{failure:?} left a partial manifest entry"
         );
     }
+}
+
+#[tokio::test]
+async fn metadata_failure_does_not_truncate_existing_manifest() {
+    let temp = tempfile::tempdir().expect("temp output");
+    let markdown_dir = temp.path().join("markdown");
+    tokio::fs::create_dir_all(&markdown_dir).await.unwrap();
+    let manifest_path = temp.path().join("manifest.jsonl");
+    let original = "prior manifest entry\n";
+    tokio::fs::write(&manifest_path, original).await.unwrap();
+
+    let summary = write_refetch_results_with_failure(
+        CrawlSummary::default(),
+        vec![RefetchResult {
+            url: "https://example.com/thin".into(),
+            markdown: Some("replacement output".into()),
+            diagnostic: None,
+        }],
+        temp.path(),
+        Some(CommitFailurePoint::Metadata),
+    )
+    .await;
+
+    assert_eq!(
+        tokio::fs::read_to_string(manifest_path).await.unwrap(),
+        original
+    );
+    assert_eq!(summary.markdown_files, 0);
 }
 
 #[tokio::test]
@@ -177,6 +207,11 @@ async fn restart_reconciles_interrupted_refetch_commits() {
             filename: filename.to_string(),
             manifest_start: "prior manifest\n".len() as u64,
             phase,
+            replacement_len: "replacement output".len() as u64,
+            replacement_hash: hex::encode(Sha256::digest(b"replacement output")),
+            replacement_filename: None,
+            manifest_line_len: Some("replacement manifest\n".len() as u64),
+            manifest_line_hash: Some(hex::encode(Sha256::digest(b"replacement manifest\n"))),
         };
         let journal_path = transactions_dir.join("interrupted.json");
         tokio::fs::write(
@@ -201,4 +236,270 @@ async fn restart_reconciles_interrupted_refetch_commits() {
         assert!(!replacement.exists());
         assert!(!journal_path.exists());
     }
+}
+
+#[tokio::test]
+async fn committed_recovery_accepts_an_already_installed_matching_replacement() {
+    let temp = tempfile::tempdir().unwrap();
+    let markdown_dir = temp.path().join("markdown");
+    let transactions_dir = temp.path().join(REFETCH_TRANSACTIONS_DIR);
+    tokio::fs::create_dir_all(&markdown_dir).await.unwrap();
+    tokio::fs::create_dir_all(&transactions_dir).await.unwrap();
+    let replacement = b"replacement output";
+    tokio::fs::write(markdown_dir.join("page.md"), replacement)
+        .await
+        .unwrap();
+    tokio::fs::write(temp.path().join("manifest.jsonl"), "prior\nreplacement\n")
+        .await
+        .unwrap();
+    let journal_path = transactions_dir.join("interrupted.json");
+    let journal = RefetchCommitJournal {
+        filename: "page.md".into(),
+        manifest_start: "prior\n".len() as u64,
+        phase: CommitPhase::ManifestCommitted,
+        replacement_len: replacement.len() as u64,
+        replacement_hash: hex::encode(Sha256::digest(replacement)),
+        replacement_filename: None,
+        manifest_line_len: Some("replacement\n".len() as u64),
+        manifest_line_hash: Some(hex::encode(Sha256::digest(b"replacement\n"))),
+    };
+    tokio::fs::write(&journal_path, serde_json::to_vec(&journal).unwrap())
+        .await
+        .unwrap();
+
+    recover_refetch_commits(temp.path()).await;
+
+    assert!(!journal_path.exists());
+    assert_eq!(
+        tokio::fs::read(markdown_dir.join("page.md")).await.unwrap(),
+        replacement
+    );
+}
+
+#[tokio::test]
+async fn committed_recovery_rolls_back_manifest_and_retains_journal_on_content_mismatch() {
+    let temp = tempfile::tempdir().unwrap();
+    let markdown_dir = temp.path().join("markdown");
+    let transactions_dir = temp.path().join(REFETCH_TRANSACTIONS_DIR);
+    tokio::fs::create_dir_all(&markdown_dir).await.unwrap();
+    tokio::fs::create_dir_all(&transactions_dir).await.unwrap();
+    tokio::fs::write(markdown_dir.join("page.md"), "prior output")
+        .await
+        .unwrap();
+    let manifest_path = temp.path().join("manifest.jsonl");
+    tokio::fs::write(&manifest_path, "prior\nreplacement\n")
+        .await
+        .unwrap();
+    let journal_path = transactions_dir.join("interrupted.json");
+    let expected = b"expected replacement";
+    let journal = RefetchCommitJournal {
+        filename: "page.md".into(),
+        manifest_start: "prior\n".len() as u64,
+        phase: CommitPhase::ManifestCommitted,
+        replacement_len: expected.len() as u64,
+        replacement_hash: hex::encode(Sha256::digest(expected)),
+        replacement_filename: None,
+        manifest_line_len: Some("replacement\n".len() as u64),
+        manifest_line_hash: Some(hex::encode(Sha256::digest(b"replacement\n"))),
+    };
+    tokio::fs::write(&journal_path, serde_json::to_vec(&journal).unwrap())
+        .await
+        .unwrap();
+
+    recover_refetch_commits(temp.path()).await;
+
+    assert_eq!(
+        tokio::fs::read_to_string(manifest_path).await.unwrap(),
+        "prior\n"
+    );
+    assert!(
+        journal_path.exists(),
+        "recovery evidence must remain for retry"
+    );
+    assert_eq!(
+        tokio::fs::read_to_string(markdown_dir.join("page.md"))
+            .await
+            .unwrap(),
+        "prior output"
+    );
+}
+
+#[tokio::test]
+async fn prepared_recovery_never_truncates_a_later_manifest_append() {
+    let temp = tempfile::tempdir().unwrap();
+    let transactions_dir = temp.path().join(REFETCH_TRANSACTIONS_DIR);
+    tokio::fs::create_dir_all(temp.path().join("markdown"))
+        .await
+        .unwrap();
+    tokio::fs::create_dir_all(&transactions_dir).await.unwrap();
+    let prior = "prior\n";
+    let concurrent = "concurrent writer\n";
+    tokio::fs::write(
+        temp.path().join("manifest.jsonl"),
+        format!("{prior}{concurrent}"),
+    )
+    .await
+    .unwrap();
+    let journal_path = transactions_dir.join("prepared.json");
+    let journal = RefetchCommitJournal {
+        filename: "page.md".into(),
+        manifest_start: prior.len() as u64,
+        phase: CommitPhase::Prepared,
+        replacement_len: 3,
+        replacement_hash: hex::encode(Sha256::digest(b"new")),
+        replacement_filename: None,
+        manifest_line_len: None,
+        manifest_line_hash: None,
+    };
+    tokio::fs::write(&journal_path, serde_json::to_vec(&journal).unwrap())
+        .await
+        .unwrap();
+
+    recover_refetch_commits(temp.path()).await;
+
+    assert_eq!(
+        tokio::fs::read_to_string(temp.path().join("manifest.jsonl"))
+            .await
+            .unwrap(),
+        format!("{prior}{concurrent}")
+    );
+}
+
+#[tokio::test]
+async fn concurrent_preparations_for_one_url_use_unique_temp_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let markdown_dir = temp.path().join("markdown");
+    tokio::fs::create_dir_all(&markdown_dir).await.unwrap();
+    let result = || RefetchResult {
+        url: "https://example.com/same".into(),
+        markdown: Some("new".into()),
+        diagnostic: None,
+    };
+
+    let first = prepare_refetch(result(), &markdown_dir, temp.path(), 0, None)
+        .await
+        .unwrap();
+    let second = prepare_refetch(result(), &markdown_dir, temp.path(), 0, None)
+        .await
+        .unwrap();
+
+    assert_ne!(first.tmp_path, second.tmp_path);
+    assert!(first.tmp_path.exists());
+    assert!(second.tmp_path.exists());
+}
+
+#[tokio::test]
+async fn recovery_rejects_non_component_replacement_filenames_before_filesystem_use() {
+    for malicious in [".", "nested/replacement.tmp"] {
+        assert_rejected_replacement_filename(malicious, None).await;
+    }
+
+    let parent_temp = tempfile::tempdir().unwrap();
+    let output_dir = parent_temp.path().join("output");
+    tokio::fs::create_dir(&output_dir).await.unwrap();
+    let parent_sentinel = output_dir.join("outside-parent-sentinel");
+    tokio::fs::write(&parent_sentinel, "keep me").await.unwrap();
+    assert_rejected_replacement_filename(
+        "../outside-parent-sentinel",
+        Some((&output_dir, &parent_sentinel)),
+    )
+    .await;
+
+    let absolute_temp = tempfile::tempdir().unwrap();
+    let absolute_sentinel = absolute_temp.path().join("outside-absolute-sentinel");
+    tokio::fs::write(&absolute_sentinel, "keep me")
+        .await
+        .unwrap();
+    let absolute_name = absolute_sentinel.to_string_lossy().into_owned();
+    assert_rejected_replacement_filename(
+        &absolute_name,
+        Some((absolute_temp.path(), &absolute_sentinel)),
+    )
+    .await;
+}
+
+async fn assert_rejected_replacement_filename(
+    replacement_filename: &str,
+    external: Option<(&Path, &Path)>,
+) {
+    let owned_temp;
+    let output_dir = if let Some((output_dir, _)) = external {
+        output_dir
+    } else {
+        owned_temp = tempfile::tempdir().unwrap();
+        owned_temp.path()
+    };
+    let markdown_dir = output_dir.join("markdown");
+    let transactions_dir = output_dir.join(REFETCH_TRANSACTIONS_DIR);
+    tokio::fs::create_dir_all(&markdown_dir).await.unwrap();
+    tokio::fs::create_dir_all(&transactions_dir).await.unwrap();
+    tokio::fs::write(output_dir.join("manifest.jsonl"), "prior\n")
+        .await
+        .unwrap();
+    let journal_path = transactions_dir.join("malicious.json");
+    let journal = RefetchCommitJournal {
+        filename: "page.md".into(),
+        manifest_start: "prior\n".len() as u64,
+        phase: CommitPhase::Prepared,
+        replacement_len: 0,
+        replacement_hash: hex::encode(Sha256::digest([])),
+        replacement_filename: Some(replacement_filename.into()),
+        manifest_line_len: None,
+        manifest_line_hash: None,
+    };
+    tokio::fs::write(&journal_path, serde_json::to_vec(&journal).unwrap())
+        .await
+        .unwrap();
+
+    recover_refetch_commits(output_dir).await;
+
+    assert!(
+        journal_path.exists(),
+        "invalid journal must remain for diagnosis"
+    );
+    assert_eq!(
+        tokio::fs::read_to_string(output_dir.join("manifest.jsonl"))
+            .await
+            .unwrap(),
+        "prior\n"
+    );
+    if let Some((_, sentinel)) = external {
+        assert_eq!(
+            tokio::fs::read_to_string(sentinel).await.unwrap(),
+            "keep me",
+            "recovery must not touch a path outside markdown"
+        );
+    }
+}
+
+#[tokio::test]
+async fn output_parent_sync_failure_retains_journal_for_recovery() {
+    let temp = tempfile::tempdir().unwrap();
+    tokio::fs::create_dir_all(temp.path().join("markdown"))
+        .await
+        .unwrap();
+
+    let summary = write_refetch_results_with_failure(
+        CrawlSummary::default(),
+        vec![RefetchResult {
+            url: "https://example.com/durable".into(),
+            markdown: Some("replacement".into()),
+            diagnostic: None,
+        }],
+        temp.path(),
+        Some(CommitFailurePoint::OutputDirectorySync),
+    )
+    .await;
+
+    assert_eq!(summary.markdown_files, 0);
+    let transactions = temp.path().join(REFETCH_TRANSACTIONS_DIR);
+    let journal_count = std::fs::read_dir(&transactions).unwrap().count();
+    assert_eq!(
+        journal_count, 1,
+        "journal must survive uncertain durability"
+    );
+
+    recover_refetch_commits(temp.path()).await;
+
+    assert_eq!(std::fs::read_dir(transactions).unwrap().count(), 0);
 }

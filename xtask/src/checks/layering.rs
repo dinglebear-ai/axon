@@ -104,6 +104,9 @@ const TRANSPORT_FORBIDDEN_DEPS: &[&str] = &[
 
 const PROVIDER_FACADE_FILES: &[&str] = &[
     "crates/axon-services/src/reserved_call.rs",
+    // Exact scheduler-backed autonomous cleanup implementation. This module
+    // is part of the reserved-call facade, not a general subtree exemption.
+    "crates/axon-services/src/reserved_call/cleanup.rs",
     // Exact implementation submodule of the same scheduler facade. Keeping
     // this explicit avoids turning the whole reserved_call/ tree into an
     // unscanned provider escape hatch.

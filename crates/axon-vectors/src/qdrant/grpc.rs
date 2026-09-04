@@ -110,7 +110,9 @@ fn grpc_upsert_plan(
     chunks: Vec<Vec<PointStruct>>,
     async_writes: bool,
 ) -> (Vec<UpsertPoints>, Option<UpsertPoints>) {
-    let barrier = async_writes.then(|| chunks.last().cloned()).flatten();
+    let barrier = async_writes
+        .then(|| chunks.last()?.last().cloned().map(|point| vec![point]))
+        .flatten();
     let requests = chunks
         .into_iter()
         .map(|points| {

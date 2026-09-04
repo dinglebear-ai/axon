@@ -21,6 +21,16 @@ fn shared_dispatch_signal_elects_only_one_recovery_dispatcher() {
     assert!(signal.try_claim_recovery().is_some());
 }
 
+#[test]
+fn shared_dispatch_signal_spans_authorities_in_one_capacity_domain() {
+    let first = shared_dispatch_signal("authority-a", "vector", "shared-qdrant");
+    let second = shared_dispatch_signal("authority-b", "vector", "shared-qdrant");
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "authorities sharing provider capacity must wake the same waiters"
+    );
+}
+
 #[tokio::test]
 async fn invalid_scheduler_capacity_is_rejected() {
     let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
@@ -662,6 +672,70 @@ async fn cross_process_dispatch_preserves_the_waiters_authority() {
     .await
     .expect("active capacity count");
     assert_eq!(active, 0);
+}
+
+#[tokio::test]
+async fn capacity_release_wakes_a_waiter_owned_by_another_authority() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('cross-authority-source', '{}', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("source");
+    for suffix in [81_u128, 82_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'cross-authority-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let make = |authority: &str| {
+        ProviderScheduler::new(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: ProviderKind::Vector,
+                instance_id: "cross-authority-qdrant".into(),
+                authority_id: authority.into(),
+            },
+            config,
+        )
+        .expect("scheduler")
+    };
+    let owner = make("owner-authority");
+    let waiter_scheduler = make("waiter-authority");
+    let held = owner
+        .reserve(request(81, "owner-held", JobPriority::Normal))
+        .await
+        .expect("held");
+    assert!(held.granted);
+
+    let waiter = tokio::spawn(async move {
+        waiter_scheduler
+            .reserve_wait(request(82, "other-waiter", JobPriority::Normal))
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    owner
+        .complete(&held.reservation_id, "owner-held")
+        .await
+        .expect("release");
+    let grant = tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .expect("cross-authority waiter should wake without recovery poll")
+        .expect("waiter task")
+        .expect("grant");
+    assert!(grant.granted);
 }
 
 #[tokio::test]

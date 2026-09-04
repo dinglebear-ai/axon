@@ -416,6 +416,24 @@ async fn async_multichunk_upsert_uses_strong_ordering_and_a_wait_true_barrier() 
     barrier.assert_calls_async(1).await;
 }
 
+#[test]
+fn async_completion_barrier_contains_only_the_last_point_and_sparse_vector() {
+    let barrier = completion_barrier_batch(&valid_batch(5)).expect("non-empty barrier");
+
+    assert_eq!(barrier.points.len(), 1);
+    assert_eq!(barrier.points[0].point_id, VectorPointId::new("point-4"));
+    assert_eq!(
+        barrier
+            .sparse_vectors
+            .as_ref()
+            .expect("last sparse vector")
+            .iter()
+            .map(|vector| vector.chunk_id.0.as_str())
+            .collect::<Vec<_>>(),
+        vec!["chunk-4"]
+    );
+}
+
 #[tokio::test]
 async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
     // Do not use httpmock delay timing here. Its delayed-response machinery can

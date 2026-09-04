@@ -583,6 +583,24 @@ class TeiTuneTests(unittest.TestCase):
         self.assertEqual(config["max-concurrent-requests"], 1024)
         self.assertEqual(config["tokenization-workers"], 16)
 
+    def test_stable_and_rtx4070_presets_share_one_canonical_value(self):
+        self.assertIs(
+            tei_tune.PRESETS["stable"],
+            tei_tune.PRESETS["rtx4070-axon"],
+        )
+        self.assertIsNot(
+            tei_tune.resolve_config("stable", [], False),
+            tei_tune.PRESETS["stable"],
+        )
+
+    def test_option_value_handles_present_missing_and_trailing_options(self):
+        self.assertEqual(
+            tei_tune.option_value(["--model-id", "example/model"], "--model-id"),
+            "example/model",
+        )
+        self.assertIsNone(tei_tune.option_value(["--model-id"], "--model-id"))
+        self.assertIsNone(tei_tune.option_value(["--port", "80"], "--model-id"))
+
     def test_stable_command_contains_proven_gpu_safe_limits(self):
         command = tei_tune.command_for(tei_tune.resolve_config("stable", [], False))
         self.assertIn("163840", command)

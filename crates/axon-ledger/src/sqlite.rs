@@ -283,6 +283,14 @@ impl LedgerStore for SqliteLedgerStore {
         cleanup::list_pending_cleanup_debt(self, &source_id).await
     }
 
+    async fn list_pending_cleanup_debt_after(
+        &self,
+        after: Option<CleanupDebtId>,
+        limit: usize,
+    ) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_pending_cleanup_debt_after(self, after.as_ref(), limit).await
+    }
+
     async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>> {
         cleanup::list_adapter_release_debt(self, limit).await
     }

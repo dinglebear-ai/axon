@@ -4,6 +4,143 @@ use std::time::Duration;
 use super::*;
 use crate::qdrant::configure_bulk_load;
 
+#[test]
+fn bulk_load_journal_survives_reopen_until_restoration_completes() {
+    let directory =
+        std::env::temp_dir().join(format!("axon-bulk-journal-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    journal
+        .record("http://qdrant:6333", "docs", 20_000)
+        .expect("record transition");
+
+    let reopened = BulkLoadJournal::open(&directory).expect("reopen journal");
+    assert_eq!(
+        reopened.pending().expect("read pending transitions"),
+        vec![PendingBulkLoad {
+            endpoint: "http://qdrant:6333".to_string(),
+            collection: "docs".to_string(),
+            restore_threshold: 20_000,
+        }]
+    );
+    reopened
+        .complete("http://qdrant:6333", "docs")
+        .expect("complete transition");
+    assert!(reopened.pending().expect("read cleared journal").is_empty());
+    std::fs::remove_dir_all(directory).expect("remove temporary journal directory");
+}
+
+#[test]
+fn journal_failure_before_rename_preserves_last_durable_state() {
+    let directory =
+        std::env::temp_dir().join(format!("axon-bulk-journal-fault-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    journal
+        .record("http://qdrant:6333", "docs", 20_000)
+        .expect("record durable transition");
+
+    let error = journal
+        .write_unlocked_with(&[], |boundary| {
+            if boundary == JournalWriteBoundary::BeforeRename {
+                return Err(std::io::Error::other("injected pre-rename failure"));
+            }
+            Ok(())
+        })
+        .expect_err("injected boundary must fail");
+    assert_eq!(error.kind(), std::io::ErrorKind::Other);
+
+    let reopened = BulkLoadJournal::open(&directory).expect("reopen journal");
+    assert_eq!(reopened.pending().expect("read durable state").len(), 1);
+    std::fs::remove_dir_all(directory).expect("remove temporary journal directory");
+}
+
+#[test]
+fn journal_failure_after_rename_leaves_complete_recoverable_state() {
+    let directory =
+        std::env::temp_dir().join(format!("axon-bulk-journal-fault-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    journal
+        .record("http://qdrant:6333", "docs", 20_000)
+        .expect("record durable transition");
+
+    journal
+        .write_unlocked_with(&[], |boundary| {
+            if boundary == JournalWriteBoundary::BeforeParentSync {
+                return Err(std::io::Error::other("injected parent-sync failure"));
+            }
+            Ok(())
+        })
+        .expect_err("injected boundary must fail");
+
+    let reopened = BulkLoadJournal::open(&directory).expect("reopen journal");
+    assert!(
+        reopened
+            .pending()
+            .expect("read complete new state")
+            .is_empty(),
+        "rename must expose a complete journal file even when directory sync reports failure"
+    );
+    std::fs::remove_dir_all(directory).expect("remove temporary journal directory");
+}
+
+#[test]
+fn journal_clear_is_durable_across_reopen() {
+    let directory =
+        std::env::temp_dir().join(format!("axon-bulk-journal-clear-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    journal
+        .record("http://qdrant:6333", "docs", 20_000)
+        .expect("record transition");
+    journal
+        .complete("http://qdrant:6333", "docs")
+        .expect("durably clear transition");
+
+    drop(journal);
+    let reopened = BulkLoadJournal::open(&directory).expect("reopen journal");
+    assert!(reopened.pending().expect("read durable clear").is_empty());
+    std::fs::remove_dir_all(directory).expect("remove temporary journal directory");
+}
+
+#[tokio::test]
+async fn stale_bulk_load_journal_is_restored_and_cleared_idempotently() {
+    let server = MockServer::start_async().await;
+    let restore = server
+        .mock_async(|when, then| {
+            when.method("PATCH").path("/collections/crashed").json_body(
+                serde_json::json!({"optimizers_config": {"indexing_threshold": 20_000}}),
+            );
+            then.status(200);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("GET").path("/collections/crashed");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"status": "green", "optimizer_status": "ok"}
+            }));
+        })
+        .await;
+    let directory =
+        std::env::temp_dir().join(format!("axon-bulk-recovery-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    journal
+        .record(&server.base_url(), "crashed", 20_000)
+        .expect("record crashed transition");
+    let store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+
+    store
+        .recover_bulk_load_transitions_from(&journal)
+        .await
+        .expect("recover stale transition");
+    store
+        .recover_bulk_load_transitions_from(&journal)
+        .await
+        .expect("empty recovery is idempotent");
+
+    restore.assert_calls_async(1).await;
+    assert!(journal.pending().expect("journal cleared").is_empty());
+    std::fs::remove_dir_all(directory).expect("remove temporary journal directory");
+}
+
 #[tokio::test]
 async fn bulk_load_restores_threshold_and_waits_for_green_optimizer() {
     let server = MockServer::start_async().await;
@@ -110,29 +247,23 @@ async fn completed_bulk_load_removes_its_idle_registry_entry() {
 
 #[test]
 fn transition_worker_drain_joins_existing_and_late_workers() {
-    let workers = std::sync::Mutex::new(TransitionWorkers::default());
+    let workers = DetachedWorkerRegistry::default();
     let existing_finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished = std::sync::Arc::clone(&existing_finished);
-    track_transition_worker_in(
-        &workers,
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(40));
-            finished.store(true, std::sync::atomic::Ordering::Release);
-        }),
-    );
+    workers.track(std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(40));
+        finished.store(true, std::sync::atomic::Ordering::Release);
+    }));
 
-    drain_bulk_load_transition_workers_in(&workers);
+    workers.drain();
     assert!(existing_finished.load(std::sync::atomic::Ordering::Acquire));
 
     let late_finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished = std::sync::Arc::clone(&late_finished);
-    track_transition_worker_in(
-        &workers,
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(40));
-            finished.store(true, std::sync::atomic::Ordering::Release);
-        }),
-    );
+    workers.track(std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(40));
+        finished.store(true, std::sync::atomic::Ordering::Release);
+    }));
     assert!(late_finished.load(std::sync::atomic::Ordering::Acquire));
 }
 

@@ -33,6 +33,24 @@ pub(in crate::store) async fn list_pending_cleanup_debt(
     Ok(pending)
 }
 
+pub(in crate::store) async fn list_pending_cleanup_debt_after(
+    state: &Arc<Mutex<FakeLedgerState>>,
+    after: Option<&CleanupDebtId>,
+    limit: usize,
+) -> Result<Vec<CleanupDebt>> {
+    let state = state.lock().await;
+    let mut pending = state
+        .cleanup_debt
+        .values()
+        .filter(|debt| debt.completed_at.is_none())
+        .filter(|debt| after.is_none_or(|cursor| debt.debt_id.0 > cursor.0))
+        .cloned()
+        .collect::<Vec<_>>();
+    pending.sort_by(|a, b| a.debt_id.0.cmp(&b.debt_id.0));
+    pending.truncate(limit);
+    Ok(pending)
+}
+
 pub(in crate::store) async fn list_adapter_release_debt(
     state: &Arc<Mutex<FakeLedgerState>>,
     limit: usize,

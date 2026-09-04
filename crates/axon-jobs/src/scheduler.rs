@@ -133,25 +133,21 @@ impl Drop for RecoveryClaim {
     }
 }
 
-type CapacityNotifierKey = (String, String, String);
+type CapacityNotifierKey = (String, String);
 type CapacityNotifierMap = std::collections::HashMap<CapacityNotifierKey, Weak<DispatchSignal>>;
 
 static CAPACITY_NOTIFIERS: LazyLock<StdMutex<CapacityNotifierMap>> =
     LazyLock::new(|| StdMutex::new(std::collections::HashMap::new()));
 
 fn shared_dispatch_signal(
-    authority_id: &str,
+    _authority_id: &str,
     capacity_domain: &str,
     instance_id: &str,
 ) -> Arc<DispatchSignal> {
     let mut notifiers = CAPACITY_NOTIFIERS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let key = (
-        authority_id.to_string(),
-        capacity_domain.to_string(),
-        instance_id.to_string(),
-    );
+    let key = (capacity_domain.to_string(), instance_id.to_string());
     if let Some(notify) = notifiers.get(&key).and_then(Weak::upgrade) {
         return notify;
     }
@@ -244,6 +240,7 @@ impl ProviderScheduler {
         match result {
             Ok(grant) => {
                 sqlx::query("COMMIT").execute(&mut *connection).await?;
+                self.dispatch_signal.changed.notify_waiters();
                 Ok(grant)
             }
             Err(error) => {

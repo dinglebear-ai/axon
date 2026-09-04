@@ -37,6 +37,7 @@ pub(crate) fn vector_delete_debt(
             source_item_key: source_item_key.clone(),
             generation: previous_generation.clone(),
         },
+        vector_collection: None,
         status: LifecycleStatus::Pending,
         created_at: timestamp(),
         attempts: 0,
@@ -72,6 +73,7 @@ pub(crate) fn artifact_delete_debt_for_metadata(
                 selector: CleanupSelector::Artifact {
                     artifact_id: artifact.artifact_id,
                 },
+                vector_collection: None,
                 status: LifecycleStatus::Pending,
                 created_at: timestamp(),
                 attempts: 0,
@@ -104,6 +106,7 @@ pub(crate) fn cache_prune_debt_for_metadata(
         selector: CleanupSelector::CacheKeys {
             keys: vec![key_json],
         },
+        vector_collection: None,
         status: LifecycleStatus::Pending,
         created_at: timestamp(),
         attempts: 0,
@@ -138,6 +141,7 @@ pub(crate) fn graph_prune_debt(
         selector: CleanupSelector::GraphNodes {
             stable_keys: vec![source_item_key.0.clone()],
         },
+        vector_collection: None,
         status: LifecycleStatus::Pending,
         created_at: timestamp(),
         attempts: 0,
@@ -168,6 +172,7 @@ pub(crate) fn ledger_prune_debt(
             source_id: source_id.clone(),
             up_to_generation: generation.clone(),
         },
+        vector_collection: None,
         status: LifecycleStatus::Pending,
         created_at: timestamp(),
         attempts: 0,

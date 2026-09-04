@@ -86,9 +86,6 @@ where
     let mut nodes_upserted = 0u64;
     let mut edges_upserted = 0u64;
     let mut evidence_records = 0u64;
-    let mut committed_edges = 0u64;
-    let mut committed_evidence = 0u64;
-
     for candidate in candidates {
         candidates_seen = candidates_seen.saturating_add(1);
         let (resolved_nodes, resolved_edges) = resolve_candidate(&candidate);
@@ -104,35 +101,8 @@ where
         upsert_aliases(&mut tx, &resolved_nodes).await?;
 
         let mut pending_evidence = Vec::new();
-        let checkpoint = read_checkpoint(&mut tx, &candidate, resolved_edges.len()).await?;
-        edges_upserted = edges_upserted.saturating_add(checkpoint as u64);
-        evidence_records = evidence_records.saturating_add(
-            resolved_edges[..checkpoint]
-                .iter()
-                .map(|(_, evidence)| evidence.len() as u64)
-                .sum::<u64>(),
-        );
-        committed_edges = edges_upserted;
-        committed_evidence = evidence_records;
-        for (batch_index, edge_batch) in resolved_edges[checkpoint..]
-            .chunks(EDGE_WRITE_BATCH_SIZE)
-            .enumerate()
-        {
-            if batch_index > 0 {
-                tx.commit().await.map_err(|error| {
-                    partial_graph_error(error.to_string(), committed_edges, committed_evidence)
-                })?;
-                committed_edges = edges_upserted;
-                committed_evidence = evidence_records;
-                tx = ImmediateTx::begin(pool).await.map_err(|error| {
-                    partial_graph_error(error.to_string(), committed_edges, committed_evidence)
-                })?;
-            }
-            let existing_edges = fetch_edge_states(&mut tx, edge_batch)
-                .await
-                .map_err(|error| {
-                    partial_graph_error(error.message, committed_edges, committed_evidence)
-                })?;
+        for edge_batch in resolved_edges.chunks(EDGE_WRITE_BATCH_SIZE) {
+            let existing_edges = fetch_edge_states(&mut tx, edge_batch).await?;
             let mut edge_writes = Vec::with_capacity(edge_batch.len());
             pending_evidence.clear();
             for (resolved, edge_evidence) in edge_batch {
@@ -142,10 +112,7 @@ where
                         resolved,
                         existing_edges.get(&resolved.edge_id.0).cloned(),
                     )
-                    .await
-                    .map_err(|error| {
-                        partial_graph_error(error.message, committed_edges, committed_evidence)
-                    })?,
+                    .await?,
                 );
                 edges_upserted += 1;
                 for ev in edge_evidence {
@@ -153,35 +120,26 @@ where
                     evidence_records += 1;
                 }
             }
-            upsert_edge_batch(&mut tx, &edge_writes)
-                .await
-                .map_err(|error| {
-                    partial_graph_error(error.message, committed_edges, committed_evidence)
-                })?;
-            upsert_evidence_batch(&mut tx, &pending_evidence)
-                .await
-                .map_err(|error| {
-                    partial_graph_error(error.message, committed_edges, committed_evidence)
-                })?;
-            let next_edge_index = checkpoint + (batch_index + 1) * EDGE_WRITE_BATCH_SIZE;
-            sqlx::query("INSERT INTO graph_write_checkpoints (job_id, candidate_id, next_edge_index, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(job_id, candidate_id) DO UPDATE SET next_edge_index = excluded.next_edge_index, updated_at = excluded.updated_at")
-                .bind(candidate.job_id.0.to_string()).bind(&candidate.candidate_id)
-                .bind(next_edge_index.min(resolved_edges.len()) as i64).bind(now_timestamp())
-                .execute(&mut *tx).await.map_err(|error| partial_graph_error(error.to_string(), committed_edges, committed_evidence))?;
+            upsert_edge_batch(&mut tx, &edge_writes).await?;
+            upsert_evidence_batch(&mut tx, &pending_evidence).await?;
         }
+        // Checkpoints were written by the former partial-commit implementation.
+        // Atomic candidates never consult them: doing so could silently skip a
+        // changed/reordered edge prefix. Delete matching legacy state only as
+        // part of the same transaction that durably writes the whole candidate.
         sqlx::query("DELETE FROM graph_write_checkpoints WHERE job_id = ? AND candidate_id = ?")
             .bind(candidate.job_id.0.to_string())
             .bind(&candidate.candidate_id)
             .execute(&mut *tx)
             .await
             .map_err(|error| {
-                partial_graph_error(error.to_string(), committed_edges, committed_evidence)
+                graph_storage_error(format!("failed to clear graph checkpoint: {error}"))
             })?;
     }
 
     tx.commit()
         .await
-        .map_err(|e| partial_graph_error(e.to_string(), committed_edges, committed_evidence))?;
+        .map_err(|e| graph_storage_error(format!("failed to commit graph transaction: {e}")))?;
 
     Ok(GraphWriteResult {
         header: stage_header(),
@@ -225,23 +183,6 @@ fn resolve_candidate(
     (nodes, edges)
 }
 
-async fn read_checkpoint(
-    tx: &mut sqlx::SqliteConnection,
-    candidate: &GraphCandidate,
-    edge_count: usize,
-) -> StoreResult<usize> {
-    let checkpoint: i64 = sqlx::query_scalar(
-        "SELECT next_edge_index FROM graph_write_checkpoints WHERE job_id = ? AND candidate_id = ?",
-    )
-    .bind(candidate.job_id.0.to_string())
-    .bind(&candidate.candidate_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|error| graph_storage_error(format!("failed to read graph checkpoint: {error}")))?
-    .unwrap_or(0);
-    Ok(usize::try_from(checkpoint).unwrap_or(0).min(edge_count))
-}
-
 fn prevalidate_candidate_batch(candidates: &[GraphCandidate]) -> StoreResult<Option<SourceId>> {
     let source_id = candidates
         .first()
@@ -255,22 +196,6 @@ fn prevalidate_candidate_batch(candidates: &[GraphCandidate]) -> StoreResult<Opt
         }
     }
     Ok(source_id)
-}
-
-fn partial_graph_error(message: String, edges: u64, evidence: u64) -> axon_api::source::ApiError {
-    let mut error = graph_storage_error(format!(
-        "graph.partial_write: {message}; retry the idempotent candidate to reconcile"
-    ));
-    error
-        .details
-        .insert("committed_edges_at_least".into(), edges.to_string());
-    error
-        .details
-        .insert("committed_evidence_at_least".into(), evidence.to_string());
-    error
-        .details
-        .insert("reconciliation".into(), "retry_candidate".into());
-    error
 }
 
 fn resolve_edge_indexed(

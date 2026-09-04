@@ -206,6 +206,7 @@ impl Default for Config {
             embed_cache_enabled: false,
             embed_cache_max_entries: 100_000,
             embed_pool_max_inputs: 512,
+            embed_prepared_byte_budget: 128 * 1024 * 1024,
             embed_prep_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(8)

@@ -25,6 +25,7 @@ use crate::store_helpers::delete_result;
 
 impl QdrantVectorStore {
     pub(super) async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
+        self.recover_bulk_load_transitions().await?;
         let stage = ErrorStage::Upserting;
         let http = self.http()?;
         let spec = normalize_collection_spec(spec);

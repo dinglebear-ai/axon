@@ -3,6 +3,8 @@ use axon_core::logging::{log_info, log_warn};
 use std::error::Error;
 use std::path::Path;
 
+pub(super) const LATEST_CLEANUP_DEBT_MARKER: &str = ".axon-latest-cleanup-debt";
+
 /// Non-blocking path existence check. Returns `false` on any I/O error.
 pub(super) async fn path_exists(path: &Path) -> bool {
     tokio::fs::try_exists(path).await.unwrap_or(false)
@@ -14,6 +16,20 @@ pub(super) async fn path_exists(path: &Path) -> bool {
 pub async fn update_latest_reflink(
     source_dir: &Path,
     latest_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    update_latest_reflink_with_failure(source_dir, latest_dir, None).await
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum LatestFailurePoint {
+    Cleanup,
+    ParentSync,
+}
+
+pub(super) async fn update_latest_reflink_with_failure(
+    source_dir: &Path,
+    latest_dir: &Path,
+    failure: Option<LatestFailurePoint>,
 ) -> Result<(), Box<dyn Error>> {
     if source_dir == latest_dir {
         return Err("source_dir and latest_dir must not be the same path".into());
@@ -29,6 +45,7 @@ pub async fn update_latest_reflink(
         .file_name()
         .and_then(|value| value.to_str())
         .ok_or("latest_dir must have a valid file name")?;
+    sweep_latest_cleanup_debt(parent, name).await;
     let staging_dir = parent.join(format!(".{name}.staging-{}", uuid::Uuid::new_v4()));
     tokio::fs::create_dir_all(&staging_dir).await.map_err(|e| {
         format!(
@@ -37,60 +54,9 @@ pub async fn update_latest_reflink(
         )
     })?;
 
+    let mut exchanged = false;
     let publication: Result<(), Box<dyn Error>> = async {
-        let manifest = "manifest.jsonl";
-        let source_manifest = source_dir.join(manifest);
-        if path_exists(&source_manifest).await {
-            let src = source_manifest.clone();
-            let dst = staging_dir.join(manifest);
-            if let Err(error) =
-                tokio::task::spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst))
-                    .await?
-            {
-                let _ = tokio::fs::remove_dir_all(&staging_dir).await;
-                return Err(error.into());
-            }
-        }
-
-        let markdown = "markdown";
-        let source_md = source_dir.join(markdown);
-        let target_md = staging_dir.join(markdown);
-        if path_exists(&source_md).await {
-            tokio::fs::create_dir_all(&target_md).await?;
-            let mut entries = tokio::fs::read_dir(&source_md).await?;
-            let mut file_pairs: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
-            while let Some(entry) = entries.next_entry().await? {
-                let path = entry.path();
-                if path.is_file() {
-                    let Some(filename) = path.file_name() else {
-                        continue;
-                    };
-                    let dst = target_md.join(filename);
-                    file_pairs.push((path, dst));
-                }
-            }
-            // Parallelize reflink copies via spawn_blocking + JoinSet, capped at 32
-            // concurrent tasks to avoid overwhelming the runtime and file-descriptor
-            // resources on large markdown directories.
-            const MAX_COPY_CONCURRENCY: usize = 32;
-            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_COPY_CONCURRENCY));
-            let mut join_set = tokio::task::JoinSet::new();
-            for (src, dst) in file_pairs {
-                let permit = semaphore.clone().acquire_owned().await?;
-                join_set.spawn_blocking(move || {
-                    let _permit = permit;
-                    reflink_copy::reflink_or_copy(&src, dst)
-                });
-            }
-            while let Some(result) = join_set.join_next().await {
-                if let Err(error) = result? {
-                    let _ = tokio::fs::remove_dir_all(&staging_dir).await;
-                    return Err(error.into());
-                }
-            }
-        }
-
-        sync_tree(&staging_dir).await?;
+        populate_latest_staging(source_dir, &staging_dir).await?;
         let had_previous = path_exists(latest_dir).await;
         if had_previous {
             let old = staging_dir.clone();
@@ -105,11 +71,64 @@ pub async fn update_latest_reflink(
                 )
             })
             .await??;
-            sync_directory(parent).await?;
-            tokio::fs::remove_dir_all(&staging_dir).await?;
+            exchanged = true;
+            let parent_sync = if failure == Some(LatestFailurePoint::ParentSync) {
+                Err("injected latest parent sync failure".into())
+            } else {
+                sync_directory(parent).await
+            };
+            if let Err(sync_error) = parent_sync {
+                let old = staging_dir.clone();
+                let new = latest_dir.to_path_buf();
+                tokio::task::spawn_blocking(move || {
+                    rustix::fs::renameat_with(
+                        rustix::fs::CWD,
+                        &old,
+                        rustix::fs::CWD,
+                        &new,
+                        rustix::fs::RenameFlags::EXCHANGE,
+                    )
+                })
+                .await??;
+                exchanged = false;
+                sync_directory(parent).await?;
+                return Err(format!(
+                    "latest view exchange was rolled back after directory sync failed: {sync_error}"
+                )
+                .into());
+            }
+            let cleanup = if failure == Some(LatestFailurePoint::Cleanup) {
+                Err(std::io::Error::other(
+                    "injected replaced-view cleanup failure",
+                ))
+            } else {
+                tokio::fs::remove_dir_all(&staging_dir).await
+            };
+            if let Err(error) = cleanup {
+                // The exchange and parent-directory sync are the commit point.
+                // Leave the uniquely named replaced view as explicit cleanup
+                // debt rather than reporting that a successful publication failed.
+                mark_latest_cleanup_debt(&staging_dir).await;
+                log_warn(&format!(
+                    "latest view committed; deferred cleanup of {}: {error}",
+                    staging_dir.display()
+                ));
+            }
         } else {
             tokio::fs::rename(&staging_dir, latest_dir).await?;
-            sync_directory(parent).await?;
+            let parent_sync = if failure == Some(LatestFailurePoint::ParentSync) {
+                Err("injected latest parent sync failure".into())
+            } else {
+                sync_directory(parent).await
+            };
+            if let Err(sync_error) = parent_sync {
+                tokio::fs::rename(latest_dir, &staging_dir).await?;
+                sync_directory(parent).await?;
+                return Err(format!(
+                    "initial latest view was rolled back after directory sync failed: {sync_error}"
+                )
+                .into());
+            }
         }
 
         log_info(&format!(
@@ -120,7 +139,7 @@ pub async fn update_latest_reflink(
     }
     .await;
 
-    if publication.is_err() {
+    if publication.is_err() && !exchanged {
         // Best-effort cleanup preserves the original publication error while
         // preventing abandoned `.staging-*` trees on every early exit path.
         // After an exchange this path holds the replaced view; otherwise it
@@ -130,24 +149,190 @@ pub async fn update_latest_reflink(
     publication
 }
 
-async fn sync_tree(path: &Path) -> Result<(), Box<dyn Error>> {
+async fn populate_latest_staging(
+    source_dir: &Path,
+    staging_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let manifest = "manifest.jsonl";
+    let source_manifest = source_dir.join(manifest);
+    if path_exists(&source_manifest).await {
+        let src = source_manifest.clone();
+        let dst = staging_dir.join(manifest);
+        tokio::task::spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst)).await??;
+    }
+
+    let markdown = "markdown";
+    let source_md = source_dir.join(markdown);
+    let target_md = staging_dir.join(markdown);
+    if path_exists(&source_md).await {
+        tokio::fs::create_dir_all(&target_md).await?;
+        let mut entries = tokio::fs::read_dir(&source_md).await?;
+        let mut file_pairs = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_file()
+                && let Some(filename) = path.file_name()
+            {
+                let dst = target_md.join(filename);
+                file_pairs.push((path, dst));
+            }
+        }
+        copy_latest_markdown(file_pairs).await?;
+    }
+
+    let _ = sync_tree(staging_dir).await?;
+    Ok(())
+}
+
+async fn copy_latest_markdown(
+    file_pairs: Vec<(std::path::PathBuf, std::path::PathBuf)>,
+) -> Result<(), Box<dyn Error>> {
+    const MAX_COPY_CONCURRENCY: usize = 32;
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_COPY_CONCURRENCY));
+    let mut join_set = tokio::task::JoinSet::new();
+    for (src, dst) in file_pairs {
+        let permit = semaphore.clone().acquire_owned().await?;
+        join_set.spawn_blocking(move || {
+            let _permit = permit;
+            reflink_copy::reflink_or_copy(&src, dst)
+        });
+    }
+    while let Some(result) = join_set.join_next().await {
+        result??;
+    }
+    Ok(())
+}
+
+async fn mark_latest_cleanup_debt(path: &Path) {
+    let marker = path.join(LATEST_CLEANUP_DEBT_MARKER);
+    let marked = async {
+        let mut marker_file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&marker)
+            .await?;
+        tokio::io::AsyncWriteExt::write_all(&mut marker_file, b"replaced latest view\n").await?;
+        marker_file.sync_all().await?;
+        sync_directory(path)
+            .await
+            .map_err(|error| std::io::Error::other(error.to_string()))
+    }
+    .await;
+    if let Err(error) = marked {
+        log_warn(&format!(
+            "could not record latest-view cleanup debt for {}: {error}",
+            path.display()
+        ));
+    }
+}
+
+async fn sweep_latest_cleanup_debt(parent: &Path, latest_name: &str) {
+    let prefix = format!(".{latest_name}.staging-");
+    let mut entries = match tokio::fs::read_dir(parent).await {
+        Ok(entries) => entries,
+        Err(error) => {
+            log_warn(&format!(
+                "could not scan latest-view cleanup debt in {}: {error}",
+                parent.display()
+            ));
+            return;
+        }
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(id) = name.strip_prefix(&prefix) else {
+            continue;
+        };
+        if uuid::Uuid::parse_str(id).is_err() {
+            continue;
+        }
+        let Ok(file_type) = entry.file_type().await else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let marker = entry.path().join(LATEST_CLEANUP_DEBT_MARKER);
+        let Ok(metadata) = tokio::fs::symlink_metadata(&marker).await else {
+            continue;
+        };
+        if !metadata.file_type().is_file() {
+            continue;
+        }
+
+        // LEARNED: a staging-shaped name alone cannot distinguish abandoned
+        // cleanup debt from another publication's live candidate.
+        // PATTERN: sweep only UUID-shaped sibling directories carrying the
+        // marker written after the durable exchange commit point.
+        if let Err(error) = tokio::fs::remove_dir_all(entry.path()).await {
+            log_warn(&format!(
+                "could not retry latest-view cleanup for {}: {error}",
+                entry.path().display()
+            ));
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct SyncTreeStats {
+    files: usize,
+    directories: usize,
+}
+
+async fn sync_tree(path: &Path) -> Result<SyncTreeStats, Box<dyn Error>> {
     let root = path.to_path_buf();
-    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
-        fn sync_dir(path: &Path) -> std::io::Result<()> {
+    let (files, mut directories) = tokio::task::spawn_blocking(move || {
+        fn collect(
+            path: &Path,
+            files: &mut Vec<std::path::PathBuf>,
+            directories: &mut Vec<std::path::PathBuf>,
+        ) -> std::io::Result<()> {
+            directories.push(path.to_path_buf());
             for entry in std::fs::read_dir(path)? {
                 let entry = entry?;
                 if entry.file_type()?.is_dir() {
-                    sync_dir(&entry.path())?;
+                    collect(&entry.path(), files, directories)?;
                 } else {
-                    std::fs::File::open(entry.path())?.sync_all()?;
+                    files.push(entry.path());
                 }
             }
-            std::fs::File::open(path)?.sync_all()
+            Ok(())
         }
-        sync_dir(&root)
+        let mut files = Vec::new();
+        let mut directories = Vec::new();
+        collect(&root, &mut files, &mut directories)?;
+        Ok::<_, std::io::Error>((files, directories))
     })
     .await??;
-    Ok(())
+
+    const MAX_SYNC_CONCURRENCY: usize = 32;
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_SYNC_CONCURRENCY));
+    let file_count = files.len();
+    let mut joins = tokio::task::JoinSet::new();
+    for path in files {
+        let permit = semaphore.clone().acquire_owned().await?;
+        joins.spawn_blocking(move || {
+            let _permit = permit;
+            std::fs::File::open(path)?.sync_all()
+        });
+    }
+    while let Some(result) = joins.join_next().await {
+        result??;
+    }
+
+    // Sync children before parents so all newly-created directory entries are
+    // durable. File data syncs above are parallelized as one bounded batch.
+    directories.sort_by_key(|directory| std::cmp::Reverse(directory.components().count()));
+    for directory in &directories {
+        sync_directory(directory).await?;
+    }
+    Ok(SyncTreeStats {
+        files: file_count,
+        directories: directories.len(),
+    })
 }
 
 async fn sync_directory(path: &Path) -> Result<(), Box<dyn Error>> {

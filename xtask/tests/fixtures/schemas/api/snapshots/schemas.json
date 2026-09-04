@@ -1804,6 +1804,13 @@
         },
         "status": {
           "$ref": "#/$defs/CleanupDebt_LifecycleStatus"
+        },
+        "vector_collection": {
+          "description": "Immutable vector collection identity for `VectorDelete` debt. Legacy\nrows deserialize as `None` and must fail closed during autonomous retry.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -17368,6 +17375,13 @@
         },
         "status": {
           "$ref": "#/$defs/SourceGenerationDetail_LifecycleStatus"
+        },
+        "vector_collection": {
+          "description": "Immutable vector collection identity for `VectorDelete` debt. Legacy\nrows deserialize as `None` and must fail closed during autonomous retry.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -29506,7 +29520,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:8793371ffee54b1fd3b20a7096588f858e560a5415a13de1c4f432e662481808",
+        "checksum": "sha256:0e0a13dd0acbdaf8b4de2a8b309a279a3a423d286a0bad6133461c7be99bd860",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },

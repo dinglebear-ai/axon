@@ -40,10 +40,13 @@ pub(super) async fn upsert_batches_rest(
         &format!("points?wait={wait}&ordering=strong"),
     );
 
+    let barrier_chunk = store
+        .async_writes
+        .then(|| completion_barrier_batch(&batch))
+        .flatten();
     let write_slots = store.write_slots();
     let provider_id = store.provider_id().0.clone();
     let chunks = ChunkedUpsertBatches::new(batch, store.point_buffer()).collect::<Vec<_>>();
-    let barrier_chunk = store.async_writes.then(|| chunks.last().cloned()).flatten();
     let mut pending = stream::iter(chunks)
         .map(|chunk| {
             let url = &url;
@@ -103,6 +106,28 @@ pub(super) async fn upsert_batches_rest(
         usage: request_usage(requests),
     })
 }
+
+fn completion_barrier_batch(batch: &VectorPointBatch) -> Option<VectorPointBatch> {
+    let point = batch.points.last()?.clone();
+    let sparse_vectors = batch.sparse_vectors.as_ref().map(|vectors| {
+        vectors
+            .iter()
+            .find(|vector| vector.chunk_id == point.chunk_id)
+            .cloned()
+            .into_iter()
+            .collect()
+    });
+    Some(VectorPointBatch {
+        batch_id: batch.batch_id,
+        collection: batch.collection.clone(),
+        points: vec![point],
+        model: batch.model.clone(),
+        dimensions: batch.dimensions,
+        sparse_vectors,
+        payload_indexes: Vec::new(),
+    })
+}
+
 async fn upsert_chunk_rest(
     http: &QdrantHttp,
     spec: &CollectionSpec,

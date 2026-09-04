@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import re
 
+_STABLE_PRESET = {"max-concurrent-requests": 1024, "max-batch-tokens": 163840, "max-batch-requests": 16, "max-client-batch-size": 128, "tokenization-workers": 16}
 PRESETS = {
-    "rtx4070-axon": {"max-concurrent-requests": 1024, "max-batch-tokens": 163840, "max-batch-requests": 16, "max-client-batch-size": 128, "tokenization-workers": 16},
-    "stable": {"max-concurrent-requests": 1024, "max-batch-tokens": 163840, "max-batch-requests": 16, "max-client-batch-size": 128, "tokenization-workers": 16},
+    "rtx4070-axon": _STABLE_PRESET,
+    "stable": _STABLE_PRESET,
     "admission": {"max-concurrent-requests": 1024, "max-batch-tokens": 196608, "max-batch-requests": 1024, "max-client-batch-size": 256, "tokenization-workers": 32},
     "probe-212k": {"max-concurrent-requests": 1024, "max-batch-tokens": 212992, "max-batch-requests": 1024, "max-client-batch-size": 256, "tokenization-workers": 32},
 }
 KNOBS = frozenset(next(iter(PRESETS.values())))
+
+
+def option_value(command: list[str], option: str) -> str | None:
+    try:
+        index = command.index(option)
+    except ValueError:
+        return None
+    return command[index + 1] if index + 1 < len(command) else None
 
 
 def positive_int(value: str) -> int:

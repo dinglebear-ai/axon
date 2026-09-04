@@ -118,7 +118,17 @@ pub(super) async fn publish(
         )
         .await
     {
-        warnings.push(record_retirement_debt(runtime, input, generation, previous, error).await);
+        warnings.push(
+            record_retirement_debt(
+                runtime,
+                input,
+                generation,
+                previous,
+                &collection.collection,
+                error,
+            )
+            .await,
+        );
     }
 
     Ok(PublishOutcome {
@@ -259,6 +269,7 @@ pub(super) async fn cleanup_failed_generation_vectors(
                     source_id: generation.source_id.clone(),
                     generation: generation.generation.clone(),
                 },
+                vector_collection: Some(collection.to_string()),
                 status: LifecycleStatus::Pending,
                 created_at: timestamp(),
                 attempts: 0,
@@ -291,6 +302,7 @@ async fn record_retirement_debt(
     input: &SourcePipelineInput<'_>,
     generation: &SourceGeneration,
     previous: SourceGenerationId,
+    collection: &str,
     error: ApiError,
 ) -> SourceWarning {
     let debt = CleanupDebt {
@@ -314,6 +326,7 @@ async fn record_retirement_debt(
             source_id: generation.source_id.clone(),
             generation: previous.clone(),
         },
+        vector_collection: Some(collection.to_string()),
         status: LifecycleStatus::Pending,
         created_at: timestamp(),
         attempts: 0,

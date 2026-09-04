@@ -428,7 +428,7 @@ fn deferred_warning(code: &str, message: String) -> SourceWarning {
     }
 }
 
-async fn record_terminal_status(
+pub(in crate::source) async fn record_terminal_status(
     jobs: &dyn JobStore,
     input: &SourcePipelineInput<'_>,
     result: &anyhow::Result<IndexCounts>,
@@ -445,15 +445,71 @@ async fn record_terminal_status(
             None,
         ),
     };
+    record_terminal_update(
+        jobs,
+        input.plan.job_id,
+        input.plan.route.source.source_id.clone(),
+        input.adapter.name(),
+        status,
+        counts,
+        error,
+    )
+    .await
+}
+
+pub(in crate::source) async fn record_completed_status(
+    jobs: &dyn JobStore,
+    output: &IndexCounts,
+    adapter_name: &str,
+) -> anyhow::Result<()> {
+    record_terminal_update(
+        jobs,
+        output.job_id,
+        output.source_id.clone(),
+        adapter_name,
+        successful_status(&output.warnings),
+        Some(stage_counts(output)),
+        None,
+    )
+    .await
+}
+
+pub(in crate::source) async fn record_failed_status(
+    jobs: &dyn JobStore,
+    output: &IndexCounts,
+    adapter_name: &str,
+    error: &anyhow::Error,
+) -> anyhow::Result<()> {
+    record_terminal_update(
+        jobs,
+        output.job_id,
+        output.source_id.clone(),
+        adapter_name,
+        LifecycleStatus::Failed,
+        None,
+        Some(terminal_source_error(error)),
+    )
+    .await
+}
+
+async fn record_terminal_update(
+    jobs: &dyn JobStore,
+    job_id: JobId,
+    source_id: SourceId,
+    adapter_name: &str,
+    status: LifecycleStatus,
+    counts: Option<StageCounts>,
+    error: Option<SourceError>,
+) -> anyhow::Result<()> {
     jobs.update_status(JobStatusUpdate {
-        job_id: input.plan.job_id,
-        source_id: Some(input.plan.route.source.source_id.clone()),
+        job_id,
+        source_id: Some(source_id),
         status,
         phase: PipelinePhase::Complete,
         stage_id: None,
         counts,
         current: None,
-        message: Some(format!("{} source {status:?}", input.adapter.name()).to_ascii_lowercase()),
+        message: Some(format!("{adapter_name} source {status:?}").to_ascii_lowercase()),
         error,
     })
     .await?;

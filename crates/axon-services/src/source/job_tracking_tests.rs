@@ -50,7 +50,41 @@ fn nonempty_drain_summary(failed: u64) -> DebtDrainSummary {
         resolved: 2,
         failed,
         points_deleted: 5,
+        ..DebtDrainSummary::default()
     }
+}
+
+#[test]
+fn degraded_graph_write_produces_retryable_source_warning() {
+    let warning = graph_outcome_warning(&nonempty_graph_summary(true))
+        .expect("degraded graph write must surface on the source result");
+
+    assert_eq!(warning.code, "source.graph.write_degraded");
+    assert_eq!(warning.severity, Severity::Warning);
+    assert!(warning.retryable);
+}
+
+#[test]
+fn partial_cleanup_failure_produces_retryable_source_warning() {
+    let warning = prune_outcome_warning(&nonempty_drain_summary(1))
+        .expect("pending cleanup debt must surface on the source result");
+
+    assert_eq!(warning.code, "source.prune.cleanup_deferred");
+    assert_eq!(warning.severity, Severity::Warning);
+    assert!(warning.retryable);
+}
+
+#[test]
+fn cleanup_enumeration_failure_is_not_a_clean_zero_work_outcome() {
+    let summary = DebtDrainSummary {
+        enumeration_failed: true,
+        ..DebtDrainSummary::default()
+    };
+    let warning = prune_outcome_warning(&summary)
+        .expect("failed debt enumeration must surface on the source result");
+
+    assert_eq!(warning.code, "source.prune.enumeration_deferred");
+    assert!(warning.retryable);
 }
 
 fn empty_drain_summary() -> DebtDrainSummary {
@@ -79,14 +113,13 @@ async fn track_graph_mutation_appends_completed_parent_annotation_on_success() {
     let store = store();
     let parent_job_id = completed_source_job(&store).await;
 
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_graph_summary(false),
     )
-    .await
-    .unwrap();
+    .await;
 
     let events = audit_events(&store, parent_job_id).await;
     assert_eq!(events.last().unwrap().status, LifecycleStatus::Completed);
@@ -94,17 +127,35 @@ async fn track_graph_mutation_appends_completed_parent_annotation_on_success() {
 }
 
 #[tokio::test]
-async fn audit_persistence_failure_prevents_silent_terminal_completion() {
-    let error = track_graph_mutation(
+async fn graph_audit_persistence_failure_returns_retryable_degradation() {
+    let warning = track_graph_mutation(
         Some(failing_event_store()),
         JobId::new(Uuid::new_v4()),
         None,
         &nonempty_graph_summary(false),
     )
     .await
-    .expect_err("audit persistence must be part of successful completion");
+    .expect("failed audit append must produce a warning");
 
-    assert_eq!(error.code.to_string(), "job.event_append_failed");
+    assert_eq!(warning.code, "source.graph.audit_deferred");
+    assert!(warning.retryable);
+    assert!(warning.message.contains("injected event append failure"));
+}
+
+#[tokio::test]
+async fn prune_audit_persistence_failure_returns_retryable_degradation() {
+    let warning = track_prune(
+        Some(failing_event_store()),
+        JobId::new(Uuid::new_v4()),
+        None,
+        &nonempty_drain_summary(0),
+    )
+    .await
+    .expect("failed audit append must produce a warning");
+
+    assert_eq!(warning.code, "source.prune.audit_deferred");
+    assert!(warning.retryable);
+    assert!(warning.message.contains("injected event append failure"));
 }
 
 #[tokio::test]
@@ -112,14 +163,13 @@ async fn track_graph_mutation_marks_degraded_write_as_failed_annotation() {
     let store = store();
     let parent_job_id = completed_source_job(&store).await;
 
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_graph_summary(true),
     )
-    .await
-    .unwrap();
+    .await;
 
     assert_eq!(
         audit_events(&store, parent_job_id)
@@ -136,14 +186,13 @@ async fn track_graph_mutation_skips_job_creation_for_zero_op_write() {
     let store = store();
     let parent_job_id = JobId::new(Uuid::new_v4());
 
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
         &empty_graph_summary(),
     )
-    .await
-    .unwrap();
+    .await;
 
     let page = store
         .list(JobListRequest {
@@ -166,27 +215,25 @@ async fn track_graph_mutation_skips_job_creation_for_zero_op_write() {
 async fn track_graph_mutation_skips_when_no_job_store() {
     // Must not panic without a job store — this is the degraded/no-data-plane
     // path's shape (no assertions possible beyond "did not panic").
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         None,
         JobId::new(Uuid::new_v4()),
         None,
         &nonempty_graph_summary(false),
     )
-    .await
-    .unwrap();
+    .await;
 }
 
 #[tokio::test]
 async fn track_graph_mutation_skips_nil_parent_job_id() {
     let store = store();
-    track_graph_mutation(
+    let _ = track_graph_mutation(
         Some(store.clone()),
         JobId::new(Uuid::nil()),
         None,
         &nonempty_graph_summary(false),
     )
-    .await
-    .unwrap();
+    .await;
 
     let page = store
         .list(JobListRequest {
@@ -210,14 +257,13 @@ async fn track_prune_appends_completed_parent_annotation_when_all_debt_resolved(
     let store = store();
     let parent_job_id = completed_source_job(&store).await;
 
-    track_prune(
+    let _ = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_drain_summary(0),
     )
-    .await
-    .unwrap();
+    .await;
 
     let events = audit_events(&store, parent_job_id).await;
     assert_eq!(events.last().unwrap().status, LifecycleStatus::Completed);
@@ -229,14 +275,13 @@ async fn track_prune_marks_partial_failure_as_failed_annotation() {
     let store = store();
     let parent_job_id = completed_source_job(&store).await;
 
-    track_prune(
+    let _ = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_drain_summary(1),
     )
-    .await
-    .unwrap();
+    .await;
 
     assert_eq!(
         audit_events(&store, parent_job_id)
@@ -249,18 +294,41 @@ async fn track_prune_marks_partial_failure_as_failed_annotation() {
 }
 
 #[tokio::test]
+async fn track_prune_marks_enumeration_failure_as_failed_annotation() {
+    let store = store();
+    let parent_job_id = completed_source_job(&store).await;
+    let summary = DebtDrainSummary {
+        enumeration_failed: true,
+        ..DebtDrainSummary::default()
+    };
+
+    let _ = track_prune(Some(store.clone()), parent_job_id, None, &summary).await;
+
+    let event = audit_events(&store, parent_job_id)
+        .await
+        .pop()
+        .expect("enumeration failure must be audited");
+    assert_eq!(event.status, LifecycleStatus::Failed);
+    assert_eq!(event.severity, Severity::Warning);
+    assert!(event.message.contains("enumeration_failed=true"));
+}
+
+#[tokio::test]
 async fn track_prune_skips_job_creation_when_no_debt_touched() {
     let store = store();
     let parent_job_id = JobId::new(Uuid::new_v4());
 
-    track_prune(
+    let warning = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
         &empty_drain_summary(),
     )
-    .await
-    .unwrap();
+    .await;
+    assert!(
+        warning.is_none(),
+        "a clean no-op must not produce a warning"
+    );
 
     let page = store
         .list(JobListRequest {
@@ -282,14 +350,14 @@ async fn track_prune_skips_job_creation_when_no_debt_touched() {
 #[tokio::test]
 async fn track_prune_skips_nil_parent_job_id() {
     let store = store();
-    track_prune(
+    let warning = track_prune(
         Some(store.clone()),
         JobId::new(Uuid::nil()),
         None,
         &nonempty_drain_summary(0),
     )
-    .await
-    .unwrap();
+    .await;
+    assert!(warning.is_none(), "a nil parent cannot persist an audit");
 
     let page = store
         .list(JobListRequest {
@@ -405,14 +473,17 @@ async fn track_graph_mutation_with_restricted_caller_does_not_create_admin_child
     let parent_job_id = completed_source_job(&store).await;
     let parent = restricted_caller_snapshot();
 
-    track_graph_mutation(
+    let warning = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         Some(&parent),
         &nonempty_graph_summary(false),
     )
-    .await
-    .unwrap();
+    .await;
+    assert!(
+        warning.is_none(),
+        "successful audit must not degrade the source"
+    );
 
     let page = store
         .list(JobListRequest {
@@ -509,22 +580,22 @@ async fn post_publish_audits_do_not_create_active_child_jobs() {
         .expect("parent job exists");
     assert_eq!(parent_before.status, LifecycleStatus::Completed);
 
-    track_graph_mutation(
+    let graph_warning = track_graph_mutation(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_graph_summary(false),
     )
-    .await
-    .unwrap();
-    track_prune(
+    .await;
+    let prune_warning = track_prune(
         Some(store.clone()),
         parent_job_id,
         None,
         &nonempty_drain_summary(0),
     )
-    .await
-    .unwrap();
+    .await;
+    assert!(graph_warning.is_none());
+    assert!(prune_warning.is_none());
 
     for kind in [JobKind::Graph, JobKind::Prune] {
         let page = store

@@ -257,6 +257,7 @@ pub(in crate::config) struct RawEmbeddingSection {
     pub cache_enabled: Option<bool>,
     pub cache_max_entries: Option<usize>,
     pub pool_max_inputs: Option<usize>,
+    pub prepared_byte_budget: Option<usize>,
     pub prep_concurrency: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,
     pub max_source_chunks_per_doc: Option<usize>,

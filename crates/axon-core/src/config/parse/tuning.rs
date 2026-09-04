@@ -198,6 +198,13 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         64,
         65_536,
     );
+    cfg.embed_prepared_byte_budget = resolve_clamped_usize(
+        "AXON_EMBED_PREPARED_BYTE_BUDGET",
+        toml.embed.prepared_byte_budget,
+        128 * 1024 * 1024,
+        1024 * 1024,
+        4 * 1024 * 1024 * 1024,
+    );
     cfg.embed_prep_concurrency = resolve_clamped_usize(
         "AXON_EMBED_PREP_CONCURRENCY",
         toml.embed.prep_concurrency,

@@ -431,7 +431,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
+        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nprepared-byte-budget = 67108864\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
     )
     .unwrap();
 
@@ -459,6 +459,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert!(cfg.embed_cache_enabled);
             assert_eq!(cfg.embed_cache_max_entries, 300_000);
             assert_eq!(cfg.embed_pool_max_inputs, 640);
+            assert_eq!(cfg.embed_prepared_byte_budget, 67_108_864);
             assert_eq!(cfg.embed_prep_concurrency, 3);
             assert_eq!(cfg.embed_max_chunks_per_doc, Some(50));
             assert_eq!(cfg.embed_max_source_chunks_per_doc, None);

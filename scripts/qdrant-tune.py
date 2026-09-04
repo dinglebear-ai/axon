@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import NamedTuple
@@ -94,6 +95,77 @@ def request_json(url: str, method: str = "GET") -> dict:
     request = urllib.request.Request(url, method=method)
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read())
+
+
+def report_url(value: str) -> str:
+    """Return an endpoint identifier safe to persist or print."""
+    parsed = urllib.parse.urlsplit(value)
+    hostname = parsed.hostname or ""
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    return urllib.parse.urlunsplit((parsed.scheme, f"{hostname}{port}", parsed.path, "", ""))
+
+
+def point_payload_digest(points: list[dict]) -> str:
+    """Hash every point, payload, and vector independent of scroll ordering."""
+    import hashlib
+
+    canonical = []
+    for point in points:
+        stable = dict(point)
+        payload = dict(stable.get("payload") or {})
+        # These values identify the benchmark execution, not corpus/vector content.
+        payload.pop("job_id", None)
+        payload.pop("embedded_at", None)
+        stable["payload"] = payload
+        canonical.append(json.dumps(stable, sort_keys=True, separators=(",", ":")))
+    digest = hashlib.sha256()
+    for encoded in sorted(canonical):
+        digest.update(encoded.encode())
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def collection_point_payload_digest(qdrant_url: str, collection: str) -> tuple[int, str]:
+    points: list[dict] = []
+    offset = None
+    while True:
+        body = {"limit": 256, "with_payload": True, "with_vector": True}
+        if offset is not None:
+            body["offset"] = offset
+        request = urllib.request.Request(
+            f"{qdrant_url.rstrip('/')}/collections/{collection}/points/scroll",
+            data=json.dumps(body).encode(),
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read()).get("result", {})
+        points.extend(result.get("points", []))
+        offset = result.get("next_page_offset")
+        if offset is None:
+            return len(points), point_payload_digest(points)
+
+
+def receipt_point_count(stdout: str) -> int | None:
+    """Find the canonical points-written receipt in JSONL command output."""
+    candidates = [stdout, *reversed(stdout.splitlines())]
+    for line in candidates:
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        pending = [value]
+        while pending:
+            current = pending.pop()
+            if isinstance(current, dict):
+                if isinstance(current.get("points_written"), int):
+                    return current["points_written"]
+                pending.extend(current.values())
+            elif isinstance(current, list):
+                pending.extend(current)
+    return None
 
 
 def delete_owned_collection(qdrant_url: str, collection: str) -> None:
@@ -200,6 +272,11 @@ def equivalence_report(rows: list[dict], repetitions: int, minimum_overlap: floa
     points = {row.get("points") for row in successful}
     if len(points) > 1 or None in points:
         reasons.append("point counts differ or are missing")
+    if any(row.get("receipt_points") != row.get("points") for row in successful):
+        reasons.append("write receipt counts differ from collection counts")
+    point_payload_digests = {row.get("point_payload_sha256") for row in successful}
+    if len(point_payload_digests) != 1 or None in point_payload_digests:
+        reasons.append("full point and payload digests differ or are missing")
     if any(row.get("status") != "green" for row in successful):
         reasons.append("one or more collections are not green")
     overlaps = [row.get("recall_overlap_at_10") for row in successful]
@@ -244,10 +321,16 @@ def run_variant(args: argparse.Namespace, variant: Variant, corpus: Path, run_id
             raise RuntimeError(f"{variant.name} failed: {completed.stderr[-4000:]}")
         info = request_json(f"{args.qdrant_url.rstrip('/')}/collections/{collection}").get("result", {})
         results = [query_urls(args.binary, collection, query, env) for query in args.queries]
+        scrolled_points, point_payload_sha256 = collection_point_payload_digest(
+            args.qdrant_url, collection
+        )
         return {
             "variant": variant._asdict(), "repetition": repetition, "collection": collection, "seconds": round(seconds, 3),
             "points": info.get("points_count"), "indexed_vectors": info.get("indexed_vectors_count"),
             "status": info.get("status"), "optimizer_status": info.get("optimizer_status"),
+            "receipt_points": receipt_point_count(completed.stdout),
+            "scrolled_points": scrolled_points,
+            "point_payload_sha256": point_payload_sha256,
             "query_results": results,
         }
 
@@ -314,9 +397,9 @@ def main() -> int:
         "runtime": {
             "binary": str(args.binary),
             "binary_sha256": file_digest(args.binary),
-            "qdrant_url": args.qdrant_url,
+            "qdrant_url": report_url(args.qdrant_url),
             "qdrant_identity": service_identity(args.qdrant_url),
-            "tei_url": args.tei_url,
+            "tei_url": report_url(args.tei_url),
             "tei_identity": service_identity(f"{args.tei_url.rstrip('/')}/info"),
         },
         "equivalence": equivalence_report(rows, args.repetitions),

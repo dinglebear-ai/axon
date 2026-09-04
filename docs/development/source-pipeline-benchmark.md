@@ -28,9 +28,12 @@ Before collecting evidence:
    the accelerator, while Axon receives a new state directory and runs with
    `--cache false`. This measures full acquisition, preparation, embedding,
    publication, and graph finalization without model-download startup.
-5. Compare only runs with the same committed-corpus hash and equivalent
-   document, chunk, vector, and graph counts. A partial crawl or provider error
-   is not a performance result.
+5. Treat this script's result as a single-arm diagnostic only. It does not
+   capture authoritative paired document, chunk, vector, and graph counts or
+   digests, so it cannot prove cross-arm equivalence and must not rank changes.
+   Use the Qdrant write-path sweep below when its narrower vector-publication
+   scope matches the question; a full-pipeline comparison needs a separate
+   paired harness with authoritative parity gates.
 
 The root binary no longer proxies source commands to a separate server. The
 harness invokes `target/release/axon` directly and therefore measures the
@@ -59,8 +62,10 @@ bash scripts/bench-source-pipeline.sh
 
 The JSON result contains wall time, committed-corpus hash, SQLite stage and
 phase windows, per-wave acquisition latency/occupancy, and MLX aggregate
-padding, occupancy, and idle ratios. Raw source content and URLs are not
-included. Temporary state is removed on exit.
+padding, occupancy, and idle ratios. It also declares
+`evidence_scope=single_arm_diagnostic`, `ranking_eligible=false`, and an
+unevaluated equivalence gate. Raw source content and URLs are not included.
+Temporary state is removed on exit.
 
 ## Interpreting live crawl results
 
@@ -112,15 +117,20 @@ python3 scripts/qdrant-tune.py --execute \
 The harness alternates forward and reverse variant order on successive
 repetitions, defaults to three samples per variant, and reports median, minimum,
 and maximum wall time. The report includes the frozen-corpus SHA-256, document
-count, endpoints, binary path, per-run Qdrant point/index state, and retrieval
-overlap. Do not rank failed runs, unequal corpus hashes or counts, non-green
+count, credential-redacted endpoints, binary path, per-run Qdrant point/index
+state, source-command write receipt, a stable digest of every stored point,
+payload, and vector, and retrieval overlap. The digest excludes only the
+execution-specific `job_id` and `embedded_at` payload fields. Do not rank failed
+runs, unequal corpus hashes or counts, non-green
 collections, or variants with fewer than the requested samples. Collections
 are deleted on exit unless `--keep-collections` is supplied; deletion is
 restricted to names with the `axon_qdrant_bench_` prefix.
 
 The equivalence gate is deliberately strict: every successful arm must produce
-the same point count, a green collection, the full repetition count, and exact
-top-10 result overlap for every fixed query. A lower overlap is diagnostic
+the same point count, have a matching source-command write receipt, produce the
+same full stored-data digest, reach a green collection, complete the requested
+repetition count, and retain exact top-10 result overlap for every fixed query.
+A lower overlap is diagnostic
 output, not a valid speed winner. Invalid evidence is still written for
 diagnosis, but the harness exits with status 2 and emits no timing summaries
 for arms without successful samples.

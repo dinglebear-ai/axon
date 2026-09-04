@@ -82,6 +82,30 @@ pub(super) async fn list_pending_cleanup_debt(
         .collect()
 }
 
+pub(super) async fn list_pending_cleanup_debt_after(
+    store: &SqliteLedgerStore,
+    after: Option<&CleanupDebtId>,
+    limit: usize,
+) -> Result<Vec<CleanupDebt>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT debt_json
+        FROM cleanup_debt
+        WHERE completed_at IS NULL AND debt_id > ?1
+        ORDER BY debt_id ASC
+        LIMIT ?2
+        "#,
+    )
+    .bind(after.map_or("", |cursor| cursor.0.as_str()))
+    .bind(limit as i64)
+    .fetch_all(&store.pool)
+    .await
+    .map_err(sqlite_error)?;
+    rows.into_iter()
+        .map(|row| serde_json::from_str(&row.get::<String, _>("debt_json")).map_err(json_error))
+        .collect()
+}
+
 pub(super) async fn list_adapter_release_debt(
     store: &SqliteLedgerStore,
     limit: usize,

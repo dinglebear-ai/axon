@@ -24,9 +24,13 @@ fn point(id: u64) -> PointStruct {
 
 #[test]
 fn async_grpc_plan_keeps_completion_fence_separate_from_parallel_chunks() {
+    let final_point = point(4);
     let (requests, barrier) = grpc_upsert_plan(
         "vectors",
-        vec![vec![point(1), point(2)], vec![point(3)]],
+        vec![
+            vec![point(1), point(2)],
+            vec![point(3), final_point.clone()],
+        ],
         true,
     );
     assert_eq!(requests.len(), 2);
@@ -35,7 +39,7 @@ fn async_grpc_plan_keeps_completion_fence_separate_from_parallel_chunks() {
             .iter()
             .map(|request| request.points.len())
             .collect::<Vec<_>>(),
-        vec![2, 1]
+        vec![2, 2]
     );
     assert!(requests.iter().all(|request| request.wait == Some(false)));
     assert!(requests.iter().all(|request| {
@@ -62,6 +66,7 @@ fn async_grpc_plan_keeps_completion_fence_separate_from_parallel_chunks() {
     let barrier = barrier.expect("async plan has completion fence");
     assert_eq!(barrier.wait, Some(true));
     assert_eq!(barrier.points.len(), 1);
+    assert_eq!(barrier.points[0], final_point);
 }
 
 #[test]

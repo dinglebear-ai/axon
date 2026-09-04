@@ -5,9 +5,11 @@ use tokio::io::AsyncWriteExt;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CommitFailurePoint {
+    Metadata,
     Serialize,
     Write,
     Flush,
+    OutputDirectorySync,
 }
 
 pub(super) const REFETCH_TRANSACTIONS_DIR: &str = ".thin-refetch-transactions";
@@ -24,15 +26,78 @@ pub(super) struct RefetchCommitJournal {
     pub(super) filename: String,
     pub(super) manifest_start: u64,
     pub(super) phase: CommitPhase,
+    pub(super) replacement_len: u64,
+    pub(super) replacement_hash: String,
+    #[serde(default)]
+    pub(super) replacement_filename: Option<String>,
+    #[serde(default)]
+    pub(super) manifest_line_len: Option<u64>,
+    #[serde(default)]
+    pub(super) manifest_line_hash: Option<String>,
 }
 
-struct PreparedRefetch {
+async fn content_matches(path: &Path, expected_len: u64, expected_hash: &str) -> bool {
+    let Ok(bytes) = tokio::fs::read(path).await else {
+        return false;
+    };
+    bytes.len() as u64 == expected_len && hex::encode(Sha256::digest(&bytes)) == expected_hash
+}
+
+async fn rollback_manifest(
+    output_dir: &Path,
+    journal: &RefetchCommitJournal,
+) -> std::io::Result<()> {
+    let manifest_path = output_dir.join("manifest.jsonl");
+    let manifest = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&manifest_path)
+        .await?;
+    let current_len = manifest.metadata().await?.len();
+    if current_len < journal.manifest_start {
+        return Err(std::io::Error::other(
+            "manifest is shorter than recorded transaction offset",
+        ));
+    }
+    let owned_len = journal.manifest_line_len.unwrap_or(0);
+    let expected_end = journal.manifest_start.saturating_add(owned_len);
+    if current_len != expected_end {
+        return Err(std::io::Error::other(
+            "manifest changed after this transaction; refusing unsafe truncation",
+        ));
+    }
+    if let Some(expected_hash) = journal.manifest_line_hash.as_deref() {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut readable = tokio::fs::File::open(&manifest_path).await?;
+        readable
+            .seek(std::io::SeekFrom::Start(journal.manifest_start))
+            .await?;
+        let mut suffix = Vec::with_capacity(owned_len as usize);
+        readable.read_to_end(&mut suffix).await?;
+        if hex::encode(Sha256::digest(&suffix)) != expected_hash {
+            return Err(std::io::Error::other(
+                "manifest suffix does not belong to this transaction",
+            ));
+        }
+    }
+    manifest.set_len(journal.manifest_start).await?;
+    manifest.sync_all().await
+}
+
+pub(super) struct PreparedRefetch {
     canonical: String,
     path: std::path::PathBuf,
-    tmp_path: std::path::PathBuf,
+    pub(super) tmp_path: std::path::PathBuf,
     line: String,
     journal_path: std::path::PathBuf,
     journal: RefetchCommitJournal,
+}
+
+fn journal_filename_component(value: &str) -> Option<&std::ffi::OsStr> {
+    let mut components = Path::new(value).components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(component)), None) => Some(component),
+        _ => None,
+    }
 }
 
 async fn sync_directory(path: &Path) -> std::io::Result<()> {
@@ -51,7 +116,7 @@ async fn persist_refetch_journal(
         .parent()
         .ok_or_else(|| std::io::Error::other("refetch journal has no parent"))?;
     tokio::fs::create_dir_all(directory).await?;
-    let temporary = journal_path.with_extension("journal-tmp");
+    let temporary = directory.join(format!(".journal-{}.tmp", uuid::Uuid::new_v4()));
     let bytes = serde_json::to_vec(journal).map_err(std::io::Error::other)?;
     tokio::fs::write(&temporary, bytes).await?;
     tokio::fs::File::open(&temporary).await?.sync_all().await?;
@@ -78,22 +143,31 @@ pub(super) async fn recover_refetch_commits(output_dir: &Path) {
                 return Err(std::io::Error::other("invalid refetch journal filename"));
             }
             let output = output_dir.join("markdown").join(filename);
-            let replacement = output.with_extension("refetch-tmp");
+            let replacement = journal
+                .replacement_filename
+                .as_deref()
+                .map(|name| {
+                    journal_filename_component(name)
+                        .map(|component| output_dir.join("markdown").join(component))
+                        .ok_or_else(|| {
+                            std::io::Error::other("invalid refetch journal replacement filename")
+                        })
+                })
+                .transpose()?
+                .unwrap_or_else(|| output.with_extension("refetch-tmp"));
             match journal.phase {
                 CommitPhase::Prepared => {
-                    let manifest_path = output_dir.join("manifest.jsonl");
-                    let manifest = tokio::fs::OpenOptions::new()
-                        .create(true)
-                        .truncate(false)
-                        .write(true)
-                        .open(manifest_path)
-                        .await?;
-                    manifest.set_len(journal.manifest_start).await?;
-                    manifest.sync_data().await?;
-                    let _ = tokio::fs::remove_file(&replacement).await;
+                    rollback_manifest(output_dir, &journal).await?;
+                    remove_file_and_sync_parent(&replacement).await?;
                 }
                 CommitPhase::ManifestCommitted => {
-                    if tokio::fs::try_exists(&replacement).await? {
+                    if content_matches(
+                        &replacement,
+                        journal.replacement_len,
+                        &journal.replacement_hash,
+                    )
+                    .await
+                    {
                         tokio::fs::rename(&replacement, &output).await?;
                         sync_directory(
                             output
@@ -101,11 +175,21 @@ pub(super) async fn recover_refetch_commits(output_dir: &Path) {
                                 .ok_or_else(|| std::io::Error::other("output has no parent"))?,
                         )
                         .await?;
+                    } else if !content_matches(
+                        &output,
+                        journal.replacement_len,
+                        &journal.replacement_hash,
+                    )
+                    .await
+                    {
+                        rollback_manifest(output_dir, &journal).await?;
+                        return Err(std::io::Error::other(
+                            "replacement is missing or does not match its journal",
+                        ));
                     }
                 }
             }
-            tokio::fs::remove_file(&journal_path).await?;
-            sync_directory(&transactions_dir).await
+            remove_file_and_sync_parent(&journal_path).await
         }
         .await;
         if let Err(error) = recovery {
@@ -142,17 +226,21 @@ pub(super) async fn write_refetch_results_with_failure(
         if let Some(ref diagnostic) = result.diagnostic {
             summary.push_diagnostic(diagnostic.clone());
         }
-        let manifest_start = manifest
-            .metadata()
-            .await
-            .map(|meta| meta.len())
-            .unwrap_or(0);
+        let manifest_start = if failure == Some(CommitFailurePoint::Metadata) {
+            Err(std::io::Error::other("injected manifest metadata failure"))
+        } else {
+            manifest.metadata().await.map(|meta| meta.len())
+        };
+        let Ok(manifest_start) = manifest_start else {
+            log_warn("thin_refetch: failed to read manifest metadata; skipping disk write");
+            continue;
+        };
         let Some(prepared) =
             prepare_refetch(result, &markdown_dir, output_dir, manifest_start, failure).await
         else {
             continue;
         };
-        if !commit_refetch(&mut manifest, &markdown_dir, output_dir, &prepared, failure).await {
+        if !commit_refetch(&mut manifest, &markdown_dir, &prepared, failure).await {
             continue;
         }
 
@@ -171,7 +259,7 @@ pub(super) async fn write_refetch_results_with_failure(
     summary
 }
 
-async fn prepare_refetch(
+pub(super) async fn prepare_refetch(
     result: RefetchResult,
     markdown_dir: &Path,
     output_dir: &Path,
@@ -182,7 +270,7 @@ async fn prepare_refetch(
     let canonical = canonicalize_url_for_dedupe(&result.url)?;
     let filename = url_to_stable_filename(&canonical);
     let path = markdown_dir.join(&filename);
-    let tmp_path = path.with_extension("refetch-tmp");
+    let tmp_path = markdown_dir.join(format!(".{filename}.refetch-{}.tmp", uuid::Uuid::new_v4()));
     if tokio::fs::write(&tmp_path, markdown.as_bytes())
         .await
         .is_err()
@@ -194,12 +282,23 @@ async fn prepare_refetch(
         ));
         return None;
     }
+    let Ok(tmp_file) = tokio::fs::File::open(&tmp_path).await else {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return None;
+    };
+    if let Err(error) = tmp_file.sync_all().await {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        log_warn(&format!(
+            "thin_refetch: failed to sync prepared output: {error}"
+        ));
+        return None;
+    }
     let content_hash = hex::encode(Sha256::digest(markdown.as_bytes()));
     let entry = ManifestEntry {
         url: canonical.clone(),
         relative_path: format!("markdown/{filename}"),
         markdown_chars: markdown.len(),
-        content_hash: Some(content_hash),
+        content_hash: Some(content_hash.clone()),
         changed: true,
         structured: None,
     };
@@ -228,6 +327,13 @@ async fn prepare_refetch(
         filename,
         manifest_start,
         phase: CommitPhase::Prepared,
+        replacement_len: markdown.len() as u64,
+        replacement_hash: content_hash,
+        replacement_filename: tmp_path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned()),
+        manifest_line_len: Some(line.len() as u64),
+        manifest_line_hash: Some(hex::encode(Sha256::digest(line.as_bytes()))),
     };
     if let Err(error) = persist_refetch_journal(&journal_path, &journal).await {
         let _ = tokio::fs::remove_file(&tmp_path).await;
@@ -249,7 +355,6 @@ async fn prepare_refetch(
 async fn commit_refetch(
     manifest: &mut tokio::fs::File,
     markdown_dir: &Path,
-    output_dir: &Path,
     prepared: &PreparedRefetch,
     failure: Option<CommitFailurePoint>,
 ) -> bool {
@@ -279,11 +384,10 @@ async fn commit_refetch(
         ));
         return false;
     }
-    let mut journal = RefetchCommitJournal {
+    let journal = RefetchCommitJournal {
         phase: CommitPhase::ManifestCommitted,
         ..prepared.journal.clone()
     };
-    journal.phase = CommitPhase::ManifestCommitted;
     if let Err(error) = persist_refetch_journal(&prepared.journal_path, &journal).await {
         rollback_prepared(manifest, prepared).await;
         log_warn(&format!(
@@ -300,21 +404,57 @@ async fn commit_refetch(
         ));
         return false;
     }
-    if let Err(error) = sync_directory(markdown_dir).await {
+    let output_sync = if failure == Some(CommitFailurePoint::OutputDirectorySync) {
+        Err(std::io::Error::other(
+            "injected output parent directory sync failure",
+        ))
+    } else {
+        sync_directory(markdown_dir).await
+    };
+    if let Err(error) = output_sync {
         log_warn(&format!(
             "thin_refetch: failed to sync committed output for {}: {error}",
             prepared.canonical
         ));
+        return false;
     } else {
-        let _ = tokio::fs::remove_file(&prepared.journal_path).await;
-        let _ = sync_directory(&output_dir.join(REFETCH_TRANSACTIONS_DIR)).await;
+        if let Err(error) = remove_file_and_sync_parent(&prepared.journal_path).await {
+            log_warn(&format!(
+                "thin_refetch: failed to durably remove commit journal for {}: {error}",
+                prepared.canonical
+            ));
+            return false;
+        }
     }
     true
 }
 
 async fn rollback_prepared(manifest: &mut tokio::fs::File, prepared: &PreparedRefetch) {
-    let _ = manifest.set_len(prepared.journal.manifest_start).await;
-    let _ = manifest.sync_data().await;
-    let _ = tokio::fs::remove_file(&prepared.tmp_path).await;
-    let _ = tokio::fs::remove_file(&prepared.journal_path).await;
+    let rollback = rollback_manifest(
+        prepared
+            .journal_path
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| Path::new(".")),
+        &prepared.journal,
+    )
+    .await;
+    let _ = manifest.sync_all().await;
+    if rollback.is_ok() {
+        let _ = remove_file_and_sync_parent(&prepared.tmp_path).await;
+        let _ = remove_file_and_sync_parent(&prepared.journal_path).await;
+    }
+}
+
+async fn remove_file_and_sync_parent(path: &Path) -> std::io::Result<()> {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => {
+            let parent = path
+                .parent()
+                .ok_or_else(|| std::io::Error::other("removed file has no parent"))?;
+            sync_directory(parent).await
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }

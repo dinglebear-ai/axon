@@ -21,9 +21,11 @@ use sqlx::SqlitePool;
 
 use crate::context::TargetLocalSourceRuntime;
 
+mod cleanup;
 mod support;
 mod vector;
 
+pub use cleanup::{drain_source_cleanup_debt, spawn_cleanup_debt_worker};
 use support::{map_reserved, record_provider_heartbeat, scheduler_error};
 pub use vector::{
     begin_bulk_load, delete_vectors, drain_bulk_load_cleanups, mark_generation_committed,

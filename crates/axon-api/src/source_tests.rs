@@ -587,6 +587,7 @@ fn source_generation_and_cleanup_debt_round_trip() {
         source_id: generation.source_id.clone(),
         generation: Some(generation.generation.clone()),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Generation {
             source_id: generation.source_id.clone(),
             generation: SourceGenerationId::from("gen_0001"),

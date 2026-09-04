@@ -104,8 +104,8 @@ class QdrantTuneTests(unittest.TestCase):
     def test_equivalence_requires_complete_green_equal_point_runs(self):
         first, second = [variant._asdict() for variant in qdrant_tune.default_variants()[:2]]
         rows = [
-            {"variant": first, "seconds": 1.0, "points": 10, "status": "green", "recall_overlap_at_10": 1.0},
-            {"variant": second, "seconds": 2.0, "points": 10, "status": "green", "recall_overlap_at_10": 1.0},
+            {"variant": first, "seconds": 1.0, "points": 10, "receipt_points": 10, "point_payload_sha256": "same", "status": "green", "recall_overlap_at_10": 1.0},
+            {"variant": second, "seconds": 2.0, "points": 10, "receipt_points": 10, "point_payload_sha256": "same", "status": "green", "recall_overlap_at_10": 1.0},
         ]
         self.assertTrue(qdrant_tune.equivalence_report(rows, 1)["valid"])
         rows[1]["points"] = 9
@@ -119,12 +119,53 @@ class QdrantTuneTests(unittest.TestCase):
             "variant": variant,
             "seconds": 1.0,
             "points": 10,
+            "receipt_points": 10,
+            "point_payload_sha256": "same",
             "status": "green",
             "recall_overlap_at_10": 0.8,
         }]
         report = qdrant_tune.equivalence_report(rows, 1)
         self.assertFalse(report["valid"])
         self.assertIn("retrieval overlap is below 1.0000", report["reasons"])
+
+    def test_report_url_strips_userinfo_query_and_fragment(self):
+        rendered = qdrant_tune.report_url(
+            "https://user:secret@qdrant.example:6333/proxy?api_key=also-secret#fragment"
+        )
+        self.assertEqual(rendered, "https://qdrant.example:6333/proxy")
+        self.assertNotIn("secret", rendered)
+
+    def test_equivalence_requires_receipts_and_full_point_payload_digests(self):
+        variant = qdrant_tune.default_variants()[0]._asdict()
+        rows = [
+            {"variant": variant, "seconds": 1.0, "points": 10,
+             "receipt_points": 10, "point_payload_sha256": "aaa",
+             "status": "green", "recall_overlap_at_10": 1.0},
+            {"variant": variant, "seconds": 1.1, "points": 10,
+             "receipt_points": 9, "point_payload_sha256": "bbb",
+             "status": "green", "recall_overlap_at_10": 1.0},
+        ]
+        report = qdrant_tune.equivalence_report(rows, 2)
+        self.assertFalse(report["valid"])
+        self.assertIn("write receipt counts differ from collection counts", report["reasons"])
+        self.assertIn("full point and payload digests differ or are missing", report["reasons"])
+
+    def test_point_payload_digest_is_stable_across_scroll_page_order(self):
+        points = [
+            {"id": "b", "payload": {"z": 2, "a": 1}, "vector": {"dense": [0.2]}},
+            {"id": "a", "payload": {"text": "hello"}, "vector": {"dense": [0.1]}},
+        ]
+        self.assertEqual(
+            qdrant_tune.point_payload_digest(points),
+            qdrant_tune.point_payload_digest(list(reversed(points))),
+        )
+
+    def test_point_payload_digest_ignores_only_execution_identity_fields(self):
+        first = [{"id": "a", "payload": {"text": "same", "job_id": "one", "embedded_at": "then"}, "vector": [0.1]}]
+        second = [{"id": "a", "payload": {"text": "same", "job_id": "two", "embedded_at": "now"}, "vector": [0.1]}]
+        self.assertEqual(qdrant_tune.point_payload_digest(first), qdrant_tune.point_payload_digest(second))
+        second[0]["payload"]["text"] = "changed"
+        self.assertNotEqual(qdrant_tune.point_payload_digest(first), qdrant_tune.point_payload_digest(second))
 
     def test_main_returns_nonzero_for_invalid_equivalence(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -152,11 +193,12 @@ class QdrantTuneTests(unittest.TestCase):
             qdrant_url="http://qdrant:6333", tei_url="http://tei:80",
             queries=(),
         )
-        completed = mock.Mock(returncode=0, stderr="")
+        completed = mock.Mock(returncode=0, stderr="", stdout='{"points_written": 1}\n')
         collection_info = {"result": {"points_count": 1, "status": "green"}}
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(qdrant_tune.subprocess, "run", return_value=completed) as run, \
              mock.patch.object(qdrant_tune, "delete_owned_collection"), \
+             mock.patch.object(qdrant_tune, "collection_point_payload_digest", return_value=(1, "digest")), \
              mock.patch.object(qdrant_tune, "request_json", return_value=collection_info):
             qdrant_tune.run_variant(args, variant, Path(directory), "run", 1)
         command = run.call_args.args[0]

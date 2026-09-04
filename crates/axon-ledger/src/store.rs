@@ -117,6 +117,14 @@ pub trait LedgerStore: Send + Sync {
     /// new generation is committed. A debt is "pending" while its `completed_at`
     /// timestamp is unset (status alone is advisory).
     async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>>;
+    /// Page unresolved cleanup debt across every source in stable debt-id order.
+    /// Runtime-owned maintenance uses this boundary to recover debt even when
+    /// the owning source is never published again.
+    async fn list_pending_cleanup_debt_after(
+        &self,
+        after: Option<CleanupDebtId>,
+        limit: usize,
+    ) -> Result<Vec<CleanupDebt>>;
     async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>>;
     /// Mark one cleanup-debt entry resolved: set its status to `Completed` and
     /// stamp `completed_at`. Idempotent — resolving an already-resolved or

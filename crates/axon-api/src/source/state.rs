@@ -83,6 +83,10 @@ pub struct CleanupDebt {
     pub generation: Option<SourceGenerationId>,
     pub kind: CleanupDebtKind,
     pub selector: CleanupSelector,
+    /// Immutable vector collection identity for `VectorDelete` debt. Legacy
+    /// rows deserialize as `None` and must fail closed during autonomous retry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vector_collection: Option<String>,
     pub status: LifecycleStatus,
     pub created_at: Timestamp,
     pub attempts: u32,

@@ -242,6 +242,7 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.embed.cache_enabled = e.cache_enabled;
     flat.embed.cache_max_entries = e.cache_max_entries;
     flat.embed.pool_max_inputs = e.pool_max_inputs;
+    flat.embed.prepared_byte_budget = e.prepared_byte_budget;
     flat.embed.prep_concurrency = e.prep_concurrency;
     flat.embed.max_chunks_per_doc = e.max_chunks_per_doc;
     flat.embed.max_source_chunks_per_doc = e.max_source_chunks_per_doc;

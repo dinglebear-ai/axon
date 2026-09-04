@@ -2,8 +2,10 @@
 //!
 //! These operations persist typed events before the source job's terminal
 //! transition, never as active child jobs that could outlive a terminal parent.
-//! A zero-op produces no annotation; persistence failure aborts completion so
-//! a terminal job can never silently omit its audit record.
+//! A zero-op produces no annotation. Because vectors and the ledger generation
+//! are already committed at this boundary, persistence failure becomes a
+//! retryable source warning and degraded completion rather than a false failed
+//! generation.
 
 use std::sync::Arc;
 
@@ -12,12 +14,47 @@ use axon_api::source::{
     AuthMode, ConfigSnapshotId, JobCreateRequest, JobIntent, JobKind, JobPriority, JobStagePlan,
     MetadataMap, TransportKind, Visibility,
 };
-use axon_api::source::{AuthSnapshot, GraphWriteSummary, JobId, LifecycleStatus, PipelinePhase};
+use axon_api::source::{
+    AuthSnapshot, GraphWriteSummary, JobId, LifecycleStatus, PipelinePhase, Severity, SourceWarning,
+};
 use axon_jobs::boundary::JobStore;
 #[cfg(test)]
 use axon_jobs::workers::auth_enforcement::child_auth_snapshot;
 
 use super::prune::DebtDrainSummary;
+
+pub fn graph_outcome_warning(summary: &GraphWriteSummary) -> Option<SourceWarning> {
+    summary.degraded.then(|| SourceWarning {
+        code: "source.graph.write_degraded".to_string(),
+        severity: Severity::Warning,
+        message: "baseline graph write was incomplete; retry graph publication".to_string(),
+        source_item_key: None,
+        retryable: true,
+    })
+}
+
+pub fn prune_outcome_warning(summary: &DebtDrainSummary) -> Option<SourceWarning> {
+    if summary.enumeration_failed {
+        return Some(SourceWarning {
+            code: "source.prune.enumeration_deferred".to_string(),
+            severity: Severity::Warning,
+            message: "cleanup debt could not be enumerated; retry cleanup".to_string(),
+            source_item_key: None,
+            retryable: true,
+        });
+    }
+    (summary.failed > 0).then(|| SourceWarning {
+        code: "source.prune.cleanup_deferred".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "{} cleanup debt entr{} remain pending; retry cleanup",
+            summary.failed,
+            if summary.failed == 1 { "y" } else { "ies" }
+        ),
+        source_item_key: None,
+        retryable: true,
+    })
+}
 
 /// Auth snapshot for a child job when no real parent snapshot is available
 /// (degraded/system-triggered paths that never reach this call site with a
@@ -97,15 +134,15 @@ pub async fn track_graph_mutation(
     parent_job_id: JobId,
     _parent_auth_snapshot: Option<&AuthSnapshot>,
     summary: &GraphWriteSummary,
-) -> Result<(), axon_api::source::ApiError> {
+) -> Option<SourceWarning> {
     let Some(store) = job_store else {
-        return Ok(());
+        return None;
     };
     if parent_job_id.0.is_nil() {
-        return Ok(());
+        return None;
     }
     if summary.nodes_upserted == 0 && summary.edges_upserted == 0 && summary.evidence_records == 0 {
-        return Ok(());
+        return None;
     }
 
     let message = format!(
@@ -122,14 +159,22 @@ pub async fn track_graph_mutation(
             LifecycleStatus::Completed
         },
         if summary.degraded {
-            axon_api::source::Severity::Warning
+            Severity::Warning
         } else {
-            axon_api::source::Severity::Info
+            Severity::Info
         },
         message,
     );
     event.dedupe_key = Some("post-publish:graph".into());
-    store.append_event(event).await
+    store.append_event(event).await.err().map(|error| SourceWarning {
+        code: "source.graph.audit_deferred".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "generation graph write completed, but its audit annotation could not be persisted: {error}"
+        ),
+        source_item_key: None,
+        retryable: true,
+    })
 }
 
 /// Record the cleanup-debt drain as a terminal annotation on `parent_job_id`.
@@ -142,20 +187,20 @@ pub async fn track_prune(
     parent_job_id: JobId,
     _parent_auth_snapshot: Option<&AuthSnapshot>,
     summary: &DebtDrainSummary,
-) -> Result<(), axon_api::source::ApiError> {
+) -> Option<SourceWarning> {
     let Some(store) = job_store else {
-        return Ok(());
+        return None;
     };
     if parent_job_id.0.is_nil() {
-        return Ok(());
+        return None;
     }
-    if summary.resolved == 0 && summary.failed == 0 {
-        return Ok(());
+    if summary.resolved == 0 && summary.failed == 0 && !summary.enumeration_failed {
+        return None;
     }
 
     let message = format!(
-        "cleanup debt drain: resolved={} failed={} points_deleted={}",
-        summary.resolved, summary.failed, summary.points_deleted
+        "cleanup debt drain: resolved={} failed={} points_deleted={} enumeration_failed={}",
+        summary.resolved, summary.failed, summary.points_deleted, summary.enumeration_failed
     );
     // `drain_cleanup_debt` never returns an error by contract; the drain is
     // considered fully successful only when nothing was left pending.
@@ -163,20 +208,28 @@ pub async fn track_prune(
         parent_job_id,
         0,
         PipelinePhase::Cleaning,
-        if summary.failed == 0 {
+        if summary.failed == 0 && !summary.enumeration_failed {
             LifecycleStatus::Completed
         } else {
             LifecycleStatus::Failed
         },
-        if summary.failed == 0 {
-            axon_api::source::Severity::Info
+        if summary.failed == 0 && !summary.enumeration_failed {
+            Severity::Info
         } else {
-            axon_api::source::Severity::Warning
+            Severity::Warning
         },
         message,
     );
     event.dedupe_key = Some("post-publish:cleanup".into());
-    store.append_event(event).await
+    store.append_event(event).await.err().map(|error| SourceWarning {
+        code: "source.prune.audit_deferred".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "generation cleanup completed, but its audit annotation could not be persisted: {error}"
+        ),
+        source_item_key: None,
+        retryable: true,
+    })
 }
 
 #[cfg(test)]

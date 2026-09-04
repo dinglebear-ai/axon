@@ -559,6 +559,7 @@ impl TargetLocalSourceRuntime {
             }),
             document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
             embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
+            embed_prepared_byte_budget: cfg.embed_prepared_byte_budget.max(1),
             db_stage_slots,
             fetch_provider,
             render_provider,

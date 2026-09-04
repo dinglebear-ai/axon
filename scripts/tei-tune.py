@@ -33,6 +33,7 @@ from tei_tune_remote import TeiRemote
 from tei_tune_runtime import (
     PRESETS,
     docker_run_from_snapshot,
+    option_value,
     resolve_config,
     secondary_network_commands,
     validate_container_name,
@@ -75,12 +76,7 @@ class Tei(TeiRemote):
                 f"rollback target deployment failed ({deploy_error}); current TEI configuration restored"
             ) from deploy_error
         snapshot_command = snapshot.get("cmd") or []
-        snapshot_model = (
-            snapshot_command[snapshot_command.index("--model-id") + 1]
-            if "--model-id" in snapshot_command
-            and snapshot_command.index("--model-id") + 1 < len(snapshot_command)
-            else None
-        )
+        snapshot_model = option_value(snapshot_command, "--model-id")
         device_requests = snapshot.get("host_config", {}).get("DeviceRequests") or []
         device_ids = device_requests[0].get("DeviceIDs") or [] if device_requests else []
         ok, detail = self.ready(expected={
@@ -162,9 +158,7 @@ class Tei(TeiRemote):
                 return False, f"published port mismatch: expected loopback:{self.port}, got {published}"
         command = inspected.get("Config", {}).get("Cmd") or []
         expected_model = expected.get("model_id")
-        actual_model = None
-        if "--model-id" in command and command.index("--model-id") + 1 < len(command):
-            actual_model = command[command.index("--model-id") + 1]
+        actual_model = option_value(command, "--model-id")
         served_model = info.get("model_id") or info.get("modelId")
         if expected_model and (actual_model != expected_model or served_model != expected_model):
             return False, (
@@ -240,11 +234,7 @@ class Tei(TeiRemote):
             raise RuntimeError(
                 f"replacement deployment failed ({deploy_error}); previous TEI configuration restored"
             ) from deploy_error
-        model_id = (
-            command[command.index("--model-id") + 1]
-            if "--model-id" in command and command.index("--model-id") + 1 < len(command)
-            else None
-        )
+        model_id = option_value(command, "--model-id")
         image_id = self.resolve_image_id(image)
         ok, detail = self.ready(expected={
             "image": image,

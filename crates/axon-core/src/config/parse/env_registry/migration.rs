@@ -438,6 +438,14 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_EMBED_PREPARED_BYTE_BUDGET",
+        MoveToml,
+        NotRuntime,
+        Some("providers.embedding.prepared-byte-budget"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_EMBED_PREP_CONCURRENCY",
         MoveToml,
         NotRuntime,

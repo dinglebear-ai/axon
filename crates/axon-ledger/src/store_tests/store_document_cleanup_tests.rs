@@ -60,6 +60,7 @@ async fn fake_ledger_owns_document_status_and_cleanup_debt() {
             source_id: SourceId::new("src_a"),
             generation: Some(SourceGenerationId::new("gen_1")),
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Document {
                 document_id: DocumentId::new("doc-a"),
             },
@@ -153,6 +154,7 @@ async fn fake_rejects_document_status_and_cleanup_debt_for_missing_sources() {
             source_id: SourceId::new("missing"),
             generation: None,
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Document {
                 document_id: DocumentId::new("doc-missing"),
             },
@@ -180,6 +182,7 @@ async fn fake_rejects_cleanup_selector_source_or_generation_mismatch() {
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::SourceItem {
             source_id: SourceId::new("other"),
             source_item_key: SourceItemKey::new("src/lib.rs"),
@@ -226,6 +229,7 @@ async fn fake_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() {
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-a"),
         },
@@ -271,6 +275,7 @@ async fn fake_cleanup_debt_update_preserves_unrelated_colliding_debt_id() {
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-a"),
         },
@@ -288,6 +293,7 @@ async fn fake_cleanup_debt_update_preserves_unrelated_colliding_debt_id() {
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-b"),
         },
@@ -349,6 +355,7 @@ async fn fake_cleanup_debt_ignores_stale_replay() {
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
+        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Document {
             document_id: DocumentId::new("doc-a"),
         },

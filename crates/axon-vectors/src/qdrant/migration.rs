@@ -1,7 +1,8 @@
-use axon_api::source::{ApiError, ChunkId, ErrorStage};
+use axon_api::source::*;
 
 use super::QdrantVectorStore;
 use crate::bm42::compute_bm42_sparse;
+use crate::collection::required_retrieval_payload_indexes;
 use crate::store::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,19 +178,7 @@ impl QdrantVectorStore {
             .await?
         {
             Some(existing) => {
-                if existing
-                    .pointer("/result/config/params/vectors/dense")
-                    .is_none()
-                    || existing
-                        .pointer("/result/config/params/sparse_vectors/bm42")
-                        .is_none()
-                {
-                    return Err(ApiError::new(
-                        "vector.migration.destination_schema",
-                        stage,
-                        "migration destination is not dense plus bm42 named-vector mode",
-                    ));
-                }
+                validate_destination_schema(&existing, dimensions)?;
             }
             None => {
                 let _permit = self.write_permit(stage).await?;
@@ -205,7 +194,58 @@ impl QdrantVectorStore {
                 .await?;
             }
         }
+        let migration_spec = CollectionSpec {
+            collection: to.to_string(),
+            dense: VectorConfig {
+                name: "dense".to_string(),
+                dimensions: u32::try_from(dimensions).map_err(|_| {
+                    ApiError::new(
+                        "vector.migration.destination_schema",
+                        stage,
+                        "migration vector dimensions exceed the supported range",
+                    )
+                })?,
+                distance: VectorDistance::Cosine,
+            },
+            sparse: Some(SparseVectorConfig {
+                name: "bm42".to_string(),
+                modifier: SparseVectorModifier::Idf,
+            }),
+            payload_indexes: required_retrieval_payload_indexes(),
+            aliases: Vec::new(),
+            distance: Some(VectorDistance::Cosine),
+            metadata: MetadataMap::new(),
+        };
+        self.ensure_payload_indexes(http, &migration_spec, stage)
+            .await?;
         Ok(())
+    }
+}
+
+fn validate_destination_schema(existing: &serde_json::Value, dimensions: u64) -> Result<()> {
+    let params = existing.pointer("/result/config/params");
+    let dense = params.and_then(|value| value.pointer("/vectors/dense"));
+    let sparse = params.and_then(|value| value.pointer("/sparse_vectors/bm42"));
+    let valid = dense
+        .and_then(|value| value.get("size"))
+        .and_then(serde_json::Value::as_u64)
+        == Some(dimensions)
+        && dense
+            .and_then(|value| value.get("distance"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value.eq_ignore_ascii_case("cosine"))
+        && sparse
+            .and_then(|value| value.get("modifier"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value.eq_ignore_ascii_case("idf"));
+    if valid {
+        Ok(())
+    } else {
+        Err(ApiError::new(
+            "vector.migration.destination_schema",
+            ErrorStage::Upserting,
+            "migration destination must use dense dimensions with Cosine distance and bm42 IDF",
+        ))
     }
 }
 

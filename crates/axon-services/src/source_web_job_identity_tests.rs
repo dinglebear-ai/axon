@@ -1,4 +1,8 @@
-use axon_api::source::{AuthSnapshot, ExecutionMode, JobKind, SourceRequest, SourceScope};
+use axon_api::source::{
+    AuthSnapshot, ExecutionMode, JobEventListRequest, JobKind, PipelinePhase, SourceRequest,
+    SourceScope,
+};
+use axon_jobs::boundary::JobStore;
 
 /// Build a `SourceRequest` for an existing local directory. The harness
 /// (`crate::test_support::source_context_with_fake_web`) wires a full
@@ -114,6 +118,58 @@ async fn inline_web_source_creates_one_source_job() {
     let jobs = harness.jobs_by_kind(JobKind::Source).await;
     assert_eq!(jobs.len(), 1);
     assert_eq!(jobs[0].job_id, result.job_id);
+}
+
+#[tokio::test]
+async fn inline_source_terminal_status_follows_required_postpublication_audit_events() {
+    let harness = SourceRuntimeHarness::with_sqlite_and_fakes().await;
+    let mut request = SourceRequest::new("https://terminal-order.example.test/");
+    request.scope = Some(SourceScope::Page);
+
+    let result = harness
+        .index_source_inline(request, Some(AuthSnapshot::trusted_system("test")))
+        .await
+        .expect("inline source");
+    let summary = harness
+        .harness
+        .ctx()
+        .job_store()
+        .expect("job store")
+        .get(result.job_id)
+        .await
+        .unwrap()
+        .expect("source job");
+    let finished_at = summary.finished_at.expect("terminal timestamp");
+    let events = harness
+        .harness
+        .ctx()
+        .job_store()
+        .expect("job store")
+        .events(JobEventListRequest {
+            job_id: result.job_id,
+            after_sequence: None,
+            limit: Some(100),
+            severity: None,
+            visibility: None,
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await
+        .unwrap()
+        .events;
+
+    let graph_event = events
+        .iter()
+        .rev()
+        .find(|event| event.phase == PipelinePhase::Graphing)
+        .expect("missing required Graphing audit event");
+    assert!(
+        graph_event.timestamp <= finished_at,
+        "terminal status at {} preceded required Graphing audit event at {}",
+        finished_at.0,
+        graph_event.timestamp.0
+    );
 }
 
 /// Local counterpart of `detached_web_source_uses_claimed_source_job_id`:

@@ -133,8 +133,12 @@ impl QdrantEndpoint {
         self.api_key.as_deref()
     }
 
-    fn credentials_use_safe_transport(&self) -> bool {
-        if self.api_key.is_none() {
+    pub(super) fn credentials_use_safe_transport(&self) -> bool {
+        self.transport_is_safe_for_credentials(self.api_key.is_some())
+    }
+
+    pub(super) fn transport_is_safe_for_credentials(&self, credentials_present: bool) -> bool {
+        if !credentials_present {
             return true;
         }
         let Ok(url) = url::Url::parse(&self.base) else {

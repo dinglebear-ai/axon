@@ -363,6 +363,14 @@ pub fn configure_write_transport(
 
 pub fn configure_grpc_transport(store: &mut QdrantVectorStore, url: &str) -> Result<(), ApiError> {
     let (grpc_url, api_key) = grpc_connection_parts(&store.url, url);
+    let grpc_endpoint = http::QdrantEndpoint::parse(url);
+    if !grpc_endpoint.transport_is_safe_for_credentials(api_key.is_some()) {
+        return Err(ApiError::new(
+            "vector.qdrant.insecure_credentials",
+            ErrorStage::Authorizing,
+            "Qdrant credentials require HTTPS for non-loopback gRPC endpoints",
+        ));
+    }
     let client = Qdrant::from_url(&grpc_url)
         .api_key(api_key)
         .skip_compatibility_check()

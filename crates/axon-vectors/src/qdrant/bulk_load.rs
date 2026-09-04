@@ -1,8 +1,12 @@
 //! Reference-counted Qdrant bulk-index lifecycle.
 
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use axon_api::source::{ApiError, ErrorStage};
+use axon_core::detached_workers::DetachedWorkerRegistry;
 use serde_json::json;
 
 use super::{BULK_LOAD_USERS, QdrantVectorStore};
@@ -11,69 +15,143 @@ use crate::store::Result;
 const OPTIMIZER_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const OPTIMIZER_READY_TIMEOUT: Duration = Duration::from_secs(300);
 
-#[derive(Default)]
-struct TransitionWorkers {
-    handles: Vec<std::thread::JoinHandle<()>>,
-    draining: bool,
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct PendingBulkLoad {
+    endpoint: String,
+    collection: String,
+    restore_threshold: u64,
 }
 
-static TRANSITION_WORKERS: std::sync::LazyLock<std::sync::Mutex<TransitionWorkers>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(TransitionWorkers::default()));
+struct BulkLoadJournal {
+    path: PathBuf,
+}
 
-fn join_transition_worker(worker: std::thread::JoinHandle<()>) {
-    if worker.join().is_err() {
-        tracing::error!("Qdrant bulk-load transition worker panicked");
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JournalWriteBoundary {
+    BeforeRename,
+    BeforeParentSync,
+}
+
+static JOURNAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+impl BulkLoadJournal {
+    fn open(data_dir: &Path) -> std::io::Result<Self> {
+        std::fs::create_dir_all(data_dir)?;
+        Ok(Self {
+            path: data_dir.join("qdrant-bulk-load-transitions.json"),
+        })
     }
-}
 
-fn track_transition_worker(worker: std::thread::JoinHandle<()>) {
-    track_transition_worker_in(&TRANSITION_WORKERS, worker);
-}
-
-fn track_transition_worker_in(
-    workers: &std::sync::Mutex<TransitionWorkers>,
-    worker: std::thread::JoinHandle<()>,
-) {
-    let (finished, late_worker) = {
-        let mut registry = workers
+    fn pending(&self) -> std::io::Result<Vec<PendingBulkLoad>> {
+        let _guard = JOURNAL_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut finished = Vec::new();
-        let mut index = registry.handles.len();
-        while index > 0 {
-            index -= 1;
-            if registry.handles[index].is_finished() {
-                finished.push(registry.handles.swap_remove(index));
-            }
-        }
-        if registry.draining {
-            (finished, Some(worker))
-        } else {
-            registry.handles.push(worker);
-            (finished, None)
-        }
-    };
-    for worker in finished.into_iter().chain(late_worker) {
-        join_transition_worker(worker);
+        self.read_unlocked()
     }
+
+    fn record(
+        &self,
+        endpoint: &str,
+        collection: &str,
+        restore_threshold: u64,
+    ) -> std::io::Result<()> {
+        let _guard = JOURNAL_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut pending = self.read_unlocked()?;
+        pending.retain(|entry| entry.endpoint != endpoint || entry.collection != collection);
+        pending.push(PendingBulkLoad {
+            endpoint: endpoint.to_string(),
+            collection: collection.to_string(),
+            restore_threshold,
+        });
+        self.write_unlocked(&pending)
+    }
+
+    fn complete(&self, endpoint: &str, collection: &str) -> std::io::Result<()> {
+        let _guard = JOURNAL_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut pending = self.read_unlocked()?;
+        pending.retain(|entry| entry.endpoint != endpoint || entry.collection != collection);
+        self.write_unlocked(&pending)
+    }
+
+    fn read_unlocked(&self) -> std::io::Result<Vec<PendingBulkLoad>> {
+        match std::fs::read(&self.path) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn write_unlocked(&self, pending: &[PendingBulkLoad]) -> std::io::Result<()> {
+        self.write_unlocked_with(pending, |_| Ok(()))
+    }
+
+    fn write_unlocked_with(
+        &self,
+        pending: &[PendingBulkLoad],
+        mut at_boundary: impl FnMut(JournalWriteBoundary) -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        let temporary = self
+            .path
+            .with_extension(format!("json.{}.tmp", uuid::Uuid::new_v4()));
+        let result =
+            (|| {
+                let bytes = serde_json::to_vec(pending)?;
+                let mut file = OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(&temporary)?;
+                file.write_all(&bytes)?;
+                file.sync_all()?;
+                at_boundary(JournalWriteBoundary::BeforeRename)?;
+                std::fs::rename(&temporary, &self.path)?;
+                at_boundary(JournalWriteBoundary::BeforeParentSync)?;
+                File::open(self.path.parent().ok_or_else(|| {
+                    std::io::Error::other("bulk journal has no parent directory")
+                })?)?
+                .sync_all()
+            })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        result
+    }
+}
+
+fn configured_journal() -> Result<Option<BulkLoadJournal>> {
+    #[cfg(test)]
+    let data_dir = std::env::var_os("AXON_TEST_BULK_JOURNAL_DIR").map(PathBuf::from);
+    #[cfg(not(test))]
+    let data_dir = std::env::var_os("AXON_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".axon")));
+    data_dir
+        .map(|path| {
+            BulkLoadJournal::open(&path).map_err(|error| {
+                ApiError::new(
+                    "vector.qdrant.bulk_journal",
+                    ErrorStage::Upserting,
+                    format!("failed to open bulk-load recovery journal: {error}"),
+                )
+            })
+        })
+        .transpose()
+}
+
+static TRANSITION_WORKERS: std::sync::LazyLock<DetachedWorkerRegistry> =
+    std::sync::LazyLock::new(DetachedWorkerRegistry::default);
+
+fn track_transition_worker(worker: std::thread::JoinHandle<()>) {
+    TRANSITION_WORKERS.track(worker);
 }
 
 /// Wait for every detached transition worker before process shutdown.
 pub fn drain_bulk_load_transition_workers() {
-    drain_bulk_load_transition_workers_in(&TRANSITION_WORKERS);
-}
-
-fn drain_bulk_load_transition_workers_in(workers: &std::sync::Mutex<TransitionWorkers>) {
-    let workers = {
-        let mut registry = workers
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        registry.draining = true;
-        std::mem::take(&mut registry.handles)
-    };
-    for worker in workers {
-        join_transition_worker(worker);
-    }
+    TRANSITION_WORKERS.drain();
 }
 
 async fn remove_idle_entry(
@@ -95,6 +173,15 @@ async fn remove_idle_entry(
 }
 
 impl QdrantVectorStore {
+    fn bulk_journal_endpoint(&self) -> Result<String> {
+        Ok(self
+            .http()?
+            .endpoint()
+            .root()
+            .trim_end_matches('/')
+            .to_string())
+    }
+
     pub(super) async fn begin_bulk_load_inner(&self, collection: &str) -> Result<()> {
         if !self.bulk_load_enabled {
             return Ok(());
@@ -142,6 +229,19 @@ impl QdrantVectorStore {
         if *count > 1 {
             return Ok(());
         }
+        let journal = configured_journal()?;
+        if let Some(journal) = &journal {
+            let endpoint = self.bulk_journal_endpoint()?;
+            journal
+                .record(&endpoint, collection, self.normal_indexing_threshold)
+                .map_err(|error| {
+                    ApiError::new(
+                        "vector.qdrant.bulk_journal",
+                        ErrorStage::Upserting,
+                        format!("failed to persist bulk-load recovery state: {error}"),
+                    )
+                })?;
+        }
         if let Err(mut error) = self
             .set_indexing_threshold(collection, self.bulk_indexing_threshold)
             .await
@@ -151,6 +251,11 @@ impl QdrantVectorStore {
                 error = error.with_context("compensation_error", compensation.to_string());
             }
             remove_idle_entry(&key, &entry, *count).await;
+            if let Some(journal) = &journal
+                && let Ok(endpoint) = self.bulk_journal_endpoint()
+            {
+                let _ = journal.complete(&endpoint, collection);
+            }
             return Err(error);
         }
         Ok(())
@@ -202,8 +307,56 @@ impl QdrantVectorStore {
             return Ok(());
         }
         let restoring = self.restore_normal_indexing(collection).await;
+        if restoring.is_ok()
+            && let Some(journal) = configured_journal()?
+        {
+            let endpoint = self.bulk_journal_endpoint()?;
+            journal.complete(&endpoint, collection).map_err(|error| {
+                ApiError::new(
+                    "vector.qdrant.bulk_journal",
+                    ErrorStage::Upserting,
+                    format!("failed to clear bulk-load recovery state: {error}"),
+                )
+            })?;
+        }
         remove_idle_entry(&key, &entry, *count).await;
         restoring
+    }
+
+    pub(super) async fn recover_bulk_load_transitions(&self) -> Result<()> {
+        let Some(journal) = configured_journal()? else {
+            return Ok(());
+        };
+        self.recover_bulk_load_transitions_from(&journal).await
+    }
+
+    async fn recover_bulk_load_transitions_from(&self, journal: &BulkLoadJournal) -> Result<()> {
+        let endpoint = self.bulk_journal_endpoint()?;
+        for transition in journal.pending().map_err(|error| {
+            ApiError::new(
+                "vector.qdrant.bulk_journal",
+                ErrorStage::Upserting,
+                format!("failed to read bulk-load recovery state: {error}"),
+            )
+        })? {
+            if transition.endpoint != endpoint {
+                continue;
+            }
+            self.set_indexing_threshold(&transition.collection, transition.restore_threshold)
+                .await?;
+            self.wait_for_optimizer_ready(&transition.collection)
+                .await?;
+            journal
+                .complete(&endpoint, &transition.collection)
+                .map_err(|error| {
+                    ApiError::new(
+                        "vector.qdrant.bulk_journal",
+                        ErrorStage::Upserting,
+                        format!("failed to clear recovered bulk-load state: {error}"),
+                    )
+                })?;
+        }
+        Ok(())
     }
 
     async fn restore_normal_indexing(&self, collection: &str) -> Result<()> {

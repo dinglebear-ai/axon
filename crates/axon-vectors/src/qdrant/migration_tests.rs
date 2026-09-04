@@ -14,6 +14,24 @@ fn migration_rejects_malformed_points_instead_of_reporting_partial_success() {
     assert!(transform_point(&malformed_vector).is_err());
 }
 
+#[test]
+fn migration_rejects_destination_dense_size_distance_and_sparse_modifier_drift() {
+    let valid = serde_json::json!({"result": {"config": {"params": {
+        "vectors": {"dense": {"size": 384, "distance": "Cosine"}},
+        "sparse_vectors": {"bm42": {"modifier": "idf"}}
+    }}}});
+    validate_destination_schema(&valid, 384).expect("matching schema");
+
+    for invalid in [
+        serde_json::json!({"result": {"config": {"params": {"vectors": {"dense": {"size": 768, "distance": "Cosine"}}, "sparse_vectors": {"bm42": {"modifier": "idf"}}}}}}),
+        serde_json::json!({"result": {"config": {"params": {"vectors": {"dense": {"size": 384, "distance": "Dot"}}, "sparse_vectors": {"bm42": {"modifier": "idf"}}}}}}),
+        serde_json::json!({"result": {"config": {"params": {"vectors": {"dense": {"size": 384, "distance": "Cosine"}}, "sparse_vectors": {"bm42": {"modifier": "none"}}}}}}),
+    ] {
+        let error = validate_destination_schema(&invalid, 384).expect_err("schema drift must fail");
+        assert_eq!(error.code.0, "vector.migration.destination_schema");
+    }
+}
+
 #[tokio::test]
 async fn migration_overlaps_next_scroll_with_current_upsert_under_backpressure() {
     let server = MockServer::start_async().await;
@@ -34,6 +52,12 @@ async fn migration_overlaps_next_scroll_with_current_upsert_under_backpressure()
     server
         .mock_async(|when, then| {
             when.method("PUT").path("/collections/destination");
+            then.status(200);
+        })
+        .await;
+    let indexes = server
+        .mock_async(|when, then| {
+            when.method("PUT").path("/collections/destination/index");
             then.status(200);
         })
         .await;
@@ -84,6 +108,9 @@ async fn migration_overlaps_next_scroll_with_current_upsert_under_backpressure()
     assert_eq!(receipt.points_migrated, 2);
     assert_eq!(receipt.pages_processed, 2);
     upserts.assert_calls_async(2).await;
+    indexes
+        .assert_calls_async(required_retrieval_payload_indexes().len())
+        .await;
 }
 
 #[tokio::test]

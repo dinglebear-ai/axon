@@ -9,6 +9,14 @@ fn embedding_cache_is_opt_in_and_bounded_by_default() {
     assert_eq!(config.embed_cache_max_entries, 100_000);
 }
 
+#[test]
+fn prepared_generation_memory_default_is_conservative() {
+    assert_eq!(
+        Config::default().embed_prepared_byte_budget,
+        128 * 1024 * 1024
+    );
+}
+
 /// Reuse the crate-wide env-mutation lock instead of relying solely on
 /// `#[serial_test::serial]`. `std::env` is process-global — `serial_test`'s
 /// default key and axon-core's `ENV_LOCK` (in

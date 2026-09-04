@@ -56,16 +56,19 @@ pub struct ServiceContext {
     drain_lock: Option<Arc<crate::runtime::WorkerDrainLock>>,
     #[allow(dead_code)]
     queue_summary: Option<Arc<QueueSummaryTask>>,
-    adapter_cleanup: Option<Arc<QueueSummaryTask>>,
+    cleanup_debt: Option<Arc<QueueSummaryTask>>,
 }
 
-struct QueueSummaryTask {
+pub(crate) struct QueueSummaryTask {
     stop: std::sync::mpsc::Sender<()>,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl QueueSummaryTask {
-    fn new(stop: std::sync::mpsc::Sender<()>, thread: std::thread::JoinHandle<()>) -> Self {
+    pub(crate) fn new(
+        stop: std::sync::mpsc::Sender<()>,
+        thread: std::thread::JoinHandle<()>,
+    ) -> Self {
         Self {
             stop,
             thread: Mutex::new(Some(thread)),
@@ -103,6 +106,7 @@ pub struct TargetLocalSourceRuntime {
     pub document_preparer: DocumentPreparer,
     pub document_prepare_concurrency: usize,
     pub embed_pool_max_inputs: usize,
+    pub embed_prepared_byte_budget: usize,
     pub(crate) db_stage_slots: Arc<Semaphore>,
     pub embedding_scheduler: Option<Arc<ProviderScheduler>>,
     pub vector_scheduler: Option<Arc<ProviderScheduler>>,
@@ -192,6 +196,7 @@ impl TargetLocalSourceRuntime {
             document_preparer: DocumentPreparer::default(),
             document_prepare_concurrency: 1,
             embed_pool_max_inputs: 512,
+            embed_prepared_byte_budget: 128 * 1024 * 1024,
             db_stage_slots,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
@@ -239,14 +244,14 @@ impl ServiceContext {
             queue_summary: spawn_workers
                 .then(|| spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs))
                 .flatten(),
-            adapter_cleanup: None,
+            cleanup_debt: None,
         };
         if spawn_workers && let Some(runtime) = context.target_local_source.as_deref() {
             let registry = runtime.source_adapter_registry(&context).await?.clone();
-            context.adapter_cleanup = Some(spawn_adapter_cleanup_worker(
-                Arc::clone(&runtime.ledger),
-                registry,
-            )?);
+            context.cleanup_debt = Some(
+                crate::reserved_call::spawn_cleanup_debt_worker(&context, runtime, registry)
+                    .await?,
+            );
         }
         Ok(context)
     }
@@ -354,7 +359,7 @@ impl ServiceContext {
             target_local_source: None,
             drain_lock: None,
             queue_summary: None,
-            adapter_cleanup: None,
+            cleanup_debt: None,
         }
     }
 
@@ -416,22 +421,13 @@ impl ServiceContext {
         if let Some(task) = &self.queue_summary {
             task.shutdown().await;
         }
-        if let Some(task) = &self.adapter_cleanup {
+        if let Some(task) = &self.cleanup_debt {
             task.shutdown().await;
         }
     }
 }
 
-fn spawn_adapter_cleanup_worker(
-    ledger: Arc<dyn LedgerStore>,
-    registry: SourceAdapterRegistry,
-) -> std::io::Result<Arc<QueueSummaryTask>> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build();
-    spawn_adapter_cleanup_worker_with_runtime(ledger, registry, runtime, "axon-adapter-cleanup")
-}
-
+#[cfg(test)]
 fn spawn_adapter_cleanup_worker_with_runtime(
     ledger: Arc<dyn LedgerStore>,
     registry: SourceAdapterRegistry,
