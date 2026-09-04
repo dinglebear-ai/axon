@@ -47,6 +47,7 @@ IGNORED_TOKENS = {
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
     "AXON_BENCH_AXON_BIN",  # source-pipeline benchmark harness control
+    "AXON_BENCH_CONFIG_PATH",  # source-pipeline benchmark harness fixture config
     "AXON_BENCH_COLLECTION",  # source-pipeline benchmark fixture state
     "AXON_BENCH_LIBRARY_MODE",  # source-pipeline benchmark harness control
     "AXON_BENCH_MLX_URL",  # source-pipeline benchmark fixture endpoint
@@ -111,6 +112,16 @@ IGNORED_TOKENS = {
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
     "TEI_MODE",  # local Incus bootstrap shell variable, not runtime configuration
+    "TEI_TUNE_CACHE",  # TEI benchmark harness control
+    "TEI_TUNE_CONTAINER",  # TEI benchmark harness control
+    "TEI_TUNE_ENTRYPOINT",  # TEI benchmark harness control
+    "TEI_TUNE_GPU",  # TEI benchmark harness control
+    "TEI_TUNE_HOST",  # TEI benchmark harness control
+    "TEI_TUNE_IMAGE",  # TEI benchmark harness control
+    "TEI_TUNE_NETWORK",  # TEI benchmark harness control
+    "TEI_TUNE_PORT",  # TEI benchmark harness control
+    "TEI_TUNE_STATE_DIR",  # TEI benchmark harness control
+    "TEI_TUNE_URL",  # TEI benchmark harness control
 }
 
 VALID_CLASSIFICATIONS = {
@@ -178,6 +189,9 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.cooldown-secs",
     "providers.embedding.interactive-reserved-requests",
     "providers.embedding.background-max-concurrent-requests",
+    "qdrant.async-writes",
+    "qdrant.quantization-enabled",
+    "qdrant.transport",
     "providers.embedding.maintenance-max-concurrent-requests",
     "providers.embedding.query-instruction-enabled",
     "providers.embedding.cache-enabled",

@@ -82,14 +82,6 @@ pub async fn begin_bulk_load(
     bulk_load_operation(runtime, context, collection, false).await
 }
 
-pub async fn finish_bulk_load(
-    runtime: &TargetLocalSourceRuntime,
-    context: ProviderCallContext,
-    collection: String,
-) -> Result<(), ApiError> {
-    finish_bulk_load_with_handoff(runtime, context, collection, || {}).await
-}
-
 async fn finish_bulk_load_with_handoff(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,

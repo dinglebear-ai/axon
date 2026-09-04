@@ -610,13 +610,35 @@ pub fn qdrant_hnsw_ef_construct() -> usize {
     )
 }
 
-pub fn qdrant_payload_index_profile() -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QdrantPayloadIndexProfile {
+    Core,
+    Full,
+}
+
+impl QdrantPayloadIndexProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Core => "core",
+            Self::Full => "full",
+        }
+    }
+}
+
+pub fn qdrant_payload_index_profile() -> Result<QdrantPayloadIndexProfile, String> {
     let toml = load_toml_or_default();
-    std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
+    match std::env::var("AXON_QDRANT_PAYLOAD_INDEX_PROFILE")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or(toml.qdrant.payload_index_profile)
         .unwrap_or_else(|| "full".to_string())
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "core" => Ok(QdrantPayloadIndexProfile::Core),
+        "full" => Ok(QdrantPayloadIndexProfile::Full),
+        value => Err(format!("invalid Qdrant payload index profile {value:?}")),
+    }
 }
 
 pub fn qdrant_payload_index_parallelism() -> usize {
@@ -658,14 +680,35 @@ pub fn qdrant_async_writes() -> bool {
         .unwrap_or(false)
 }
 
-pub fn qdrant_write_transport() -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QdrantWriteTransport {
+    Rest,
+    Grpc,
+}
+
+impl QdrantWriteTransport {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rest => "rest",
+            Self::Grpc => "grpc",
+        }
+    }
+}
+
+pub fn qdrant_write_transport() -> Result<QdrantWriteTransport, String> {
     let toml = load_toml_or_default();
-    std::env::var("AXON_QDRANT_TRANSPORT")
+    match std::env::var("AXON_QDRANT_TRANSPORT")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .or(toml.qdrant.transport)
         .unwrap_or_else(|| "rest".to_string())
         .to_ascii_lowercase()
+        .as_str()
+    {
+        "rest" => Ok(QdrantWriteTransport::Rest),
+        "grpc" => Ok(QdrantWriteTransport::Grpc),
+        value => Err(format!("invalid Qdrant transport {value:?}")),
+    }
 }
 
 pub fn qdrant_grpc_url() -> Option<String> {

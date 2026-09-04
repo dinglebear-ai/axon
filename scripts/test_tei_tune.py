@@ -53,6 +53,64 @@ class TimedOutRemoteCommand:
 
 
 class TeiTuneTests(unittest.TestCase):
+    def test_ready_rejects_decoy_endpoint_when_container_identity_mismatches(self):
+        tei = object.__new__(tei_tune.Tei)
+        tei.url = "http://tei.example"
+        tei.container = "axon-tei"
+        tei.remote = mock.Mock(return_value=mock.Mock(stdout="", stderr="", returncode=0))
+        tei.inspect = mock.Mock(return_value={
+            "Id": "old-container",
+            "State": {"Running": True},
+            "Config": {"Image": "tei:old", "Cmd": ["--model-id", "old/model"]},
+            "HostConfig": {"DeviceRequests": [{"Driver": "nvidia", "DeviceIDs": ["0"]}]},
+        })
+        response = mock.MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.read.return_value = b'{"model_id":"new/model"}'
+        with mock.patch.object(tei_tune.urllib.request, "urlopen", return_value=response), \
+             mock.patch.object(tei_tune.time, "monotonic", side_effect=[0, 0, 2]), \
+             mock.patch.object(tei_tune.time, "sleep"):
+            ok, detail = tei.ready(
+                timeout=1,
+                expected={"image": "tei:new", "model_id": "new/model", "gpu": "0"},
+            )
+        self.assertFalse(ok)
+        self.assertIn("image mismatch", detail)
+
+    def test_attestation_rejects_mutable_image_or_wrong_published_port(self):
+        tei = object.__new__(tei_tune.Tei)
+        tei.container = "axon-tei"
+        tei.port = 52000
+        tei.inspect = mock.Mock(return_value={
+            "State": {"Running": True},
+            "Config": {"Image": "tei:new", "Cmd": ["--model-id", "new/model"]},
+            "Image": "sha256:actual",
+            "HostConfig": {"DeviceRequests": [{"Driver": "nvidia", "DeviceIDs": ["0"]}]},
+            "NetworkSettings": {"Ports": {"80/tcp": [{"HostIp": "127.0.0.1", "HostPort": "59999"}]}},
+        })
+        tei.remote = mock.Mock(return_value=mock.Mock(returncode=0, stdout="text-embeddings-router\n"))
+        ok, detail = tei.readiness_attestation(
+            {"image": "tei:new", "image_id": "sha256:expected", "model_id": "new/model", "gpu": "0"},
+            {"model_id": "new/model"},
+        )
+        self.assertFalse(ok)
+        self.assertIn("image ID mismatch", detail)
+
+    def test_snapshot_rejects_multiple_device_requests_before_mutation(self):
+        snapshot = {
+            "image": "tei:old",
+            "config": {},
+            "host_config": {
+                "NetworkMode": "axon",
+                "DeviceRequests": [
+                    {"Driver": "nvidia", "DeviceIDs": ["0"], "Capabilities": [["gpu"]]},
+                    {"Driver": "nvidia", "DeviceIDs": ["1"], "Capabilities": [["gpu"]]},
+                ],
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "DeviceRequests"):
+            tei_tune.docker_run_from_snapshot("axon-tei", snapshot)
+
     def test_rejects_ssh_option_injection_before_subprocess(self):
         tei = object.__new__(tei_tune.Tei)
         tei.host = "-oProxyCommand=touch /tmp/pwned"
@@ -199,6 +257,7 @@ class TeiTuneTests(unittest.TestCase):
         tei.restore_parked = mock.Mock()
         tei.discard_parked = mock.Mock()
         tei.deploy = mock.Mock()
+        tei.resolve_image_id = mock.Mock(return_value="sha256:new")
         tei.ready = mock.Mock(return_value=(True, "ready"))
         tei.apply("new", ["new-cmd"], dry_run=False)
         tei.park_current.assert_called_once_with()
@@ -215,6 +274,7 @@ class TeiTuneTests(unittest.TestCase):
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
         tei.deploy = mock.Mock()
+        tei.resolve_image_id = mock.Mock(return_value="sha256:new")
         tei.ready = mock.Mock(return_value=(True, "ready"))
         tei.discard_parked = mock.Mock(side_effect=RuntimeError("rm failed"))
         with self.assertRaisesRegex(RuntimeError, "succeeded and is live.*retry safely"):
@@ -466,6 +526,7 @@ class TeiTuneTests(unittest.TestCase):
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
         tei.deploy = mock.Mock()
+        tei.resolve_image_id = mock.Mock(return_value="sha256:new")
         tei.restore_parked = mock.Mock()
         tei.discard_parked = mock.Mock()
         tei.ready = mock.Mock(side_effect=[(False, "new bad"), (True, "old ready")])
@@ -482,6 +543,7 @@ class TeiTuneTests(unittest.TestCase):
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
         tei.deploy = mock.Mock()
+        tei.resolve_image_id = mock.Mock(return_value="sha256:new")
         tei.restore_parked = mock.Mock()
         tei.discard_parked = mock.Mock()
         tei.ready = mock.Mock(side_effect=[(False, "new bad"), (False, "old bad")])

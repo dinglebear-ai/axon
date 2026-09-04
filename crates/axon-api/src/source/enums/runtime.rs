@@ -103,6 +103,7 @@ pub enum CleanupDebtKind {
     MemoryPrune,
     JobRetention,
     CachePrune,
+    AdapterRelease,
 }
 
 #[derive(

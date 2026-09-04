@@ -75,6 +75,18 @@ def validate_snapshot_host_config(host: dict) -> None:
         raise ValueError(
             f"unsupported material Docker settings in rollback snapshot: {', '.join(present)}"
         )
+    requests = host.get("DeviceRequests") or []
+    if len(requests) > 1:
+        raise ValueError(
+            "unsupported material Docker settings in rollback snapshot: DeviceRequests"
+        )
+    if requests:
+        request = requests[0]
+        capabilities = request.get("Capabilities") or []
+        if request.get("Driver") != "nvidia" or request.get("Options") or capabilities not in ([], [["gpu"]]):
+            raise ValueError(
+                "unsupported material Docker settings in rollback snapshot: DeviceRequests"
+            )
 
 
 def docker_run_from_snapshot(container: str, snapshot: dict) -> list[str]:

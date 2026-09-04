@@ -195,6 +195,42 @@ fn source_generation_and_document_filters_convert_to_qdrant_filters() {
 }
 
 #[test]
+fn source_kind_exclusion_is_a_provider_side_must_not_filter() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 2,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap(
+            [
+                (
+                    crate::filter::EXCLUDED_SOURCE_KINDS.to_string(),
+                    json!(["memory"]),
+                ),
+                (crate::filter::REQUIRE_SOURCE_KIND.to_string(), json!(true)),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = qdrant_filter(&request)
+        .unwrap()
+        .expect("must-not-only filter");
+    assert!(filter.must.is_empty());
+    assert_eq!(filter.must_not.len(), 2);
+    assert!(filter.must_not.iter().any(|condition| matches!(
+        condition.condition_one_of,
+        Some(condition::ConditionOneOf::IsEmpty(_))
+    )));
+}
+
+#[test]
 fn qdrant_filter_converts_path_prefix_to_source_path_should_filter() {
     let request = VectorSearchRequest {
         collection: "axon-test".to_string(),

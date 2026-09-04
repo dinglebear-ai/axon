@@ -26,6 +26,7 @@ pub(super) fn skip_reason_for_kind(kind: CleanupDebtKind) -> &'static str {
         | CleanupDebtKind::JobRetention => "drained (should not reach the skip path)",
         CleanupDebtKind::ArtifactDelete => "no ArtifactStore wired for this drain",
         CleanupDebtKind::CachePrune => "no DocumentCache wired for this drain",
+        CleanupDebtKind::AdapterRelease => "retried by the source adapter registry on next run",
     }
 }
 
@@ -136,6 +137,7 @@ pub(super) fn debt_to_step(debt: &CleanupDebt, collection: &str) -> Option<Prune
                 memory_ids: None,
             })
         }
+        CleanupDebtKind::AdapterRelease => None,
         _ => None,
     }
 }

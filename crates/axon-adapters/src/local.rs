@@ -93,8 +93,9 @@ impl SourceAdapter for LocalSourceAdapter {
         })
     }
 
-    fn release(&self, plan: &SourcePlan) {
-        self.release_root(plan.job_id);
+    fn release(&self, request: &AdapterReleaseRequest) -> Result<()> {
+        self.release_root(request.job_id);
+        Ok(())
     }
 }
 

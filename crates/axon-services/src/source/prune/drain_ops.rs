@@ -17,6 +17,7 @@ pub(super) async fn drain_one_debt(
     collection: &str,
     artifact_store: Option<&dyn ArtifactStore>,
     document_cache: Option<&dyn DocumentCache>,
+    adapter_registry: Option<&SourceAdapterRegistry>,
     summary: &mut DebtDrainSummary,
 ) {
     match debt.kind {
@@ -32,6 +33,67 @@ pub(super) async fn drain_one_debt(
         }
         CleanupDebtKind::CachePrune => {
             drain_cache_prune(ledger, document_cache, debt, summary).await;
+        }
+        // Adapter cleanup is retried by the source runner after the registry
+        // reconstructs the owning adapter for this source kind.
+        CleanupDebtKind::AdapterRelease => {
+            drain_adapter_release(ledger, adapter_registry, debt, summary).await;
+        }
+    }
+}
+
+pub(super) async fn drain_adapter_release(
+    ledger: &dyn LedgerStore,
+    adapter_registry: Option<&SourceAdapterRegistry>,
+    debt: &CleanupDebt,
+    summary: &mut DebtDrainSummary,
+) {
+    if debt
+        .next_retry_at
+        .as_ref()
+        .is_some_and(|retry| retry.0 > Timestamp::from(chrono::Utc::now()).0)
+    {
+        return;
+    }
+    let Some(registry) = adapter_registry else {
+        trace_unwired(debt);
+        return;
+    };
+    let Ok(Some(source)) = ledger.get_source(debt.source_id.clone()).await else {
+        summary.failed += 1;
+        return;
+    };
+    let Some(adapter) = registry.adapter_for_source_kind(source.source_kind) else {
+        summary.failed += 1;
+        return;
+    };
+    let request = AdapterReleaseRequest {
+        job_id: debt.job_id,
+        source_id: debt.source_id.clone(),
+        source_kind: source.source_kind,
+    };
+    match adapter.release(&request) {
+        Ok(()) => resolve_debt(ledger, debt, summary).await,
+        Err(error) => {
+            let mut retry = debt.clone();
+            retry.attempts = retry.attempts.saturating_add(1);
+            let delay = 2_u64.saturating_pow(retry.attempts.min(10));
+            retry.next_retry_at = Some(Timestamp::from(
+                chrono::Utc::now() + chrono::Duration::seconds(delay as i64),
+            ));
+            retry.last_error = Some(SourceError {
+                code: error.code.to_string(),
+                severity: Severity::Warning,
+                message: error.message.clone(),
+                source_item_key: None,
+                retryable: error.retryable,
+                provider_id: error.provider_id.clone().map(ProviderId::new),
+                cause: Some(error.to_string()),
+            });
+            if ledger.record_cleanup_debt(retry).await.is_err() {
+                tracing::warn!(debt_id = %debt.debt_id.0, "failed to persist adapter cleanup retry state");
+            }
+            summary.failed += 1;
         }
     }
 }

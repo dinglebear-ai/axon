@@ -189,50 +189,53 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
+        self.diff_manifest_ref(&manifest).await
+    }
+
+    async fn diff_manifest_ref(&self, manifest: &SourceManifest) -> Result<SourceManifestDiff> {
         let state = self.state.lock().await;
         let previous_generation = state.committed.get(&manifest.source_id).cloned();
-        let previous = previous_generation
-            .as_ref()
-            .and_then(|generation| {
-                state
-                    .manifests
-                    .get(&(manifest.source_id.clone(), generation.clone()))
-            })
-            .cloned();
-        drop(state);
+        let previous = previous_generation.as_ref().and_then(|generation| {
+            state
+                .manifests
+                .get(&(manifest.source_id.clone(), generation.clone()))
+        });
         let previous_items = previous
-            .map(|old| keyed_manifest_items(old.items))
+            .map(|old| {
+                old.items
+                    .iter()
+                    .map(|item| (item.source_item_key.clone(), item))
+                    .collect::<BTreeMap<_, _>>()
+            })
             .unwrap_or_default();
-        let SourceManifest {
-            source_id,
-            generation,
-            items,
-            ..
-        } = manifest;
-        let next_items = keyed_manifest_items(items);
+        let next_items = manifest
+            .items
+            .iter()
+            .map(|item| (item.source_item_key.clone(), item))
+            .collect::<BTreeMap<_, _>>();
 
         let mut added = Vec::new();
         let mut modified = Vec::new();
         let mut unchanged = Vec::new();
         for (key, item) in &next_items {
             match previous_items.get(key) {
-                None => added.push(item.clone()),
-                Some(old) if manifest_item_changed(old, item) => modified.push(item.clone()),
-                Some(_) => unchanged.push(item.clone()),
+                None => added.push((**item).clone()),
+                Some(old) if manifest_item_changed(old, item) => modified.push((**item).clone()),
+                Some(_) => unchanged.push((**item).clone()),
             }
         }
 
         let next_keys = next_items.keys().cloned().collect::<BTreeSet<_>>();
         let removed = previous_items
             .into_iter()
-            .filter_map(|(key, item)| (!next_keys.contains(&key)).then_some(item))
+            .filter_map(|(key, item)| (!next_keys.contains(&key)).then_some(item.clone()))
             .collect::<Vec<_>>();
 
         Ok(SourceManifestDiff {
             header: stage_header(PipelinePhase::Diffing),
-            source_id,
+            source_id: manifest.source_id.clone(),
             previous_generation,
-            next_generation: generation,
+            next_generation: manifest.generation.clone(),
             counts: DiffCounts {
                 added: added.len() as u64,
                 modified: modified.len() as u64,
@@ -364,6 +367,10 @@ impl LedgerStore for FakeLedgerStore {
 
     async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>> {
         cleanup::list_pending_cleanup_debt(&self.state, &source_id).await
+    }
+
+    async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_adapter_release_debt(&self.state, limit).await
     }
 
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()> {

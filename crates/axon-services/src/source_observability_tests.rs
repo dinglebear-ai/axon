@@ -128,6 +128,7 @@ async fn page_source_emits_ordered_phase_events() {
             (PipelinePhase::Upserting, LifecycleStatus::Running),
             (PipelinePhase::Publishing, LifecycleStatus::Running),
             (PipelinePhase::Publishing, LifecycleStatus::Completed),
+            (PipelinePhase::Graphing, LifecycleStatus::Completed),
             (PipelinePhase::Cleaning, LifecycleStatus::Running),
             (PipelinePhase::Complete, LifecycleStatus::Completed),
         ]

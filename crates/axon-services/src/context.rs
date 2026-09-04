@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
@@ -54,6 +54,40 @@ pub struct ServiceContext {
     /// `ServiceContext` clone drops (i.e. at server shutdown). Never read.
     #[allow(dead_code)]
     drain_lock: Option<Arc<crate::runtime::WorkerDrainLock>>,
+    #[allow(dead_code)]
+    queue_summary: Option<Arc<QueueSummaryTask>>,
+    adapter_cleanup: Option<Arc<QueueSummaryTask>>,
+}
+
+struct QueueSummaryTask {
+    stop: std::sync::mpsc::Sender<()>,
+    thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+impl QueueSummaryTask {
+    fn new(stop: std::sync::mpsc::Sender<()>, thread: std::thread::JoinHandle<()>) -> Self {
+        Self {
+            stop,
+            thread: Mutex::new(Some(thread)),
+        }
+    }
+
+    async fn shutdown(&self) {
+        self.stop_and_join();
+    }
+
+    fn stop_and_join(&self) {
+        let _ = self.stop.send(());
+        if let Some(thread) = self.thread.lock().expect("queue summary task lock").take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl Drop for QueueSummaryTask {
+    fn drop(&mut self) {
+        self.stop_and_join();
+    }
 }
 
 #[derive(Clone)]
@@ -197,14 +231,22 @@ impl ServiceContext {
         } else {
             None
         };
-        let context = Self {
+        let mut context = Self {
             cfg: Arc::clone(&cfg),
             jobs: Arc::clone(&jobs),
             target_local_source,
             drain_lock,
+            queue_summary: spawn_workers
+                .then(|| spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs))
+                .flatten(),
+            adapter_cleanup: None,
         };
-        if spawn_workers {
-            spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
+        if spawn_workers && let Some(runtime) = context.target_local_source.as_deref() {
+            let registry = runtime.source_adapter_registry(&context).await?.clone();
+            context.adapter_cleanup = Some(spawn_adapter_cleanup_worker(
+                Arc::clone(&runtime.ledger),
+                registry,
+            )?);
         }
         Ok(context)
     }
@@ -311,6 +353,8 @@ impl ServiceContext {
             jobs,
             target_local_source: None,
             drain_lock: None,
+            queue_summary: None,
+            adapter_cleanup: None,
         }
     }
 
@@ -366,44 +410,120 @@ impl ServiceContext {
     pub fn cfg(&self) -> &Config {
         &self.cfg
     }
+
+    /// Cancel and join background tasks owned by this context.
+    pub async fn shutdown_background_tasks(&self) {
+        if let Some(task) = &self.queue_summary {
+            task.shutdown().await;
+        }
+        if let Some(task) = &self.adapter_cleanup {
+            task.shutdown().await;
+        }
+    }
+}
+
+fn spawn_adapter_cleanup_worker(
+    ledger: Arc<dyn LedgerStore>,
+    registry: SourceAdapterRegistry,
+) -> std::io::Result<Arc<QueueSummaryTask>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    spawn_adapter_cleanup_worker_with_runtime(ledger, registry, runtime, "axon-adapter-cleanup")
+}
+
+fn spawn_adapter_cleanup_worker_with_runtime(
+    ledger: Arc<dyn LedgerStore>,
+    registry: SourceAdapterRegistry,
+    runtime: std::io::Result<tokio::runtime::Runtime>,
+    thread_name: &str,
+) -> std::io::Result<Arc<QueueSummaryTask>> {
+    let runtime = runtime?;
+    if thread_name.as_bytes().contains(&0) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "background worker thread name contains a null byte",
+        ));
+    }
+    let (stop, stopped) = std::sync::mpsc::channel();
+    let thread = std::thread::Builder::new()
+        .name(thread_name.into())
+        .spawn(move || {
+            let mut delay = Duration::from_millis(100);
+            loop {
+                match stopped.recv_timeout(delay) {
+                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                }
+                let next = runtime.block_on(crate::source::prune::drain_due_adapter_releases(
+                    ledger.as_ref(),
+                    &registry,
+                    256,
+                ));
+                delay = next
+                    .and_then(|next| chrono::DateTime::parse_from_rfc3339(&next.0).ok())
+                    .map(|next| {
+                        (next.with_timezone(&chrono::Utc) - chrono::Utc::now())
+                            .to_std()
+                            .unwrap_or(Duration::from_millis(100))
+                    })
+                    .unwrap_or(Duration::from_secs(30))
+                    .max(Duration::from_millis(100));
+            }
+        })?;
+    Ok(Arc::new(QueueSummaryTask::new(stop, thread)))
 }
 
 /// Periodic queue-depth summary logger for log-based monitoring.
 ///
 /// Spawned only by worker-bearing contexts. Interval is `AXON_QUEUE_SUMMARY_SECS`
 /// (default 30s).
-fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
+fn spawn_queue_summary_logger(
+    jobs: Arc<dyn ServiceJobRuntime>,
+    secs: u64,
+) -> Option<Arc<QueueSummaryTask>> {
     if secs == 0 {
-        return;
+        return None;
     }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(secs));
-        // Skip the initial fire so the first log is one period in, not at startup.
-        interval.tick().await;
-        loop {
-            interval.tick().await;
-            let Some(source) = queue_depth(&jobs, JobKind::Source).await else {
-                continue;
-            };
-            let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
-                continue;
-            };
-            let Some(watch) = queue_depth(&jobs, JobKind::Watch).await else {
-                continue;
-            };
-            let Some(prune) = queue_depth(&jobs, JobKind::Prune).await else {
-                continue;
-            };
-            tracing::info!(
-                source,
-                extract,
-                watch,
-                prune,
-                interval_secs = secs,
-                "job queue summary"
-            );
-        }
-    });
+    let (stop, stopped) = std::sync::mpsc::channel();
+    let thread = std::thread::Builder::new()
+        .name("axon-queue-summary".into())
+        .spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .expect("queue summary runtime");
+            loop {
+                match stopped.recv_timeout(Duration::from_secs(secs)) {
+                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                }
+                runtime.block_on(async {
+                    let Some(source) = queue_depth(&jobs, JobKind::Source).await else {
+                        return;
+                    };
+                    let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
+                        return;
+                    };
+                    let Some(watch) = queue_depth(&jobs, JobKind::Watch).await else {
+                        return;
+                    };
+                    let Some(prune) = queue_depth(&jobs, JobKind::Prune).await else {
+                        return;
+                    };
+                    tracing::info!(
+                        source,
+                        extract,
+                        watch,
+                        prune,
+                        interval_secs = secs,
+                        "job queue summary"
+                    );
+                });
+            }
+        })
+        .ok()?;
+    Some(Arc::new(QueueSummaryTask::new(stop, thread)))
 }
 
 async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option<i64> {
@@ -419,3 +539,7 @@ async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option
         }
     }
 }
+
+#[cfg(test)]
+#[path = "context_tests.rs"]
+mod tests;

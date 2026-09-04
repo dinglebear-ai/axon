@@ -47,7 +47,7 @@ pub(crate) fn shared_client_build_count() -> usize {
 /// A Qdrant REST endpoint with credentials split away from the base URL.
 #[derive(Debug, Clone)]
 pub struct QdrantEndpoint {
-    /// `scheme://host[:port]` with no path, query, or userinfo.
+    /// Redacted endpoint root, preserving any configured reverse-proxy prefix.
     base: String,
     /// Optional API key extracted from userinfo password or `api_key` query.
     api_key: Option<String>,
@@ -76,12 +76,12 @@ impl QdrantEndpoint {
                         .find(|(key, _)| key == "api_key")
                         .map(|(_, value)| value.into_owned());
                 }
-                let scheme = parsed.scheme();
-                let base = match (parsed.host_str(), parsed.port()) {
-                    (Some(host), Some(port)) => format!("{scheme}://{host}:{port}"),
-                    (Some(host), None) => format!("{scheme}://{host}"),
-                    _ => trimmed.to_string(),
-                };
+                let mut redacted = parsed;
+                let _ = redacted.set_username("");
+                let _ = redacted.set_password(None);
+                redacted.set_query(None);
+                redacted.set_fragment(None);
+                let base = redacted.as_str().trim_end_matches('/').to_string();
                 Self { base, api_key }
             }
             Err(_) => Self {
@@ -93,12 +93,23 @@ impl QdrantEndpoint {
 
     /// Build a full request URL for a collection sub-path (e.g. `points/query`).
     pub fn collection_path(&self, collection: &str, suffix: &str) -> String {
+        let mut url = url::Url::parse(&format!("{}/", self.base))
+            .expect("QdrantEndpoint base was parsed successfully");
         let suffix = suffix.trim_start_matches('/');
-        if suffix.is_empty() {
-            format!("{}/collections/{}", self.base, collection)
-        } else {
-            format!("{}/collections/{}/{}", self.base, collection, suffix)
+        let (suffix_path, query) = suffix.split_once('?').unwrap_or((suffix, ""));
+        {
+            let mut segments = url
+                .path_segments_mut()
+                .expect("Qdrant HTTP endpoint must be a hierarchical URL");
+            segments.pop_if_empty().push("collections").push(collection);
+            for segment in suffix_path.split('/').filter(|segment| !segment.is_empty()) {
+                segments.push(segment);
+            }
         }
+        if !query.is_empty() {
+            url.set_query(Some(query));
+        }
+        url.into()
     }
 
     /// The bare `scheme://host[:port]` root, used for liveness probes.
@@ -106,8 +117,33 @@ impl QdrantEndpoint {
         &self.base
     }
 
+    /// Credential-free origin for transports such as tonic that construct
+    /// their own RPC paths and therefore cannot inherit an HTTP proxy prefix.
+    pub(super) fn grpc_origin(&self) -> String {
+        let Ok(mut url) = url::Url::parse(&self.base) else {
+            return self.base.clone();
+        };
+        url.set_path("");
+        url.set_query(None);
+        url.set_fragment(None);
+        url.as_str().trim_end_matches('/').to_string()
+    }
+
     pub(super) fn api_key(&self) -> Option<&str> {
         self.api_key.as_deref()
+    }
+
+    fn credentials_use_safe_transport(&self) -> bool {
+        if self.api_key.is_none() {
+            return true;
+        }
+        let Ok(url) = url::Url::parse(&self.base) else {
+            return false;
+        };
+        if url.scheme() == "https" {
+            return true;
+        }
+        matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
     }
 }
 
@@ -123,9 +159,19 @@ impl QdrantHttp {
     /// Construct a transport for the configured Qdrant URL, attributing every
     /// surfaced error to `provider_id`.
     pub fn new(url: &str, provider_id: &str) -> Result<Self, ApiError> {
+        let endpoint = QdrantEndpoint::parse(url);
+        if !endpoint.credentials_use_safe_transport() {
+            return Err(ApiError::new(
+                "vector.qdrant.insecure_credentials",
+                axon_error::ErrorStage::Authorizing,
+                "Qdrant credentials require HTTPS for non-loopback endpoints",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(provider_id));
+        }
         Ok(Self {
             client: SHARED_CLIENT.clone(),
-            endpoint: QdrantEndpoint::parse(url),
+            endpoint,
             provider_id: provider_id.to_string(),
         })
     }
@@ -171,18 +217,34 @@ impl QdrantHttp {
         body: &B,
         context: &str,
     ) -> Result<(), ApiError> {
-        let resp = self
-            .request(Method::PUT)
-            .put(url)
-            .json(body)
-            .send()
-            .await
-            .map_err(|err| self.transport(stage, context, &err))?;
-        let status = resp.status();
-        if status == StatusCode::CONFLICT || status.is_success() {
-            return Ok(());
+        let started = Instant::now();
+        let mut last = None;
+        for attempt in 1..=MAX_ATTEMPTS {
+            match self.request(Method::PUT).put(url).json(body).send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status == StatusCode::CONFLICT || status.is_success() {
+                        return Ok(());
+                    }
+                    let error = self.status_error(stage, context, status);
+                    if !(status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error())
+                        || attempt == MAX_ATTEMPTS
+                    {
+                        return Err(error);
+                    }
+                    last = Some(error);
+                }
+                Err(error) => {
+                    last = Some(self.transport(stage, context, &error));
+                    if attempt == MAX_ATTEMPTS {
+                        break;
+                    }
+                }
+            }
+            tokio::time::sleep(retry_delay(attempt, started)).await;
         }
-        Err(self.status_error(stage, context, status))
+        Err(last
+            .unwrap_or_else(|| self.status_error(stage, context, StatusCode::SERVICE_UNAVAILABLE)))
     }
 
     pub async fn patch_json<B: Serialize + ?Sized>(

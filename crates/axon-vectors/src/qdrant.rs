@@ -18,12 +18,24 @@ pub(crate) mod commit;
 pub mod convert;
 mod grpc;
 mod http;
+mod migration;
 mod read;
 mod search;
 mod store_cache;
 mod store_impl;
 mod store_trait;
 mod upsert;
+pub use migration::{VectorMigrationReceipt, migrate_unnamed_collection};
+
+/// Retrieve all stored chunks for a URL through the vector-domain boundary.
+pub async fn retrieve_by_url(
+    store: &QdrantVectorStore,
+    collection: &str,
+    target: &str,
+    max_points: Option<usize>,
+) -> crate::store::Result<QdrantRetrieveByUrlResult> {
+    store.retrieve_by_url(collection, target, max_points).await
+}
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock, Weak};
@@ -374,7 +386,7 @@ fn grpc_connection_parts(rest_url: &str, grpc_url: &str) -> (String, Option<Stri
         .api_key()
         .or_else(|| rest.api_key())
         .map(ToOwned::to_owned);
-    (grpc.root().to_string(), api_key)
+    (grpc.grpc_origin(), api_key)
 }
 
 pub fn configure_rest_transport(store: &mut QdrantVectorStore) {

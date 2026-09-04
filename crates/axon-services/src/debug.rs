@@ -6,7 +6,7 @@ use std::error::Error;
 
 #[must_use = "debug_report returns a Result that should be handled"]
 pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResult, Box<dyn Error>> {
-    let pending_jobs = axon_jobs::store::count_pending_jobs(&cfg.sqlite_path).await;
+    let pending_jobs = axon_jobs::store::count_pending_jobs(&cfg.sqlite_path).await?;
     let llm_probe = axon_llm::build_llm_doctor_probe(cfg).await;
     let doctor_report = build_doctor_report(cfg, pending_jobs, llm_probe).await?;
 

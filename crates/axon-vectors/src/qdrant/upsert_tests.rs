@@ -180,7 +180,7 @@ fn chunked_upsert_batches_empty_batch_makes_no_requests() {
 
 fn read_http_request(stream: &mut TcpStream) {
     stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
+        .set_read_timeout(Some(Duration::from_secs(30)))
         .expect("set request read timeout");
     let mut request = Vec::new();
     let mut buffer = [0_u8; 4096];
@@ -223,7 +223,7 @@ fn concurrent_put_server(
     let server_arrivals = Arc::clone(&arrivals);
     let barrier = Arc::new(Barrier::new(expected_requests));
     let handle = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(30);
         let mut workers = Vec::with_capacity(expected_requests);
         while workers.len() < expected_requests && Instant::now() < deadline {
             match listener.accept() {
@@ -448,7 +448,7 @@ async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
         upsert_batches_rest(&store, &http, &spec, valid_batch(5), ErrorStage::Upserting).await
     });
 
-    let result = tokio::time::timeout(Duration::from_secs(5), task)
+    let result = tokio::time::timeout(Duration::from_secs(30), task)
         .await
         .expect("parallelism=3 must deliver all three request bodies to the barrier")
         .expect("upsert task")

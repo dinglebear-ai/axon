@@ -1645,7 +1645,8 @@
           "graph_prune",
           "memory_prune",
           "job_retention",
-          "cache_prune"
+          "cache_prune",
+          "adapter_release"
         ],
         "type": "string",
         "x-axon": {

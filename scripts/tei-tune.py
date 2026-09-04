@@ -28,6 +28,7 @@ from tei_tune_benchmark import (
     request_embeddings,
     sweep_client,
 )
+from tei_tune_remote import TeiRemote
 
 from tei_tune_runtime import (
     PRESETS,
@@ -39,205 +40,8 @@ from tei_tune_runtime import (
 )
 
 
-class Tei:
-    def __init__(self, args: argparse.Namespace):
-        self.host = validate_ssh_host(args.host)
-        self.container = validate_container_name(args.container)
-        self.url = args.url.rstrip("/")
-        self.image = args.image
-        self.port = args.port
-        self.network = args.network
-        self.gpu = args.gpu
-        self.cache = args.cache
-        self.entrypoint = args.entrypoint
-        state_name = f"{self.host}-{self.container}".replace("/", "_") + ".json"
-        self.state = Path(args.state_dir).expanduser() / state_name
 
-    def remote(
-        self, argv: list[str], check: bool = True, input_text: str | None = None
-    ) -> subprocess.CompletedProcess[str]:
-        validate_ssh_host(self.host)
-        holder = getattr(self, "_remote_lock_holder", None)
-        if holder is not None and holder.poll() is not None:
-            raise RuntimeError(
-                f"remote TEI mutation lock was lost for {self.host}/{self.container}; refusing further mutation"
-            )
-        operation_lock = getattr(self, "_remote_operation_lock", None)
-        remote_argv = (
-            ["flock", "-s", operation_lock, "--", *argv]
-            if holder is not None and operation_lock is not None
-            else argv
-        )
-        command = ["ssh", self.host, shlex.join(remote_argv)]
-        if holder is None:
-            return subprocess.run(
-                command, text=True, capture_output=True, check=check, input=input_text,
-            )
-        process = subprocess.Popen(
-            command,
-            text=True,
-            stdin=subprocess.PIPE if input_text is not None else None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        first_wait = True
-        while True:
-            try:
-                stdout, stderr = process.communicate(
-                    input=input_text if first_wait else None,
-                    timeout=0.1,
-                )
-                break
-            except subprocess.TimeoutExpired:
-                first_wait = False
-                if holder.poll() is not None:
-                    process.terminate()
-                    process.communicate()
-                    raise RuntimeError(
-                        f"remote TEI mutation lock was lost for {self.host}/{self.container}; "
-                        "stopped waiting locally; remote state is uncertain, but the operation "
-                        "lock prevents a successor from racing this command"
-                    )
-        result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
-        if check and result.returncode:
-            raise subprocess.CalledProcessError(
-                result.returncode, command, output=stdout, stderr=stderr
-            )
-        return result
-
-    def inspect(self) -> dict:
-        result = self.remote(["docker", "inspect", self.container])
-        return json.loads(result.stdout)[0]
-
-    def snapshot(self) -> dict:
-        inspected = self.inspect()
-        return {
-            "version": 1,
-            "created_at": time.time(),
-            "image": inspected["Config"]["Image"],
-            "cmd": inspected["Config"]["Cmd"],
-            "entrypoint": inspected["Config"].get("Entrypoint"),
-            "config": inspected["Config"],
-            "host_config": inspected["HostConfig"],
-            "network_mode": inspected["HostConfig"].get("NetworkMode", "bridge"),
-            "networks": inspected["NetworkSettings"].get("Networks", {}),
-        }
-
-    def save_snapshot(self, snapshot: dict) -> None:
-        self.state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        temporary = self.state.with_suffix(".tmp")
-        temporary.write_text(json.dumps(snapshot, indent=2) + "\n")
-        temporary.chmod(0o600)
-        temporary.replace(self.state)
-
-    @property
-    def parked_container(self) -> str:
-        return f"{self.container}-tei-tune-rollback"
-
-    @contextlib.contextmanager
-    def mutation_lock(self):
-        state = getattr(self, "state", Path("/tmp/tei-tune-state"))
-        host = getattr(self, "host", "unknown-host")
-        container = getattr(self, "container", "axon-tei")
-        lock_path = state.with_name(f"{state.name}.{host}.{container}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+") as lock_file:
-            try:
-                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
-                raise RuntimeError(
-                    f"another TEI mutation is already running for {self.host}/{self.container}"
-                ) from error
-            try:
-                lock_prefix = f"/tmp/axon-tei-tune-{validate_container_name(container)}"
-                owner_lock = f"{lock_prefix}.owner.lock"
-                operation_lock = f"{lock_prefix}.operation.lock"
-                ready_command = shlex.join([
-                    "flock", operation_lock, "sh", "-c",
-                    "printf 'axon-tei-tune-locked\\n'",
-                ])
-                lock_command = shlex.join([
-                    "flock", "-n", owner_lock, "sh", "-c",
-                    f"{ready_command}; cat >/dev/null",
-                ])
-                holder = subprocess.Popen(
-                    ["ssh", validate_ssh_host(host), lock_command],
-                    text=True,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                acquired = holder.stdout.readline() if holder.stdout else ""
-                if acquired != "axon-tei-tune-locked\n":
-                    _, error = holder.communicate()
-                    raise RuntimeError(
-                        f"another TEI mutation is already running for {self.host}/{self.container}: {error.strip()}"
-                    )
-                self._remote_lock_holder = holder
-                self._remote_operation_lock = operation_lock
-                try:
-                    if holder.poll() is not None:
-                        raise RuntimeError(
-                            f"remote TEI mutation lock was lost for {self.host}/{self.container}; refusing mutation"
-                        )
-                    yield
-                    if holder.poll() is not None:
-                        raise RuntimeError(
-                            f"remote TEI mutation lock was lost for {self.host}/{self.container}; mutation result is uncertain"
-                        )
-                finally:
-                    self._remote_lock_holder = None
-                    self._remote_operation_lock = None
-                    if holder.stdin:
-                        holder.stdin.close()
-                    holder.wait()
-                    if holder.returncode:
-                        error = holder.stderr.read().strip() if holder.stderr else ""
-                        print(f"warning: remote TEI mutation lock ended with an error: {error}", file=sys.stderr)
-            finally:
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
-
-    def park_current(self) -> None:
-        self.remote(["docker", "rm", "-f", self.parked_container], check=False)
-        self.remote(["docker", "stop", self.container])
-        try:
-            self.remote(["docker", "rename", self.container, self.parked_container])
-        except subprocess.CalledProcessError as rename_error:
-            restarted = self.remote(["docker", "start", self.container], check=False)
-            if restarted.returncode:
-                rename_detail = rename_error.stderr or str(rename_error)
-                restart_detail = restarted.stderr.strip() or restarted.stdout.strip()
-                raise RuntimeError(
-                    f"failed to park TEI ({rename_detail}); restart failed: {restart_detail}"
-                ) from rename_error
-            raise
-
-    def restore_parked(self) -> None:
-        self.remote(["docker", "rm", "-f", self.container], check=False)
-        self.remote(["docker", "rename", self.parked_container, self.container])
-        self.remote(["docker", "start", self.container])
-
-    def discard_parked(self) -> None:
-        self.remote(["docker", "rm", "-f", self.parked_container])
-
-    def discard_parked_after_success(self, outcome: str) -> None:
-        try:
-            self.discard_parked()
-        except Exception as error:
-            recovery = shlex.join(["ssh", self.host, "docker", "rm", "-f", self.parked_container])
-            raise RuntimeError(
-                f"{outcome} succeeded and is live, but cleanup of parked container "
-                f"{self.parked_container!r} failed ({error}); retry safely with: {recovery}"
-            ) from error
-
-    def restore_after_failure(self, primary: str) -> None:
-        try:
-            self.restore_parked()
-        except Exception as restore_error:
-            raise RuntimeError(
-                f"{primary}; restoring the parked TEI configuration also failed: {restore_error}"
-            ) from restore_error
-
+class Tei(TeiRemote):
     def rollback_to_snapshot(self, snapshot: dict) -> None:
         with self.mutation_lock():
             self._rollback_to_snapshot(snapshot)
@@ -270,7 +74,21 @@ class Tei:
             raise RuntimeError(
                 f"rollback target deployment failed ({deploy_error}); current TEI configuration restored"
             ) from deploy_error
-        ok, detail = self.ready()
+        snapshot_command = snapshot.get("cmd") or []
+        snapshot_model = (
+            snapshot_command[snapshot_command.index("--model-id") + 1]
+            if "--model-id" in snapshot_command
+            and snapshot_command.index("--model-id") + 1 < len(snapshot_command)
+            else None
+        )
+        device_requests = snapshot.get("host_config", {}).get("DeviceRequests") or []
+        device_ids = device_requests[0].get("DeviceIDs") or [] if device_requests else []
+        ok, detail = self.ready(expected={
+            "image": snapshot.get("image"),
+            "image_id": snapshot.get("image_id"),
+            "model_id": snapshot_model,
+            "gpu": str(device_ids[0]) if device_ids else "",
+        })
         if ok:
             if discard_parked:
                 self.discard_parked_after_success("rollback configuration")
@@ -291,7 +109,7 @@ class Tei:
             "docker", "run", "-d", "--name", self.container,
             "--restart", "unless-stopped", "--network", self.network,
             "--runtime=nvidia", "--gpus", f"device={self.gpu}",
-            "-p", f"{self.port}:80", "-e", "HF_HUB_CACHE=/data",
+            "-p", f"127.0.0.1:{self.port}:80", "-e", "HF_HUB_CACHE=/data",
             "-v", f"{self.cache}:/data",
         ]
         selected_entrypoint = entrypoint or self.entrypoint
@@ -321,14 +139,72 @@ class Tei:
                 detail = result.stderr.strip() or result.stdout.strip()
                 raise RuntimeError(f"failed to attach rollback network {command[-2]}: {detail}")
 
-    def ready(self, timeout: int = 90) -> tuple[bool, str]:
+    def readiness_attestation(self, expected: dict, info: dict) -> tuple[bool, str]:
+        inspected = self.inspect()
+        if not inspected.get("State", {}).get("Running"):
+            return False, "replacement container is not running"
+        actual_image = inspected.get("Config", {}).get("Image")
+        if actual_image != expected.get("image"):
+            return False, f"image mismatch: expected {expected.get('image')}, got {actual_image}"
+        expected_image_id = expected.get("image_id")
+        actual_image_id = inspected.get("Image")
+        if "image_id" in expected and (
+            not expected_image_id or actual_image_id != expected_image_id
+        ):
+            return False, f"image ID mismatch: expected {expected_image_id}, got {actual_image_id}"
+        if "image_id" in expected:
+            published = inspected.get("NetworkSettings", {}).get("Ports", {}).get("80/tcp") or []
+            if not any(
+                binding.get("HostPort") == str(self.port)
+                and binding.get("HostIp") in ("127.0.0.1", "::1")
+                for binding in published
+            ):
+                return False, f"published port mismatch: expected loopback:{self.port}, got {published}"
+        command = inspected.get("Config", {}).get("Cmd") or []
+        expected_model = expected.get("model_id")
+        actual_model = None
+        if "--model-id" in command and command.index("--model-id") + 1 < len(command):
+            actual_model = command[command.index("--model-id") + 1]
+        served_model = info.get("model_id") or info.get("modelId")
+        if expected_model and (actual_model != expected_model or served_model != expected_model):
+            return False, (
+                f"model mismatch: expected {expected_model}, "
+                f"container={actual_model}, endpoint={served_model}"
+            )
+        requests = inspected.get("HostConfig", {}).get("DeviceRequests") or []
+        expected_gpu = str(expected.get("gpu", ""))
+        if not requests or requests[0].get("Driver") != "nvidia":
+            return False, "replacement container has no NVIDIA device request"
+        device_ids = [str(value) for value in requests[0].get("DeviceIDs") or []]
+        if expected_gpu and device_ids and expected_gpu not in device_ids:
+            return False, f"GPU mismatch: expected device {expected_gpu}, got {device_ids}"
+        activity = self.remote([
+            "docker", "exec", self.container, "nvidia-smi",
+            "--query-compute-apps=process_name", "--format=csv,noheader,nounits",
+        ], check=False)
+        if activity.returncode or not activity.stdout.strip():
+            return False, "replacement container has no observed NVIDIA compute activity"
+        return True, json.dumps(info)
+
+    def ready(self, timeout: int = 90, expected: dict | None = None) -> tuple[bool, str]:
         deadline = time.monotonic() + timeout
         last = "no response"
         while time.monotonic() < deadline:
             try:
                 with urllib.request.urlopen(f"{self.url}/info", timeout=3) as response:
                     if response.status == 200:
-                        return True, response.read().decode()
+                        body = response.read().decode()
+                        if expected is None:
+                            return True, body
+                        try:
+                            info = json.loads(body)
+                        except json.JSONDecodeError as error:
+                            last = f"invalid TEI info response: {error}"
+                            continue
+                        attested, attestation = self.readiness_attestation(expected, info)
+                        if attested:
+                            return True, attestation
+                        last = attestation
             except (OSError, urllib.error.URLError) as error:
                 last = str(error)
             time.sleep(2)
@@ -364,7 +240,18 @@ class Tei:
             raise RuntimeError(
                 f"replacement deployment failed ({deploy_error}); previous TEI configuration restored"
             ) from deploy_error
-        ok, detail = self.ready()
+        model_id = (
+            command[command.index("--model-id") + 1]
+            if "--model-id" in command and command.index("--model-id") + 1 < len(command)
+            else None
+        )
+        image_id = self.resolve_image_id(image)
+        ok, detail = self.ready(expected={
+            "image": image,
+            "image_id": image_id,
+            "model_id": model_id,
+            "gpu": str(getattr(self, "gpu", "")),
+        })
         if ok:
             self.discard_parked_after_success("new TEI configuration")
             print("TEI is ready; new configuration retained.")

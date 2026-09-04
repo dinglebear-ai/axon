@@ -88,6 +88,61 @@ fn repo_docs_candidate(id: &str, source: &str, mut evidence: Vec<GraphEvidence>)
     }
 }
 
+#[tokio::test]
+async fn evidence_revision_replaces_all_lineage_and_content_fields() {
+    let store = store().await;
+    let first = repo_docs_candidate(
+        "candidate",
+        "source-a",
+        vec![ev("evidence", "sitemap", 0.2)],
+    );
+    store.upsert_candidates(vec![first]).await.unwrap();
+
+    let mut revised_evidence = ev("evidence", "github_homepage", 0.9);
+    revised_evidence.source_item_key = SourceItemKey::new("revised-item");
+    revised_evidence.quote = Some("revised quote".into());
+    let revised = repo_docs_candidate("candidate-revision", "source-b", vec![revised_evidence]);
+    store.upsert_candidates(vec![revised]).await.unwrap();
+
+    let row: (String, String, String, Option<String>) = sqlx::query_as(
+        "SELECT evidence_kind, source_id, source_item_key, quote FROM graph_evidence WHERE evidence_id = ?",
+    )
+    .bind("evidence")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (
+            "github_homepage".into(),
+            "source-b".into(),
+            "meta".into(),
+            Some("revised quote".into())
+        )
+    );
+}
+
+#[tokio::test]
+async fn mixed_source_batch_is_rejected_instead_of_misreporting_one_source() {
+    let store = store().await;
+    let result = store
+        .upsert_candidates(vec![
+            repo_docs_candidate(
+                "candidate-a",
+                "source-a",
+                vec![ev("evidence-a", "sitemap", 0.8)],
+            ),
+            repo_docs_candidate(
+                "candidate-b",
+                "source-b",
+                vec![ev("evidence-b", "sitemap", 0.8)],
+            ),
+        ])
+        .await;
+    let error = result.expect_err("mixed-source write needs per-source receipts");
+    assert_eq!(error.code.to_string(), "graph.validation");
+}
+
 fn large_repo_candidate(item_count: usize) -> GraphCandidate {
     let mut nodes = vec![node("repo", "repo:root", "repo")];
     let mut edges = Vec::with_capacity(item_count);
@@ -159,6 +214,119 @@ async fn large_upsert_crosses_alias_and_evidence_batch_boundaries() {
         .await
         .expect("count evidence after replay");
     assert_eq!(evidence_after, 121);
+}
+
+#[tokio::test]
+async fn ordinary_edge_upsert_is_bounded_past_sqlite_variable_limits() {
+    let graph = store().await;
+    let mut candidate = large_repo_candidate(1_001);
+    candidate.kind = "repository_snapshot".to_string();
+
+    let written = graph
+        .upsert_candidates(vec![candidate.clone()])
+        .await
+        .expect("edge reads and writes must be split into bounded statements");
+    assert_eq!(written.edges_upserted, 1_001);
+
+    graph
+        .upsert_candidates(vec![candidate])
+        .await
+        .expect("bounded replay must preserve merge behavior");
+    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
+        .fetch_one(graph.pool())
+        .await
+        .expect("count graph edges");
+    assert_eq!(edges, 1_001);
+}
+
+#[tokio::test]
+async fn later_invalid_candidate_cannot_leave_earlier_candidate_batches_committed() {
+    let graph = store().await;
+    let mut valid = large_repo_candidate(201);
+    valid.kind = "repository_snapshot".to_string();
+    let mut invalid = repo_docs_candidate(
+        "invalid-later-candidate",
+        "src",
+        vec![ev("invalid-evidence", "text_mention", 0.9)],
+    );
+    invalid.nodes[0].node_kind = "not_a_registered_node_kind".to_string();
+
+    let error = graph
+        .upsert_candidates(vec![valid, invalid])
+        .await
+        .expect_err("the complete caller batch must validate before any write");
+    assert_eq!(error.code.to_string(), "graph.validation");
+
+    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
+        .fetch_one(graph.pool())
+        .await
+        .expect("count graph edges after rejected batch");
+    assert_eq!(
+        edges, 0,
+        "prevalidation failure must leave no committed prefix"
+    );
+}
+
+#[tokio::test]
+async fn later_edge_batch_failure_reports_durable_partial_checkpoint() {
+    let graph = store().await;
+    sqlx::query(
+        "CREATE TRIGGER fail_later_edge_batch BEFORE INSERT ON graph_edges \
+         WHEN (SELECT COUNT(*) FROM graph_edges) >= 100 \
+         BEGIN SELECT RAISE(FAIL, 'injected later batch failure'); END",
+    )
+    .execute(graph.pool())
+    .await
+    .unwrap();
+    let mut candidate = large_repo_candidate(201);
+    candidate.kind = "repository_snapshot".to_string();
+
+    let error = graph
+        .upsert_candidates(vec![candidate.clone()])
+        .await
+        .unwrap_err();
+
+    assert!(
+        error.message.contains("graph.partial_write"),
+        "{}",
+        error.message
+    );
+    assert_eq!(
+        error
+            .details
+            .get("committed_edges_at_least")
+            .map(String::as_str),
+        Some("100")
+    );
+    assert_eq!(
+        error.details.get("reconciliation").map(String::as_str),
+        Some("retry_candidate")
+    );
+    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
+        .fetch_one(graph.pool())
+        .await
+        .unwrap();
+    assert_eq!(edges, 100);
+    let checkpoint: i64 = sqlx::query_scalar("SELECT next_edge_index FROM graph_write_checkpoints")
+        .fetch_one(graph.pool())
+        .await
+        .unwrap();
+    assert_eq!(checkpoint, 100);
+    sqlx::query("DROP TRIGGER fail_later_edge_batch")
+        .execute(graph.pool())
+        .await
+        .unwrap();
+    graph.upsert_candidates(vec![candidate]).await.unwrap();
+    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
+        .fetch_one(graph.pool())
+        .await
+        .unwrap();
+    assert_eq!(edges, 201);
+    let checkpoints: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_write_checkpoints")
+        .fetch_one(graph.pool())
+        .await
+        .unwrap();
+    assert_eq!(checkpoints, 0);
 }
 
 #[tokio::test]

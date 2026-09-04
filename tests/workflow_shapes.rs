@@ -1,4 +1,25 @@
 use std::fs;
+
+#[test]
+fn architecture_docs_delegate_volatile_workspace_facts_to_cargo_manifest() {
+    let crate_structure = fs::read_to_string("docs/architecture/crate-structure.md").unwrap();
+    let repo_structure = fs::read_to_string("docs/architecture/repo-structure.md").unwrap();
+    assert!(crate_structure.contains("[`Cargo.toml`](../../Cargo.toml)"));
+    assert!(!crate_structure.contains("currently 7."));
+    for stale_fact in ["23-crate", "23 crates", "~60 scripts", "pins 1.96.0"] {
+        assert!(
+            !repo_structure.contains(stale_fact),
+            "repository structure must not duplicate volatile fact {stale_fact:?}"
+        );
+    }
+}
+
+#[test]
+fn retrieval_full_document_port_has_no_concrete_qdrant_dependency() {
+    let boundary = fs::read_to_string("crates/axon-retrieval/src/retrieve.rs").unwrap();
+    assert!(!boundary.contains("QdrantVectorStore"));
+    assert!(!boundary.contains("axon_vectors"));
+}
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -57,6 +78,84 @@ fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_ch
         assert!(
             !job.contains("sparse-checkout:"),
             "{job_name} compiles the full workspace and must use a full checkout"
+        );
+    }
+}
+
+#[test]
+fn native_release_requires_signed_linux_artifact_before_publication() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let linux = workflow_job_block(workflow, "axon-linux");
+    let publish = workflow_job_block(workflow, "publish");
+
+    assert!(
+        linux.contains("Fail when release signing material is unavailable"),
+        "native Linux releases must fail closed when signing material is missing"
+    );
+    assert!(
+        linux.contains("target/release/axon-linux-x86_64.tar.gz.minisig"),
+        "the required Linux artifact must contain its detached signature"
+    );
+    assert!(
+        publish.contains("dist/axon-linux-x86_64.tar.gz.minisig"),
+        "publication must require and upload the detached signature"
+    );
+    assert!(
+        !publish.contains("Attach signature to release (when present)"),
+        "publication must not treat release authenticity as optional"
+    );
+}
+
+#[test]
+fn native_release_embeds_the_required_signature_verification_key() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let integrity = include_str!("../crates/axon-cli/src/commands/update/integrity.rs");
+    assert!(
+        workflow.contains("AXON_UPDATE_MINISIGN_PUBKEY: ${{ vars.AXON_UPDATE_MINISIGN_PUBKEY }}"),
+        "release builds must receive the reviewed public verification key"
+    );
+    assert!(
+        workflow.contains("AXON_UPDATE_MINISIGN_PUBKEY is required for release publication"),
+        "release publication must fail closed without a public verification key"
+    );
+    assert!(
+        integrity.contains("option_env!(\"AXON_UPDATE_MINISIGN_PUBKEY\")"),
+        "the updater must embed its release verification key"
+    );
+    assert!(
+        workflow.contains("minisign -V -P \"$AXON_UPDATE_MINISIGN_PUBKEY\""),
+        "release CI must verify the generated signature with the updater public key"
+    );
+    assert!(
+        !integrity.contains("No public key configured — signature verification disabled"),
+        "the updater must never silently disable signature verification"
+    );
+}
+
+#[test]
+fn setup_secrets_are_never_accepted_or_forwarded_as_process_arguments() {
+    let setup_args = include_str!("../crates/axon-core/src/config/cli/setup_args.rs");
+    let dispatch =
+        include_str!("../crates/axon-core/src/config/parse/build_config/command_dispatch.rs");
+    let setup = include_str!("../crates/axon-cli/src/commands/setup.rs");
+    for forbidden in [
+        "--mcp-token",
+        "--google-client-secret",
+        "--tavily-api-key",
+        "--github-token",
+        "--reddit-client-secret",
+    ] {
+        assert!(
+            !setup_args.contains(forbidden),
+            "{forbidden} leaks via argv"
+        );
+        assert!(
+            !dispatch.contains(forbidden),
+            "{forbidden} is forwarded via argv"
+        );
+        assert!(
+            !setup.contains(forbidden),
+            "{forbidden} is parsed from argv"
         );
     }
 }
@@ -1573,8 +1672,8 @@ fn release_manual_backfill_builds_and_publishes_the_exact_existing_tag() {
         workflow
             .matches("tag=\"${{ inputs.release_tag || github.ref_name }}\"")
             .count(),
-        2,
-        "both release upload steps must target the requested release"
+        1,
+        "the atomic release upload must target the requested release"
     );
 }
 

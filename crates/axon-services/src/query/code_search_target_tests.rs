@@ -448,7 +448,7 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
             .freshness
             .warning
             .as_deref()
-            .is_some_and(|warning| warning.contains("valid UTF-8")),
+            .is_some_and(|warning| warning.to_ascii_lowercase().contains("utf-8")),
         "refresh failure warning should mention the indexing failure: {searched:#?}"
     );
     assert!(

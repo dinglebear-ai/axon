@@ -230,7 +230,16 @@ struct SparseVectorRef<'a> {
 pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_json::Value>> {
     validate_search_filters(request)?;
     let mut must = Vec::new();
+    let mut must_not = Vec::new();
     for (field, value) in request.filters.iter() {
+        if field == crate::filter::EXCLUDED_SOURCE_KINDS {
+            must_not.push(condition_json("source_kind", value));
+            continue;
+        }
+        if field == crate::filter::REQUIRE_SOURCE_KIND {
+            must_not.push(json!({ "is_empty": { "key": "source_kind" } }));
+            continue;
+        }
         if field == PATH_PREFIX {
             must.push(path_prefix_filter_json(value));
             continue;
@@ -243,7 +252,16 @@ pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_
             &serde_json::Value::from(generation_payload_i64(generation, SEARCH_GENERATION_FIELD)?),
         ));
     }
-    Ok((!must.is_empty()).then(|| json!({ "must": must })))
+    Ok((!must.is_empty() || !must_not.is_empty()).then(|| {
+        let mut filter = serde_json::Map::new();
+        if !must.is_empty() {
+            filter.insert("must".to_string(), serde_json::Value::Array(must));
+        }
+        if !must_not.is_empty() {
+            filter.insert("must_not".to_string(), serde_json::Value::Array(must_not));
+        }
+        serde_json::Value::Object(filter)
+    }))
 }
 
 fn path_prefix_filter_json(value: &serde_json::Value) -> serde_json::Value {

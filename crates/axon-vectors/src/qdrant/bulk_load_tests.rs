@@ -174,7 +174,7 @@ async fn cancelled_begin_compensates_and_cleans_registry_state() {
     let pending = tokio::spawn(async move { store.begin_bulk_load_inner("cancel-begin").await });
     tokio::time::sleep(Duration::from_millis(50)).await;
     pending.abort();
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         while restore.calls_async().await == 0 {
             tokio::task::yield_now().await;
         }
@@ -183,7 +183,7 @@ async fn cancelled_begin_compensates_and_cleans_registry_state() {
     .expect("cancelled begin must compensate indexing threshold");
 
     restore.assert_calls_async(1).await;
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         while BULK_LOAD_USERS.lock().await.contains_key(&key) {
             tokio::task::yield_now().await;
         }

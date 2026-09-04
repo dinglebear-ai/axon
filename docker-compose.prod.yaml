@@ -1,6 +1,8 @@
 name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
 
-# Full axon stack: axon (HTTP), tei, chrome, and a mandatory bundled qdrant
+# Full axon stack: axon (HTTP), tei, chrome, and a mandatory bundled qdrant.
+# All host-published application/provider ports are loopback-only. Production
+# images are tag-plus-digest pinned; review and update both when upgrading.
 # service — qdrant is NOT optional in this file; every `up -d` starts all 4.
 #   docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
 # For this deployment's specific override (qdrant lives on tootie for RAM
@@ -42,7 +44,7 @@ x-gpu-service: &gpu-service
 services:
   axon:
     <<: *common-service
-    image: ${AXON_IMAGE:-ghcr.io/dinglebear-ai/axon:latest}
+    image: ${AXON_IMAGE:-ghcr.io/dinglebear-ai/axon:latest@sha256:611e79987bd056b99646da5c4297540840e5dca774fbbbe1fefa244129d95476}
     container_name: ${AXON_CONTAINER_NAME:-axon}
     user: "1000:1000"
     env_file:
@@ -122,7 +124,7 @@ services:
 
   axon-qdrant:
     <<: *common-service
-    image: qdrant/qdrant:v1.18.2
+    image: qdrant/qdrant:v1.18.2@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c
     container_name: ${AXON_QDRANT_CONTAINER_NAME:-axon-qdrant}
     # Shield the vector DB from the kernel's *global* OOM killer: under host
     # memory pressure (concurrent cargo builds + optimizer churn) qdrant is the
@@ -131,8 +133,8 @@ services:
     # killing a rebuildable build process over the database.
     oom_score_adj: -500
     ports:
-      - "${QDRANT_HTTP_PORT:-53333}:6333"
-      - "${QDRANT_GRPC_PORT:-53334}:6334"  # gRPC
+      - "127.0.0.1:${QDRANT_HTTP_PORT:-53333}:6333"
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-53334}:6334"  # gRPC
     volumes:
       - ${AXON_HOME:-${HOME}/.axon}/qdrant:/qdrant/storage
       - ./config/qdrant/production.yaml:/qdrant/config/production.yaml:ro
@@ -162,7 +164,7 @@ services:
 
   axon-tei:
     <<: [*common-service, *gpu-service]
-    image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
+    image: ghcr.io/huggingface/text-embeddings-inference:89-1.9@sha256:e47e625ced2385d3dbfdee79ba0380204578e0b27ef1a926783f9b3486aaf109
     container_name: ${AXON_TEI_CONTAINER_NAME:-axon-tei}
     environment:
       # Container-internal path — not suitable for shared .env.
@@ -170,7 +172,7 @@ services:
       # TEI-specific filter — would suppress axon's logs if in shared .env.
       RUST_LOG: text_embeddings_router=info
     ports:
-      - "${TEI_HTTP_PORT:-52000}:80"
+      - "127.0.0.1:${TEI_HTTP_PORT:-52000}:80"
     volumes:
       - ${AXON_HOME:-${HOME}/.axon}/tei:/data
     # TEI server-side tuning below is compose-only interpolation — these vars

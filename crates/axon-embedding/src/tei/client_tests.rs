@@ -2,6 +2,15 @@ use super::*;
 use httpmock::MockServer;
 use std::time::{Duration, Instant};
 
+#[test]
+fn batch_plan_contains_only_indices_into_caller_owned_inputs() {
+    let inputs = vec!["longer".to_string(), "x".to_string(), "mid".to_string()];
+    assert_eq!(
+        batch_indices_by_length(&inputs, 2),
+        vec![vec![1, 2], vec![0]]
+    );
+}
+
 #[tokio::test]
 async fn embed_all_packs_similar_lengths_and_restores_input_order() {
     let server = MockServer::start_async().await;

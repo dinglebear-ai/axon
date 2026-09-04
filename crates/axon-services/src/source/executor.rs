@@ -6,10 +6,12 @@ mod generation_spool;
 mod generation_state;
 mod generation_work;
 mod helpers;
+mod index;
 mod metadata;
 mod preparation;
 mod progress;
 mod publish;
+pub(super) use index::index_materialized_source;
 mod reuse;
 mod vector_points;
 mod vectorize;
@@ -61,93 +63,6 @@ pub(super) struct SourcePipelineInput<'a> {
     pub(super) owner_id: &'a str,
     pub(super) auth_snapshot: Option<&'a AuthSnapshot>,
     pub(super) execution: &'a SourceExecutionContext,
-}
-
-pub(super) async fn index_materialized_source<'a, F, Fut>(
-    runtime: &'a TargetLocalSourceRuntime,
-    mut input: SourcePipelineInput<'a>,
-    materialize: F,
-) -> anyhow::Result<IndexCounts>
-where
-    F: FnOnce(SourcePlan) -> Fut + Send + 'a,
-    Fut: Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
-{
-    artifact_candidates::spawn_outbox_drain(runtime);
-    input.plan.config_snapshot_id = crate::config_snapshot_hash::config_snapshot_id(
-        &crate::config_snapshot_hash::JobConfigSnapshot {
-            source_kind: input.adapter.name(),
-            source_ref: &input.plan.route.source.canonical_uri,
-            collection: input.collection,
-            embedding_provider_id: &runtime.embedding_provider_id.0,
-            vector_provider_id: &runtime.vector_provider_id.0,
-            embedding_model: &runtime.embedding_model,
-            embedding_dimensions: runtime.embedding_dimensions,
-            embed: input.plan.request.embed,
-            max_items: input.plan.limits.effective.max_items,
-        },
-    );
-    let owns_status = input.execution.existing_job_id.is_none();
-    let job_id = match input.execution.existing_job_id {
-        Some(job_id) => job_id,
-        None => {
-            runtime
-                .jobs
-                .create(job_create_request(&input))
-                .await?
-                .job_id
-        }
-    };
-    input.plan.job_id = job_id;
-    input.plan.request.execution.priority = input.execution.priority;
-    axon_api::source::stamp_provider_execution_metadata(
-        &mut input.plan.request.metadata,
-        axon_api::source::ProviderExecutionMetadata {
-            job_id,
-            attempt: input.execution.attempt,
-            priority: input.execution.priority,
-        },
-    );
-    if let Some(foreground) = &input.execution.foreground {
-        foreground.job_started(job_id);
-    }
-    let emitter = SourceEventEmitter::new(Some(runtime.jobs.clone()), Some(job_id))
-        .with_route(
-            input.plan.route.source.source_kind,
-            input.plan.route.scope,
-            input.plan.route.adapter.clone(),
-        )
-        .with_source(
-            input.plan.route.source.source_id.clone(),
-            input.plan.route.source.canonical_uri.clone(),
-        )
-        .with_attempt(input.execution.attempt)
-        .with_optional_foreground(input.execution.foreground.clone());
-
-    let result = run_with_lease(runtime, &mut input, &emitter, materialize).await;
-    let status_result = if owns_status {
-        record_terminal_status(runtime.jobs.as_ref(), &input, &result).await
-    } else {
-        Ok(())
-    };
-    input.adapter.release(&input.plan);
-    match (result, status_result) {
-        (Ok(output), Ok(())) => Ok(output),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(mut output), Err(status_error)) => {
-            output.warnings.push(deferred_warning(
-                "source.job.terminal_status_deferred",
-                format!(
-                    "generation {} was published, but persisting the terminal job status failed: {status_error}",
-                    output.generation.0
-                ),
-            ));
-            persist_degraded_summary(runtime, &mut output).await;
-            Ok(output)
-        }
-        (Err(error), Err(status_error)) => Err(error.context(format!(
-            "terminal job status update also failed: {status_error}"
-        ))),
-    }
 }
 
 async fn run_with_lease<'a, F, Fut>(

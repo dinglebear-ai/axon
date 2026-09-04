@@ -474,6 +474,44 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
 
 #[allow(unsafe_code)]
 #[test]
+fn scrape_batch_timeout_has_one_default_toml_env_precedence_chain() {
+    let _guard = env_guard();
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_SCRAPE_BATCH_TIMEOUT_SECS"],
+        || unsafe {
+            env::remove_var("AXON_SCRAPE_BATCH_TIMEOUT_SECS");
+            let empty = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+            env::set_var("AXON_CONFIG_PATH", empty.path());
+            assert_eq!(
+                into_config_via_args(&["extract", "https://example.com"])
+                    .unwrap()
+                    .scrape_batch_timeout_secs,
+                120
+            );
+
+            let mut toml = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+            writeln!(toml, "[providers.fetch]\nbatch-timeout-secs = 75").unwrap();
+            env::set_var("AXON_CONFIG_PATH", toml.path());
+            assert_eq!(
+                into_config_via_args(&["extract", "https://example.com"])
+                    .unwrap()
+                    .scrape_batch_timeout_secs,
+                75
+            );
+
+            env::set_var("AXON_SCRAPE_BATCH_TIMEOUT_SECS", "45");
+            assert_eq!(
+                into_config_via_args(&["extract", "https://example.com"])
+                    .unwrap()
+                    .scrape_batch_timeout_secs,
+                45
+            );
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn markdown_chunking_limits_are_resolved_once_into_config() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

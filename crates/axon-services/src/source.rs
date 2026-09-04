@@ -253,24 +253,24 @@ async fn finalize_source_index(
     .await;
 
     job_tracking::track_graph_mutation(
-        ctx.job_store(),
+        Some(runtime.jobs.clone()),
         counts.job_id,
         execution.auth_snapshot.as_ref(),
         &graph,
     )
-    .await;
+    .await?;
 
     event_emitter
         .running(PipelinePhase::Cleaning, "cleaning source generation debt")
         .await;
     let drain = drain_source_cleanup_debt(ctx, runtime, collection, &counts).await;
     job_tracking::track_prune(
-        ctx.job_store(),
+        Some(runtime.jobs.clone()),
         counts.job_id,
         execution.auth_snapshot.as_ref(),
         &drain,
     )
-    .await;
+    .await?;
     event_emitter
         .completed(PipelinePhase::Complete, "source indexing complete")
         .await;
@@ -317,6 +317,7 @@ async fn drain_source_cleanup_debt(
     counts: &IndexCounts,
 ) -> prune::DebtDrainSummary {
     let (graph_store, memory_store) = open_cleanup_debt_stores(ctx).await;
+    let adapter_registry = runtime.source_adapter_registry(ctx).await.ok();
     prune::drain_cleanup_debt_full_with_boundaries(
         runtime.ledger.as_ref(),
         runtime.vector_store.as_ref(),
@@ -325,6 +326,7 @@ async fn drain_source_cleanup_debt(
         Some(runtime.jobs.as_ref()),
         Some(runtime.artifact_store.as_ref()),
         Some(runtime.document_cache.as_ref()),
+        adapter_registry,
         collection,
         counts,
     )

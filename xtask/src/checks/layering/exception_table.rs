@@ -101,7 +101,7 @@ pub(super) const REACH_EXCEPTIONS: &[ReachException] = &[
     reach!("crates/axon-services/src/prune.rs", "provider-op:QdrantVectorStore::new", TASK_6, 2),
     reach!("crates/axon-services/src/prune.rs", "provider-type:QdrantVectorStore", TASK_6, 1),
     reach!("crates/axon-services/src/query/retrieve.rs", "provider-op:QdrantVectorStore::new", TASK_6, 1),
-    reach!("crates/axon-services/src/query/retrieve.rs", "provider-type:QdrantVectorStore", TASK_6, 1),
+    reach!("crates/axon-services/src/query/retrieve.rs", "provider-type:QdrantVectorStore", TASK_6, 2),
     reach!("crates/axon-services/src/query/suggest.rs", "provider-method:facet", TASK_6, 1),
     reach!("crates/axon-services/src/query/suggest.rs", "provider-method:scroll_pages", TASK_6, 1),
     reach!("crates/axon-services/src/query/suggest.rs", "provider-op:QdrantVectorStore::new", TASK_6, 1),

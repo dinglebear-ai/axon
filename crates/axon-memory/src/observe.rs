@@ -106,6 +106,7 @@ pub(crate) async fn emit(
     let message = lifecycle_message(phase, record, score_before, score_after, review_reason);
     let mut evt: SourceProgressEvent = event::stage_completed(
         job_id,
+        1,
         None,
         phase.canonical(),
         StageCounts {

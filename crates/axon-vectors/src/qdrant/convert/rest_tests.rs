@@ -199,6 +199,41 @@ fn search_filter_json_converts_path_prefix_to_source_path_should_filter() {
 }
 
 #[test]
+fn source_kind_exclusion_rest_filter_requires_provenance() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 2,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap(
+            [
+                (
+                    crate::filter::EXCLUDED_SOURCE_KINDS.to_string(),
+                    serde_json::json!(["memory"]),
+                ),
+                (
+                    crate::filter::REQUIRE_SOURCE_KIND.to_string(),
+                    serde_json::json!(true),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = search_filter_json(&request)
+        .unwrap()
+        .expect("must-not filter");
+    assert_eq!(filter["must_not"].as_array().unwrap().len(), 2);
+    assert_eq!(filter["must_not"][1]["is_empty"]["key"], "source_kind");
+}
+
+#[test]
 fn datetime_range_filter_uses_qdrant_range_wire_shape() {
     let request = VectorSearchRequest {
         collection: "axon-test".to_string(),

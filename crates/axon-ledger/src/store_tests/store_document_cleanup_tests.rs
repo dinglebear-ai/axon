@@ -56,6 +56,7 @@ async fn fake_ledger_owns_document_status_and_cleanup_debt() {
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-a"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("src_a"),
             generation: Some(SourceGenerationId::new("gen_1")),
             kind: CleanupDebtKind::VectorDelete,
@@ -148,6 +149,7 @@ async fn fake_rejects_document_status_and_cleanup_debt_for_missing_sources() {
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-missing"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("missing"),
             generation: None,
             kind: CleanupDebtKind::VectorDelete,
@@ -174,6 +176,7 @@ async fn fake_rejects_cleanup_selector_source_or_generation_mismatch() {
     let base = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-mismatch"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
@@ -219,6 +222,7 @@ async fn fake_cleanup_debt_uses_natural_key_and_terminal_state_is_monotonic() {
     let mut debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
@@ -263,6 +267,7 @@ async fn fake_cleanup_debt_update_preserves_unrelated_colliding_debt_id() {
     let debt_a = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
@@ -279,6 +284,7 @@ async fn fake_cleanup_debt_update_preserves_unrelated_colliding_debt_id() {
     let debt_b = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-b"),
         job_id: JobId::new(Uuid::from_u128(2)),
+        origin_attempt: 2,
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
@@ -339,6 +345,7 @@ async fn fake_cleanup_debt_ignores_stale_replay() {
     let mut debt = CleanupDebt {
         debt_id: CleanupDebtId::new("debt-a"),
         job_id: JobId::new(Uuid::from_u128(1)),
+        origin_attempt: 1,
         source_id: SourceId::new("src_a"),
         generation: Some(SourceGenerationId::new("gen_1")),
         kind: CleanupDebtKind::VectorDelete,
@@ -357,6 +364,7 @@ async fn fake_cleanup_debt_ignores_stale_replay() {
 
     debt.debt_id = CleanupDebtId::new("debt-b");
     debt.job_id = JobId::new(Uuid::from_u128(2));
+    debt.origin_attempt = 2;
     debt.status = LifecycleStatus::Failed;
     debt.created_at = ts_at(9);
     debt.attempts = 3;
@@ -376,6 +384,7 @@ async fn fake_cleanup_debt_ignores_stale_replay() {
     let mut stale = debt;
     stale.debt_id = CleanupDebtId::new("debt-c");
     stale.job_id = JobId::new(Uuid::from_u128(3));
+    stale.origin_attempt = 3;
     stale.status = LifecycleStatus::Pending;
     stale.created_at = ts_at(1);
     stale.attempts = 1;
@@ -442,6 +451,11 @@ async fn fake_publish_creates_cleanup_debt_for_removed_items() {
         .iter()
         .find(|debt| debt.kind == CleanupDebtKind::VectorDelete)
         .expect("vector delete debt");
+    assert!(
+        !vector_debt.job_id.0.is_nil(),
+        "cleanup debt must retain its owning job"
+    );
+    assert_eq!(vector_debt.origin_attempt, 1);
     assert_eq!(
         vector_debt.selector,
         CleanupSelector::SourceItem {

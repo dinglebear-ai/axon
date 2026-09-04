@@ -11,15 +11,18 @@ use std::collections::HashMap;
 use axon_api::source::*;
 use qdrant_client::qdrant::{
     CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
-    FieldType, Filter, HnswConfigDiff, Match, NamedVectors, OptimizersConfigDiff, PointStruct,
-    QuantizationConfig, QuantizationType, ScalarQuantization, SparseVector as QdrantSparseVector,
-    SparseVectorConfig as QdrantSparseVectorConfig, SparseVectorParams, Value,
-    Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors, VectorsConfig, condition,
-    r#match, quantization_config, vector, vectors, vectors_config,
+    FieldType, Filter, HnswConfigDiff, IsEmptyCondition, Match, NamedVectors, OptimizersConfigDiff,
+    PointStruct, QuantizationConfig, QuantizationType, ScalarQuantization,
+    SparseVector as QdrantSparseVector, SparseVectorConfig as QdrantSparseVectorConfig,
+    SparseVectorParams, Value, Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors,
+    VectorsConfig, condition, r#match, quantization_config, vector, vectors, vectors_config,
 };
 
 use crate::collection::{normalize_collection_spec, validate_collection_spec};
-use crate::filter::{PATH_PREFIX, SEARCH_GENERATION_FIELD, validate_search_filters};
+use crate::filter::{
+    EXCLUDED_SOURCE_KINDS, PATH_PREFIX, REQUIRE_SOURCE_KIND, SEARCH_GENERATION_FIELD,
+    validate_search_filters,
+};
 use crate::payload::generation_payload_i64;
 use crate::store::Result;
 use crate::validation::validate_upsert_batch;
@@ -159,7 +162,20 @@ pub fn qdrant_payload_index_requests(spec: &CollectionSpec) -> Vec<CreateFieldIn
 pub fn qdrant_filter(request: &VectorSearchRequest) -> Result<Option<Filter>> {
     validate_search_filters(request)?;
     let mut conditions = Vec::new();
+    let mut must_not = Vec::new();
     for (field, value) in request.filters.iter() {
+        if field == EXCLUDED_SOURCE_KINDS {
+            must_not.extend(qdrant_field_conditions("source_kind", value));
+            continue;
+        }
+        if field == REQUIRE_SOURCE_KIND {
+            must_not.push(qdrant_client::qdrant::Condition {
+                condition_one_of: Some(condition::ConditionOneOf::IsEmpty(IsEmptyCondition {
+                    key: "source_kind".to_string(),
+                })),
+            });
+            continue;
+        }
         if field == PATH_PREFIX {
             conditions.push(path_prefix_condition(value));
             continue;
@@ -171,12 +187,14 @@ pub fn qdrant_filter(request: &VectorSearchRequest) -> Result<Option<Filter>> {
             serde_json::Value::from(generation_payload_i64(generation, SEARCH_GENERATION_FIELD)?);
         conditions.push(field_condition(SEARCH_GENERATION_FIELD, &value));
     }
-    Ok((!conditions.is_empty()).then_some(Filter {
-        should: Vec::new(),
-        must: conditions,
-        must_not: Vec::new(),
-        min_should: None,
-    }))
+    Ok(
+        (!conditions.is_empty() || !must_not.is_empty()).then_some(Filter {
+            should: Vec::new(),
+            must: conditions,
+            must_not,
+            min_should: None,
+        }),
+    )
 }
 
 pub fn qdrant_upsert_points(

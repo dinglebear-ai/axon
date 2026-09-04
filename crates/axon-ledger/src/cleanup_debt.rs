@@ -28,6 +28,7 @@ pub(crate) fn vector_delete_debt(
             )
         )),
         job_id: JobId::new(uuid::Uuid::from_u128(0)),
+        origin_attempt: 0,
         source_id: source_id.clone(),
         generation: Some(previous_generation.clone()),
         kind: CleanupDebtKind::VectorDelete,
@@ -64,6 +65,7 @@ pub(crate) fn artifact_delete_debt_for_metadata(
                     &format!("{owner_key}:{}", artifact.artifact_id.0),
                 ),
                 job_id: JobId::new(uuid::Uuid::from_u128(0)),
+                origin_attempt: 0,
                 source_id: source_id.clone(),
                 generation: Some(previous_generation.clone()),
                 kind: CleanupDebtKind::ArtifactDelete,
@@ -95,6 +97,7 @@ pub(crate) fn cache_prune_debt_for_metadata(
     Ok(Some(CleanupDebt {
         debt_id: cleanup_debt_id("cache", source_id, previous_generation, &source_item_key.0),
         job_id: JobId::new(uuid::Uuid::from_u128(0)),
+        origin_attempt: 0,
         source_id: source_id.clone(),
         generation: Some(previous_generation.clone()),
         kind: CleanupDebtKind::CachePrune,
@@ -128,6 +131,7 @@ pub(crate) fn graph_prune_debt(
             )
         )),
         job_id: JobId::new(uuid::Uuid::from_u128(0)),
+        origin_attempt: 0,
         source_id: source_id.clone(),
         generation: Some(previous_generation.clone()),
         kind: CleanupDebtKind::GraphPrune,
@@ -156,6 +160,7 @@ pub(crate) fn ledger_prune_debt(
             )
         )),
         job_id: JobId::new(uuid::Uuid::from_u128(0)),
+        origin_attempt: 0,
         source_id: source_id.clone(),
         generation: Some(generation.clone()),
         kind: CleanupDebtKind::LedgerPrune,

@@ -1,6 +1,7 @@
 //! Bounded CPU preparation for source documents.
 
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use axon_api::source::*;
@@ -92,7 +93,8 @@ where
     let byte_budget = byte_budget.max(1).min(u32::MAX as usize);
     let byte_slots = Arc::new(Semaphore::new(byte_budget));
     let work = Arc::new(work);
-    let mut handles = Vec::with_capacity(items.len());
+    let mut handles = VecDeque::with_capacity(concurrency.max(1));
+    let mut output = Vec::with_capacity(items.len());
 
     for item in items {
         let task_permit = Arc::clone(&task_slots)
@@ -105,15 +107,22 @@ where
             .await
             .map_err(|error| anyhow::anyhow!("document preparation byte gate closed: {error}"))?;
         let work = Arc::clone(&work);
-        handles.push(tokio::task::spawn_blocking(move || {
+        handles.push_back(tokio::task::spawn_blocking(move || {
             let _task_permit = task_permit;
             let _byte_permit = byte_permit;
             work(item)
         }));
+        if handles.len() >= concurrency.max(1) {
+            let index = output.len();
+            let handle = handles.pop_front().expect("bounded queue is non-empty");
+            output.push(handle.await.map_err(|error| {
+                anyhow::anyhow!("document preparation task {index} failed: {error}")
+            })??);
+        }
     }
 
-    let mut output = Vec::with_capacity(handles.len());
-    for (index, handle) in handles.into_iter().enumerate() {
+    for handle in handles {
+        let index = output.len();
         output.push(handle.await.map_err(|error| {
             anyhow::anyhow!("document preparation task {index} failed: {error}")
         })??);

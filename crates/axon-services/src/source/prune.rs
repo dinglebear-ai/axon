@@ -47,10 +47,12 @@
 //! system-owned path.
 
 use async_trait::async_trait;
+use axon_adapters::SourceAdapterRegistry;
 use axon_api::source::{
-    ArtifactHandle, ArtifactKind, CleanupDebt, CleanupDebtKind, CleanupSelector,
-    DocumentCacheInvalidation, DocumentCacheKey, JobId, MemoryForgetRequest, SourceGenerationId,
-    SourceId, Timestamp, VectorDeleteSelector,
+    AdapterReleaseRequest, ArtifactHandle, ArtifactKind, CleanupDebt, CleanupDebtKind,
+    CleanupSelector, DocumentCacheInvalidation, DocumentCacheKey, JobId, MemoryForgetRequest,
+    ProviderId, Severity, SourceError, SourceGenerationId, SourceId, Timestamp,
+    VectorDeleteSelector,
 };
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_graph::store::GraphStore;
@@ -83,6 +85,31 @@ pub struct DebtDrainSummary {
     pub points_deleted: u64,
 }
 
+pub(crate) async fn drain_due_adapter_releases(
+    ledger: &dyn LedgerStore,
+    registry: &SourceAdapterRegistry,
+    limit: usize,
+) -> Option<Timestamp> {
+    let debts = ledger.list_adapter_release_debt(limit).await.ok()?;
+    let now = Timestamp::from(chrono::Utc::now());
+    let mut summary = DebtDrainSummary::default();
+    for debt in debts.iter().filter(|debt| {
+        debt.next_retry_at
+            .as_ref()
+            .is_none_or(|retry| retry.0 <= now.0)
+    }) {
+        drain_adapter_release(ledger, Some(registry), debt, &mut summary).await;
+    }
+    ledger
+        .list_adapter_release_debt(limit)
+        .await
+        .ok()?
+        .into_iter()
+        .filter_map(|debt| debt.next_retry_at)
+        .filter(|retry| retry.0 > now.0)
+        .min_by(|a, b| a.0.cmp(&b.0))
+}
+
 /// Drain pending cleanup debt for the just-published source.
 ///
 /// Reads the source's pending debt from the ledger, executes each entry's
@@ -105,6 +132,7 @@ pub async fn drain_cleanup_debt(
     drain_cleanup_debt_full_with_boundaries(
         ledger,
         vector_store,
+        None,
         None,
         None,
         None,
@@ -141,6 +169,7 @@ pub async fn drain_cleanup_debt_full(
         vector_store,
         graph_store,
         memory_store,
+        None,
         None,
         None,
         None,
@@ -182,6 +211,7 @@ pub async fn drain_cleanup_debt_full_with_jobs(
         job_store,
         None,
         None,
+        None,
         collection,
         counts,
     )
@@ -202,6 +232,7 @@ pub async fn drain_cleanup_debt_full_with_boundaries(
     job_store: Option<&dyn JobStore>,
     artifact_store: Option<&dyn ArtifactStore>,
     document_cache: Option<&dyn DocumentCache>,
+    adapter_registry: Option<&SourceAdapterRegistry>,
     collection: &str,
     counts: &IndexCounts,
 ) -> DebtDrainSummary {
@@ -290,6 +321,7 @@ pub async fn drain_cleanup_debt_full_with_boundaries(
                 collection,
                 artifact_store,
                 document_cache,
+                adapter_registry,
                 &mut summary,
             )
             .await;

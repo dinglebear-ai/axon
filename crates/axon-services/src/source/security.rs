@@ -51,14 +51,20 @@ pub fn enforce_local_source_allowed_roots(
     if allowed_roots.is_empty() || !path.is_absolute() || has_parent_component(path) {
         return Err(local_root_denied());
     }
-    reject_symlink_components(path)?;
     let resolved = std::fs::canonicalize(path).map_err(|_| local_root_denied())?;
 
     for allowed_root in allowed_roots {
         if !allowed_root.is_absolute() || has_parent_component(allowed_root) {
             continue;
         }
-        reject_symlink_components(allowed_root)?;
+        // Trust the platform path prefix leading to the configured root (for
+        // example macOS `/var` -> `/private/var`), but never a symlink at the
+        // configured boundary itself or anywhere below it.
+        reject_symlink_path(allowed_root)?;
+        if !path.starts_with(allowed_root) {
+            continue;
+        }
+        reject_symlink_descendants(allowed_root, path)?;
         let Ok(resolved_root) = std::fs::canonicalize(allowed_root) else {
             continue;
         };
@@ -116,14 +122,20 @@ fn has_parent_component(path: &Path) -> bool {
         .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
 }
 
-fn reject_symlink_components(path: &Path) -> Result<(), SourceSecurityError> {
-    let mut current = PathBuf::new();
-    for component in path.components() {
+fn reject_symlink_path(path: &Path) -> Result<(), SourceSecurityError> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| local_root_denied())?;
+    if metadata.file_type().is_symlink() {
+        return Err(local_root_denied());
+    }
+    Ok(())
+}
+
+fn reject_symlink_descendants(root: &Path, path: &Path) -> Result<(), SourceSecurityError> {
+    let relative = path.strip_prefix(root).map_err(|_| local_root_denied())?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
         current.push(component.as_os_str());
-        let metadata = std::fs::symlink_metadata(&current).map_err(|_| local_root_denied())?;
-        if metadata.file_type().is_symlink() {
-            return Err(local_root_denied());
-        }
+        reject_symlink_path(&current)?;
     }
     Ok(())
 }

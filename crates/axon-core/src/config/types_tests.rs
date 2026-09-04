@@ -240,6 +240,34 @@ fn config_debug_redacts_secrets() {
 }
 
 #[test]
+fn config_debug_redacts_credentials_embedded_in_service_urls() {
+    let cfg = Config {
+        tei_url: "https://tei-user:tei-password@example.test/embed?token=tei-query#tei-fragment"
+            .into(),
+        qdrant_url: "https://q-user:q-password@example.test/?api_key=q-query#q-fragment".into(),
+        ..Config::default()
+    };
+
+    let debug_output = format!("{cfg:?}");
+    for secret in [
+        "tei-user",
+        "tei-password",
+        "tei-query",
+        "tei-fragment",
+        "q-user",
+        "q-password",
+        "q-query",
+        "q-fragment",
+    ] {
+        assert!(
+            !debug_output.contains(secret),
+            "service URL debug output leaked credential material"
+        );
+    }
+    assert!(debug_output.contains("example.test"));
+}
+
+#[test]
 fn test_config_debug_includes_sessions_fields() {
     let cfg = Config {
         sessions_claude: true,

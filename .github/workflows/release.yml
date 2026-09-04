@@ -77,6 +77,7 @@ jobs:
     env:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+      AXON_UPDATE_MINISIGN_PUBKEY: ${{ vars.AXON_UPDATE_MINISIGN_PUBKEY }}
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
@@ -127,16 +128,13 @@ jobs:
           cd target/release
           tar -czf axon-linux-x86_64.tar.gz axon
           sha256sum axon-linux-x86_64.tar.gz > axon-linux-x86_64.tar.gz.sha256
-      # OPS-H3 (bounded): artifact signing scaffold. This is a NO-OP until a
-      # signing key is provisioned as the `SIGNING_KEY` repo secret. Once set,
-      # it produces a detached minisign signature (`.minisig`) alongside the
-      # tarball so the self-updater can verify it (see src/cli/commands/update.rs
-      # `verify_optional_signature`). SHA256 alone shares one trust root with the
-      # binary; a signature provides an independent one.
-      # MANUAL FOLLOW-UP: provision `secrets.SIGNING_KEY` (minisign secret key)
-      # and, for verification, embed/distribute the matching public key.
+      - name: Fail when release signing material is unavailable
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY" || { echo "SIGNING_KEY is required for release publication" >&2; exit 1; }
+          test -n "$SIGNING_KEY_PASSWORD" || { echo "SIGNING_KEY_PASSWORD is required for release publication" >&2; exit 1; }
+          test -n "$AXON_UPDATE_MINISIGN_PUBKEY" || { echo "AXON_UPDATE_MINISIGN_PUBKEY is required for release publication" >&2; exit 1; }
       - name: Sign artifact (minisign)
-        if: ${{ env.SIGNING_KEY != '' }}
         run: |
           set -euo pipefail
           # Install minisign (rsign2 is a drop-in alternative if preferred).
@@ -144,6 +142,8 @@ jobs:
           printf '%s' "$SIGNING_KEY" > /tmp/axon-minisign.key
           cd target/release
           echo "$SIGNING_KEY_PASSWORD" | minisign -S -s /tmp/axon-minisign.key \
+            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
+          minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
             -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
           shred -u /tmp/axon-minisign.key
           echo "Signed axon-linux-x86_64.tar.gz -> .minisig"
@@ -153,14 +153,7 @@ jobs:
           path: |
             target/release/axon-linux-x86_64.tar.gz
             target/release/axon-linux-x86_64.tar.gz.sha256
-          if-no-files-found: error
-      # Separate upload so the optional signature does not weaken the
-      # required-file guarantee above. Only present when signing ran.
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        if: ${{ env.SIGNING_KEY != '' }}
-        with:
-          name: axon-linux-x86_64-signature
-          path: target/release/axon-linux-x86_64.tar.gz.minisig
+            target/release/axon-linux-x86_64.tar.gz.minisig
           if-no-files-found: error
 
   axon-windows:
@@ -262,20 +255,6 @@ jobs:
           merge-multiple: true
       - name: List artifacts
         run: ls -la dist/
-      # OPS-H3 (bounded): attach the minisign signature to the release when it
-      # exists (only after `secrets.SIGNING_KEY` is provisioned). Done as a
-      # separate, non-strict step so the absence of a signature today does not
-      # break the strict required-artifact release step below.
-      - name: Attach signature to release (when present)
-        if: ${{ hashFiles('dist/axon-linux-x86_64.tar.gz.minisig') != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          tag="${{ inputs.release_tag || github.ref_name }}"
-          gh release view "$tag" >/dev/null
-          gh release upload "$tag" dist/axon-linux-x86_64.tar.gz.minisig --clobber
       - name: Attach artifacts to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -287,6 +266,7 @@ jobs:
           gh release upload "$tag" \
             dist/axon-linux-x86_64.tar.gz \
             dist/axon-linux-x86_64.tar.gz.sha256 \
+            dist/axon-linux-x86_64.tar.gz.minisig \
             dist/axon-windows-x86_64.zip \
             dist/axon-windows-x86_64.zip.sha256 \
             --clobber

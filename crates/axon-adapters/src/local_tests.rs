@@ -448,7 +448,13 @@ async fn contained_local_adapter_reuses_root_handle_across_large_batches() {
 
     assert_eq!(fetched, 130);
     assert_eq!(adapter.held_root_count(), 1);
-    adapter.release(&plan);
+    adapter
+        .release(&AdapterReleaseRequest {
+            job_id: plan.job_id,
+            source_id: plan.route.source.source_id.clone(),
+            source_kind: plan.route.source.source_kind,
+        })
+        .unwrap();
     assert_eq!(adapter.held_root_count(), 0);
 }
 
@@ -470,7 +476,13 @@ async fn unchanged_refresh_lifecycles_release_root_handles() {
         let mut plan = source_plan(root.clone(), SourceScope::Directory);
         plan.job_id = JobId::new(uuid::Uuid::new_v4());
         adapter.discover(&plan).await.unwrap();
-        adapter.release(&plan);
+        adapter
+            .release(&AdapterReleaseRequest {
+                job_id: plan.job_id,
+                source_id: plan.route.source.source_id.clone(),
+                source_kind: plan.route.source.source_kind,
+            })
+            .unwrap();
     }
 
     assert_eq!(adapter.held_root_count(), 0);

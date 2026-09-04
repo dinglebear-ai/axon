@@ -76,7 +76,7 @@ pub(super) async fn publish(
 ) -> anyhow::Result<PublishOutcome> {
     if !embed {
         return Ok(PublishOutcome {
-            generation: publish_ledger(runtime.ledger.as_ref(), generation).await?,
+            generation: publish_ledger(runtime.ledger.as_ref(), input, generation).await?,
             warnings: Vec::new(),
         });
     }
@@ -96,7 +96,7 @@ pub(super) async fn publish(
         );
     }
 
-    let published = match publish_ledger(runtime.ledger.as_ref(), generation).await {
+    let published = match publish_ledger(runtime.ledger.as_ref(), input, generation).await {
         Ok(published) => published,
         Err(error) => {
             return Err(rollback_new_generation_vectors(
@@ -172,10 +172,13 @@ async fn stage_vector_visibility(
 
 async fn publish_ledger(
     ledger: &dyn LedgerStore,
+    input: &SourcePipelineInput<'_>,
     generation: &SourceGeneration,
 ) -> anyhow::Result<SourceGeneration> {
     Ok(ledger
         .publish_generation(PublishGenerationRequest {
+            job_id: input.plan.job_id,
+            attempt: input.execution.attempt,
             source_id: generation.source_id.clone(),
             generation: generation.generation.clone(),
             expected_previous_generation: generation.previous_generation.clone(),
@@ -248,6 +251,7 @@ pub(super) async fn cleanup_failed_generation_vectors(
                     )
                 )),
                 job_id: input.plan.job_id,
+                origin_attempt: input.execution.attempt,
                 source_id: generation.source_id.clone(),
                 generation: Some(generation.generation.clone()),
                 kind: CleanupDebtKind::VectorDelete,
@@ -302,6 +306,7 @@ async fn record_retirement_debt(
             )
         )),
         job_id: input.plan.job_id,
+        origin_attempt: input.execution.attempt,
         source_id: generation.source_id.clone(),
         generation: Some(previous.clone()),
         kind: CleanupDebtKind::VectorDelete,

@@ -203,6 +203,20 @@ max-local-entries = 10000
 }
 
 #[test]
+fn qdrant_strategy_values_are_validated_during_toml_load() {
+    for raw in [
+        "[providers.vector]\ntransport = \"udp\"",
+        "[providers.vector]\npayload-index-profile = \"everything\"",
+    ] {
+        let error = match load_toml_config_from_str(raw) {
+            Ok(_) => panic!("unknown strategy must fail load"),
+            Err(error) => error,
+        };
+        assert!(error.contains("unknown variant"), "{error}");
+    }
+}
+
+#[test]
 fn root_config_example_parses() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()

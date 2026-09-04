@@ -1,4 +1,29 @@
 use super::*;
+use std::time::{Duration, Instant};
+
+#[tokio::test]
+async fn borrowed_manifest_diff_scales_without_consuming_the_input() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    let items = (0..20_000)
+        .map(|index| manifest_item(&format!("src/{index}.rs"), "stable"))
+        .collect::<Vec<_>>();
+    let manifest = manifest_with_items("gen_large", items);
+
+    let started = Instant::now();
+    let diff = ledger.diff_manifest_ref(&manifest).await.unwrap();
+
+    assert_eq!(diff.counts.added, 20_000);
+    assert_eq!(
+        manifest.items.len(),
+        20_000,
+        "borrowed input remains reusable"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "20k-item borrowed diff should remain bounded in debug builds"
+    );
+}
 
 #[tokio::test]
 async fn fake_ledger_diffs_manifests_and_tracks_committed_generation() {
@@ -35,6 +60,21 @@ async fn fake_ledger_diffs_only_against_committed_generation() {
     assert_eq!(diff.counts.added, 1);
     assert_eq!(diff.counts.modified, 0);
     assert_eq!(diff.counts.unchanged, 0);
+}
+
+#[tokio::test]
+async fn fake_ledger_rejects_completing_a_generation_with_no_manifest() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    let generation = ledger
+        .create_generation(SourceId::new("src_a"))
+        .await
+        .unwrap();
+    let error = ledger
+        .complete_generation(completed_generation(generation))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code.to_string(), "source.ledger.manifest_missing");
 }
 
 #[tokio::test]

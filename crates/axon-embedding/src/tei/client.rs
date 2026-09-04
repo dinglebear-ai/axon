@@ -83,7 +83,7 @@ pub struct TeiClientParams {
 /// Wire shape for a lossless TEI `/embed` request body.
 #[derive(serde::Serialize)]
 struct EmbedRequest<'a> {
-    inputs: &'a [String],
+    inputs: &'a [&'a str],
     truncate: bool,
 }
 
@@ -92,6 +92,15 @@ struct EmbedRequest<'a> {
 enum ChunkOutcome {
     Vectors(Vec<Vec<f32>>),
     Split,
+}
+
+fn batch_indices_by_length(inputs: &[String], max_batch_inputs: usize) -> Vec<Vec<usize>> {
+    let mut ordered = (0..inputs.len()).collect::<Vec<_>>();
+    ordered.sort_by_key(|index| (inputs[*index].chars().count(), *index));
+    ordered
+        .chunks(max_batch_inputs.max(1))
+        .map(<[usize]>::to_vec)
+        .collect()
 }
 
 /// Result of an `embed_all` call: the ordered vectors plus how many HTTP
@@ -227,35 +236,29 @@ impl TeiClient {
         // so arrival-order slicing can waste most of a Metal dispatch on
         // padding. Keep original indices beside the reordered text so response
         // vectors still satisfy this method's input-order contract.
-        let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
-        ordered.sort_by_key(|(index, text)| (text.chars().count(), *index));
-        let mut pending: Vec<(Vec<usize>, Vec<String>)> = ordered
-            .chunks(self.max_batch_inputs)
-            .map(|chunk| {
-                chunk
-                    .iter()
-                    .map(|(index, text)| (*index, (*text).clone()))
-                    .unzip()
-            })
-            .collect();
+        let mut pending = batch_indices_by_length(inputs, self.max_batch_inputs);
 
         while !pending.is_empty() {
             let wave = std::mem::take(&mut pending);
-            let mut requests = stream::iter(wave.into_iter().map(|(indices, chunk)| async move {
+            let mut requests = stream::iter(wave.into_iter().map(|indices| async move {
+                let chunk = indices
+                    .iter()
+                    .map(|index| inputs[*index].as_str())
+                    .collect::<Vec<_>>();
                 let outcome = self.send_chunk_with_retries(&chunk).await;
-                (indices, chunk, outcome)
+                (indices, outcome)
             }))
             .buffer_unordered(self.max_concurrent_requests);
-            while let Some((indices, chunk, outcome)) = requests.next().await {
+            while let Some((indices, outcome)) = requests.next().await {
                 match outcome? {
                     ChunkOutcome::Vectors(batch) => {
-                        if batch.len() != chunk.len() {
+                        if batch.len() != indices.len() {
                             return Err(self.error(
                                 "embedding.tei.count_mismatch",
                                 &format!(
                                     "TEI returned {} vectors for a {}-input batch",
                                     batch.len(),
-                                    chunk.len()
+                                    indices.len()
                                 ),
                             ));
                         }
@@ -264,9 +267,9 @@ impl TeiClient {
                         }
                     }
                     ChunkOutcome::Split => {
-                        let mid = chunk.len() / 2;
-                        pending.push((indices[..mid].to_vec(), chunk[..mid].to_vec()));
-                        pending.push((indices[mid..].to_vec(), chunk[mid..].to_vec()));
+                        let mid = indices.len() / 2;
+                        pending.push(indices[..mid].to_vec());
+                        pending.push(indices[mid..].to_vec());
                     }
                 }
             }
@@ -286,7 +289,7 @@ impl TeiClient {
     /// [`ProviderCooling`] metadata (`with_provider_cooling`) so the scheduler
     /// backs off this provider instead of hammering it again immediately —
     /// see "Cooling" in `docs/pipeline-unification/runtime/provider-contract.md`.
-    async fn send_chunk_with_retries(&self, chunk: &[String]) -> Result<ChunkOutcome, ApiError> {
+    async fn send_chunk_with_retries(&self, chunk: &[&str]) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
             inputs: chunk,
             truncate: false,

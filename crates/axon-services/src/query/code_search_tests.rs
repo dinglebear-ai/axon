@@ -366,7 +366,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             .freshness
             .warning
             .as_deref()
-            .is_some_and(|warning| warning.contains("valid UTF-8")),
+            .is_some_and(|warning| warning.to_ascii_lowercase().contains("utf-8")),
         "refresh failure warning should mention the indexing failure: {searched:#?}"
     );
     assert_eq!(searched.results.len(), 1);

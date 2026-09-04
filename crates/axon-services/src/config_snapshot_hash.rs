@@ -38,22 +38,20 @@ pub struct JobConfigSnapshot<'a> {
 }
 
 impl JobConfigSnapshot<'_> {
-    fn material(&self) -> String {
-        format!(
-            "kind={};source={};collection={};embed_provider={};vector_provider={};\
-             embed_model={};embed_dims={};embed={};max_items={}",
-            self.source_kind,
-            self.source_ref,
-            self.collection,
-            self.embedding_provider_id,
-            self.vector_provider_id,
-            self.embedding_model,
-            self.embedding_dimensions,
-            self.embed,
-            self.max_items
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "none".to_string()),
-        )
+    /// Stable, secret-free material persisted alongside the referencing job.
+    pub fn canonical_material(&self) -> String {
+        serde_json::json!({
+            "collection": self.collection,
+            "embed": self.embed,
+            "embedding_dimensions": self.embedding_dimensions,
+            "embedding_model": self.embedding_model,
+            "embedding_provider_id": self.embedding_provider_id,
+            "max_items": self.max_items,
+            "source_kind": self.source_kind,
+            "source_ref": self.source_ref,
+            "vector_provider_id": self.vector_provider_id,
+        })
+        .to_string()
     }
 }
 
@@ -61,7 +59,7 @@ impl JobConfigSnapshot<'_> {
 /// config subset: same inputs -> same id, so job reproducibility can be
 /// checked by comparing ids rather than trusting a static per-family literal.
 pub fn config_snapshot_id(snapshot: &JobConfigSnapshot<'_>) -> ConfigSnapshotId {
-    config_snapshot_id_from_material(&snapshot.material())
+    config_snapshot_id_from_material(&snapshot.canonical_material())
 }
 
 /// Derive a stable `cfg_<12hex>` id directly from an already-serialized

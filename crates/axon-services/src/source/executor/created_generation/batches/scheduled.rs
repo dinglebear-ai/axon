@@ -80,7 +80,10 @@ async fn process_inner(
         "enabled bounded generation embedding scheduler"
     );
     let cancel = CancellationToken::new();
-    let producer = produce(
+    // Heap-pin both deep pipeline futures before joining them. Keeping either
+    // concrete future inline makes the combined debug/test poll frame exceed
+    // the default test-thread stack for real scheduled generation paths.
+    let producer = Box::pin(produce(
         runtime,
         input,
         emitter,
@@ -93,9 +96,9 @@ async fn process_inner(
         artifact_cleanup,
         sender,
         &cancel,
-    );
+    ));
     let mut scheduler_progress = PipelineProgress::default();
-    let consumer = super::super::scheduler::run_generation_scheduler(
+    let consumer = Box::pin(super::super::scheduler::run_generation_scheduler(
         runtime,
         input,
         emitter,
@@ -105,7 +108,7 @@ async fn process_inner(
         accumulated,
         &mut scheduler_progress,
         &cancel,
-    );
+    ));
     join_cancel_on_error(producer, consumer, &cancel).await
 }
 

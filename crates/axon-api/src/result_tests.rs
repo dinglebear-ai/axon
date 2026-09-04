@@ -65,3 +65,11 @@ fn canonical_citation_rejects_compatibility_fields() {
         .expect_err("unknown compatibility field must fail");
     assert!(error.to_string().contains("unknown field"));
 }
+
+#[test]
+fn paged_document_accepts_only_a_validated_offset() {
+    let page =
+        PagedDocument::from_full_content("abcdef", 2, Some(1), DocumentBackend::StoredSource);
+
+    assert_eq!(page.content, "cdef");
+}

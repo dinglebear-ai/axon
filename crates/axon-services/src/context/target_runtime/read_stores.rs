@@ -68,9 +68,17 @@ fn build_qdrant_store_base(cfg: &Config) -> QdrantVectorStore {
 fn configure_qdrant_transport(
     store: &mut QdrantVectorStore,
 ) -> Result<(), axon_api::source::ApiError> {
+    let transport =
+        axon_core::config::parse::tuning::qdrant_write_transport().map_err(|message| {
+            axon_api::source::ApiError::new(
+                "vector.qdrant.invalid_transport",
+                axon_api::source::ErrorStage::Validation,
+                message,
+            )
+        })?;
     axon_vectors::qdrant::configure_write_transport(
         store,
-        &axon_core::config::parse::tuning::qdrant_write_transport(),
+        transport.as_str(),
         axon_core::config::parse::tuning::qdrant_grpc_url().as_deref(),
     )
 }

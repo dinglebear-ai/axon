@@ -2,6 +2,7 @@ use super::*;
 
 use std::sync::Mutex;
 
+use axon_adapters::{FakeSourceAdapter, FakeSourceAdapterMode, SourceAdapterRegistry};
 use axon_api::source::{
     AdapterRef, ApiError, AuthSnapshot, AuthorityLevel, CleanupDebt, CleanupDebtId,
     CleanupDebtKind, CleanupSelector, CollectionSpec, ConfigSnapshotId, DocumentCounts, ErrorStage,
@@ -115,6 +116,8 @@ async fn publish(ledger: &FakeLedgerStore, generation: SourceGeneration) -> Sour
     let done = ledger.complete_generation(generation).await.unwrap();
     ledger
         .publish_generation(PublishGenerationRequest {
+            job_id: JobId::new(Uuid::from_u128(1)),
+            attempt: 1,
             source_id: done.source_id.clone(),
             generation: done.generation.clone(),
             expected_previous_generation: done.previous_generation.clone(),
@@ -453,6 +456,7 @@ fn cleanup_debt(kind: CleanupDebtKind, selector: CleanupSelector) -> CleanupDebt
     CleanupDebt {
         debt_id: CleanupDebtId::new(format!("debt_{kind:?}")),
         job_id: JobId::new(Uuid::from_u128(0)),
+        origin_attempt: 0,
         source_id: SourceId::new(SRC),
         generation: None,
         kind,
@@ -464,6 +468,83 @@ fn cleanup_debt(kind: CleanupDebtKind, selector: CleanupSelector) -> CleanupDebt
         next_retry_at: None,
         completed_at: None,
     }
+}
+
+#[tokio::test]
+async fn canonical_drain_retries_adapter_release_and_persists_backoff() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::AdapterRelease,
+            CleanupSelector::Source {
+                source_id: SourceId::new(SRC),
+            },
+        ))
+        .await
+        .unwrap();
+    let registry = SourceAdapterRegistry::from_adapters(vec![
+        FakeSourceAdapter::new(AdapterRef {
+            name: "web".into(),
+            version: "test".into(),
+        })
+        .with_mode(FakeSourceAdapterMode::Failure),
+    ]);
+    let vector = RecordingVectorStore::default();
+
+    let summary = drain_cleanup_debt_full_with_boundaries(
+        &ledger,
+        &vector,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(&registry),
+        COLLECTION,
+        &index_counts(&SourceGenerationId::new("gen_current")),
+    )
+    .await;
+
+    assert_eq!(summary.failed, 1);
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert_eq!(pending[0].attempts, 1);
+    assert!(pending[0].next_retry_at.is_some());
+}
+
+#[tokio::test]
+async fn recovery_drain_releases_adapter_debt_without_a_source_run() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    ledger
+        .record_cleanup_debt(cleanup_debt(
+            CleanupDebtKind::AdapterRelease,
+            CleanupSelector::Source {
+                source_id: SourceId::new(SRC),
+            },
+        ))
+        .await
+        .unwrap();
+    let adapter = FakeSourceAdapter::new(AdapterRef {
+        name: "web".into(),
+        version: "test".into(),
+    });
+    let calls = adapter.clone();
+    let registry = SourceAdapterRegistry::from_adapters(vec![adapter]);
+
+    drain_due_adapter_releases(&ledger, &registry, 256).await;
+
+    assert!(calls.calls().contains(&"release"));
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
