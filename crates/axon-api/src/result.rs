@@ -364,6 +364,10 @@ pub struct AskResult {
     #[serde(default)]
     pub explain: Option<AskExplainTrace>,
     pub timing_ms: AskTiming,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loadout: Option<crate::loadout::LoadoutResolution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::agent::AgentTurnResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -40,8 +40,8 @@ pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
 pub use adapter::{
-    AcquisitionProgress, AcquisitionProgressSink, GeneratedArchive, ReusePolicy,
-    SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter,
+    AcquisitionProgress, AcquisitionProgressSink, AcquisitionStreamSink, GeneratedArchive,
+    ReusePolicy, SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter, StreamedAcquisition,
 };
 pub use artifact_candidates::{
     ArtifactCandidateSink, DepotArtifactCandidateSink, NoopArtifactCandidateSink,

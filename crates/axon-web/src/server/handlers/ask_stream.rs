@@ -193,6 +193,40 @@ async fn emit_ask_stream_result(
     }
 }
 
+async fn apply_stream_agent(
+    cfg: &Config,
+    request: &AskRequestBody,
+    resolved: Option<&axon_services::loadout_context::ResolvedLoadoutContext>,
+    mut result: axon_services::types::AskResult,
+    owner: axon_services::agent_runtime::AgentTurnOwner,
+) -> Result<axon_services::types::AskResult, String> {
+    let Some(options) = request.agent.clone() else {
+        return Ok(result);
+    };
+    let binding = request.loadout.as_ref().expect("agent loadout validated");
+    let resolution = resolved.expect("agent loadout resolved");
+    let prompt = format!(
+        "{}\n\nUSER QUESTION:\n{}\n\nINITIAL RAG ANSWER:\n{}",
+        resolution.prompt_context, result.query, result.answer
+    );
+    let agent = axon_services::agent_runtime::run(
+        cfg,
+        &binding.loadout_id,
+        resolution.metadata.effective_revision,
+        &prompt,
+        options,
+        owner,
+        axon_services::agent_runtime::configured_completion(cfg.clone()),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    if let Some(answer) = agent.answer.clone() {
+        result.answer = answer;
+    }
+    result.agent = Some(agent);
+    Ok(result)
+}
+
 #[utoipa::path(
     post,
     path = "/v1/ask/stream",
@@ -207,10 +241,10 @@ async fn emit_ask_stream_result(
 pub async fn v1_ask_stream(
     Extension(cfg): Extension<Arc<Config>>,
     Extension(ctx): Extension<Arc<ServiceContext>>,
+    auth: Option<Extension<lab_auth::AuthContext>>,
     Json(req): Json<AskRequestBody>,
 ) -> Response {
     use super::super::types::ASK_QUERY_MAX_CHARS;
-
     if req.query.trim().is_empty() {
         return HttpError::bad_request("query is required").into_response();
     }
@@ -220,6 +254,10 @@ pub async fn v1_ask_stream(
     }
     if req.explain == Some(true) {
         return HttpError::bad_request("explain is not supported for streaming ask")
+            .into_response();
+    }
+    if req.agent.is_some() && req.loadout.is_none() {
+        return HttpError::bad_request("agent mode requires a revision-bound loadout")
             .into_response();
     }
 
@@ -237,6 +275,7 @@ pub async fn v1_ask_stream(
     req_cfg.json_output = false;
 
     let service_context = Arc::clone(&ctx);
+    let owner_principal = stream_owner(auth.as_ref());
     let job_id = JobId::new(uuid::Uuid::new_v4());
     let sequence = Arc::new(SequenceCounter::default());
     let handle = tokio::spawn(async move {
@@ -251,6 +290,29 @@ pub async fn v1_ask_stream(
             return;
         }
 
+        let resolved = match req.loadout.as_ref() {
+            Some(binding) => match axon_services::loadout_context::resolve(&req_cfg, binding).await
+            {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    emit_ask_stream_result(
+                        &tx,
+                        &disconnected,
+                        &sequence,
+                        job_id,
+                        Err(error.to_string()),
+                    )
+                    .await;
+                    return;
+                }
+            },
+            None => None,
+        };
+        let question = resolved.as_ref().map_or_else(
+            || req.query.clone(),
+            |context| format!("{}\n\n{}", context.prompt_context, req.query),
+        );
+        let original_query = req.query.clone();
         let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
         let delta_task = spawn_service_event_forwarder(
             event_rx,
@@ -259,10 +321,37 @@ pub async fn v1_ask_stream(
             Arc::clone(&sequence),
             job_id,
         );
-        let result = query_svc::ask(&service_context, &req_cfg, &req.query, Some(event_tx))
+        let ask_result = query_svc::ask(&service_context, &req_cfg, &question, Some(event_tx))
             .await
-            .map_err(|err| err.to_string());
+            .map_err(|error| error.to_string());
+        let mut result = match ask_result {
+            Ok(result) => result,
+            Err(message) => {
+                let _ = delta_task.await;
+                emit_ask_stream_result(&tx, &disconnected, &sequence, job_id, Err(message)).await;
+                return;
+            }
+        };
         let _ = delta_task.await;
+
+        result.query = original_query;
+        let owner = axon_services::agent_runtime::AgentTurnOwner {
+            principal: owner_principal,
+            profile_id: req
+                .loadout
+                .as_ref()
+                .map(|v| v.integration_id.clone())
+                .unwrap_or_default(),
+        };
+        result = match apply_stream_agent(&req_cfg, &req, resolved.as_ref(), result, owner).await {
+            Ok(result) => result,
+            Err(message) => {
+                emit_ask_stream_result(&tx, &disconnected, &sequence, job_id, Err(message)).await;
+                return;
+            }
+        };
+        result.loadout = resolved.map(|value| value.metadata);
+        let result = Ok(result);
 
         if disconnected.load(Ordering::Relaxed) {
             return;
@@ -273,6 +362,11 @@ pub async fn v1_ask_stream(
 
     let event_stream = AbortOnDropStream { rx, handle };
     Sse::new(event_stream).into_response()
+}
+
+fn stream_owner(auth: Option<&Extension<lab_auth::AuthContext>>) -> String {
+    auth.map(|value| value.sub.clone())
+        .unwrap_or_else(|| "loopback-local".into())
 }
 
 #[cfg(test)]

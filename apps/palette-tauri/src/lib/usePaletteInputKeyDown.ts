@@ -1,7 +1,7 @@
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 
 import type { PaletteAction } from "@/lib/actions";
-import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
+import { argumentFor, parseCommand, type ParsedCommand } from "@/lib/paletteView";
 import type { ViewIntent } from "@/lib/paletteViewState";
 
 interface PaletteInputKeyDownInput {
@@ -34,16 +34,22 @@ export function usePaletteInputKeyDown(input: PaletteInputKeyDownInput) {
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (!input.active) return;
+      // Keyboard events can arrive before React commits the latest onChange.
+      // Parse the input element's current value so the first Enter submits what
+      // the user can actually see instead of a one-render-old query snapshot.
+      const liveQuery = event.currentTarget.value;
+      const liveParsed = parseCommand(liveQuery);
+      // Terminal is a privileged local launcher. Merely filtering to it (for
+      // example by typing "t") must not launch a shell on Enter; Tab is the
+      // explicit selection gesture and owns execution for this no-arg action.
       if (
+        input.active.subcommand === "terminal" &&
         !input.modeAction &&
-        !input.parsed.invoked &&
-        input.active.argMode !== "none" &&
-        !looksLikeUrl(input.parsed.search)
-      ) {
-        input.enterActionMode(input.active);
-      } else {
-        input.requestSubmit(input.active, input.askFallback ? input.parsed.search : undefined);
-      }
+        liveParsed.invoked?.subcommand !== "terminal"
+      )
+        return;
+      const liveArgument = argumentFor(input.active, input.modeAction, liveParsed, liveQuery);
+      input.requestSubmit(input.active, liveArgument);
     } else if (event.key === "Tab") {
       event.preventDefault();
       if (!input.active) return;

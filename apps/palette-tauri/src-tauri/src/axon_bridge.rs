@@ -30,6 +30,7 @@ impl BridgeClient {
             .timeout(std::time::Duration::from_secs(300))
             .connect_timeout(PALETTE_CONNECT_TIMEOUT)
             .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+            .redirect(reqwest::redirect::Policy::none())
             .build()?;
         Ok(Self(client))
     }
@@ -54,6 +55,7 @@ impl StreamClient {
         let client = reqwest::Client::builder()
             .connect_timeout(PALETTE_CONNECT_TIMEOUT)
             .user_agent(concat!("Axon Palette/", env!("CARGO_PKG_VERSION")))
+            .redirect(reqwest::redirect::Policy::none())
             .build()?;
         Ok(Self(client))
     }
@@ -251,7 +253,10 @@ where
     read_limited_stream(stream, MAX_ARTIFACT_PREVIEW_BYTES).await
 }
 
-async fn read_limited_stream<S, B, E>(mut stream: S, max_bytes: u64) -> Result<Vec<u8>, String>
+pub(crate) async fn read_limited_stream<S, B, E>(
+    mut stream: S,
+    max_bytes: u64,
+) -> Result<Vec<u8>, String>
 where
     S: Stream<Item = Result<B, E>> + Unpin,
     B: AsRef<[u8]>,
@@ -357,6 +362,29 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
         ) | (HttpMethod::Get | HttpMethod::Delete, "/v1/jobs")
     ) || matches_dynamic_unified_job_route(method, path)
         || matches_dynamic_watch_route(method, path)
+        || matches_dynamic_agent_turn_route(method, path)
+}
+
+fn matches_dynamic_agent_turn_route(method: HttpMethod, path: &str) -> bool {
+    let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
+    match parts.as_slice() {
+        ["v1", "agent", "turns", id] if method == HttpMethod::Get => is_bounded_opaque_id(id),
+        ["v1", "agent", "turns", id, "events"] if method == HttpMethod::Get => {
+            is_bounded_opaque_id(id)
+        }
+        ["v1", "agent", "turns", id, "cancel"] if method == HttpMethod::Post => {
+            is_bounded_opaque_id(id)
+        }
+        _ => false,
+    }
+}
+
+fn is_bounded_opaque_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 160
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':'))
 }
 
 fn matches_dynamic_unified_job_route(method: HttpMethod, path: &str) -> bool {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ACTIONS, type PaletteAction } from "./actions";
-import { normalizeSubmitArgument } from "./appHelpers";
+import { normalizeSubmitArgument, repairLinkSubstitution } from "./appHelpers";
 
 function action(subcommand: string): PaletteAction {
   const found = ACTIONS.find((a) => a.subcommand === subcommand);
@@ -11,11 +11,15 @@ function action(subcommand: string): PaletteAction {
 
 describe("normalizeSubmitArgument", () => {
   it("coerces a scheme-less argument to https for URL-only actions", () => {
-    expect(normalizeSubmitArgument(action("scrape"), "docs.rs/serde")).toBe("https://docs.rs/serde");
+    expect(normalizeSubmitArgument(action("scrape"), "docs.rs/serde")).toBe(
+      "https://docs.rs/serde",
+    );
   });
 
   it("leaves an explicit http(s) argument untouched", () => {
-    expect(normalizeSubmitArgument(action("source-site"), "http://example.com")).toBe("http://example.com");
+    expect(normalizeSubmitArgument(action("source-site"), "http://example.com")).toBe(
+      "http://example.com",
+    );
   });
 
   it("does not coerce repository shorthand into a URL", () => {
@@ -33,7 +37,9 @@ describe("normalizeSubmitArgument", () => {
   });
 
   it("does not coerce source text or file and directory targets", () => {
-    expect(normalizeSubmitArgument(action("source"), "some notes to index")).toBe("some notes to index");
+    expect(normalizeSubmitArgument(action("source"), "some notes to index")).toBe(
+      "some notes to index",
+    );
     expect(normalizeSubmitArgument(action("source"), "./docs")).toBe("./docs");
   });
 
@@ -45,5 +51,13 @@ describe("normalizeSubmitArgument", () => {
 
   it("trims surrounding whitespace", () => {
     expect(normalizeSubmitArgument(action("source"), "  owner/repo  ")).toBe("owner/repo");
+  });
+});
+
+describe("repairLinkSubstitution", () => {
+  it("repairs a link substitution with a trailing domain suffix", () => {
+    expect(repairLinkSubstitution("[https://code.claude](https://code.claude).com")).toBe(
+      "https://code.claude.com",
+    );
   });
 });

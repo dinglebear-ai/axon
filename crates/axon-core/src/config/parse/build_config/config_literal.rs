@@ -50,6 +50,27 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     let projection_batch = resolve_projection_batch(inputs.toml)?;
 
     let mut cfg = Config::default();
+    cfg.labby_url = env::var("AXON_LABBY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    cfg.labby_service_token = env::var("AXON_LABBY_SERVICE_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty());
+    cfg.labby_integration_id = env::var("AXON_LABBY_INTEGRATION_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    cfg.labby_runtime_identity = env::var("AXON_LABBY_RUNTIME_IDENTITY")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    cfg.labby_resolution_timeout_ms = parse_projection_env("AXON_LABBY_RESOLUTION_TIMEOUT_MS")?
+        .unwrap_or(2_000)
+        .clamp(100, 30_000);
+    cfg.labby_resolution_max_bytes = parse_projection_env("AXON_LABBY_RESOLUTION_MAX_BYTES")?
+        .unwrap_or(256 * 1024)
+        .clamp(1_024, 1024 * 1024);
+    cfg.document_batch_size = parse_bounded_usize_env("AXON_DOCUMENT_BATCH_SIZE", 16, 1, 1024)?;
+    cfg.document_status_batch_size =
+        parse_bounded_usize_env("AXON_DOCUMENT_STATUS_BATCH_SIZE", 64, 1, 4096)?;
     populate_identity_and_crawl(&mut cfg, &inputs);
     populate_chrome_and_filtering(&mut cfg, &inputs);
     populate_perf_and_credentials(&mut cfg, &inputs)?;
@@ -138,6 +159,30 @@ where
                 .map_err(|error| format!("invalid {name}={raw:?}: {error}"))
         })
         .transpose()
+}
+
+fn parse_bounded_usize_env(
+    name: &str,
+    default: usize,
+    minimum: usize,
+    maximum: usize,
+) -> Result<usize, String> {
+    let raw = match env::var(name) {
+        Ok(raw) => raw,
+        Err(env::VarError::NotPresent) => return Ok(default),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!("{name} must contain valid Unicode"));
+        }
+    };
+    let value = raw
+        .parse::<usize>()
+        .map_err(|error| format!("invalid {name}={raw:?}: {error}"))?;
+    if !(minimum..=maximum).contains(&value) {
+        return Err(format!(
+            "{name} must be between {minimum} and {maximum}, got {value}"
+        ));
+    }
+    Ok(value)
 }
 
 fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {

@@ -1,11 +1,9 @@
 import {
-  Activity,
   ArrowLeft,
   Check,
   Copy,
   ExternalLink,
   History,
-  type LucideIcon,
   MoreHorizontal,
   Pin,
   RotateCw,
@@ -31,7 +29,6 @@ import { type OpenJobHandler, StatusView } from "@/components/palette/StatusView
 import { TerminalView } from "@/components/palette/TerminalView";
 import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
-import { actionBehavior } from "@/lib/actionRegistry";
 import type { PaletteAction } from "@/lib/actions";
 import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
@@ -104,7 +101,6 @@ export const OutputPanel = memo(function OutputPanel({
   // O(n) per stream token → O(n²) over a stream. Keyed on the text so it only
   // recomputes when the buffer actually changes.
   const outputUrl = useMemo(() => (runText ? firstUrl(runText) : null), [runText]);
-  const Icon = active ? outputIcon(active.subcommand) : Activity;
   const status = statusFor(run);
   const conversationMode = active?.subcommand === "ask" || active?.subcommand === "chat";
   const transcript = "transcript" in run ? run.transcript : undefined;
@@ -123,7 +119,9 @@ export const OutputPanel = memo(function OutputPanel({
   return (
     <section
       className={
-        quietConversationChrome ? "output-panel output-panel-conversation" : "output-panel"
+        quietConversationChrome
+          ? "output-panel output-panel-conversation"
+          : `output-panel${active?.subcommand === "files" ? " output-panel-files" : ""}`
       }
     >
       {/* A11Y-C2: terse, polite announcement of run-state transitions for screen
@@ -134,7 +132,9 @@ export const OutputPanel = memo(function OutputPanel({
       <div
         className={`output-state output-${run.kind} output-tone-${active?.tone ?? "neutral"}${quietConversationChrome ? " output-conversation" : ""}`}
       >
-        <header className={headerSummary ? "output-header output-header-summary" : "output-header"}>
+        <header
+          className={`${headerSummary ? "output-header output-header-summary" : "output-header"}${quietConversationChrome ? "" : " output-header-consolidated"}`}
+        >
           {quietConversationChrome ? (
             <Button
               variant="plain"
@@ -148,12 +148,9 @@ export const OutputPanel = memo(function OutputPanel({
               <ArrowLeft size={15} strokeWidth={1.85} />
             </Button>
           ) : null}
-          {quietConversationChrome ? null : (
-            <span className="output-op-tile" aria-hidden="true">
-              <Icon size={19} strokeWidth={1.65} />
-            </span>
-          )}
-          <div className="output-meta-info">
+          <div
+            className={quietConversationChrome ? "output-meta-info" : "output-meta-info sr-only"}
+          >
             <span className="output-title-line">
               <span className="output-title">
                 {headerSummary?.title ??
@@ -332,6 +329,9 @@ export const OutputPanel = memo(function OutputPanel({
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
             agentBubbles={agentBubbles}
+            client={client}
+            config={config}
+            action={active?.subcommand === "chat" ? "chat" : "ask"}
           />
         ) : run.kind === "streaming" && conversationMode ? (
           <AskConversation
@@ -343,6 +343,9 @@ export const OutputPanel = memo(function OutputPanel({
             suggestionsEnabled={active?.subcommand === "chat"}
             onSuggestMessage={onSuggestMessage}
             agentBubbles={agentBubbles}
+            client={client}
+            config={config}
+            action={active?.subcommand === "chat" ? "chat" : "ask"}
           />
         ) : run.kind === "running" || run.kind === "streaming" ? (
           <PendingBody run={run} />
@@ -494,9 +497,4 @@ function statusFor(run: RunState): { label: string; tone: "ok" | "warn" | "error
   if (run.kind === "running" || run.kind === "streaming")
     return { label: "202 Accepted", tone: "warn" };
   return { label: "ready", tone: "neutral" };
-}
-
-/** Output-panel header icon for a subcommand. Derived from the registry. */
-function outputIcon(subcommand: string): LucideIcon {
-  return actionBehavior(subcommand).outputIcon;
 }

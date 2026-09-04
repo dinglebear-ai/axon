@@ -591,7 +591,7 @@ fn auto_tag_inputs_match_native_shipping_and_release_planner_paths() {
         ".github/workflows/auto-tag.yml",
         ".github/actions/setup-rust-kache/action.yml",
         "release/components.toml",
-        "xtask/src/checks/release_versions/gate.rs",
+        "xtask-release/src/gate.rs",
         "xtask/src/main.rs",
     ] {
         let out = classify("push", &[file]);

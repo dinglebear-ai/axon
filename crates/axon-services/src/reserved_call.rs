@@ -7,6 +7,7 @@
 
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Instant;
 
 use axon_api::source::*;
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore};
@@ -24,7 +25,9 @@ use crate::context::TargetLocalSourceRuntime;
 mod support;
 mod vector;
 
-use support::{map_reserved, record_provider_heartbeat, scheduler_error};
+use support::{
+    map_reserved, record_provider_heartbeat, record_provider_queued_heartbeat, scheduler_error,
+};
 pub use vector::{
     delete_vectors, mark_generation_committed, mark_unchanged_items_committed, retire_generation,
     vector_operation,
@@ -84,7 +87,7 @@ impl ProviderCallContext {
         self
     }
 
-    fn request(&self, units: u32) -> ReservationRequest {
+    fn request(&self, logical_call_slots: u32) -> ReservationRequest {
         ReservationRequest {
             job_id: self.job_id,
             stage_id: self.stage_id,
@@ -99,7 +102,7 @@ impl ProviderCallContext {
                 self.operation_id
             ),
             priority: self.priority,
-            units,
+            units: logical_call_slots,
         }
     }
 }
@@ -249,20 +252,56 @@ pub async fn embed(
     context: ProviderCallContext,
     batch: EmbeddingBatch,
 ) -> Result<EmbeddingResult, ApiError> {
+    let input_count = batch.items.len();
+    let operation_id = context.operation_id.clone();
+    let queued_at = Instant::now();
     let Some(scheduler) = runtime.embedding_scheduler.as_deref() else {
         record_provider_heartbeat(runtime, &context, None).await;
-        return runtime.embedding_provider.embed(batch).await;
+        let result = runtime.embedding_provider.embed(batch).await;
+        let elapsed = queued_at.elapsed();
+        if let Ok(result) = &result {
+            tracing::info!(
+                operation_id,
+                input_count,
+                requests = result.usage.requests,
+                queue_wait_ms = 0_u64,
+                provider_ms = elapsed.as_millis() as u64,
+                "embedding provider operation completed"
+            );
+        }
+        return result;
     };
     let provider = Arc::clone(&runtime.embedding_provider);
     let request = context.request(1);
+    record_provider_queued_heartbeat(
+        runtime,
+        &context,
+        ProviderKind::Embedding,
+        runtime.embedding_provider_id.clone(),
+        1,
+    )
+    .await;
     map_reserved(
         call_reserved::<EmbeddingLane, _, ApiError, _, _>(
             scheduler,
             request,
             move |lease| async move {
+                let queue_wait = queued_at.elapsed();
                 let snapshot = lease.snapshot(context.priority, 1);
                 record_provider_heartbeat(runtime, &context, Some(snapshot)).await;
-                provider.embed(batch).await
+                let active_at = Instant::now();
+                let result = provider.embed(batch).await;
+                if let Ok(result) = &result {
+                    tracing::info!(
+                        operation_id,
+                        input_count,
+                        requests = result.usage.requests,
+                        queue_wait_ms = queue_wait.as_millis() as u64,
+                        provider_ms = active_at.elapsed().as_millis() as u64,
+                        "embedding provider operation completed"
+                    );
+                }
+                result
             },
         )
         .await,
@@ -297,20 +336,49 @@ pub async fn upsert(
     context: ProviderCallContext,
     batch: VectorPointBatch,
 ) -> Result<VectorStoreWriteResult, ApiError> {
+    let point_count = batch.points.len();
+    let operation_id = context.operation_id.clone();
+    let queued_at = Instant::now();
     let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
         record_provider_heartbeat(runtime, &context, None).await;
-        return runtime.vector_store.upsert(batch).await;
+        let result = runtime.vector_store.upsert(batch).await;
+        tracing::info!(
+            operation_id,
+            point_count,
+            queue_wait_ms = 0_u64,
+            provider_ms = queued_at.elapsed().as_millis() as u64,
+            "vector upsert provider operation completed"
+        );
+        return result;
     };
     let store = Arc::clone(&runtime.vector_store);
     let request = context.request(1);
+    record_provider_queued_heartbeat(
+        runtime,
+        &context,
+        ProviderKind::Vector,
+        runtime.vector_provider_id.clone(),
+        1,
+    )
+    .await;
     map_reserved(
         call_reserved::<VectorLane, _, ApiError, _, _>(
             scheduler,
             request,
             move |lease| async move {
+                let queue_wait = queued_at.elapsed();
                 let snapshot = lease.snapshot(context.priority, 1);
                 record_provider_heartbeat(runtime, &context, Some(snapshot)).await;
-                store.upsert(batch).await
+                let active_at = Instant::now();
+                let result = store.upsert(batch).await;
+                tracing::info!(
+                    operation_id,
+                    point_count,
+                    queue_wait_ms = queue_wait.as_millis() as u64,
+                    provider_ms = active_at.elapsed().as_millis() as u64,
+                    "vector upsert provider operation completed"
+                );
+                result
             },
         )
         .await,

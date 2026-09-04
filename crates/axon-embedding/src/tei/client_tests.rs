@@ -27,6 +27,8 @@ async fn embed_all_packs_similar_lengths_and_restores_input_order() {
         endpoint: server.base_url(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 2,
+        max_input_tokens: 8_192,
+        max_batch_tokens: 131_072,
         max_concurrent_requests: 1,
         max_in_flight_inputs: 2,
         max_attempts: 1,
@@ -67,6 +69,8 @@ async fn embed_all_explicitly_disables_truncation_for_long_input() {
         endpoint: server.base_url(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 1,
+        max_input_tokens: 32_768,
+        max_batch_tokens: 131_072,
         max_concurrent_requests: 1,
         max_in_flight_inputs: 1,
         max_attempts: 1,
@@ -98,6 +102,8 @@ async fn embed_all_surfaces_single_input_413_without_retrying_or_truncating() {
         endpoint: server.base_url(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 1,
+        max_input_tokens: 8_192,
+        max_batch_tokens: 131_072,
         max_concurrent_requests: 1,
         max_in_flight_inputs: 1,
         max_attempts: 3,
@@ -132,6 +138,8 @@ async fn embed_all_overlaps_independent_client_batches() {
         endpoint: server.base_url(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 1,
+        max_input_tokens: 8_192,
+        max_batch_tokens: 131_072,
         max_concurrent_requests: 4,
         max_in_flight_inputs: 4,
         max_attempts: 1,
@@ -163,6 +171,123 @@ async fn embed_all_overlaps_independent_client_batches() {
     assert_eq!(outcome.vectors.len(), 4);
     assert_eq!(outcome.requests, 4);
     endpoint.assert_calls_async(4).await;
+}
+
+#[tokio::test]
+async fn embed_all_sends_a_long_singleton_for_provider_tokenization() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200).json_body(serde_json::json!([[1.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 8,
+        max_input_tokens: 1,
+        max_batch_tokens: 8,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["12345".to_string()])
+        .await
+        .expect("a conservative estimate must not reject a valid singleton");
+    assert_eq!(outcome.vectors.len(), 1);
+    endpoint.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn embed_all_splits_batches_at_the_configured_token_boundary() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200).json_body(serde_json::json!([[1.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 8,
+        max_input_tokens: 8,
+        max_batch_tokens: 1,
+        max_concurrent_requests: 2,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let outcome = client
+        .embed_all(&["aaaa".to_string(), "bbbb".to_string()])
+        .await
+        .expect("two one-token inputs should be packed separately");
+    assert_eq!(outcome.vectors.len(), 2);
+    assert_eq!(outcome.requests, 2);
+    endpoint.assert_calls_async(2).await;
+}
+
+#[test]
+fn token_estimate_batches_ascii_efficiently_and_non_ascii_conservatively() {
+    assert_eq!(estimated_tokens("abcdefgh"), 4);
+    assert_eq!(estimated_tokens("fn main()"), 5);
+    assert_eq!(estimated_tokens("漢字"), 6);
+    assert_eq!(estimated_tokens("😀"), 4);
+
+    let batches = pack_batches(
+        &["abcdefgh".into(), "ijklmnop".into(), "漢字".into()],
+        BatchLimits {
+            max_inputs: 8,
+            max_input_tokens: 32,
+            max_batch_tokens: 8,
+            max_batch_bytes: MAX_BATCH_BYTES,
+        },
+    )
+    .expect("representative inputs fit the payload ceiling");
+
+    assert_eq!(
+        batches
+            .iter()
+            .map(|(_, texts)| texts.iter().map(String::as_str).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        vec![vec!["abcdefgh", "ijklmnop"], vec!["漢字"]]
+    );
+}
+
+#[test]
+fn batch_packer_isolates_oversize_input_from_following_normal_input() {
+    let batches = pack_batches(
+        &["oversized".into(), "ok".into()],
+        BatchLimits {
+            max_inputs: 8,
+            max_input_tokens: 2,
+            max_batch_tokens: 64,
+            max_batch_bytes: MAX_BATCH_BYTES,
+        },
+    )
+    .expect("provider-authoritative token overflow is not a client error");
+
+    assert_eq!(batches.len(), 2);
+    assert!(batches.iter().all(|(_, texts)| texts.len() == 1));
+    assert!(
+        batches
+            .iter()
+            .any(|(_, texts)| texts == &["oversized".to_string()])
+    );
+    assert!(
+        batches
+            .iter()
+            .any(|(_, texts)| texts == &["ok".to_string()])
+    );
 }
 
 #[test]
@@ -218,11 +343,34 @@ fn resolve_batch_size_clamps_to_valid_range() {
     assert_eq!(resolve_batch_size(10_000), 4096);
 }
 
-#[test]
-fn request_concurrency_respects_aggregate_input_budget() {
-    assert_eq!(effective_request_concurrency(8, 320, 96), 3);
-    assert_eq!(effective_request_concurrency(8, 32, 96), 1);
-    assert_eq!(effective_request_concurrency(0, 0, 0), 1);
+#[tokio::test]
+async fn request_count_is_local_to_each_invocation() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200).json_body(serde_json::json!([[1.0_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 1,
+        max_input_tokens: 8_192,
+        max_batch_tokens: 131_072,
+        max_concurrent_requests: 2,
+        max_in_flight_inputs: 2,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let first = client.embed_all(&["one".into()]).await.expect("first");
+    let second = client.embed_all(&["two".into()]).await.expect("second");
+    assert_eq!(first.requests, 1);
+    assert_eq!(second.requests, 1);
+    endpoint.assert_calls_async(2).await;
 }
 
 #[test]
@@ -233,6 +381,8 @@ fn tei_client_new_reuses_the_shared_client_across_many_constructions() {
             endpoint: "http://127.0.0.1:1".to_string(),
             provider_id: format!("tei-{i}"),
             max_batch_inputs: 8,
+            max_input_tokens: 8_192,
+            max_batch_tokens: 131_072,
             max_concurrent_requests: 1,
             max_in_flight_inputs: 8,
             max_attempts: 1,
@@ -251,6 +401,8 @@ fn tei_client_new_reuses_the_shared_client_across_many_constructions() {
             endpoint: "http://127.0.0.1:1".to_string(),
             provider_id: format!("tei-{i}"),
             max_batch_inputs: 8,
+            max_input_tokens: 8_192,
+            max_batch_tokens: 131_072,
             max_concurrent_requests: 1,
             max_in_flight_inputs: 8,
             max_attempts: 1,
@@ -272,6 +424,8 @@ fn exhausted_cooling_attaches_provider_cooling_metadata_and_marks_retryable() {
         endpoint: "http://127.0.0.1:1".to_string(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 8,
+        max_input_tokens: 8_192,
+        max_batch_tokens: 131_072,
         max_concurrent_requests: 1,
         max_in_flight_inputs: 8,
         max_attempts: 1,

@@ -39,6 +39,7 @@ struct FakeLedgerState {
     manifests: BTreeMap<(SourceId, SourceGenerationId), SourceManifest>,
     committed: BTreeMap<SourceId, SourceGenerationId>,
     document_statuses: BTreeMap<DocumentId, DocumentStatus>,
+    document_status_update_batches: Vec<Vec<DocumentId>>,
     cleanup_debt: BTreeMap<CleanupDebtId, CleanupDebt>,
     leases: BTreeMap<LeaseId, LeaseGuard>,
     lease_ids_by_key: BTreeMap<String, LeaseId>,
@@ -76,6 +77,14 @@ impl FakeLedgerStore {
             .document_statuses
             .get(document_id)
             .cloned()
+    }
+
+    pub async fn document_status_update_batches(&self) -> Vec<Vec<DocumentId>> {
+        self.state
+            .lock()
+            .await
+            .document_status_update_batches
+            .clone()
     }
 
     pub async fn cleanup_debt(&self, debt_id: &CleanupDebtId) -> Option<CleanupDebt> {
@@ -350,6 +359,12 @@ impl LedgerStore for FakeLedgerStore {
                 return Err(source_missing_error(&status.source_id));
             }
         }
+        state.document_status_update_batches.push(
+            statuses
+                .iter()
+                .map(|status| status.document_id.clone())
+                .collect(),
+        );
         for status in statuses {
             if state
                 .document_statuses

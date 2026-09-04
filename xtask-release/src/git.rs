@@ -1,7 +1,7 @@
 use super::files::read_gradle_version_code;
 use super::{Component, GateMode, ReleaseContext, ReleaseResult, VersionKind};
 use semver::Version;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -66,7 +66,7 @@ pub(super) fn component_changed_since_ref(
 
     if component.id == "cli"
         && changed.iter().all(|path| path == "Cargo.lock")
-        && cargo_lock_only_xtask_package_changed(root, base, head)?
+        && cargo_lock_only_non_shipping_packages_changed(root, component, base, head)?
     {
         return Ok(false);
     }
@@ -323,8 +323,19 @@ pub(super) fn git_show(root: &Path, reference: &str, path: &str) -> ReleaseResul
     git_output(root, &["show", &format!("{reference}:{path}")])
 }
 
-fn cargo_lock_only_xtask_package_changed(
+/// True when a `Cargo.lock`-only diff touches nothing that actually ships.
+///
+/// Dev tooling lives in workspace members outside every shipping path
+/// (`xtask`, `xtask-release`), so adding or re-wiring one churns the root
+/// lockfile without changing a single shipped byte. Membership is derived from
+/// the workspace manifest rather than named here, so a new tooling package
+/// needs no change to this gate.
+///
+/// Any changed package that is not such a member — a shipping crate, or a
+/// third-party dependency — fails the carve-out and still requires a bump.
+fn cargo_lock_only_non_shipping_packages_changed(
     root: &Path,
+    component: &Component,
     base: &str,
     head: &str,
 ) -> ReleaseResult<bool> {
@@ -338,9 +349,76 @@ fn cargo_lock_only_xtask_package_changed(
     let changed = package_ids
         .into_iter()
         .filter(|package_id| before.get(*package_id) != after.get(*package_id))
-        .map(|package_id| package_id.as_str())
+        .filter_map(|package_id| package_id.split('|').next())
         .collect::<Vec<_>>();
-    Ok(changed.len() == 1 && changed[0].starts_with("xtask|"))
+    if changed.is_empty() {
+        return Ok(false);
+    }
+    let non_shipping = non_shipping_workspace_packages(root, component)?;
+    Ok(changed.iter().all(|name| non_shipping.contains(*name)))
+}
+
+/// Names of workspace members whose directory sits outside every one of
+/// `component`'s shipping paths.
+fn non_shipping_workspace_packages(
+    root: &Path,
+    component: &Component,
+) -> ReleaseResult<BTreeSet<String>> {
+    let mut packages = BTreeSet::new();
+    for member in workspace_members(root)? {
+        if component
+            .shipping_paths
+            .iter()
+            .any(|shipping| path_is_within(&member, shipping))
+        {
+            continue;
+        }
+        if let Some(name) = member_package_name(root, &member)? {
+            packages.insert(name);
+        }
+    }
+    Ok(packages)
+}
+
+fn workspace_members(root: &Path) -> ReleaseResult<Vec<String>> {
+    let manifest = fs::read_to_string(root.join("Cargo.toml"))
+        .release_context("failed to read the workspace Cargo.toml")?;
+    let manifest: toml::Value =
+        toml::from_str(&manifest).release_context("failed to parse the workspace Cargo.toml")?;
+    Ok(manifest
+        .get("workspace")
+        .and_then(|workspace| workspace.get("members"))
+        .and_then(toml::Value::as_array)
+        .map(|members| {
+            members
+                .iter()
+                .filter_map(toml::Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+fn member_package_name(root: &Path, member: &str) -> ReleaseResult<Option<String>> {
+    let path = root.join(member).join("Cargo.toml");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let manifest = fs::read_to_string(&path)
+        .with_release_context(|| format!("failed to read {member}/Cargo.toml"))?;
+    let manifest: toml::Value = toml::from_str(&manifest)
+        .with_release_context(|| format!("failed to parse {member}/Cargo.toml"))?;
+    Ok(manifest
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        .map(ToOwned::to_owned))
+}
+
+fn path_is_within(path: &str, ancestor: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    let ancestor = ancestor.trim_end_matches('/');
+    path == ancestor || path.starts_with(&format!("{ancestor}/"))
 }
 
 fn cargo_lock_package_sections(content: &str) -> BTreeMap<String, String> {

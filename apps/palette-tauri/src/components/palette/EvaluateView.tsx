@@ -1,6 +1,8 @@
+import { Scale } from "lucide-react";
 import { memo } from "react";
 
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
+import { WorkspaceHeader, WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
 import { arrField, strField, unwrapPayload } from "@/lib/payload";
 
 // Side-by-side comparison of the same question answered without retrieval
@@ -14,7 +16,14 @@ export const EvaluateView = memo(function EvaluateView({ payload }: { payload: u
   const sources = arrField(data, "source_urls").filter((u): u is string => typeof u === "string");
 
   return (
-    <div className="output-body evaluate-view aurora-scrollbar">
+    <WorkspaceSurface className="output-body evaluate-view">
+      <WorkspaceHeader
+        icon={Scale}
+        eyebrow="Retrieval Evaluation"
+        title="Baseline and RAG Comparison"
+        description="Compare the ungrounded answer against retrieval-augmented output."
+        metrics={[{ label: "Sources", value: sources.length }]}
+      />
       {query ? (
         <div className="ask-prompt-strip evaluate-prompt">
           <span>Question</span>
@@ -30,7 +39,9 @@ export const EvaluateView = memo(function EvaluateView({ payload }: { payload: u
           </div>
         </div>
         <div className="evaluate-column">
-          <div className="evaluate-column-head evaluate-head-rag">With RAG · {sources.length} source{sources.length === 1 ? "" : "s"}</div>
+          <div className="evaluate-column-head evaluate-head-rag">
+            With RAG · {sources.length} source{sources.length === 1 ? "" : "s"}
+          </div>
           <div className="ask-answer ask-answer-reader evaluate-answer">
             <MarkdownBody>{rag}</MarkdownBody>
           </div>
@@ -51,11 +62,13 @@ export const EvaluateView = memo(function EvaluateView({ payload }: { payload: u
           <h3 className="stats-heading">Sources</h3>
           <div className="evaluate-source-list">
             {sources.slice(0, 12).map((url) => (
-              <a key={url} href={url} target="_blank" rel="noopener noreferrer">{url}</a>
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                {url}
+              </a>
             ))}
           </div>
         </section>
       )}
-    </div>
+    </WorkspaceSurface>
   );
 });

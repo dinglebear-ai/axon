@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axon.dev/contracts/integration-profile/v1",
+  "title": "AxonIntegrationProfileV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "product", "server_id", "product_version", "api_version", "capabilities", "auth", "streams"],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "product": { "const": "axon" },
+    "server_id": { "type": "string", "pattern": "^axon_[A-Za-z0-9_-]{16,128}$" },
+    "product_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "api_version": { "$ref": "#/$defs/apiVersion" },
+    "capabilities": { "type": "array", "uniqueItems": true, "items": { "enum": ["source", "query", "ask", "chat", "jobs", "memory", "graph"] } },
+    "auth": { "$ref": "#/$defs/auth" },
+    "streams": { "$ref": "#/$defs/streams" }
+  },
+  "$defs": {
+    "apiVersion": {
+      "type": "object", "additionalProperties": false, "required": ["major", "minor"],
+      "properties": { "major": { "const": 1 }, "minor": { "type": "integer", "minimum": 0 } }
+    },
+    "auth": {
+      "type": "object", "additionalProperties": false,
+      "required": ["modes", "issuer", "audience", "token_endpoint_origin", "principal_cache_scope", "credential_generation"],
+      "properties": {
+        "modes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["static_bearer", "oauth2"] } },
+        "issuer": { "type": ["string", "null"], "format": "uri" },
+        "audience": { "type": ["string", "null"], "minLength": 1 },
+        "token_endpoint_origin": { "type": ["string", "null"], "format": "uri" },
+        "principal_cache_scope": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "credential_generation": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "streams": {
+      "type": "object", "additionalProperties": false, "required": ["transport", "resume"],
+      "properties": { "transport": { "enum": ["none", "sse"] }, "resume": { "enum": ["none", "opaque_cursor"] } }
+    }
+  }
+}

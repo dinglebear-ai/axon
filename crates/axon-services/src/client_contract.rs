@@ -237,12 +237,22 @@ pub struct RestAskRequest {
     pub ask_authoritative_domains: Option<Vec<String>>,
     #[serde(default)]
     pub ask_authoritative_boost: Option<f64>,
+    #[serde(default)]
+    pub loadout: Option<axon_api::loadout::LoadoutBinding>,
+    #[serde(default)]
+    pub agent: Option<axon_api::agent::AgentTurnOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RestChatRequest {
     pub message: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub loadout: Option<axon_api::loadout::LoadoutBinding>,
+    #[serde(default)]
+    pub agent: Option<axon_api::agent::AgentTurnOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -252,6 +262,10 @@ pub struct RestChatResponse {
     pub answer: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loadout: Option<axon_api::loadout::LoadoutResolution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<axon_api::agent::AgentTurnResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]

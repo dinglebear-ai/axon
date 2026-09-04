@@ -27,6 +27,20 @@ pub fn canonicalize_url_for_dedupe(url: &str) -> Option<String> {
     Some(parsed.to_string())
 }
 
+/// Remove URL credentials from operator-visible and persisted reporting data.
+pub(crate) fn sanitize_url_for_reporting(raw: &str) -> String {
+    let Ok(mut url) = Url::parse(raw) else {
+        return "<invalid-url>".to_string();
+    };
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    if url.query().is_some() {
+        url.set_query(Some("redacted"));
+    }
+    url.set_fragment(None);
+    url.to_string()
+}
+
 /// Strip a leading `www.` label, case-insensitively.
 ///
 /// `www.example.com` and `example.com` are the same site in practice: hosts

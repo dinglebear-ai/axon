@@ -800,7 +800,12 @@ fi
 fn release_please_fixups_validate_and_forward_pr_branch_refs() {
     let workflow = include_str!("../.github/workflows/release-please.yml");
     let fixups = workflow_job_block(workflow, "release-pr-fixups");
-    assert_eq!(fixups.matches("cargo build --locked -p xtask").count(), 1);
+    assert_eq!(
+        fixups
+            .matches("cargo build --locked -p xtask-release")
+            .count(),
+        1
+    );
     assert!(!fixups.contains("cargo xtask"));
 
     for (variable, field) in [
@@ -820,23 +825,23 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
         "fixup planning must run from the reported release PR branch"
     );
     let (_, after_plan_start) = fixups
-        .split_once("./target/debug/xtask release-please-fixup-plan")
+        .split_once("./target/debug/xtask-release release-please-fixup-plan")
         .expect("release PR fixup planner invocation exists");
     let (plan_args, _) = after_plan_start
-        .split_once("./target/debug/xtask check-release-versions")
+        .split_once("./target/debug/xtask-release check-release-versions")
         .expect("release version check follows fixup planning");
     assert!(
         plan_args.contains("--base \"origin/$base_branch\"") && plan_args.contains("--head HEAD"),
         "the fixup planner itself must compare the release branch with its reported base branch"
     );
     let fixup_position = fixups
-        .find("./target/debug/xtask release-please-fixups")
+        .find("./target/debug/xtask-release release-please-fixups")
         .expect("release PR fixup invocation exists");
     let commit_position = fixups
         .find("git commit -m \"chore: apply release-please fixups\"")
         .expect("generated fixups are committed");
     let check_position = fixups
-        .find("./target/debug/xtask check-release-versions")
+        .find("./target/debug/xtask-release check-release-versions")
         .expect("release version check exists");
     let push_position = fixups
         .find("git push origin HEAD:\"$branch\"")

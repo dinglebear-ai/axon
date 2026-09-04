@@ -329,7 +329,23 @@ where
         timeout,
     )
     .await?;
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    // Navigation acknowledgement only means Chrome accepted the URL. Wait for
+    // the document load event, then leave a small bounded window for client-side
+    // hydration, fonts, and layout before capturing the surface.
+    send_cdp_cmd(
+        tx,
+        rx,
+        Some(&session_id),
+        "Runtime.evaluate",
+        serde_json::json!({
+            "expression": "new Promise(resolve => { if (document.readyState === 'complete') resolve(true); else window.addEventListener('load', () => resolve(true), { once: true }); })",
+            "awaitPromise": true,
+            "returnByValue": true
+        }),
+        timeout,
+    )
+    .await?;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
     let result = send_cdp_cmd(
         tx,

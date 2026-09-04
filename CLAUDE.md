@@ -11,7 +11,7 @@ LLM provider.
 |---|---|
 | Remote | `git@github.com:dinglebear-ai/axon.git` (the `jmagar/axon` name only resolves via GitHub's transfer redirect) |
 | Default branch | `main` |
-| Workspace | 25 Cargo packages: root `axon` binary + `xtask` + 23 crates under `crates/` |
+| Workspace | 26 Cargo packages: root `axon` binary + `xtask` + `xtask-release` + 23 crates under `crates/` |
 | Edition / toolchain | edition 2024, `rust-version = "1.97.1"`, `rust-toolchain.toml` pins channel `1.97.1` |
 | Product version | `7.2.2` in `[workspace.package]`, inherited by every crate via `version.workspace = true` |
 | MCP runtime | `rmcp = "=3.0.0-beta.2"` — exact pin, agrees with `Cargo.lock` |
@@ -741,7 +741,7 @@ release driver for every component:
 
 | Component | Shipping paths | Version source | Tag prefix | Release workflow | Release driver |
 |-----------|----------------|----------------|-----------|------------------|----------------|
-| **cli** (Linux + Windows; web panel bundled in) | `src`, `Cargo.toml`/`Cargo.lock`, `build.rs`, `apps/web`, `rust-toolchain.toml`, `vendor` | `Cargo.toml` `[package]` version | `v` | `release.yml` | **Axon native (xtask + auto-tag)** |
+| **cli** (Linux + Windows; web panel bundled in) | `src`, `crates`, `Cargo.toml`/`Cargo.lock`, `build.rs`, `apps/web`, `rust-toolchain.toml`, `vendor` | `Cargo.toml` `[package]` version | `v` | `release.yml` | **Axon native (xtask + auto-tag)** |
 | **palette** (Linux + Windows) | `apps/palette-tauri` | `apps/palette-tauri/src-tauri/tauri.conf.json` | `palette-v` | `palette-release.yml` | release-please |
 | **android** (APK) | `apps/android` | `apps/android/app/build.gradle.kts` `versionName` | `android-v` | `android-release.yml` | release-please |
 | **chrome** (extension zip) | `apps/chrome-extension` | `apps/chrome-extension/manifest.json` `version` | `chrome-ext-v` | `chrome-extension-release.yml` | release-please |
@@ -762,11 +762,13 @@ for exact-main CI, creates the `vX.Y.Z` tag and GitHub Release, then dispatches
 - A change touching only one component releases only that component — e.g. an
   `apps/android/**`-only change cuts an Android release and nothing else; it
   does **not** rebuild the CLI.
-- Dev-only trees (`xtask`, `benches`, `.github`, `docs`, and non-shipping
-  repo policy/config files) are
+- Dev-only trees (`xtask`, `xtask-release`, `benches`, `.github`, `docs`, and
+  non-shipping repo policy/config files) are
   **not** in any component's shipping paths, so a tooling/docs-only merge cuts
   no release and needs no version bump. `Cargo.toml`, `Cargo.lock`, and
-  `rust-toolchain.toml` are CLI shipping paths and are not part of this carve-out.
+  `rust-toolchain.toml` are CLI shipping paths — but a `Cargo.lock`-only diff
+  whose changed package sections are all dev-only workspace members stays in
+  the carve-out.
 - An ordinary `palette`/`android`/`chrome` feature PR changes shipping files
   without touching version files. The PR gate validates current parity and
   defers the bump to release-please. It rejects a feature PR that mixes those
@@ -848,7 +850,16 @@ explaining that CI may append derived-file fixups before merge. For `cli`,
 generated commit-message-derived body — write the entry by hand if you want
 one beyond the heading).
 
-`xtask` is a validation, manual-bump, and release-please postprocessing
+Release tooling lives in the **`xtask-release`** package, not in `xtask`. It
+depends on no axon crate, so CI jobs that only do release bookkeeping build
+`-p xtask-release` in seconds instead of compiling the whole product (building
+`xtask` pulls in twelve axon crates and, transitively, OpenSSL via
+`axon-services -> git2`). `xtask` flattens the same command surface, so every
+`cargo xtask <release-command>` invocation below is unchanged; the standalone
+`xtask-release` binary accepts identical arguments and is what the release
+workflows run.
+
+It is a validation, manual-bump, and release-please postprocessing
 helper: `check-release-versions` verifies component parity and changed
 shipping paths, defers ordinary managed-app feature bumps to release-please,
 and rejects mixed manual version edits (while skipping the
@@ -859,7 +870,9 @@ derived files release-please cannot update directly for
 `palette`/`android`/`chrome`, and `release-please-dispatch-plan` translates
 release-please outputs into artifact workflow dispatches. **Editing a
 `CHANGELOG.md` never triggers a release** — change detection ignores it, so
-documenting a release can't recursively cut another.
+documenting a release can't recursively cut another. `Cargo.lock` churn
+confined to workspace members outside every shipping path (`xtask`,
+`xtask-release`) does not require a CLI bump.
 
 The PR gate is:
 

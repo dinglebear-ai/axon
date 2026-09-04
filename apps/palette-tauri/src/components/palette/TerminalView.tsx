@@ -1,5 +1,8 @@
+import { Check, Copy, Trash2 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
+import { WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
+import { Button } from "@/components/ui/aurora/button";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
 
 interface TerminalRunResult {
@@ -43,11 +46,16 @@ function shortCwd(cwd: string): string {
  */
 export const TerminalView = memo(function TerminalView() {
   const [lines, setLines] = useState<TerminalLine[]>(() => [
-    { id: nextLineId(), kind: "sys", text: "axon palette terminal — type a command and press Enter." },
+    {
+      id: nextLineId(),
+      kind: "sys",
+      text: "Shell ready.",
+    },
   ]);
   const [cwd, setCwd] = useState<string>("");
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const historyIndexRef = useRef<number | null>(null);
   const draftRef = useRef("");
@@ -148,15 +156,50 @@ export const TerminalView = memo(function TerminalView() {
       <div className="output-body terminal-view terminal-view-unavailable" role="status">
         <p>Terminal requires the desktop app.</p>
         <p className="terminal-view-unavailable-detail">
-          Real shell commands can only run through the Tauri desktop shell — the browser dev preview has no local
-          shell to spawn.
+          Real shell commands can only run through the Tauri desktop shell — the browser dev preview
+          has no local shell to spawn.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="output-body terminal-view aurora-scrollbar">
+    <WorkspaceSurface className="output-body terminal-view">
+      <div className="terminal-toolbar" role="toolbar" aria-label="Terminal controls">
+        <span className="terminal-toolbar-path">{shortCwd(cwd)}</span>
+        <span className={`terminal-toolbar-state${running ? " is-running" : ""}`}>
+          {running ? "Running" : "Ready"}
+        </span>
+        <Button
+          variant="plain"
+          size="unstyled"
+          type="button"
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(lines.map((line) => line.text).join("\n"))
+              .then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1400);
+              });
+          }}
+          aria-label="Copy terminal output"
+          title={copied ? "Copied" : "Copy output"}
+          className={copied ? "is-confirmed" : undefined}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </Button>
+        <Button
+          variant="plain"
+          size="unstyled"
+          type="button"
+          onClick={() => setLines([])}
+          aria-label="Clear terminal"
+          title="Clear terminal"
+          disabled={lines.length === 0}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users focus the input directly; this wrapper only expands the pointer target */}
       <div
         ref={scrollRef}
@@ -193,6 +236,6 @@ export const TerminalView = memo(function TerminalView() {
           />
         </div>
       </div>
-    </div>
+    </WorkspaceSurface>
   );
 });

@@ -4,6 +4,7 @@ use axon_api::source::*;
 use axon_core::logging::log_info;
 use serde_json::Value;
 
+use super::acquire::sanitize_provider_error;
 use crate::adapter::Result;
 use crate::boundary::FetchProvider;
 
@@ -25,7 +26,8 @@ pub(crate) async fn acquire_via_fetch(
             prior_last_modified,
             headers,
         ))
-        .await?;
+        .await
+        .map_err(|error| sanitize_provider_error(error, &item.canonical_uri))?;
     if fetched.status == 304 {
         return not_modified_item(
             item,
@@ -89,7 +91,7 @@ fn not_modified_item(
     }
     log_info(&format!(
         "web_etag_conditional: 304 Not Modified for {} — reusing prior committed content if available",
-        item.canonical_uri,
+        crate::web_engine::engine::url_utils::sanitize_url_for_reporting(&item.canonical_uri),
     ));
     Ok(Some(AcquiredSourceItem {
         manifest_item: item.clone(),
@@ -106,16 +108,18 @@ fn not_modified_item(
 }
 
 fn invalid_unconditional_304(item: &ManifestItem, cache_policy: CachePolicy) -> ApiError {
+    let report_uri =
+        crate::web_engine::engine::url_utils::sanitize_url_for_reporting(&item.canonical_uri);
     ApiError::new(
         "web.fetch.invalid_304_without_validator",
         ErrorStage::Fetching,
         format!(
             "received 304 Not Modified for {} without sending a prior validator",
-            item.canonical_uri
+            report_uri
         ),
     )
     .with_source_id(item.source_id.0.clone())
-    .with_context("uri", item.canonical_uri.clone())
+    .with_context("uri", report_uri)
     .with_context("cache_policy", format!("{cache_policy:?}").to_lowercase())
     .with_context(
         "has_web_prior_etag",

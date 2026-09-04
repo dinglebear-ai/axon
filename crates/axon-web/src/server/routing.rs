@@ -1,6 +1,6 @@
 use super::handlers;
 use super::state::AppState;
-use super::types::{ASK_BODY_LIMIT, MEMORY_IMPORT_EXPORT_BODY_LIMIT};
+use super::types::MEMORY_IMPORT_EXPORT_BODY_LIMIT;
 use axon_authz::http::AuthPolicy;
 use axon_core::config::Config;
 use axon_services::context::ServiceContext;
@@ -21,10 +21,13 @@ use security::{ScopeRequirement, protect_routes, security_headers};
 #[path = "routing_loopback_guard.rs"]
 mod loopback_guard;
 
+#[path = "routing_ask.rs"]
+mod ask;
 #[path = "routing_codex.rs"]
 mod codex_routes;
 #[path = "routing_resource_tier.rs"]
 mod resource_tier;
+pub(crate) use ask::ask_router;
 
 /// The state type every `/v1` REST subrouter is built over.
 type ServeState = (AppState, Arc<Config>);
@@ -396,31 +399,10 @@ pub(super) async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::rest_capabilities())
 }
 
-/// Router fallback for unrouted paths.
-///
-/// API surfaces (`/v1/*`, `/api/*`) return the contract `ErrorEnvelope` 404 so
-/// clients never receive the SPA `index.html` for a mistyped API route. All
-/// other paths fall through to the static-asset SPA server (which itself serves
-/// `index.html` for client-side routing).
 async fn api_aware_not_found(uri: axum::http::Uri) -> Response {
     let path = uri.path();
     if path.starts_with("/v1/") || path.starts_with("/api/") {
         return super::json::not_found_fallback().await;
     }
     super::super::static_assets::serve_static(uri).await
-}
-
-pub(crate) fn ask_router<S>(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    Router::<S>::new()
-        .route("/v1/ask", post(handlers::v1_ask))
-        .route("/v1/ask/stream", post(handlers::v1_ask_stream))
-        .route("/v1/chat", post(handlers::v1_chat))
-        .route("/v1/chat/stream", post(handlers::v1_chat_stream))
-        .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
-        // RAG and direct-chat handlers share the same service context.
-        .layer(Extension(service_context))
-        .layer(Extension(cfg))
 }

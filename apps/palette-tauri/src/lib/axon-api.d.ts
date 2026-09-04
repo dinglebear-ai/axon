@@ -36,6 +36,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/turns/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["v1_agent_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent/turns/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["v1_agent_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent/turns/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["v1_agent_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agent/turns/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["v1_agent_resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts": {
         parameters: {
             query?: never;
@@ -1640,6 +1704,93 @@ export interface components {
             name: string;
             version: string;
         };
+        AgentApprovalToken: {
+            token: string;
+            toolCallId: string;
+        };
+        AgentCorrelation: {
+            actor: string;
+            auditIds?: string[];
+            executionContextId: string;
+            loadoutId: string;
+            /** Format: int64 */
+            loadoutRevision: number;
+            receiptIds?: string[];
+            requestIds?: string[];
+            service: string;
+            /** Format: int32 */
+            toolCallCount: number;
+            turnId: string;
+        };
+        AgentEvent: {
+            /** @enum {string} */
+            kind: "state";
+            /** Format: int64 */
+            sequence: number;
+            status: components["schemas"]["AgentTurnStatus"];
+        } | {
+            /** @enum {string} */
+            kind: "model_proposal";
+            proposal: components["schemas"]["AgentToolProposal"];
+            /** Format: int64 */
+            sequence: number;
+        } | {
+            decision: string;
+            /** @enum {string} */
+            kind: "axon_decision";
+            /** Format: int64 */
+            sequence: number;
+        } | {
+            audit_id: string;
+            /** @enum {string} */
+            kind: "labby_execution";
+            receipt_id: string;
+            request_id: string;
+            /** Format: int64 */
+            sequence: number;
+            status: string;
+        } | {
+            /** @enum {string} */
+            kind: "tool_result";
+            result: unknown;
+            /** Format: int64 */
+            sequence: number;
+            tool_call_id: string;
+        } | {
+            answer: string;
+            /** @enum {string} */
+            kind: "final";
+            /** Format: int64 */
+            sequence: number;
+        };
+        AgentResumeRequest: {
+            approvalTokens?: components["schemas"]["AgentApprovalToken"][];
+        };
+        AgentToolProposal: {
+            arguments: unknown;
+            contractHash: string;
+            destructive?: boolean;
+            toolCallId: string;
+            toolId: string;
+        };
+        AgentTurnOptions: {
+            approvalTokens?: components["schemas"]["AgentApprovalToken"][];
+            delegationToken: string;
+            /** Format: int32 */
+            maxToolCalls?: number;
+            /** Format: int64 */
+            timeoutMs?: number;
+            turnId?: string | null;
+        };
+        AgentTurnResult: {
+            answer?: string | null;
+            correlation: components["schemas"]["AgentCorrelation"];
+            pendingApproval?: null | components["schemas"]["AgentToolProposal"];
+            status: components["schemas"]["AgentTurnStatus"];
+            turnId: string;
+        };
+        /** @enum {string} */
+        AgentTurnStatus: "pending" | "proposing" | "awaiting_approval" | "executing" | "continuing" | "succeeded" | "failed" | "cancelled" | "timed_out" | "interrupted" | "cancel_unconfirmed";
         /**
          * @description The shared, transport-neutral error shape.
          *
@@ -2473,6 +2624,29 @@ export interface components {
             href: string;
             text: string;
         };
+        LoadoutBinding: {
+            conversationBinding?: string | null;
+            /** Format: int64 */
+            expectedRevision: number;
+            integrationId: string;
+            loadoutId: string;
+        };
+        LoadoutResolution: {
+            catalogGeneration: string;
+            correlationId: string;
+            effectiveCapabilityCount: number;
+            /** Format: int64 */
+            effectiveRevision: number;
+            executionContextId: string;
+            integrationId: string;
+            loadoutId: string;
+            /** Format: int64 */
+            requestedRevision: number;
+            status: components["schemas"]["LoadoutResolutionStatus"];
+            unavailableCapabilityCount: number;
+        };
+        /** @enum {string} */
+        LoadoutResolutionStatus: "effective" | "narrowed";
         LogoVariant: {
             /** @description "favicon" | "apple-touch-icon" | "logo" | "og-image" | "svg" */
             kind: string;
@@ -3223,6 +3397,7 @@ export interface components {
         /** @enum {string} */
         ResponseMode: "auto" | "summary" | "full" | "inline" | "artifact" | "path" | "job_only";
         RestAskRequest: {
+            agent?: null | components["schemas"]["AgentTurnOptions"];
             /** Format: double */
             ask_authoritative_boost?: number | null;
             ask_authoritative_domains?: string[] | null;
@@ -3242,6 +3417,7 @@ export interface components {
             diagnostics?: boolean | null;
             explain?: boolean | null;
             hybrid_search?: boolean | null;
+            loadout?: null | components["schemas"]["LoadoutBinding"];
             query: string;
             since?: string | null;
         };
@@ -3249,10 +3425,15 @@ export interface components {
             url: string;
         };
         RestChatRequest: {
+            agent?: null | components["schemas"]["AgentTurnOptions"];
+            loadout?: null | components["schemas"]["LoadoutBinding"];
             message: string;
+            session_id?: string | null;
         };
         RestChatResponse: {
+            agent?: null | components["schemas"]["AgentTurnResult"];
             answer: string;
+            loadout?: null | components["schemas"]["LoadoutResolution"];
             message: string;
             model?: string | null;
         };
@@ -3946,6 +4127,191 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadinessBody"];
+                };
+            };
+        };
+    };
+    v1_agent_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTurnResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    v1_agent_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTurnResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    v1_agent_events: {
+        parameters: {
+            query?: {
+                after?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered durable agent events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    v1_agent_resume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentResumeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTurnResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

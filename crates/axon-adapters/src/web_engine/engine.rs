@@ -13,7 +13,7 @@ mod summary;
 #[path = "engine_tests.rs"]
 mod tests;
 mod thin_refetch;
-mod url_utils;
+pub(crate) mod url_utils;
 mod waf;
 
 use crate::web_engine::manifest::ManifestEntry;

@@ -23,6 +23,10 @@ use super::{
 };
 use axon_core::logging::log_warn;
 
+pub(super) fn sanitized_url_for_log(raw: &str) -> String {
+    super::url_utils::sanitize_url_for_reporting(raw)
+}
+
 /// Extract the host of a URL for the rate-limit banner; empty string on parse failure.
 fn host_of(url: &str) -> String {
     url::Url::parse(url)
@@ -114,9 +118,10 @@ async fn apply_page_outcome(
         }
         PageOutcome::Empty => return Ok(true),
         PageOutcome::Challenged { ref vendor } => {
+            let log_url = sanitized_url_for_log(url);
             tracing::warn!(
                 vendor = %vendor,
-                url = %url,
+                url = %log_url,
                 "antibot.skipped: challenge page not embedded"
             );
             summary.push_diagnostic(
@@ -125,7 +130,7 @@ async fn apply_page_outcome(
                     "challenge_detected",
                     format!("challenge from {vendor}"),
                 )
-                .with_url(url.to_string()),
+                .with_url(sanitized_url_for_log(url)),
             );
             return Ok(true);
         }
@@ -210,7 +215,7 @@ pub(super) async fn collect_crawl_pages(
         while let Some(r) = chrome_tasks.try_join_next() {
             match r {
                 Ok(res) => chrome_results.push(res),
-                Err(e) => log_warn(&format!("thin_refetch: Chrome task panicked: {e}")),
+                Err(e) => return Err(format!("thin_refetch: Chrome render task failed: {e}")),
             }
         }
 
@@ -231,7 +236,9 @@ pub(super) async fn collect_crawl_pages(
                     )
                     .with_dropped(n),
                 );
-                continue;
+                return Err(format!(
+                    "crawl incomplete: collector dropped {n} pages after broadcast lag"
+                ));
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
         };
@@ -251,13 +258,13 @@ pub(super) async fn collect_crawl_pages(
         .await?;
     }
 
-    drain_chrome_tasks(&mut chrome_tasks, &mut chrome_results).await;
+    drain_chrome_tasks(&mut chrome_tasks, &mut chrome_results).await?;
     manifest
         .flush()
         .await
         .map_err(|e| format!("manifest flush failed: {e}"))?;
     if !chrome_results.is_empty() {
-        summary = write_refetch_results(summary, chrome_results, &col.output_dir).await;
+        summary = write_refetch_results(summary, chrome_results, &col.output_dir).await?;
     }
     if let Some(tx) = col.progress_tx.as_ref() {
         tx.send(summary_with_adaptive(&col, &summary)).await.ok();
@@ -306,7 +313,7 @@ async fn process_received_page(
     let status = page.status_code.as_u16();
     summary.push_event(PageEvent {
         t: crawl_started.elapsed().as_millis() as u64,
-        url: url.clone(),
+        url: sanitized_url_for_log(&url),
         status,
         links: link_count,
     });
@@ -319,7 +326,7 @@ async fn process_received_page(
         }
         axon_core::logging::log_info(&format!(
             "skip: {} (HTTP {})",
-            url,
+            sanitized_url_for_log(&url),
             page.status_code.as_u16()
         ));
         summary.error_pages += 1;
@@ -329,7 +336,7 @@ async fn process_received_page(
                 "http_status",
                 format!("skipped page with HTTP {}", page.status_code.as_u16()),
             )
-            .with_url(url.clone())
+            .with_url(sanitized_url_for_log(&url))
             .with_http_status(page.status_code.as_u16()),
         );
         emit_progress(col, summary, last_progress).await;

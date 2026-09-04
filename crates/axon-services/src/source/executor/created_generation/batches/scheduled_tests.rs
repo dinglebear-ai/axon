@@ -44,3 +44,33 @@ async fn consumer_failure_cancels_producer_and_preserves_primary_error() {
     assert!(message.starts_with("consumer failed first"));
     assert!(message.contains("producer observed cancellation"));
 }
+
+#[tokio::test]
+async fn producer_failure_bounds_non_cooperative_consumer_settlement() {
+    let cancel = CancellationToken::new();
+    let error = join_cancel_on_error(
+        async { anyhow::bail!("producer failed first") },
+        std::future::pending::<anyhow::Result<()>>(),
+        &cancel,
+    )
+    .await
+    .expect_err("non-cooperative counterpart must be bounded");
+    let message = format!("{error:#}");
+    assert!(message.starts_with("producer failed first"));
+    assert!(message.contains("consumer cancellation did not settle"));
+}
+
+#[tokio::test]
+async fn consumer_failure_bounds_non_cooperative_producer_settlement() {
+    let cancel = CancellationToken::new();
+    let error = join_cancel_on_error(
+        std::future::pending::<anyhow::Result<()>>(),
+        async { anyhow::bail!("consumer failed first") },
+        &cancel,
+    )
+    .await
+    .expect_err("non-cooperative counterpart must be bounded");
+    let message = format!("{error:#}");
+    assert!(message.starts_with("consumer failed first"));
+    assert!(message.contains("producer cancellation did not settle"));
+}

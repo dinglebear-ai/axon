@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "xtask",
+    "xtask-release",
     "crates/axon-error",
     "crates/axon-api",
     "crates/axon-authz",

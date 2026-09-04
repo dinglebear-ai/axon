@@ -66,9 +66,17 @@ pub struct TargetLocalSourceRuntime {
     pub vector_provider_id: ProviderId,
     pub embedding_model: String,
     pub embedding_dimensions: u32,
+    pub(crate) verified_embedding:
+        tokio::sync::watch::Receiver<Option<Arc<target_runtime::VerifiedEmbeddingPlane>>>,
     pub document_preparer: DocumentPreparer,
     pub document_prepare_concurrency: usize,
+    pub document_prepare_max_in_flight_bytes: usize,
     pub embed_pool_max_inputs: usize,
+    pub document_batch_size: usize,
+    pub document_status_batch_size: usize,
+    pub embed_scheduler_enabled: bool,
+    pub embed_scheduler_flush_delay: std::time::Duration,
+    pub vector_upsert_embed_overlap: bool,
     pub(crate) db_stage_slots: Arc<Semaphore>,
     pub embedding_scheduler: Option<Arc<ProviderScheduler>>,
     pub vector_scheduler: Option<Arc<ProviderScheduler>>,
@@ -101,6 +109,20 @@ pub struct TargetLocalSourceRuntime {
 }
 
 impl TargetLocalSourceRuntime {
+    pub(crate) async fn verified_embedding_plane(
+        &self,
+    ) -> anyhow::Result<Arc<target_runtime::VerifiedEmbeddingPlane>> {
+        let mut receiver = self.verified_embedding.clone();
+        loop {
+            if let Some(plane) = receiver.borrow().clone() {
+                return Ok(plane);
+            }
+            receiver
+                .changed()
+                .await
+                .map_err(|_| anyhow::anyhow!("embedding identity verification task stopped"))?;
+        }
+    }
     pub fn with_artifact_candidate_sink(mut self, sink: Arc<dyn ArtifactCandidateSink>) -> Self {
         self.artifact_candidate_sink = sink;
         self
@@ -136,6 +158,16 @@ impl TargetLocalSourceRuntime {
             Arc::clone(&render_provider),
         ));
         let db_stage_slots = Arc::new(Semaphore::new(1));
+        let (verified_sender, verified_embedding) = tokio::sync::watch::channel(None);
+        let plane = Arc::new(target_runtime::VerifiedEmbeddingPlane {
+            provider: Arc::clone(&embedding_provider),
+            identity: target_runtime::EmbeddingIdentity {
+                model: embedding_model.into(),
+                dimensions: embedding_dimensions,
+                verified: true,
+            },
+        });
+        verified_sender.send_replace(Some(plane.clone()));
         Self {
             jobs,
             ledger: Arc::new(DbLimitedLedgerStore::new(
@@ -153,11 +185,18 @@ impl TargetLocalSourceRuntime {
             sqlite_write_gate: SqliteWriteGate::default(),
             embedding_cache_store: None,
             embedding_provider_id,
-            embedding_model: embedding_model.into(),
+            embedding_model: plane.identity.model.clone(),
             embedding_dimensions,
+            verified_embedding,
             document_preparer: DocumentPreparer::default(),
             document_prepare_concurrency: 1,
+            document_prepare_max_in_flight_bytes: 64 * 1024 * 1024,
             embed_pool_max_inputs: 512,
+            document_batch_size: 16,
+            document_status_batch_size: 64,
+            embed_scheduler_enabled: true,
+            embed_scheduler_flush_delay: std::time::Duration::from_millis(1_500),
+            vector_upsert_embed_overlap: true,
             db_stage_slots,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),

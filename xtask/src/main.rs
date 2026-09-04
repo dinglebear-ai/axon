@@ -90,62 +90,12 @@ enum Command {
     GeneratedContracts(generated_contracts::GeneratedContractsArgs),
     /// Generate/check presentation-token artifacts (colors/typography/spacing/icons).
     Presentation(presentation::PresentationArgs),
-    /// Verify all releasable components have valid versions and changed shipping paths have bumps.
-    CheckReleaseVersions {
-        #[arg(long)]
-        base: Option<String>,
-        #[arg(long, default_value = "HEAD")]
-        head: String,
-        #[arg(long, value_enum, default_value = "pr")]
-        mode: checks::release_versions::GateMode,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Print the release plan consumed by GitHub Actions.
-    ReleasePlan {
-        #[arg(long)]
-        base: Option<String>,
-        #[arg(long, default_value = "HEAD")]
-        head: String,
-        #[arg(long, value_enum, default_value = "pr")]
-        mode: checks::release_versions::GateMode,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Manually bump one component's version-bearing files. Only `cli` is
-    /// expected to need this — see the doc comment on
-    /// `checks::release_versions::bump_component_version`.
-    BumpVersion {
-        #[arg(long, default_value = "cli")]
-        component: String,
-        #[arg(value_enum)]
-        level: checks::release_versions::BumpLevel,
-    },
-    /// Apply release-please postprocessing for files it cannot update directly.
-    ReleasePleaseFixups {
-        #[arg(long)]
-        component: String,
-        #[arg(long)]
-        version: String,
-        #[arg(long, default_value = "origin/main")]
-        base: String,
-    },
-    /// Print release-please postprocessing needed for a release PR branch diff.
-    ReleasePleaseFixupPlan {
-        #[arg(long)]
-        base: String,
-        #[arg(long, default_value = "HEAD")]
-        head: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Print the artifact workflow dispatch plan from release-please outputs.
-    ReleasePleaseDispatchPlan {
-        #[arg(long)]
-        release_outputs: String,
-        #[arg(long)]
-        json: bool,
-    },
+    /// Release gating, version bumping, and release-please postprocessing.
+    /// Implemented in the `xtask-release` package so CI can run these without
+    /// compiling the product; flattened here so `cargo xtask <command>` is
+    /// unchanged.
+    #[command(flatten)]
+    Release(xtask_release::ReleaseCommand),
     /// Benchmark embedding a local corpus through axon, TEI, and Qdrant.
     BenchEmbed {
         /// File or directory to embed.
@@ -245,55 +195,7 @@ fn main() -> Result<()> {
         Command::Docs(args) => docs::run(&root, args),
         Command::GeneratedContracts(args) => generated_contracts::run(&root, args),
         Command::Presentation(args) => presentation::run(&root, args),
-        Command::CheckReleaseVersions {
-            base,
-            head,
-            mode,
-            json,
-        } => Ok(checks::release_versions::check(
-            &root,
-            base.as_deref(),
-            &head,
-            mode,
-            json,
-        )?),
-        Command::ReleasePlan {
-            base,
-            head,
-            mode,
-            json,
-        } => {
-            let plans = checks::release_versions::plan(&root, base.as_deref(), &head, mode)?;
-            checks::release_versions::print_plans(&plans, json)?;
-            Ok(())
-        }
-        Command::BumpVersion { component, level } => Ok(
-            checks::release_versions::bump_component_version(&root, &component, level)?,
-        ),
-        Command::ReleasePleaseFixups {
-            component,
-            version,
-            base,
-        } => Ok(checks::release_versions::release_please_fixups(
-            &root,
-            &component,
-            &version,
-            Some(&base),
-        )?),
-        Command::ReleasePleaseFixupPlan { base, head, json } => {
-            let items = checks::release_versions::release_please_fixup_plan(&root, &base, &head)?;
-            checks::release_versions::print_release_please_fixup_plan(&items, json)?;
-            Ok(())
-        }
-        Command::ReleasePleaseDispatchPlan {
-            release_outputs,
-            json,
-        } => {
-            let items =
-                checks::release_versions::release_please_dispatch_plan(&root, &release_outputs)?;
-            checks::release_versions::print_release_please_dispatch_plan(&items, json)?;
-            Ok(())
-        }
+        Command::Release(command) => Ok(xtask_release::run(&root, command)?),
         Command::BenchEmbed {
             corpus,
             axon_bin,

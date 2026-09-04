@@ -1,6 +1,6 @@
-import { memo } from "react";
 import { AlertTriangle, Route, ServerCrash } from "lucide-react";
-
+import { memo } from "react";
+import { WorkspaceHeader, WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
 import type { PaletteResult } from "@/lib/axonClient";
 import { arrField, strField, unwrapPayload } from "@/lib/payload";
 
@@ -9,38 +9,34 @@ interface ErrorResultViewProps {
   text: string;
 }
 
-export const ErrorResultView = memo(function ErrorResultView({ result, text }: ErrorResultViewProps) {
+export const ErrorResultView = memo(function ErrorResultView({
+  result,
+  text,
+}: ErrorResultViewProps) {
   const payload = unwrapPayload(result.payload);
   const message = errorMessage(payload, text);
-  const kind = strField(payload, "kind") ?? strField(payload, "code") ?? (result.status ? "request_failed" : "client_error");
+  const kind =
+    strField(payload, "kind") ??
+    strField(payload, "code") ??
+    (result.status ? "request_failed" : "client_error");
   const details = detailRows(payload);
 
   return (
     // T-M1: role="alert" so the failure is announced assertively to screen readers
     // the moment it replaces the running/streaming output.
-    <div className="output-body operation-view aurora-scrollbar" role="alert">
-      <section className="operation-hero operation-hero-error">
-        <div className="operation-hero-icon">
-          <ServerCrash size={16} />
-        </div>
-        <div className="operation-hero-main">
-          <h3>{humanizeKind(kind)}</h3>
-          <div className="operation-metrics">
-            <span>
-              <strong>{result.status || "local"}</strong>
-              status
-            </span>
-            <span>
-              <strong>{result.method}</strong>
-              method
-            </span>
-            <span>
-              <strong>{result.path}</strong>
-              path
-            </span>
-          </div>
-        </div>
-      </section>
+    <WorkspaceSurface className="output-body operation-view error-workspace">
+      <div role="alert">
+        <WorkspaceHeader
+          icon={ServerCrash}
+          eyebrow="Action Failed"
+          title={humanizeKind(kind)}
+          description="Review the corrective action and request details below."
+          metrics={[
+            { label: "Status", value: result.status || "Local" },
+            { label: "Method", value: result.method },
+          ]}
+        />
+      </div>
 
       <section className="operation-section">
         <div className="operation-error-card">
@@ -58,7 +54,7 @@ export const ErrorResultView = memo(function ErrorResultView({ result, text }: E
             {details.map(([label, value]) => (
               <div key={label} className="operation-detail-line">
                 <span>{label}</span>
-                <strong className={isMonoLabel(label) ? "operation-mono" : undefined}>{value}</strong>
+                <strong>{value}</strong>
               </div>
             ))}
           </div>
@@ -68,21 +64,29 @@ export const ErrorResultView = memo(function ErrorResultView({ result, text }: E
       <section className="operation-section">
         <div className="operation-route-card">
           <Route size={14} />
-          <code>
+          <span>
             {result.method} {result.path}
-          </code>
+          </span>
         </div>
       </section>
-    </div>
+    </WorkspaceSurface>
   );
 });
 
 function errorMessage(payload: Record<string, unknown>, text: string): string {
-  return strField(payload, "message") ?? strField(payload, "error") ?? strField(payload, "detail") ?? text.trim() ?? "The action failed.";
+  return (
+    strField(payload, "message") ??
+    strField(payload, "error") ??
+    strField(payload, "detail") ??
+    text.trim() ??
+    "The action failed."
+  );
 }
 
 function detailRows(payload: Record<string, unknown>): Array<[string, string]> {
-  const valid = arrField(payload, "valid").filter((item): item is string => typeof item === "string");
+  const valid = arrField(payload, "valid").filter(
+    (item): item is string => typeof item === "string",
+  );
   const rows: Array<[string, string]> = [];
   for (const key of ["param", "hint", "retry_after_ms", "request_id", "url", "job_id"]) {
     const value = payload[key];
@@ -120,11 +124,8 @@ function labelize(value: string): string {
     .replace(/_/g, " ")
     .split(" ")
     .filter(Boolean)
-    .map((part) => (part.length <= 2 ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1)))
+    .map((part) =>
+      part.length <= 2 ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1),
+    )
     .join(" ");
-}
-
-function isMonoLabel(label: string): boolean {
-  const lower = label.toLowerCase();
-  return lower.includes("id") || lower.includes("url") || lower.includes("request");
 }

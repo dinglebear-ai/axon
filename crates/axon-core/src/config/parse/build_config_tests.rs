@@ -431,7 +431,7 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nprep-concurrency = 3\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
+        "[providers.embedding]\nmax-concurrent-requests = 7\nmax-in-flight-inputs = 240\ncache-enabled = true\ncache-max-entries = 250000\npool-max-inputs = 640\nscheduler-enabled = false\nvector-upsert-overlap-enabled = false\nprep-concurrency = 3\nprep-max-in-flight-bytes = 33554432\nscheduler-flush-ms = 2500\nmax-chunks-per-doc = 50\nmax-source-chunks-per-doc = 75\ndedupe-exact-chunks = false\nopenai-model = \"from-toml\"\nopenai-max-client-batch-size = 24\nopenai-max-concurrent = 12\nopenai-max-in-flight-inputs = 256\nopenai-pool-max-inputs = 768\n"
     )
     .unwrap();
 
@@ -443,6 +443,10 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC",
             "AXON_EMBED_CACHE_ENABLED",
             "AXON_EMBED_CACHE_MAX_ENTRIES",
+            "AXON_EMBED_SCHEDULER_ENABLED",
+            "AXON_VECTOR_UPSERT_EMBED_OVERLAP",
+            "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+            "AXON_EMBED_SCHEDULER_FLUSH_MS",
         ],
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
@@ -451,6 +455,10 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             env::set_var("AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC", "0");
             env::remove_var("AXON_EMBED_CACHE_ENABLED");
             env::set_var("AXON_EMBED_CACHE_MAX_ENTRIES", "300000");
+            env::remove_var("AXON_EMBED_SCHEDULER_ENABLED");
+            env::remove_var("AXON_VECTOR_UPSERT_EMBED_OVERLAP");
+            env::set_var("AXON_PREP_MAX_IN_FLIGHT_BYTES", "16777216");
+            env::set_var("AXON_EMBED_SCHEDULER_FLUSH_MS", "3250");
 
             let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
 
@@ -459,7 +467,11 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert!(cfg.embed_cache_enabled);
             assert_eq!(cfg.embed_cache_max_entries, 300_000);
             assert_eq!(cfg.embed_pool_max_inputs, 640);
+            assert!(!cfg.embed_scheduler_enabled);
+            assert!(!cfg.vector_upsert_embed_overlap);
             assert_eq!(cfg.embed_prep_concurrency, 3);
+            assert_eq!(cfg.embed_prep_max_in_flight_bytes, 16_777_216);
+            assert_eq!(cfg.embed_scheduler_flush_ms, 3_250);
             assert_eq!(cfg.embed_max_chunks_per_doc, Some(50));
             assert_eq!(cfg.embed_max_source_chunks_per_doc, None);
             assert!(!cfg.embed_dedupe_exact_chunks);
@@ -468,8 +480,128 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
             assert_eq!(cfg.openai_embed_max_concurrent, 16);
             assert_eq!(cfg.openai_embed_max_in_flight_inputs, 256);
             assert_eq!(cfg.openai_embed_pool_max_inputs, 768);
+
+            env::set_var("AXON_EMBED_SCHEDULER_ENABLED", "true");
+            env::set_var("AXON_VECTOR_UPSERT_EMBED_OVERLAP", "true");
+            let overridden = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+            assert!(overridden.embed_scheduler_enabled);
+            assert!(overridden.vector_upsert_embed_overlap);
         },
     );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn preparation_byte_and_scheduler_flush_limits_cover_defaults_clamps_and_malformed_env() {
+    let _guard = env_guard();
+    with_env_saved(
+        &[
+            "AXON_PREP_MAX_IN_FLIGHT_BYTES",
+            "AXON_EMBED_SCHEDULER_FLUSH_MS",
+        ],
+        || unsafe {
+            env::remove_var("AXON_PREP_MAX_IN_FLIGHT_BYTES");
+            env::remove_var("AXON_EMBED_SCHEDULER_FLUSH_MS");
+            let defaults =
+                into_config_via_args(&["extract", "https://example.com"]).expect("default config");
+            assert_eq!(defaults.embed_prep_max_in_flight_bytes, 64 * 1024 * 1024);
+            assert_eq!(defaults.embed_scheduler_flush_ms, 1_500);
+
+            env::set_var("AXON_PREP_MAX_IN_FLIGHT_BYTES", "1");
+            env::set_var("AXON_EMBED_SCHEDULER_FLUSH_MS", "0");
+            let minimum =
+                into_config_via_args(&["extract", "https://example.com"]).expect("minimum config");
+            assert_eq!(minimum.embed_prep_max_in_flight_bytes, 1024 * 1024);
+            assert_eq!(minimum.embed_scheduler_flush_ms, 0);
+
+            env::set_var("AXON_PREP_MAX_IN_FLIGHT_BYTES", u64::MAX.to_string());
+            env::set_var("AXON_EMBED_SCHEDULER_FLUSH_MS", "999999");
+            let maximum =
+                into_config_via_args(&["extract", "https://example.com"]).expect("maximum config");
+            assert_eq!(maximum.embed_prep_max_in_flight_bytes, u32::MAX as usize);
+            assert_eq!(maximum.embed_scheduler_flush_ms, 5_000);
+
+            env::set_var("AXON_PREP_MAX_IN_FLIGHT_BYTES", "not-a-number");
+            env::set_var("AXON_EMBED_SCHEDULER_FLUSH_MS", "not-a-number");
+            let malformed = into_config_via_args(&["extract", "https://example.com"])
+                .expect("malformed env falls back to defaults");
+            assert_eq!(malformed.embed_prep_max_in_flight_bytes, 64 * 1024 * 1024);
+            assert_eq!(malformed.embed_scheduler_flush_ms, 1_500);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn document_batch_size_is_typed_and_hard_bounded() {
+    let _guard = env_guard();
+    with_env_saved(&["AXON_DOCUMENT_BATCH_SIZE"], || unsafe {
+        env::remove_var("AXON_DOCUMENT_BATCH_SIZE");
+        let defaults =
+            into_config_via_args(&["extract", "https://example.com"]).expect("default config");
+        assert_eq!(defaults.document_batch_size, 16);
+
+        env::set_var("AXON_DOCUMENT_BATCH_SIZE", "32");
+        let configured =
+            into_config_via_args(&["extract", "https://example.com"]).expect("configured batch");
+        assert_eq!(configured.document_batch_size, 32);
+
+        for invalid in ["not-a-number", "0", "1025"] {
+            env::set_var("AXON_DOCUMENT_BATCH_SIZE", invalid);
+            let error = into_config_via_args(&["extract", "https://example.com"])
+                .expect_err("invalid document batch size must fail startup");
+            assert!(error.contains("AXON_DOCUMENT_BATCH_SIZE"), "{error}");
+        }
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn document_status_batch_size_is_typed_and_hard_bounded() {
+    let _guard = env_guard();
+    with_env_saved(&["AXON_DOCUMENT_STATUS_BATCH_SIZE"], || unsafe {
+        env::remove_var("AXON_DOCUMENT_STATUS_BATCH_SIZE");
+        let defaults =
+            into_config_via_args(&["extract", "https://example.com"]).expect("default config");
+        assert_eq!(defaults.document_status_batch_size, 64);
+
+        env::set_var("AXON_DOCUMENT_STATUS_BATCH_SIZE", "128");
+        let configured =
+            into_config_via_args(&["extract", "https://example.com"]).expect("configured batch");
+        assert_eq!(configured.document_status_batch_size, 128);
+
+        for invalid in ["not-a-number", "0", "4097"] {
+            env::set_var("AXON_DOCUMENT_STATUS_BATCH_SIZE", invalid);
+            let error = into_config_via_args(&["extract", "https://example.com"])
+                .expect_err("invalid document status batch size must fail startup");
+            assert!(error.contains("AXON_DOCUMENT_STATUS_BATCH_SIZE"), "{error}");
+        }
+    });
+}
+
+#[cfg(unix)]
+#[allow(unsafe_code)]
+#[test]
+fn throughput_batch_env_rejects_non_unicode_without_echoing_bytes() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let _guard = env_guard();
+    for key in [
+        "AXON_DOCUMENT_BATCH_SIZE",
+        "AXON_DOCUMENT_STATUS_BATCH_SIZE",
+    ] {
+        with_env_saved(&[key], || unsafe {
+            env::set_var(key, std::ffi::OsString::from_vec(vec![b'1', 0xff, b'6']));
+            let error = into_config_via_args(&["extract", "https://example.com"])
+                .expect_err("non-Unicode throughput configuration must fail startup");
+            assert!(error.contains(key), "{error}");
+            assert!(error.contains("valid Unicode"), "{error}");
+            assert!(
+                !error.contains("255"),
+                "raw bytes must not be rendered: {error}"
+            );
+        });
+    }
 }
 
 #[allow(unsafe_code)]

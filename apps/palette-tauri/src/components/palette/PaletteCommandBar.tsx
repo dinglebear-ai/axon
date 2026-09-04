@@ -5,12 +5,14 @@ import { actionIcon } from "@/components/palette/ActionIcon";
 import { AskSessionMenu } from "@/components/palette/AskSessionMenu";
 import { AxonMark } from "@/components/palette/AxonMark";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
+import { LoadoutSelector } from "@/components/palette/labby/LoadoutSelector";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { Kbd } from "@/components/ui/aurora/kbd";
 import { actionDisplayMeta } from "@/lib/actionMeta";
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import type { PaletteConfig } from "@/lib/axonClient";
+import { appWindow } from "@/lib/invoke";
 import { argumentPlaceholder, focusInput, sortActionsForDisplay } from "@/lib/paletteView";
 
 interface PaletteCommandBarProps {
@@ -198,6 +200,16 @@ export function PaletteCommandBar({
     // biome-ignore lint/a11y/noStaticElementInteractions: command-bar is a layout container; double-click toggles window chrome, not an interactive widget
     <section
       className="command-bar"
+      onMouseDown={(event) => {
+        if (mobile || event.button !== 0) return;
+        if (
+          (event.target as HTMLElement).closest(
+            "button, input, a, select, textarea, [role='button'], [contenteditable='true']",
+          )
+        )
+          return;
+        void appWindow.startDragging();
+      }}
       onDoubleClick={(event) => {
         if ((event.target as HTMLElement).closest("input, button, a")) return;
         onToggleMaximize();
@@ -232,6 +244,11 @@ export function PaletteCommandBar({
         </span>
       </Button>
       <span className="axon-divider" aria-hidden="true" />
+      {(modeAction?.subcommand === "ask" || modeAction?.subcommand === "chat") && (
+        <LoadoutSelector
+          profile={config?.backendProfiles?.find((profile) => profile.product === "labby") ?? null}
+        />
+      )}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: click-to-focus convenience; the real control is the command input within */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users focus the input directly; this wrapper only expands the pointer target */}
       <div
@@ -325,13 +342,17 @@ export function PaletteCommandBar({
         )}
         <Input
           unstyled
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           onFocus={() => {
             if (modeAction?.subcommand === "ask" && askSessions.length > 0)
               onAskSessionsOpenChange(true);
           }}
-          onKeyDown={onCommandInputKeyDown}
+          onKeyDownCapture={onCommandInputKeyDown}
           placeholder={
             modeAction
               ? argumentPlaceholder(modeAction)
