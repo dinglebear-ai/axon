@@ -43,7 +43,7 @@ use std::sync::{Arc, LazyLock, Mutex, OnceLock, Weak};
 use axon_api::source::*;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use qdrant_client::Qdrant;
-use tokio::sync::{Mutex as AsyncMutex, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
 // Re-export the request-shape conversion helpers exercised by the crate's
 // contract tests and any transport that needs the typed builders.
@@ -91,8 +91,6 @@ struct QdrantParallelismGates {
 
 static PARALLELISM_GATES: LazyLock<Mutex<HashMap<ParallelismKey, Weak<QdrantParallelismGates>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-static BULK_LOAD_USERS: LazyLock<AsyncMutex<HashMap<String, Arc<AsyncMutex<usize>>>>> =
-    LazyLock::new(|| AsyncMutex::new(HashMap::new()));
 
 fn shared_parallelism_gates(
     url: &str,

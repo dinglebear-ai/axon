@@ -412,6 +412,26 @@ async fn swapping_root_before_remove_never_unlinks_external_target() {
     assert!(displaced.join(token.0.file_name().unwrap()).exists());
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn windows_root_replacement_refuses_path_based_remove() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("journal");
+    let token = persist(&root, &work()).await.unwrap();
+    let displaced = temp.path().join("displaced");
+    std::fs::rename(&root, &displaced).unwrap();
+    std::fs::create_dir(&root).unwrap();
+    let replacement = root.join(token.0.file_name().unwrap());
+    std::fs::write(&replacement, b"sentinel").unwrap();
+
+    remove(&token)
+        .await
+        .expect_err("replacement root must be rejected");
+
+    assert_eq!(std::fs::read(&replacement).unwrap(), b"sentinel");
+    assert!(displaced.join(token.0.file_name().unwrap()).exists());
+}
+
 #[tokio::test]
 async fn copied_record_with_noncanonical_name_is_quarantined_without_delete() {
     let temp = tempfile::tempdir().unwrap();

@@ -15,6 +15,22 @@ fn architecture_docs_delegate_volatile_workspace_facts_to_cargo_manifest() {
 }
 
 #[test]
+fn contributor_guide_matches_local_and_external_qdrant_recipes() {
+    let guide = fs::read_to_string("CLAUDE.md").unwrap();
+    assert!(
+        guide.contains(
+            "just services-up # start self-contained local infra (Qdrant + TEI + Chrome)"
+        )
+    );
+    assert!(
+        guide
+            .contains("just services-up-external-qdrant # start TEI + Chrome with external Qdrant")
+    );
+    assert!(!guide.contains("services-up deliberately skips axon-qdrant"));
+    assert!(!guide.contains("just services-up # start local infra (TEI + Chrome; NOT Qdrant)"));
+}
+
+#[test]
 fn retrieval_full_document_port_has_no_concrete_qdrant_dependency() {
     let boundary = fs::read_to_string("crates/axon-retrieval/src/retrieve.rs").unwrap();
     assert!(!boundary.contains("QdrantVectorStore"));
@@ -104,6 +120,20 @@ fn native_release_requires_signed_linux_artifact_before_publication() {
         !publish.contains("Attach signature to release (when present)"),
         "publication must not treat release authenticity as optional"
     );
+}
+
+#[test]
+fn windows_build_runs_secure_artifact_cleanup_journal_tests() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let windows = workflow_job_block(workflow, "windows-build");
+    assert!(windows.contains("Test Windows secure artifact cleanup journal"));
+    assert!(windows.contains(
+        "cargo test --release --locked -p axon-services artifact_cleanup_journal --no-fail-fast"
+    ));
+    assert!(windows.contains("Test Windows Qdrant bulk-load journal"));
+    assert!(windows.contains(
+        "cargo test --release --locked -p axon-vectors qdrant::bulk_load::tests --no-fail-fast"
+    ));
 }
 
 #[test]

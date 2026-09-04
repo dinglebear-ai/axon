@@ -74,3 +74,35 @@ fn adapter_cleanup_propagates_thread_spawn_failure() {
 
     assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
 }
+
+#[tokio::test]
+async fn queue_summary_propagates_runtime_construction_failure() {
+    let runtime = crate::test_support::sqlite_test_runtime().await.unwrap();
+    let result = spawn_queue_summary_logger_with_runtime(
+        runtime.runtime,
+        1,
+        Err(std::io::Error::other("injected queue runtime failure")),
+        "axon-queue-summary-test",
+    );
+    let error = match result {
+        Ok(_) => panic!("runtime failure must be visible"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("injected queue runtime failure"));
+}
+
+#[tokio::test]
+async fn queue_summary_propagates_thread_spawn_failure() {
+    let jobs = crate::test_support::sqlite_test_runtime().await.unwrap();
+    let result = spawn_queue_summary_logger_with_runtime(
+        jobs.runtime,
+        1,
+        Err(std::io::Error::other("unused runtime")),
+        "invalid\0name",
+    );
+    let error = match result {
+        Ok(_) => panic!("thread spawn failure must be visible"),
+        Err(error) => error,
+    };
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+}

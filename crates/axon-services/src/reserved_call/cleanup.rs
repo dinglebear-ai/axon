@@ -169,7 +169,8 @@ pub async fn drain_source_cleanup_debt(
     counts: &crate::source::result_map::IndexCounts,
 ) -> DebtDrainSummary {
     let (graph_store, memory_store) = crate::source::open_cleanup_debt_stores(ctx).await;
-    let registry = runtime.source_adapter_registry(ctx).await.ok();
+    let registry_result = runtime.source_adapter_registry(ctx).await;
+    let registry = registry_result.as_ref().ok().copied();
     let drain = CleanupDrainContext {
         runtime: Arc::new(runtime.clone()),
         graph_store,
@@ -177,7 +178,59 @@ pub async fn drain_source_cleanup_debt(
         registry,
         collection,
     };
-    drain_with_context(&drain, counts).await
+    let mut summary = drain_with_context(&drain, counts).await;
+    if let Err(error) = registry_result {
+        record_registry_construction_failure(runtime, counts, &error, &mut summary).await;
+    }
+    summary
+}
+
+async fn record_registry_construction_failure(
+    runtime: &TargetLocalSourceRuntime,
+    counts: &crate::source::result_map::IndexCounts,
+    error: &anyhow::Error,
+    summary: &mut DebtDrainSummary,
+) {
+    match runtime
+        .ledger
+        .list_pending_cleanup_debt(counts.source_id.clone())
+        .await
+    {
+        Ok(debts) => {
+            let affected = count_adapter_release_debt(debts.iter().map(|debt| debt.kind));
+            mark_registry_failure(summary, affected);
+            if affected > 0 {
+                tracing::warn!(
+                    source_id = %counts.source_id.0,
+                    affected,
+                    code = "source.cleanup.adapter_registry_unavailable",
+                    error = %error,
+                    "adapter cleanup debt remains pending because its registry could not be constructed"
+                );
+            }
+        }
+        Err(enumeration_error) => {
+            summary.failed = summary.failed.saturating_add(1);
+            summary.enumeration_failed = true;
+            tracing::warn!(
+                source_id = %counts.source_id.0,
+                registry_error = %error,
+                error = %enumeration_error.message,
+                "failed to enumerate adapter cleanup debt after registry construction failure"
+            );
+        }
+    }
+}
+
+fn count_adapter_release_debt(kinds: impl IntoIterator<Item = CleanupDebtKind>) -> u64 {
+    kinds
+        .into_iter()
+        .filter(|kind| *kind == CleanupDebtKind::AdapterRelease)
+        .count() as u64
+}
+
+fn mark_registry_failure(summary: &mut DebtDrainSummary, affected: u64) {
+    summary.failed = summary.failed.saturating_add(affected);
 }
 
 pub async fn spawn_cleanup_debt_worker(

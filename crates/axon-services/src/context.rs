@@ -241,9 +241,17 @@ impl ServiceContext {
             jobs: Arc::clone(&jobs),
             target_local_source,
             drain_lock,
-            queue_summary: spawn_workers
-                .then(|| spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs))
-                .flatten(),
+            queue_summary: if spawn_workers {
+                match spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs) {
+                    Ok(task) => task,
+                    Err(error) => {
+                        tracing::warn!(%error, "queue summary monitor failed to start; continuing without it");
+                        None
+                    }
+                }
+            } else {
+                None
+            },
             cleanup_debt: None,
         };
         if spawn_workers && let Some(runtime) = context.target_local_source.as_deref() {
@@ -477,18 +485,47 @@ fn spawn_adapter_cleanup_worker_with_runtime(
 fn spawn_queue_summary_logger(
     jobs: Arc<dyn ServiceJobRuntime>,
     secs: u64,
-) -> Option<Arc<QueueSummaryTask>> {
+) -> std::io::Result<Option<Arc<QueueSummaryTask>>> {
+    spawn_queue_summary_logger_with_runtime(
+        jobs,
+        secs,
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build(),
+        "axon-queue-summary",
+    )
+}
+
+fn spawn_queue_summary_logger_with_runtime(
+    jobs: Arc<dyn ServiceJobRuntime>,
+    secs: u64,
+    runtime: std::io::Result<tokio::runtime::Runtime>,
+    thread_name: &str,
+) -> std::io::Result<Option<Arc<QueueSummaryTask>>> {
     if secs == 0 {
-        return None;
+        return Ok(None);
+    }
+    if thread_name.as_bytes().contains(&0) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "background worker thread name contains a null byte",
+        ));
     }
     let (stop, stopped) = std::sync::mpsc::channel();
+    let (ready, startup) = std::sync::mpsc::sync_channel(1);
     let thread = std::thread::Builder::new()
-        .name("axon-queue-summary".into())
+        .name(thread_name.into())
         .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .expect("queue summary runtime");
+            let runtime = match runtime {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = ready.send(Err(error));
+                    return;
+                }
+            };
+            if ready.send(Ok(())).is_err() {
+                return;
+            }
             loop {
                 match stopped.recv_timeout(Duration::from_secs(secs)) {
                     Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -517,9 +554,20 @@ fn spawn_queue_summary_logger(
                     );
                 });
             }
-        })
-        .ok()?;
-    Some(Arc::new(QueueSummaryTask::new(stop, thread)))
+        })?;
+    match startup.recv() {
+        Ok(Ok(())) => Ok(Some(Arc::new(QueueSummaryTask::new(stop, thread)))),
+        Ok(Err(error)) => {
+            let _ = thread.join();
+            Err(error)
+        }
+        Err(error) => {
+            let _ = thread.join();
+            Err(std::io::Error::other(format!(
+                "queue summary startup handshake failed: {error}"
+            )))
+        }
+    }
 }
 
 async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option<i64> {

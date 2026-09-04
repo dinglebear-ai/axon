@@ -1499,6 +1499,18 @@ compatibility = "warn-env-override"
 reason = "Typed provider embedding preparation concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
+key = "AXON_EMBED_PREPARED_BYTE_BUDGET"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.prepared-byte-budget"
+compatibility = "warn-env-override"
+reason = "Typed prepared-generation memory admission budget is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
 key = "AXON_EMBED_MAX_CHUNKS_PER_DOC"
 classification = "move-toml"
 runtime_placement = "not-runtime"

@@ -21,3 +21,18 @@ fn cleanup_reservations_use_background_cleaning_context_with_unique_fences() {
             .starts_with("cleanup-debt:vector-delete:")
     );
 }
+
+#[test]
+fn registry_construction_failure_cannot_report_zero_for_adapter_debt() {
+    let affected = count_adapter_release_debt([
+        CleanupDebtKind::VectorDelete,
+        CleanupDebtKind::AdapterRelease,
+        CleanupDebtKind::AdapterRelease,
+    ]);
+
+    let mut summary = DebtDrainSummary::default();
+    mark_registry_failure(&mut summary, affected);
+
+    assert_eq!(summary.failed, 2);
+    assert_ne!(summary, DebtDrainSummary::default());
+}

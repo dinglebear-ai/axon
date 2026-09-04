@@ -13,7 +13,7 @@ pub(super) use worker::{
 };
 use worker::{cleanup_artifacts, rollback_untracked_artifacts};
 
-/// Drains cancellation-triggered Qdrant restoration before a process runtime exits.
+/// Drains cancellation-triggered provider cleanup before a process runtime exits.
 pub struct BulkLoadCleanupDrain;
 
 impl Drop for BulkLoadCleanupDrain {
@@ -24,7 +24,7 @@ impl Drop for BulkLoadCleanupDrain {
         if unresolved > 0 {
             tracing::error!(
                 unresolved,
-                "artifact cleanup shutdown has unresolved non-durable work"
+                "artifact cleanup remains unresolved after shutdown drain; durable journals will be replayed on restart"
             );
         }
     }

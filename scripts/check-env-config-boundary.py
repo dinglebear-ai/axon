@@ -199,6 +199,7 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.max-concurrent-requests",
     "providers.embedding.max-in-flight-inputs",
     "providers.embedding.pool-max-inputs",
+    "providers.embedding.prepared-byte-budget",
     "providers.embedding.prep-concurrency",
     "providers.embedding.max-chunks-per-doc",
     "providers.embedding.max-source-chunks-per-doc",
