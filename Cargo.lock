@@ -900,6 +900,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dotenvy",
+ "fs2",
  "futures-util",
  "hex",
  "httpmock",

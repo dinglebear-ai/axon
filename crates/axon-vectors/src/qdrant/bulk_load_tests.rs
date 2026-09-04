@@ -4,6 +4,102 @@ use std::time::Duration;
 use super::*;
 use crate::qdrant::configure_bulk_load;
 
+#[tokio::test]
+async fn journal_setup_failure_releases_owner_and_retry_lowers_threshold() {
+    let server = MockServer::start_async().await;
+    let lower = server
+        .mock_async(|when, then| {
+            when.method("PATCH")
+                .path("/collections/journal-retry")
+                .json_body(serde_json::json!({
+                    "optimizers_config": {"indexing_threshold": 10_485_760}
+                }));
+            then.status(200);
+        })
+        .await;
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    configure_bulk_load(&mut store, true, 10_485_760, 20_000);
+    let key = format!("{}\0journal-retry", server.base_url());
+    let setup_error = ApiError::new(
+        "vector.qdrant.bulk_journal",
+        ErrorStage::Upserting,
+        "injected journal setup failure",
+    );
+
+    store
+        .begin_bulk_load_transition_with_journal("journal-retry", Err(setup_error))
+        .await
+        .expect_err("journal setup must fail the begin");
+    assert!(!BULK_LOAD_USERS.lock().await.contains_key(&key));
+
+    store
+        .begin_bulk_load_transition_with_journal("journal-retry", Ok(None))
+        .await
+        .expect("retry must establish bulk mode");
+    lower.assert_calls_async(1).await;
+    BULK_LOAD_USERS.lock().await.remove(&key);
+}
+
+#[tokio::test]
+async fn failed_lower_and_compensation_retains_journal_for_restart_recovery() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("PATCH")
+                .path("/collections/ambiguous")
+                .json_body(serde_json::json!({
+                    "optimizers_config": {"indexing_threshold": 10_485_760}
+                }));
+            then.status(500);
+        })
+        .await;
+    let failed_restore = server
+        .mock_async(|when, then| {
+            when.method("PATCH")
+                .path("/collections/ambiguous")
+                .json_body(serde_json::json!({
+                    "optimizers_config": {"indexing_threshold": 20_000}
+                }));
+            then.status(500);
+        })
+        .await;
+    let directory = std::env::temp_dir().join(format!(
+        "axon-bulk-failed-compensation-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    configure_bulk_load(&mut store, true, 10_485_760, 20_000);
+
+    store
+        .begin_bulk_load_transition_with_journal("ambiguous", Ok(Some(&journal)))
+        .await
+        .expect_err("lowering and compensation must fail");
+    assert_eq!(journal.pending().expect("pending recovery").len(), 1);
+
+    failed_restore.delete_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("PATCH").path("/collections/ambiguous");
+            then.status(200);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("GET").path("/collections/ambiguous");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"status": "green", "optimizer_status": "ok"}
+            }));
+        })
+        .await;
+    store
+        .recover_bulk_load_transitions_from(&journal)
+        .await
+        .expect("restart recovery must restore normal indexing");
+    assert!(journal.pending().expect("cleared recovery").is_empty());
+    std::fs::remove_dir_all(directory).expect("remove journal directory");
+}
+
 #[test]
 fn bulk_load_journal_survives_reopen_until_restoration_completes() {
     let directory =

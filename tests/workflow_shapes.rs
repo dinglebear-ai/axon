@@ -133,6 +133,35 @@ fn native_release_embeds_the_required_signature_verification_key() {
 }
 
 #[test]
+fn native_release_cleans_signing_key_on_every_exit_path() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    assert!(workflow.contains("all three signing inputs are mandatory"));
+    assert!(!workflow.contains("optional signing secret"));
+    let linux = workflow_job_block(workflow, "axon-linux");
+    let sign = linux
+        .split("- name: Sign artifact (minisign)")
+        .nth(1)
+        .expect("Linux release has a signing step");
+    let umask = sign
+        .find("umask 077")
+        .expect("key files use a private umask");
+    let allocate = sign
+        .find("SIGNING_KEY_FILE=$(mktemp)")
+        .expect("signing key gets a unique secure temporary path");
+    let trap = sign
+        .find("trap 'shred -u \"$SIGNING_KEY_FILE\"' EXIT")
+        .expect("signing key cleanup is registered for every exit path");
+    let create = sign
+        .find("printf '%s' \"$SIGNING_KEY\" > \"$SIGNING_KEY_FILE\"")
+        .expect("signing key is materialized");
+    let verify = sign
+        .find("minisign -V -P \"$AXON_UPDATE_MINISIGN_PUBKEY\"")
+        .expect("generated signature is verified");
+
+    assert!(umask < allocate && allocate < trap && trap < create && create < verify);
+}
+
+#[test]
 fn setup_secrets_are_never_accepted_or_forwarded_as_process_arguments() {
     let setup_args = include_str!("../crates/axon-core/src/config/cli/setup_args.rs");
     let dispatch =

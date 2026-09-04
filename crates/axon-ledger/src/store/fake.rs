@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -17,10 +18,23 @@ use cleanup::{
     record_removed_item_cleanup_debt,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FakeLedgerStore {
     state: Arc<Mutex<FakeLedgerState>>,
     mode: FakeLedgerMode,
+    injected_failure_enabled: Arc<AtomicBool>,
+    cleanup_debt_successes_before_failure: Arc<AtomicI64>,
+}
+
+impl Default for FakeLedgerStore {
+    fn default() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(FakeLedgerState::default())),
+            mode: FakeLedgerMode::Success,
+            injected_failure_enabled: Arc::new(AtomicBool::new(true)),
+            cleanup_debt_successes_before_failure: Arc::new(AtomicI64::new(-1)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -30,6 +44,8 @@ enum FakeLedgerMode {
     PublishFailure,
     HeartbeatLost,
     ReleaseFailure,
+    CommittedGenerationFailure,
+    CleanupDebtWriteFailure,
 }
 
 #[derive(Debug, Default)]
@@ -62,6 +78,27 @@ impl FakeLedgerStore {
 
     pub fn with_release_lease_failure(mut self) -> Self {
         self.mode = FakeLedgerMode::ReleaseFailure;
+        self
+    }
+
+    pub fn with_committed_generation_failure(mut self) -> Self {
+        self.mode = FakeLedgerMode::CommittedGenerationFailure;
+        self
+    }
+
+    pub fn with_cleanup_debt_write_failure(mut self) -> Self {
+        self.mode = FakeLedgerMode::CleanupDebtWriteFailure;
+        self
+    }
+
+    pub fn clear_injected_failure(&self) {
+        self.injected_failure_enabled
+            .store(false, Ordering::Release);
+    }
+
+    pub fn with_cleanup_debt_failure_after(self, successes: usize) -> Self {
+        self.cleanup_debt_successes_before_failure
+            .store(successes as i64, Ordering::Release);
         self
     }
 
@@ -261,6 +298,15 @@ impl LedgerStore for FakeLedgerStore {
         &self,
         source_id: SourceId,
     ) -> Result<Option<SourceGenerationId>> {
+        if self.mode == FakeLedgerMode::CommittedGenerationFailure
+            && self.injected_failure_enabled.load(Ordering::Acquire)
+        {
+            return Err(ApiError::new(
+                "ledger.committed_generation_failed",
+                ErrorStage::Cleaning,
+                "injected committed generation failure",
+            ));
+        }
         generation::committed_generation(&self.state, source_id).await
     }
 
@@ -340,6 +386,31 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
+        let remaining = self
+            .cleanup_debt_successes_before_failure
+            .load(Ordering::Acquire);
+        if remaining == 0 {
+            self.cleanup_debt_successes_before_failure
+                .store(-1, Ordering::Release);
+            return Err(ApiError::new(
+                "ledger.cleanup_debt_write_failed",
+                ErrorStage::Cleaning,
+                "injected cleanup debt write failure",
+            ));
+        }
+        if remaining > 0 {
+            self.cleanup_debt_successes_before_failure
+                .fetch_sub(1, Ordering::AcqRel);
+        }
+        if self.mode == FakeLedgerMode::CleanupDebtWriteFailure
+            && self.injected_failure_enabled.load(Ordering::Acquire)
+        {
+            return Err(ApiError::new(
+                "ledger.cleanup_debt_write_failed",
+                ErrorStage::Cleaning,
+                "injected cleanup debt write failure",
+            ));
+        }
         validate_cleanup_debt(&debt)?;
         let mut state = self.state.lock().await;
         if !state.sources.contains_key(&debt.source_id) {

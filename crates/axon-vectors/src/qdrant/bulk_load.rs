@@ -216,6 +216,29 @@ impl QdrantVectorStore {
     }
 
     async fn begin_bulk_load_transition(&self, collection: &str) -> Result<()> {
+        let journal = configured_journal();
+        match journal {
+            Ok(journal) => {
+                self.begin_bulk_load_transition_with_journal(collection, Ok(journal.as_ref()))
+                    .await
+            }
+            Err(error) => {
+                self.begin_bulk_load_transition_with_journal(collection, Err(error))
+                    .await
+            }
+        }
+    }
+
+    async fn begin_bulk_load_transition_with_journal(
+        &self,
+        collection: &str,
+        journal: Result<Option<&BulkLoadJournal>>,
+    ) -> Result<()> {
+        // LEARNED: reference counts are mutation state, so every fallible setup
+        // exit after admission must release the owner it just registered.
+        // PATTERN: resolve injected/configuration errors before admission, then
+        // explicitly roll back admission if first-owner journal setup fails.
+        let journal = journal?;
         let key = format!("{}\0{collection}", self.url.trim_end_matches('/'));
         let entry = {
             let mut users = BULK_LOAD_USERS.lock().await;
@@ -229,29 +252,45 @@ impl QdrantVectorStore {
         if *count > 1 {
             return Ok(());
         }
-        let journal = configured_journal()?;
-        if let Some(journal) = &journal {
-            let endpoint = self.bulk_journal_endpoint()?;
-            journal
-                .record(&endpoint, collection, self.normal_indexing_threshold)
-                .map_err(|error| {
-                    ApiError::new(
-                        "vector.qdrant.bulk_journal",
-                        ErrorStage::Upserting,
-                        format!("failed to persist bulk-load recovery state: {error}"),
-                    )
-                })?;
+        let journal_setup = if let Some(journal) = journal {
+            self.bulk_journal_endpoint().and_then(|endpoint| {
+                journal
+                    .record(&endpoint, collection, self.normal_indexing_threshold)
+                    .map_err(|error| {
+                        ApiError::new(
+                            "vector.qdrant.bulk_journal",
+                            ErrorStage::Upserting,
+                            format!("failed to persist bulk-load recovery state: {error}"),
+                        )
+                    })
+            })
+        } else {
+            Ok(())
+        };
+        if let Err(error) = journal_setup {
+            *count = count.saturating_sub(1);
+            remove_idle_entry(&key, &entry, *count).await;
+            return Err(error);
         }
         if let Err(mut error) = self
             .set_indexing_threshold(collection, self.bulk_indexing_threshold)
             .await
         {
             *count = count.saturating_sub(1);
-            if let Err(compensation) = self.restore_normal_indexing(collection).await {
-                error = error.with_context("compensation_error", compensation.to_string());
-            }
+            let compensated = match self.restore_normal_indexing(collection).await {
+                Ok(()) => true,
+                Err(compensation) => {
+                    error = error.with_context("compensation_error", compensation.to_string());
+                    false
+                }
+            };
             remove_idle_entry(&key, &entry, *count).await;
-            if let Some(journal) = &journal
+            // LEARNED: an ambiguous provider failure plus failed compensation
+            // is exactly the state for which the durable recovery record exists.
+            // PATTERN: clear recovery intent only after compensation is known
+            // to have restored the normal threshold.
+            if compensated
+                && let Some(journal) = journal
                 && let Ok(endpoint) = self.bulk_journal_endpoint()
             {
                 let _ = journal.complete(&endpoint, collection);

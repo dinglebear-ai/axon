@@ -1,4 +1,6 @@
 import importlib.util
+import ast
+import contextlib
 from pathlib import Path
 import argparse
 import subprocess
@@ -10,6 +12,7 @@ from unittest import mock
 
 SCRIPT = Path(__file__).with_name("tei-tune.py")
 sys.path.insert(0, str(SCRIPT.parent))
+import tei_tune_benchmark
 SPEC = importlib.util.spec_from_file_location("tei_tune", SCRIPT)
 tei_tune = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
@@ -53,6 +56,22 @@ class TimedOutRemoteCommand:
 
 
 class TeiTuneTests(unittest.TestCase):
+    def test_entrypoint_has_no_stale_imports(self):
+        tree = ast.parse(SCRIPT.read_text())
+        imported = {
+            alias.asname or alias.name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            if not (isinstance(node, ast.ImportFrom) and node.module == "__future__")
+            for alias in node.names
+        }
+        loaded = {
+            node.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+        self.assertEqual(imported - loaded, set())
+
     def test_ready_rejects_decoy_endpoint_when_container_identity_mismatches(self):
         tei = object.__new__(tei_tune.Tei)
         tei.url = "http://tei.example"
@@ -137,9 +156,9 @@ class TeiTuneTests(unittest.TestCase):
     def test_benchmark_once_reports_fixed_input_count_and_latency(self):
         tei = object.__new__(tei_tune.Tei)
         tei.url = "http://tei.example"
-        with mock.patch.object(tei_tune.tei_tune_benchmark, "request_embeddings", return_value=4), \
-             mock.patch.object(tei_tune.tei_tune_benchmark.time, "perf_counter", side_effect=[0.0, 0.1, 0.2, 0.4, 0.5, 1.0]):
-            result = tei_tune.benchmark_once(
+        with mock.patch.object(tei_tune_benchmark, "request_embeddings", return_value=4), \
+             mock.patch.object(tei_tune_benchmark.time, "perf_counter", side_effect=[0.0, 0.1, 0.2, 0.4, 0.5, 1.0]):
+            result = tei_tune_benchmark.benchmark_once(
                 tei, requests=2, batch_size=4, concurrency=1, sample_chars=256
             )
         self.assertEqual(result["inputs"], 8)
@@ -147,15 +166,15 @@ class TeiTuneTests(unittest.TestCase):
         self.assertIn("latency_ms_p95", result)
 
     def test_fixed_input_shape_ceilings_requests(self):
-        self.assertEqual(tei_tune.fixed_input_shape(1024, 32), (32, 1024))
-        self.assertEqual(tei_tune.fixed_input_shape(1000, 128), (8, 1024))
+        self.assertEqual(tei_tune_benchmark.fixed_input_shape(1024, 32), (32, 1024))
+        self.assertEqual(tei_tune_benchmark.fixed_input_shape(1000, 128), (8, 1024))
 
     def test_percentile_uses_nearest_rank(self):
-        self.assertEqual(tei_tune.percentile([1.0, 2.0, 3.0, 4.0], 0.95), 4.0)
+        self.assertEqual(tei_tune_benchmark.percentile([1.0, 2.0, 3.0, 4.0], 0.95), 4.0)
 
     def test_benchmark_sample_has_requested_character_length(self):
-        self.assertEqual(len(tei_tune.benchmark_sample(1000)), 1000)
-        self.assertEqual(len(tei_tune.benchmark_sample(1)), 1)
+        self.assertEqual(len(tei_tune_benchmark.benchmark_sample(1000)), 1000)
+        self.assertEqual(len(tei_tune_benchmark.benchmark_sample(1)), 1)
 
     def test_snapshot_preserves_entrypoint_needed_for_exact_rollback(self):
         tei = object.__new__(tei_tune.Tei)
@@ -180,7 +199,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_apply_rolls_back_when_replacement_deploy_fails(self):
         tei = object.__new__(tei_tune.Tei)
         tei.state = Path("/tmp/unused-tei-state")
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         previous = {"image": "old", "cmd": ["old-cmd"], "entrypoint": None}
         tei.snapshot = mock.Mock(return_value=previous)
         tei.save_snapshot = mock.Mock()
@@ -197,7 +216,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_apply_reports_deployment_and_restoration_failures(self):
         tei = object.__new__(tei_tune.Tei)
         tei.state = Path("/tmp/unused-tei-state")
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.snapshot = mock.Mock(return_value={"image": "old", "cmd": []})
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
@@ -250,7 +269,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_successful_apply_discards_parked_container_only_after_readiness(self):
         tei = object.__new__(tei_tune.Tei)
         tei.state = Path("/tmp/unused-tei-state")
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.snapshot = mock.Mock(return_value={"image": "old", "cmd": []})
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
@@ -269,7 +288,7 @@ class TeiTuneTests(unittest.TestCase):
         tei.state = Path("/tmp/unused-tei-state")
         tei.host = "tootie"
         tei.container = "axon-tei"
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.snapshot = mock.Mock(return_value={"image": "old", "cmd": []})
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
@@ -310,7 +329,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_manual_rollback_restores_current_when_target_deploy_fails(self):
         tei = object.__new__(tei_tune.Tei)
         tei.container = "axon-tei"
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.park_current = mock.Mock()
         tei.deploy_snapshot = mock.Mock(side_effect=RuntimeError("run failed"))
         tei.restore_parked = mock.Mock()
@@ -321,7 +340,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_manual_rollback_reports_target_and_restoration_failures(self):
         tei = object.__new__(tei_tune.Tei)
         tei.container = "axon-tei"
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.park_current = mock.Mock()
         tei.deploy_snapshot = mock.Mock(side_effect=RuntimeError("target failed"))
         tei.restore_parked = mock.Mock(side_effect=RuntimeError("current restore failed"))
@@ -334,7 +353,7 @@ class TeiTuneTests(unittest.TestCase):
         tei = object.__new__(tei_tune.Tei)
         events = []
 
-        @tei_tune.contextlib.contextmanager
+        @contextlib.contextmanager
         def mutation_lock():
             events.append("lock")
             yield
@@ -361,7 +380,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_saved_snapshot_failure_restores_parked_current_before_discard(self):
         tei = object.__new__(tei_tune.Tei)
         tei.state = mock.Mock()
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.state.read_text.return_value = '{"image": "target"}'
         tei.snapshot = mock.Mock(return_value={"image": "current"})
         tei._rollback_to_snapshot = mock.Mock()
@@ -383,7 +402,7 @@ class TeiTuneTests(unittest.TestCase):
         tei.host = "tootie"
         tei.container = "axon-tei"
         tei.state = mock.Mock()
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.state.read_text.return_value = '{"image": "target"}'
         tei.snapshot = mock.Mock(return_value={"image": "current"})
         tei._rollback_to_snapshot = mock.Mock()
@@ -521,7 +540,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_apply_readiness_failure_restores_parked_current(self):
         tei = object.__new__(tei_tune.Tei)
         tei.state = Path("/tmp/unused-tei-state")
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.snapshot = mock.Mock(return_value={"image": "old", "cmd": []})
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
@@ -538,7 +557,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_apply_reports_when_restored_configuration_is_not_ready(self):
         tei = object.__new__(tei_tune.Tei)
         tei.state = Path("/tmp/unused-tei-state")
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.snapshot = mock.Mock(return_value={"image": "old", "cmd": []})
         tei.save_snapshot = mock.Mock()
         tei.park_current = mock.Mock()
@@ -553,7 +572,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_manual_rollback_readiness_failure_restores_current(self):
         tei = object.__new__(tei_tune.Tei)
         tei.container = "axon-tei"
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.park_current = mock.Mock()
         tei.deploy_snapshot = mock.Mock()
         tei.restore_parked = mock.Mock()
@@ -567,7 +586,7 @@ class TeiTuneTests(unittest.TestCase):
     def test_manual_rollback_reports_failed_current_restoration(self):
         tei = object.__new__(tei_tune.Tei)
         tei.container = "axon-tei"
-        tei.mutation_lock = lambda: tei_tune.contextlib.nullcontext()
+        tei.mutation_lock = lambda: contextlib.nullcontext()
         tei.park_current = mock.Mock()
         tei.deploy_snapshot = mock.Mock()
         tei.restore_parked = mock.Mock()

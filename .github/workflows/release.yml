@@ -70,10 +70,9 @@ jobs:
     needs: web-assets
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    # The `secrets` context is NOT allowed in step-level `if:` conditionals, so
-    # the optional signing secret is promoted to job-level env here (where
-    # referencing `secrets` IS allowed) and the signing steps gate on
-    # `env.SIGNING_KEY` instead. Empty until the key is provisioned.
+    # The `secrets` context is not allowed in step-level `if:` conditionals, so
+    # credentials are promoted to job-level env; all three signing inputs are mandatory,
+    # publication fails closed when any input is unavailable.
     env:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
@@ -139,13 +138,17 @@ jobs:
           set -euo pipefail
           # Install minisign (rsign2 is a drop-in alternative if preferred).
           sudo apt-get update && sudo apt-get install -y minisign
-          printf '%s' "$SIGNING_KEY" > /tmp/axon-minisign.key
+          umask 077
+          SIGNING_KEY_FILE=$(mktemp)
+          trap 'shred -u "$SIGNING_KEY_FILE"' EXIT
+          printf '%s' "$SIGNING_KEY" > "$SIGNING_KEY_FILE"
           cd target/release
-          echo "$SIGNING_KEY_PASSWORD" | minisign -S -s /tmp/axon-minisign.key \
+          echo "$SIGNING_KEY_PASSWORD" | minisign -S -s "$SIGNING_KEY_FILE" \
             -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
           minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
             -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
-          shred -u /tmp/axon-minisign.key
+          shred -u "$SIGNING_KEY_FILE"
+          trap - EXIT
           echo "Signed axon-linux-x86_64.tar.gz -> .minisig"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:

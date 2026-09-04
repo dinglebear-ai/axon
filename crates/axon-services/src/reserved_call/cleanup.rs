@@ -128,6 +128,40 @@ fn missing_graph_store() -> ApiError {
     )
 }
 
+struct CleanupDrainContext<'a> {
+    runtime: Arc<TargetLocalSourceRuntime>,
+    graph_store: Option<Arc<dyn GraphStore>>,
+    memory_store: Option<&'a dyn axon_memory::store::MemoryStore>,
+    registry: Option<&'a SourceAdapterRegistry>,
+    collection: &'a str,
+}
+
+// LEARNED: publication and autonomous cleanup independently wiring the same
+// provider set creates two policy surfaces that can silently drift.
+// PATTERN: one drain context owns provider construction and all shared debt
+// dependencies; each caller supplies only the debt counts it is draining.
+async fn drain_with_context(
+    context: &CleanupDrainContext<'_>,
+    counts: &crate::source::result_map::IndexCounts,
+) -> DebtDrainSummary {
+    let providers = ScheduledCleanupProviderOps {
+        runtime: Arc::clone(&context.runtime),
+        graph_store: context.graph_store.clone(),
+        job_id: counts.job_id,
+    };
+    crate::source::prune::drain_cleanup_debt_with_provider_ops(
+        context.runtime.ledger.as_ref(),
+        &providers,
+        context.memory_store,
+        Some(context.runtime.jobs.as_ref()),
+        Some(context.runtime.document_cache.as_ref()),
+        context.registry,
+        context.collection,
+        counts,
+    )
+    .await
+}
+
 pub async fn drain_source_cleanup_debt(
     ctx: &ServiceContext,
     runtime: &TargetLocalSourceRuntime,
@@ -136,22 +170,14 @@ pub async fn drain_source_cleanup_debt(
 ) -> DebtDrainSummary {
     let (graph_store, memory_store) = crate::source::open_cleanup_debt_stores(ctx).await;
     let registry = runtime.source_adapter_registry(ctx).await.ok();
-    let providers = ScheduledCleanupProviderOps {
+    let drain = CleanupDrainContext {
         runtime: Arc::new(runtime.clone()),
         graph_store,
-        job_id: counts.job_id,
-    };
-    crate::source::prune::drain_cleanup_debt_with_provider_ops(
-        runtime.ledger.as_ref(),
-        &providers,
-        memory_store.as_deref(),
-        Some(runtime.jobs.as_ref()),
-        Some(runtime.document_cache.as_ref()),
+        memory_store: memory_store.as_deref(),
         registry,
         collection,
-        counts,
-    )
-    .await
+    };
+    drain_with_context(&drain, counts).await
 }
 
 pub async fn spawn_cleanup_debt_worker(
@@ -160,9 +186,6 @@ pub async fn spawn_cleanup_debt_worker(
     registry: SourceAdapterRegistry,
 ) -> std::io::Result<Arc<QueueSummaryTask>> {
     let source_runtime = Arc::new(source_runtime.clone());
-    let ledger = Arc::clone(&source_runtime.ledger);
-    let job_store = Arc::clone(&source_runtime.jobs);
-    let document_cache = Arc::clone(&source_runtime.document_cache);
     let collection = ctx.cfg.collection.clone();
     let (graph_store, memory_store) = crate::source::open_cleanup_debt_stores(ctx).await;
     let tokio_runtime = tokio::runtime::Builder::new_current_thread()
@@ -179,52 +202,25 @@ pub async fn spawn_cleanup_debt_worker(
                 {
                     break;
                 }
-                tokio_runtime.block_on(run_sweep(
-                    &source_runtime,
-                    graph_store.as_ref(),
-                    memory_store.as_ref(),
-                    &registry,
-                    &collection,
-                    ledger.as_ref(),
-                    job_store.as_ref(),
-                    document_cache.as_ref(),
-                ));
+                let drain = CleanupDrainContext {
+                    runtime: Arc::clone(&source_runtime),
+                    graph_store: graph_store.clone(),
+                    memory_store: memory_store.as_deref(),
+                    registry: Some(&registry),
+                    collection: &collection,
+                };
+                tokio_runtime.block_on(run_sweep(&drain));
             }
         })?;
     Ok(Arc::new(QueueSummaryTask::new(stop, thread)))
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_sweep(
-    runtime: &Arc<TargetLocalSourceRuntime>,
-    graph_store: Option<&Arc<dyn GraphStore>>,
-    memory_store: Option<&Arc<dyn axon_memory::store::MemoryStore>>,
-    registry: &SourceAdapterRegistry,
-    collection: &str,
-    ledger: &dyn axon_ledger::store::LedgerStore,
-    job_store: &dyn axon_jobs::boundary::JobStore,
-    document_cache: &dyn axon_core::boundary::DocumentCache,
-) -> DebtDrainSummary {
-    crate::source::prune::drain_all_cleanup_debt(ledger, 256, |counts| {
-        let providers = ScheduledCleanupProviderOps {
-            runtime: Arc::clone(runtime),
-            graph_store: graph_store.cloned(),
-            job_id: counts.job_id,
-        };
-        async move {
-            crate::source::prune::drain_cleanup_debt_with_provider_ops(
-                ledger,
-                &providers,
-                memory_store.map(AsRef::as_ref),
-                Some(job_store),
-                Some(document_cache),
-                Some(registry),
-                collection,
-                &counts,
-            )
-            .await
-        }
-    })
+async fn run_sweep(context: &CleanupDrainContext<'_>) -> DebtDrainSummary {
+    crate::source::prune::drain_all_cleanup_debt(
+        context.runtime.ledger.as_ref(),
+        256,
+        |counts| async move { drain_with_context(context, &counts).await },
+    )
     .await
 }
 

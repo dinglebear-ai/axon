@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -16,16 +14,9 @@ import time
 import urllib.error
 import urllib.request
 
-import tei_tune_benchmark
 from tei_tune_benchmark import (
     benchmark,
-    benchmark_once,
-    benchmark_sample,
     command_for,
-    entrypoint_from_snapshot,
-    fixed_input_shape,
-    percentile,
-    request_embeddings,
     sweep_client,
 )
 from tei_tune_remote import TeiRemote
@@ -36,9 +27,12 @@ from tei_tune_runtime import (
     option_value,
     resolve_config,
     secondary_network_commands,
-    validate_container_name,
-    validate_ssh_host,
 )
+
+# LEARNED: importing helpers only so tests can reach them makes the production
+# entrypoint advertise dependencies it does not use.
+# PATTERN: tests import helper modules directly; this entrypoint imports only
+# names referenced by its runtime implementation.
 
 
 

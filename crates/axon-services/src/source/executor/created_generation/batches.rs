@@ -106,18 +106,22 @@ pub(super) async fn process_generation_batches(
         // The scheduled producer/consumer future is independently large. Box
         // it so the disabled branch does not inflate every caller's stack frame.
         return Box::pin(scheduled::process(
-            runtime,
-            input,
-            emitter,
-            generation,
-            collection,
-            diff,
-            archive_requested,
-            changed_total,
-            coordinator,
-            stage,
-            accumulated,
-            artifact_cleanup,
+            scheduled::ScheduledGenerationContext {
+                runtime,
+                input,
+                emitter,
+                generation,
+                collection,
+                diff,
+                archive_requested,
+                changed_total,
+                coordinator,
+            },
+            scheduled::ScheduledGenerationState {
+                stage,
+                accumulated,
+                artifact_cleanup,
+            },
         ))
         .await;
     }
@@ -247,7 +251,9 @@ async fn process_acquired_batches(
         )
         .await;
         if let Some(Ok(prefetched)) = prefetched.as_ref() {
-            artifact_cleanup.track(&prefetched.acquisition.artifacts);
+            artifact_cleanup
+                .track(&prefetched.acquisition.artifacts)
+                .await?;
         }
         acquired = resolve_batch_step(processed, prefetched, |processed| {
             let (side_effects, vectorized) = processed;
@@ -338,7 +344,9 @@ async fn prepare_acquired_components(
     // not only after batch success in `GenerationAccumulator::absorb` — a
     // later in-batch failure would otherwise orphan them (2026-08-23
     // adversarial pipeline review, low: in-batch artifact tracking).
-    artifact_cleanup.track(&resolved.acquisition.artifacts);
+    artifact_cleanup
+        .track(&resolved.acquisition.artifacts)
+        .await?;
     let refreshed_manifest_items = resolved.acquisition.manifest.items.clone();
     let acquisition_artifacts = resolved.acquisition.artifacts.clone();
     let archive_items = if archive_requested {
@@ -358,7 +366,7 @@ async fn prepare_acquired_components(
     )
     .await?;
     for enrichment in enrichments.values() {
-        artifact_cleanup.track(&enrichment.artifacts);
+        artifact_cleanup.track(&enrichment.artifacts).await?;
     }
 
     let total = is_final_batch.then_some(stage.acquired_documents);
@@ -406,7 +414,7 @@ async fn prepare_acquired_components(
 
     let (candidate_collection, clean_output) =
         finalize_normalized_batch(runtime, input, generation, &mut documents, &enrichments).await?;
-    artifact_cleanup.track(&clean_output.artifacts);
+    artifact_cleanup.track(&clean_output.artifacts).await?;
     warnings.extend(candidate_collection.warnings);
     let enrichment_graph = take_enrichment_graph_candidates(&mut enrichments);
     let enrichment_artifacts = collect_enrichment_outputs(enrichments, &mut warnings);

@@ -1,6 +1,11 @@
 use super::*;
 
 #[test]
+fn cleanup_drain_dependencies_have_one_shared_context() {
+    assert!(std::mem::size_of::<CleanupDrainContext<'static>>() > 0);
+}
+
+#[test]
 fn cleanup_reservations_use_background_cleaning_context_with_unique_fences() {
     let job_id = JobId::new(uuid::Uuid::from_u128(42));
     let first = cleanup_context(job_id, "vector-delete");

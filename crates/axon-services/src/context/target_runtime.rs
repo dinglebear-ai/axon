@@ -534,7 +534,7 @@ impl TargetLocalSourceRuntime {
             ),
         );
 
-        Ok(Self {
+        let runtime = Self {
             jobs,
             ledger,
             embedding_provider,
@@ -570,7 +570,9 @@ impl TargetLocalSourceRuntime {
             artifact_candidate_outbox: Some(artifact_candidate_outbox),
             source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
-        })
+        };
+        crate::reserved_call::replay_artifact_cleanup_journals(&runtime).await;
+        Ok(runtime)
     }
 }
 

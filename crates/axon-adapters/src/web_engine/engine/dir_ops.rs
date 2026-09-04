@@ -57,39 +57,23 @@ pub(super) async fn update_latest_reflink_with_failure(
     let mut exchanged = false;
     let publication: Result<(), Box<dyn Error>> = async {
         populate_latest_staging(source_dir, &staging_dir).await?;
-        let had_previous = path_exists(latest_dir).await;
+        let had_previous = validate_latest_destination(latest_dir).await?;
         if had_previous {
-            let old = staging_dir.clone();
-            let new = latest_dir.to_path_buf();
-            tokio::task::spawn_blocking(move || {
-                rustix::fs::renameat_with(
-                    rustix::fs::CWD,
-                    &old,
-                    rustix::fs::CWD,
-                    &new,
-                    rustix::fs::RenameFlags::EXCHANGE,
-                )
-            })
-            .await??;
+            exchange_directories(&staging_dir, latest_dir).await?;
             exchanged = true;
+            if !is_real_directory(&staging_dir).await? {
+                exchange_directories(&staging_dir, latest_dir).await?;
+                exchanged = false;
+                sync_directory(parent).await?;
+                return Err("latest_dir changed to an unsafe path during publication".into());
+            }
             let parent_sync = if failure == Some(LatestFailurePoint::ParentSync) {
                 Err("injected latest parent sync failure".into())
             } else {
                 sync_directory(parent).await
             };
             if let Err(sync_error) = parent_sync {
-                let old = staging_dir.clone();
-                let new = latest_dir.to_path_buf();
-                tokio::task::spawn_blocking(move || {
-                    rustix::fs::renameat_with(
-                        rustix::fs::CWD,
-                        &old,
-                        rustix::fs::CWD,
-                        &new,
-                        rustix::fs::RenameFlags::EXCHANGE,
-                    )
-                })
-                .await??;
+                exchange_directories(&staging_dir, latest_dir).await?;
                 exchanged = false;
                 sync_directory(parent).await?;
                 return Err(format!(
@@ -149,6 +133,26 @@ pub(super) async fn update_latest_reflink_with_failure(
     publication
 }
 
+// LEARNED: duplicating the atomic exchange syscall across rollback branches
+// makes filesystem-critical flags and error propagation easy to drift.
+// PATTERN: keep the blocking rename exchange behind one async helper and reuse
+// it for both publication and compensation.
+async fn exchange_directories(left: &Path, right: &Path) -> Result<(), Box<dyn Error>> {
+    let left = left.to_path_buf();
+    let right = right.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        rustix::fs::renameat_with(
+            rustix::fs::CWD,
+            &left,
+            rustix::fs::CWD,
+            &right,
+            rustix::fs::RenameFlags::EXCHANGE,
+        )
+    })
+    .await??;
+    Ok(())
+}
+
 async fn populate_latest_staging(
     source_dir: &Path,
     staging_dir: &Path,
@@ -204,26 +208,80 @@ async fn copy_latest_markdown(
 }
 
 async fn mark_latest_cleanup_debt(path: &Path) {
-    let marker = path.join(LATEST_CLEANUP_DEBT_MARKER);
-    let marked = async {
-        let mut marker_file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&marker)
-            .await?;
-        tokio::io::AsyncWriteExt::write_all(&mut marker_file, b"replaced latest view\n").await?;
-        marker_file.sync_all().await?;
-        sync_directory(path)
+    let owned_path = path.to_path_buf();
+    let marked =
+        tokio::task::spawn_blocking(move || write_cleanup_marker_relative(&owned_path, || Ok(())))
             .await
-            .map_err(|error| std::io::Error::other(error.to_string()))
-    }
-    .await;
+            .unwrap_or_else(|error| Err(std::io::Error::other(error.to_string())));
     if let Err(error) = marked {
         log_warn(&format!(
             "could not record latest-view cleanup debt for {}: {error}",
             path.display()
         ));
     }
+}
+
+#[cfg(unix)]
+fn write_cleanup_marker_relative(
+    path: &Path,
+    after_directory_open: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use rustix::fs::{Mode, OFlags, open, openat};
+    use std::io::Write as _;
+
+    let directory = open(
+        path,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )?;
+    after_directory_open()?;
+    let marker = openat(
+        &directory,
+        LATEST_CLEANUP_DEBT_MARKER,
+        OFlags::WRONLY | OFlags::CLOEXEC | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW,
+        Mode::RUSR | Mode::WUSR,
+    )?;
+    let mut marker_file = std::fs::File::from(marker);
+    marker_file.write_all(b"replaced latest view\n")?;
+    marker_file.sync_all()?;
+    std::fs::File::from(directory).sync_all()
+}
+
+#[cfg(not(unix))]
+fn write_cleanup_marker_relative(
+    _path: &Path,
+    _after_directory_open: impl FnOnce() -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "descriptor-relative cleanup markers require Unix openat",
+    ))
+}
+
+async fn validate_latest_destination(path: &Path) -> Result<bool, Box<dyn Error>> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(format!("latest_dir must not be a symlink: {}", path.display()).into())
+        }
+        Ok(metadata) if metadata.is_dir() => Ok(true),
+        Ok(_) => Err(format!("latest_dir must be a directory: {}", path.display()).into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!(
+            "failed to inspect latest_dir {} before publication: {error}",
+            path.display()
+        )
+        .into()),
+    }
+}
+
+async fn is_real_directory(path: &Path) -> Result<bool, Box<dyn Error>> {
+    let metadata = tokio::fs::symlink_metadata(path).await.map_err(|error| {
+        format!(
+            "failed to inspect exchanged latest_dir {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok(metadata.is_dir() && !metadata.file_type().is_symlink())
 }
 
 async fn sweep_latest_cleanup_debt(parent: &Path, latest_name: &str) {

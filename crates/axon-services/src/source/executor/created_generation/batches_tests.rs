@@ -289,6 +289,8 @@ async fn run_actual_generation_batches_with_diff(
     let mut accumulated = GenerationAccumulator::default();
     let mut cleanup = ArtifactCleanupGuard::new(
         &runtime,
+        input.plan.job_id,
+        input.execution.attempt,
         input.plan.route.source.source_id.clone(),
         generation.clone(),
     );
@@ -308,7 +310,7 @@ async fn run_actual_generation_batches_with_diff(
     )
     .await;
     if !keep_cleanup_armed {
-        cleanup.disarm();
+        cleanup.disarm().await.unwrap();
     }
     (result, stage, coordinator)
 }
@@ -380,25 +382,31 @@ async fn run_actual_scheduled_generation_batches(
     let mut accumulated = GenerationAccumulator::default();
     let mut cleanup = ArtifactCleanupGuard::new(
         &runtime,
+        input.plan.job_id,
+        input.execution.attempt,
         input.plan.route.source.source_id.clone(),
         generation.clone(),
     );
     let result = Box::pin(super::scheduled::process(
-        &runtime,
-        &input,
-        &emitter,
-        &generation,
-        &collection,
-        &diff,
-        false,
-        changed_total,
-        &coordinator,
-        &mut stage,
-        &mut accumulated,
-        &mut cleanup,
+        super::scheduled::ScheduledGenerationContext {
+            runtime: &runtime,
+            input: &input,
+            emitter: &emitter,
+            generation: &generation,
+            collection: &collection,
+            diff: &diff,
+            archive_requested: false,
+            changed_total,
+            coordinator: &coordinator,
+        },
+        super::scheduled::ScheduledGenerationState {
+            stage: &mut stage,
+            accumulated: &mut accumulated,
+            artifact_cleanup: &mut cleanup,
+        },
     ))
     .await;
-    cleanup.disarm();
+    cleanup.disarm().await.unwrap();
     (result, stage, coordinator, vectors)
 }
 

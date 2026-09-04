@@ -114,6 +114,34 @@ fn qdrant_stores_share_parallelism_gates_for_the_same_endpoint_and_profile() {
     ));
 }
 
+#[tokio::test]
+async fn qdrant_stores_share_one_aggregate_limit_across_config_and_url_aliases() {
+    let mut first = QdrantVectorStore::new("http://qdrant-admission.test", "first");
+    configure_parallelism(&mut first, 1, 1);
+    let mut reconfigured =
+        QdrantVectorStore::new("HTTP://QDRANT-ADMISSION.TEST:80/", "reconfigured");
+    configure_parallelism(&mut reconfigured, 8, 8);
+
+    assert!(Arc::ptr_eq(
+        &first.parallelism_gates,
+        &reconfigured.parallelism_gates
+    ));
+    let permit = first
+        .write_slots()
+        .acquire_owned()
+        .await
+        .expect("first store acquires the endpoint's sole write slot");
+    assert!(
+        reconfigured.write_slots().try_acquire_owned().is_err(),
+        "a differently configured alias must not multiply endpoint capacity"
+    );
+    drop(permit);
+    let _permit = reconfigured
+        .write_slots()
+        .try_acquire_owned()
+        .expect("shared capacity returns after release");
+}
+
 #[test]
 fn qdrant_delete_receipt_marks_observed_count_as_estimated() {
     let result = qdrant_delete_result("axon-test".to_string(), 7, "pre_delete_exact_match_count");

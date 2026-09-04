@@ -15,71 +15,60 @@ pub(super) fn enabled() -> bool {
         .unwrap_or(false)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy)]
+pub(super) struct ScheduledGenerationContext<'a, 'input> {
+    pub(super) runtime: &'a TargetLocalSourceRuntime,
+    pub(super) input: &'a SourcePipelineInput<'input>,
+    pub(super) emitter: &'a SourceEventEmitter,
+    pub(super) generation: &'a SourceGenerationId,
+    pub(super) collection: &'a CollectionSpec,
+    pub(super) diff: &'a SourceManifestDiff,
+    pub(super) archive_requested: bool,
+    pub(super) changed_total: u64,
+    pub(super) coordinator: &'a ProgressCoordinator,
+}
+
+pub(super) struct ScheduledGenerationState<'a> {
+    pub(super) stage: &'a mut GenerationStageProgress,
+    pub(super) accumulated: &'a mut GenerationAccumulator,
+    pub(super) artifact_cleanup: &'a mut ArtifactCleanupGuard,
+}
+
+// LEARNED: forwarding a dozen positional arguments through each scheduler
+// layer made otherwise local changes touch every call site.
+// PATTERN: group immutable generation inputs separately from mutable progress
+// state, so concurrency boundaries make their borrowing and ownership visible.
 pub(super) async fn process(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
-    collection: &CollectionSpec,
-    diff: &SourceManifestDiff,
-    archive_requested: bool,
-    changed_total: u64,
-    coordinator: &ProgressCoordinator,
-    stage: &mut GenerationStageProgress,
-    accumulated: &mut GenerationAccumulator,
-    artifact_cleanup: &mut ArtifactCleanupGuard,
+    context: ScheduledGenerationContext<'_, '_>,
+    state: ScheduledGenerationState<'_>,
 ) -> anyhow::Result<()> {
-    if changed_total == 0 {
-        return ensure_generation_collection(runtime, input, collection).await;
+    if context.changed_total == 0 {
+        return ensure_generation_collection(context.runtime, context.input, context.collection)
+            .await;
     }
-    ensure_generation_collection(runtime, input, collection).await?;
+    ensure_generation_collection(context.runtime, context.input, context.collection).await?;
     super::with_bulk_load(
-        runtime,
-        input,
-        collection,
+        context.runtime,
+        context.input,
+        context.collection,
         "restoring Qdrant indexing after the failed scheduled pipeline also failed",
-        process_inner(
-            runtime,
-            input,
-            emitter,
-            generation,
-            collection,
-            diff,
-            archive_requested,
-            changed_total,
-            coordinator,
-            stage,
-            accumulated,
-            artifact_cleanup,
-        ),
+        process_inner(context, state),
     )
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn process_inner(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
-    collection: &CollectionSpec,
-    diff: &SourceManifestDiff,
-    archive_requested: bool,
-    changed_total: u64,
-    coordinator: &ProgressCoordinator,
-    stage: &mut GenerationStageProgress,
-    accumulated: &mut GenerationAccumulator,
-    artifact_cleanup: &mut ArtifactCleanupGuard,
+    context: ScheduledGenerationContext<'_, '_>,
+    state: ScheduledGenerationState<'_>,
 ) -> anyhow::Result<()> {
     let (sender, receiver) = prepared_work_channel_with_byte_budget(
-        runtime.embed_pool_max_inputs,
-        runtime.embed_prepared_byte_budget,
+        context.runtime.embed_pool_max_inputs,
+        context.runtime.embed_prepared_byte_budget,
     )?;
     tracing::info!(
-        chunk_capacity = runtime.embed_pool_max_inputs.saturating_mul(3),
+        chunk_capacity = context.runtime.embed_pool_max_inputs.saturating_mul(3),
         queue_capacity = 2,
-        byte_capacity_kib = runtime.embed_prepared_byte_budget.div_ceil(1024),
+        byte_capacity_kib = context.runtime.embed_prepared_byte_budget.div_ceil(1024),
         "enabled bounded generation embedding scheduler"
     );
     let cancel = CancellationToken::new();
@@ -87,28 +76,21 @@ async fn process_inner(
     // concrete future inline makes the combined debug/test poll frame exceed
     // the default test-thread stack for real scheduled generation paths.
     let producer = Box::pin(produce(
-        runtime,
-        input,
-        emitter,
-        generation,
-        diff,
-        archive_requested,
-        changed_total,
-        coordinator,
-        stage,
-        artifact_cleanup,
+        context,
+        state.stage,
+        state.artifact_cleanup,
         sender,
         &cancel,
     ));
     let mut scheduler_progress = PipelineProgress::default();
     let consumer = Box::pin(super::super::scheduler::run_generation_scheduler(
-        runtime,
-        input,
-        emitter,
-        coordinator,
-        collection.clone(),
+        context.runtime,
+        context.input,
+        context.emitter,
+        context.coordinator,
+        context.collection.clone(),
         receiver,
-        accumulated,
+        state.accumulated,
         &mut scheduler_progress,
         &cancel,
     ));
@@ -159,16 +141,8 @@ fn resolve_scheduler_results(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn produce(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
-    diff: &SourceManifestDiff,
-    archive_requested: bool,
-    changed_total: u64,
-    coordinator: &ProgressCoordinator,
+    context: ScheduledGenerationContext<'_, '_>,
     stage: &mut GenerationStageProgress,
     artifact_cleanup: &mut ArtifactCleanupGuard,
     mut sender: PreparedBatchSender,
@@ -176,13 +150,13 @@ async fn produce(
 ) -> anyhow::Result<()> {
     let acquire_batch_size = acquire_batch_size();
     let first_batch_size = first_acquire_batch_size(acquire_batch_size);
-    let changed = usize::try_from(changed_total).unwrap_or(usize::MAX);
+    let changed = usize::try_from(context.changed_total).unwrap_or(usize::MAX);
     let batch_count = if changed <= first_batch_size {
         usize::from(changed > 0)
     } else {
         1 + (changed - first_batch_size).div_ceil(acquire_batch_size)
     };
-    let mut batches = batch_changed_diff_ramped(diff, first_batch_size, acquire_batch_size)
+    let mut batches = batch_changed_diff_ramped(context.diff, first_batch_size, acquire_batch_size)
         .enumerate()
         .map(|(index, diff)| ChangedBatch {
             diff,
@@ -199,12 +173,12 @@ async fn produce(
     // registered with the cleanup guard. Cancellation prevents new admission
     // and channel sends; it must not drop a mutation-bearing provider future.
     let mut acquired = acquire_changed_batch(
-        input,
+        context.input,
         first,
-        changed_total,
+        context.changed_total,
         stage.acquired_items,
         stage.acquired_documents,
-        coordinator,
+        context.coordinator,
         true,
     )
     .await?;
@@ -216,56 +190,36 @@ async fn produce(
                 !cancel.is_cancelled(),
                 "generation scheduler producer canceled"
             );
-            let prepared = prepare(
-                runtime,
-                input,
-                emitter,
-                generation,
-                acquired,
-                archive_requested,
-                coordinator,
-                stage,
-                artifact_cleanup,
-            )
-            .await?;
+            let prepared = prepare(context, acquired, stage, artifact_cleanup).await?;
             send_prepared(&mut sender, prepared, cancel).await?;
             break;
         };
         let next_acquisition = acquire_changed_batch(
-            input,
+            context.input,
             next_batch,
-            changed_total,
+            context.changed_total,
             stage.acquired_items,
             stage.acquired_documents,
-            coordinator,
-            !input.adapter.supports_acquisition_prefetch(),
+            context.coordinator,
+            !context.input.adapter.supports_acquisition_prefetch(),
         );
         anyhow::ensure!(
             !cancel.is_cancelled(),
             "generation scheduler producer canceled"
         );
         let (sent, prefetched) = process_and_acquire_next(
-            input.adapter,
+            context.input.adapter,
             async {
-                let prepared = prepare(
-                    runtime,
-                    input,
-                    emitter,
-                    generation,
-                    acquired,
-                    archive_requested,
-                    coordinator,
-                    stage,
-                    artifact_cleanup,
-                )
-                .await?;
+                let prepared = prepare(context, acquired, stage, artifact_cleanup).await?;
                 send_prepared(&mut sender, prepared, cancel).await
             },
             next_acquisition,
         )
         .await;
         if let Some(Ok(prefetched)) = prefetched.as_ref() {
-            artifact_cleanup.track(&prefetched.acquisition.artifacts);
+            artifact_cleanup
+                .track(&prefetched.acquisition.artifacts)
+                .await?;
         }
         acquired = resolve_sent_step(sent, prefetched)?;
     }
@@ -313,38 +267,32 @@ struct SchedulerPreparedBatch {
 #[path = "scheduled_tests.rs"]
 mod tests;
 
-#[allow(clippy::too_many_arguments)]
 async fn prepare(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
+    context: ScheduledGenerationContext<'_, '_>,
     acquired: AcquiredChangedBatch,
-    archive_requested: bool,
-    coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<SchedulerPreparedBatch> {
     let components = prepare_acquired_components(
-        runtime,
-        input,
-        emitter,
-        generation,
+        context.runtime,
+        context.input,
+        context.emitter,
+        context.generation,
         acquired,
-        archive_requested,
-        coordinator,
+        context.archive_requested,
+        context.coordinator,
         stage,
         artifact_cleanup,
     )
     .await?;
     let prepared = vectorize::prepare_generation_documents(
-        runtime,
-        input,
+        context.runtime,
+        context.input,
         components.documents,
         &components.enrichment_graph,
-        generation,
-        emitter,
-        coordinator,
+        context.generation,
+        context.emitter,
+        context.coordinator,
         &mut stage.pipeline,
         components.is_final,
     )

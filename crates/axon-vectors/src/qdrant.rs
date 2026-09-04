@@ -80,9 +80,7 @@ static COLLECTION_SPEC_CACHE_EPOCHS: OnceLock<Mutex<HashMap<String, u64>>> = Onc
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ParallelismKey {
-    url: String,
-    write_parallelism: usize,
-    payload_index_parallelism: usize,
+    endpoint: String,
 }
 
 #[derive(Debug)]
@@ -100,22 +98,31 @@ fn shared_parallelism_gates(
     url: &str,
     write_parallelism: usize,
     payload_index_parallelism: usize,
+    current: Option<&Arc<QdrantParallelismGates>>,
 ) -> Arc<QdrantParallelismGates> {
     let key = ParallelismKey {
-        url: url.trim().trim_end_matches('/').to_string(),
-        write_parallelism: write_parallelism.max(1),
-        payload_index_parallelism: payload_index_parallelism.max(1),
+        endpoint: http::QdrantEndpoint::parse(url).root().to_string(),
     };
     let mut registry = PARALLELISM_GATES
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.retain(|_, gates| gates.strong_count() > 0);
     if let Some(gates) = registry.get(&key).and_then(Weak::upgrade) {
-        return gates;
+        // A sole live owner may safely replace its gate while applying initial
+        // configuration. Once another store shares the endpoint, retain the
+        // established capacity until every owner drains; this prevents a
+        // reload with different knobs from multiplying in-flight operations.
+        let sole_current_owner = current.is_some_and(|current| Arc::ptr_eq(current, &gates))
+            // One strong reference belongs to the store and one to this
+            // temporary upgrade from the registry's weak reference.
+            && Arc::strong_count(&gates) == 2;
+        if !sole_current_owner {
+            return gates;
+        }
     }
     let gates = Arc::new(QdrantParallelismGates {
-        write_slots: Arc::new(Semaphore::new(key.write_parallelism)),
-        payload_index_slots: Arc::new(Semaphore::new(key.payload_index_parallelism)),
+        write_slots: Arc::new(Semaphore::new(write_parallelism.max(1))),
+        payload_index_slots: Arc::new(Semaphore::new(payload_index_parallelism.max(1))),
     });
     registry.insert(key, Arc::downgrade(&gates));
     gates
@@ -168,8 +175,12 @@ impl QdrantVectorStore {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
-        let parallelism_gates =
-            shared_parallelism_gates(&url, DEFAULT_WRITE_PARALLELISM, DEFAULT_WRITE_PARALLELISM);
+        let parallelism_gates = shared_parallelism_gates(
+            &url,
+            DEFAULT_WRITE_PARALLELISM,
+            DEFAULT_WRITE_PARALLELISM,
+            None,
+        );
         Self {
             url,
             provider_id,
@@ -300,6 +311,7 @@ pub fn configure_parallelism(
         &store.url,
         store.write_parallelism,
         store.payload_index_parallelism,
+        Some(&store.parallelism_gates),
     );
 }
 

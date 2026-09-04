@@ -107,6 +107,12 @@ const PROVIDER_FACADE_FILES: &[&str] = &[
     // Exact scheduler-backed autonomous cleanup implementation. This module
     // is part of the reserved-call facade, not a general subtree exemption.
     "crates/axon-services/src/reserved_call/cleanup.rs",
+    // Exact scheduler-backed artifact cleanup lifecycle and durable replay
+    // implementation. These remain part of the reserved-call facade after
+    // the module split; listing the files explicitly keeps sibling modules
+    // under normal provider-boundary enforcement.
+    "crates/axon-services/src/reserved_call/artifact_cleanup.rs",
+    "crates/axon-services/src/reserved_call/artifact_cleanup_journal.rs",
     // Exact implementation submodule of the same scheduler facade. Keeping
     // this explicit avoids turning the whole reserved_call/ tree into an
     // unscanned provider escape hatch.
