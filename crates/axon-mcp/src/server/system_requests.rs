@@ -33,6 +33,7 @@ pub(super) struct ResetMcpRequest {
 pub(super) enum ResetSubaction {
     #[default]
     Plan,
+    Get,
     Exec,
 }
 

@@ -132,6 +132,55 @@ impl LedgerStore for FakeLedgerStore {
         Ok(self.state.lock().await.sources.get(&source_id).cloned())
     }
 
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>> {
+        let state = self.state.lock().await;
+        let Some(summary) = state.sources.get(&source_id).cloned() else {
+            return Ok(None);
+        };
+        let committed_generation = state.committed.get(&source_id).cloned();
+        let manifest = committed_generation.as_ref().and_then(|generation| {
+            state
+                .manifests
+                .get(&(source_id.clone(), generation.clone()))
+                .map(|value| LedgerManifestState {
+                    generation: generation.clone(),
+                    status: summary.status.clone(),
+                    item_count: value.items.len() as u64,
+                    items: value
+                        .items
+                        .iter()
+                        .map(|item| LedgerItemState {
+                            source_item_key: item.source_item_key.clone(),
+                            canonical_uri: item.canonical_uri.clone(),
+                            content_hash: item.content_hash.clone(),
+                        })
+                        .collect(),
+                })
+        });
+        let documents = state
+            .document_statuses
+            .values()
+            .filter(|value| value.source_id == source_id)
+            .filter_map(|value| {
+                Some(LedgerDocumentState {
+                    document_id: value.document_id.clone(),
+                    source_item_key: value.source_item_key.clone(),
+                    generation: value.generation.clone()?,
+                    status: value.status.clone(),
+                    chunk_count: value.chunk_count,
+                    vector_point_count: value.vector_point_count,
+                    updated_at: value.updated_at.clone(),
+                })
+            })
+            .collect();
+        Ok(Some(LedgerSourceDetail {
+            summary,
+            committed_generation,
+            manifest,
+            documents,
+        }))
+    }
+
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
         let sources = self
             .state

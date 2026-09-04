@@ -118,6 +118,11 @@ impl SqliteUnifiedJobStore {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     /// Build a store that also routes status/heartbeat transitions into the
     /// durable observability sink on the same pool.
     pub fn with_observe_sink(pool: SqlitePool, observe: Arc<SqliteObservabilitySink>) -> Self {

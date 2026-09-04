@@ -22,6 +22,14 @@ mod sqlite;
 pub use qdrant::QdrantInventory;
 pub use sqlite::SqliteInventory;
 
+/// Load the exact durable reset plan record that execution will consume.
+pub async fn reset_get_saved_plan(
+    cfg: &Config,
+    plan_id: &str,
+) -> Result<ResetResult, Box<dyn Error>> {
+    plan_store::load_plan(cfg, plan_id).await
+}
+
 use axon_api::reset::{
     RESET_ALL_STORES, RESET_STORE_ARTIFACTS, RESET_STORE_CODE_INDEX, RESET_STORE_GRAPH,
     RESET_STORE_JOBS, RESET_STORE_LEDGER, RESET_STORE_MEMORY, RESET_STORE_VECTORS,

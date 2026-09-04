@@ -1040,6 +1040,7 @@ async fn heartbeat_cannot_resurrect_terminal_job() {
         })
         .await
         .expect("running");
+
     store
         .update_status(JobStatusUpdate {
             source_id: None,
@@ -1237,6 +1238,26 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         .await
         .expect("running");
 
+    sqlx::query(
+        "INSERT INTO cleanup_debt (
+            debt_id, job_id, source_id, generation, generation_key, kind,
+            selector_hash, status, debt_json, attempts, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+    )
+    .bind("debt-cancel-partial")
+    .bind(job.job_id.0.to_string())
+    .bind("src_local")
+    .bind("gen-partial")
+    .bind("gen-partial")
+    .bind("vector_delete")
+    .bind("selector-cancel-partial")
+    .bind("pending")
+    .bind("{}")
+    .bind(Timestamp::from(chrono::Utc::now()).0)
+    .execute(store.test_pool())
+    .await
+    .expect("seed partial-publication cleanup debt");
+
     let cancel = store
         .cancel(
             job.job_id,
@@ -1250,6 +1271,8 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         .expect("cancel");
     assert_eq!(cancel.status, LifecycleStatus::Canceling);
     assert_eq!(cancel.reason.as_deref(), Some("user requested"));
+    assert_eq!(cancel.cleanup_debt_ids, ["debt-cancel-partial"]);
+    assert_eq!(cancel.side_effects, ["cleanup_debt:vector_delete"]);
 
     store
         .update_status(JobStatusUpdate {
@@ -1760,7 +1783,9 @@ async fn store_with_observe() -> (
 #[tokio::test]
 async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
     let (store, sink) = store_with_observe().await;
-    let job = store.create(create_request()).await.expect("create job");
+    let mut request = create_request();
+    request.attempt = 2;
+    let job = store.create(request).await.expect("create job");
 
     // Queued -> Running -> Completed, plus a mid-run progress transition.
     for (status, phase) in [
@@ -1806,6 +1831,7 @@ async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
         "all events carry the job id"
     );
     assert_eq!(events[2].status, LifecycleStatus::Completed);
+    assert!(events.iter().all(|event| event.attempt == 2));
 
     // The heartbeat row was upserted for the job too.
     let hb = sink
@@ -1813,6 +1839,7 @@ async fn status_transitions_land_in_observe_sink_with_monotonic_sequence() {
         .await
         .expect("read observe heartbeat");
     assert!(hb.is_some(), "observe heartbeat row exists for the job");
+    assert_eq!(hb.expect("heartbeat").attempt, 2);
 }
 
 #[tokio::test]

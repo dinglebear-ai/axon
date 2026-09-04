@@ -116,6 +116,19 @@ pub struct PrunePlan {
     pub warnings: Vec<SourceWarning>,
 }
 
+/// Durable, execution-bound prune plan as persisted by the service layer.
+///
+/// Transports expose this record so an operator can re-fetch the exact plan,
+/// checksum, and expiry immediately before destructive execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StoredPrunePlan {
+    pub plan: PrunePlan,
+    pub reason: String,
+    pub inventory_checksum: String,
+    pub expires_at_utc: String,
+}
+
 /// Estimated impact counts for a plan (what *would* be deleted).
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,

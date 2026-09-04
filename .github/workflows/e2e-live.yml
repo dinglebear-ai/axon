@@ -1,0 +1,102 @@
+name: E2E Live Homelab
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 6 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  admission:
+    name: E2E Live admission (no private access)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Coalesce stale/lower-priority work before serialized queue
+        run: python3 scripts/e2e/validate-live-invocation.py
+  live:
+    name: E2E Live Homelab (non-required)
+    needs: admission
+    concurrency:
+      group: axon-e2e-live-homelab
+      cancel-in-progress: false
+    environment: axon-live-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      AXON_E2E_QDRANT_GATEWAY_URL: ${{ vars.AXON_E2E_QDRANT_GATEWAY_URL }}
+      AXON_E2E_QDRANT_PEER: ${{ vars.AXON_E2E_QDRANT_PEER }}
+      AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+      AXON_E2E_TEI_GATEWAY_URL: ${{ vars.AXON_E2E_TEI_GATEWAY_URL }}
+      AXON_E2E_TEI_PEER: ${{ vars.AXON_E2E_TEI_PEER }}
+      AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
+      AXON_E2E_CHROME_GATEWAY_URL: ${{ vars.AXON_E2E_CHROME_GATEWAY_URL }}
+      AXON_E2E_CHROME_PEER: ${{ vars.AXON_E2E_CHROME_PEER }}
+      AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+      AXON_E2E_LLM_GATEWAY_URL: ${{ vars.AXON_E2E_LLM_GATEWAY_URL }}
+      AXON_E2E_LLM_PEER: ${{ vars.AXON_E2E_LLM_PEER }}
+      AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
+      AXON_E2E_EXPECTED_PEERS: ${{ vars.AXON_E2E_EXPECTED_PEERS }}
+    steps:
+      - name: Checkout exact tested commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Configure persistent cleanup registry
+        run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
+      - name: Reject stale or untrusted invocation before discovery
+        run: python3 scripts/e2e/validate-live-invocation.py
+      - name: Recover stale owned runs before mutation
+        run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --stale-seconds 21600 --live-gateways --report target/e2e/stale-cleanup.json
+      - name: Build exact tested commit before private-network access
+        run: cargo build --locked --bin axon
+      - name: Attest exact GitHub WIF claims before discovery
+        run: python3 scripts/e2e/attest-wif.py --audience '${{ vars.TS_WIF_AUDIENCE }}' --out target/e2e/wif-attestation.json
+      - name: Join as dedicated ephemeral CI identity with WIF
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888
+        with:
+          oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
+          audience: ${{ vars.TS_WIF_AUDIENCE }}
+          tags: tag:axon-ci-e2e
+          version: 1.94.0
+          use-cache: 'false'
+          ping: ${{ vars.AXON_E2E_EXPECTED_PEERS }}
+      - name: Register masks before application credentials are used
+        env:
+          TOKENS: |-
+            ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+            ${{ secrets.AXON_E2E_TEI_TOKEN }}
+            ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+            ${{ secrets.AXON_E2E_LLM_TOKEN }}
+        run: python3 scripts/e2e/register-live-masks.py
+      - name: Verify exact peers and enforcing authenticated gateways
+        continue-on-error: true
+        run: python3 scripts/e2e/preflight-live.py --out target/e2e/live-preflight.json
+      - name: Run lease-owned live catalog packs from tested binary
+        run: python3 scripts/e2e/run-live.py --preflight target/e2e/live-preflight.json --report target/e2e/live-report.json
+      - name: Outer ownership-checked teardown
+        if: always()
+        run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --live-gateways --report target/e2e/outer-cleanup.json
+      - name: Verify cleanup and sanitized evidence
+        if: always()
+        run: python3 scripts/e2e/verify-live-report.py target/e2e/live-report.json
+      - name: Retain sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/e2e/live-*.json
+            target/e2e/wif-attestation.json
+            target/e2e/*-cleanup.json
+          if-no-files-found: error
+          retention-days: 7

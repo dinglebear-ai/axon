@@ -13,6 +13,7 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 pub trait LedgerStore: Send + Sync {
     async fn upsert_source(&self, source: SourceSummary) -> Result<()>;
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>>;
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>>;
     /// Bulk-list registered sources (id, canonical URI, kind/adapter, status,
     /// counts, …), filtered and paginated per `request`. The `list_sources`
     /// entry in `docs/pipeline-unification/runtime/ledger-contract.md`'s

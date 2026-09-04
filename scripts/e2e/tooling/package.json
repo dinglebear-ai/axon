@@ -1,0 +1,11 @@
+{
+  "name": "axon-e2e-hermetic-tooling",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": "24.8.0"
+  },
+  "dependencies": {
+    "mcporter": "0.13.0"
+  }
+}

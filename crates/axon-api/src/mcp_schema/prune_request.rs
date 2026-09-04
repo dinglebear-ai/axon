@@ -15,9 +15,11 @@ use super::ResponseMode;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PruneMcpRequest {
-    /// `plan` or `exec`. Defaults to `plan` when omitted so a bare `prune`
+    /// `plan`, `get`, or `exec`. Defaults to `plan` when omitted so a bare `prune`
     /// call never mutates state.
     pub subaction: Option<String>,
+    /// Persisted plan id required by `get` and `exec`.
+    pub plan_id: Option<String>,
     /// Prune target: a bare source id, or `collection:<name>` for a
     /// whole-collection prune. **Handler-required despite the `Option`** —
     /// keeps validation errors structured instead of relying on serde's

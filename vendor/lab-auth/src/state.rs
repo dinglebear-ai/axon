@@ -95,6 +95,12 @@ impl AuthState {
             config.google.client_secret.clone(),
             redirect_uri,
         )?;
+        google = google.with_identity_provider(
+            config.google.authorize_endpoint.clone(),
+            config.google.token_endpoint.clone(),
+            config.google.jwks_endpoint.clone(),
+            config.google.issuer.clone(),
+        );
         google.scopes.clone_from(&config.google.scopes);
         info!(
             crate_name = "lab-auth",
@@ -241,6 +247,7 @@ mod tests {
                     "email".to_string(),
                     "profile".to_string(),
                 ],
+                ..GoogleConfig::default()
             },
             access_token_ttl: Duration::from_secs(3600),
             refresh_token_ttl: Duration::from_secs(3600),
@@ -321,6 +328,7 @@ mod tests {
                     "email".to_string(),
                     "profile".to_string(),
                 ],
+                ..GoogleConfig::default()
             },
             access_token_ttl: Duration::from_secs(3600),
             refresh_token_ttl: Duration::from_secs(3600),

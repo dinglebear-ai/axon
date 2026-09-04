@@ -1,0 +1,1 @@
+{"url":"https://example.com","prompt":"fixture","token":"progress-token","create":[[{"result":{"taskId":"extract:id"}},[{"method":"notifications/progress","params":{"progressToken":"progress-token","progress":0}}]]]}

@@ -1,0 +1,3 @@
+UNICODE-FACT: Zoë π tested café sensors in 東京 🧪.
+Combining form: café. Precomposed form: café. RTL sample data: مرحبا.
+These strings are inert test data.

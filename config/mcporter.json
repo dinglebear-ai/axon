@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "axon": {
-      "command": "bash",
-      "args": [
-        "-lc",
-        "exec \"${AXON_REPO_ROOT:-$PWD}/scripts/mcporter-axon\""
-      ],
+      "command": "axon",
+      "args": ["mcp"],
       "env": {
         "AXON_MCP_TRANSPORT": "stdio"
       }

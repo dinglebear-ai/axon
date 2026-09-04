@@ -8,7 +8,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axon_api::source::{PruneExecuteRequest, PrunePlan, PruneRequest, PruneResult};
+use axon_api::source::{
+    PruneExecuteRequest, PrunePlan, PruneRequest, PruneResult, StoredPrunePlan,
+};
 use axon_prune::PruneAuthz;
 
 use crate::context::ServiceContext;
@@ -25,6 +27,7 @@ pub struct CleanupDebtRequest {
 #[async_trait]
 pub trait PruneService: Send + Sync {
     async fn plan(&self, request: PruneRequest) -> anyhow::Result<PrunePlan>;
+    async fn get_plan(&self, plan_id: &str) -> anyhow::Result<StoredPrunePlan>;
     async fn execute(
         &self,
         request: PruneExecuteRequest,
@@ -53,6 +56,12 @@ impl PruneService for PruneServiceImpl {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(plan)
+    }
+
+    async fn get_plan(&self, plan_id: &str) -> anyhow::Result<StoredPrunePlan> {
+        crate::prune::prune_get_saved_plan(&self.ctx, plan_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     async fn execute(
@@ -100,6 +109,26 @@ impl PruneService for FakePruneService {
             estimated: axon_api::source::PruneEstimate::default(),
             steps: Vec::new(),
             warnings: Vec::new(),
+        })
+    }
+
+    async fn get_plan(&self, plan_id: &str) -> anyhow::Result<StoredPrunePlan> {
+        let plan = self
+            .plan(PruneRequest::dry_run(
+                axon_api::source::PruneSelector::Collection {
+                    collection: "fake-owned".to_string(),
+                },
+                "fake",
+            ))
+            .await?;
+        Ok(StoredPrunePlan {
+            plan: PrunePlan {
+                job_id: axon_api::source::JobId::new(uuid::Uuid::parse_str(plan_id)?),
+                ..plan
+            },
+            reason: "fake".to_string(),
+            inventory_checksum: "fake-checksum".to_string(),
+            expires_at_utc: chrono::Utc::now().to_rfc3339(),
         })
     }
 

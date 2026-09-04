@@ -23,6 +23,16 @@ async fn fake_prune_service_plan_is_dry_run_by_default() {
 }
 
 #[tokio::test]
+async fn fake_prune_service_get_plan_preserves_requested_identity() {
+    let fake: Arc<dyn PruneService> = Arc::new(FakePruneService::new());
+    let plan_id = uuid::Uuid::new_v4().to_string();
+    let stored = fake.get_plan(&plan_id).await.expect("get should succeed");
+    assert_eq!(stored.plan.job_id.0.to_string(), plan_id);
+    assert!(!stored.inventory_checksum.is_empty());
+    assert!(!stored.expires_at_utc.is_empty());
+}
+
+#[tokio::test]
 async fn fake_prune_service_execute_requires_confirm() {
     let fake: Arc<dyn PruneService> = Arc::new(FakePruneService::new());
     let plan = fake

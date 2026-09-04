@@ -82,6 +82,13 @@ impl QdrantEndpoint {
                     (Some(host), None) => format!("{scheme}://{host}"),
                     _ => trimmed.to_string(),
                 };
+                // Live CI passes the gateway credential separately so it can
+                // never appear in a URL, argv, diagnostic, or retained report.
+                let api_key = api_key.or_else(|| {
+                    std::env::var("QDRANT_API_KEY")
+                        .ok()
+                        .filter(|value| !value.is_empty())
+                });
                 Self { base, api_key }
             }
             Err(_) => Self {

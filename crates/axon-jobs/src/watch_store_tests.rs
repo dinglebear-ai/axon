@@ -54,6 +54,35 @@ async fn insert_job(pool: &SqlitePool) -> JobId {
 }
 
 #[tokio::test]
+async fn concurrent_explicit_exec_lease_has_one_winner() {
+    let (store, _pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(3));
+
+    let contenders = (0..2)
+        .map(|_| {
+            let store = store.clone();
+            let watch_id = created.watch_id.clone();
+            let barrier = barrier.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+                store.acquire_exec_lease(&watch_id, 60_000).await.unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait().await;
+
+    let mut winners = 0;
+    for contender in contenders {
+        winners += usize::from(contender.await.unwrap());
+    }
+    assert_eq!(
+        winners, 1,
+        "only one overlapping watch exec may acquire the lease"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_watch_store_creates_gets_updates_and_lists() {
     let (store, pool, _temp) = store().await;
 

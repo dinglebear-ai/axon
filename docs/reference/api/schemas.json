@@ -3511,6 +3511,12 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "chunk_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "cleanup_status": {
           "anyOf": [
             {
@@ -3555,6 +3561,12 @@
         },
         "updated_at": {
           "type": "string"
+        },
+        "vector_point_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
@@ -18517,6 +18529,12 @@
     "SourceItemDetail_DocumentStatus": {
       "additionalProperties": false,
       "properties": {
+        "chunk_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "cleanup_status": {
           "anyOf": [
             {
@@ -18561,6 +18579,12 @@
         },
         "updated_at": {
           "type": "string"
+        },
+        "vector_point_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
@@ -29374,7 +29398,7 @@
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e",
+        "checksum": "sha256:f60074bd1841a702461c9bc3ed4887612e4159dfda20690b21909a6097995e84",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -29424,7 +29448,7 @@
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
       {
-        "checksum": "sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb",
+        "checksum": "sha256:149a94ec4ce7683c9ffd89e34bf719cf1e89089e8f96439c78b4f5f6458ce232",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/listing.rs"
       },
@@ -29454,7 +29478,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:fbd7cdfd5175b4511170d270bb4d70d511e2875dac0c4ffea86cbe3b6e6cfde3",
+        "checksum": "sha256:2d4d558ce68b3ae21f8d5fe8118ab4a0249fd3c12fb2cbef8b989c3cbd4afaa1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },

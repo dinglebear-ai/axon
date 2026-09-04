@@ -1208,6 +1208,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/prune/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["prune_get_plan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/query": {
         parameters: {
             query?: never;
@@ -1282,6 +1298,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["plan_reset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reset/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["reset_get_plan"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3799,6 +3831,18 @@ export interface components {
         };
         /** Format: uuid */
         StageId: string;
+        /**
+         * @description Durable, execution-bound prune plan as persisted by the service layer.
+         *
+         *     Transports expose this record so an operator can re-fetch the exact plan,
+         *     checksum, and expiry immediately before destructive execution.
+         */
+        StoredPrunePlan: {
+            expires_at_utc: string;
+            inventory_checksum: string;
+            plan: components["schemas"]["PrunePlan"];
+            reason: string;
+        };
         /**
          * @description The contracted flat SSE/MCP streaming envelope. `data` carries the
          *     kind-specific payload (a `SourceProgressEvent` for `progress`, the
@@ -8435,6 +8479,38 @@ export interface operations {
             };
         };
     };
+    prune_get_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Persisted prune plan id */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact persisted prune plan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredPrunePlan"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     query: {
         parameters: {
             query?: never;
@@ -8708,6 +8784,38 @@ export interface operations {
             };
             /** @description Caller lacks axon:admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reset_get_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Persisted reset plan id */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact persisted reset plan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetResult"];
+                };
+            };
+            /** @description Plan not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

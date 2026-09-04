@@ -180,6 +180,161 @@ async fn openai_compat_error_body_is_bounded_and_redacted() {
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_classifies_malformed_response() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(200).body("{not-json");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+    let error = complete_text(req)
+        .await
+        .expect_err("malformed JSON must fail");
+    assert!(
+        error
+            .to_string()
+            .starts_with("provider.malformed_response:")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_classifies_schema_mismatch() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(200)
+            .json_body(serde_json::json!({"choices": []}));
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+    let error = complete_text(req)
+        .await
+        .expect_err("missing answer must fail");
+    assert!(error.to_string().starts_with("provider.schema_mismatch:"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_classifies_token_limit() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(400).json_body(serde_json::json!({
+            "error": {"code": "context_length_exceeded", "message": "too many tokens"}
+        }));
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+    let error = complete_text(req).await.expect_err("token limit must fail");
+    assert!(error.to_string().starts_with("provider.token_limit:"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_classifies_timeout() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(200)
+            .delay(Duration::from_secs(2))
+            .json_body(serde_json::json!({"choices": [{"message": {"content": "late"}}]}));
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+    req.backend.completion_timeout_secs = 1;
+    let error = complete_text(req).await.expect_err("timeout must fail");
+    assert!(error.to_string().starts_with("provider.timeout:"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_preserves_scheduler_queue_full_code() {
+    let server = MockServer::start();
+    let _mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(429).json_body(serde_json::json!({
+            "error": {"code": "provider.scheduler.queue_full", "message": "queue full"}
+        }));
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+    let error = complete_text(req).await.expect_err("queue full must fail");
+    assert!(
+        error
+            .to_string()
+            .starts_with("provider.scheduler.queue_full:")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_does_not_retry_permanent_http_errors() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(401).body("invalid API key");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, Some("bad-key"));
+
+    let error = complete_text(req).await.expect_err("401 must fail");
+
+    assert!(error.to_string().contains("HTTP 401"));
+    mock.assert_calls(1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_streaming_does_not_retry_permanent_http_errors() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(403).body("forbidden");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, Some("denied-key"));
+
+    let error = complete_streaming(req, |_| Ok(()))
+        .await
+        .expect_err("403 must fail");
+
+    assert!(error.to_string().contains("HTTP 403"));
+    mock.assert_calls(1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_retries_transient_http_errors_once() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(503).body("temporarily unavailable");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+
+    let error = complete_text(req)
+        .await
+        .expect_err("503 must fail after retry");
+
+    assert!(error.to_string().contains("HTTP 503"));
+    mock.assert_calls(2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn openai_compat_streaming_retries_transient_http_errors_once() {
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/chat/completions");
+        then.status(429).body("rate limited");
+    });
+    let mut req = CompletionRequest::new("hello");
+    req.backend = backend(&server, None);
+
+    let error = complete_streaming(req, |_| Ok(()))
+        .await
+        .expect_err("429 must fail after retry");
+
+    assert!(error.to_string().contains("HTTP 429"));
+    mock.assert_calls(2);
+}
+
 #[test]
 fn openai_compat_plain_error_truncates_on_utf8_boundary() {
     // NB: redaction runs before truncation. The `x` padding is zero-entropy, so

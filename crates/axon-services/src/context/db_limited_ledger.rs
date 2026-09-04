@@ -43,6 +43,10 @@ impl LedgerStore for DbLimitedLedgerStore {
         self.inner.get_source(source_id).await
     }
 
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>> {
+        self.inner.get_source_detail(source_id).await
+    }
+
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
         let _permit = self.permit().await?;
         self.inner.list_sources(request).await

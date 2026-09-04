@@ -1,0 +1,1725 @@
+{
+  "schema_version": 1,
+  "coverage_policy": {
+    "behavioral_percent": 91,
+    "critical_lifecycles": [
+      "source",
+      "jobs",
+      "destructive"
+    ]
+  },
+  "operations": [
+    {
+      "id": "cli:watch create",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch status",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch update",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch exec",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch pause",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch resume",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch delete",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:watch history",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:monitor jobs",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:map",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:endpoints",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract status",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract cancel",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract errors",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract cleanup",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract clear",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract worker",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:extract recover",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:search",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:research",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:scrape",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:crawl",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:embed",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:ingest",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:code-search",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:brand",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:debug",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:diff",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:doctor",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:doctor diagnose",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:query",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:retrieve",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:ask",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:summarize",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:evaluate",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:train",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:suggest",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:sources",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:domains",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:stats",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:status",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs events",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs stream",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs cancel",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs retry",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs recover",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs cleanup",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs clear",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:jobs worker",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory remember",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory search",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory show",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory link",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory supersede",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:memory context",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:sessions",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:source",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:screenshot",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:completions",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:serve",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:serve mcp",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:reset",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:prune plan",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:prune exec",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:preflight",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:smoke",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:compose up",
+      "inventory": "cli",
+      "classification": "out_of_scope",
+      "reason": "Host-mutating operator command is excluded from automated E2E execution."
+    },
+    {
+      "id": "cli:compose down",
+      "inventory": "cli",
+      "classification": "out_of_scope",
+      "reason": "Host-mutating operator command is excluded from automated E2E execution."
+    },
+    {
+      "id": "cli:compose restart",
+      "inventory": "cli",
+      "classification": "out_of_scope",
+      "reason": "Host-mutating operator command is excluded from automated E2E execution."
+    },
+    {
+      "id": "cli:compose rebuild",
+      "inventory": "cli",
+      "classification": "out_of_scope",
+      "reason": "Host-mutating operator command is excluded from automated E2E execution."
+    },
+    {
+      "id": "cli:setup plugin-hook",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:setup init",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:setup check",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:setup targets",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:setup install",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:setup config rewrite",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:mcp",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:migrate",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:config list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:config get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:config set",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:config unset",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:config path",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:sync pending",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:update",
+      "inventory": "cli",
+      "classification": "out_of_scope",
+      "reason": "Host-mutating operator command is excluded from automated E2E execution."
+    },
+    {
+      "id": "cli:palette",
+      "inventory": "cli",
+      "classification": "contract_only",
+      "reason": "Deterministic parser and output contract coverage is sufficient."
+    },
+    {
+      "id": "cli:artifacts list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:artifacts get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:artifacts content",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:uploads list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:uploads get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:uploads create",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:uploads complete",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:uploads abort",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:collections list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:collections get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:graph kinds",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:graph resolve",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:graph query",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:graph node",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:graph edge",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:graph source",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:providers list",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:providers get",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:capabilities",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cli:chat",
+      "inventory": "cli",
+      "classification": "behavioral_e2e",
+      "reason": "Planned for behavioral coverage through a shared E2E adapter."
+    },
+    {
+      "id": "cross:source",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:scrape",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:crawl",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:embed",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:ingest",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:code-search",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:resolve",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:map",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:search",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:query",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:retrieve",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:ask",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:chat",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:evaluate",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:suggest",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:research",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:summarize",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:endpoints",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:brand",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:diff",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:screenshot",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:extract",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:memory",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:jobs",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:watches",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:artifacts",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:uploads",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:prune",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:collections",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:graph",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:providers",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:reset",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:capabilities",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:doctor",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "cross:status",
+      "inventory": "cross_surface",
+      "classification": "behavioral_e2e",
+      "reason": "Canonical cross-surface operation requires shared semantic coverage."
+    },
+    {
+      "id": "surface:artifacts",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:ask",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:brand",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:capabilities",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:chat",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:code-search",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:code_search",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:collections",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:completions",
+      "inventory": "api_parity",
+      "classification": "contract_only",
+      "reason": "Surface metadata or parser contract is the behavioral boundary."
+    },
+    {
+      "id": "surface:compose",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:config",
+      "inventory": "api_parity",
+      "classification": "contract_only",
+      "reason": "Surface metadata or parser contract is the behavioral boundary."
+    },
+    {
+      "id": "surface:crawl",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:debug",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:diff",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:doctor",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:domains",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:embed",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:endpoints",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:evaluate",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:extract",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:graph",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:help",
+      "inventory": "api_parity",
+      "classification": "contract_only",
+      "reason": "Surface metadata or parser contract is the behavioral boundary."
+    },
+    {
+      "id": "surface:ingest",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:jobs",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:map",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:mcp",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:memories",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:memory",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:migrate",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:mobile",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:monitor",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:palette",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:preflight",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:providers",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:prune",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:query",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:research",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:reset",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:resolve",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:retrieve",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:scrape",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:screenshot",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:search",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:serve",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:sessions",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:setup",
+      "inventory": "api_parity",
+      "classification": "contract_only",
+      "reason": "Surface metadata or parser contract is the behavioral boundary."
+    },
+    {
+      "id": "surface:smoke",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:source",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:sources",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:stats",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:status",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:suggest",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:summarize",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:sync",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:train",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:update",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:uploads",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:watch",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:watches",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    }
+  ],
+  "scenarios": [
+    {
+      "capability": "source",
+      "lifecycle": "source",
+      "polarity": "happy",
+      "execution_mode": "inline",
+      "setup_dependencies": ["fixture.http"],
+      "surfaces": [
+        "cli",
+        "mcp",
+        "http"
+      ],
+      "tier": "hermetic",
+      "workload_tier": "micro",
+      "fixture": "tests/e2e/catalog/fixtures/source-page.json",
+      "requests": {
+        "cli": "tests/e2e/catalog/fixtures/source-page.json",
+        "mcp": "tests/e2e/catalog/fixtures/source-page.json",
+        "http": "tests/e2e/catalog/fixtures/source-page.json"
+      },
+      "semantic_oracles": [
+        "source.accepted",
+        "job.terminal_success"
+      ],
+      "envelope_oracles": {
+        "cli": [
+          "cli.json_object"
+        ],
+        "mcp": [
+          "mcp.content_or_task"
+        ],
+        "http": [
+          "http.success_status"
+        ]
+      },
+      "mutable": true,
+      "resource_classes": [
+        "data_dir",
+        "sqlite",
+        "collection",
+        "artifact",
+        "process",
+        "port",
+        "log"
+      ],
+      "resource_ownership": { "strategy": "run_manifest", "namespace_prefix": "axon_e2e_", "lease_required": true },
+      "cleanup_contract": "cleanup.owned_source_run",
+      "timeout_class": "lifecycle",
+      "estimated_seconds": 30,
+      "weights": {
+        "cpu": 1,
+        "memory_mib": 256,
+        "disk_mib": 64,
+        "processes": 1,
+        "ports": 1
+      },
+      "provider": {
+        "class": "fake",
+        "concurrency_ceiling": 4
+      },
+      "setup_sharing_group": null,
+      "isolation": "scenario",
+      "shard_eligible": true,
+      "retry_class": "diagnostic",
+      "retry": {
+        "eligible": true,
+        "cost": "low"
+      },
+      "evidence_kib": 512,
+      "redaction_class": "sensitive",
+      "tags": [],
+      "failure_taxonomy": [
+        "product",
+        "fixture",
+        "cleanup",
+        "harness"
+      ],
+      "id": "source.inline.happy"
+    },
+    {
+      "capability": "source",
+      "lifecycle": "source",
+      "polarity": "negative",
+      "execution_mode": "detached",
+      "setup_dependencies": ["fixture.http"],
+      "surfaces": [
+        "cli",
+        "mcp",
+        "http"
+      ],
+      "tier": "hermetic",
+      "workload_tier": "micro",
+      "fixture": "tests/e2e/catalog/fixtures/source-page.json",
+      "requests": {
+        "cli": "tests/e2e/catalog/fixtures/source-page.json",
+        "mcp": "tests/e2e/catalog/fixtures/source-page.json",
+        "http": "tests/e2e/catalog/fixtures/source-page.json"
+      },
+      "semantic_oracles": [
+        "rejection.source_invalid",
+        "failure.taxonomy"
+      ],
+      "envelope_oracles": {
+        "cli": [
+          "cli.json_object"
+        ],
+        "mcp": [
+          "mcp.content_or_task"
+        ],
+        "http": [
+          "http.success_status"
+        ]
+      },
+      "mutable": true,
+      "resource_classes": [
+        "data_dir",
+        "sqlite",
+        "collection",
+        "artifact",
+        "process",
+        "port",
+        "log"
+      ],
+      "resource_ownership": { "strategy": "run_manifest", "namespace_prefix": "axon_e2e_", "lease_required": true },
+      "cleanup_contract": "cleanup.owned_source_run",
+      "timeout_class": "lifecycle",
+      "estimated_seconds": 30,
+      "weights": {
+        "cpu": 1,
+        "memory_mib": 256,
+        "disk_mib": 64,
+        "processes": 1,
+        "ports": 1
+      },
+      "provider": {
+        "class": "fake",
+        "concurrency_ceiling": 4
+      },
+      "setup_sharing_group": null,
+      "isolation": "scenario",
+      "shard_eligible": true,
+      "retry_class": "never",
+      "retry": {
+        "eligible": true,
+        "cost": "low"
+      },
+      "evidence_kib": 512,
+      "redaction_class": "sensitive",
+      "tags": ["platform_smoke"],
+      "failure_taxonomy": [
+        "product",
+        "fixture",
+        "cleanup",
+        "harness"
+      ],
+      "id": "source.detached.negative"
+    },
+    {
+      "capability": "jobs",
+      "lifecycle": "jobs",
+      "polarity": "happy",
+      "execution_mode": "streamed",
+      "setup_dependencies": ["fixture.job"],
+      "surfaces": [
+        "cli",
+        "mcp",
+        "http"
+      ],
+      "tier": "hermetic",
+      "workload_tier": "micro",
+      "fixture": "tests/e2e/catalog/fixtures/source-page.json",
+      "requests": {
+        "cli": "tests/e2e/catalog/fixtures/source-page.json",
+        "mcp": "tests/e2e/catalog/fixtures/source-page.json",
+        "http": "tests/e2e/catalog/fixtures/source-page.json"
+      },
+      "semantic_oracles": [
+        "job.visible",
+        "job.transition_valid"
+      ],
+      "envelope_oracles": {
+        "cli": [
+          "cli.json_object"
+        ],
+        "mcp": [
+          "mcp.content_or_task"
+        ],
+        "http": [
+          "http.success_status"
+        ]
+      },
+      "mutable": true,
+      "resource_classes": [
+        "data_dir",
+        "sqlite",
+        "collection",
+        "artifact",
+        "process",
+        "port",
+        "log"
+      ],
+      "resource_ownership": { "strategy": "run_manifest", "namespace_prefix": "axon_e2e_", "lease_required": true },
+      "cleanup_contract": "cleanup.owned_source_run",
+      "timeout_class": "lifecycle",
+      "estimated_seconds": 30,
+      "weights": {
+        "cpu": 1,
+        "memory_mib": 256,
+        "disk_mib": 64,
+        "processes": 1,
+        "ports": 1
+      },
+      "provider": {
+        "class": "fake",
+        "concurrency_ceiling": 4
+      },
+      "setup_sharing_group": null,
+      "isolation": "scenario",
+      "shard_eligible": true,
+      "retry_class": "diagnostic",
+      "retry": {
+        "eligible": true,
+        "cost": "low"
+      },
+      "evidence_kib": 512,
+      "redaction_class": "sensitive",
+      "tags": [],
+      "failure_taxonomy": [
+        "product",
+        "fixture",
+        "cleanup",
+        "harness"
+      ],
+      "id": "jobs.stream.happy"
+    },
+    {
+      "capability": "jobs",
+      "lifecycle": "jobs",
+      "polarity": "negative",
+      "execution_mode": "provider_backed",
+      "setup_dependencies": ["provider.fake"],
+      "surfaces": [
+        "cli",
+        "mcp",
+        "http"
+      ],
+      "tier": "hermetic",
+      "workload_tier": "micro",
+      "fixture": "tests/e2e/catalog/fixtures/source-page.json",
+      "requests": {
+        "cli": "tests/e2e/catalog/fixtures/source-page.json",
+        "mcp": "tests/e2e/catalog/fixtures/source-page.json",
+        "http": "tests/e2e/catalog/fixtures/source-page.json"
+      },
+      "semantic_oracles": [
+        "rejection.job_missing",
+        "failure.taxonomy"
+      ],
+      "envelope_oracles": {
+        "cli": [
+          "cli.json_object"
+        ],
+        "mcp": [
+          "mcp.content_or_task"
+        ],
+        "http": [
+          "http.success_status"
+        ]
+      },
+      "mutable": true,
+      "resource_classes": [
+        "data_dir",
+        "sqlite",
+        "collection",
+        "artifact",
+        "process",
+        "port",
+        "log"
+      ],
+      "resource_ownership": { "strategy": "run_manifest", "namespace_prefix": "axon_e2e_", "lease_required": true },
+      "cleanup_contract": "cleanup.owned_source_run",
+      "timeout_class": "lifecycle",
+      "estimated_seconds": 30,
+      "weights": {
+        "cpu": 1,
+        "memory_mib": 256,
+        "disk_mib": 64,
+        "processes": 1,
+        "ports": 1
+      },
+      "provider": {
+        "class": "fake",
+        "concurrency_ceiling": 4
+      },
+      "setup_sharing_group": null,
+      "isolation": "scenario",
+      "shard_eligible": true,
+      "retry_class": "provider_transient",
+      "retry": {
+        "eligible": true,
+        "cost": "low"
+      },
+      "evidence_kib": 512,
+      "redaction_class": "sensitive",
+      "tags": ["platform_smoke"],
+      "failure_taxonomy": [
+        "product",
+        "fixture",
+        "cleanup",
+        "harness"
+      ],
+      "id": "jobs.cancel.negative"
+    },
+    {
+      "capability": "prune",
+      "lifecycle": "destructive",
+      "polarity": "happy",
+      "execution_mode": "destructive_plan",
+      "setup_dependencies": ["fixture.owned_collection"],
+      "surfaces": [
+        "cli",
+        "mcp",
+        "http"
+      ],
+      "tier": "hermetic",
+      "workload_tier": "micro",
+      "fixture": "tests/e2e/catalog/fixtures/prune-plan.json",
+      "requests": {
+        "cli": "tests/e2e/catalog/fixtures/prune-plan.json",
+        "mcp": "tests/e2e/catalog/fixtures/prune-plan.json",
+        "http": "tests/e2e/catalog/fixtures/prune-plan.json"
+      },
+      "semantic_oracles": [
+        "prune.plan_digest_bound",
+        "resource.ownership_checked"
+      ],
+      "envelope_oracles": {
+        "cli": [
+          "cli.json_object"
+        ],
+        "mcp": [
+          "mcp.content_or_task"
+        ],
+        "http": [
+          "http.success_status"
+        ]
+      },
+      "mutable": true,
+      "resource_classes": [
+        "data_dir",
+        "sqlite",
+        "collection",
+        "artifact",
+        "process",
+        "port",
+        "log"
+      ],
+      "resource_ownership": { "strategy": "run_manifest", "namespace_prefix": "axon_e2e_", "lease_required": true },
+      "cleanup_contract": "cleanup.owned_source_run",
+      "timeout_class": "lifecycle",
+      "estimated_seconds": 30,
+      "weights": {
+        "cpu": 1,
+        "memory_mib": 256,
+        "disk_mib": 64,
+        "processes": 1,
+        "ports": 1
+      },
+      "provider": {
+        "class": "fake",
+        "concurrency_ceiling": 4
+      },
+      "setup_sharing_group": null,
+      "isolation": "scenario",
+      "shard_eligible": true,
+      "retry_class": "never",
+      "retry": {
+        "eligible": true,
+        "cost": "low"
+      },
+      "evidence_kib": 512,
+      "redaction_class": "sensitive",
+      "tags": [],
+      "failure_taxonomy": [
+        "product",
+        "fixture",
+        "cleanup",
+        "harness"
+      ],
+      "id": "prune.plan.happy"
+    },
+    {
+      "capability": "prune",
+      "lifecycle": "destructive",
+      "polarity": "negative",
+      "execution_mode": "destructive_plan",
+      "setup_dependencies": ["fixture.foreign_collection"],
+      "surfaces": [
+        "cli",
+        "mcp",
+        "http"
+      ],
+      "tier": "hermetic",
+      "workload_tier": "micro",
+      "fixture": "tests/e2e/catalog/fixtures/prune-plan.json",
+      "requests": {
+        "cli": "tests/e2e/catalog/fixtures/prune-plan.json",
+        "mcp": "tests/e2e/catalog/fixtures/prune-plan.json",
+        "http": "tests/e2e/catalog/fixtures/prune-plan.json"
+      },
+      "semantic_oracles": [
+        "rejection.ownership_guard",
+        "failure.taxonomy"
+      ],
+      "envelope_oracles": {
+        "cli": [
+          "cli.json_object"
+        ],
+        "mcp": [
+          "mcp.content_or_task"
+        ],
+        "http": [
+          "http.success_status"
+        ]
+      },
+      "mutable": true,
+      "resource_classes": [
+        "data_dir",
+        "sqlite",
+        "collection",
+        "artifact",
+        "process",
+        "port",
+        "log"
+      ],
+      "resource_ownership": { "strategy": "run_manifest", "namespace_prefix": "axon_e2e_", "lease_required": true },
+      "cleanup_contract": "cleanup.owned_source_run",
+      "timeout_class": "lifecycle",
+      "estimated_seconds": 30,
+      "weights": {
+        "cpu": 1,
+        "memory_mib": 256,
+        "disk_mib": 64,
+        "processes": 1,
+        "ports": 1
+      },
+      "provider": {
+        "class": "fake",
+        "concurrency_ceiling": 4
+      },
+      "setup_sharing_group": null,
+      "isolation": "scenario",
+      "shard_eligible": true,
+      "retry_class": "never",
+      "retry": {
+        "eligible": true,
+        "cost": "low"
+      },
+      "evidence_kib": 512,
+      "redaction_class": "sensitive",
+      "tags": [],
+      "failure_taxonomy": [
+        "product",
+        "fixture",
+        "cleanup",
+        "harness"
+      ],
+      "id": "prune.execute.negative"
+    }
+  ]
+}

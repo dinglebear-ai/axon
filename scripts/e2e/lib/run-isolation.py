@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""Portable allocation and append-only registration primitives for Axon E2E.
+
+This module intentionally does not delete resources. Teardown, residual audit,
+and stale-run recovery consume its manifest and are owned by the teardown suite.
+"""
+
+from __future__ import annotations
+
+import argparse, contextlib, ctypes, getpass, hashlib, hmac, json
+import os, secrets, socket, stat, subprocess, sys, tempfile, time
+from pathlib import Path
+from typing import Any, Iterator
+
+_LIB_DIR = str(Path(__file__).resolve().parent)
+_ADDED_LIB_DIR = _LIB_DIR not in sys.path
+if _ADDED_LIB_DIR:
+    sys.path.insert(0, _LIB_DIR)
+try:
+    from axon_e2e_manifest_registration import register_resource
+    import axon_e2e_process_identity as process_identity
+finally:
+    if _ADDED_LIB_DIR:
+        sys.path.remove(_LIB_DIR)
+
+MANIFEST_VERSION = 1
+RUN_PREFIX = "axon_e2e_"
+RESOURCE_TYPES = set("""
+artifact auth_session cache chat_session chrome_diagnostic chrome_profile cleanup_debt collection compose_project container credential_file data_dir download evidence feed_fixture git_fixture http_cache http_stream job job_artifact job_attempt job_event job_heartbeat job_stage lease lock mcp_session network operation output payload_index point port screenshot sqlite_sidecar warc process provider_reservation qdrant_alias qdrant_snapshot socket source source_generation source_manifest source_item document_status source_lease watch_run graph_node graph_alias graph_edge graph_evidence graph_conflict memory_node memory_edge memory_record memory_link memory_reinforcement memory_review observe_event observe_heartbeat observe_provider_health config_snapshot sqlite tailscale_node temp_path token upload volume watch
+""".split())
+PROVIDER_DEFAULT_CEILINGS = {"chrome": 2, "llm": 2, "qdrant": 4, "tei": 2}
+
+
+class IsolationError(RuntimeError):
+    """An unsafe or internally inconsistent isolation request."""
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+_WindowsFileTime = process_identity._WindowsFileTime
+
+
+def _configure_windows_kernel32(api: Any) -> Any:
+    return process_identity._configure_windows_kernel32(api)
+
+
+def _windows_kernel32():
+    return process_identity.windows_kernel32(IsolationError)
+
+
+def _windows_process_start_time(pid: int, kernel32: Any | None = None) -> str:
+    return process_identity.windows_process_start_time(pid, IsolationError, kernel32)
+
+
+def _windows_process_alive(pid: int, kernel32: Any | None = None) -> bool:
+    return process_identity.windows_process_alive(pid, IsolationError, kernel32)
+
+
+def _windows_acl(path: Path, *, apply: bool) -> None:
+    process_identity.windows_acl(
+        path, apply=apply, error_type=IsolationError, owner_getter=getpass.getuser, runner=subprocess.run,
+    )
+
+
+def _canonical(path: Path) -> Path:
+    return path.expanduser().resolve(strict=False)
+
+
+def _is_within(path: Path, parent: Path) -> bool:
+    try:
+        _canonical(path).relative_to(_canonical(parent))
+        return True
+    except ValueError:
+        return False
+
+
+def validate_run_paths(run_root: Path, data_dir: Path, manifest_root: Path) -> None:
+    home_state = _canonical(Path.home() / ".axon")
+    run_root, data_dir, manifest_root = map(_canonical, (run_root, data_dir, manifest_root))
+    if run_root == home_state or _is_within(run_root, home_state):
+        raise IsolationError(f"run root overlaps production state: {run_root}")
+    if not _is_within(data_dir, run_root):
+        raise IsolationError(f"AXON_DATA_DIR must be inside the owned run root: {data_dir}")
+    if _is_within(manifest_root, data_dir) or _is_within(data_dir, manifest_root):
+        raise IsolationError("manifest root and tested AXON_DATA_DIR must not overlap")
+
+
+def validate_owned_name(value: str) -> None:
+    if not value.startswith(RUN_PREFIX) or len(value) > 128:
+        raise IsolationError(f"resource name must use {RUN_PREFIX!r} prefix")
+    if not all(char.isalnum() or char in "_-" for char in value):
+        raise IsolationError("resource name contains unsafe characters")
+
+
+def _darwin_process_bsdinfo(pid: int):
+    return process_identity.darwin_process_bsdinfo(pid)
+
+
+def _darwin_process_group_alive(pgid: int) -> bool:
+    return process_identity.darwin_process_group_alive(pgid)
+
+
+def _process_start_time(pid: int) -> str:
+    return process_identity.process_start_time(pid, IsolationError)
+
+
+def new_run_id() -> str:
+    return f"{RUN_PREFIX}{int(time.time())}_{secrets.token_hex(12)}"
+
+
+def _private_write(path: Path, data: bytes) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        os.write(descriptor, data)
+    finally:
+        os.close(descriptor)
+    if _is_windows():
+        _windows_acl(path, apply=True)
+
+
+def _auto_register_outer_cleanup(manifest: "Manifest") -> None:
+    """Publish cleanup authority before a caller can create any resources."""
+    registry = os.environ.get("AXON_E2E_CLEANUP_REGISTRY")
+    if not registry:
+        return
+    root = Path(__file__).resolve().parents[3]
+    report = manifest.path.parent / "outer-cleanup-registration.json"
+    completed = subprocess.run(
+        [sys.executable, str(root / "scripts/e2e/cleanup-owned-runs.py"),
+         "--registry", registry, "--register-manifest", str(manifest.path), "--report", str(report)],
+        cwd=root, capture_output=True, text=True, timeout=15, check=False,
+    )
+    try:
+        receipt = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        detail = (completed.stderr or completed.stdout).strip()[:300]
+        raise IsolationError(f"outer cleanup registration receipt is unavailable: {detail}") from error
+    if completed.returncode or receipt.get("success") is not True or receipt.get("run_id") != manifest.run_id:
+        raise IsolationError("outer cleanup registration failed")
+
+
+class Manifest:
+    """A versioned, chained-HMAC, append-only resource registration ledger."""
+
+    def __init__(self, path: Path, key_path: Path):
+        self.path = path
+        self.key_path = key_path
+
+    @property
+    def run_id(self) -> str:
+        return self.path.parent.name
+
+    @classmethod
+    def create(cls, manifest_root: Path, run_id: str, data_dir: Path) -> "Manifest":
+        validate_owned_name(run_id)
+        manifest_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        run_manifest_root = manifest_root / run_id
+        run_manifest_root.mkdir(mode=0o700)
+        manifest = cls(run_manifest_root / "resources.jsonl", run_manifest_root / "manifest.key")
+        _private_write(manifest.key_path, secrets.token_bytes(32))
+        manifest._append({
+            "kind": "header", "version": MANIFEST_VERSION, "run_id": run_id,
+            "data_dir": str(_canonical(data_dir)), "created_unix_ms": int(time.time() * 1000),
+        })
+        try:
+            _auto_register_outer_cleanup(manifest)
+        except Exception:
+            # Nothing may be provisioned before registration succeeds. Remove
+            # the otherwise-unreachable empty authority and fail creation.
+            manifest.path.unlink(missing_ok=True); manifest.key_path.unlink(missing_ok=True)
+            (run_manifest_root / "outer-cleanup-registration.json").unlink(missing_ok=True)
+            try: run_manifest_root.rmdir()
+            except OSError: pass
+            raise
+        return manifest
+
+    @classmethod
+    def open(cls, path: Path) -> "Manifest":
+        return cls(path, path.with_name("manifest.key"))
+
+    def _key(self) -> bytes:
+        if _is_windows():
+            _windows_acl(self.key_path, apply=False)
+            return self.key_path.read_bytes()
+        mode = stat.S_IMODE(self.key_path.stat().st_mode)
+        if mode & 0o077:
+            raise IsolationError("manifest key must not be accessible by group or other users")
+        return self.key_path.read_bytes()
+
+    def _records(self) -> list[dict[str, Any]]:
+        if not self.path.exists():
+            return []
+        records = []
+        for line_number, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as error:
+                raise IsolationError(f"invalid manifest JSON on line {line_number}") from error
+        return records
+
+    def verify(self) -> list[dict[str, Any]]:
+        previous = "0" * 64
+        key = self._key()
+        records = self._records()
+        if not records or records[0].get("payload", {}).get("kind") != "header":
+            raise IsolationError("manifest header is missing")
+        for index, record in enumerate(records):
+            if record.get("sequence") != index or record.get("previous") != previous:
+                raise IsolationError(f"manifest chain is broken at sequence {index}")
+            unsigned = {key_: record[key_] for key_ in ("sequence", "previous", "payload")}
+            encoded = json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+            expected = hmac.new(key, encoded, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, str(record.get("hmac", ""))):
+                raise IsolationError(f"manifest integrity failure at sequence {index}")
+            previous = expected
+        return records
+
+    def _append(self, payload: dict[str, Any]) -> None:
+        with _directory_lock(self.path.with_name(".manifest-lock")):
+            records = self.verify() if self.path.exists() else []
+            previous = records[-1]["hmac"] if records else "0" * 64
+            unsigned = {"sequence": len(records), "previous": previous, "payload": payload}
+            encoded = json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+            record = {**unsigned, "hmac": hmac.new(self._key(), encoded, hashlib.sha256).hexdigest()}
+            descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            try:
+                os.write(descriptor, (json.dumps(record, sort_keys=True) + "\n").encode())
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+
+    def register(self, resource_type: str, identity: str, metadata: dict[str, Any] | None = None) -> None:
+        register_resource(
+            self, resource_type, identity, metadata, resource_types=RESOURCE_TYPES,
+            run_prefix=RUN_PREFIX, provider_ceilings=PROVIDER_DEFAULT_CEILINGS,
+            validate_owned_name=validate_owned_name, canonical=_canonical, is_within=_is_within,
+            process_start_time=_process_start_time, error_type=IsolationError,
+        )
+
+
+@contextlib.contextmanager
+def _directory_lock(path: Path, timeout: float = 10.0) -> Iterator[None]:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            path.mkdir()
+            if _is_windows():
+                _windows_acl(path, apply=True)
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise IsolationError(f"timed out acquiring state lock: {path}")
+            time.sleep(0.02)
+    try:
+        yield
+    finally:
+        path.rmdir()
+
+
+class PortReservation:
+    """A cooperative lease plus held socket; callers hand off before closing."""
+
+    def __init__(self, port: int, sock: socket.socket, lease_path: Path):
+        self.port, self.socket, self.lease_path = port, sock, lease_path
+
+    def close(self) -> None:
+        self.socket.close()
+
+    def __enter__(self) -> "PortReservation": return self
+    def __exit__(self, *_args: object) -> None: self.close()
+
+
+def allocate_port(lease_root: Path, run_id: str, manifest: Manifest) -> PortReservation:
+    validate_owned_name(run_id)
+    lease_root.mkdir(parents=True, exist_ok=True)
+    for _ in range(256):
+        candidate = secrets.randbelow(20000) + 30000
+        lease = lease_root / str(candidate)
+        try:
+            lease.mkdir()
+        except FileExistsError:
+            continue
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        try:
+            sock.bind(("127.0.0.1", candidate))
+        except OSError:
+            sock.close()
+            lease.rmdir()
+            continue
+        (lease / "owner.json").write_text(json.dumps({"run_id": run_id}), encoding="utf-8")
+        manifest.register("port", str(candidate), {"lease": str(lease), "host": "127.0.0.1"})
+        return PortReservation(candidate, sock, lease)
+    raise IsolationError("unable to allocate a loopback port lease")
+
+
+class ResourceGovernor:
+    """Atomic weighted admission with global and per-provider ceilings."""
+
+    def __init__(self, root: Path, global_ceiling: int, provider_ceilings: dict[str, int] | None = None):
+        if global_ceiling < 1:
+            raise IsolationError("global ceiling must be positive")
+        self.root, self.global_ceiling = root, global_ceiling
+        self.provider_ceilings = provider_ceilings or PROVIDER_DEFAULT_CEILINGS
+        root.mkdir(parents=True, exist_ok=True)
+        self.state_path, self.lock_path = root / "governor.json", root / ".lock"
+
+    def _state(self) -> dict[str, Any]:
+        if not self.state_path.exists():
+            return {"leases": {}}
+        return json.loads(self.state_path.read_text(encoding="utf-8"))
+
+    def acquire(self, run_id: str, provider: str, weight: int) -> str:
+        validate_owned_name(run_id)
+        if weight < 1 or weight > self.global_ceiling:
+            raise IsolationError("weight is outside the global capacity")
+        ceiling = self.provider_ceilings.get(provider, self.global_ceiling)
+        with _directory_lock(self.lock_path):
+            state = self._state()
+            leases = state["leases"]
+            global_used = sum(item["weight"] for item in leases.values())
+            provider_used = sum(item["weight"] for item in leases.values() if item["provider"] == provider)
+            if global_used + weight > self.global_ceiling or provider_used + weight > ceiling:
+                raise IsolationError(f"capacity unavailable for provider {provider}")
+            token = secrets.token_hex(16)
+            leases[token] = {"run_id": run_id, "provider": provider, "weight": weight}
+            self.state_path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+            return token
+
+    def release(self, token: str, run_id: str) -> None:
+        with _directory_lock(self.lock_path):
+            state = self._state()
+            lease = state["leases"].get(token)
+            if not lease or lease["run_id"] != run_id:
+                raise IsolationError("governor lease is absent or not owned by this run")
+            del state["leases"][token]
+            self.state_path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+
+
+class ManagedProcess:
+    """Registered process identity. Signalling/teardown is deliberately absent."""
+
+    def __init__(self, process: subprocess.Popen[Any], start_time: str, nonce: str, nonce_file: Path):
+        self.process, self.start_time, self.nonce, self.nonce_file = process, start_time, nonce, nonce_file
+
+    def validate_owner(self) -> bool:
+        if self.process.poll() is not None:
+            return False
+        try:
+            return (
+                _process_start_time(self.process.pid) == self.start_time
+                and self.nonce_file.read_text(encoding="utf-8") == self.nonce
+            )
+        except (IsolationError, OSError):
+            return False
+
+
+def spawn_owned_process(
+    manifest: Manifest, run_root: Path, argv: list[str], *, env: dict[str, str] | None = None,
+    capture_prefix: Path | None = None,
+) -> ManagedProcess:
+    if not argv:
+        raise IsolationError("owned process argv must not be empty")
+    nonce = secrets.token_hex(32)
+    nonce_dir = _canonical(run_root) / "process-ownership"
+    nonce_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    nonce_file = nonce_dir / f"{nonce}.owner"
+    _private_write(nonce_file, nonce.encode())
+    process_env = os.environ.copy(); process_env.update(env or {})
+    process_env["AXON_E2E_PROCESS_NONCE"] = nonce
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200) if _is_windows() else 0
+    stdout_handle = stderr_handle = None
+    if capture_prefix is not None:
+        capture_prefix.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        stdout_handle = capture_prefix.with_suffix(".stdout").open("wb")
+        stderr_handle = capture_prefix.with_suffix(".stderr").open("wb")
+    try:
+        process = subprocess.Popen(
+            argv, env=process_env, start_new_session=not _is_windows(), creationflags=creationflags,
+            stdout=stdout_handle, stderr=stderr_handle,
+        )
+    finally:
+        if stdout_handle is not None:
+            stdout_handle.close()
+        if stderr_handle is not None:
+            stderr_handle.close()
+    try:
+        start_time = _process_start_time(process.pid)
+        manifest.register("process", str(process.pid), {
+            "start_time": start_time, "nonce": nonce, "nonce_file": str(nonce_file),
+            "process_group": process.pid, "argv0": Path(argv[0]).name,
+        })
+    except Exception:
+        process.terminate(); process.wait(timeout=5)
+        raise
+    return ManagedProcess(process, start_time, nonce, nonce_file)
+
+
+def spawn_isolated_python(
+    manifest: Manifest, run_root: Path, argv: list[str], allowed_endpoints: list[tuple[str, int]],
+    *, env: dict[str, str] | None = None,
+) -> ManagedProcess:
+    """Launch Python with actual socket enforcement; reject unsupported launchers.
+
+    This is an explicit portable capability. Native binaries need a platform
+    sandbox adapter and are refused here so hermetic mode cannot degrade open.
+    """
+    if not argv or not Path(argv[0]).name.lower().startswith("python"):
+        raise IsolationError("portable containment supports only the isolated Python launcher")
+    for host, port in allowed_endpoints:
+        if host not in {"127.0.0.1", "::1", "localhost"} or not 1 <= port <= 65535:
+            raise IsolationError("hermetic allowlist accepts only owned loopback endpoints")
+    guard_dir = _canonical(run_root) / "network-guard"
+    guard_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    guard = guard_dir / "sitecustomize.py"
+    guard.write_text(
+        "import json, os, socket\n"
+        "_allowed={tuple(x) for x in json.loads(os.environ['AXON_E2E_ALLOWED_ENDPOINTS'])}\n"
+        "_connect=socket.socket.connect\n"
+        "_connect_ex=socket.socket.connect_ex\n"
+        "def _guard(self,address):\n"
+        "  host,port=address[0],int(address[1])\n"
+        "  if (host,port) not in _allowed: raise PermissionError('Axon E2E denied outbound destination')\n"
+        "  return _connect(self,address)\n"
+        "socket.socket.connect=_guard\n"
+        "socket.socket.connect_ex=lambda self,address: _guard(self,address) or 0\n",
+        encoding="utf-8",
+    )
+    isolated_env = dict(env or {})
+    inherited = isolated_env.get("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
+    isolated_env["PYTHONPATH"] = str(guard_dir) + (os.pathsep + inherited if inherited else "")
+    isolated_env["AXON_E2E_ALLOWED_ENDPOINTS"] = json.dumps(allowed_endpoints)
+    isolated_env["AXON_E2E_NETWORK_CAPABILITY"] = "python-socket-guard-v1"
+    return spawn_owned_process(manifest, run_root, argv, env=isolated_env)
+
+
+def allocate(run_base: Path, manifest_base: Path) -> dict[str, str]:
+    run_id = new_run_id()
+    run_root = _canonical(run_base / run_id)
+    data_dir = run_root / "data"
+    validate_run_paths(run_root, data_dir, manifest_base)
+    data_dir.mkdir(parents=True, mode=0o700)
+    sqlite = data_dir / "jobs.db"
+    manifest = Manifest.create(_canonical(manifest_base), run_id, data_dir)
+    manifest.register("data_dir", str(data_dir))
+    manifest.register("sqlite", str(sqlite))
+    namespace = run_id
+    ownership_generation = secrets.token_hex(32)
+    manifest.register("collection", namespace, {"ownership_generation": ownership_generation})
+    for kind in ("compose_project", "network"):
+        manifest.register(kind, namespace, {"ownership_generation": secrets.token_hex(32)})
+    return {
+        "run_id": run_id, "run_root": str(run_root), "data_dir": str(data_dir),
+        "sqlite": str(sqlite), "manifest": str(manifest.path), "namespace": namespace,
+        "collection": namespace, "ownership_generation": ownership_generation,
+        "network_policy": "deny-external", "ssrf_token": secrets.token_urlsafe(24),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    create = sub.add_parser("allocate")
+    create.add_argument("--run-base", type=Path, default=Path(tempfile.gettempdir()) / "axon-e2e-runs")
+    create.add_argument("--manifest-base", type=Path, default=Path(tempfile.gettempdir()) / "axon-e2e-manifests")
+    register = sub.add_parser("register")
+    register.add_argument("manifest", type=Path)
+    register.add_argument("resource_type", choices=sorted(RESOURCE_TYPES))
+    register.add_argument("identity")
+    register.add_argument("--metadata-json", default="{}")
+    verify = sub.add_parser("verify")
+    verify.add_argument("manifest", type=Path)
+    args = parser.parse_args()
+    try:
+        if args.command == "allocate":
+            print(json.dumps(allocate(args.run_base, args.manifest_base), sort_keys=True))
+        elif args.command == "register":
+            metadata = json.loads(args.metadata_json)
+            if not isinstance(metadata, dict):
+                raise IsolationError("registration metadata must be a JSON object")
+            Manifest.open(args.manifest).register(args.resource_type, args.identity, metadata)
+        else:
+            records = Manifest.open(args.manifest).verify()
+            print(json.dumps({"records": len(records), "valid": True}))
+    except IsolationError as error:
+        print(f"isolation error: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

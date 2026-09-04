@@ -162,6 +162,50 @@ async fn sqlite_scalar_status_columns_use_schema_wire_values() {
             .expect("read document status");
     assert_eq!(document_status, "published");
 
+    let detail = store
+        .get_source_detail(SourceId::new("src_sqlite"))
+        .await
+        .expect("read public ledger detail")
+        .expect("source detail");
+    assert_eq!(detail.committed_generation, Some(gen1.generation.clone()));
+    let public_manifest = detail.manifest.expect("committed manifest");
+    assert_eq!(public_manifest.generation, gen1.generation);
+    assert_eq!(public_manifest.item_count, 1);
+    assert_eq!(public_manifest.items[0].source_item_key.0, "src/lib.rs");
+    assert_eq!(detail.documents.len(), 1);
+    assert_eq!(
+        detail.documents[0].status,
+        DocumentLifecycleStatus::Published
+    );
+    assert_eq!(detail.documents[0].chunk_count, 1);
+    assert_eq!(detail.documents[0].vector_point_count, 1);
+
+    let generation_less_status = serde_json::to_string(&DocumentStatus {
+        document_id: DocumentId::new("doc-sqlite"),
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: None,
+        status: DocumentLifecycleStatus::Discovered,
+        updated_at: ts(),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: None,
+        cleanup_status: None,
+    })
+    .expect("serialize legacy generation-less status");
+    sqlx::query("UPDATE document_status SET status_json = ?1 WHERE document_id = ?2")
+        .bind(generation_less_status)
+        .bind("doc-sqlite")
+        .execute(&store.pool)
+        .await
+        .expect("seed legacy generation-less status");
+    let detail = store
+        .get_source_detail(SourceId::new("src_sqlite"))
+        .await
+        .expect("generation-less document must not break source detail")
+        .expect("source detail");
+    assert!(detail.documents.is_empty());
+
     store
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-sqlite"),

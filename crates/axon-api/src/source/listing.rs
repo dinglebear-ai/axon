@@ -95,6 +95,44 @@ pub struct SourceDetail {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct LedgerManifestState {
+    pub generation: SourceGenerationId,
+    pub status: LifecycleStatus,
+    pub item_count: u64,
+    pub items: Vec<LedgerItemState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerItemState {
+    pub source_item_key: SourceItemKey,
+    pub canonical_uri: String,
+    pub content_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerDocumentState {
+    pub document_id: DocumentId,
+    pub source_item_key: SourceItemKey,
+    pub generation: SourceGenerationId,
+    pub status: DocumentLifecycleStatus,
+    pub chunk_count: u32,
+    pub vector_point_count: u32,
+    pub updated_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerSourceDetail {
+    pub summary: SourceSummary,
+    pub committed_generation: Option<SourceGenerationId>,
+    pub manifest: Option<LedgerManifestState>,
+    pub documents: Vec<LedgerDocumentState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SourceGenerationSummary {
     pub source_id: SourceId,
     pub generation: SourceGenerationId,

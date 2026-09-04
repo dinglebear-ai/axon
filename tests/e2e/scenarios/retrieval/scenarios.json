@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scenarios": [
+    {"id":"retrieval.query.atlas","operation":"query","prompt":"What signal color does the Atlas station beacon emit?","expected_fact_ids":["fact.atlas.beacon"],"forbidden_answers":["cobalt"],"max_results":3},
+    {"id":"retrieval.retrieve.unicode","operation":"retrieve","grounding_contract":"matched_url_and_content","prompt":"Which city appears in the Unicode fixture document?","expected_fact_ids":["fact.unicode.city"],"max_results":3},
+    {"id":"retrieval.search.atlas","operation":"search","grounding_contract":"hermetic_result_url_and_snippet","prompt":"Find the Atlas station beacon color in this corpus.","expected_fact_ids":["fact.atlas.beacon"],"forbidden_answers":["cobalt"],"max_results":5},
+    {"id":"retrieval.code.dotfile","operation":"code-search","prompt":"Find the synthetic dotfile code value in the fixture.","expected_fact_ids":["fact.dotfile.code"],"max_results":5}
+  ],
+  "negative_cases": ["empty_collection", "no_matches", "dimension_mismatch", "schema_mismatch"]
+}

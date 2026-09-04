@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "policy_version": "1.0.0",
+  "profiles": {
+    "pr": {
+      "minimum_catalog_coverage_percent": 100,
+      "families": {
+        "hermetic": "required", "cleanup": "required", "security": "required",
+        "live": "optional", "platform": "optional", "upgrade": "optional",
+        "sensitivity": "optional", "reliability": "optional", "observability": "optional",
+        "performance": "optional", "deployed_compatibility": "not_applicable"
+      }
+    },
+    "main": {
+      "minimum_catalog_coverage_percent": 100,
+      "families": {
+        "hermetic": "required", "cleanup": "required", "security": "required",
+        "platform": "required", "sensitivity": "required", "reliability": "required",
+        "observability": "required", "performance": "required", "live": "optional",
+        "upgrade": "optional", "deployed_compatibility": "not_applicable"
+      }
+    },
+    "release-candidate": {
+      "minimum_catalog_coverage_percent": 100,
+      "families": {
+        "hermetic": "required", "live": "required", "platform": "required",
+        "upgrade": "required", "sensitivity": "required", "reliability": "required",
+        "observability": "required", "performance": "required", "cleanup": "required",
+        "security": "required", "deployed_compatibility": "optional"
+      }
+    },
+    "deployed-compatibility": {
+      "minimum_catalog_coverage_percent": 0,
+      "families": {
+        "deployed_compatibility": "required", "cleanup": "required", "security": "required",
+        "hermetic": "not_applicable", "live": "not_applicable", "platform": "not_applicable",
+        "upgrade": "not_applicable", "sensitivity": "not_applicable", "reliability": "not_applicable",
+        "observability": "not_applicable", "performance": "not_applicable"
+      }
+    }
+  },
+  "max_evidence_age_seconds": 2592000,
+  "allowed_redaction_classes": ["public", "sanitized"],
+  "allowed_retention_locations": ["github-artifact", "release-evidence-store"],
+  "approved_outage_exceptions": []
+}

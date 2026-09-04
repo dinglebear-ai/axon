@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "namespace_prefix": "axon_e2e_",
+  "max_queue_age_seconds": 21600,
+  "lease_ttl_seconds": 7200,
+  "heartbeat_seconds": 30,
+  "scheduling": {"newest_main_preferred": true, "scheduled_coalescing": true, "manual_priority": true, "cancel_after_mutation": false, "safe_supersession": "gateway lease teardown must finish first"},
+  "providers": [
+    {"name":"qdrant","url_env":"AXON_E2E_QDRANT_GATEWAY_URL","peer_env":"AXON_E2E_QDRANT_PEER","tag":"tag:axon-e2e-qdrant-gateway","port":443,"auth_env":"AXON_E2E_QDRANT_TOKEN","max_concurrency":1,"qps":4},
+    {"name":"tei","url_env":"AXON_E2E_TEI_GATEWAY_URL","peer_env":"AXON_E2E_TEI_PEER","tag":"tag:axon-e2e-tei-gateway","port":443,"auth_env":"AXON_E2E_TEI_TOKEN","max_concurrency":1,"qps":2},
+    {"name":"chrome","url_env":"AXON_E2E_CHROME_GATEWAY_URL","peer_env":"AXON_E2E_CHROME_PEER","tag":"tag:axon-e2e-chrome-gateway","port":443,"auth_env":"AXON_E2E_CHROME_TOKEN","max_concurrency":1,"qps":2},
+    {"name":"llm","url_env":"AXON_E2E_LLM_GATEWAY_URL","peer_env":"AXON_E2E_LLM_PEER","tag":"tag:axon-e2e-llm-gateway","port":443,"auth_env":"AXON_E2E_LLM_TOKEN","max_concurrency":1,"qps":2}
+  ]
+}

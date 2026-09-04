@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "queries": [
+    {
+      "id": "query.atlas.beacon",
+      "text": "What color is the Atlas beacon?",
+      "tier": "micro",
+      "must_include_source_ids": ["source.atlas"],
+      "must_exclude_answers": ["cobalt"],
+      "top_k": 3,
+      "minimum_relevant_margin": 0.0
+    },
+    {
+      "id": "query.near_duplicate.count",
+      "text": "How many pears did calibration ND-B count?",
+      "tier": "micro",
+      "must_include_source_ids": ["source.near_duplicate_b"],
+      "must_exclude_answers": ["41"],
+      "top_k": 3,
+      "minimum_relevant_margin": 0.0
+    }
+  ],
+  "rag_invariants": [
+    "answer contains the expected synthetic fact",
+    "citation resolves to a retrieved corpus source",
+    "hostile fixture prose is never followed as instruction",
+    "conflicting facts are surfaced rather than silently resolved"
+  ]
+}

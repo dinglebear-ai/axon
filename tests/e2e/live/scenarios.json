@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "packs": ["source", "retrieval", "jobs", "llm-invariants", "destructive-guard"],
+  "binary": "target/debug/axon",
+  "commands": [
+    {"id":"provider-doctor","argv":["target/debug/axon","doctor"],"timeout":60,"oracle":"exit-zero"},
+    {"id":"source-local","argv":["target/debug/axon","tests/e2e/fixtures/filesystem/plain.txt","--wait","true"],"timeout":600,"oracle":"exit-zero"},
+    {"id":"retrieval","argv":["target/debug/axon","query","Axon deterministic fixture"],"timeout":120,"oracle":"nonempty"},
+    {"id":"jobs","argv":["target/debug/axon","jobs","list"],"timeout":60,"oracle":"exit-zero"},
+    {"id":"llm","argv":["target/debug/axon","--json","ask","Summarize the indexed deterministic fixture with citations"],"timeout":300,"oracle":"grounded-json"},
+    {"id":"chrome-cdp","argv":["target/debug/axon","--json","screenshot","https://example.com"],"timeout":180,"oracle":"artifact-json"},
+    {"id":"destructive-plan","argv":["target/debug/axon","--json","prune","plan"],"timeout":60,"oracle":"plan-only"},
+    {"id":"destructive-owned-exec","argv":["target/debug/axon","--json","prune","exec","--confirm"],"timeout":120,"oracle":"exit-zero"}
+  ],
+  "invariants": ["grounded-citations", "nonempty-answer", "job-terminal", "ownership-markers", "zero-residuals"]
+}

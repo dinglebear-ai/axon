@@ -22,6 +22,58 @@ test:
 test-fast:
     if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --lib; else {{rust_dev_env}}; cargo test -q --lib --locked; fi
 
+# Deterministic, network-free drift and schema gate for the shared E2E catalog.
+e2e-catalog-check:
+    ./scripts/e2e/validate-catalog.py --report
+    python3 -m unittest tests/e2e/catalog/test_validate_catalog.py
+
+# Portable, network-free contracts for run allocation and provider doubles.
+e2e-isolation-check:
+    python3 tests/e2e/run_isolation_tests.py
+
+# Execute an allocation plan through authoritative teardown and emit the sole
+# canonical JSON + JUnit execution/evidence report.
+e2e-supervised-report plan report="target/e2e/report.json" junit="target/e2e/junit.xml":
+    python3 scripts/e2e/run-supervised-suite.py {{plan}} --report {{report}} --junit {{junit}}
+
+# Supported schema-epoch upgrade contract: digest-pinned synthetic fixture,
+# current tested binary, semantic persistence, negative cases, and teardown.
+e2e-upgrade:
+    python3 -m unittest discover -s tests/e2e/upgrade -p 'test_*.py'
+    python3 scripts/e2e/run-upgrade.py --binary target/debug/axon
+
+# Early, non-required measured E2E slice. Provider doubles and loopback-only
+# routing are mandatory; the runner always emits a cleanup/budget report.
+e2e-hermetic:
+    ./scripts/e2e/run-hermetic-local.sh
+
+e2e-hermetic-inner:
+    CARGO_NET_OFFLINE=true AXON_E2E_HERMETIC=1 AXON_E2E_LIVE=0 AXON_E2E_PROVIDER_MODE=double AXON_E2E_STAGE_GATES=1 AXON_E2E_NETWORK_POLICY=loopback-only AXON_E2E_EVIDENCE_POLICY=sanitized-only python3 scripts/e2e/run-hermetic.py --report target/e2e/hermetic-report.json
+
+e2e-mutations subset="representative":
+    python3 scripts/e2e/run-mutations.py --subset {{subset}}
+
+# Reproducible local command for the bounded Linux/macOS/Windows subset. The
+# canonical report is an input to release qualification; this never uses live
+# providers, privileged credentials, or homelab connectivity.
+e2e-platform-smoke report="target/e2e/platform-smoke-local.json":
+    python3 scripts/e2e/run-platform-smoke.py --binary target/debug/axon --report {{report}} --tested-sha "$(git rev-parse HEAD)"
+
+# Fail-closed quarantine/attempt validation and rolling reliability projection
+# for any canonical report. Required test configuration starts at zero entries.
+e2e-flake-governance report="target/e2e/platform-smoke-local.json" environment="local" out="target/e2e/reliability.json":
+    python3 scripts/e2e/flake-governance.py --report {{report}} --environment {{environment}} --reliability-out {{out}}
+
+# Reporting-first representative performance sample. Contended observations
+# are retained as infrastructure-classified, baseline-ineligible evidence.
+e2e-performance samples="5" out="target/e2e/performance/report.json" contention="--allow-contended":
+    python3 scripts/e2e/measure-real-performance.py --samples {{samples}} {{contention}} --out {{out}}
+
+# Deterministic unsigned release projection over already-saved evidence. This
+# command never reruns a lane or receives live-provider/signing credentials.
+e2e-qualification index evidence_root out="target/e2e/qualification.json" summary="target/e2e/qualification.md" checksums="target/e2e/SHA256SUMS":
+    python3 scripts/e2e/build-qualification-manifest.py --index {{index}} --evidence-root {{evidence_root}} --out {{out}} --summary {{summary}} --checksums {{checksums}}
+
 test-watch:
     {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo test -q --lib --locked jobs::watch
     {{rust_dev_env}}; cargo test -q --lib --locked cli::commands::watch

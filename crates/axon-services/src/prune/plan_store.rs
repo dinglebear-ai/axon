@@ -5,13 +5,7 @@ use axon_core::redact::Redactor;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct StoredPrunePlan {
-    pub plan: PrunePlan,
-    pub reason: String,
-    pub inventory_checksum: String,
-    pub expires_at_utc: String,
-}
+pub(super) use axon_api::source::prune::StoredPrunePlan;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct StoredPruneReceipt {
@@ -30,19 +24,18 @@ fn root(ctx: &ServiceContext) -> PathBuf {
         .join("prune-control")
 }
 
-fn validate_plan_id(plan_id: &str) -> Result<(), Box<dyn Error>> {
+fn validate_plan_id(plan_id: &str) -> Result<uuid::Uuid, Box<dyn Error>> {
     uuid::Uuid::parse_str(plan_id)
-        .map(|_| ())
         .map_err(|_| "prune.plan_id_invalid: expected a UUID from `prune plan`".into())
 }
 
 fn plan_path(ctx: &ServiceContext, plan_id: &str) -> Result<PathBuf, Box<dyn Error>> {
-    validate_plan_id(plan_id)?;
+    let plan_id = validate_plan_id(plan_id)?;
     Ok(root(ctx).join("plans").join(format!("{plan_id}.json")))
 }
 
 fn receipt_path(ctx: &ServiceContext, plan_id: &str) -> Result<PathBuf, Box<dyn Error>> {
-    validate_plan_id(plan_id)?;
+    let plan_id = validate_plan_id(plan_id)?;
     Ok(root(ctx).join("receipts").join(format!("{plan_id}.json")))
 }
 

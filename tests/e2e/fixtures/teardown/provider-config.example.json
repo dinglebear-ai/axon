@@ -1,0 +1,58 @@
+{
+  "providers": {
+    "axon_exact": {
+      "kind": "manifest-argv",
+      "binary": "axon",
+      "timeout_seconds": 10,
+      "resource_types": ["watch", "upload"],
+      "identity_fields": {"watch": ["watch_id", "created_at"], "upload": ["upload_id", "created_at"]},
+      "resources": {
+        "watch": {"inspect": ["--json", "watch", "get", "{identity}"], "delete": ["--json", "watch", "delete", "{identity}"]},
+        "upload": {"inspect": ["--json", "uploads", "get", "{identity}"], "delete": ["--json", "uploads", "abort", "{identity}", "--reason", "e2e teardown"]}
+      }
+    },
+    "durable_state": {
+      "kind": "durable-state",
+      "resource_types": [
+        "artifact", "auth_session", "chat_session", "evidence", "http_stream", "job", "job_artifact",
+        "job_attempt", "job_event", "job_heartbeat", "job_stage", "config_snapshot", "mcp_session", "operation",
+        "provider_reservation", "source", "source_generation", "source_manifest", "source_item", "document_status",
+        "cleanup_debt", "source_lease", "watch_run", "graph_node", "graph_alias", "graph_edge", "graph_evidence",
+        "graph_conflict", "memory_node", "memory_edge", "memory_record", "memory_link", "memory_reinforcement",
+        "memory_review", "observe_event", "observe_heartbeat", "observe_provider_health", "token"
+      ]
+    },
+    "qdrant": {
+      "kind": "qdrant",
+      "base_url": "http://127.0.0.1:6333",
+      "tenant_enforced": true,
+      "owned_prefix": "axon_e2e_",
+      "timeout_seconds": 5,
+      "resource_types": ["collection", "qdrant_alias", "qdrant_snapshot", "point", "payload_index"]
+    },
+    "compose": {
+      "kind": "docker-compose",
+      "binary": "docker",
+      "timeout_seconds": 30,
+      "resource_types": ["compose_project"]
+    },
+    "docker": {
+      "kind": "docker",
+      "binary": "docker",
+      "timeout_seconds": 15,
+      "resource_types": ["container", "network", "volume"],
+      "resources": {
+        "container": {"inspect": ["container", "inspect", "{identity}"], "delete": ["container", "rm", "--force", "{identity}"]},
+        "network": {"inspect": ["network", "inspect", "{identity}"], "delete": ["network", "rm", "{identity}"]},
+        "volume": {"inspect": ["volume", "inspect", "{identity}"], "delete": ["volume", "rm", "{identity}"]}
+      }
+    },
+    "tailscale": {
+      "kind": "tailscale",
+      "binary": "tailscale",
+      "socket": "/tmp/axon-e2e-dedicated/tailscaled.sock",
+      "timeout_seconds": 10,
+      "resource_types": ["tailscale_node"]
+    }
+  }
+}

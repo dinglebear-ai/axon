@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axon.local/schemas/e2e-report-v1.json",
+  "title": "Axon canonical E2E execution and evidence report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tested_sha", "provider_versions", "policy", "scenarios", "timing", "summary", "upload", "report_sha256"],
+  "properties": {
+    "schema": {"const": 1},
+    "tested_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "report_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "provider_versions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "policy": {"type": "object"},
+    "timing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total_ms", "scenario_count"],
+      "properties": {"total_ms": {"type": "integer", "minimum": 0}, "scenario_count": {"type": "integer", "minimum": 0}}
+    },
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passed", "failed", "status"],
+      "properties": {"passed": {"type": "integer", "minimum": 0}, "failed": {"type": "integer", "minimum": 0}, "status": {"enum": ["passed", "failed"]}}
+    },
+    "upload": {
+      "type": "object", "required": ["status", "local_evidence_path"],
+      "properties": {"status": {"type": "string"}, "local_evidence_path": {"type": ["string", "null"]}}
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["scenario_id", "tier", "capability", "surface", "status", "attempts", "first_attempt_failure", "invariants", "evidence", "cleanup"],
+        "properties": {
+          "scenario_id": {"type": "string"}, "tier": {"type": "string"}, "capability": {"type": "string"}, "surface": {"type": "string"},
+          "status": {"enum": ["passed", "failed", "timed_out", "canceled"]},
+          "first_attempt_failure": {"type": ["object", "null"]}, "invariants": {"type": "array"}, "evidence": {"type": "array"},
+          "attempts": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["attempt", "status", "duration_ms", "classification", "summary"],
+              "properties": {"attempt": {"type": "integer", "minimum": 1}, "status": {"enum": ["passed", "failed", "timed_out", "canceled"]}, "duration_ms": {"type": "integer", "minimum": 0}, "classification": {"enum": ["product", "fixture", "provider", "auth_network", "cleanup", "harness", null]}, "summary": {"type": ["string", "null"]}, "namespace": {"type": "string"}, "serialized": {"type": "boolean"}, "backoff_ms": {"type": "integer", "minimum": 0}, "teardown_verified": {"type": "boolean"}}
+            }
+          },
+          "cleanup": {
+            "type": "object", "additionalProperties": false,
+            "required": ["success", "manifest_digest", "residuals", "classes", "phases"],
+            "properties": {
+              "success": {"type": "boolean"},
+              "manifest_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+              "classes": {"type": "object"}, "phases": {"type": "array"},
+              "residuals": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+                "required": ["class", "opaque_id", "reason_class"],
+                "properties": {"class": {"type": "string"}, "opaque_id": {"type": "string", "pattern": "^[0-9a-f]{20}$"}, "reason_class": {"const": "cleanup"}}}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

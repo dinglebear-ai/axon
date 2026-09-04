@@ -11,14 +11,28 @@ set -uo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MODE="live"
+CATALOG_SCENARIOS=()
+CATALOG_GROUP=""
+SHARD_INDEX=0
+SHARD_COUNT=1
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode)
       MODE="${2:-}"
       shift 2
       ;;
+    --scenario)
+      CATALOG_SCENARIOS+=("${2:-}")
+      shift 2
+      ;;
+    --scenario-group)
+      CATALOG_GROUP="${2:-}"
+      shift 2
+      ;;
+    --shard-index) SHARD_INDEX="${2:-}"; shift 2 ;;
+    --shard-count) SHARD_COUNT="${2:-}"; shift 2 ;;
     -h|--help)
-      echo "usage: $0 [--mode registry|scenarios|live]"
+      echo "usage: $0 [--mode registry|scenarios|live|catalog] [--scenario ID] [--scenario-group GROUP] [--shard-index N --shard-count N]"
       exit 0
       ;;
     *)
@@ -28,9 +42,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$MODE" in
-  registry|scenarios|live) ;;
+  registry|scenarios|live|catalog) ;;
   *)
-    echo "invalid mode '$MODE' (expected registry, scenarios, or live)" >&2
+    echo "invalid mode '$MODE' (expected registry, scenarios, live, or catalog)" >&2
     exit 2
     ;;
 esac
@@ -54,6 +68,17 @@ else
     echo "failed to allocate a unique live-test output directory" >&2
     exit 2
   }
+fi
+if [ "$MODE" = "catalog" ]; then
+  command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 2; }
+  [ -x "$AXON_BIN" ] || { echo "Axon binary is not executable: $AXON_BIN" >&2; exit 2; }
+  adapter_args=(--axon-bin "$AXON_BIN" --outdir "$OUTDIR" --timeout-secs "$TIMEOUT_SECS" \
+    --shard-index "$SHARD_INDEX" --shard-count "$SHARD_COUNT")
+  [ -z "$CATALOG_GROUP" ] || adapter_args+=(--scenario-group "$CATALOG_GROUP")
+  for scenario_id in "${CATALOG_SCENARIOS[@]}"; do
+    adapter_args+=(--scenario "$scenario_id")
+  done
+  exec "$ROOT_DIR/scripts/e2e/adapters/cli.sh" "${adapter_args[@]}"
 fi
 LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
 PORT_LEASE_ROOT="${TMPDIR:-/tmp}/axon-live-port-leases"
