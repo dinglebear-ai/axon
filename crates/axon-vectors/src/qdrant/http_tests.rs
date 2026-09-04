@@ -50,6 +50,15 @@ fn api_key_header_is_marked_sensitive_before_request_debugging() {
 }
 
 #[test]
+fn qdrant_transport_debug_never_exposes_the_api_key() {
+    let http = QdrantHttp::new("http://super-secret@127.0.0.1:6333", "qdrant")
+        .expect("loopback credential");
+    let debug = format!("{http:?}");
+    assert!(!debug.contains("super-secret"));
+    assert!(debug.contains("[REDACTED]"));
+}
+
+#[test]
 fn invalid_api_key_header_fails_without_echoing_the_credential() {
     let error = QdrantHttp::new("http://127.0.0.1:6333?api_key=bad%0Asecret", "qdrant")
         .expect_err("invalid header value must fail during construction");

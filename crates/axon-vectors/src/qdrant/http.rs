@@ -46,12 +46,22 @@ pub(crate) fn shared_client_build_count() -> usize {
 }
 
 /// A Qdrant REST endpoint with credentials split away from the base URL.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct QdrantEndpoint {
     /// Redacted endpoint root, preserving any configured reverse-proxy prefix.
     base: String,
     /// Optional API key extracted from userinfo password or `api_key` query.
     api_key: Option<String>,
+}
+
+impl std::fmt::Debug for QdrantEndpoint {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("QdrantEndpoint")
+            .field("base", &self.base)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl QdrantEndpoint {
