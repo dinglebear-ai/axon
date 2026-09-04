@@ -30,6 +30,6 @@ mod git_payload;
 mod types;
 pub mod verticals;
 
-pub use context::VerticalContext;
+pub use context::{VerticalContext, VerticalCredentials};
 pub use error::VerticalError;
 pub use types::{ExtractorInfo, ScrapedDoc};

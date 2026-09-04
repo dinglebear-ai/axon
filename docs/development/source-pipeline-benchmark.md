@@ -1,7 +1,7 @@
 ---
 title: "Source Pipeline Scheduler Benchmark"
 created: 2026-08-28
-updated: 2026-08-31
+updated: 2026-09-03
 ---
 
 # Source pipeline scheduler benchmark
@@ -54,7 +54,7 @@ variables.
 `metal_busy_interval.seconds` is the union of provider-reported accelerator
 busy intervals within the single validated metrics epoch. It is not summed
 request duration. `wall_minus_metal_busy_seconds` is the wall-clock process
-interval less that union and is the ranking metric for paired runs. The timing
+interval less that union and is diagnostic timing, not sufficient evidence to rank paired runs. The timing
 object distinguishes:
 
 - `critical_path`: benchmark process wall time;
@@ -86,6 +86,8 @@ it. A control result's `environment.fingerprint_sha256` must be supplied as
 `AXON_BENCH_COMPARISON_ENV_SHA256` for the candidate. `environment_comparable`
 is true only when that stable fingerprint matches and one-minute load is at or
 below `AXON_BENCH_MAX_LOAD` (default 8). Missing baselines fail closed as false.
+Even matching environment and corpus hashes do not prove document, chunk, vector, and graph equivalence. Every run remains `single_arm_diagnostic`, with `ranking_eligible=false`, until authoritative paired equivalence is established separately.
+
 Record provider ownership and ensure no unrelated clients use the exclusive
 metrics epoch. Run multiple paired trials and report median and range; never
 rank results whose environment gate is false.
@@ -106,16 +108,79 @@ idle time >=5%, scheduler implementation stops and optimization moves to the
 measured bottleneck.
 
 The harness creates a mode-0700 temporary state directory, uses a private
-SQLite database, never prints the source URL or subprocess output, rejects URL
-userinfo and command-substitution syntax, and sanitizes failures. MLX metrics
+SQLite database, never prints a raw source URL or unsanitized subprocess output,
+rejects URL userinfo and command-substitution syntax, and prints only sanitized
+stderr when the benchmark subprocess fails. MLX metrics
 must come from loopback and remain in one process epoch with an otherwise idle,
 freshly started service. Every request issued by the isolated crawl is validated
 as one uncontaminated aggregate delta.
 
+## Interpreting live crawl results
+
+Live `code.claude.com` acquisition is deliberately retained because it exposes
+pipeline starvation, but it is not deterministic. Cloudflare responses and
+network latency have moved the fetch phase by tens of seconds across otherwise
+equivalent runs. Use paired, interleaved arms and repeated medians; never rank a
+change from one absolute wall-clock sample.
+
+For tootie's RTX 4070 TEI deployment, use the manual cold-crawl control in
+`docs/perf/code-claude-cold-crawl-2026-08-12.md`. Record the exact TEI container
+image and command, GPU identity/activity, relevant TEI 429/restart counts, Axon
+configuration, collection name, state directory, and result counts. The MLX
+accelerator fields emitted by this harness are not interchangeable with NVIDIA
+telemetry.
+
+The 2026-09-03 RTX 4070 validation used 189 documents, 6,876 vector points,
+9,124 graph nodes, and 4,656 edges/evidence records. Raising TEI's input
+admission capacity from 128 to 1,024 eliminated `no permits available` 429s.
+Batching parser-produced graph node reads/writes reduced the comparable
+publishing-to-graph-tracking interval from 9.27 seconds to 2.47 seconds. A
+dynamic edge-batching experiment regressed that interval to 4.47 seconds and
+was rejected. These phase comparisons are diagnostic evidence, not a claim
+that unrelated live crawl wall times are directly comparable.
 The final scheduler comparison, if earned by this gate, separately measures a
 pinned fresh-corpus/warm-service run, cold-service startup, and a live full
 crawl. It adds corpus/vector equivalence, RSS, thermal state, SQLite admission,
 and Qdrant publication diagnostics.
+
+## Qdrant write-path sweep
+
+`scripts/qdrant-tune.py` replays the frozen `code.claude.com` Markdown corpus
+through isolated, benchmark-owned collections. A real sweep requires
+`--execute`; without it the script only prints the configuration matrix.
+
+```bash
+cargo build --release --bin axon
+python3 scripts/qdrant-tune.py --execute \
+  --binary target/release/axon \
+  --source ~/.axon/output/markdown \
+  --qdrant-url http://tootie:53333 \
+  --grpc-url http://tootie:53334 \
+  --tei-url http://tootie:52000 \
+  --repetitions 3 \
+  --output /tmp/axon-qdrant-sweep.json
+```
+
+The harness alternates forward and reverse variant order on successive
+repetitions, defaults to three samples per variant, and reports median, minimum,
+and maximum wall time. The report includes the frozen-corpus SHA-256, document
+count, credential-redacted endpoints, binary path, per-run Qdrant point/index
+state, source-command write receipt, a stable digest of every stored point,
+payload, and vector, and retrieval overlap. The digest excludes only the
+execution-specific `job_id` and `embedded_at` payload fields. Do not rank failed
+runs, unequal corpus hashes or counts, non-green
+collections, or variants with fewer than the requested samples. Collections
+are deleted on exit unless `--keep-collections` is supplied; deletion is
+restricted to names with the `axon_qdrant_bench_` prefix.
+
+The equivalence gate is deliberately strict: every successful arm must produce
+the same point count, have a matching source-command write receipt, produce the
+same full stored-data digest, reach a green collection, complete the requested
+repetition count, and retain exact top-10 result overlap for every fixed query.
+A lower overlap is diagnostic
+output, not a valid speed winner. Invalid evidence is still written for
+diagnosis, but the harness exits with status 2 and emits no timing summaries
+for arms without successful samples.
 
 ## 2026-08-28 evidence gate
 

@@ -99,11 +99,24 @@ IGNORED_TOKENS = {
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
     "AXON_BENCH_AXON_BIN",  # source-pipeline benchmark harness control
+    "AXON_BENCH_CONFIG_PATH",  # source-pipeline benchmark harness fixture config
     "AXON_BENCH_COLLECTION",  # source-pipeline benchmark fixture state
     "AXON_BENCH_LIBRARY_MODE",  # source-pipeline benchmark harness control
     "AXON_BENCH_MLX_URL",  # source-pipeline benchmark fixture endpoint
     "AXON_BENCH_OUTPUT",  # source-pipeline benchmark report destination
     "AXON_BENCH_SOURCE",  # source-pipeline benchmark fixture input
+    "AXON_BENCH_COMPARISON_ENV_SHA256",
+    "AXON_BENCH_CURL_BIN",
+    "AXON_BENCH_ENV_FILE",
+    "AXON_BENCH_MAX_LOAD",
+    "AXON_BENCH_MODE",
+    "AXON_BENCH_OWN_COLLECTION",
+    "AXON_BENCH_QDRANT_URL",
+    "AXON_BENCH_REPLAY_FIXTURE",
+    "AXON_BENCH_RETAIN_COLLECTION",
+    "AXON_BENCH_RETAIN_WORK_DIR",
+    "AXON_BENCH_SKIP_STALE_CHECK",
+    "AXON_BENCH_WORK_DIR",
     "AXON_ALLOW_FALLBACK_WEB_ASSETS",  # local/CI build escape hatch, not runtime config
     "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
     "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
@@ -163,6 +176,16 @@ IGNORED_TOKENS = {
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
     "TEI_MODE",  # local Incus bootstrap shell variable, not runtime configuration
+    "TEI_TUNE_CACHE",  # TEI benchmark harness control
+    "TEI_TUNE_CONTAINER",  # TEI benchmark harness control
+    "TEI_TUNE_ENTRYPOINT",  # TEI benchmark harness control
+    "TEI_TUNE_GPU",  # TEI benchmark harness control
+    "TEI_TUNE_HOST",  # TEI benchmark harness control
+    "TEI_TUNE_IMAGE",  # TEI benchmark harness control
+    "TEI_TUNE_NETWORK",  # TEI benchmark harness control
+    "TEI_TUNE_PORT",  # TEI benchmark harness control
+    "TEI_TUNE_STATE_DIR",  # TEI benchmark harness control
+    "TEI_TUNE_URL",  # TEI benchmark harness control
 }
 
 VALID_CLASSIFICATIONS = {
@@ -230,6 +253,9 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.cooldown-secs",
     "providers.embedding.interactive-reserved-requests",
     "providers.embedding.background-max-concurrent-requests",
+    "qdrant.async-writes",
+    "qdrant.quantization-enabled",
+    "qdrant.transport",
     "providers.embedding.maintenance-max-concurrent-requests",
     "providers.embedding.query-instruction-enabled",
     "providers.embedding.cache-enabled",
@@ -237,6 +263,12 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.max-concurrent-requests",
     "providers.embedding.max-in-flight-inputs",
     "providers.embedding.pool-max-inputs",
+    "providers.embedding.prepared-byte-budget",
+    "providers.embedding.scheduler-enabled",
+    "providers.embedding.scheduler-flush-ms",
+    "providers.embedding.prep-max-in-flight-bytes",
+    "providers.embedding.max-batch-tokens",
+    "providers.embedding.vector-upsert-overlap-enabled",
     "providers.embedding.prep-concurrency",
     "providers.embedding.max-chunks-per-doc",
     "providers.embedding.max-source-chunks-per-doc",

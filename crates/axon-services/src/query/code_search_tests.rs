@@ -76,7 +76,13 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     assert_eq!(refreshed.freshness.removed_files, 0);
     assert_eq!(
         vectors.calls().await,
-        vec!["ensure_collection", "upsert", "mark_generation_committed"]
+        vec![
+            "ensure_collection",
+            "begin_bulk_load",
+            "upsert",
+            "finish_bulk_load",
+            "mark_generation_committed"
+        ]
     );
     let jobs = JobStore::list(
         source_jobs.as_ref(),
@@ -289,7 +295,9 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
         vectors.calls().await,
         vec![
             "ensure_collection",
+            "begin_bulk_load",
             "upsert",
+            "finish_bulk_load",
             "mark_generation_committed",
             "upsert",
             "search"
@@ -358,7 +366,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             .freshness
             .warning
             .as_deref()
-            .is_some_and(|warning| warning.contains("valid UTF-8")),
+            .is_some_and(|warning| warning.to_ascii_lowercase().contains("utf-8")),
         "refresh failure warning should mention the indexing failure: {searched:#?}"
     );
     assert_eq!(searched.results.len(), 1);

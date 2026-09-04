@@ -137,6 +137,37 @@ async fn panicking_runner_marks_job_failed_not_stuck_running() {
 }
 
 #[tokio::test]
+async fn aborted_worker_task_is_observed_and_marks_job_failed() {
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Memory).await;
+    let claimed = claim_next_unified_job(&pool)
+        .await
+        .unwrap()
+        .expect("job should be claimable");
+    let mut tasks = tokio::task::JoinSet::new();
+    let handle = tasks.spawn(std::future::pending::<()>());
+    let mut claims = HashMap::from([(handle.id(), claimed)]);
+    tasks.abort_all();
+    let join = tasks
+        .join_next_with_id()
+        .await
+        .expect("aborted task completion");
+
+    observe_worker_join(&pool, &mut claims, join).await;
+
+    let summary = SqliteUnifiedJobStore::new(pool)
+        .get(job_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Failed);
+    assert_eq!(
+        summary.last_error.unwrap().code.to_string(),
+        "job_runner.task_terminated"
+    );
+}
+
+#[tokio::test]
 async fn empty_queue_claim_does_not_wait_for_an_unrelated_writer_lock() {
     let (pool, _temp) = test_pool().await;
     let writer = axon_core::sqlite::ImmediateTx::begin(&pool)

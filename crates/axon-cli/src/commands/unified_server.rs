@@ -33,36 +33,39 @@ pub async fn run_unified_server(
             .await
             .map_err(|e| -> Box<dyn std::error::Error> { e })?,
     );
-    service_context
-        .set(eager_context)
-        .map_err(|_| "serve: failed to initialize service context")?;
-    let web_router = axon_web::router(
-        Arc::clone(&cfg_arc),
-        panel,
-        Arc::clone(
-            service_context
-                .get()
-                .ok_or("serve: service context missing after eager initialization")?,
-        ),
-        auth_policy.clone(),
-    );
-    let app = mcp_http_router(cfg, host, port, auth_policy, service_context)
-        .await?
-        .merge(web_router)
-        .layer(middleware::from_fn_with_state(
-            host_allowlist,
-            host_validation_middleware,
-        ));
+    let shutdown_context = Arc::clone(&eager_context);
+    let result: Result<(), Box<dyn std::error::Error>> = async {
+        service_context
+            .set(eager_context)
+            .map_err(|_| "serve: failed to initialize service context")?;
+        let web_router = axon_web::router(
+            Arc::clone(&cfg_arc),
+            panel,
+            Arc::clone(
+                service_context
+                    .get()
+                    .ok_or("serve: service context missing after eager initialization")?,
+            ),
+            auth_policy.clone(),
+        );
+        let app = mcp_http_router(cfg, host, port, auth_policy, service_context)
+            .await?
+            .merge(web_router)
+            .layer(middleware::from_fn_with_state(
+                host_allowlist,
+                host_validation_middleware,
+            ));
 
-    tracing::info!(host = %host, port, "serve: unified web and mcp server starting");
-    let listener = tokio::net::TcpListener::bind((host, port)).await?;
-    if setup_required {
-        open_setup_browser(host, port);
+        tracing::info!(host = %host, port, "serve: unified web and mcp server starting");
+        let listener = tokio::net::TcpListener::bind((host, port)).await?;
+        if setup_required {
+            open_setup_browser(host, port);
+        }
+        axum::serve(listener, app).await.map_err(Into::into)
     }
-    if let Err(err) = axum::serve(listener, app).await {
-        tracing::error!(error = %err, "serve: unified server exited with error");
-        return Err(err.into());
-    }
+    .await;
+    shutdown_context.shutdown_background_tasks().await;
+    result?;
     tracing::info!("serve: unified server shut down cleanly");
     Ok(())
 }

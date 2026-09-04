@@ -34,13 +34,20 @@ pub(super) async fn upsert_batches_rest(
         .iter()
         .map(|index| index.field_name.clone())
         .collect();
-    let url = http
-        .endpoint()
-        .collection_path(&batch.collection, "points?wait=true");
+    let wait = if store.async_writes { "false" } else { "true" };
+    let url = http.endpoint().collection_path(
+        &batch.collection,
+        &format!("points?wait={wait}&ordering=strong"),
+    );
 
+    let barrier_chunk = store
+        .async_writes
+        .then(|| completion_barrier_batch(&batch))
+        .flatten();
     let write_slots = store.write_slots();
     let provider_id = store.provider_id().0.clone();
-    let mut pending = stream::iter(ChunkedUpsertBatches::new(batch, store.point_buffer()))
+    let chunks = ChunkedUpsertBatches::new(batch, store.point_buffer()).collect::<Vec<_>>();
+    let mut pending = stream::iter(chunks)
         .map(|chunk| {
             let url = &url;
             let write_slots = Arc::clone(&write_slots);
@@ -54,13 +61,40 @@ pub(super) async fn upsert_batches_rest(
                     )
                     .with_provider_id(provider_id)
                 })?;
-                upsert_chunk_rest(http, spec, &chunk, url, stage, MAX_UPSERT_REQUEST_BYTES).await
+                upsert_chunk_rest(
+                    http,
+                    spec,
+                    &chunk,
+                    url,
+                    stage,
+                    MAX_UPSERT_REQUEST_BYTES,
+                    store.async_writes,
+                )
+                .await
             }
         })
         .buffer_unordered(store.write_parallelism());
     let mut requests = 0u64;
     while let Some(result) = pending.next().await {
         requests = requests.saturating_add(result?);
+    }
+    drop(pending);
+    if let Some(barrier_chunk) = barrier_chunk {
+        let barrier_url = http
+            .endpoint()
+            .collection_path(&collection, "points?wait=true&ordering=strong");
+        requests = requests.saturating_add(
+            upsert_chunk_rest(
+                http,
+                spec,
+                &barrier_chunk,
+                &barrier_url,
+                stage,
+                MAX_UPSERT_REQUEST_BYTES,
+                false,
+            )
+            .await?,
+        );
     }
 
     Ok(VectorStoreWriteResult {
@@ -72,6 +106,28 @@ pub(super) async fn upsert_batches_rest(
         usage: request_usage(requests),
     })
 }
+
+fn completion_barrier_batch(batch: &VectorPointBatch) -> Option<VectorPointBatch> {
+    let point = batch.points.last()?.clone();
+    let sparse_vectors = batch.sparse_vectors.as_ref().map(|vectors| {
+        vectors
+            .iter()
+            .find(|vector| vector.chunk_id == point.chunk_id)
+            .cloned()
+            .into_iter()
+            .collect()
+    });
+    Some(VectorPointBatch {
+        batch_id: batch.batch_id,
+        collection: batch.collection.clone(),
+        points: vec![point],
+        model: batch.model.clone(),
+        dimensions: batch.dimensions,
+        sparse_vectors,
+        payload_indexes: Vec::new(),
+    })
+}
+
 async fn upsert_chunk_rest(
     http: &QdrantHttp,
     spec: &CollectionSpec,
@@ -79,6 +135,7 @@ async fn upsert_chunk_rest(
     url: &str,
     stage: ErrorStage,
     max_request_bytes: usize,
+    asynchronous: bool,
 ) -> Result<u64> {
     let batch_sparse = chunk
         .sparse_vectors
@@ -123,8 +180,13 @@ async fn upsert_chunk_rest(
             continue;
         };
 
-        http.put_json_bytes(stage, url, body, "qdrant_upsert")
-            .await?;
+        if asynchronous {
+            http.put_json_bytes(stage, url, body, "qdrant_upsert_async")
+                .await?;
+        } else {
+            http.put_json_bytes(stage, url, body, "qdrant_upsert")
+                .await?;
+        }
         requests = requests.saturating_add(1);
     }
 

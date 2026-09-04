@@ -6,13 +6,11 @@ use axon_core::content::{build_selector_config, bytes_to_markdown, url_to_stable
 use axon_core::http::axon_ua;
 use axon_core::logging::{log_info, log_warn};
 use futures_util::stream::{self, StreamExt};
-use sha2::{Digest, Sha256};
 use spider::page::Page;
 use spider::website::Website;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 
 /// Maximum number of concurrent Chrome fetches during thin-page re-fetch.
 pub(super) const THIN_REFETCH_CONCURRENCY: usize = 4;
@@ -224,235 +222,33 @@ pub async fn chrome_refetch_thin_pages(
 ///
 /// Used by both the post-crawl batch path and the collector's inline Chrome path.
 pub(super) async fn write_refetch_results(
-    mut summary: CrawlSummary,
+    summary: CrawlSummary,
     results: Vec<RefetchResult>,
     output_dir: &Path,
 ) -> Result<CrawlSummary, String> {
-    let markdown_dir = output_dir.join("markdown");
-    let manifest_path = output_dir.join("manifest.jsonl");
-
-    let mut manifest = tokio::fs::OpenOptions::new()
+    // Preserve strict publication errors while using the crash-recoverable journal.
+    tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .read(true)
-        .open(&manifest_path)
+        .open(output_dir.join("manifest.jsonl"))
         .await
         .map_err(|error| format!("thin_refetch: failed to open manifest for append: {error}"))?;
-
-    for result in results {
-        if let Some(diagnostic) = result.diagnostic {
-            summary.push_diagnostic(diagnostic);
-        }
-        let Some(markdown) = result.markdown else {
-            continue;
-        };
-        let Some(canonical) = canonicalize_url_for_dedupe(&result.url) else {
-            continue;
-        };
-
-        let filename = url_to_stable_filename(&canonical);
-        let path = markdown_dir.join(&filename);
-        let mut hasher = Sha256::new();
-        hasher.update(markdown.as_bytes());
-        let content_hash = hex::encode(hasher.finalize());
-
-        let entry = ManifestEntry {
-            url: canonical.clone(),
-            relative_path: format!("markdown/{filename}"),
-            markdown_chars: markdown.len(),
-            content_hash: Some(content_hash),
-            changed: true,
-            // Thin-refetch Chrome re-render: raw HTML is not available here,
-            // so structured data is absent. HTML bytes would need to be
-            // threaded through RefetchResult to enable extraction.
-            structured: None,
-        };
-        let mut line = serde_json::to_string(&entry)
-            .map_err(|error| format!("thin_refetch: manifest serialize failed: {error}"))?;
-        line.push('\n');
-
-        publish_refetch_markdown(
-            &mut manifest,
-            &path,
-            markdown.as_bytes(),
-            line.as_bytes(),
-            || Ok(()),
-            || Ok(()),
-            || Ok(()),
-        )
-        .await?;
-
-        summary.thin_urls.remove(&canonical);
-        summary.thin_pages = summary.thin_pages.saturating_sub(1);
-        summary.markdown_files += 1;
-
-        log_info(&format!(
-            "thin_refetch: recovered {}",
-            sanitized_url_for_log(&canonical)
-        ));
+    let expected = results
+        .iter()
+        .filter(|result| {
+            result.markdown.is_some() && canonicalize_url_for_dedupe(&result.url).is_some()
+        })
+        .count();
+    let previous_files = summary.markdown_files;
+    let summary = write_refetch_results_with_failure(summary, results, output_dir, None).await;
+    if summary.markdown_files.saturating_sub(previous_files) as usize != expected {
+        return Err("thin_refetch: failed to commit recovered page; retained journal requires reconciliation".to_string());
     }
-
     Ok(summary)
 }
 
-/// Publish one recovered page as a single recoverable operation.
-///
-/// The previous markdown and manifest length are retained until the manifest
-/// append has been flushed. Any later failure restores both, so a retry sees
-/// the same pre-publication state.
-async fn publish_refetch_markdown<F, B, R>(
-    manifest: &mut tokio::fs::File,
-    path: &Path,
-    markdown: &[u8],
-    manifest_line: &[u8],
-    before_manifest_write: F,
-    before_manifest_rollback: B,
-    before_restore: R,
-) -> Result<(), String>
-where
-    F: FnOnce() -> Result<(), String>,
-    B: FnOnce() -> Result<(), String>,
-    R: FnOnce() -> Result<(), String>,
-{
-    let manifest_len = manifest
-        .metadata()
-        .await
-        .map_err(|error| format!("thin_refetch: failed to inspect manifest: {error}"))?
-        .len();
-    let tmp_path = path.with_extension("thin-refetch-tmp");
-    let backup_path = path.with_extension("thin-refetch-backup");
-
-    tokio::fs::write(&tmp_path, markdown)
-        .await
-        .map_err(|error| {
-            format!(
-                "thin_refetch: failed to write temporary file {}: {error}",
-                tmp_path.display()
-            )
-        })?;
-
-    let had_previous = tokio::fs::try_exists(path).await.map_err(|error| {
-        format!(
-            "thin_refetch: failed to inspect {}: {error}",
-            path.display()
-        )
-    })?;
-    if had_previous {
-        if let Err(error) = tokio::fs::remove_file(&backup_path).await
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            let primary = format!(
-                "thin_refetch: failed to clear stale rollback file {}: {error}",
-                backup_path.display()
-            );
-            return Err(aggregate_temp_cleanup(primary, &tmp_path).await);
-        }
-        if let Err(error) = tokio::fs::rename(path, &backup_path).await {
-            let primary = format!(
-                "thin_refetch: failed to stage previous {}: {error}",
-                path.display()
-            );
-            return Err(aggregate_temp_cleanup(primary, &tmp_path).await);
-        }
-    }
-    if let Err(error) = tokio::fs::rename(&tmp_path, path).await {
-        let publish_error = format!(
-            "thin_refetch: failed to publish {}: {error}",
-            path.display()
-        );
-        return match restore_previous_markdown(path, &backup_path, had_previous, || Ok(())).await {
-            Ok(()) => Err(publish_error),
-            Err(restore) => Err(format!(
-                "{publish_error}; markdown restoration failed: {restore}"
-            )),
-        };
-    }
-
-    let publication = async {
-        manifest
-            .write_all(manifest_line)
-            .await
-            .map_err(|error| format!("thin_refetch: manifest write failed: {error}"))?;
-        // The fault hook deliberately runs after the append so tests exercise
-        // truncation of a partially published manifest, not only pre-write failures.
-        before_manifest_write()?;
-        manifest
-            .flush()
-            .await
-            .map_err(|error| format!("thin_refetch: manifest flush failed: {error}"))?;
-        Ok::<(), String>(())
-    }
-    .await;
-
-    if let Err(error) = publication {
-        let mut failures = vec![error];
-        let rollback = match before_manifest_rollback() {
-            Ok(()) => manifest
-                .set_len(manifest_len)
-                .await
-                .map_err(|error| error.to_string()),
-            Err(error) => Err(error),
-        };
-        if let Err(rollback) = rollback {
-            failures.push(format!(
-                "manifest rollback to {manifest_len} bytes failed: {rollback}"
-            ));
-        }
-        if let Err(restore) =
-            restore_previous_markdown(path, &backup_path, had_previous, before_restore).await
-        {
-            failures.push(format!("markdown restoration failed: {restore}"));
-        }
-        return Err(failures.join("; "));
-    }
-
-    if had_previous && let Err(error) = tokio::fs::remove_file(&backup_path).await {
-        log_warn(&format!(
-            "thin_refetch: retained rollback file {} after cleanup failure: {error}",
-            backup_path.display()
-        ));
-    }
-    Ok(())
-}
-
-async fn aggregate_temp_cleanup(primary: String, tmp_path: &Path) -> String {
-    match tokio::fs::remove_file(tmp_path).await {
-        Ok(()) => primary,
-        Err(cleanup) => format!(
-            "{primary}; temporary file cleanup failed for {}: {cleanup}",
-            tmp_path.display()
-        ),
-    }
-}
-
-async fn restore_previous_markdown<F>(
-    path: &Path,
-    backup_path: &Path,
-    had_previous: bool,
-    before_restore: F,
-) -> Result<(), String>
-where
-    F: FnOnce() -> Result<(), String>,
-{
-    before_restore()?;
-    match tokio::fs::remove_file(path).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("failed to remove {}: {error}", path.display())),
-    }
-    if had_previous {
-        tokio::fs::rename(backup_path, path)
-            .await
-            .map_err(|error| {
-                format!(
-                    "failed to restore {} from {}: {error}",
-                    path.display(),
-                    backup_path.display()
-                )
-            })?;
-    }
-    Ok(())
-}
+mod commit;
+use commit::*;
 
 #[cfg(test)]
 #[path = "thin_refetch_tests.rs"]

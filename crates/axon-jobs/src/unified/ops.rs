@@ -3,91 +3,53 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::SqliteUnifiedJobStore;
-use super::ops_helpers::{
-    append_event_filters, append_job_filters, bind_job_filters, optional_u64,
-};
+use super::ops_helpers::{append_job_filters, bind_job_filters};
 use super::terminal_warnings::collect_terminal_warnings;
 use crate::boundary::Result;
 use crate::limits::clamp_page_limit;
 use crate::state_machine::{validate_stage_plan, validate_transition};
-use crate::unified::pagination::{
-    EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
-    encode_job_cursor,
-};
+use crate::unified::pagination::{JobCursor, decode_job_cursor, encode_job_cursor};
 use crate::unified_codec::*;
 use axon_core::sqlite::ImmediateTx;
 
 impl SqliteUnifiedJobStore {
-    pub(crate) async fn terminal_counts_from_events(
-        &self,
-        job_id: JobId,
-    ) -> Result<Option<StageCounts>> {
-        let row = sqlx::query(
-            "WITH latest_attempt AS (
-                SELECT MAX(attempt) AS attempt
-                FROM job_events
-                WHERE job_id = ?
-             )
-             SELECT
-                MAX(json_extract(details_json, '$.source_progress_event.counts.items_total')) AS items_total,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.items_done')) AS items_done,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.documents_total')) AS documents_total,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.documents_done')) AS documents_done,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.chunks_total')) AS chunks_total,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.chunks_done')) AS chunks_done,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.bytes_total')) AS bytes_total,
-                MAX(json_extract(details_json, '$.source_progress_event.counts.bytes_done')) AS bytes_done
-             FROM job_events, latest_attempt
-             WHERE job_id = ?
-               AND job_events.attempt = latest_attempt.attempt
-               AND json_type(details_json, '$.source_progress_event.counts') = 'object'",
-        )
-        .bind(job_id.0.to_string())
-        .bind(job_id.0.to_string())
-        .fetch_one(&self.pool)
-        .await
-        .map_err(sql_error)?;
-
-        let items_total = optional_u64(&row, "items_total")?;
-        let items_done = optional_u64(&row, "items_done")?;
-        let documents_total = optional_u64(&row, "documents_total")?;
-        let documents_done = optional_u64(&row, "documents_done")?;
-        let chunks_total = optional_u64(&row, "chunks_total")?;
-        let chunks_done = optional_u64(&row, "chunks_done")?;
-        let bytes_total = optional_u64(&row, "bytes_total")?;
-        let bytes_done = optional_u64(&row, "bytes_done")?;
-        if [
-            items_total,
-            items_done,
-            documents_total,
-            documents_done,
-            chunks_total,
-            chunks_done,
-            bytes_total,
-            bytes_done,
-        ]
-        .iter()
-        .all(Option::is_none)
-        {
-            return Ok(None);
-        }
-        Ok(Some(StageCounts {
-            items_total,
-            items_done: items_done.unwrap_or(0),
-            documents_total,
-            documents_done: documents_done.unwrap_or(0),
-            chunks_total,
-            chunks_done: chunks_done.unwrap_or(0),
-            bytes_total,
-            bytes_done: bytes_done.unwrap_or(0),
-        }))
+    pub(crate) async fn create_job(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
+        self.create_job_transaction(request, None, None).await
     }
 
-    pub(crate) async fn create_job(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
+    pub(crate) async fn create_job_with_snapshot(
+        &self,
+        request: JobCreateRequest,
+        config_json: Option<&str>,
+    ) -> Result<JobDescriptor> {
+        self.create_job_transaction(request, config_json, None)
+            .await
+    }
+
+    pub(crate) async fn create_watch_run_atomic(
+        &self,
+        request: JobCreateRequest,
+        watch_id: &WatchId,
+    ) -> Result<JobDescriptor> {
+        self.create_job_transaction(request, None, Some(watch_id))
+            .await
+    }
+
+    async fn create_job_transaction(
+        &self,
+        request: JobCreateRequest,
+        config_json: Option<&str>,
+        watch_run: Option<&WatchId>,
+    ) -> Result<JobDescriptor> {
         validate_stage_plan(&request.stage_plan)?;
+        validate_snapshot(&request, config_json)?;
         if let Some(idempotency_key) = request.idempotency_key.as_deref()
             && let Some(summary) = find_by_idempotency_key(&self.pool, idempotency_key).await?
         {
+            if let Some(watch_id) = watch_run {
+                self.link_watch_run_existing(watch_id, summary.job_id, summary.status)
+                    .await?;
+            }
             return Ok(descriptor(&summary));
         }
 
@@ -96,6 +58,7 @@ impl SqliteUnifiedJobStore {
         let now = now_timestamp();
         let request_json = request.request.clone();
         let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
+        insert_config_snapshot(&mut tx, &request, config_json, now.0.as_str()).await?;
         sqlx::query(
             "INSERT INTO jobs (
                 job_id, kind, intent, status, phase, priority, source_id, watch_id,
@@ -157,8 +120,43 @@ impl SqliteUnifiedJobStore {
             .map_err(sql_error)?;
         }
 
+        link_new_watch_run(&mut tx, watch_run, job_id).await?;
+
         tx.commit().await.map_err(sql_error)?;
         Ok(new_job_descriptor(job_id, request.job_kind, now))
+    }
+
+    async fn link_watch_run_existing(
+        &self,
+        watch_id: &WatchId,
+        job_id: JobId,
+        status: LifecycleStatus,
+    ) -> Result<()> {
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
+        let now = crate::store::now_ms();
+        sqlx::query(
+            "INSERT INTO axon_source_watch_runs (watch_id, job_id, created_at) \
+             SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM axon_source_watch_runs WHERE watch_id = ? AND job_id = ?)",
+        )
+        .bind(&watch_id.0)
+        .bind(job_id.0.to_string())
+        .bind(now)
+        .bind(&watch_id.0)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+        sqlx::query(
+            "UPDATE axon_source_watches SET last_job_id = ?, last_status = ?, lease_expires_at = NULL, updated_at = ? WHERE watch_id = ?",
+        )
+        .bind(job_id.0.to_string())
+        .bind(enum_name(status)?)
+        .bind(now)
+        .bind(&watch_id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+        tx.commit().await.map_err(sql_error)
     }
 
     pub(crate) async fn get_job(&self, job_id: JobId) -> Result<Option<JobSummary>> {
@@ -372,51 +370,6 @@ impl SqliteUnifiedJobStore {
         })
     }
 
-    pub(crate) async fn list_events(&self, request: JobEventListRequest) -> Result<JobEventPage> {
-        reject_non_public_visibility(request.visibility)?;
-        let mut sql = "SELECT * FROM job_events WHERE job_id = ?".to_string();
-        let cursor_sequence = request
-            .cursor
-            .as_deref()
-            .map(decode_event_cursor)
-            .transpose()
-            .map_err(|message| {
-                ApiError::new("job_event.cursor_invalid", ErrorStage::Retrieving, message)
-            })?
-            .map(|cursor| cursor.sequence);
-        let after_sequence = cursor_sequence.or(request.after_sequence);
-        if let Some(after_sequence) = after_sequence {
-            sql.push_str(&format!(" AND sequence > {after_sequence}"));
-        }
-        append_event_filters(&mut sql, &request)?;
-        let limit = clamp_page_limit(request.limit);
-        sql.push_str(" ORDER BY sequence ASC LIMIT ");
-        sql.push_str(&(limit + 1).to_string());
-        let rows = sqlx::query(&sql)
-            .bind(request.job_id.0.to_string())
-            .fetch_all(&self.pool)
-            .await
-            .map_err(sql_error)?;
-        let mut events = rows
-            .into_iter()
-            .map(row_to_event)
-            .collect::<Result<Vec<_>>>()?;
-        let has_more = events.len() > limit as usize;
-        if has_more {
-            events.truncate(limit as usize);
-        }
-        Ok(JobEventPage {
-            last_sequence: events.last().map(|event| event.sequence).unwrap_or(0),
-            limit,
-            next_cursor: events.last().filter(|_| has_more).map(|event| {
-                encode_event_cursor(&EventCursor {
-                    sequence: event.sequence,
-                })
-            }),
-            events,
-        })
-    }
-
     pub(crate) async fn latest_sequence(&self, job_id: JobId) -> Result<Option<u64>> {
         ensure_job_pool(&self.pool, job_id).await?;
         let sequence = sqlx::query_scalar::<_, Option<i64>>(
@@ -429,4 +382,118 @@ impl SqliteUnifiedJobStore {
         .map(|sequence| sequence as u64);
         Ok(sequence)
     }
+}
+
+fn validate_snapshot(request: &JobCreateRequest, config_json: Option<&str>) -> Result<()> {
+    let Some(config_json) = config_json else {
+        return Ok(());
+    };
+    let Some(snapshot_id) = request.config_snapshot_id.as_ref() else {
+        return Err(ApiError::new(
+            "config_snapshot.missing_id",
+            ErrorStage::Publishing,
+            "config snapshot material requires a config_snapshot_id",
+        ));
+    };
+    let expected = crate::config_snapshot_store::config_snapshot_id_from_json(config_json);
+    if snapshot_id.0 != expected {
+        return Err(ApiError::new(
+            "config_snapshot.digest_mismatch",
+            ErrorStage::Publishing,
+            format!(
+                "config snapshot id {} does not match its content digest {expected}",
+                snapshot_id.0
+            ),
+        ));
+    }
+    Ok(())
+}
+
+async fn insert_config_snapshot(
+    tx: &mut sqlx::SqliteConnection,
+    request: &JobCreateRequest,
+    config_json: Option<&str>,
+    now: &str,
+) -> Result<()> {
+    let Some(config_json) = config_json else {
+        return Ok(());
+    };
+    let snapshot_id = request
+        .config_snapshot_id
+        .as_ref()
+        .expect("validated snapshot id");
+    let inserted = sqlx::query(
+        "INSERT INTO config_snapshots (config_snapshot_id, config_json, created_at) VALUES (?, ?, ?) \
+         ON CONFLICT(config_snapshot_id) DO NOTHING",
+    )
+    .bind(snapshot_id.0.as_str())
+    .bind(config_json)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(sql_error)?;
+    if inserted.rows_affected() == 0 {
+        let stored: String = sqlx::query_scalar(
+            "SELECT config_json FROM config_snapshots WHERE config_snapshot_id = ?",
+        )
+        .bind(snapshot_id.0.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+        if stored != config_json {
+            return Err(ApiError::new(
+                "config_snapshot.digest_mismatch",
+                ErrorStage::Publishing,
+                format!(
+                    "config snapshot id {} is already bound to different content",
+                    snapshot_id.0
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn link_new_watch_run(
+    tx: &mut sqlx::SqliteConnection,
+    watch_id: Option<&WatchId>,
+    job_id: JobId,
+) -> Result<()> {
+    let Some(watch_id) = watch_id else {
+        return Ok(());
+    };
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&watch_id.0)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sql_error)?;
+    if exists.is_none() {
+        return Err(ApiError::new(
+            "watch.not_found",
+            ErrorStage::Retrieving,
+            format!("watch {} not found", watch_id.0),
+        ));
+    }
+    let now = crate::store::now_ms();
+    sqlx::query(
+        "INSERT INTO axon_source_watch_runs (watch_id, job_id, created_at) VALUES (?, ?, ?)",
+    )
+    .bind(&watch_id.0)
+    .bind(job_id.0.to_string())
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(sql_error)?;
+    sqlx::query(
+        "UPDATE axon_source_watches SET last_job_id = ?, last_status = 'queued', \
+         lease_expires_at = NULL, updated_at = ? WHERE watch_id = ?",
+    )
+    .bind(job_id.0.to_string())
+    .bind(now)
+    .bind(&watch_id.0)
+    .execute(&mut *tx)
+    .await
+    .map_err(sql_error)?;
+    Ok(())
 }

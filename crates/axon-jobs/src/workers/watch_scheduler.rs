@@ -13,7 +13,6 @@
 //! - `AXON_WATCH_LEASE_SECS` — lease TTL; must exceed a single run's wall time
 //!   so a long run is never double-fired (default 300, min 1).
 
-use crate::boundary::{JobStore, WatchStore};
 use crate::store::now_ms;
 use crate::unified::SqliteUnifiedJobStore;
 use crate::watch_schedule::parse_watch_lease_secs;
@@ -80,7 +79,7 @@ async fn sweep_due_watches(
         let job_store = SqliteUnifiedJobStore::new((**pool).clone());
         for watch in source_due {
             let watch_id = watch.watch_id.0.clone();
-            match enqueue_leased_source_watch(&source_store, &job_store, watch, now).await {
+            match enqueue_leased_source_watch(&job_store, watch, now).await {
                 Ok(job) => {
                     enqueued += 1;
                     tracing::debug!(
@@ -116,17 +115,14 @@ async fn sweep_due_watches(
 }
 
 async fn enqueue_leased_source_watch(
-    source_store: &SqliteWatchStore,
     job_store: &SqliteUnifiedJobStore,
     watch: LeasedSourceWatch,
     scheduled_at_ms: i64,
 ) -> Result<JobDescriptor, String> {
     let source_request = source_request_for_scheduled_watch(&watch, scheduled_at_ms);
     let create_request = source_watch_job_create_request(&watch, source_request, scheduled_at_ms)?;
-    let descriptor = JobStore::create(job_store, create_request)
-        .await
-        .map_err(|err| err.to_string())?;
-    WatchStore::record_run(source_store, watch.watch_id, descriptor.job_id)
+    let descriptor = job_store
+        .create_watch_run_atomic(create_request, &watch.watch_id)
         .await
         .map_err(|err| err.to_string())?;
     Ok(descriptor)

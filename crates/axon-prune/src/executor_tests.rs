@@ -383,20 +383,14 @@ async fn execute_succeeds_with_admin_authz() {
 }
 
 #[tokio::test]
-async fn execute_allows_non_admin_when_plan_does_not_require_admin() {
-    // A plan that isn't admin-gated (requires_admin: false) must not be
-    // refused for a non-admin caller — the admin check is scoped to
-    // `plan.requires_admin`, not a blanket "always require admin".
+async fn execute_rejects_non_admin_when_destructive_plan_forges_admin_metadata() {
     let plan = cleanup_plan();
     let mut plan = plan;
     plan.requires_admin = false;
     let target = FakePruneTarget::from_steps(&plan.steps);
     let executor = PruneExecutor::new(target);
 
-    let result = executor
-        .execute(&plan, &PruneAuthz::anonymous())
-        .await
-        .unwrap();
+    let result = executor.execute(&plan, &PruneAuthz::anonymous()).await;
 
-    assert_eq!(result.status, LifecycleStatus::Completed);
+    assert!(matches!(result, Err(PruneDenied::AdminRequired)));
 }

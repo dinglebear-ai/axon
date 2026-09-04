@@ -918,6 +918,9 @@ pub struct Config {
     /// Env: `AXON_VECTOR_UPSERT_EMBED_OVERLAP`. TOML: `providers.embedding.vector-upsert-overlap-enabled`. Default: true.
     pub vector_upsert_embed_overlap: bool,
 
+    /// Maximum retained bytes admitted to the prepared-generation channel.
+    /// Env: `AXON_EMBED_PREPARED_BYTE_BUDGET`. TOML: `providers.embedding.prepared-byte-budget`. Clamped 1 MiB–4 GiB. Default: 128 MiB.
+    pub embed_prepared_byte_budget: usize,
     /// Concurrent source-document preparation tasks before embedding.
     /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `providers.embedding.prep-concurrency`. Clamped 1–64.
     pub embed_prep_concurrency: usize,

@@ -31,7 +31,6 @@ use axon_jobs::boundary::JobStore;
 use axon_jobs::embedding_cache_store::SqliteEmbeddingVectorCacheStore;
 use axon_jobs::scheduler::{ProviderScheduler, SqliteWriteGate};
 use axon_ledger::sqlite::SqliteLedgerStore;
-use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
 use tokio::sync::{Semaphore, watch};
@@ -46,6 +45,7 @@ pub use embedding_identity_cache::invalidate_embedding_identity_cache;
 pub(crate) use embedding_identity_cache::{
     resolve_embedding_identity, resolve_embedding_identity_with_pool,
 };
+use read_stores::build_qdrant_store;
 pub use read_stores::{TargetReadStores, build_read_stores_from_config};
 #[cfg(test)]
 use schedulers::scheduler_authority_id;
@@ -310,13 +310,7 @@ async fn build_target_runtime(
         receiver: verified_embedding.clone(),
     });
 
-    let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
-    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
-    axon_vectors::qdrant::configure_parallelism(
-        &mut vector_store,
-        axon_core::config::parse::tuning::qdrant_upsert_parallelism(),
-        axon_core::config::parse::tuning::qdrant_payload_index_parallelism(),
-    );
+    let vector_store = build_qdrant_store(cfg)?;
 
     let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
     let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
@@ -348,7 +342,7 @@ async fn build_target_runtime(
         ),
     );
 
-    Ok(TargetLocalSourceRuntime {
+    let runtime = TargetLocalSourceRuntime {
         jobs,
         ledger,
         embedding_provider,
@@ -375,6 +369,7 @@ async fn build_target_runtime(
         document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
         document_prepare_max_in_flight_bytes: cfg.embed_prep_max_in_flight_bytes,
         embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
+        embed_prepared_byte_budget: cfg.embed_prepared_byte_budget.max(1),
         document_batch_size: cfg.document_batch_size,
         document_status_batch_size: cfg.document_status_batch_size,
         embed_scheduler_enabled: cfg.embed_scheduler_enabled,
@@ -390,7 +385,9 @@ async fn build_target_runtime(
         artifact_candidate_outbox: Some(artifact_candidate_outbox),
         source_adapters: Arc::new(tokio::sync::OnceCell::new()),
         enricher: Arc::new(NoopSourceEnricher::new()),
-    })
+    };
+    crate::reserved_call::replay_artifact_cleanup_journals(&runtime).await;
+    Ok(runtime)
 }
 
 fn build_scheduled_web_boundaries(

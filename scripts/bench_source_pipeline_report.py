@@ -97,7 +97,10 @@ if not attribution_gate:
 passed = passed and attribution_gate
 result = {
     "benchmark_mode": mode,
-    "acceptance_claim": "deterministic pipeline comparison" if mode == "pinned-replay" else "live cold crawl qualification",
+    "acceptance_claim": "single-arm diagnostic; paired authoritative equivalence not evaluated",
+    "evidence_scope": "single_arm_diagnostic",
+    "ranking_eligible": False,
+    "equivalence_gate": {"status": "not_evaluated", "reason": "paired authoritative document, chunk, vector, and graph counts and digests are not captured"},
     "job_id": job_id, "corpus_hash": corpus_hash, "collection_owned": True,
     "collection_retained": os.environ.get("AXON_BENCH_RETAIN_COLLECTION") == "1",
     "work_directory_retained": os.environ.get("AXON_BENCH_RETAIN_WORK_DIR") == "1",

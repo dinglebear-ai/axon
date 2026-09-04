@@ -43,12 +43,52 @@ cleanup_benchmark() {
 on_exit() { local s=$?; trap - EXIT HUP INT TERM; cleanup_benchmark "$s"; exit $?; }
 on_signal() { local sig=$1 code=$2; trap - EXIT HUP INT TERM; [[ -z ${BENCH_CHILD_PID:-} ]] || kill -TERM "$BENCH_CHILD_PID" 2>/dev/null || true; cleanup_benchmark "$code" || true; trap - "$sig"; kill -s "$sig" "$$"; }
 
-corpus_hash_from_sqlite() { python3 - "$1" "$2" <<'PY'
-import hashlib,json,sqlite3,sys
-with sqlite3.connect(sys.argv[1]) as c:
- r=c.execute("SELECT i.source_item_key,i.content_hash FROM source_items i JOIN sources s ON s.source_id=i.source_id AND s.committed_generation=i.generation WHERE i.source_id=(SELECT source_id FROM jobs WHERE job_id=?) ORDER BY i.source_item_key",(sys.argv[2],)).fetchall()
-if not r: raise SystemExit("completed benchmark has no committed corpus rows")
-print(hashlib.sha256(json.dumps(r,separators=(",",":")).encode()).hexdigest())
+benchmark_config_path() {
+  printf '%s\n' "${AXON_BENCH_CONFIG_PATH:-${AXON_CONFIG_PATH:-${HOME}/.axon/config.toml}}"
+}
+
+# This harness executes one live crawl. It can diagnose one arm, but it cannot
+# establish that two arms published equivalent documents, chunks, vectors, or
+# graph state. Keep that limitation machine-readable so its wall time cannot be
+# mistaken for comparative benchmark evidence.
+benchmark_claim_scope() {
+  jq -nc '{
+    evidence_scope: "single_arm_diagnostic",
+    ranking_eligible: false,
+    equivalence_gate: {
+      status: "not_evaluated",
+      reason: "paired authoritative document, chunk, vector, and graph counts and digests are not captured"
+    }
+  }'
+}
+
+corpus_hash_from_sqlite() {
+  local database=$1
+  local job_id=$2
+  python3 - "$database" "$job_id" <<'PY'
+import hashlib
+import json
+import sqlite3
+import sys
+
+database, job_id = sys.argv[1:]
+with sqlite3.connect(database) as connection:
+    rows = connection.execute(
+        """
+        SELECT i.source_item_key, i.content_hash
+        FROM source_items AS i
+        JOIN sources AS s
+          ON s.source_id = i.source_id
+         AND s.committed_generation = i.generation
+        WHERE i.source_id = (SELECT source_id FROM jobs WHERE job_id = ?)
+        ORDER BY i.source_item_key
+        """,
+        (job_id,),
+    ).fetchall()
+if not rows:
+    raise SystemExit("completed benchmark has no committed corpus rows")
+payload = json.dumps(rows, separators=(",", ":"), ensure_ascii=False).encode()
+print(hashlib.sha256(payload).hexdigest())
 PY
 }
 acquisition_timings_from_log() {
@@ -85,6 +125,8 @@ run_benchmark() {
   [[ $BENCH_COLLECTION =~ ^axon_bench_[A-Za-z0-9_]+$ ]] || { echo 'owned collection must use axon_bench_ prefix' >&2; return 2; }
   if http_json GET "${AXON_BENCH_QDRANT_URL:-http://127.0.0.1:53333}/collections/$BENCH_COLLECTION" "$probe" 2>/dev/null; then echo 'owned collection already exists' >&2; return 2; fi; BENCH_COLLECTION_OWNED=1
   local before=$BENCH_WORK_DIR/before.json after=$BENCH_WORK_DIR/after.json provider=$BENCH_WORK_DIR/provider.json config=$BENCH_WORK_DIR/config.json environment=$BENCH_WORK_DIR/environment.json raw=$BENCH_WORK_DIR/config-raw.json stdout=$BENCH_WORK_DIR/stdout.json stderr=$BENCH_WORK_DIR/stderr.log acquisition=$BENCH_WORK_DIR/acquisition.json
+  AXON_CONFIG_PATH=$(benchmark_config_path)
+  export AXON_CONFIG_PATH
   capture_contracts "$axon" "$env" "$state" "$provider" "$config" "$environment" "$raw"; metrics_get "$before"
   local start end status child job hash; start=$(python3 -c 'import time;print(time.time_ns())'); set +e
   AXON_ENV_FILE="$env" AXON_DATA_DIR="$state" AXON_SQLITE_PATH="$state/jobs.db" "$axon" source "$source" --scope site --cache false --wait true --json --quiet --collection "$BENCH_COLLECTION" >"$stdout" 2>"$stderr" & child=$!; BENCH_CHILD_PID=$child; wait "$child"; status=$?; BENCH_CHILD_PID=; set -e; end=$(python3 -c 'import time;print(time.time_ns())'); metrics_get "$after"

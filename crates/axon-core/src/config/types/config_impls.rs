@@ -217,6 +217,7 @@ impl Default for Config {
             embed_tei_max_batch_tokens: 65_536,
             embed_scheduler_enabled: true,
             vector_upsert_embed_overlap: true,
+            embed_prepared_byte_budget: 128 * 1024 * 1024,
             embed_prep_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(8)

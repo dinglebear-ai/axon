@@ -11,17 +11,18 @@ use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{LazyLock, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
-const POLL_MIN: Duration = Duration::from_millis(20);
-const POLL_MAX: Duration = Duration::from_millis(250);
+const RECOVERY_POLL: Duration = Duration::from_secs(5);
 const AGING_QUANTUM_SECS: i64 = 30;
 /// A queued waiter proves liveness by touching `renewed_at` on every grant
 /// poll, so abandonment means "no poll recently", not "queued for a while".
-/// Deliberately larger than the slowest poll cadence (`POLL_MAX` plus
+/// Deliberately larger than the recovery cadence (`RECOVERY_POLL` plus
 /// writer-gate stalls) and decoupled from `WAIT_TIMEOUT` so third parties
 /// never expire a live waiter and priority aging (`AGING_QUANTUM_SECS`,
 /// measured from the untouched `updated_at`) can actually progress.
@@ -198,6 +199,54 @@ pub struct ProviderScheduler {
     domain: ProviderCapacityDomain,
     config: SchedulerConfig,
     write_gate: SqliteWriteGate,
+    dispatch_signal: Arc<DispatchSignal>,
+}
+
+#[derive(Debug, Default)]
+struct DispatchSignal {
+    changed: Notify,
+    recovery_claimed: AtomicBool,
+}
+
+struct RecoveryClaim(Arc<DispatchSignal>);
+
+impl DispatchSignal {
+    fn try_claim_recovery(self: &Arc<Self>) -> Option<RecoveryClaim> {
+        self.recovery_claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| RecoveryClaim(Arc::clone(self)))
+    }
+}
+
+impl Drop for RecoveryClaim {
+    fn drop(&mut self) {
+        self.0.recovery_claimed.store(false, Ordering::Release);
+        self.0.changed.notify_waiters();
+    }
+}
+
+type CapacityNotifierKey = (String, String);
+type CapacityNotifierMap = std::collections::HashMap<CapacityNotifierKey, Weak<DispatchSignal>>;
+
+static CAPACITY_NOTIFIERS: LazyLock<StdMutex<CapacityNotifierMap>> =
+    LazyLock::new(|| StdMutex::new(std::collections::HashMap::new()));
+
+fn shared_dispatch_signal(
+    _authority_id: &str,
+    capacity_domain: &str,
+    instance_id: &str,
+) -> Arc<DispatchSignal> {
+    let mut notifiers = CAPACITY_NOTIFIERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let key = (capacity_domain.to_string(), instance_id.to_string());
+    if let Some(notify) = notifiers.get(&key).and_then(Weak::upgrade) {
+        return notify;
+    }
+    let signal = Arc::new(DispatchSignal::default());
+    notifiers.insert(key, Arc::downgrade(&signal));
+    signal
 }
 
 /// Process-local admission gate for scheduler mutations sharing one SQLite DB.
@@ -244,11 +293,15 @@ impl ProviderScheduler {
         config: SchedulerConfig,
         write_gate: SqliteWriteGate,
     ) -> Result<Self, SchedulerError> {
+        let capacity_domain = domain_name(domain.kind)?;
+        let dispatch_signal =
+            shared_dispatch_signal(&domain.authority_id, &capacity_domain, &domain.instance_id);
         Ok(Self {
             pool,
             domain,
             config,
             write_gate,
+            dispatch_signal,
         })
     }
 
@@ -269,6 +322,7 @@ impl ProviderScheduler {
         match result {
             Ok(grant) => {
                 sqlx::query("COMMIT").execute(&mut *connection).await?;
+                self.dispatch_signal.changed.notify_waiters();
                 Ok(grant)
             }
             Err(error) => Err(rollback_after_error(&mut connection, error).await),
@@ -309,9 +363,11 @@ impl ProviderScheduler {
         wait_timeout: Option<Duration>,
     ) -> Result<ReservationGrant, SchedulerError> {
         let started = Instant::now();
-        let mut poll = 0_u32;
         loop {
-            let grant = self.try_grant_existing(&reservation_id).await?;
+            let capacity_changed = self.dispatch_signal.changed.notified();
+            tokio::pin!(capacity_changed);
+            capacity_changed.as_mut().enable();
+            let grant = self.reservation_grant(&reservation_id).await?;
             if grant.is_granted() {
                 return Ok(grant);
             }
@@ -332,8 +388,19 @@ impl ProviderScheduler {
                 }
                 continue;
             }
-            tokio::time::sleep(poll_delay(&reservation_id, poll)).await;
-            poll = poll.saturating_add(1);
+            // Normal in-process capacity changes are event-driven. The slow
+            // timeout remains solely as cross-process/crash recovery because
+            // another process cannot signal this Notify.
+            if let Some(_claim) = self.dispatch_signal.try_claim_recovery() {
+                tokio::select! {
+                    _ = &mut capacity_changed => {}
+                    _ = tokio::time::sleep(RECOVERY_POLL) => {}
+                }
+                self.dispatch_queued().await?;
+                self.dispatch_signal.changed.notify_waiters();
+            } else {
+                capacity_changed.await;
+            }
         }
     }
 
@@ -356,6 +423,7 @@ impl ProviderScheduler {
         .bind(&self.domain.authority_id)
         .execute(&self.pool)
         .await?;
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
 
@@ -375,6 +443,7 @@ impl ProviderScheduler {
         if changed == 0 {
             return Err(SchedulerError::StaleFence);
         }
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
 
@@ -446,6 +515,7 @@ impl ProviderScheduler {
         if changed == 0 {
             return Err(SchedulerError::StaleFence);
         }
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
 
@@ -465,18 +535,9 @@ impl ProviderScheduler {
         if changed == 0 {
             return Err(SchedulerError::StaleFence);
         }
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
-}
-
-fn poll_delay(reservation_id: &str, poll: u32) -> Duration {
-    let growth = POLL_MIN
-        .saturating_mul(1_u32.checked_shl(poll.min(4)).unwrap_or(u32::MAX))
-        .min(POLL_MAX);
-    let jitter = reservation_id.bytes().fold(u64::from(poll), |hash, byte| {
-        hash.wrapping_mul(31).wrapping_add(u64::from(byte))
-    }) % 17;
-    growth.saturating_add(Duration::from_millis(jitter))
 }
 
 async fn begin_immediate(connection: &mut PoolConnection<Sqlite>) -> Result<(), SqlxError> {

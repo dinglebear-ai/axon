@@ -191,6 +191,13 @@ async fn document_status_writes_are_bounded_ordered_and_complete() {
 }
 
 #[test]
+fn only_the_last_vector_pool_of_the_final_source_batch_is_final() {
+    assert!(!is_final_vector_batch(false, 1, 2));
+    assert!(!is_final_vector_batch(true, 0, 2));
+    assert!(is_final_vector_batch(true, 1, 2));
+}
+
+#[test]
 fn oversized_document_is_split_into_bounded_chunk_windows() {
     let max_chunks = 512;
     let chunk_count = max_chunks * 2 + 1;
@@ -235,7 +242,7 @@ fn split_windows_merge_back_to_one_document_status_and_total_chunk_count() {
 #[test]
 fn redaction_failure_omits_only_the_forbidden_chunk() {
     let mut document = axon_vectors::testing::test_prepared_document();
-    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string();
+    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string(); // gitleaks:allow — synthetic redaction fixture
     let mut embeddings =
         axon_vectors::testing::test_embedding_result_for(&document, "text-embedding-test", 3);
 

@@ -8,6 +8,57 @@ use crate::boundary::{JobDeleteResult, JobStore};
 use crate::store::open_sqlite_pool;
 use crate::unified::SqliteUnifiedJobStore;
 
+#[test]
+fn malformed_persisted_job_id_is_an_integrity_error_not_nil_uuid() {
+    let error = crate::unified_codec::parse_uuid("not-a-uuid".into()).unwrap_err();
+    assert_eq!(error.code.to_string(), "job.uuid_invalid");
+}
+
+#[tokio::test]
+async fn recovery_rejects_a_malformed_persisted_job_id_even_in_dry_run() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Embedding,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("running");
+
+    let mut connection = store.pool.acquire().await.expect("connection");
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *connection)
+        .await
+        .expect("disable foreign keys for corruption injection");
+    sqlx::query("UPDATE jobs SET job_id = 'not-a-uuid' WHERE job_id = ?")
+        .bind(job.job_id.0.to_string())
+        .execute(&mut *connection)
+        .await
+        .expect("inject corrupt durable row");
+    drop(connection);
+
+    let error = store
+        .recover(JobRecoveryRequest {
+            kind: None,
+            stale_before: None,
+            limit: None,
+            older_than_seconds: None,
+            dry_run: true,
+            allow_without_cutoff: true,
+        })
+        .await
+        .expect_err("corrupt job id must fail closed");
+    assert_eq!(error.code.to_string(), "job.uuid_invalid");
+}
+
 fn snapshot_test_db_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("axon-jobs-snapshot-{}.db", uuid::Uuid::new_v4()))
 }
@@ -356,6 +407,64 @@ async fn create_is_idempotent_and_get_returns_summary() {
         .expect("list jobs");
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.total, Some(2));
+}
+
+#[tokio::test]
+async fn create_with_config_snapshot_is_atomic_and_content_addressed() {
+    let store = store().await;
+    let json = r#"{"collection":"axon"}"#;
+    let id = crate::config_snapshot_store::config_snapshot_id_from_json(json);
+    let mut request = create_request();
+    request.idempotency_key = Some("snapshot-atomic-create".to_string());
+    request.config_snapshot_id = Some(ConfigSnapshotId::new(id.clone()));
+
+    let job = store
+        .create_with_config_snapshot(request, Some(json))
+        .await
+        .expect("job and snapshot commit together");
+    assert!(store.get(job.job_id).await.unwrap().is_some());
+    assert_eq!(
+        crate::config_snapshot_store::get_config_snapshot(store.pool_for_tests(), &id)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(json)
+    );
+
+    let mut invalid = create_request();
+    invalid.idempotency_key = Some("snapshot-invalid-create".to_string());
+    invalid.config_snapshot_id = Some(ConfigSnapshotId::new("cfg_000000000000"));
+    let error = store
+        .create_with_config_snapshot(invalid, Some(json))
+        .await
+        .expect_err("invalid snapshot provenance must prevent job creation");
+    assert_eq!(error.code.to_string(), "config_snapshot.digest_mismatch");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM jobs WHERE idempotency_key = 'snapshot-invalid-create'",
+    )
+    .fetch_one(store.pool_for_tests())
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn watch_run_creation_rolls_back_job_when_watch_link_fails() {
+    let store = store().await;
+    let mut request = create_request();
+    request.idempotency_key = Some("missing-watch-atomic-create".to_string());
+    let error = store
+        .create_watch_run_atomic(request, &WatchId::new("watch_missing"))
+        .await
+        .expect_err("missing watch must roll back the inserted job");
+    assert_eq!(error.code.to_string(), "watch.not_found");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM jobs WHERE idempotency_key = 'missing-watch-atomic-create'",
+    )
+    .fetch_one(store.pool_for_tests())
+    .await
+    .unwrap();
+    assert_eq!(count, 0);
 }
 
 #[tokio::test]

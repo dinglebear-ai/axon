@@ -6,7 +6,7 @@ use axon_core::config::Config;
 use axon_services::context::ServiceContext;
 use axon_services::types::ServerInfo;
 use axum::{
-    Extension, Json, Router,
+    Json, Router,
     extract::DefaultBodyLimit,
     middleware,
     response::Response,
