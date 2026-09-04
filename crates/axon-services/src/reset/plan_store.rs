@@ -1,15 +1,5 @@
 use super::*;
 use axon_core::redact::Redactor;
-#[cfg(test)]
-use std::sync::atomic::{AtomicIsize, Ordering};
-
-#[cfg(test)]
-static RECEIPT_WRITES_BEFORE_FAILURE: AtomicIsize = AtomicIsize::new(-1);
-
-#[cfg(test)]
-pub(super) fn fail_receipt_after(successful_writes: isize) {
-    RECEIPT_WRITES_BEFORE_FAILURE.store(successful_writes, Ordering::SeqCst);
-}
 
 fn control_root(cfg: &Config) -> PathBuf {
     cfg.sqlite_path
@@ -80,21 +70,6 @@ pub(super) async fn save_receipt(
     cfg: &Config,
     receipt: &ResetReceipt,
 ) -> Result<String, Box<dyn Error>> {
-    #[cfg(test)]
-    {
-        let remaining = if receipt.reset_id == "reset_dual" {
-            RECEIPT_WRITES_BEFORE_FAILURE.load(Ordering::SeqCst)
-        } else {
-            -1
-        };
-        if remaining == 0 {
-            RECEIPT_WRITES_BEFORE_FAILURE.store(-1, Ordering::SeqCst);
-            return Err("injected receipt checkpoint failure".into());
-        }
-        if remaining > 0 {
-            RECEIPT_WRITES_BEFORE_FAILURE.fetch_sub(1, Ordering::SeqCst);
-        }
-    }
     let path = receipt_path(cfg, &receipt.reset_id)?;
     let value = serde_json::to_value(receipt)?;
     let (value, _) = axon_core::redact::DefaultRedactor::new().redact_json(

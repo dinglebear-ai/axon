@@ -5,22 +5,6 @@ local_release_profile := "release-fast"
 default:
     @just --list
 
-# Safely inspect and tune the tootie TEI deployment.
-tei-status:
-    ./scripts/tei-tune.py status
-
-tei-presets:
-    ./scripts/tei-tune.py presets
-
-tei-apply preset="rtx4070-axon" *args:
-    ./scripts/tei-tune.py apply {{preset}} {{args}}
-
-tei-benchmark *args:
-    ./scripts/tei-tune.py benchmark {{args}}
-
-tei-rollback:
-    ./scripts/tei-tune.py rollback
-
 # Bootstrap a new development environment (checks + installs all dependencies).
 # No just? Run ./scripts/dev-setup.sh directly — it installs just for you.
 setup *args:
@@ -386,28 +370,15 @@ gen-mcp-schema *ARGS:
 clean:
     cargo clean
 
-# Backward-compatible, self-contained local infrastructure default.
+# Start local infrastructure services. Qdrant runs remotely on tootie by
+# default, so this starts only the local TEI + Chrome dependencies.
 services-up:
-    just services-up-local
-
-services-up-local:
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant up -d axon-qdrant axon-tei axon-chrome
-
-services-up-external-qdrant:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    source scripts/lib/axon-env.sh
-    repo="$(pwd)"
-    load_axon_env_file "$repo"
-    : "${AXON_EXTERNAL_QDRANT_URL:?AXON_EXTERNAL_QDRANT_URL must be set}"
-    env_file="$(resolve_axon_env_file "$repo")"
-    echo "external Qdrant: $AXON_EXTERNAL_QDRANT_URL"
-    docker compose --env-file "$env_file" -f docker-compose.yaml up -d axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d axon-tei axon-chrome
 
 # Stop infrastructure services
 services-down:
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant stop axon-qdrant axon-tei axon-chrome
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant rm -f axon-qdrant axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml stop axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml rm -f axon-tei axon-chrome
 
 # Start/stop an explicitly local Qdrant. Use this only for local test data or
 # when AXON_QDRANT_URL=http://axon-qdrant:6333 is set for the axon container.
@@ -427,41 +398,14 @@ qdrant-down:
 # built-in default — this repo has hit that exact two-layer drift before
 # (32 vs 256 permits) and --env-file alone doesn't prevent a repeat if the
 # YAML's own fallback and .env's intended value ever diverge again.
-ensure-compose-network:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    source scripts/lib/axon-env.sh
-    repo="$(pwd)"
-    load_axon_env_file "$repo"
-    network="${DOCKER_NETWORK:-axon}"
-    if docker network inspect "$network" >/dev/null 2>&1; then
-      driver="$(docker network inspect "$network" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["Driver"])')"
-      [ "$driver" = bridge ] || { echo "network $network exists with incompatible driver $driver" >&2; exit 1; }
-    else
-      docker network create --driver bridge --label ai.dinglebear.axon.network-owner=preflight "$network" >/dev/null
-    fi
-
-remove-compose-network-if-owned:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    source scripts/lib/axon-env.sh
-    repo="$(pwd)"
-    load_axon_env_file "$repo"
-    network="${DOCKER_NETWORK:-axon}"
-    owner="$(docker network inspect "$network" 2>/dev/null | python3 -c 'import json,sys; data=json.load(sys.stdin); print((data[0].get("Labels") or {}).get("ai.dinglebear.axon.network-owner", ""))' || true)"
-    if [ "$owner" = preflight ]; then
-      docker network rm "$network" >/dev/null
-    fi
-
 prod-up:
     #!/usr/bin/env bash
     set -euo pipefail
-    just ensure-compose-network
     source scripts/lib/axon-env.sh
     repo="$(pwd)"
     env_file="$(resolve_axon_env_file "$repo")"
     if [ -f "$env_file" ]; then
-      perm=$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")
+      perm=$(stat -c '%a' "$env_file")
       if [ "${perm: -2}" != "00" ]; then
         echo "warn: $env_file is group/world-readable (mode $perm) — tighten with chmod 600" >&2
       fi
@@ -475,17 +419,14 @@ prod-down:
     source scripts/lib/axon-env.sh
     env_file="$(resolve_axon_env_file "$(pwd)")"
     docker compose --env-file "$env_file" -f docker-compose.prod.yaml down
-    just remove-compose-network-if-owned
 
 # Production stack, external-qdrant override — this deployment's mode (qdrant
 # lives on tootie). Requires AXON_EXTERNAL_QDRANT_URL; fails loudly if unset.
 prod-up-external-qdrant:
     #!/usr/bin/env bash
     set -euo pipefail
-    just ensure-compose-network
     source scripts/lib/axon-env.sh
     repo="$(pwd)"
-    load_axon_env_file "$repo"
     env_file="$(resolve_axon_env_file "$repo")"
     echo "=== bundled qdrant is NOT starting, using external QDRANT_URL=${AXON_EXTERNAL_QDRANT_URL:?AXON_EXTERNAL_QDRANT_URL must be set} ==="
     docker compose --env-file "$env_file" -f docker-compose.prod.yaml -f docker-compose.external-qdrant.yaml up -d
@@ -496,7 +437,6 @@ prod-down-external-qdrant:
     source scripts/lib/axon-env.sh
     env_file="$(resolve_axon_env_file "$(pwd)")"
     docker compose --env-file "$env_file" -f docker-compose.prod.yaml -f docker-compose.external-qdrant.yaml down
-    just remove-compose-network-if-owned
 
 # Backward-compatible aliases used by setup/docs for local infra.
 test-infra-up:

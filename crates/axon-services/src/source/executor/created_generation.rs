@@ -28,6 +28,7 @@ mod setup;
 
 use batches::process_generation_batches;
 use candidate_delivery::{finish_candidate_delivery, stage_candidate_delivery};
+use setup::ensure_generation_collection;
 
 /// Acquire/normalize/prepare/embed/publish the diff's added+modified items in
 /// bounded batches (`ACQUIRE_BATCH_SIZE`) rather than a single
@@ -43,65 +44,20 @@ pub(super) async fn run_created_generation(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     lease: &LeaseGuard,
-    manifest: SourceManifest,
-    diff: SourceManifestDiff,
-    generation: SourceGeneration,
-    previous: Option<SourceSummary>,
-    coordinator: &ProgressCoordinator,
-) -> anyhow::Result<IndexCounts> {
-    let mut artifact_cleanup = ArtifactCleanupGuard::new(
-        runtime,
-        input.plan.job_id,
-        input.execution.attempt,
-        generation.source_id.clone(),
-        generation.generation.clone(),
-    );
-    let result = run_created_generation_inner(
-        runtime,
-        input,
-        emitter,
-        lease,
-        manifest,
-        diff,
-        generation,
-        previous,
-        coordinator,
-        &mut artifact_cleanup,
-    )
-    .await;
-    let cleanup = artifact_cleanup.finish().await;
-    merge_generation_cleanup(result, cleanup)
-}
-
-fn merge_generation_cleanup<T>(
-    result: anyhow::Result<T>,
-    cleanup: Result<(), ApiError>,
-) -> anyhow::Result<T> {
-    match (result, cleanup) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Err(primary), Ok(())) => Err(primary),
-        (Ok(_), Err(cleanup)) => Err(anyhow::Error::new(cleanup)),
-        (Err(primary), Err(cleanup)) => Err(primary.context(format!(
-            "artifact cleanup handoff also failed: {}",
-            cleanup.message
-        ))),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_created_generation_inner(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    lease: &LeaseGuard,
     mut manifest: SourceManifest,
     diff: SourceManifestDiff,
     generation: SourceGeneration,
     previous: Option<SourceSummary>,
     coordinator: &ProgressCoordinator,
-    artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<IndexCounts> {
     let collection = collection_spec(input.collection, runtime.embedding_dimensions);
+    let mut artifact_cleanup = ArtifactCleanupGuard::new(
+        runtime,
+        generation.source_id.clone(),
+        generation.generation.clone(),
+    );
+    ensure_generation_collection(runtime, input, &collection).await?;
+
     let archive_requested = input.adapter.wants_archive(&input.plan);
     let mut accumulated = GenerationAccumulator::new(&generation.generation);
     let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
@@ -128,12 +84,12 @@ async fn run_created_generation_inner(
         coordinator,
         &mut stage,
         &mut accumulated,
-        artifact_cleanup,
+        &mut artifact_cleanup,
     )
     .await?;
 
     let finalized = accumulated
-        .finalize(runtime, input, artifact_cleanup, &mut manifest, diff)
+        .finalize(runtime, input, &mut artifact_cleanup, &mut manifest, diff)
         .await?;
 
     coordinator
@@ -173,7 +129,7 @@ async fn run_created_generation_inner(
         runtime,
         input,
         coordinator,
-        artifact_cleanup,
+        &mut artifact_cleanup,
         &candidate_generation,
         candidates,
         staged_delivery,
@@ -412,7 +368,3 @@ fn post_publish_warning(code: &str, message: String) -> SourceWarning {
         retryable: true,
     }
 }
-
-#[cfg(test)]
-#[path = "created_generation_tests.rs"]
-mod tests;

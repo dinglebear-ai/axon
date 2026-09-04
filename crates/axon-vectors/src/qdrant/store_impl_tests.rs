@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::qdrant::{
-    configure_grpc_transport, configure_parallelism, configure_rest_transport,
-    configure_write_transport, grpc_connection_parts,
-};
+use crate::qdrant::configure_parallelism;
 use serde_json::json;
 
 fn collection_spec(name: &str) -> CollectionSpec {
@@ -28,59 +25,6 @@ fn collection_spec(name: &str) -> CollectionSpec {
         distance: Some(VectorDistance::Cosine),
         metadata: MetadataMap::new(),
     }
-}
-
-#[test]
-fn qdrant_grpc_transport_is_selectable_without_removing_rest_fallback() {
-    let mut store = QdrantVectorStore::new("http://127.0.0.1:6333", "qdrant-test");
-    assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
-
-    configure_grpc_transport(&mut store, "http://127.0.0.1:6334").unwrap();
-
-    assert_eq!(store.write_transport(), QdrantWriteTransport::Grpc);
-    configure_rest_transport(&mut store);
-    assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
-}
-
-#[test]
-fn qdrant_grpc_transport_reuses_rest_credentials_without_leaking_them_into_url() {
-    let (url, api_key) = grpc_connection_parts(
-        "http://secret-token@qdrant.internal:6333?api_key=ignored",
-        "http://qdrant.internal:6334/path?api_key=grpc-fallback",
-    );
-    assert_eq!(url, "http://qdrant.internal:6334");
-    assert_eq!(api_key.as_deref(), Some("grpc-fallback"));
-    assert!(!url.contains("secret"));
-    assert!(!url.contains("api_key"));
-}
-
-#[test]
-fn grpc_transport_rejects_inherited_credentials_over_remote_plaintext() {
-    let mut store =
-        QdrantVectorStore::new("https://rest-secret@qdrant.internal:6333", "qdrant-test");
-    let error = configure_write_transport(&mut store, "grpc", Some("http://qdrant.internal:6334"))
-        .expect_err("inherited credentials over plaintext gRPC must fail closed");
-    assert_eq!(error.code.0, "vector.qdrant.insecure_credentials");
-    assert!(!error.to_string().contains("rest-secret"));
-}
-
-#[test]
-fn grpc_transport_allows_plaintext_credentials_on_loopback() {
-    let mut store = QdrantVectorStore::new("http://local-secret@127.0.0.1:6333", "qdrant-test");
-    configure_write_transport(&mut store, "grpc", Some("http://127.0.0.1:6334"))
-        .expect("loopback plaintext remains supported for local development");
-}
-
-#[test]
-fn qdrant_write_transport_rejects_unknown_values_and_missing_grpc_url() {
-    let mut store = QdrantVectorStore::new("http://127.0.0.1:6333", "qdrant-test");
-    let unknown = configure_write_transport(&mut store, "magic", None).unwrap_err();
-    assert_eq!(unknown.code.0, "vector.qdrant.transport_config");
-    assert!(unknown.message.contains("rest or grpc"));
-
-    let missing = configure_write_transport(&mut store, "grpc", None).unwrap_err();
-    assert_eq!(missing.code.0, "vector.qdrant.grpc_url_missing");
-    assert_eq!(store.write_transport(), QdrantWriteTransport::Rest);
 }
 
 #[test]
@@ -112,34 +56,6 @@ fn qdrant_stores_share_parallelism_gates_for_the_same_endpoint_and_profile() {
         &first.parallelism_gates,
         &other.parallelism_gates
     ));
-}
-
-#[tokio::test]
-async fn qdrant_stores_share_one_aggregate_limit_across_config_and_url_aliases() {
-    let mut first = QdrantVectorStore::new("http://qdrant-admission.test", "first");
-    configure_parallelism(&mut first, 1, 1);
-    let mut reconfigured =
-        QdrantVectorStore::new("HTTP://QDRANT-ADMISSION.TEST:80/", "reconfigured");
-    configure_parallelism(&mut reconfigured, 8, 8);
-
-    assert!(Arc::ptr_eq(
-        &first.parallelism_gates,
-        &reconfigured.parallelism_gates
-    ));
-    let permit = first
-        .write_slots()
-        .acquire_owned()
-        .await
-        .expect("first store acquires the endpoint's sole write slot");
-    assert!(
-        reconfigured.write_slots().try_acquire_owned().is_err(),
-        "a differently configured alias must not multiply endpoint capacity"
-    );
-    drop(permit);
-    let _permit = reconfigured
-        .write_slots()
-        .try_acquire_owned()
-        .expect("shared capacity returns after release");
 }
 
 #[test]

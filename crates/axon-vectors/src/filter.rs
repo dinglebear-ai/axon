@@ -15,8 +15,6 @@ pub const VECTOR_NAMESPACE: &str = "vector_namespace";
 pub const VISIBILITY: &str = "visibility";
 pub const CONTENT_KIND: &str = "content_kind";
 pub const PATH_PREFIX: &str = "path_prefix";
-pub const EXCLUDED_SOURCE_KINDS: &str = "__axon_excluded_source_kinds";
-pub const REQUIRE_SOURCE_KIND: &str = "__axon_require_source_kind";
 
 type Result<T> = std::result::Result<T, ApiError>;
 
@@ -27,21 +25,6 @@ pub fn matches_search_filters(point: &VectorPoint, request: &VectorSearchRequest
         return false;
     }
     request.filters.iter().all(|(field, expected)| {
-        if field == EXCLUDED_SOURCE_KINDS {
-            let Some(actual) = point.payload.get("source_kind").and_then(Value::as_str) else {
-                return false;
-            };
-            return !expected
-                .as_array()
-                .is_some_and(|values| values.iter().any(|value| value.as_str() == Some(actual)));
-        }
-        if field == REQUIRE_SOURCE_KIND {
-            return point
-                .payload
-                .get("source_kind")
-                .and_then(Value::as_str)
-                .is_some();
-        }
         if field == PATH_PREFIX {
             return payload_matches_path_prefix(&point.payload, expected);
         }
@@ -172,15 +155,6 @@ fn validate_json_filter(filter: &Value, stage: ErrorStage) -> Result<()> {
 
 fn validate_filter_map(filters: &MetadataMap, stage: ErrorStage) -> Result<()> {
     for (field, expected) in filters.iter() {
-        if field == REQUIRE_SOURCE_KIND {
-            if expected == &Value::Bool(true) {
-                continue;
-            }
-            return Err(invalid_filter(
-                stage,
-                "source-kind provenance requirement must be true",
-            ));
-        }
         validate_filter_value(field, expected, stage)?;
     }
     Ok(())

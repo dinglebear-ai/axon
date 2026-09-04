@@ -12,44 +12,28 @@
 //! - [`read`] — raw-payload read/query primitives ported from legacy
 //!   `axon-vector` (facet, scroll, retrieve-by-url, canonical/prefix purge).
 
-mod bulk_load;
-pub use bulk_load::drain_bulk_load_transition_workers;
 pub(crate) mod commit;
 pub mod convert;
-mod grpc;
 mod http;
-mod migration;
 mod read;
 mod search;
 mod store_cache;
 mod store_impl;
 mod store_trait;
 mod upsert;
-pub use migration::{VectorMigrationReceipt, migrate_unnamed_collection};
-
-/// Retrieve all stored chunks for a URL through the vector-domain boundary.
-pub async fn retrieve_by_url(
-    store: &QdrantVectorStore,
-    collection: &str,
-    target: &str,
-    max_points: Option<usize>,
-) -> crate::store::Result<QdrantRetrieveByUrlResult> {
-    store.retrieve_by_url(collection, target, max_points).await
-}
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock, Weak};
 
 use axon_api::source::*;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
-use qdrant_client::Qdrant;
 use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
 // Re-export the request-shape conversion helpers exercised by the crate's
 // contract tests and any transport that needs the typed builders.
 pub use convert::{
-    QdrantCollectionSettings, qdrant_collection_request, qdrant_collection_request_with_settings,
-    qdrant_filter, qdrant_payload_index_requests, qdrant_upsert_points,
+    QdrantCollectionSettings, qdrant_collection_request, qdrant_filter,
+    qdrant_payload_index_requests, qdrant_upsert_points,
 };
 // Read/query primitives — see `read.rs`. Methods themselves are inherent
 // `impl QdrantVectorStore` blocks defined inside the submodule; only the new
@@ -69,7 +53,7 @@ pub const MODULE_NAME: &str = "qdrant";
 /// into `capabilities()`, not to gate concurrency.
 const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 const DEFAULT_POINT_BUFFER: usize = 1024;
-const DEFAULT_WRITE_PARALLELISM: usize = 2;
+const DEFAULT_WRITE_PARALLELISM: usize = 1;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 
@@ -80,7 +64,9 @@ static COLLECTION_SPEC_CACHE_EPOCHS: OnceLock<Mutex<HashMap<String, u64>>> = Onc
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ParallelismKey {
-    endpoint: String,
+    url: String,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
 }
 
 #[derive(Debug)]
@@ -96,31 +82,22 @@ fn shared_parallelism_gates(
     url: &str,
     write_parallelism: usize,
     payload_index_parallelism: usize,
-    current: Option<&Arc<QdrantParallelismGates>>,
 ) -> Arc<QdrantParallelismGates> {
     let key = ParallelismKey {
-        endpoint: http::QdrantEndpoint::parse(url).root().to_string(),
+        url: url.trim().trim_end_matches('/').to_string(),
+        write_parallelism: write_parallelism.max(1),
+        payload_index_parallelism: payload_index_parallelism.max(1),
     };
     let mut registry = PARALLELISM_GATES
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     registry.retain(|_, gates| gates.strong_count() > 0);
     if let Some(gates) = registry.get(&key).and_then(Weak::upgrade) {
-        // A sole live owner may safely replace its gate while applying initial
-        // configuration. Once another store shares the endpoint, retain the
-        // established capacity until every owner drains; this prevents a
-        // reload with different knobs from multiplying in-flight operations.
-        let sole_current_owner = current.is_some_and(|current| Arc::ptr_eq(current, &gates))
-            // One strong reference belongs to the store and one to this
-            // temporary upgrade from the registry's weak reference.
-            && Arc::strong_count(&gates) == 2;
-        if !sole_current_owner {
-            return gates;
-        }
+        return gates;
     }
     let gates = Arc::new(QdrantParallelismGates {
-        write_slots: Arc::new(Semaphore::new(write_parallelism.max(1))),
-        payload_index_slots: Arc::new(Semaphore::new(payload_index_parallelism.max(1))),
+        write_slots: Arc::new(Semaphore::new(key.write_parallelism)),
+        payload_index_slots: Arc::new(Semaphore::new(key.payload_index_parallelism)),
     });
     registry.insert(key, Arc::downgrade(&gates));
     gates
@@ -130,20 +107,13 @@ fn shared_parallelism_gates(
 ///
 /// The `url` is stored verbatim and parsed (with credentials stripped) per
 /// request; it is never surfaced in error details.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
     point_buffer: usize,
     write_parallelism: usize,
     payload_index_parallelism: usize,
-    collection_settings: QdrantCollectionSettings,
-    bulk_load_enabled: bool,
-    bulk_indexing_threshold: u64,
-    normal_indexing_threshold: u64,
-    async_writes: bool,
-    write_transport: QdrantWriteTransport,
-    grpc_client: Option<Arc<Qdrant>>,
     parallelism_gates: Arc<QdrantParallelismGates>,
     health: ProviderReservationManager,
     collection_specs: Arc<RwLock<HashMap<String, (u64, CollectionSpec)>>>,
@@ -173,25 +143,14 @@ impl QdrantVectorStore {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
-        let parallelism_gates = shared_parallelism_gates(
-            &url,
-            DEFAULT_WRITE_PARALLELISM,
-            DEFAULT_WRITE_PARALLELISM,
-            None,
-        );
+        let parallelism_gates =
+            shared_parallelism_gates(&url, DEFAULT_WRITE_PARALLELISM, DEFAULT_WRITE_PARALLELISM);
         Self {
             url,
             provider_id,
             point_buffer: point_buffer.max(1),
             write_parallelism: DEFAULT_WRITE_PARALLELISM,
             payload_index_parallelism: DEFAULT_WRITE_PARALLELISM,
-            collection_settings: QdrantCollectionSettings::default(),
-            bulk_load_enabled: false,
-            bulk_indexing_threshold: 10_485_760,
-            normal_indexing_threshold: 20_000,
-            async_writes: false,
-            write_transport: QdrantWriteTransport::Rest,
-            grpc_client: None,
             parallelism_gates,
             health,
             collection_specs: Arc::new(RwLock::new(HashMap::new())),
@@ -208,14 +167,6 @@ impl QdrantVectorStore {
 
     pub fn payload_index_parallelism(&self) -> usize {
         self.payload_index_parallelism
-    }
-
-    pub fn collection_settings(&self) -> QdrantCollectionSettings {
-        self.collection_settings
-    }
-
-    pub fn write_transport(&self) -> QdrantWriteTransport {
-        self.write_transport
     }
 
     pub(super) async fn write_permit(
@@ -309,120 +260,7 @@ pub fn configure_parallelism(
         &store.url,
         store.write_parallelism,
         store.payload_index_parallelism,
-        Some(&store.parallelism_gates),
     );
-}
-
-pub fn configure_collection_settings(
-    store: &mut QdrantVectorStore,
-    settings: QdrantCollectionSettings,
-) {
-    store.collection_settings = settings;
-}
-
-pub fn configure_bulk_load(
-    store: &mut QdrantVectorStore,
-    enabled: bool,
-    bulk_indexing_threshold: u64,
-    normal_indexing_threshold: u64,
-) {
-    store.bulk_load_enabled = enabled;
-    store.bulk_indexing_threshold = bulk_indexing_threshold;
-    store.normal_indexing_threshold = normal_indexing_threshold;
-}
-
-pub fn configure_async_writes(store: &mut QdrantVectorStore, enabled: bool) {
-    store.async_writes = enabled;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QdrantWriteTransport {
-    Rest,
-    Grpc,
-}
-
-pub fn configure_write_transport(
-    store: &mut QdrantVectorStore,
-    transport: &str,
-    grpc_url: Option<&str>,
-) -> Result<(), ApiError> {
-    match transport.trim().to_ascii_lowercase().as_str() {
-        "rest" => {
-            configure_rest_transport(store);
-            Ok(())
-        }
-        "grpc" => {
-            let url = grpc_url
-                .filter(|url| !url.trim().is_empty())
-                .ok_or_else(|| {
-                    ApiError::new(
-                        "vector.qdrant.grpc_url_missing",
-                        ErrorStage::Upserting,
-                        "QDRANT_GRPC_URL is required when Qdrant transport is grpc",
-                    )
-                })?;
-            configure_grpc_transport(store, url)
-        }
-        _ => Err(ApiError::new(
-            "vector.qdrant.transport_config",
-            ErrorStage::Upserting,
-            "Qdrant write transport must be rest or grpc",
-        )),
-    }
-}
-
-pub fn configure_grpc_transport(store: &mut QdrantVectorStore, url: &str) -> Result<(), ApiError> {
-    let (grpc_url, api_key) = grpc_connection_parts(&store.url, url);
-    let grpc_endpoint = http::QdrantEndpoint::parse(url);
-    if !grpc_endpoint.transport_is_safe_for_credentials(api_key.is_some()) {
-        return Err(ApiError::new(
-            "vector.qdrant.insecure_credentials",
-            ErrorStage::Authorizing,
-            "Qdrant credentials require HTTPS for non-loopback gRPC endpoints",
-        ));
-    }
-    let client = Qdrant::from_url(&grpc_url)
-        .api_key(api_key)
-        .skip_compatibility_check()
-        .build()
-        .map_err(|error| {
-            ApiError::new(
-                "vector.qdrant.grpc_config",
-                ErrorStage::Upserting,
-                format!("failed to configure Qdrant gRPC transport: {error}"),
-            )
-        })?;
-    store.grpc_client = Some(Arc::new(client));
-    store.write_transport = QdrantWriteTransport::Grpc;
-    Ok(())
-}
-
-fn grpc_connection_parts(rest_url: &str, grpc_url: &str) -> (String, Option<String>) {
-    let rest = http::QdrantEndpoint::parse(rest_url);
-    let grpc = http::QdrantEndpoint::parse(grpc_url);
-    let api_key = grpc
-        .api_key()
-        .or_else(|| rest.api_key())
-        .map(ToOwned::to_owned);
-    (grpc.grpc_origin(), api_key)
-}
-
-pub fn configure_rest_transport(store: &mut QdrantVectorStore) {
-    store.write_transport = QdrantWriteTransport::Rest;
-    store.grpc_client = None;
-}
-
-impl std::fmt::Debug for QdrantVectorStore {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("QdrantVectorStore")
-            .field("provider_id", &self.provider_id)
-            .field("point_buffer", &self.point_buffer)
-            .field("write_parallelism", &self.write_parallelism)
-            .field("write_transport", &self.write_transport)
-            .field("bulk_load_enabled", &self.bulk_load_enabled)
-            .field("async_writes", &self.async_writes)
-            .finish_non_exhaustive()
-    }
 }
 
 fn collection_spec_cache_epochs() -> &'static Mutex<HashMap<String, u64>> {

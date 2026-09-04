@@ -14,7 +14,6 @@ async fn tracing_sink_assigns_monotonic_sequence() {
     // Emit twice; the shared registry advances the per-job sequence.
     sink.emit(crate::event::stage_started(
         job,
-        1,
         None,
         PipelinePhase::Fetching,
         "one".to_string(),
@@ -23,7 +22,6 @@ async fn tracing_sink_assigns_monotonic_sequence() {
     .unwrap();
     sink.emit(crate::event::stage_started(
         job,
-        1,
         None,
         PipelinePhase::Fetching,
         "two".to_string(),
@@ -40,7 +38,6 @@ async fn redaction_failure_emits_no_trace_sequence() {
     let job = JobId(uuid::Uuid::new_v4());
     let mut event = crate::event::stage_started(
         job,
-        1,
         None,
         PipelinePhase::Authorizing,
         "authorizing".to_string(),
@@ -93,7 +90,6 @@ async fn shared_registry_keeps_sinks_in_lockstep() {
 
     a.emit(crate::event::stage_started(
         job,
-        1,
         None,
         PipelinePhase::Fetching,
         "a".into(),
@@ -102,7 +98,6 @@ async fn shared_registry_keeps_sinks_in_lockstep() {
     .unwrap();
     b.emit(crate::event::stage_started(
         job,
-        1,
         None,
         PipelinePhase::Fetching,
         "b".into(),

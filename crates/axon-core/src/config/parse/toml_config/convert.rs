@@ -242,7 +242,6 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.embed.cache_enabled = e.cache_enabled;
     flat.embed.cache_max_entries = e.cache_max_entries;
     flat.embed.pool_max_inputs = e.pool_max_inputs;
-    flat.embed.prepared_byte_budget = e.prepared_byte_budget;
     flat.embed.prep_concurrency = e.prep_concurrency;
     flat.embed.max_chunks_per_doc = e.max_chunks_per_doc;
     flat.embed.max_source_chunks_per_doc = e.max_source_chunks_per_doc;
@@ -264,15 +263,10 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.qdrant.indexing_threshold_kb = v.indexing_threshold_kb;
     flat.qdrant.hnsw_m = v.hnsw_m;
     flat.qdrant.hnsw_ef_construct = v.hnsw_ef_construct;
-    flat.qdrant.payload_index_profile = v
-        .payload_index_profile
-        .map(|profile| profile.as_str().to_string());
+    flat.qdrant.payload_index_profile = v.payload_index_profile.clone();
     flat.qdrant.payload_index_parallelism = v.payload_index_parallelism;
     flat.qdrant.hnsw_on_disk = v.hnsw_on_disk;
-    flat.qdrant.quantization_enabled = v.quantization_enabled;
     flat.qdrant.quantization_always_ram = v.quantization_always_ram;
-    flat.qdrant.async_writes = v.async_writes;
-    flat.qdrant.transport = v.transport.map(|transport| transport.as_str().to_string());
 
     let l = &raw.providers.llm;
     flat.llm.backend = l.backend.clone();

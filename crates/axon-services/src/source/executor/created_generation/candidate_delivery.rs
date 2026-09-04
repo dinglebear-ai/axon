@@ -49,7 +49,7 @@ pub(super) async fn finish_candidate_delivery(
             "published source generation",
         )
         .await;
-    artifact_cleanup.disarm().await?;
+    artifact_cleanup.disarm();
     let Ok(output) = result else {
         return Ok(());
     };

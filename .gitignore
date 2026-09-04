@@ -13,7 +13,6 @@ services.env
 !crates/axon-core/tests/fixtures/env/*.env
 .broadcastr
 # ── Runtime artifacts ────────────────────────────────────────────────────────
-/.axon/
 /bin/
 logs/
 backups/

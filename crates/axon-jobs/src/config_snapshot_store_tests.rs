@@ -13,13 +13,11 @@ async fn test_pool() -> (tempfile::TempDir, SqlitePool) {
 #[tokio::test]
 async fn stores_and_reads_back_a_snapshot() {
     let (_dir, pool) = test_pool().await;
-    let json = r#"{"collection":"axon"}"#;
-    let id = config_snapshot_id_from_json(json);
-    upsert_config_snapshot(&pool, &id, json)
+    upsert_config_snapshot(&pool, "cfg_abc123", r#"{"collection":"axon"}"#)
         .await
         .expect("upsert should succeed");
 
-    let fetched = get_config_snapshot(&pool, &id)
+    let fetched = get_config_snapshot(&pool, "cfg_abc123")
         .await
         .expect("get should succeed");
     assert_eq!(fetched.as_deref(), Some(r#"{"collection":"axon"}"#));
@@ -35,36 +33,21 @@ async fn unknown_id_returns_none_not_an_error() {
 }
 
 #[tokio::test]
-async fn duplicate_upsert_rejects_content_mismatch() {
+async fn duplicate_upsert_of_the_same_id_is_a_no_op() {
     let (_dir, pool) = test_pool().await;
-    let first = r#"{"a":1}"#;
-    let id = config_snapshot_id_from_json(first);
-    upsert_config_snapshot(&pool, &id, first)
+    upsert_config_snapshot(&pool, "cfg_dup", r#"{"a":1}"#)
         .await
         .expect("first upsert");
-    let err = upsert_config_snapshot(&pool, &id, r#"{"a":2}"#)
+    // Same id, different body: INSERT OR IGNORE keeps the first-written
+    // content, matching the content-addressed contract documented on the
+    // migration (the id is a hash of the content, so a real mismatch would
+    // indicate caller error, not something this layer should silently fix).
+    upsert_config_snapshot(&pool, "cfg_dup", r#"{"a":2}"#)
         .await
-        .expect_err("same id with different content must be rejected");
+        .expect("second upsert with same id is a no-op, not an error");
 
-    assert_eq!(err.code.to_string(), "config_snapshot.digest_mismatch");
-    let fetched = get_config_snapshot(&pool, &id).await.unwrap();
-    assert_eq!(fetched.as_deref(), Some(first));
-}
-
-#[tokio::test]
-async fn forged_content_id_is_rejected_before_insert() {
-    let (_dir, pool) = test_pool().await;
-    let err = upsert_config_snapshot(&pool, "cfg_000000000000", r#"{"a":1}"#)
-        .await
-        .expect_err("id must match the snapshot digest");
-
-    assert_eq!(err.code.to_string(), "config_snapshot.digest_mismatch");
-    assert!(
-        get_config_snapshot(&pool, "cfg_000000000000")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    let fetched = get_config_snapshot(&pool, "cfg_dup").await.unwrap();
+    assert_eq!(fetched.as_deref(), Some(r#"{"a":1}"#));
 }
 
 #[tokio::test]
@@ -79,23 +62,19 @@ async fn empty_id_is_rejected() {
 #[tokio::test]
 async fn distinct_ids_store_distinct_content() {
     let (_dir, pool) = test_pool().await;
-    let first = r#"{"n":1}"#;
-    let second = r#"{"n":2}"#;
-    let first_id = config_snapshot_id_from_json(first);
-    let second_id = config_snapshot_id_from_json(second);
-    upsert_config_snapshot(&pool, &first_id, first)
+    upsert_config_snapshot(&pool, "cfg_one", r#"{"n":1}"#)
         .await
         .unwrap();
-    upsert_config_snapshot(&pool, &second_id, second)
+    upsert_config_snapshot(&pool, "cfg_two", r#"{"n":2}"#)
         .await
         .unwrap();
 
     assert_eq!(
-        get_config_snapshot(&pool, &first_id).await.unwrap(),
+        get_config_snapshot(&pool, "cfg_one").await.unwrap(),
         Some(r#"{"n":1}"#.to_string())
     );
     assert_eq!(
-        get_config_snapshot(&pool, &second_id).await.unwrap(),
+        get_config_snapshot(&pool, "cfg_two").await.unwrap(),
         Some(r#"{"n":2}"#.to_string())
     );
 }

@@ -26,8 +26,6 @@ pub struct SourceGeneration {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PublishGenerationRequest {
-    pub job_id: JobId,
-    pub attempt: u32,
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,17 +74,11 @@ pub struct DocumentCounts {
 pub struct CleanupDebt {
     pub debt_id: CleanupDebtId,
     pub job_id: JobId,
-    /// Attempt of `job_id` that created this debt, for durable audit joins.
-    pub origin_attempt: u32,
     pub source_id: SourceId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation: Option<SourceGenerationId>,
     pub kind: CleanupDebtKind,
     pub selector: CleanupSelector,
-    /// Immutable vector collection identity for `VectorDelete` debt. Legacy
-    /// rows deserialize as `None` and must fail closed during autonomous retry.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vector_collection: Option<String>,
     pub status: LifecycleStatus,
     pub created_at: Timestamp,
     pub attempts: u32,

@@ -197,14 +197,6 @@ pub(super) async fn publish_generation(
     let mut new_debt = record_removed_item_cleanup_debt(&mut state, &generation);
     new_debt.extend(record_graph_prune_cleanup_debt(&mut state, &generation));
     new_debt.extend(record_ledger_prune_cleanup_debt(&mut state, &generation));
-    for debt in &mut new_debt {
-        debt.job_id = request.job_id;
-        debt.origin_attempt = request.attempt;
-        if let Some(stored) = state.cleanup_debt.get_mut(&debt.debt_id) {
-            stored.job_id = request.job_id;
-            stored.origin_attempt = request.attempt;
-        }
-    }
     let cleanup_debt = new_debt
         .iter()
         .map(|debt| debt.debt_id.clone())

@@ -229,8 +229,6 @@ fn completed_generation_from(generation: &SourceGeneration) -> SourceGeneration 
 
 fn publish_request(generation: &SourceGeneration) -> PublishGenerationRequest {
     PublishGenerationRequest {
-        job_id: JobId::new(uuid::Uuid::from_u128(1)),
-        attempt: 1,
         source_id: generation.source_id.clone(),
         generation: generation.generation.clone(),
         expected_previous_generation: generation.previous_generation.clone(),

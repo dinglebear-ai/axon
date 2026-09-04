@@ -1,12 +1,13 @@
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
 use axon_core::config::Config;
 use axon_extract::{VerticalContext, VerticalError};
-use std::collections::BTreeSet;
 
 use super::*;
 
 fn context() -> VerticalContext {
-    let cfg = Config::default_minimal();
-    VerticalContext::new(cfg.user_agent, cfg.auto_dispatch_skip)
+    VerticalContext::new(Arc::new(Config::default_minimal()))
 }
 
 #[test]
@@ -60,7 +61,7 @@ async fn every_catalog_entry_has_named_dispatch() {
 async fn automatic_dispatch_honors_adapter_skip_policy() {
     let mut cfg = Config::default_minimal();
     cfg.auto_dispatch_skip = vec!["github_repo".to_string()];
-    let ctx = VerticalContext::new(cfg.user_agent, cfg.auto_dispatch_skip);
+    let ctx = VerticalContext::new(Arc::new(cfg));
 
     let result = dispatch_by_url("https://github.com/rust-lang/rust", &ctx).await;
 

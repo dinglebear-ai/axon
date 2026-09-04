@@ -1,25 +1,4 @@
 use super::*;
-
-#[tokio::test]
-async fn draining_bulk_lifecycle_cleanup_waits_for_finish() {
-    let vectors = Arc::new(FakeVectorStore::new("bulk-cancel-test"));
-    crate::reserved_call::test_bulk_load_cleanup_lifecycle(
-        vectors.clone(),
-        "cancelled".to_string(),
-    );
-    assert_eq!(
-        vectors.calls().await,
-        ["finish_bulk_load", "finish_bulk_load"]
-    );
-}
-
-#[tokio::test]
-async fn finish_handoff_prevents_cancellation_guard_from_finishing_twice() {
-    let vectors = Arc::new(FakeVectorStore::new("bulk-finish-handoff-test"));
-    crate::reserved_call::test_bulk_load_finish_handoff(vectors.clone(), "shared".to_string())
-        .await;
-    assert_eq!(vectors.calls().await, ["finish_bulk_load"]);
-}
 use async_trait::async_trait;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_adapters::{FakeSourceAdapter, SourceAdapter, web::WebSourceAdapter};
@@ -41,33 +20,6 @@ async fn controlled<T>(
     result
 }
 
-#[tokio::test]
-async fn collection_setup_overlaps_first_acquisition() {
-    let (setup_started_tx, setup_started_rx) = oneshot::channel();
-    let (setup_release_tx, setup_release_rx) = oneshot::channel();
-    let (acquire_started_tx, acquire_started_rx) = oneshot::channel();
-    let (acquire_release_tx, acquire_release_rx) = oneshot::channel();
-
-    let joined = tokio::spawn(join_collection_setup_and_first_acquisition(
-        controlled(setup_started_tx, setup_release_rx, Ok(())),
-        controlled(acquire_started_tx, acquire_release_rx, Ok(42_u64)),
-    ));
-    tokio::time::timeout(std::time::Duration::from_secs(1), setup_started_rx)
-        .await
-        .expect("collection setup must start")
-        .expect("collection setup start signal");
-    tokio::time::timeout(std::time::Duration::from_secs(1), acquire_started_rx)
-        .await
-        .expect("first acquisition must start before collection setup completes")
-        .expect("first acquisition start signal");
-
-    setup_release_tx.send(()).expect("release collection setup");
-    acquire_release_tx
-        .send(())
-        .expect("release first acquisition");
-    assert_eq!(joined.await.expect("join task").expect("joined calls"), 42);
-}
-
 #[derive(Clone, Copy, Default)]
 struct AdapterFailures {
     acquire_call: Option<usize>,
@@ -81,7 +33,6 @@ struct ControlledBatchAdapter {
     acquire_started: mpsc::UnboundedSender<usize>,
     normalize_started: mpsc::UnboundedSender<usize>,
     first_normalize_release: Mutex<Option<oneshot::Receiver<()>>>,
-    second_acquire_release: Mutex<Option<oneshot::Receiver<()>>>,
     failures: AdapterFailures,
     prefetched_artifact: Option<ArtifactRef>,
 }
@@ -112,15 +63,9 @@ impl ControlledBatchAdapter {
             acquire_started,
             normalize_started,
             first_normalize_release: Mutex::new(first_normalize_release),
-            second_acquire_release: Mutex::new(None),
             failures,
             prefetched_artifact: None,
         }
-    }
-
-    fn with_second_acquire_release(mut self, release: oneshot::Receiver<()>) -> Self {
-        self.second_acquire_release = Mutex::new(Some(release));
-        self
     }
 
     fn with_prefetched_artifact(mut self, artifact: ArtifactRef) -> Self {
@@ -158,11 +103,6 @@ impl SourceAdapter for ControlledBatchAdapter {
     ) -> axon_adapters::adapter::Result<SourceAcquisition> {
         let call = self.acquire_calls.fetch_add(1, Ordering::SeqCst) + 1;
         let _ = self.acquire_started.send(call);
-        if call == 2
-            && let Some(release) = self.second_acquire_release.lock().await.take()
-        {
-            let _ = release.await;
-        }
         if self.failures.acquire_call == Some(call) {
             return Err(Self::error(
                 ErrorStage::Fetching,
@@ -233,7 +173,7 @@ async fn run_actual_generation_batches_with_diff(
         Arc::new(axon_jobs::boundary::FakeJobWatchStore::new()),
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
-        vectors.clone(),
+        vectors,
         ProviderId::new("fake-embedding"),
         "fake-embedding",
         8,
@@ -289,8 +229,6 @@ async fn run_actual_generation_batches_with_diff(
     let mut accumulated = GenerationAccumulator::default();
     let mut cleanup = ArtifactCleanupGuard::new(
         &runtime,
-        input.plan.job_id,
-        input.execution.attempt,
         input.plan.route.source.source_id.clone(),
         generation.clone(),
     );
@@ -310,179 +248,9 @@ async fn run_actual_generation_batches_with_diff(
     )
     .await;
     if !keep_cleanup_armed {
-        cleanup.disarm().await.unwrap();
+        cleanup.disarm();
     }
     (result, stage, coordinator)
-}
-
-async fn run_actual_scheduled_generation_batches(
-    adapter: Arc<ControlledBatchAdapter>,
-    coordinator: Option<ProgressCoordinator>,
-) -> (
-    anyhow::Result<()>,
-    GenerationStageProgress,
-    ProgressCoordinator,
-    Arc<FakeVectorStore>,
-) {
-    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ledger = Arc::new(FakeLedgerStore::new());
-    let runtime = TargetLocalSourceRuntime::new(
-        Arc::new(axon_jobs::boundary::FakeJobWatchStore::new()),
-        ledger,
-        Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
-        vectors.clone(),
-        ProviderId::new("fake-embedding"),
-        "fake-embedding",
-        8,
-    );
-    let route = crate::source::routing::resolve_source_route(&SourceRequest::new(
-        "https://example.com/overlap".to_string(),
-    ))
-    .expect("web route")
-    .route;
-    let plan = crate::source::dispatch::family_source_plan(
-        &route.source.canonical_uri,
-        &route,
-        false,
-        None,
-        None,
-    );
-    let execution =
-        crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
-    let input = SourcePipelineInput {
-        adapter: adapter.as_ref(),
-        plan,
-        collection: "overlap-test",
-        owner_id: "overlap-test",
-        auth_snapshot: None,
-        execution: &execution,
-    };
-    runtime
-        .ledger
-        .upsert_source(metadata::source_summary(
-            &input,
-            LifecycleStatus::Running,
-            empty_source_counts(),
-            None,
-        ))
-        .await
-        .expect("source summary");
-    let manifest = adapter.discover(&input.plan).await.expect("manifest");
-    let diff = runtime
-        .ledger
-        .diff_manifest(manifest)
-        .await
-        .expect("manifest diff");
-    let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
-    let generation = diff.next_generation.clone();
-    let emitter = SourceEventEmitter::new(None, Some(input.plan.job_id));
-    let coordinator = coordinator.unwrap_or_else(ProgressCoordinator::test_noop);
-    let collection = collection_spec(input.collection, runtime.embedding_dimensions);
-    let mut stage = GenerationStageProgress::default();
-    let mut accumulated = GenerationAccumulator::default();
-    let mut cleanup = ArtifactCleanupGuard::new(
-        &runtime,
-        input.plan.job_id,
-        input.execution.attempt,
-        input.plan.route.source.source_id.clone(),
-        generation.clone(),
-    );
-    let result = Box::pin(super::scheduled::process(
-        super::scheduled::ScheduledGenerationContext {
-            runtime: &runtime,
-            input: &input,
-            emitter: &emitter,
-            generation: &generation,
-            collection: &collection,
-            diff: &diff,
-            archive_requested: false,
-            changed_total,
-            coordinator: &coordinator,
-        },
-        super::scheduled::ScheduledGenerationState {
-            stage: &mut stage,
-            accumulated: &mut accumulated,
-            artifact_cleanup: &mut cleanup,
-        },
-    ))
-    .await;
-    cleanup.disarm().await.unwrap();
-    (result, stage, coordinator, vectors)
-}
-
-#[tokio::test]
-async fn scheduled_generation_drops_its_sender_after_production_finishes() {
-    let (acquire_started_tx, _acquire_started_rx) = mpsc::unbounded_channel();
-    let (normalize_started_tx, _normalize_started_rx) = mpsc::unbounded_channel();
-    let adapter = Arc::new(ControlledBatchAdapter::new(
-        1,
-        acquire_started_tx,
-        normalize_started_tx,
-        None,
-        AdapterFailures::default(),
-    ));
-
-    let completed = tokio::time::timeout(
-        std::time::Duration::from_secs(1),
-        run_actual_scheduled_generation_batches(adapter, None),
-    )
-    .await
-    .expect("the scheduler must close its channel after the producer finishes");
-
-    completed.0.expect("scheduled generation");
-    assert_eq!(
-        completed.3.calls().await,
-        vec!["begin_bulk_load", "finish_bulk_load"]
-    );
-}
-
-#[tokio::test]
-async fn scheduled_generation_releases_prepared_work_while_next_acquisition_is_running() {
-    let (acquire_started_tx, mut acquire_started_rx) = mpsc::unbounded_channel();
-    let (normalize_started_tx, _normalize_started_rx) = mpsc::unbounded_channel();
-    let (acquire_release_tx, acquire_release_rx) = oneshot::channel();
-    let adapter = Arc::new(
-        ControlledBatchAdapter::new(
-            ACQUIRE_BATCH_SIZE + 1,
-            acquire_started_tx,
-            normalize_started_tx,
-            None,
-            AdapterFailures::default(),
-        )
-        .with_second_acquire_release(acquire_release_rx),
-    );
-    let coordinator = ProgressCoordinator::test_noop();
-    let observed = coordinator.clone();
-    let run = tokio::spawn(run_actual_scheduled_generation_batches(
-        adapter,
-        Some(coordinator),
-    ));
-    assert_eq!(acquire_started_rx.recv().await, Some(1));
-    assert_eq!(acquire_started_rx.recv().await, Some(2));
-
-    let batching_started = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        loop {
-            if observed
-                .recorded_phase_order()
-                .await
-                .contains(&PipelinePhase::Batching)
-            {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .is_ok();
-    acquire_release_tx
-        .send(())
-        .expect("release second acquisition");
-    let completed = run.await.expect("scheduled batch runner");
-    completed.0.expect("scheduled generation");
-    assert!(
-        batching_started,
-        "prepared work must reach embedding while the next acquisition is still running"
-    );
 }
 
 #[tokio::test]

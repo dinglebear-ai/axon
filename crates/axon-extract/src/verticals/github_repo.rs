@@ -62,13 +62,15 @@ pub fn matches(url: &str) -> bool {
 }
 
 /// Fetch the GitHub token from env (per-request, never global).
-fn github_auth_header(ctx: &VerticalContext) -> Option<String> {
-    let token = ctx.github_token().filter(|s| !s.is_empty())?;
+fn github_auth_header() -> Option<String> {
+    let token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())?;
     Some(format!("Bearer {token}"))
 }
 
 /// Fetch and decode the README for a repo. Non-fatal — returns None on any error.
-async fn fetch_readme(owner: &str, repo: &str, ctx: &VerticalContext) -> Option<String> {
+async fn fetch_readme(owner: &str, repo: &str) -> Option<String> {
     let client = http_client().ok()?;
     let readme_url = format!("https://api.github.com/repos/{owner}/{repo}/readme");
     let mut req = client
@@ -76,7 +78,7 @@ async fn fetch_readme(owner: &str, repo: &str, ctx: &VerticalContext) -> Option<
         .header("User-Agent", axon_core::http::axon_api_ua())
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(auth) = github_auth_header(ctx) {
+    if let Some(auth) = github_auth_header() {
         req = req.header("Authorization", auth);
     }
     let resp = req.send().await.ok()?;
@@ -222,12 +224,12 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
 
-    if let Some(auth) = github_auth_header(ctx) {
+    if let Some(auth) = github_auth_header() {
         repo_req = repo_req.header("Authorization", auth);
     }
 
     // Fetch metadata and README in parallel
-    let (repo_resp, readme) = tokio::join!(repo_req.send(), fetch_readme(owner, repo, ctx));
+    let (repo_resp, readme) = tokio::join!(repo_req.send(), fetch_readme(owner, repo));
 
     let resp = repo_resp.map_err(|_| VerticalError::VerticalTargetUnavailable {
         vertical: INFO.name,

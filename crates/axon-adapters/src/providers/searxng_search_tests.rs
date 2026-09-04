@@ -8,42 +8,6 @@ use httpmock::prelude::*;
 
 use super::*;
 
-#[tokio::test]
-async fn searxng_stops_reading_when_stream_exceeds_response_budget() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    let _loopback = axon_core::http::LoopbackGuard::allow();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let (_finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
-    let server = tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut request = [0_u8; 2048];
-        let _ = stream.read(&mut request).await.unwrap();
-        let oversized = vec![b'x'; MAX_SEARXNG_RESPONSE_BYTES + 1];
-        stream
-            .write_all(
-                format!(
-                    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:X}\r\n",
-                    oversized.len()
-                )
-                .as_bytes(),
-            )
-            .await
-            .unwrap();
-        stream.write_all(&oversized).await.unwrap();
-        stream.write_all(b"\r\n").await.unwrap();
-        stream.flush().await.unwrap();
-        let _ = finish_rx.await;
-        let _ = stream.write_all(b"0\r\n\r\n").await;
-    });
-
-    let provider = provider(format!("http://{address}"), Duration::from_secs(5));
-    let error = provider.search(request("large", 1)).await.unwrap_err();
-    assert_eq!(error.code.to_string(), "search.response_too_large");
-    server.abort();
-}
-
 fn request(query: &str, limit: u32) -> SearchRequest {
     request_with_offset(query, limit, 0)
 }

@@ -269,17 +269,6 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "Maximum vectors retained by the persistent embedding cache.",
     ),
     (
-        "providers.embedding.prepared_byte_budget",
-        "providers",
-        "integer",
-        "134217728",
-        "axon-services",
-        Some("AXON_EMBED_PREPARED_BYTE_BUDGET"),
-        false,
-        true,
-        "Maximum retained bytes admitted to the prepared-generation channel.",
-    ),
-    (
         "providers.vector.write_concurrency",
         "providers",
         "integer",

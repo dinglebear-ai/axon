@@ -305,8 +305,13 @@ fn populate_perf_and_credentials(
         .or(inputs.toml.chrome.max_concurrent_pages)
         .unwrap_or(8)
         .clamp(1, 256);
-    // Resolved once by `tuning::apply_env_toml_tuning` below, alongside the
-    // rest of the CLI/env/TOML/default tuning precedence chain.
+    cfg.scrape_batch_timeout_secs = env::var("AXON_SCRAPE_BATCH_TIMEOUT_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .or(inputs.toml.scrape.batch_timeout_secs)
+        .filter(|value| *value > 0)
+        .map(|value| value.clamp(1, 3600))
+        .unwrap_or(120);
     cfg.fetch_retries = inputs.toml.scrape.fetch_retries.unwrap_or(0);
     cfg.retry_backoff_ms = inputs.toml.scrape.retry_backoff_ms.unwrap_or(0);
     let d = inputs.dispatched;

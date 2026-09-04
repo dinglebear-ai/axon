@@ -1,6 +1,5 @@
 use axon_api::source::*;
 
-use crate::sqlite::SqliteLedgerStore;
 use crate::store::{FakeLedgerStore, LedgerStore};
 
 fn ts() -> Timestamp {
@@ -122,26 +121,6 @@ fn completed_generation(mut generation: SourceGeneration) -> SourceGeneration {
     generation
 }
 
-async fn assert_missing_manifest_contract<S: LedgerStore>(store: &S) {
-    store.upsert_source(source()).await.expect("seed source");
-    let generation = store
-        .create_generation(SourceId::new("src_a"))
-        .await
-        .expect("create generation");
-    let error = store
-        .complete_generation(completed_generation(generation))
-        .await
-        .expect_err("all ledger stores must reject completion without a manifest");
-    assert_eq!(error.code.to_string(), "source.ledger.manifest_missing");
-}
-
-#[tokio::test]
-async fn fake_and_sqlite_share_the_missing_manifest_contract() {
-    assert_missing_manifest_contract(&FakeLedgerStore::new()).await;
-    let sqlite = SqliteLedgerStore::in_memory().await.expect("sqlite ledger");
-    assert_missing_manifest_contract(&sqlite).await;
-}
-
 fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGeneration {
     SourceGeneration {
         source_id: manifest.source_id.clone(),
@@ -171,8 +150,6 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
 
 fn publish_request(generation: &SourceGeneration) -> PublishGenerationRequest {
     PublishGenerationRequest {
-        job_id: JobId::new(uuid::Uuid::from_u128(1)),
-        attempt: 1,
         source_id: generation.source_id.clone(),
         generation: generation.generation.clone(),
         expected_previous_generation: generation.previous_generation.clone(),

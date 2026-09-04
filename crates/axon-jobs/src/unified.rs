@@ -60,8 +60,6 @@ mod artifacts;
 mod control;
 #[path = "unified/control_helpers.rs"]
 mod control_helpers;
-#[path = "unified/event_listing.rs"]
-mod event_listing;
 #[path = "unified/event_ops.rs"]
 mod event_ops;
 #[path = "unified/heartbeat.rs"]
@@ -84,8 +82,6 @@ mod request_read;
 pub(crate) mod retention;
 #[path = "unified/schema.rs"]
 mod schema;
-#[path = "unified/terminal_counts.rs"]
-mod terminal_counts;
 #[path = "unified/terminal_warnings.rs"]
 mod terminal_warnings;
 
@@ -141,17 +137,6 @@ impl SqliteUnifiedJobStore {
 impl JobStore for SqliteUnifiedJobStore {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
         retry_job_write("job create", || self.create_job(request.clone())).await
-    }
-
-    async fn create_with_config_snapshot(
-        &self,
-        request: JobCreateRequest,
-        config_json: Option<&str>,
-    ) -> Result<JobDescriptor> {
-        retry_job_write("job create with config snapshot", || {
-            self.create_job_with_snapshot(request.clone(), config_json)
-        })
-        .await
     }
 
     async fn admit_projection_batch_atomic(

@@ -5,10 +5,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
 use axon_api::source::{
-    AdapterRef, AdapterReleaseRequest, AuthSnapshot, ConfigSnapshotId, EffectiveLimits,
-    LifecycleStatus, PipelinePhase, Severity, SourceAcquisition, SourceAdapterCapability,
-    SourceKind, SourceLimits, SourceManifest, SourceManifestDiff, SourcePlan, SourceRequest,
-    StageExecutionResult, Visibility,
+    AdapterRef, AuthSnapshot, ConfigSnapshotId, EffectiveLimits, LifecycleStatus, PipelinePhase,
+    Severity, SourceAcquisition, SourceAdapterCapability, SourceKind, SourceLimits, SourceManifest,
+    SourceManifestDiff, SourcePlan, SourceRequest, StageExecutionResult, Visibility,
 };
 use axon_core::logging::log_info;
 use sha2::{Digest, Sha256};
@@ -212,8 +211,8 @@ impl SourceAdapter for AuditedToolAdapter<'_> {
             .await
     }
 
-    fn release(&self, request: &AdapterReleaseRequest) -> axon_adapters::adapter::Result<()> {
-        self.inner.release(request)
+    fn release(&self, plan: &SourcePlan) {
+        self.inner.release(&self.plan_with_policy(plan));
     }
 }
 

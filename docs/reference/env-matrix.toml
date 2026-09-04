@@ -11,18 +11,6 @@ compatibility = "canonical"
 reason = "Qdrant endpoint URL. URLs stay in env/CLI, not TOML."
 
 [[env]]
-key = "QDRANT_GRPC_URL"
-classification = "keep-env"
-runtime_placement = "both"
-surfaces = ["src", "env-template", "docs"]
-secret = false
-url_or_path = true
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Optional Qdrant gRPC endpoint URL. URLs stay in env/CLI, not TOML."
-
-[[env]]
 key = "AXON_QDRANT_URL"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"
@@ -1499,18 +1487,6 @@ compatibility = "warn-env-override"
 reason = "Typed provider embedding preparation concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
-key = "AXON_EMBED_PREPARED_BYTE_BUDGET"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "docs", "config-example"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = "providers.embedding.prepared-byte-budget"
-compatibility = "warn-env-override"
-reason = "Typed prepared-generation memory admission budget is wired in config.toml; the env key remains accepted as a compatibility override."
-
-[[env]]
 key = "AXON_EMBED_MAX_CHUNKS_PER_DOC"
 classification = "move-toml"
 runtime_placement = "not-runtime"
@@ -2205,42 +2181,6 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
-
-[[env]]
-key = "AXON_QDRANT_QUANTIZATION_ENABLED"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "config-example", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = "qdrant.quantization-enabled"
-compatibility = "warn-env-override"
-reason = "Typed Qdrant quantization tuning belongs in config.toml; the environment remains a compatibility override."
-
-[[env]]
-key = "AXON_QDRANT_ASYNC_WRITES"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "config-example", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = "qdrant.async-writes"
-compatibility = "warn-env-override"
-reason = "Typed Qdrant write-wait policy belongs in config.toml; the environment remains a compatibility override."
-
-[[env]]
-key = "AXON_QDRANT_TRANSPORT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "config-example", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = "qdrant.transport"
-compatibility = "warn-env-override"
-reason = "Typed Qdrant transport selection belongs in config.toml; the environment remains a compatibility override."
 
 [[env]]
 key = "AXON_QDRANT_UPSERT_PARALLELISM"

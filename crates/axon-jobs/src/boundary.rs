@@ -35,23 +35,6 @@ pub struct JobDeleteResult {
 #[async_trait]
 pub trait JobStore: Send + Sync {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor>;
-    /// Atomically create a job and persist the canonical material referenced by
-    /// its `config_snapshot_id`. Stores that cannot provide this durability
-    /// must fail rather than create a job with dangling provenance.
-    async fn create_with_config_snapshot(
-        &self,
-        request: JobCreateRequest,
-        config_json: Option<&str>,
-    ) -> Result<JobDescriptor> {
-        if config_json.is_some() {
-            return Err(ApiError::new(
-                "config_snapshot.unsupported",
-                ErrorStage::Publishing,
-                "this job store cannot atomically persist config snapshot material",
-            ));
-        }
-        self.create(request).await
-    }
     async fn admit_projection_batch_atomic(
         &self,
         admission: ProjectionBatchAdmission,

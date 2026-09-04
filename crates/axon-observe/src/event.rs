@@ -12,14 +12,12 @@ use uuid::Uuid;
 
 pub fn stage_started(
     job_id: JobId,
-    attempt: u32,
     stage_id: Option<StageId>,
     phase: PipelinePhase,
     message: String,
 ) -> axon_api::source::SourceProgressEvent {
     base_event(
         job_id,
-        attempt,
         phase,
         LifecycleStatus::Running,
         Severity::Info,
@@ -30,7 +28,6 @@ pub fn stage_started(
 
 pub fn stage_completed(
     job_id: JobId,
-    attempt: u32,
     stage_id: Option<StageId>,
     phase: PipelinePhase,
     counts: StageCounts,
@@ -38,7 +35,6 @@ pub fn stage_completed(
 ) -> axon_api::source::SourceProgressEvent {
     let mut event = base_event(
         job_id,
-        attempt,
         phase,
         LifecycleStatus::Completed,
         Severity::Info,
@@ -51,7 +47,6 @@ pub fn stage_completed(
 
 pub fn stage_degraded(
     job_id: JobId,
-    attempt: u32,
     stage_id: Option<StageId>,
     phase: PipelinePhase,
     warning: SourceWarning,
@@ -59,7 +54,6 @@ pub fn stage_degraded(
 ) -> axon_api::source::SourceProgressEvent {
     let mut event = base_event(
         job_id,
-        attempt,
         phase,
         LifecycleStatus::CompletedDegraded,
         Severity::Degraded,
@@ -72,7 +66,6 @@ pub fn stage_degraded(
 
 pub fn stage_failed(
     job_id: JobId,
-    attempt: u32,
     stage_id: Option<StageId>,
     phase: PipelinePhase,
     error: ApiError,
@@ -80,7 +73,6 @@ pub fn stage_failed(
 ) -> axon_api::source::SourceProgressEvent {
     let mut event = base_event(
         job_id,
-        attempt,
         phase,
         LifecycleStatus::Failed,
         Severity::Failed,
@@ -93,7 +85,6 @@ pub fn stage_failed(
 
 pub fn provider_waiting(
     job_id: JobId,
-    attempt: u32,
     stage_id: Option<StageId>,
     reservation_id: Option<ReservationId>,
     provider_kind: ProviderKind,
@@ -103,7 +94,6 @@ pub fn provider_waiting(
     let provider_key = provider_key(provider_kind);
     let mut event = base_event(
         job_id,
-        attempt,
         PipelinePhase::Embedding,
         LifecycleStatus::Waiting,
         Severity::Info,
@@ -137,7 +127,6 @@ pub fn warning(code: impl Into<String>, message: impl Into<String>) -> SourceWar
 /// same base envelope as the terminal builders above.
 pub(crate) fn base_event(
     job_id: JobId,
-    attempt: u32,
     phase: PipelinePhase,
     status: LifecycleStatus,
     severity: Severity,
@@ -152,7 +141,7 @@ pub(crate) fn base_event(
         // `crate::sequence::SequenceRegistry`. See `crate::sink`.
         sequence: 0,
         job_id,
-        attempt,
+        attempt: 1,
         stage_id: None,
         batch_id: None,
         reservation_id: None,

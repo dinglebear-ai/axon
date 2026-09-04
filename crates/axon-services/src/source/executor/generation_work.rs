@@ -9,8 +9,7 @@ use super::vectorize::batching::chunk_batches;
 use crate::source::output::SourceOutput;
 
 const CHANNEL_CAPACITY: usize = 2;
-#[cfg(test)]
-const BYTE_BUDGET_KIB: u32 = 131_072;
+const BYTE_BUDGET_KIB: u32 = 1_048_576;
 const KIB: usize = 1024;
 
 /// Side effects are cleanup-owned before this value is constructed. Moving it
@@ -52,7 +51,7 @@ impl PreparedBatchSideEffects {
             &self.clean_output.artifacts,
             &self.clean_output.inline,
         );
-        serialized_size(&serializable)
+        Ok(serde_json::to_vec(&serializable)?.len())
     }
 }
 
@@ -89,7 +88,6 @@ pub(super) struct PreparedBatchSender {
     sender: mpsc::Sender<PreparedWorkEnvelope>,
     chunk_permits: Arc<Semaphore>,
     byte_permits: Arc<Semaphore>,
-    byte_budget: usize,
     pool_size: usize,
     sequence: u64,
 }
@@ -98,23 +96,10 @@ pub(super) struct PreparedBatchReceiver {
     receiver: mpsc::Receiver<PreparedWorkEnvelope>,
 }
 
-#[cfg(test)]
 pub(super) fn prepared_work_channel(
     pool_size: usize,
 ) -> anyhow::Result<(PreparedBatchSender, PreparedBatchReceiver)> {
-    prepared_work_channel_with_byte_budget(pool_size, BYTE_BUDGET_KIB as usize * KIB)
-}
-
-pub(super) fn prepared_work_channel_with_byte_budget(
-    pool_size: usize,
-    byte_budget: usize,
-) -> anyhow::Result<(PreparedBatchSender, PreparedBatchReceiver)> {
     anyhow::ensure!(pool_size > 0, "embedding pool size must be positive");
-    anyhow::ensure!(
-        byte_budget > 0,
-        "prepared work byte budget must be positive"
-    );
-    let byte_budget_kib = byte_budget.div_ceil(KIB).min(u32::MAX as usize);
     let chunk_capacity = pool_size
         .checked_mul(3)
         .ok_or_else(|| anyhow::anyhow!("embedding pool size overflows chunk capacity"))?;
@@ -127,8 +112,7 @@ pub(super) fn prepared_work_channel_with_byte_budget(
         PreparedBatchSender {
             sender,
             chunk_permits: Arc::new(Semaphore::new(chunk_capacity)),
-            byte_permits: Arc::new(Semaphore::new(byte_budget_kib)),
-            byte_budget,
+            byte_permits: Arc::new(Semaphore::new(BYTE_BUDGET_KIB as usize)),
             pool_size,
             sequence: 0,
         },
@@ -206,13 +190,13 @@ impl PreparedBatchSender {
             charged_chunks <= self.pool_size,
             "prepared pool exceeds chunk limit"
         );
-        let prepared_bytes = serialized_size(&prepared)?;
+        let prepared_bytes = serde_json::to_vec(&prepared)?.len();
         let estimated_bytes = prepared_bytes
             .checked_add(side_effects.estimated_bytes()?)
             .ok_or_else(|| anyhow::anyhow!("prepared work byte size overflow"))?;
         anyhow::ensure!(
-            estimated_bytes <= self.byte_budget,
-            "prepared item exceeds configured byte budget"
+            estimated_bytes <= 1024 * 1024 * 1024,
+            "prepared item exceeds 1 GiB"
         );
         let byte_units = estimated_bytes.max(1).div_ceil(KIB);
         let chunk_units = u32::try_from(charged_chunks.max(1))?;
@@ -241,28 +225,6 @@ impl PreparedBatchSender {
         self.sequence = self.sequence.saturating_add(1);
         Ok(())
     }
-}
-
-#[derive(Default)]
-struct SizeWriter(usize);
-
-impl std::io::Write for SizeWriter {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.0 = self.0.checked_add(buffer.len()).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::OutOfMemory, "serialized size overflow")
-        })?;
-        Ok(buffer.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-fn serialized_size(value: &impl serde::Serialize) -> anyhow::Result<usize> {
-    let mut writer = SizeWriter::default();
-    serde_json::to_writer(&mut writer, value)?;
-    Ok(writer.0)
 }
 
 impl PreparedBatchReceiver {

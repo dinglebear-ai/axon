@@ -66,8 +66,8 @@ impl SqliteUnifiedJobStore {
         let rows = query.fetch_all(&self.pool).await.map_err(sql_error)?;
         let job_ids = rows
             .iter()
-            .map(|row| parse_uuid(row.get::<String, _>("job_id")).map(JobId::new))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|row| row.get::<String, _>("job_id"))
+            .collect::<Vec<_>>();
         let scanned = rows.len() as u64;
         let mut requeued = 0_u64;
         let mut failed = 0_u64;
@@ -111,7 +111,10 @@ impl SqliteUnifiedJobStore {
         }
         Ok(JobRecoveryResult {
             recovered: requeued,
-            job_ids,
+            job_ids: job_ids
+                .into_iter()
+                .filter_map(|id| parse_uuid(id).ok().map(JobId::new))
+                .collect(),
             warnings: Vec::new(),
             jobs_scanned: scanned,
             jobs_requeued: requeued,

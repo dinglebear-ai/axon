@@ -70,7 +70,7 @@ fn stress_crawler_heavy_mode_is_explicit_and_rejects_local_qdrant() {
         .args(["--mode", "heavy", "--url", "https://docs.example.test/"])
         .env("AXON_STRESS_CONFIRM", "CRAWL_AND_DELETE_ISOLATED_STATE")
         .env("QDRANT_URL", "http://127.0.0.1:53333")
-        .env("AXON_BIN", "/usr/bin/true")
+        .env("AXON_BIN", "/bin/true")
         .output()
         .expect("run local-Qdrant heavy plan");
     assert!(!local_qdrant.status.success());
@@ -99,8 +99,8 @@ fn stress_crawler_contains_no_container_runtime_control() {
         );
     }
     assert!(
-        script.contains("time.time_ns() // 1_000_000"),
-        "stress timing must convert nanoseconds to milliseconds portably"
+        script.contains("epoch_ns / 1000000"),
+        "stress timing must convert nanoseconds to milliseconds explicitly"
     );
     assert!(
         !script.contains("date +%s%3N"),

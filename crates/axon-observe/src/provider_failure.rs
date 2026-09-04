@@ -84,7 +84,6 @@ fn project_recorded_failure(
 
     let mut event = base_event(
         context.job_id,
-        context.attempt,
         context.phase,
         if waiting {
             LifecycleStatus::Waiting
@@ -94,6 +93,7 @@ fn project_recorded_failure(
         event_severity(&error, waiting),
         error.message.clone(),
     );
+    event.attempt = context.attempt;
     event.stage_id = context.stage_id;
     event.source_id = context.source_id;
     event.error = Some(error.clone());

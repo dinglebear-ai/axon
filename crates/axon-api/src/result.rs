@@ -154,14 +154,14 @@ impl PagedDocument {
     /// Window a full document into a paged slice based on a token budget and cursor.
     pub fn from_full_content(
         full_content: &str,
-        start_offset: usize,
+        cursor: Option<&str>,
         token_budget: Option<usize>,
         backend: DocumentBackend,
     ) -> Self {
         let budget = token_budget.unwrap_or(Self::DEFAULT_TOKEN_BUDGET).max(1);
         let char_budget = budget.saturating_mul(Self::CHARS_PER_TOKEN);
 
-        let mut start_offset = start_offset;
+        let mut start_offset = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
 
         if start_offset >= full_content.len() {
             return Self {

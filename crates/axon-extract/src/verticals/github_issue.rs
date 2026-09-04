@@ -38,8 +38,10 @@ pub fn matches(url: &str) -> bool {
     segs.len() == 4 && segs[2] == "issues" && segs[3].parse::<u64>().is_ok()
 }
 
-fn github_auth_header(ctx: &VerticalContext) -> Option<String> {
-    let token = ctx.github_token().filter(|s| !s.is_empty())?;
+fn github_auth_header() -> Option<String> {
+    let token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())?;
     Some(format!("Bearer {token}"))
 }
 
@@ -79,7 +81,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
 
-    if let Some(auth) = github_auth_header(ctx) {
+    if let Some(auth) = github_auth_header() {
         req = req.header("Authorization", auth);
     }
 

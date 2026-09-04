@@ -343,57 +343,6 @@ async fn baseline_graph_streams_across_512_item_boundary_without_count_drift() {
 }
 
 #[tokio::test]
-async fn failed_large_baseline_write_never_leaves_an_unreported_partial_graph() {
-    let uri = "https://example.com/docs";
-    let ledger = FakeLedgerStore::new();
-    let items = (0..513)
-        .map(|index| {
-            manifest_item(
-                "src_atomic",
-                &format!("item-{index:04}"),
-                &format!("https://example.com/docs/{index:04}"),
-                ItemKind::WebPage,
-            )
-        })
-        .collect();
-    let published_manifest = manifest("src_atomic", "gen_atomic", items);
-    let pool = Arc::new(graph_pool().await);
-    sqlx::query(
-        "CREATE TRIGGER fail_large_baseline BEFORE INSERT ON graph_edges \
-         WHEN (SELECT COUNT(*) FROM graph_edges) >= 100 \
-         BEGIN SELECT RAISE(FAIL, 'injected graph failure'); END",
-    )
-    .execute(&*pool)
-    .await
-    .unwrap();
-
-    let summary = write_baseline_graph_with_db_gate(
-        None,
-        None,
-        SourceKind::Web,
-        Some(pool.clone()),
-        &ledger,
-        &counts("src_atomic", "gen_atomic"),
-        uri,
-        Some(published_manifest),
-        Vec::new(),
-        None,
-    )
-    .await;
-
-    assert!(summary.degraded);
-    assert_eq!(summary.edges_upserted, 0);
-    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
-        .fetch_one(&*pool)
-        .await
-        .unwrap();
-    assert_eq!(
-        edges, 0,
-        "degraded completion must not hide partial graph state"
-    );
-}
-
-#[tokio::test]
 async fn write_baseline_graph_without_pool_is_degraded() {
     let ledger = FakeLedgerStore::new();
     let summary = write_baseline_graph(

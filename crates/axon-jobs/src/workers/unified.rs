@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axon_api::source::{
@@ -149,8 +148,7 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits_and_activity(
 ) {
     let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
     let source_semaphore = Arc::new(tokio::sync::Semaphore::new(source_concurrency.max(1)));
-    let mut in_flight = tokio::task::JoinSet::new();
-    let mut claimed_by_task = HashMap::new();
+    let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut wake_count: u64 = 0;
     loop {
         tokio::select! {
@@ -159,9 +157,7 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits_and_activity(
             _ = shutdown.cancelled() => break,
         }
         wake_count = wake_count.wrapping_add(1);
-        while let Some(result) = in_flight.try_join_next_with_id() {
-            observe_worker_join(&pool, &mut claimed_by_task, result).await;
-        }
+        in_flight.retain(|handle| !handle.is_finished());
 
         let mut claimed_this_wake = 0usize;
         loop {
@@ -227,15 +223,13 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits_and_activity(
                         // short interval between the claim transaction and
                         // this process-local handoff.
                         let activity_guard = activity.begin();
-                        let tracked_claim = claimed.clone();
-                        let handle = in_flight.spawn(async move {
+                        in_flight.push(tokio::spawn(async move {
                             let _activity_guard = activity_guard;
                             let _source_permit = source_permit;
                             run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref())
                                 .await;
                             drop(permit);
-                        });
-                        claimed_by_task.insert(handle.id(), tracked_claim);
+                        }));
                         processed += 1;
                     }
                     Ok(None) => break, // nothing eligible given current capacity
@@ -267,38 +261,8 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits_and_activity(
     // Graceful shutdown: let already-claimed jobs finish marking their
     // terminal state (mark_canceled/mark_terminal) rather than abandoning
     // them mid-write.
-    while let Some(result) = in_flight.join_next_with_id().await {
-        observe_worker_join(&pool, &mut claimed_by_task, result).await;
-    }
-}
-
-async fn observe_worker_join(
-    pool: &SqlitePool,
-    claimed_by_task: &mut HashMap<tokio::task::Id, UnifiedClaimedJob>,
-    result: Result<(tokio::task::Id, ()), tokio::task::JoinError>,
-) {
-    match result {
-        Ok((task_id, ())) => {
-            claimed_by_task.remove(&task_id);
-        }
-        Err(join_error) => {
-            let task_id = join_error.id();
-            let claimed = claimed_by_task.remove(&task_id);
-            tracing::error!(
-                error = %join_error,
-                job_id = claimed.as_ref().map(|job| job.job_id.0.to_string()),
-                "unified worker task terminated unexpectedly"
-            );
-            if let Some(claimed) = claimed {
-                let store = SqliteUnifiedJobStore::new(pool.clone());
-                let error = ApiError::new(
-                    "job_runner.task_terminated",
-                    ErrorStage::Planning,
-                    format!("job worker task terminated unexpectedly: {join_error}"),
-                );
-                terminal::fail_unified_claimed(pool, &store, &claimed, error).await;
-            }
-        }
+    for handle in in_flight {
+        let _ = handle.await;
     }
 }
 

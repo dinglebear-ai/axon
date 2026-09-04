@@ -257,7 +257,7 @@ async fn update_installs_from_file_release_dir_without_container_sync() {
         file_release_dir: Some(temp.path().to_path_buf()),
     };
 
-    let report = perform_fixture_update(options).await.unwrap();
+    let report = perform_update(options).await.unwrap();
 
     assert_eq!(
         report.version, "5.9.2",
@@ -294,7 +294,7 @@ async fn update_skips_install_when_existing_binary_reports_target_version() {
         fs::set_permissions(&install_path, permissions).unwrap();
     }
 
-    let report = perform_fixture_update(UpdateOptions {
+    let report = perform_update(UpdateOptions {
         repo: "jmagar/axon".to_string(),
         version: Some("v5.9.2".to_string()),
         force: false,
@@ -351,7 +351,7 @@ async fn update_replaces_binary_when_existing_version_is_only_a_prefix_match() {
         fs::set_permissions(&install_path, permissions).unwrap();
     }
 
-    let report = perform_fixture_update(UpdateOptions {
+    let report = perform_update(UpdateOptions {
         repo: "jmagar/axon".to_string(),
         version: Some("v5.9.2".to_string()),
         force: false,

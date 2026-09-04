@@ -96,7 +96,6 @@ jobs:
       - name: Build CodeQL matrix
         id: matrix
         env:
-          FULL_PR_SCAN: ${{ github.event_name == 'pull_request' }}
           CODEQL_ACTIONS: ${{ steps.classify.outputs.codeql_actions }}
           CODEQL_JAVASCRIPT_TYPESCRIPT: ${{ steps.classify.outputs.codeql_javascript_typescript }}
           CODEQL_PYTHON: ${{ steps.classify.outputs.codeql_python }}
@@ -106,7 +105,6 @@ jobs:
           set -euo pipefail
           jq -nc \
             --arg actions "$CODEQL_ACTIONS" \
-            --arg full_pr "$FULL_PR_SCAN" \
             --arg js "$CODEQL_JAVASCRIPT_TYPESCRIPT" \
             --arg py "$CODEQL_PYTHON" \
             --arg rust "$CODEQL_RUST" \
@@ -114,11 +112,11 @@ jobs:
             '{
               include:
                 ([]
-                + (if $full_pr == "true" or $actions == "true" then [{language:"actions", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" or $js == "true" then [{language:"javascript-typescript", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" or $py == "true" then [{language:"python", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" or $rust == "true" then [{language:"rust", build_mode:"none"}] else [] end)
-                + (if $full_pr == "true" or $kotlin == "true" then [{language:"java-kotlin", build_mode:"manual"}] else [] end))
+                + (if $actions == "true" then [{language:"actions", build_mode:"none"}] else [] end)
+                + (if $js == "true" then [{language:"javascript-typescript", build_mode:"none"}] else [] end)
+                + (if $py == "true" then [{language:"python", build_mode:"none"}] else [] end)
+                + (if $rust == "true" then [{language:"rust", build_mode:"none"}] else [] end)
+                + (if $kotlin == "true" then [{language:"java-kotlin", build_mode:"manual"}] else [] end))
             }' > matrix.json
           if [[ "$(jq '.include | length' matrix.json)" == "0" ]]; then
             echo "has_work=false" >> "$GITHUB_OUTPUT"

@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
 set -uo pipefail
-if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-  # Bash 3.2 treats expansion of a declared-but-empty array as an unbound
-  # variable. Keep the harness usable on stock macOS Bash while retaining
-  # nounset enforcement on modern shells.
-  set +u
-fi
 
 # Registry-driven Axon CLI smoke harness.
 #
@@ -49,9 +43,6 @@ if ! [[ "$PARSER_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   echo "AXON_LIVE_PARSER_JOBS must be a positive integer" >&2
   exit 2
 fi
-if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
-  PARSER_JOBS=1
-fi
 TS="$(date +%Y%m%d-%H%M%S)"
 if [ -n "${AXON_LIVE_TEST_OUTDIR:-}" ]; then
   OUTDIR="$AXON_LIVE_TEST_OUTDIR"
@@ -64,11 +55,7 @@ else
     exit 2
   }
 fi
-outdir_identity="$(basename "$OUTDIR" | tr -c 'A-Za-z0-9_-' '_')"
-LIVE_RUN_ID="${TS//[^0-9]/}_${outdir_identity}_$$"
-# shellcheck disable=SC1091
-source "$ROOT_DIR/scripts/lib/live-cli-portability.sh"
-install_live_cli_portability_shims
+LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
 PORT_LEASE_ROOT="${TMPDIR:-/tmp}/axon-live-port-leases"
 mkdir -p "$PORT_LEASE_ROOT"
 port_seed="$(printf '%s' "$LIVE_RUN_ID" | cksum | awk '{print $1}')"
@@ -115,6 +102,10 @@ command -v jq >/dev/null 2>&1 || {
   echo "jq is required" >&2
   exit 2
 }
+command -v flock >/dev/null 2>&1 || {
+  echo "flock is required" >&2
+  exit 2
+}
 [ -x "$AXON_BIN" ] || {
   echo "Axon binary is not executable: $AXON_BIN" >&2
   exit 2
@@ -136,6 +127,7 @@ BEHAVIOR_GLOBAL_VALUE_OPTIONS="$OUTDIR/behavioral-global-value-options.txt"
 : >"$BEHAVIOR_SEMANTIC"
 LAST_BEHAVIOR_NAME=""
 LAST_BEHAVIOR_ARGS=()
+declare -A LIVE_LOG_COUNTS=()
 failures=0
 isolated_collection=""
 isolated_collections=()

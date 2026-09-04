@@ -797,10 +797,23 @@ fn setup_init_positionals(init: SetupInitArgs) -> Vec<String> {
             ),
         );
     }
+    push_opt(&mut out, "--mcp-token", init.mcp_token);
     push_opt(&mut out, "--oauth-public-url", init.oauth_public_url);
     push_opt(&mut out, "--google-client-id", init.google_client_id);
+    push_opt(
+        &mut out,
+        "--google-client-secret",
+        init.google_client_secret,
+    );
     push_opt(&mut out, "--auth-admin-email", init.auth_admin_email);
+    push_opt(&mut out, "--tavily-api-key", init.tavily_api_key);
+    push_opt(&mut out, "--github-token", init.github_token);
     push_opt(&mut out, "--reddit-client-id", init.reddit_client_id);
+    push_opt(
+        &mut out,
+        "--reddit-client-secret",
+        init.reddit_client_secret,
+    );
     out
 }
 
