@@ -1662,6 +1662,17 @@ fn codeql_workflow_routes_language_matrix_by_changed_paths() {
 }
 
 #[test]
+fn codeql_pull_requests_scan_every_default_branch_configuration() {
+    let workflow = include_str!("../.github/workflows/codeql.yml");
+    assert!(workflow.contains("FULL_PR_SCAN: ${{ github.event_name == 'pull_request' }}"));
+    assert_eq!(
+        workflow.matches("$full_pr == \"true\" ||").count(),
+        5,
+        "every configured CodeQL language must run on pull requests so GitHub's native completeness check can compare the PR with main"
+    );
+}
+
+#[test]
 fn timing_report_supports_before_after_sha_comparison() {
     let workflow = include_str!("../.github/workflows/ci-timing-report.yml");
     let script = include_str!("../scripts/ci/report_workflow_timings.py");
