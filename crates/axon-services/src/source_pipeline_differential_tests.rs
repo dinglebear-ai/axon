@@ -166,10 +166,7 @@ fn phase_spine(observation: &PipelineObservation) -> Vec<PipelinePhase> {
     for phase in observation
         .progress
         .iter()
-        .filter(|event| {
-            event.status != LifecycleStatus::CompletedDegraded
-                && event.phase != PipelinePhase::Graphing
-        })
+        .filter(|event| event.status != LifecycleStatus::CompletedDegraded)
         .map(|event| event.phase)
     {
         if phases.last() != Some(&phase) {

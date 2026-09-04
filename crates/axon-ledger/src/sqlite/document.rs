@@ -26,27 +26,18 @@ pub(super) async fn update_document_statuses(
     store: &SqliteLedgerStore,
     statuses: Vec<DocumentStatus>,
 ) -> Result<()> {
-    let mut tx = ImmediateTx::begin(&store.pool)
-        .await
-        .map_err(sqlite_error)?;
     for statuses in statuses.chunks(DOCUMENT_STATUS_TX_BATCH_SIZE) {
         let writes = status_writes(statuses)?;
+        let mut tx = ImmediateTx::begin(&store.pool)
+            .await
+            .map_err(sqlite_error)?;
         validate_status_sources(&mut tx, &writes).await?;
         validate_status_items(&mut tx, &writes).await?;
         upsert_status_batch(&mut tx, &writes).await?;
+        tx.commit().await.map_err(sqlite_error)?;
     }
-    tx.commit().await.map_err(sqlite_error)?;
     Ok(())
 }
-
-#[cfg(test)]
-fn document_status_transaction_count(_statuses: usize) -> usize {
-    1
-}
-
-#[cfg(test)]
-#[path = "document_tests.rs"]
-mod tests;
 
 pub(super) async fn publish_document_statuses(
     store: &SqliteLedgerStore,

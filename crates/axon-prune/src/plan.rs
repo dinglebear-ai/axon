@@ -23,14 +23,6 @@ use crate::safety::selector_requires_admin;
 pub trait PruneScopeSource {
     /// Estimate the deletion impact of `selector` (counts only).
     fn estimate(&self, selector: &PruneSelector) -> PruneEstimate;
-
-    /// Committed generation observed while resolving a source-wide plan.
-    fn current_generation(
-        &self,
-        _source_id: &axon_api::source::ids::SourceId,
-    ) -> Option<axon_api::source::ids::SourceGenerationId> {
-        None
-    }
 }
 
 /// Resolves selectors into dry-run plans. Stateless; holds a scope source.
@@ -59,16 +51,7 @@ impl<S: PruneScopeSource> PrunePlanner<S> {
     /// canonical cleanup-debt execution order.
     pub fn resolve(&self, selector: &PruneSelector) -> PrunePlan {
         let estimated = self.scope.estimate(selector);
-        let source_fence = match selector {
-            PruneSelector::Source { source_id } => self.scope.current_generation(source_id),
-            _ => None,
-        };
         let mut steps = build_steps(selector, &estimated, &self.collection);
-        if let Some(generation) = source_fence {
-            for step in &mut steps {
-                step.generation = Some(generation.clone());
-            }
-        }
         steps.sort_by_key(|s| s.target.order_rank());
 
         PrunePlan {

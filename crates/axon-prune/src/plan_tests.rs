@@ -14,20 +14,12 @@ fn source_sel() -> PruneSelector {
 
 #[test]
 fn resolves_selector_into_ordered_plan() {
-    let reviewed = SourceGenerationId::new("gen-reviewed");
-    let planner = PrunePlanner::new(
-        FakeScopeSource::new(cleanup_debt_estimate()).with_current_generation(reviewed.clone()),
-    );
+    let planner = PrunePlanner::new(FakeScopeSource::new(cleanup_debt_estimate()));
     let plan = planner.resolve(&source_sel());
 
     assert_eq!(plan.selector, source_sel());
     assert!(plan.destructive);
     assert!(plan.requires_admin);
-    assert!(
-        plan.steps
-            .iter()
-            .all(|step| step.generation == Some(reviewed.clone()))
-    );
     // Steps must be in cleanup-debt execution order.
     assert!(steps_in_execution_order(&plan.steps));
     // First present boundary is vector, last is ledger (no jobs/cache here).

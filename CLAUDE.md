@@ -228,10 +228,10 @@ Host ports are overridable: `QDRANT_HTTP_PORT` (→ container `6333`),
 image is `${AXON_IMAGE:-ghcr.io/dinglebear-ai/axon:latest}`.
 
 ```bash
-# Start self-contained local infrastructure (Qdrant + TEI + Chrome).
+# Start the local infra this homelab actually needs (TEI + Chrome only —
+# Qdrant is external on tootie, so services-up deliberately skips axon-qdrant)
 just services-up
-# Use the existing Qdrant on tootie while starting only TEI + Chrome locally.
-just services-up-external-qdrant
+# or: docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-tei axon-chrome
 
 # Bundled Qdrant, when you do want it locally
 just qdrant-up      # / just qdrant-down
@@ -239,7 +239,7 @@ just qdrant-up      # / just qdrant-down
 # Check infra health
 docker compose --env-file ~/.axon/.env ps
 
-# Stop and remove the self-contained local infrastructure services.
+# Stop TEI + Chrome
 just services-down
 ```
 
@@ -488,9 +488,8 @@ just precommit   # staged-file gate: compose port bindings, no-legacy-symbols,
                  # check, fmt-check, clippy, check, test
 just watch-check # cargo watch: check + check --tests + test --lib on save
 just rebuild     # check + test
-just services-up # start self-contained local infra (Qdrant + TEI + Chrome)
-just services-up-external-qdrant # start TEI + Chrome with external Qdrant
-just services-down # stop and remove self-contained local infra
+just services-up # start local infra (TEI + Chrome; NOT Qdrant)
+just services-down # stop TEI + Chrome
 just qdrant-up   # start the bundled Qdrant when not using an external one
 just stop        # kill running `axon mcp` / `axon jobs worker` processes
 ```

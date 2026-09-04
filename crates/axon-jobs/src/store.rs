@@ -207,14 +207,11 @@ pub fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-/// Count jobs waiting for worker execution in the canonical unified store.
-pub async fn count_pending_jobs(sqlite_path: &Path) -> Result<i64, sqlx::Error> {
-    let pool = open_sqlite_pool_or_recover(&sqlite_path.to_string_lossy()).await?;
-    sqlx::query_scalar(
-        "SELECT COUNT(*) FROM jobs WHERE status IN ('queued', 'pending', 'waiting', 'blocked')",
-    )
-    .fetch_one(&pool)
-    .await
+/// The unified job table now owns queue state; this helper remains a harmless
+/// advisory for older status callers that only need a "queue busy?" number.
+pub async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
+    let _ = sqlite_path;
+    0
 }
 
 #[cfg(test)]

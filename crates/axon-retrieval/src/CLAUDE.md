@@ -15,9 +15,10 @@ query_via_retrieval` routes plain `query` (no LLM) through it, and
 `axon-services::query::ask_retrieval::retrieval_ask_context` routes the
 SEARCH + CONTEXT half of `ask`/`evaluate` through it too, embedding +
 dense/sparse hybrid-searching via injected `VectorStore`/`EmbeddingProvider`
-trait objects. `retrieve.rs` owns the transport-neutral `FullDocumentStore`
-port and `RetrievedDocument` result; the Qdrant implementation is an adapter
-owned by the composition layer behind that boundary. LLM synthesis for `ask`/`evaluate` stays OUT of
+trait objects. `retrieve.rs` (`retrieve_document`) ports legacy
+`retrieve_result` as a thin composition over
+`axon-vectors::QdrantVectorStore::retrieve_by_url` +
+`render_full_doc_from_points`. LLM synthesis for `ask`/`evaluate` stays OUT of
 this crate per its charter below — it lives in
 `axon-services::query::synthesis`/`query::evaluate`. The legacy
 `build_ask_context` reranker (`ask --explain`, used by `train`) was
@@ -41,7 +42,7 @@ RRF fusion, not reimplemented here.
 | `query.rs` | `RetrievalRequest`/`RetrievalMatch`/`RetrievalResult` shaping |
 | `context.rs` | `ContextBundle` — context budgets, source grouping, result explanation |
 | `citation.rs` | `Citation` assembly mapped to stored source metadata/chunk spans |
-| `retrieve.rs` | `retrieve_document`/`RetrievedDocument`/`FullDocumentStore` — transport-neutral full-document fetch by URL; concrete adapters live outside this crate |
+| `retrieve.rs` | `retrieve_document`/`RetrievedDocument` — full-document fetch by URL, composed over `axon-vectors::QdrantVectorStore::retrieve_by_url` |
 | `memory.rs` | `MEMORY_SOURCE_KIND`/`memory_retrieval_filter()` — the memory-source opt-in boundary |
 | `testing.rs` | shared test fixtures |
 | `filter.rs` / `rank.rs` / `graph.rs` | marker files — logic lives in `engine.rs` and the injected vector store; do not duplicate |

@@ -3,13 +3,14 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use axon_api::mcp_schema::AskRequest;
 use axon_api::source::{
     ApiError, CapabilityBase, HealthStatus, MetadataMap, PublishGenerationRequest,
     PublishGenerationResult, PublishPlan, RetrievalCapability,
 };
 use axon_error::ErrorStage;
 
-use crate::ask_context::{AskContext, AskContextRequest};
+use crate::ask_context::AskContext;
 use crate::boundary::{self, Result};
 use crate::publish::GenerationPublisher;
 use crate::query::{QueryRequest, QueryResult, RetrievalRequest, RetrievalResult};
@@ -135,11 +136,14 @@ impl boundary::RetrievalEngine for FakeRetrievalEngine {
         self.do_retrieve(request).await
     }
 
-    async fn build_ask_context(&self, request: AskContextRequest) -> Result<AskContext> {
+    async fn build_ask_context(&self, request: AskRequest) -> Result<AskContext> {
         let retrieval_request = RetrievalRequest {
             query: request.query.unwrap_or_default(),
             collection: request.collection.unwrap_or_else(|| "axon".to_string()),
-            limit: request.chunk_limit.unwrap_or(12),
+            limit: request
+                .ask_chunk_limit
+                .and_then(|n| u32::try_from(n).ok())
+                .unwrap_or(12),
             source_id: None,
             generation: None,
             namespace_filters: Vec::new(),

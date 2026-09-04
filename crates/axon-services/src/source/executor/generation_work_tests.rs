@@ -236,17 +236,3 @@ fn empty_range() -> SourceRange {
 fn empty_side_effects() -> PreparedBatchSideEffects {
     PreparedBatchSideEffects::empty()
 }
-
-#[test]
-fn serialized_size_counts_without_retaining_a_serialized_buffer() {
-    let value = vec!["a", "longer value"];
-    assert_eq!(
-        serialized_size(&value).unwrap(),
-        serde_json::to_string(&value).unwrap().len()
-    );
-}
-
-#[test]
-fn prepared_channel_rejects_an_empty_configured_byte_budget() {
-    assert!(prepared_work_channel_with_byte_budget(4, 0).is_err());
-}

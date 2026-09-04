@@ -47,21 +47,21 @@
 //! system-owned path.
 
 use async_trait::async_trait;
-use axon_adapters::SourceAdapterRegistry;
 use axon_api::source::{
-    AdapterReleaseRequest, ArtifactHandle, ArtifactKind, CleanupDebt, CleanupDebtKind,
-    CleanupSelector, DocumentCacheInvalidation, DocumentCacheKey, GraphDeleteResult, GraphEdgeId,
-    JobId, MemoryForgetRequest, ProviderId, Severity, SourceError, SourceGenerationId, SourceId,
-    Timestamp, VectorDeleteSelector, VectorStoreDeleteResult,
+    ArtifactHandle, ArtifactKind, CleanupDebt, CleanupDebtKind, CleanupSelector,
+    DocumentCacheInvalidation, DocumentCacheKey, JobId, MemoryForgetRequest, SourceGenerationId,
+    SourceId, Timestamp, VectorDeleteSelector,
 };
-use axon_core::boundary::DocumentCache;
+use axon_core::boundary::{ArtifactStore, DocumentCache};
+use axon_graph::store::GraphStore;
 use axon_jobs::boundary::{JobDeleteResult, JobStore};
 use axon_ledger::store::LedgerStore;
 use axon_memory::store::MemoryStore;
 use axon_prune::{
     PruneAuthz, PruneExecutor, PruneStep, PruneTarget, PruneTargetKind, StepExecution,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use axon_vectors::store::VectorStore;
+use std::collections::BTreeMap;
 
 use super::result_map::IndexCounts;
 
@@ -81,180 +81,6 @@ pub struct DebtDrainSummary {
     pub failed: u64,
     /// Vector points actually deleted across all resolved entries.
     pub points_deleted: u64,
-    /// The ledger could not enumerate pending debt, so cleanup work may remain
-    /// even though no individual debt rows were observed.
-    pub enumeration_failed: bool,
-}
-
-/// Provider operations needed by cleanup. Production implements this at the
-/// reserved-call boundary so every destructive call participates in its
-/// scheduler; prune remains provider-handle-neutral.
-#[async_trait]
-pub(crate) trait CleanupProviderOps: Send + Sync {
-    async fn vector_delete(
-        &self,
-        selector: VectorDeleteSelector,
-    ) -> Result<VectorStoreDeleteResult, axon_api::source::ApiError>;
-    async fn graph_delete_nodes(
-        &self,
-        stable_keys: Vec<String>,
-    ) -> Result<GraphDeleteResult, axon_api::source::ApiError>;
-    async fn graph_delete_edges(
-        &self,
-        edge_ids: Vec<GraphEdgeId>,
-    ) -> Result<GraphDeleteResult, axon_api::source::ApiError>;
-    async fn artifact_delete(
-        &self,
-        handle: ArtifactHandle,
-    ) -> Result<(), axon_api::source::ApiError>;
-}
-
-/// Attach the request's exact collection to publish-created vector debt before
-/// its first drain. Once set, the identity cannot be changed by a later call.
-pub(crate) async fn bind_vector_cleanup_collection(
-    ledger: &dyn LedgerStore,
-    source_id: &SourceId,
-    collection: &str,
-) -> axon_ledger::store::Result<()> {
-    if collection.trim().is_empty() {
-        return Err(axon_api::source::ApiError::new(
-            "source.cleanup.vector_collection_missing",
-            axon_api::source::ErrorStage::Cleaning,
-            "vector cleanup collection identity must not be empty",
-        ));
-    }
-    for mut debt in ledger.list_pending_cleanup_debt(source_id.clone()).await? {
-        if debt.kind != CleanupDebtKind::VectorDelete {
-            continue;
-        }
-        match debt.vector_collection.as_deref() {
-            Some(existing) if existing != collection => {
-                return Err(axon_api::source::ApiError::new(
-                    "source.cleanup.vector_collection_immutable",
-                    axon_api::source::ErrorStage::Cleaning,
-                    "vector cleanup debt is already bound to a different collection",
-                )
-                .with_source_id(source_id.0.clone()));
-            }
-            Some(_) => continue,
-            None => debt.vector_collection = Some(collection.to_string()),
-        }
-        ledger.record_cleanup_debt(debt).await?;
-    }
-    Ok(())
-}
-
-/// Sweep unresolved cleanup debt across all sources in bounded, stable pages.
-///
-/// Each source is fenced against the generation currently committed in the
-/// ledger at sweep time. A failed provider operation remains pending and is
-/// retried by the next periodic sweep without requiring another publication.
-pub(crate) async fn drain_all_cleanup_debt<F, Fut>(
-    ledger: &dyn LedgerStore,
-    page_size: usize,
-    mut drain_source: F,
-) -> DebtDrainSummary
-where
-    F: FnMut(IndexCounts) -> Fut,
-    Fut: std::future::Future<Output = DebtDrainSummary>,
-{
-    let mut cursor = None;
-    let mut visited_sources = BTreeSet::new();
-    let mut total = DebtDrainSummary::default();
-    loop {
-        let page = match ledger
-            .list_pending_cleanup_debt_after(cursor.clone(), page_size.max(1))
-            .await
-        {
-            Ok(page) => page,
-            Err(error) => {
-                tracing::warn!(error = %error.message, "failed to page cleanup debt");
-                total.failed += 1;
-                break;
-            }
-        };
-        let Some(last) = page.last() else { break };
-        cursor = Some(last.debt_id.clone());
-
-        for debt in page {
-            if !visited_sources.insert(debt.source_id.clone()) {
-                continue;
-            }
-            let committed = match ledger.committed_generation(debt.source_id.clone()).await {
-                Ok(Some(generation)) => generation,
-                Ok(None) => {
-                    tracing::warn!(source_id = %debt.source_id.0, "cleanup debt has no committed generation; leaving pending");
-                    total.failed += 1;
-                    continue;
-                }
-                Err(error) => {
-                    tracing::warn!(source_id = %debt.source_id.0, error = %error.message, "failed to read cleanup generation fence");
-                    total.failed += 1;
-                    continue;
-                }
-            };
-            let counts = IndexCounts {
-                job_id: debt.job_id,
-                source_id: debt.source_id,
-                generation: committed,
-                items_discovered: 0,
-                documents_prepared: 0,
-                chunks_prepared: 0,
-                vector_points_written: 0,
-                removed: 0,
-                published_manifest: None,
-                graph_candidates: Vec::new(),
-                warnings: Vec::new(),
-                artifacts: Vec::new(),
-                inline: None,
-            };
-            let summary = drain_source(counts).await;
-            total.resolved += summary.resolved;
-            total.failed += summary.failed;
-            total.points_deleted += summary.points_deleted;
-        }
-    }
-    total
-}
-
-fn pending_debt_or_degraded(
-    pending: Result<Vec<CleanupDebt>, axon_api::source::ApiError>,
-) -> Result<Vec<CleanupDebt>, (axon_api::source::ApiError, DebtDrainSummary)> {
-    pending.map_err(|error| {
-        (
-            error,
-            DebtDrainSummary {
-                enumeration_failed: true,
-                ..DebtDrainSummary::default()
-            },
-        )
-    })
-}
-
-#[cfg(test)]
-pub(crate) async fn drain_due_adapter_releases(
-    ledger: &dyn LedgerStore,
-    registry: &SourceAdapterRegistry,
-    limit: usize,
-) -> Option<Timestamp> {
-    let debts = ledger.list_adapter_release_debt(limit).await.ok()?;
-    let now = Timestamp::from(chrono::Utc::now());
-    let mut summary = DebtDrainSummary::default();
-    for debt in debts.iter().filter(|debt| {
-        debt.next_retry_at
-            .as_ref()
-            .is_none_or(|retry| retry.0 <= now.0)
-    }) {
-        drain_adapter_release(ledger, Some(registry), debt, &mut summary).await;
-    }
-    ledger
-        .list_adapter_release_debt(limit)
-        .await
-        .ok()?
-        .into_iter()
-        .filter_map(|debt| debt.next_retry_at)
-        .filter(|retry| retry.0 > now.0)
-        .min_by(|a, b| a.0.cmp(&b.0))
 }
 
 /// Drain pending cleanup debt for the just-published source.
@@ -270,6 +96,26 @@ pub(crate) async fn drain_due_adapter_releases(
 /// This is the vector-only entry point; prefer [`drain_cleanup_debt_full`] so
 /// `GraphPrune`/`MemoryPrune` debt also drains when a `GraphStore`/
 /// `MemoryStore` are available.
+pub async fn drain_cleanup_debt(
+    ledger: &dyn LedgerStore,
+    vector_store: &dyn VectorStore,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger,
+        vector_store,
+        None,
+        None,
+        None,
+        None,
+        None,
+        collection,
+        counts,
+    )
+    .await
+}
+
 /// Full cleanup-debt drain: vector, ledger, graph, and memory boundaries.
 ///
 /// `graph_store`/`memory_store` are optional — when `None`, `GraphPrune`/
@@ -282,6 +128,28 @@ pub(crate) async fn drain_due_adapter_releases(
 /// `GraphStore`/`MemoryStore`) — kept so existing call sites' signatures stay
 /// untouched. Prefer [`drain_cleanup_debt_full_with_jobs`] once the caller
 /// has a `JobStore` handle available to drain `JobRetention` debt too.
+pub async fn drain_cleanup_debt_full(
+    ledger: &dyn LedgerStore,
+    vector_store: &dyn VectorStore,
+    graph_store: Option<&dyn GraphStore>,
+    memory_store: Option<&dyn MemoryStore>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger,
+        vector_store,
+        graph_store,
+        memory_store,
+        None,
+        None,
+        None,
+        collection,
+        counts,
+    )
+    .await
+}
+
 /// Full cleanup-debt drain across every boundary this module can drive:
 /// vector, ledger, graph, memory, and job-retention.
 ///
@@ -297,37 +165,60 @@ pub(crate) async fn drain_due_adapter_releases(
 /// (re)constructed once per debt (cheap — every field but `job_ids` is an
 /// unchanged reference/clone) rather than once for the whole batch, purely so
 /// it can carry that one debt's job ids into `apply()`.
+pub async fn drain_cleanup_debt_full_with_jobs(
+    ledger: &dyn LedgerStore,
+    vector_store: &dyn VectorStore,
+    graph_store: Option<&dyn GraphStore>,
+    memory_store: Option<&dyn MemoryStore>,
+    job_store: Option<&dyn JobStore>,
+    collection: &str,
+    counts: &IndexCounts,
+) -> DebtDrainSummary {
+    drain_cleanup_debt_full_with_boundaries(
+        ledger,
+        vector_store,
+        graph_store,
+        memory_store,
+        job_store,
+        None,
+        None,
+        collection,
+        counts,
+    )
+    .await
+}
+
 /// Full cleanup-debt drain plus direct core boundaries for artifact/cache debt.
 ///
 /// `ArtifactDelete` and `CachePrune` do not currently have `PruneStep` identity
 /// fields, so they drain directly against `ArtifactStore` / `DocumentCache`
 /// when supplied. If the relevant boundary is absent, the debt stays pending.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn drain_cleanup_debt_with_provider_ops(
+pub async fn drain_cleanup_debt_full_with_boundaries(
     ledger: &dyn LedgerStore,
-    provider_ops: &dyn CleanupProviderOps,
+    vector_store: &dyn VectorStore,
+    graph_store: Option<&dyn GraphStore>,
     memory_store: Option<&dyn MemoryStore>,
     job_store: Option<&dyn JobStore>,
+    artifact_store: Option<&dyn ArtifactStore>,
     document_cache: Option<&dyn DocumentCache>,
-    adapter_registry: Option<&SourceAdapterRegistry>,
     collection: &str,
     counts: &IndexCounts,
 ) -> DebtDrainSummary {
     let source_id = counts.source_id.clone();
     let committed_generation = counts.generation.clone();
 
-    let pending =
-        match pending_debt_or_degraded(ledger.list_pending_cleanup_debt(source_id.clone()).await) {
-            Ok(pending) => pending,
-            Err((error, summary)) => {
-                tracing::warn!(
-                    error = %error.message,
-                    source_id = %source_id.0,
-                    "failed to list pending cleanup debt; skipping drain"
-                );
-                return summary;
-            }
-        };
+    let pending = match ledger.list_pending_cleanup_debt(source_id.clone()).await {
+        Ok(pending) => pending,
+        Err(err) => {
+            tracing::warn!(
+                error = %err.message,
+                source_id = %source_id.0,
+                "failed to list pending cleanup debt; skipping drain"
+            );
+            return DebtDrainSummary::default();
+        }
+    };
     if pending.is_empty() {
         return DebtDrainSummary::default();
     }
@@ -371,10 +262,12 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
 
     for debt in debts_to_drain {
         let target = LedgerPruneTarget {
-            provider_ops,
+            vector_store,
             ledger,
+            graph_store,
             memory_store,
             job_store,
+            collection: collection.to_string(),
             source_id: source_id.clone(),
             committed_generation: committed_generation.clone(),
             job_ids: job_ids_for_debt(&debt),
@@ -382,7 +275,7 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
         let executor = PruneExecutor::new(target);
         if let Some(siblings) = vector_siblings.remove(&debt.debt_id.0) {
             let resolved_before = summary.resolved;
-            drain_via_executor(ledger, &executor, &authz, &debt, &mut summary).await;
+            drain_via_executor(ledger, &executor, &authz, &debt, collection, &mut summary).await;
             if summary.resolved > resolved_before {
                 for sibling in &siblings {
                     resolve_debt(ledger, sibling, &mut summary).await;
@@ -395,9 +288,8 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
                 &authz,
                 &debt,
                 collection,
-                provider_ops,
+                artifact_store,
                 document_cache,
-                adapter_registry,
                 &mut summary,
             )
             .await;

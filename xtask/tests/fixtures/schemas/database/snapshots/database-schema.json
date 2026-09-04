@@ -1535,18 +1535,6 @@
       "version": 2
     },
     {
-      "checksum": "485ec7364a14fc4f31eb621ba308cc9af9c54ac73e53632c3a509895fca56ab2",
-      "file": "crates/axon-graph/src/migrations/0003_write_checkpoints.sql",
-      "name": "0003_write_checkpoints",
-      "owner_crate": "axon-graph",
-      "runtime_namespace": "graph",
-      "schema_epoch": 1,
-      "tables_touched": [
-        "graph_write_checkpoints"
-      ],
-      "version": 3
-    },
-    {
       "checksum": "27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3",
       "file": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
       "name": "0001_create_memory_tables",
@@ -2655,42 +2643,6 @@
       "owner_crate": "axon-graph",
       "primary_key": [
         "source_id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "job_id",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "candidate_id",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "next_edge_index",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "updated_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        }
-      ],
-      "foreign_keys": [],
-      "introduced_in": "crates/axon-graph/src/migrations/0003_write_checkpoints.sql",
-      "name": "graph_write_checkpoints",
-      "owner_crate": "axon-graph",
-      "primary_key": [
-        "job_id",
-        "candidate_id"
       ]
     },
     {
@@ -4296,12 +4248,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:a7a1732db61735b5f21b938bd8b8866cddf047125120d36e9d0a6355bb51900a",
+        "checksum": "sha256:d48f6524ebda76d77e5e3dbc8a0195eac896edbe1108b2fca40ca9c442a2a5bf",
         "kind": "sql_migration_directory",
         "path": "crates/axon-graph/src/migrations"
       },
       {
-        "checksum": "sha256:2593717c8e13e10c9d38824d285da86f01efea7221a86fb7fcb35ddfe3782faf",
+        "checksum": "sha256:948308a33657353f903f2d74a8b6fb28f441b13aadcf9110bc9ac8f9f30acc3b",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },

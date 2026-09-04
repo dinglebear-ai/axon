@@ -17,14 +17,6 @@ impl VectorStore for Arc<dyn VectorStore> {
     async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()> {
         (**self).ensure_collection(spec).await
     }
-
-    async fn begin_bulk_load(&self, collection: &str) -> Result<()> {
-        (**self).begin_bulk_load(collection).await
-    }
-
-    async fn finish_bulk_load(&self, collection: &str) -> Result<()> {
-        (**self).finish_bulk_load(collection).await
-    }
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         (**self).upsert(batch).await
     }

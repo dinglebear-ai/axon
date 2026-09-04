@@ -9,16 +9,6 @@ use crate::query::RetrievalResult;
 
 pub const MODULE_NAME: &str = "ask_context";
 
-/// Retrieval-owned input for context assembly. Transport adapters convert
-/// their wire DTOs before crossing this boundary.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AskContextRequest {
-    pub query: Option<String>,
-    pub collection: Option<String>,
-    pub chunk_limit: Option<u32>,
-    pub max_context_bytes: Option<u64>,
-}
-
 /// Composed retrieval context for an `ask` (RAG synthesis) request: the fused
 /// context bundle handed to the LLM, the citations backing it, and the full
 /// underlying [`RetrievalResult`] for callers that need the raw matches/plan.

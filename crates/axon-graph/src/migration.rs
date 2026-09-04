@@ -36,11 +36,6 @@ pub const MIGRATIONS: &[SqlMigration] = &[
         name: "0002_publication_state",
         sql: include_str!("migrations/0002_publication_state.sql"),
     },
-    SqlMigration {
-        version: 3,
-        name: "0003_write_checkpoints",
-        sql: include_str!("migrations/0003_write_checkpoints.sql"),
-    },
 ];
 
 /// The graph [`MigrationSet`] for composition into the unified runner.
@@ -50,7 +45,6 @@ pub fn migration_set() -> MigrationSet {
 
 /// DDL for the graph store, run in order.
 const SCHEMA: &[&str] = &[
-    "CREATE TABLE IF NOT EXISTS graph_write_checkpoints (job_id TEXT NOT NULL, candidate_id TEXT NOT NULL, next_edge_index INTEGER NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (job_id, candidate_id))",
     // Durable nodes, keyed by generated node_id. `stable_key` is the merge key
     // and is unique per (kind, stable_key) — enforced by the unique index below.
     "CREATE TABLE IF NOT EXISTS graph_nodes (

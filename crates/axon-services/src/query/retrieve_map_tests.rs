@@ -1,15 +1,38 @@
 use super::*;
-use axon_retrieval::retrieve::{RetrieveVariantError, RetrievedDocument};
+use axon_retrieval::retrieve::RetrievedDocument;
+use axon_vectors::qdrant::{QdrantRetrieveByUrlResult, QdrantScrolledPoint, QdrantUrlVariantError};
+
+fn point(id: &str, chunk_index: i64, text: &str) -> QdrantScrolledPoint {
+    QdrantScrolledPoint {
+        id: serde_json::json!(id),
+        payload: serde_json::json!({ "chunk_index": chunk_index, "chunk_text": text }),
+    }
+}
+
+fn target_payload_point(id: &str, chunk_index: i64, text: &str) -> QdrantScrolledPoint {
+    QdrantScrolledPoint {
+        id: serde_json::json!(id),
+        payload: serde_json::json!({
+            "chunk_index": chunk_index,
+            "chunk_text": text,
+            "item_canonical_uri": "https://example.com/docs/page",
+            "source_canonical_uri": "https://example.com/docs",
+            "source_item_key": "https://example.com/docs/page#chunk-0"
+        }),
+    }
+}
 
 #[test]
 fn map_retrieved_document_returns_none_for_empty_points() {
     let doc = RetrievedDocument {
-        requested_url: "https://example.com/docs".to_string(),
-        matched_url: None,
-        chunk_count: 0,
-        max_points: 500,
-        truncated: false,
-        variant_errors: Vec::new(),
+        result: QdrantRetrieveByUrlResult {
+            requested_url: "https://example.com/docs".to_string(),
+            matched_url: None,
+            points: Vec::new(),
+            max_points: 500,
+            truncated: false,
+            variant_errors: Vec::new(),
+        },
         content: String::new(),
     };
     assert!(map_retrieved_document("https://example.com/docs", doc).is_none());
@@ -18,15 +41,17 @@ fn map_retrieved_document_returns_none_for_empty_points() {
 #[test]
 fn map_retrieved_document_preserves_metadata() {
     let doc = RetrievedDocument {
-        requested_url: "example.com/docs".to_string(),
-        matched_url: Some("https://example.com/docs".to_string()),
-        chunk_count: 2,
-        max_points: 2,
-        truncated: true,
-        variant_errors: vec![RetrieveVariantError {
-            url: "https://example.com/docs/".to_string(),
-            error: "timeout".to_string(),
-        }],
+        result: QdrantRetrieveByUrlResult {
+            requested_url: "example.com/docs".to_string(),
+            matched_url: Some("https://example.com/docs".to_string()),
+            points: vec![point("p1", 0, "hello"), point("p2", 1, "world")],
+            max_points: 2,
+            truncated: true,
+            variant_errors: vec![QdrantUrlVariantError {
+                url: "https://example.com/docs/".to_string(),
+                error: "timeout".to_string(),
+            }],
+        },
         content: "hello\nworld".to_string(),
     };
 
@@ -50,12 +75,14 @@ fn map_retrieved_document_preserves_metadata() {
 #[test]
 fn map_retrieved_document_no_warning_when_not_truncated() {
     let doc = RetrievedDocument {
-        requested_url: "https://example.com/docs".to_string(),
-        matched_url: Some("https://example.com/docs".to_string()),
-        chunk_count: 1,
-        max_points: 500,
-        truncated: false,
-        variant_errors: Vec::new(),
+        result: QdrantRetrieveByUrlResult {
+            requested_url: "https://example.com/docs".to_string(),
+            matched_url: Some("https://example.com/docs".to_string()),
+            points: vec![point("p1", 0, "hello")],
+            max_points: 500,
+            truncated: false,
+            variant_errors: Vec::new(),
+        },
         content: "hello".to_string(),
     };
 
@@ -67,12 +94,14 @@ fn map_retrieved_document_no_warning_when_not_truncated() {
 #[test]
 fn retrieve_works_without_legacy_url_payload() {
     let doc = RetrievedDocument {
-        requested_url: "https://example.com/docs/page".to_string(),
-        matched_url: Some("https://example.com/docs/page".to_string()),
-        chunk_count: 1,
-        max_points: 500,
-        truncated: false,
-        variant_errors: Vec::new(),
+        result: QdrantRetrieveByUrlResult {
+            requested_url: "https://example.com/docs/page".to_string(),
+            matched_url: Some("https://example.com/docs/page".to_string()),
+            points: vec![target_payload_point("p1", 0, "target-only payload")],
+            max_points: 500,
+            truncated: false,
+            variant_errors: Vec::new(),
+        },
         content: "target-only payload".to_string(),
     };
 

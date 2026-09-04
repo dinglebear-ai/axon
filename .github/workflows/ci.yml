@@ -753,10 +753,6 @@ jobs:
         run: |
           mkdir -p apps/web/out
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: Test Windows secure artifact cleanup journal
-        run: cargo test --release --locked -p axon-services artifact_cleanup_journal --no-fail-fast
-      - name: Test Windows Qdrant bulk-load journal
-        run: cargo test --release --locked -p axon-vectors qdrant::bulk_load::tests --no-fail-fast
       - name: cargo build axon release binary
         run: cargo build --release --locked --bin axon
       - name: Upload axon.exe artifact

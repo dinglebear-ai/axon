@@ -13,7 +13,6 @@ async fn in_memory_sink_records_emit_heartbeat_metric_flush_in_order() {
     let job_id = JobId(uuid::Uuid::new_v4());
     let event = crate::event::stage_started(
         job_id,
-        1,
         None,
         PipelinePhase::Fetching,
         "fetching".to_string(),
@@ -55,7 +54,6 @@ async fn noop_sink_accepts_all_calls() {
 
     sink.emit(crate::event::provider_waiting(
         job_id,
-        1,
         None,
         None,
         ProviderKind::Embedding,

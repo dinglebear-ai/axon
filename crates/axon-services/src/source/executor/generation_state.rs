@@ -152,7 +152,7 @@ impl GenerationAccumulator {
         let archive =
             output::store_adapter_archive(runtime, input.adapter, &input.plan, &self.archive_items)
                 .await?;
-        cleanup.track(&archive.artifacts).await?;
+        cleanup.track(&archive.artifacts);
         self.output.merge(archive);
         self.artifacts.append(&mut self.output.artifacts);
         let diff = reuse::apply_reused_items(diff, &self.reused_item_keys);

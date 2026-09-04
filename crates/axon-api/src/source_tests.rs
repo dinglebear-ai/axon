@@ -583,11 +583,9 @@ fn source_generation_and_cleanup_debt_round_trip() {
     let debt = CleanupDebt {
         debt_id: CleanupDebtId::from("debt_1"),
         job_id: JobId(Uuid::new_v4()),
-        origin_attempt: 1,
         source_id: generation.source_id.clone(),
         generation: Some(generation.generation.clone()),
         kind: CleanupDebtKind::VectorDelete,
-        vector_collection: Some("axon".to_string()),
         selector: CleanupSelector::Generation {
             source_id: generation.source_id.clone(),
             generation: SourceGenerationId::from("gen_0001"),

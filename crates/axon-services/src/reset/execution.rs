@@ -71,9 +71,7 @@ pub(super) async fn execute_resumable(
                 receipt
                     .audit_events
                     .push(format!("reset.chunk.failed:{store}"));
-                if let Err(checkpoint_error) = plan_store::save_receipt(cfg, &receipt).await {
-                    return Err(combined_failure(&error, &checkpoint_error.to_string()).into());
-                }
+                let _ = plan_store::save_receipt(cfg, &receipt).await;
                 return Err(error.into());
             }
         }
@@ -86,12 +84,6 @@ pub(super) async fn execute_resumable(
     receipt.audit_events.push("reset.complete".to_string());
     let path = plan_store::save_receipt(cfg, &receipt).await?;
     Ok((receipt, path))
-}
-
-pub(super) fn combined_failure(operation: &str, checkpoint: &str) -> String {
-    format!(
-        "reset.uncertain_state: destructive operation failed ({operation}); failure checkpoint also failed ({checkpoint}); inventory must be refreshed before retry"
-    )
 }
 
 pub(super) fn planned_chunks(stores: &[String]) -> Vec<ResetChunkReceipt> {

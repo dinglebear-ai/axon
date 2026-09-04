@@ -1,10 +1,4 @@
 use super::*;
-
-#[test]
-fn scheduled_pipeline_groups_stable_context_and_mutable_state() {
-    assert!(std::mem::size_of::<ScheduledGenerationContext<'static, 'static>>() > 0);
-    assert!(std::mem::size_of::<ScheduledGenerationState<'static>>() > 0);
-}
 use std::time::Duration;
 
 #[tokio::test]

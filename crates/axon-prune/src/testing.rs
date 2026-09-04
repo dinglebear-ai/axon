@@ -20,33 +20,17 @@ use crate::plan::PruneScopeSource;
 #[derive(Debug, Clone)]
 pub struct FakeScopeSource {
     pub estimate: PruneEstimate,
-    current_generation: Option<SourceGenerationId>,
 }
 
 impl FakeScopeSource {
     pub fn new(estimate: PruneEstimate) -> Self {
-        Self {
-            estimate,
-            current_generation: Some(SourceGenerationId::new("gen-current")),
-        }
-    }
-
-    pub fn with_current_generation(mut self, generation: SourceGenerationId) -> Self {
-        self.current_generation = Some(generation);
-        self
+        Self { estimate }
     }
 }
 
 impl PruneScopeSource for FakeScopeSource {
     fn estimate(&self, _selector: &PruneSelector) -> PruneEstimate {
         self.estimate.clone()
-    }
-
-    fn current_generation(
-        &self,
-        _source_id: &axon_api::source::ids::SourceId,
-    ) -> Option<SourceGenerationId> {
-        self.current_generation.clone()
     }
 }
 
@@ -94,9 +78,7 @@ impl FakePruneTarget {
         for s in steps {
             *counts.entry(s.target).or_default() += s.estimated_deletes;
         }
-        let mut target = Self::with_counts(counts);
-        target.current_generation = steps.iter().find_map(|step| step.generation.clone());
-        target
+        Self::with_counts(counts)
     }
 
     /// Set the current committed generation used for fencing.

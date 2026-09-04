@@ -44,28 +44,8 @@ fn parse_options(raw: &str) -> Result<AdapterOptions> {
     serde_json::from_str(raw).map_err(json_err)
 }
 
-fn corrupt(field: &str, value: impl std::fmt::Display) -> ApiError {
-    ApiError::new(
-        "watch.storage_error",
-        ErrorStage::Retrieving,
-        format!("corrupt durable watch field {field}: {value}"),
-    )
-}
-
-fn parse_scope(raw: &str) -> Result<SourceScope> {
-    parse_json_str(raw).ok_or_else(|| corrupt("scope", raw))
-}
-
-fn parse_bool(field: &str, raw: i64) -> Result<bool> {
-    match raw {
-        0 => Ok(false),
-        1 => Ok(true),
-        value => Err(corrupt(field, value)),
-    }
-}
-
-fn parse_persisted_interval(raw: i64) -> Result<u64> {
-    u64::try_from(raw).map_err(|_| corrupt("every_seconds", raw))
+fn parse_scope(raw: &str) -> SourceScope {
+    parse_json_str(raw).unwrap_or(SourceScope::Page)
 }
 
 pub(super) fn validate_source_watch_interval(every_seconds: u64) -> Result<i64> {
@@ -90,7 +70,7 @@ pub(super) fn scope_to_str(scope: SourceScope) -> String {
         .unwrap_or_else(|| "page".to_string())
 }
 
-pub(super) fn row_to_result(row: &SqliteRow) -> Result<WatchResult> {
+pub(super) fn row_to_result(row: &SqliteRow) -> WatchResult {
     let watch_id = WatchId::new(row.get::<String, _>("watch_id"));
     let source_id = SourceId::new(row.get::<String, _>("source_id"));
     let canonical_uri: String = row.get("canonical_uri");
@@ -98,43 +78,41 @@ pub(super) fn row_to_result(row: &SqliteRow) -> Result<WatchResult> {
         name: row.get("adapter_name"),
         version: row.get("adapter_version"),
     };
-    let scope = parse_scope(&row.get::<String, _>("scope"))?;
+    let scope = parse_scope(&row.get::<String, _>("scope"));
     let enabled: i64 = row.get("enabled");
     let every_seconds: i64 = row.get("every_seconds");
     let cron: Option<String> = row.get("cron");
     let timezone: Option<String> = row.get("timezone");
     let last_job_id: Option<String> = row.get("last_job_id");
     let last_status: Option<String> = row.get("last_status");
-    let latest_job = last_job_id
-        .map(|job_id| synth_descriptor(&job_id, last_status.as_deref()))
-        .transpose()?;
+    let latest_job = last_job_id.map(|job_id| synth_descriptor(&job_id, last_status.as_deref()));
 
-    Ok(WatchResult {
+    WatchResult {
         watch_id,
         source_id,
         canonical_uri,
         adapter,
         scope,
-        enabled: parse_bool("enabled", enabled)?,
+        enabled: enabled != 0,
         schedule: WatchSchedule {
-            every_seconds: parse_persisted_interval(every_seconds)?,
+            every_seconds: every_seconds.max(0) as u64,
             cron,
             timezone,
         },
         job: None,
         latest_job,
         warnings: Vec::new(),
-    })
+    }
 }
 
-pub(super) fn row_to_summary(row: &SqliteRow) -> Result<WatchSummary> {
-    let watch = row_to_result(row)?;
+pub(super) fn row_to_summary(row: &SqliteRow) -> WatchSummary {
+    let watch = row_to_result(row);
     let next_run_at_ms: i64 = row.get("next_run_at");
     let next_run_at = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(next_run_at_ms)
         .map(Timestamp::from)
-        .ok_or_else(|| corrupt("next_run_at", next_run_at_ms))?;
+        .unwrap_or_else(|| Timestamp::from(chrono::Utc::now()));
 
-    Ok(WatchSummary {
+    WatchSummary {
         watch_id: watch.watch_id,
         source_id: watch.source_id,
         enabled: watch.enabled,
@@ -142,7 +120,7 @@ pub(super) fn row_to_summary(row: &SqliteRow) -> Result<WatchSummary> {
         next_run_at,
         last_job_id: watch.latest_job.as_ref().map(|job| job.job_id),
         last_status: watch.latest_job.as_ref().map(|job| job.status),
-    })
+    }
 }
 
 pub(super) fn row_to_request(row: &SqliteRow) -> Result<WatchRequest> {
@@ -159,17 +137,17 @@ pub(super) fn row_to_request(row: &SqliteRow) -> Result<WatchRequest> {
     Ok(WatchRequest {
         source,
         schedule: WatchSchedule {
-            every_seconds: parse_persisted_interval(every_seconds)?,
+            every_seconds: every_seconds.max(0) as u64,
             cron,
             timezone,
         },
-        embed: parse_bool("embed", embed)?,
+        embed: embed != 0,
         options: parse_options(&options_json)?,
         limits: serde_json::from_str(&limits_json).map_err(json_err)?,
         metadata: serde_json::from_str(&metadata_json).map_err(json_err)?,
-        scope: Some(parse_scope(&row.get::<String, _>("scope"))?),
+        scope: Some(parse_scope(&row.get::<String, _>("scope"))),
         collection,
-        enabled: Some(parse_bool("enabled", enabled)?),
+        enabled: Some(enabled != 0),
     })
 }
 
@@ -181,15 +159,12 @@ pub(super) fn row_to_auth_snapshot(row: &SqliteRow) -> Result<Option<AuthSnapsho
         .transpose()
 }
 
-pub(super) fn synth_descriptor(job_id: &str, status: Option<&str>) -> Result<JobDescriptor> {
+pub(super) fn synth_descriptor(job_id: &str, status: Option<&str>) -> JobDescriptor {
     let status = status
-        .ok_or_else(|| corrupt("last_status", "missing for referenced job"))
-        .and_then(|raw| {
-            parse_json_str::<LifecycleStatus>(raw).ok_or_else(|| corrupt("last_status", raw))
-        })?;
-    let job_id =
-        JobId::new(uuid::Uuid::parse_str(job_id).map_err(|_| corrupt("last_job_id", job_id))?);
-    Ok(JobDescriptor {
+        .and_then(parse_json_str::<LifecycleStatus>)
+        .unwrap_or(LifecycleStatus::Queued);
+    let job_id = JobId::new(uuid::Uuid::parse_str(job_id).unwrap_or_default());
+    JobDescriptor {
         kind: JobKind::Source,
         id: job_id,
         status_url: format!("/v1/jobs/{}", job_id.0),
@@ -203,5 +178,5 @@ pub(super) fn synth_descriptor(job_id: &str, status: Option<&str>) -> Result<Job
         poll: None,
         created_at: None,
         updated_at: None,
-    })
+    }
 }

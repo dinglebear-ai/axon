@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axon_api::mcp_schema::AskRequest;
 use axon_api::source::{
     CapabilityBase, ChunkId, DocumentId, HealthStatus, MetadataMap, PublishGenerationRequest,
     PublishGenerationResult, PublishPlan, RedactionMetadata, RedactionStatus, RetrievalCapability,
@@ -7,7 +8,6 @@ use axon_api::source::{
     Timestamp, Visibility,
 };
 
-use crate::ask_context::AskContextRequest;
 use crate::boundary::RetrievalEngine as BoundaryRetrievalEngine;
 use crate::citation::Citation;
 use crate::context::ContextBundle;
@@ -115,10 +115,10 @@ fn sample_request() -> RetrievalRequest {
     }
 }
 
-fn empty_ask_request(query: Option<&str>) -> AskContextRequest {
-    AskContextRequest {
+fn empty_ask_request(query: Option<&str>) -> AskRequest {
+    AskRequest {
         query: query.map(ToString::to_string),
-        ..AskContextRequest::default()
+        ..AskRequest::default()
     }
 }
 
@@ -273,8 +273,6 @@ fn sample_publish_result() -> PublishGenerationResult {
 
 fn sample_publish_request() -> PublishGenerationRequest {
     PublishGenerationRequest {
-        job_id: axon_api::source::JobId::new(uuid::Uuid::nil()),
-        attempt: 1,
         source_id: SourceId::new("src-docs"),
         generation: SourceGenerationId::from("gen_1"),
         expected_previous_generation: None,

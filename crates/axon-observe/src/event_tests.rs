@@ -10,7 +10,6 @@ fn stage_event_builders_populate_required_fields() {
     let stage_id = StageId(uuid::Uuid::new_v4());
     let started = crate::event::stage_started(
         job_id,
-        2,
         Some(stage_id),
         PipelinePhase::Preparing,
         "preparing".to_string(),
@@ -21,12 +20,11 @@ fn stage_event_builders_populate_required_fields() {
     assert_eq!(started.status, LifecycleStatus::Running);
     assert_eq!(started.phase, PipelinePhase::Preparing);
     assert_eq!(started.severity, Severity::Info);
-    assert_eq!(started.attempt, 2);
+    assert_eq!(started.attempt, 1);
     assert!(started.timing.is_some());
 
     let completed = crate::event::stage_completed(
         job_id,
-        2,
         Some(stage_id),
         PipelinePhase::Preparing,
         StageCounts {
@@ -51,7 +49,6 @@ fn degraded_and_failed_events_carry_warning_or_error_payloads() {
     let warning = crate::event::warning("provider.cooling", "provider cooling");
     let degraded = crate::event::stage_degraded(
         job_id,
-        1,
         None,
         PipelinePhase::Embedding,
         warning.clone(),
@@ -69,7 +66,6 @@ fn degraded_and_failed_events_carry_warning_or_error_payloads() {
     .with_severity(ErrorSeverity::Failed);
     let failed = crate::event::stage_failed(
         job_id,
-        1,
         None,
         PipelinePhase::Upserting,
         error.clone(),
@@ -86,7 +82,6 @@ fn provider_wait_event_exposes_reservation_context() {
     let reservation_id = ReservationId::from("res_1");
     let event = crate::event::provider_waiting(
         job_id,
-        1,
         None,
         Some(reservation_id.clone()),
         ProviderKind::Embedding,

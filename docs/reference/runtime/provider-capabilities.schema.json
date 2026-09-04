@@ -1645,8 +1645,7 @@
           "graph_prune",
           "memory_prune",
           "job_retention",
-          "cache_prune",
-          "adapter_release"
+          "cache_prune"
         ],
         "type": "string",
         "x-axon": {
@@ -2171,7 +2170,7 @@
         "path": "crates/axon-observe/src/reservation.rs"
       },
       {
-        "checksum": "sha256:ad556e4ee5b157ad9b2139379c51f0543796033e07f1126af2ee264e1fb7f70c",
+        "checksum": "sha256:113c825205589ff6c8878a4fd8001b74d3a1e72caf5e93e1c6e0c2c27fe08274",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/store.rs"
       },

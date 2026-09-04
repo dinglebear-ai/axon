@@ -419,11 +419,7 @@ async fn vector_only_target_deletes_via_real_selector_on_step() {
     let target = VectorOnlyPruneTarget::new(&store, "axon-test");
     let executor = PruneExecutor::new(target);
 
-    let mut plan = plan_with_vector_step(true);
-    // This unit exercises the vector boundary, not source-wide fencing.
-    plan.selector = PruneSelector::Collection {
-        collection: "axon-test".to_string(),
-    };
+    let plan = plan_with_vector_step(true);
     let result = executor
         .execute(&plan, &PruneAuthz::admin())
         .await
@@ -450,11 +446,7 @@ async fn vector_only_target_reports_debt_on_store_failure() {
     let target = VectorOnlyPruneTarget::new(&FailingVectorStore, "axon-test");
     let executor = PruneExecutor::new(target);
 
-    let mut plan = plan_with_vector_step(true);
-    // This unit exercises failed vector deletion accounting, not source-wide fencing.
-    plan.selector = PruneSelector::Collection {
-        collection: "axon-test".to_string(),
-    };
+    let plan = plan_with_vector_step(true);
     let result = executor
         .execute(&plan, &PruneAuthz::admin())
         .await
@@ -565,8 +557,6 @@ async fn ledger_with_committed_generation(
         .expect("complete generation");
     let published = ledger
         .publish_generation(PublishGenerationRequest {
-            job_id: JobId::new(Uuid::from_u128(1)),
-            attempt: 1,
             source_id: SourceId::new(source_id),
             generation: completed.generation.clone(),
             expected_previous_generation: None,
@@ -611,8 +601,6 @@ async fn prune_plan_reads_shared_ledger_from_enqueue_only_context() {
     let published_generation = completed.generation.clone();
     ledger
         .publish_generation(PublishGenerationRequest {
-            job_id: JobId::new(Uuid::from_u128(1)),
-            attempt: 1,
             source_id: SourceId::new(source_id),
             generation: completed.generation,
             expected_previous_generation: None,

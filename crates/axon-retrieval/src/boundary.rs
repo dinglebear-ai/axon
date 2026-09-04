@@ -19,9 +19,10 @@
 //! through `&dyn RetrievalEngine` / generic-bound dispatch.
 
 use async_trait::async_trait;
+use axon_api::mcp_schema::AskRequest;
 use axon_api::source::{ApiError, CapabilityBase, HealthStatus, MetadataMap, RetrievalCapability};
 
-use crate::ask_context::{AskContext, AskContextRequest};
+use crate::ask_context::AskContext;
 use crate::memory::MEMORY_SOURCE_KIND;
 use crate::query::{QueryRequest, QueryResult, RetrievalRequest, RetrievalResult};
 
@@ -44,7 +45,7 @@ const DEFAULT_ASK_CHUNK_LIMIT: u32 = 12;
 pub trait RetrievalEngine: Send + Sync {
     async fn query(&self, request: QueryRequest) -> Result<QueryResult>;
     async fn retrieve(&self, request: RetrievalRequest) -> Result<RetrievalResult>;
-    async fn build_ask_context(&self, request: AskContextRequest) -> Result<AskContext>;
+    async fn build_ask_context(&self, request: AskRequest) -> Result<AskContext>;
     async fn capabilities(&self) -> Result<RetrievalCapability>;
 }
 
@@ -81,9 +82,15 @@ where
         self.retrieve(request).await
     }
 
-    async fn build_ask_context(&self, request: AskContextRequest) -> Result<AskContext> {
-        let limit = request.chunk_limit.unwrap_or(DEFAULT_ASK_CHUNK_LIMIT);
-        let byte_budget = request.max_context_bytes.unwrap_or(DEFAULT_BYTE_BUDGET);
+    async fn build_ask_context(&self, request: AskRequest) -> Result<AskContext> {
+        let limit = request
+            .ask_chunk_limit
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(DEFAULT_ASK_CHUNK_LIMIT);
+        let byte_budget = request
+            .ask_max_context_chars
+            .and_then(|n| u64::try_from(n).ok())
+            .unwrap_or(DEFAULT_BYTE_BUDGET);
         let retrieval_request = RetrievalRequest {
             query: request.query.unwrap_or_default(),
             collection: request.collection.unwrap_or_else(|| "axon".to_string()),

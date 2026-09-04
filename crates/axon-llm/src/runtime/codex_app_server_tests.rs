@@ -368,12 +368,12 @@ async fn codex_completion_timeout_covers_slow_child_before_handshake() {
     assert!(text.contains("timed out"), "got: {text}");
     // The pool discards the slot (kills the child) on timeout. Verify the child
     // PID was written before the kill (i.e. the child started successfully).
-    // Under a heavily concurrent test run the deadline may expire before the
-    // spawned process gets enough CPU to write its pidfile. If it did start,
-    // prove cleanup; absence means the timeout stopped it even earlier.
-    if let Ok(pid) = std::fs::read_to_string(pid_file) {
-        assert_process_exits(pid.trim().parse::<i32>().unwrap());
-    }
+    let pid = std::fs::read_to_string(pid_file)
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    assert_process_exits(pid);
 }
 
 // The pool's init handshake fails cleanly for a child that immediately dies.

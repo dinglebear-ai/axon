@@ -176,22 +176,6 @@ impl LedgerStore for DbLimitedLedgerStore {
         self.inner.list_pending_cleanup_debt(source_id).await
     }
 
-    async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>> {
-        let _permit = self.permit().await?;
-        self.inner.list_adapter_release_debt(limit).await
-    }
-
-    async fn list_pending_cleanup_debt_after(
-        &self,
-        after: Option<CleanupDebtId>,
-        limit: usize,
-    ) -> Result<Vec<CleanupDebt>> {
-        let _permit = self.permit().await?;
-        self.inner
-            .list_pending_cleanup_debt_after(after, limit)
-            .await
-    }
-
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()> {
         let _permit = self.permit().await?;
         self.inner.resolve_cleanup_debt(debt_id).await

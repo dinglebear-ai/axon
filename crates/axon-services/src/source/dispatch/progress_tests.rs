@@ -95,7 +95,7 @@ async fn local_source_exposes_durable_progress_across_multiple_acquisition_and_c
         .await
         .unwrap()
         .expect("durable job summary");
-    assert_eq!(summary.status, LifecycleStatus::Running);
+    assert_eq!(summary.status, LifecycleStatus::Completed);
     let updates = jobs.recorded_status_updates(result.job_id).await;
     let phase_counts = |phase| {
         updates
@@ -145,6 +145,7 @@ async fn local_source_exposes_durable_progress_across_multiple_acquisition_and_c
         PipelinePhase::Vectorizing,
         PipelinePhase::Upserting,
         PipelinePhase::Publishing,
+        PipelinePhase::Complete,
     ] {
         assert!(
             updates.iter().any(|update| update.phase == phase),
@@ -235,10 +236,7 @@ async fn embed_false_skips_vector_phases_without_stale_fetching_counts() {
         .collect::<Vec<_>>();
     assert!(phases.contains(&PipelinePhase::Preparing));
     assert!(phases.contains(&PipelinePhase::Publishing));
-    assert!(
-        !phases.contains(&PipelinePhase::Complete),
-        "adapter pipeline must defer terminal status until graph and cleanup finish"
-    );
+    assert!(phases.contains(&PipelinePhase::Complete));
     for skipped in [
         PipelinePhase::Batching,
         PipelinePhase::Embedding,

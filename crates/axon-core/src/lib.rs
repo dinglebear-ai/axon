@@ -7,7 +7,6 @@ pub mod binary_status;
 pub mod boundary;
 pub mod config;
 pub mod content;
-pub mod detached_workers;
 pub mod endpoints;
 pub mod env;
 pub mod error;

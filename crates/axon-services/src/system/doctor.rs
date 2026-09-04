@@ -45,7 +45,7 @@ pub async fn doctor(ctx: &ServiceContext) -> Result<DoctorResult, Box<dyn Error 
 pub(crate) async fn doctor_inner(
     cfg: &Config,
 ) -> Result<DoctorResult, Box<dyn Error + Send + Sync>> {
-    let pending_jobs = axon_jobs::store::count_pending_jobs(&cfg.sqlite_path).await?;
+    let pending_jobs = axon_jobs::store::count_pending_jobs(&cfg.sqlite_path).await;
     let llm_probe = axon_llm::build_llm_doctor_probe(cfg).await;
     let payload = build_doctor_report(cfg, pending_jobs, llm_probe)
         .await

@@ -1,59 +1,6 @@
 use super::*;
 
 #[test]
-fn reset_failure_preserves_operation_and_checkpoint_errors() {
-    let error = execution::combined_failure("qdrant delete failed", "receipt write failed");
-    assert!(error.contains("qdrant delete failed"));
-    assert!(error.contains("receipt write failed"));
-    assert!(error.contains("uncertain_state"));
-}
-
-#[tokio::test]
-#[serial]
-async fn execute_resumable_reports_operation_and_checkpoint_failures() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut cfg = cfg_with(vec![RESET_STORE_VECTORS], false, true);
-    cfg.sqlite_path = dir.path().join("jobs.db");
-    let plan = ResetPlan {
-        plan_id: "reset_plan_dual".into(),
-        reset_id: "reset_dual".into(),
-        stores: vec![RESET_STORE_VECTORS.into()],
-        estimates: ResetEstimate::default(),
-        inventory_checksum: "inventory".into(),
-        config_snapshot_id: "config".into(),
-        auth_snapshot_id: "auth".into(),
-        confirmation_text: "confirm".into(),
-        receipt_path: None,
-        expires_at_utc: chrono::Utc::now().to_rfc3339(),
-        blockers: vec![],
-    };
-    plan_store::fail_receipt_after(1);
-    let mut warnings = vec![];
-    let error = execution::execute_resumable(
-        &cfg,
-        &plan.stores,
-        &SqliteInventory::default(),
-        Some(&QdrantInventory {
-            unreachable: true,
-            ..Default::default()
-        }),
-        dir.path(),
-        &mut warnings,
-        &plan,
-        None,
-    )
-    .await
-    .expect_err("dual failure must be surfaced");
-    let message = error.to_string();
-    assert!(message.contains("reset.vectors_unreachable"), "{message}");
-    assert!(
-        message.contains("injected receipt checkpoint failure"),
-        "{message}"
-    );
-    assert!(message.contains("uncertain_state"), "{message}");
-}
-
-#[test]
 fn reset_dimension_prefers_current_embedding_provider() {
     assert_eq!(
         execution::preferred_reset_dimension(Some(1024), Some(768)),

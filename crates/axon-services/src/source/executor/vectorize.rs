@@ -134,12 +134,11 @@ pub(super) async fn prepare_embed_publish(
             emitter,
             coordinator,
             progress,
-            is_final_vector_batch(is_final_source_batch, first_index, batch_count),
+            is_final_source_batch && first_index + 1 == batch_count,
         )
         .await?;
         for (batch_index, batch) in batches {
-            let final_vector_batch =
-                is_final_vector_batch(is_final_source_batch, batch_index, batch_count);
+            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
             report_batching(input, &batch, emitter, coordinator, progress).await;
             // The current batch's write accounting is absorbed into `output`
             // inside `publish_and_build_next`, before an overlapped embedding
@@ -154,7 +153,7 @@ pub(super) async fn prepare_embed_publish(
                 coordinator,
                 progress,
                 &mut output,
-                final_vector_batch,
+                is_final_vector_batch,
             )
             .await?;
         }
@@ -230,14 +229,6 @@ pub(super) async fn prepare_generation_documents(
         )
         .await;
     Ok(prepared)
-}
-
-fn is_final_vector_batch(
-    is_final_source_batch: bool,
-    batch_index: usize,
-    batch_count: usize,
-) -> bool {
-    is_final_source_batch && batch_index + 1 == batch_count
 }
 
 async fn report_batching(

@@ -7,6 +7,8 @@
 //! failures become visible warnings and the caller falls back to generic web
 //! fetch/render.
 
+use std::sync::Arc;
+
 use axon_api::source::*;
 use axon_core::config::Config;
 use axon_extract::{ScrapedDoc, VerticalContext};
@@ -42,15 +44,7 @@ pub(super) async fn try_acquire(
         return VerticalAcquire::Unsupported;
     }
 
-    let cfg = vertical_config(opts);
-    let ctx = VerticalContext::new(cfg.user_agent, cfg.auto_dispatch_skip).with_credentials(
-        axon_extract::VerticalCredentials {
-            github_token: std::env::var("GITHUB_TOKEN").ok(),
-            huggingface_token: std::env::var("HF_TOKEN").ok(),
-            reddit_client_id: std::env::var("REDDIT_CLIENT_ID").ok(),
-            reddit_client_secret: std::env::var("REDDIT_CLIENT_SECRET").ok(),
-        },
-    );
+    let ctx = VerticalContext::new(Arc::new(vertical_config(opts)));
     match crate::vertical_registry::dispatch_by_url(&item.canonical_uri, &ctx).await {
         None => VerticalAcquire::Unsupported,
         Some(Ok(doc)) => VerticalAcquire::Handled(acquired_from_doc(item, doc, job_id)),

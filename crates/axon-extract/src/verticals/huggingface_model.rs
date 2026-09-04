@@ -57,13 +57,15 @@ pub fn matches(url: &str) -> bool {
 }
 
 /// Fetch the model card README (non-fatal).
-async fn fetch_model_card(model_id: &str, ctx: &VerticalContext) -> Option<String> {
+async fn fetch_model_card(model_id: &str) -> Option<String> {
     let client = http_client().ok()?;
     let readme_url = format!("https://huggingface.co/{model_id}/raw/main/README.md");
     let mut req = client
         .get(&readme_url)
         .header("User-Agent", axon_core::http::axon_api_ua());
-    if let Some(token) = ctx.huggingface_token().filter(|token| !token.is_empty()) {
+    if let Ok(token) = std::env::var("HF_TOKEN")
+        && !token.is_empty()
+    {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
     let resp = req.send().await.ok()?;
@@ -170,12 +172,14 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .header("Accept", "application/json");
 
     // Optional HF_TOKEN for higher rate limits
-    if let Some(token) = ctx.huggingface_token().filter(|token| !token.is_empty()) {
+    if let Ok(token) = std::env::var("HF_TOKEN")
+        && !token.is_empty()
+    {
         req = req.header("Authorization", format!("Bearer {token}"));
     }
 
     // Run API call and model card fetch in parallel
-    let (api_resp, model_card) = tokio::join!(req.send(), fetch_model_card(&model_id, ctx));
+    let (api_resp, model_card) = tokio::join!(req.send(), fetch_model_card(&model_id));
 
     let api_resp = api_resp.map_err(|_| VerticalError::VerticalTargetUnavailable {
         vertical: INFO.name,

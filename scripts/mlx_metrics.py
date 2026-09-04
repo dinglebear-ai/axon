@@ -103,4 +103,4 @@ def evidence_gate(delta: MetricsDelta) -> tuple[bool, tuple[str, ...]]:
         reasons.append("occupancy")
     if delta.metal_idle_ratio >= 0.05:
         reasons.append("metal_idle")
-    return not reasons, tuple(reasons)
+    return bool(reasons), tuple(reasons)

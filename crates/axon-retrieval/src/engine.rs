@@ -228,7 +228,7 @@ fn excluded_by_source_kind(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bo
         return false;
     }
     let Some(source_kind) = item.payload.get("source_kind").and_then(|v| v.as_str()) else {
-        return true;
+        return false;
     };
     plan.excluded_source_kinds
         .iter()
@@ -258,16 +258,6 @@ pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiErr
         filters.insert(
             "vector_namespace".to_string(),
             serde_json::json!(plan.namespace_filters),
-        );
-    }
-    if !plan.excluded_source_kinds.is_empty() {
-        filters.insert(
-            axon_vectors::filter::EXCLUDED_SOURCE_KINDS.to_string(),
-            serde_json::json!(plan.excluded_source_kinds),
-        );
-        filters.insert(
-            axon_vectors::filter::REQUIRE_SOURCE_KIND.to_string(),
-            serde_json::Value::Bool(true),
         );
     }
     let mut embedded_at_range = serde_json::Map::new();

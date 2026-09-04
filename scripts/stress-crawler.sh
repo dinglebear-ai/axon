@@ -18,8 +18,7 @@ MIN_COMPLETION_PERCENT="${AXON_STRESS_MIN_COMPLETION_PERCENT:-90}"
 AXON_BIN="${AXON_BIN:-$ROOT_DIR/target/debug/axon}"
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUTDIR="${AXON_STRESS_OUTDIR:-$ROOT_DIR/.cache/stress-crawler/$RUN_STAMP}"
-run_stamp_lower="$(printf '%s' "$RUN_STAMP" | tr '[:upper:]' '[:lower:]')"
-COLLECTION="${AXON_STRESS_COLLECTION:-axon_stress_${run_stamp_lower}_$$_${RANDOM}}"
+COLLECTION="${AXON_STRESS_COLLECTION:-axon_stress_${RUN_STAMP,,}_$$_${RANDOM}}"
 STATE_DIR="$OUTDIR/state"
 REPORT="$OUTDIR/report.json"
 WORKER_PID=""
@@ -196,8 +195,7 @@ primary_job_id="$(jq -r '.job_id // empty' "$OUTDIR/logs/enqueue-primary.json")"
 [ -n "$primary_job_id" ] || die "primary crawl enqueue returned no job_id"
 printf '%s\n' "$primary_job_id" >>"$jobs_file"
 
-page_urls=()
-while IFS= read -r page_url; do page_urls+=("$page_url"); done < <(
+mapfile -t page_urls < <(
   jq -r --arg root "$TARGET_URL" \
     '[.urls[] | select(. != $root)] | unique | .[]' "$OUTDIR/map.json" \
     | head -n "$page_job_count"

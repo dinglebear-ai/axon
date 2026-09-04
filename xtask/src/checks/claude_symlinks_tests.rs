@@ -78,25 +78,3 @@ fn skips_excluded_dirs() {
     let result = check(dir.path());
     assert!(result.is_ok(), "expected target/ to be skipped: {result:?}");
 }
-
-#[test]
-fn skips_immutable_full_review_snapshots() {
-    let dir = tempdir().expect("create tempdir");
-    write_claude(dir.path());
-    make_valid_symlinks(dir.path());
-    let snapshot = dir
-        .path()
-        .join(".full-review")
-        .join("scope-files")
-        .join("crates")
-        .join("axon-services")
-        .join("src");
-    fs::create_dir_all(&snapshot).expect("mkdir immutable snapshot");
-    write_claude(&snapshot);
-
-    let result = check(dir.path());
-    assert!(
-        result.is_ok(),
-        "immutable .full-review snapshots must be excluded: {result:?}"
-    );
-}

@@ -1,12 +1,12 @@
 ---
 title: "Repository Structure"
 created: 2026-07-15
-updated: 2026-09-03
+updated: 2026-07-30
 ---
 
 # Repository Structure
 
-Last Modified: 2026-09-03
+Last Modified: 2026-07-19
 
 The Axon repo is a Cargo workspace plus client apps, deployment configs,
 generated docs, and tooling. This page maps the top-level tree and points at
@@ -22,7 +22,7 @@ the authoritative reference for each subtree.
 ```text
 axon/
 ├── src/                  root binary shim (main.rs, lib.rs) + bin/
-├── crates/               Cargo workspace members — see Cargo.toml and crate-structure.md
+├── crates/               Cargo workspace (23 crates) — see crate-structure.md
 ├── apps/                 client apps (one per release component)
 │   ├── web/              bundled web panel (shipped with the CLI)
 │   ├── android/          Android APK
@@ -35,7 +35,7 @@ axon/
 ├── deploy/               incus/ (preferred), systemd/ (bare-metal)
 ├── migrations/           root-level SQLite migrations (001-003)
 ├── tests/                root-level integration tests + fixtures/
-├── scripts/              Python/bash tooling: lint, schema,
+├── scripts/              Python/bash tooling (~60 scripts: lint, schema,
 │                         install, qdrant-quality, ci/, lib/, searxng-research/)
 ├── plugins/              axon/ Claude plugin packaging + scripts/
 ├── vendor/               vendored deps (e.g. lab-auth) via [patch]
@@ -50,7 +50,7 @@ axon/
 ├── docker-compose.prod.yaml      canonical infra reference
 ├── docker-compose.external-qdrant.yaml  remote-Qdrant override
 ├── install.sh / install.ps1      verified one-line installers
-├── rust-toolchain.toml   authoritative pinned Rust toolchain
+├── rust-toolchain.toml   pins 1.96.0
 ├── deny.toml             cargo-deny policy
 ├── lefthook.yml          git hooks (monolith + test gates)
 └── release-please-config.json / .release-please-manifest.json
@@ -60,7 +60,7 @@ axon/
 
 | Path | Purpose | Authoritative reference |
 |---|---|---|
-| `crates/` | Rust workspace members declared by the root manifest | [crate-structure.md](crate-structure.md) |
+| `crates/` | The 23-crate Rust workspace | [crate-structure.md](crate-structure.md) |
 | `apps/` | Client apps, each a separate release component | `apps/*/README.md` |
 | `deploy/incus/` | Preferred deployment (system container) | [deploy/incus/README.md](../../deploy/incus/README.md) |
 | `deploy/systemd/` | Bare-metal systemd unit + walkthrough | [deploy/systemd/README.md](../../deploy/systemd/README.md) |

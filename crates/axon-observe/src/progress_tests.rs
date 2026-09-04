@@ -12,14 +12,13 @@ fn into_event_produces_running_status_with_sentinel_sequence() {
     let job_id = JobId(uuid::Uuid::new_v4());
     let event = ProgressUpdate::new("embedding batch")
         .with_counts(counts(5))
-        .into_event(job_id, 2, PipelinePhase::Embedding);
+        .into_event(job_id, PipelinePhase::Embedding);
 
     assert_eq!(event.job_id, job_id);
     assert_eq!(event.phase, PipelinePhase::Embedding);
     assert_eq!(event.status, LifecycleStatus::Running);
     assert_eq!(event.severity, Severity::Info);
     assert_eq!(event.sequence, 0, "sentinel; sink stamps the real sequence");
-    assert_eq!(event.attempt, 2);
     assert_eq!(event.counts.items_done, 5);
     assert_eq!(event.message, "embedding batch");
 }
@@ -44,7 +43,7 @@ fn with_current_and_throughput_populate_the_event() {
     let event = ProgressUpdate::new("tick")
         .with_current(current.clone())
         .with_throughput(throughput.clone())
-        .into_event(job_id, 1, PipelinePhase::Fetching);
+        .into_event(job_id, PipelinePhase::Fetching);
 
     assert_eq!(event.current, Some(current));
     assert_eq!(event.throughput, Some(throughput));
@@ -54,11 +53,9 @@ fn with_current_and_throughput_populate_the_event() {
 fn with_stage_sets_stage_id() {
     let job_id = JobId(uuid::Uuid::new_v4());
     let stage_id = StageId(uuid::Uuid::new_v4());
-    let event = ProgressUpdate::new("tick").with_stage(stage_id).into_event(
-        job_id,
-        1,
-        PipelinePhase::Fetching,
-    );
+    let event = ProgressUpdate::new("tick")
+        .with_stage(stage_id)
+        .into_event(job_id, PipelinePhase::Fetching);
 
     assert_eq!(event.stage_id, Some(stage_id));
 }
@@ -68,7 +65,6 @@ fn counts_update_matches_the_builder_equivalent() {
     let job_id = JobId(uuid::Uuid::new_v4());
     let event = counts_update(
         job_id,
-        1,
         PipelinePhase::Parsing,
         None,
         counts(3),

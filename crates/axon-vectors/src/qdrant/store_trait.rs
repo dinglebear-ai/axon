@@ -14,16 +14,6 @@ impl VectorStore for QdrantVectorStore {
         self.track(self.ensure_collection_inner(spec).await).await
     }
 
-    async fn begin_bulk_load(&self, collection: &str) -> Result<()> {
-        self.track(self.begin_bulk_load_inner(collection).await)
-            .await
-    }
-
-    async fn finish_bulk_load(&self, collection: &str) -> Result<()> {
-        self.track(self.finish_bulk_load_inner(collection).await)
-            .await
-    }
-
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         self.track(self.upsert_inner(batch).await).await
     }

@@ -100,9 +100,7 @@ prepare_live_invocation() {
 
   while IFS= read -r encoded; do
     candidate_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
-    candidate=()
-    while IFS= read -r path_part; do candidate+=("$path_part"); done \
-      < <(printf '%s' "$candidate_json" | jq -r '.[]')
+    mapfile -t candidate < <(printf '%s' "$candidate_json" | jq -r '.[]')
     candidate_len="${#candidate[@]}"
     [ "$candidate_len" -le "$match_len" ] && continue
     [ "$candidate_len" -gt "${#original[@]}" ] && continue
@@ -148,14 +146,6 @@ prepare_live_invocation() {
   PREPARED_ARGS=("${global_args[@]}" "${command_path[@]}" "${local_args[@]}")
 }
 
-next_live_log_count() {
-  local log_slug="$1" counter_file="$OUTDIR/logs/.count-$1" count=0
-  [ ! -f "$counter_file" ] || read -r count <"$counter_file"
-  count=$((count + 1))
-  printf '%s\n' "$count" >"$counter_file"
-  printf '%s\n' "$count"
-}
-
 run_live() {
   local name="$1"
   shift
@@ -166,7 +156,8 @@ run_live() {
   done
   local log_slug log_count log_suffix=""
   log_slug="$(printf '%s' "$name" | tr ' /' '__')"
-  log_count="$(next_live_log_count "$log_slug")"
+  log_count=$((${LIVE_LOG_COUNTS[$log_slug]:-0} + 1))
+  LIVE_LOG_COUNTS["$log_slug"]="$log_count"
   [ "$log_count" -gt 1 ] && log_suffix="-$log_count"
   logfile="$OUTDIR/logs/live-${log_slug}${log_suffix}.log"
   stderr_log="${logfile%.log}.stderr.log"
@@ -214,7 +205,8 @@ run_live_expect_failure() {
   prepare_live_invocation "$@"
   local log_slug log_count log_suffix=""
   log_slug="$(printf '%s' "$name" | tr ' /' '__')"
-  log_count="$(next_live_log_count "$log_slug")"
+  log_count=$((${LIVE_LOG_COUNTS[$log_slug]:-0} + 1))
+  LIVE_LOG_COUNTS["$log_slug"]="$log_count"
   [ "$log_count" -gt 1 ] && log_suffix="-$log_count"
   logfile="$OUTDIR/logs/live-${log_slug}${log_suffix}.log"
   stderr_log="${logfile%.log}.stderr.log"
@@ -455,7 +447,8 @@ run_live_setup_home() {
   done
   local log_slug log_count log_suffix=""
   log_slug="$(printf '%s' "$name" | tr ' /' '__')"
-  log_count="$(next_live_log_count "$log_slug")"
+  log_count=$((${LIVE_LOG_COUNTS[$log_slug]:-0} + 1))
+  LIVE_LOG_COUNTS["$log_slug"]="$log_count"
   [ "$log_count" -gt 1 ] && log_suffix="-$log_count"
   logfile="$OUTDIR/logs/live-${log_slug}${log_suffix}.log"
   stderr_log="${logfile%.log}.stderr.log"

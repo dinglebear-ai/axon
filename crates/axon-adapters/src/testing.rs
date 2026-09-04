@@ -357,14 +357,6 @@ impl SourceAdapter for FakeSourceAdapter {
             data: documents,
         })
     }
-
-    fn release(&self, _request: &AdapterReleaseRequest) -> Result<()> {
-        self.record("release");
-        if let Some(err) = self.failure_error(ErrorStage::Cleaning, "release") {
-            return Err(err);
-        }
-        Ok(())
-    }
 }
 
 fn source_defaults(name: &str) -> (SourceKind, SourceScope) {

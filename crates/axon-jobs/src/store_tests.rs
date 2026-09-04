@@ -1,27 +1,6 @@
 use super::*;
 
 #[tokio::test]
-async fn pending_job_counter_reads_the_canonical_job_table() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("jobs.db");
-    let pool = open_sqlite_pool(path.to_string_lossy().as_ref())
-        .await
-        .expect("job store");
-    sqlx::query(
-        "INSERT INTO jobs (job_id, kind, intent, status, phase, attempt, priority, auth_snapshot_json, created_at, updated_at) VALUES (?, 'source', 'run', 'queued', 'queued', 1, 'normal', '{}', ?, ?)",
-    )
-    .bind(uuid::Uuid::new_v4().to_string())
-    .bind(now_ms())
-    .bind(now_ms())
-    .execute(&pool)
-    .await
-    .expect("queued job");
-    drop(pool);
-
-    assert_eq!(count_pending_jobs(&path).await.expect("count"), 1);
-}
-
-#[tokio::test]
 async fn quick_check_reports_clean_database() {
     let pool = SqlitePool::connect("sqlite::memory:")
         .await

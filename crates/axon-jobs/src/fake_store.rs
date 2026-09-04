@@ -69,26 +69,6 @@ impl JobStore for FakeJobWatchStore {
         create::create(self, request).await
     }
 
-    async fn create_with_config_snapshot(
-        &self,
-        request: JobCreateRequest,
-        config_json: Option<&str>,
-    ) -> Result<JobDescriptor> {
-        if let Some(config_json) = config_json {
-            let expected = crate::config_snapshot_store::config_snapshot_id_from_json(config_json);
-            if request.config_snapshot_id.as_ref().map(|id| id.0.as_str())
-                != Some(expected.as_str())
-            {
-                return Err(ApiError::new(
-                    "config_snapshot.digest_mismatch",
-                    ErrorStage::Publishing,
-                    "config snapshot id does not match its content digest",
-                ));
-            }
-        }
-        create::create(self, request).await
-    }
-
     async fn admit_projection_batch_atomic(
         &self,
         admission: ProjectionBatchAdmission,
@@ -201,13 +181,6 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn append_event(&self, event: SourceProgressEvent) -> Result<()> {
-        if self.mode == FakeJobWatchMode::AppendEventFailure {
-            return Err(ApiError::new(
-                "job.event_append_failed",
-                ErrorStage::Storage,
-                "injected event append failure",
-            ));
-        }
         let mut state = self.state.lock().await;
         append_event_locked(&mut state, event)
     }

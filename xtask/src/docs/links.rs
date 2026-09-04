@@ -15,10 +15,6 @@ use crate::checks::doc_links::extract_relative_link_targets;
 /// Directory names skipped entirely while walking for markdown files.
 const SKIP_DIRS: &[&str] = &[
     ".git",
-    // Immutable review evidence mirrors selected source files without their
-    // surrounding repository tree; its relative links are intentionally not
-    // live documentation contracts.
-    ".full-review",
     ".claude",
     ".cargo",
     ".worktrees",

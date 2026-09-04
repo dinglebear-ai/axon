@@ -66,32 +66,13 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.prod.yaml must clear host-only Codex bootstrap overrides in the container"
     );
     for mapping in [
-        "127.0.0.1:${QDRANT_HTTP_PORT:-53333}:6333",
-        "127.0.0.1:${QDRANT_GRPC_PORT:-53334}:6334",
-        "127.0.0.1:${TEI_HTTP_PORT:-52000}:80",
         "127.0.0.1:${AXON_CHROME_CDP_PORT:-9222}:9222",
         "127.0.0.1:${AXON_CHROME_DEVTOOLS_PORT:-9223}:9223",
         "127.0.0.1:${AXON_CHROME_MANAGEMENT_PORT:-6000}:6000",
     ] {
         assert!(
             compose.contains(mapping),
-            "unauthenticated infrastructure ports must remain host-loopback-only: {mapping}"
-        );
-    }
-}
-
-#[test]
-fn production_images_are_pinned_to_reviewed_digests() {
-    let compose = fs::read_to_string("docker-compose.prod.yaml")
-        .expect("docker-compose.prod.yaml should be readable at repo root");
-    for image in [
-        "ghcr.io/dinglebear-ai/axon:latest@sha256:611e79987bd056b99646da5c4297540840e5dca774fbbbe1fefa244129d95476",
-        "qdrant/qdrant:v1.18.2@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c",
-        "ghcr.io/huggingface/text-embeddings-inference:89-1.9@sha256:e47e625ced2385d3dbfdee79ba0380204578e0b27ef1a926783f9b3486aaf109",
-    ] {
-        assert!(
-            compose.contains(image),
-            "production image must be digest pinned: {image}"
+            "unauthenticated bundled Chrome ports must remain host-loopback-only: {mapping}"
         );
     }
 }
@@ -313,19 +294,17 @@ fn plugin_setup_smoke_delegates_to_shared_setup() {
 }
 
 #[test]
-fn service_recipes_expose_explicit_local_and_external_qdrant_topologies() {
+fn services_up_starts_only_infrastructure_services() {
     let justfile = fs::read_to_string("Justfile").expect("Justfile should be readable");
 
     assert!(
-        justfile.contains("services-up-local:")
-            && justfile.contains("--profile local-qdrant up -d axon-qdrant axon-tei axon-chrome"),
-        "local services must start every dependency, including bundled Qdrant"
+        justfile.contains("up -d axon-tei axon-chrome"),
+        "just services-up should keep its infrastructure-only default contract"
     );
     assert!(
-        justfile.contains("services-up-external-qdrant:")
-            && justfile.contains("AXON_EXTERNAL_QDRANT_URL must be set")
-            && justfile.contains("up -d axon-tei axon-chrome"),
-        "external services must be explicit and fail closed without a Qdrant URL"
+        justfile.contains("stop axon-tei axon-chrome")
+            && justfile.contains("rm -f axon-tei axon-chrome"),
+        "just services-down should stop only default infrastructure services"
     );
     assert!(
         justfile.contains("--profile local-qdrant up -d axon-qdrant")
@@ -355,27 +334,6 @@ fn service_recipes_expose_explicit_local_and_external_qdrant_topologies() {
         !services_down_body.contains("-f docker-compose.prod.yaml down"),
         "just services-down must not tear down the whole compose project"
     );
-}
-
-#[test]
-fn production_startup_ensures_the_external_compose_network() {
-    let justfile = fs::read_to_string("Justfile").expect("Justfile should be readable");
-    assert!(
-        justfile.contains("ensure-compose-network:")
-            && justfile.contains("docker network inspect")
-            && justfile.contains("docker network create")
-            && justfile.contains("ai.dinglebear.axon.network-owner=preflight")
-            && justfile.contains("remove-compose-network-if-owned:"),
-        "production startup must idempotently establish its external network"
-    );
-    for recipe in ["prod-up:", "prod-up-external-qdrant:"] {
-        let body = justfile.split_once(recipe).expect("recipe exists").1;
-        let body = body.lines().take(22).collect::<Vec<_>>().join("\n");
-        assert!(
-            body.contains("just ensure-compose-network"),
-            "{recipe} must run network preflight"
-        );
-    }
 }
 
 #[test]

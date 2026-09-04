@@ -29,7 +29,9 @@ die() {
 }
 
 now_ms() {
-  python3 -c 'import time; print(time.time_ns() // 1_000_000)'
+  local epoch_ns
+  epoch_ns="$(date +%s%N)"
+  printf '%s\n' "$((epoch_ns / 1000000))"
 }
 
 require_uint() {
