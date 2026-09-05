@@ -13,6 +13,7 @@ use crate::context::ServiceContext;
 
 pub(crate) use self::ask_retrieval::retrieval_ask_context;
 pub use self::ask_retrieval::{ask_via_retrieval, ask_via_retrieval_with_auth};
+pub(crate) use self::code_search::code_search_committed_owned;
 pub use self::code_search::{
     CodeSearchProjectResult, CodeSearchRefreshResult, ReindexProgress, ReindexProgressSink,
     code_search, code_search_owned, code_search_with_progress, refresh_code_search_index,
