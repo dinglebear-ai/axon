@@ -9,9 +9,9 @@ name: release
 # release so that a palette-only change does not require a CLI version bump and
 # vice-versa.
 #
-# Manual workflow_dispatch builds everything but skips attaching artifacts by
-# default. release-please.yml dispatches this workflow with publish=true on the
-# newly created v* tag after release-please creates the GitHub Release.
+# Manual workflow_dispatch builds the protected main commit and skips attaching
+# artifacts by default. release-please.yml dispatches with publish=true after it
+# creates a v* tag on that same commit and the corresponding GitHub Release.
 on:
   workflow_dispatch:
     inputs:
@@ -20,7 +20,7 @@ on:
         type: boolean
         default: false
       release_tag:
-        description: "Existing v* tag to rebuild and publish (manual backfill only)"
+        description: "Existing v* tag on the dispatching protected main commit"
         type: string
         required: false
         default: ""
@@ -60,6 +60,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_TAG: ${{ github.ref_name }}
           EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
@@ -72,7 +73,7 @@ jobs:
           git fetch --force origin "refs/tags/$tag:refs/tags/$tag" main
           [[ "$(git cat-file -t "refs/tags/$tag")" == "tag" ]] || { echo "release tag must be annotated" >&2; exit 1; }
           commit="$(git rev-parse "refs/tags/$tag^{}")"
-          git merge-base --is-ancestor "$commit" origin/main || { echo "release tag is not reachable from protected main" >&2; exit 1; }
+          [[ "$commit" == "$EVENT_SHA" ]] || { echo "release tag must identify the protected main commit that dispatched this workflow" >&2; exit 1; }
           printf 'commit=%s\ntag=%s\n' "$commit" "$tag" >> "$GITHUB_OUTPUT"
 
   web-assets:
@@ -83,7 +84,6 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ needs.resolve-release.outputs.commit }}
           sparse-checkout: |
             apps/web
             assets
@@ -109,8 +109,6 @@ jobs:
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          ref: ${{ needs.resolve-release.outputs.commit }}
       - uses: ./.github/actions/setup-rust-kache
         with:
           toolchain: 1.97.1
@@ -227,8 +225,6 @@ jobs:
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          ref: ${{ needs.resolve-release.outputs.commit }}
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.97.1

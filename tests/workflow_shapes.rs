@@ -1406,8 +1406,8 @@ fn release_resolves_a_canonical_tag_before_build_and_isolates_signing() {
 
     assert!(resolve.contains("^v[0-9]+\\.[0-9]+\\.[0-9]+$"));
     assert!(resolve.contains("refs/tags/$tag"));
-    assert!(resolve.contains("merge-base --is-ancestor"));
-    assert!(linux.contains("needs.resolve-release.outputs.commit"));
+    assert!(resolve.contains("[[ \"$commit\" == \"$EVENT_SHA\" ]]"));
+    assert!(!linux.contains("needs.resolve-release.outputs.commit"));
     assert!(!linux.contains("SIGNING_KEY"));
     assert!(!signing.contains("actions/checkout@"));
     assert!(signing.contains("environment: release-signing"));
@@ -1895,16 +1895,12 @@ fn release_capability_smokes_provide_required_provider_endpoints() {
 }
 
 #[test]
-fn release_manual_backfill_builds_and_publishes_the_exact_existing_tag() {
+fn release_dispatch_builds_and_publishes_the_exact_existing_tag() {
     let workflow = include_str!("../.github/workflows/release.yml");
     assert!(workflow.contains("release_tag:"));
-    assert_eq!(
-        workflow
-            .matches("ref: ${{ needs.resolve-release.outputs.commit }}")
-            .count(),
-        3,
-        "every source checkout must use the resolver's immutable commit"
-    );
+    assert_eq!(workflow.matches("ref: main").count(), 1);
+    assert!(workflow.contains("EVENT_SHA: ${{ github.sha }}"));
+    assert!(workflow.contains("[[ \"$commit\" == \"$EVENT_SHA\" ]]"));
     assert!(workflow.contains("^v[0-9]+\\.[0-9]+\\.[0-9]+$"));
     assert_eq!(
         workflow
