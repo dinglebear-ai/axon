@@ -114,7 +114,10 @@ class Handler(BaseHTTPRequestHandler):
         if parts[2]=="index":
             field_name=parts[3] if len(parts)>3 else payload.get("field_name")
             if not isinstance(field_name,str): return self.reply({"error":"payload index field_name required"},400)
-            state["collections"][collection]["indexes"][field_name]=payload
+            # Qdrant's collection response projects the create request's
+            # `field_schema` as payload-schema `data_type` metadata.
+            data_type=payload.get("field_schema",payload.get("data_type"))
+            state["collections"][collection]["indexes"][field_name]={"data_type":data_type}
             self.save(state);return self.reply({"status":"completed"})
         for point in payload["points"]: state["collections"][collection]["points"][str(point["id"])]=point
         self.save(state);self.reply({"status":"completed"})

@@ -8,6 +8,8 @@ use axon_api::source::{
     SourceProgressEvent, StageCounts, Timestamp, Visibility,
 };
 use axon_core::sqlite::ImmediateTx;
+use axon_observe::collector::ObservabilitySink;
+use axon_observe::sink::SqliteObservabilitySink;
 use sqlx::SqlitePool;
 
 use crate::boundary::JobStore;
@@ -97,7 +99,10 @@ async fn mark_terminal_with_event(
             Some(event.clone()),
         )
     })
-    .await
+    .await?;
+    SqliteObservabilitySink::from_migrated_pool(pool.clone())
+        .emit(event)
+        .await
 }
 
 pub(super) async fn heartbeat(
@@ -186,18 +191,50 @@ pub(super) async fn mark_terminal(
     result_json: Option<String>,
     error: Option<ApiError>,
 ) -> Result<(), ApiError> {
-    retry_job_write("unified worker terminal transition", || {
-        mark_terminal_once(
-            pool,
-            claimed,
-            status,
-            phase,
-            counts.clone(),
-            result_json.clone(),
-            error.clone(),
-            None,
-        )
-    })
+    let event = SourceProgressEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        sequence: 0,
+        job_id: claimed.job_id,
+        attempt: claimed.attempt,
+        stage_id: None,
+        batch_id: None,
+        reservation_id: None,
+        checkpoint_id: None,
+        dedupe_key: Some(format!("job-terminal:{}", claimed.job_id.0)),
+        phase,
+        status,
+        severity: match status {
+            LifecycleStatus::Completed => Severity::Info,
+            LifecycleStatus::CompletedDegraded => Severity::Degraded,
+            LifecycleStatus::Canceled => Severity::Warning,
+            _ => Severity::Failed,
+        },
+        visibility: Visibility::Public,
+        message: "unified durable job reached terminal state".to_string(),
+        timestamp: Timestamp::from(chrono::Utc::now()),
+        source_id: None,
+        canonical_uri: None,
+        adapter: None,
+        scope: None,
+        generation: None,
+        counts: counts.clone().unwrap_or_else(empty_counts),
+        timing: None,
+        current: None,
+        throughput: None,
+        retry: None,
+        warning: None,
+        error: error.clone(),
+    };
+    mark_terminal_with_event(
+        pool,
+        claimed,
+        status,
+        phase,
+        counts,
+        result_json,
+        error,
+        event,
+    )
     .await
 }
 

@@ -204,7 +204,7 @@ impl ProgressCoordinator {
             batch_items_total,
             items_offset,
             documents_offset,
-            publish_phase,
+            _publish_phase: publish_phase,
             state: Mutex::new(BatchProgressState::default()),
         }
     }
@@ -312,7 +312,7 @@ pub(super) struct AcquisitionBatchProgress<'a> {
     batch_items_total: u64,
     items_offset: u64,
     documents_offset: u64,
-    publish_phase: bool,
+    _publish_phase: bool,
     state: Mutex<BatchProgressState>,
 }
 
@@ -382,18 +382,12 @@ impl AcquisitionBatchProgress<'_> {
             "acquired {global_items}/{} source items",
             self.generation_items_total
         );
-        if self.publish_phase {
-            self.coordinator
-                .checkpoint(PipelinePhase::Fetching, counts, message)
-                .await;
-        } else {
-            // Speculative prefetch acquisition: keep the Fetching counts
-            // advancing without regressing the published phase of the batch
-            // still being processed.
-            self.coordinator
-                .checkpoint_counts(PipelinePhase::Fetching, counts, message)
-                .await;
-        }
+        // Acquisition completion can race the downstream consumer even for
+        // the initially published batch. Keep Fetching counts advancing, but
+        // publish them only while Fetching remains the live phase.
+        self.coordinator
+            .checkpoint_counts(PipelinePhase::Fetching, counts, message)
+            .await;
     }
 }
 

@@ -1,7 +1,7 @@
 use axon_api::source::{
-    ChunkId, ContentKind, ContentRef, DocumentId, GraphCandidate, GraphCandidateProducer,
-    GraphEvidence, MetadataMap, Severity, SourceDocument, SourceError, SourceGenerationId,
-    SourceId, SourceItemKey, SourceParseFacts, SourceRange, SourceWarning,
+    ChunkHint, ChunkId, ChunkProfile, ContentKind, ContentRef, DocumentId, GraphCandidate,
+    GraphCandidateProducer, GraphEvidence, MetadataMap, Severity, SourceDocument, SourceError,
+    SourceGenerationId, SourceId, SourceItemKey, SourceParseFacts, SourceRange, SourceWarning,
 };
 use axon_parse::vertical::{
     VERTICAL_GRAPH_CANDIDATES_METADATA_KEY, VERTICAL_PARSE_FACTS_METADATA_KEY,
@@ -96,6 +96,31 @@ fn preparer_builds_prepared_document_from_inline_source_dto() {
         prepared.chunks[0].metadata["chunking_profile"],
         "markdown_sections"
     );
+}
+
+#[test]
+fn self_parsed_markdown_overrides_generic_local_code_hint() {
+    let mut request = request(
+        ContentKind::Markdown,
+        "# Observable beacon\n\nProtected values must never enter telemetry.\n",
+        "gen-self-parsed-markdown",
+        ChunkingProfile::MarkdownSections,
+    );
+    request.profile = None;
+    request.document.chunk_hints.push(ChunkHint {
+        profile: ChunkProfile::CodeSymbol,
+        reason: "route default chunk profile".to_string(),
+        options: MetadataMap::new(),
+    });
+
+    let prepared = DocumentPreparer::default()
+        .prepare(request)
+        .expect("self-parsed markdown should produce chunks")
+        .document;
+
+    assert_eq!(prepared.chunking_profile, "markdown_sections");
+    assert_eq!(prepared.chunks.len(), 1);
+    assert!(prepared.chunks[0].content.contains("Observable beacon"));
 }
 
 #[test]

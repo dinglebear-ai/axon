@@ -341,7 +341,13 @@ pub(crate) async fn run_unified_claimed(
     shutdown: &CancellationToken,
     registry: Option<&JobRunnerRegistry>,
 ) {
-    let store = SqliteUnifiedJobStore::new(pool.clone());
+    // Worker-owned terminal transitions must flow through the same durable
+    // observability sink as service-owned progress updates. A plain store here
+    // left successful jobs without a terminal `complete` observe event.
+    let store = SqliteUnifiedJobStore::with_observe_sink(
+        pool.clone(),
+        Arc::new(axon_observe::sink::SqliteObservabilitySink::from_migrated_pool(pool.clone())),
+    );
     if shutdown.is_cancelled() {
         terminal::mark_canceled(pool, &store, claimed).await;
         return;

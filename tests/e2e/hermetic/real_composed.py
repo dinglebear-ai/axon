@@ -31,13 +31,26 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
  # so the test can prove it is absent from retained telemetry.
  source_file.write_text(f"# Observable beacon\n\nProtected values must never enter telemetry: {telemetry_marker} {private_path_canary}\n")
  source_path=str(source_file.resolve())
- source_argv=[str(binary),"source",source_path,"--scope","file","--collection",run_id,"--wait","true","--json"]
+ # The allocation-owned server is the sole worker for this SQLite queue. The
+ # CLI must enqueue without starting a competing in-process worker, then act as
+ # a read-only observer while the server drains the job.
+ source_argv=[str(binary),"source",source_path,"--scope","file","--collection",run_id,"--wait","false","--json"]
  source_process=subprocess.run(source_argv,cwd=ROOT,env=env,capture_output=True,timeout=30,check=False)
  if source_process.returncode:raise RuntimeError(f"real source observability failed: {source_process.stderr[-500:]!r}")
- created=execute.parse_output(source_process.stdout);source_log=source_process.stderr.decode(errors="strict")
+ created=execute.parse_output(source_process.stdout)
+ source_log=source_process.stderr.decode(errors="strict")+"\n"+source_process.stdout.decode(errors="strict")
  job_id=created.get("job_id")
- if not isinstance(job_id,str) or created.get("status") not in {"completed","completed_degraded"}:raise RuntimeError("real source observability fixture did not complete")
+ if not isinstance(job_id,str):raise RuntimeError("real source observability fixture did not return a job id")
  try:
+  deadline=time.monotonic()+30
+  while True:
+   observed=http.request("GET",f"/v1/jobs/{job_id}")
+   status=observed.get("status")
+   if not isinstance(status,str) and isinstance(observed.get("job"),dict):status=observed["job"].get("status")
+   if status in {"completed","completed_degraded"}:break
+   if status in {"failed","canceled","cancelled","expired","skipped"}:raise RuntimeError(f"real source observability fixture terminated as {status}")
+   if time.monotonic()>=deadline:raise RuntimeError("real source observability fixture did not complete")
+   time.sleep(.05)
   cli,_=execute.invoke(binary,["jobs","get",job_id,"--json"],env,30)
   cli_events,_=execute.invoke(binary,["jobs","events",job_id,"--after-sequence","0","--limit","200","--json"],env,30)
  except BaseException as error:setattr(error,"axon_e2e_phase","observe-cli");raise
@@ -96,16 +109,22 @@ def verify_observability(binary,mcporter,descriptor,env,run_id):
  if job_id not in log_text:raise RuntimeError("real structured CLI/file log lost source job correlation")
  duration=(time.monotonic_ns()-started)//1_000_000
  digest=hashlib.sha256(json.dumps(http_events,sort_keys=True).encode()).hexdigest()
+ deadline=time.monotonic()+2
+ while True:
+  runtime=observe.load_runtime(Path(env["AXON_SQLITE_PATH"]),job_id)
+  if runtime["events"] and runtime["events"][-1].get("phase") in {"complete","canceled"}:break
+  if time.monotonic()>=deadline:raise RuntimeError("durable observability did not reach a terminal phase")
+  time.sleep(.05)
+ observed_phase=runtime["events"][-1]["phase"]
  capture={"observation_mode":"multi_observer","owned_provider_ids":[],"executions":executions,
   "timing":{"started_monotonic_ms":0,"finished_monotonic_ms":duration,"reported_duration_ms":duration,"tolerance_ms":250},
   "logs":[{"job_id":job_id,"phase":"complete","message":"correlated structured server log observed"}],
-  "metrics":[{"name":"stats.totals.sources","labels":{"phase":"complete","status":"completed"},"value":max(source_total)}],
+  "metrics":[{"name":"stats.totals.sources","labels":{"phase":observed_phase,"status":"completed"},"value":max(source_total)}],
   "evidence":[{"job_id":job_id,"path":"canonical-report-invariant","sha256":digest,"bytes":len(json.dumps(http_events).encode())}],
   "raw_channels":{"cli_source_stderr":source_log,"cli_job":cli,"cli_events":cli_events,
                   "http_job":http_value,"http_events":http_events,"http_stats":stats,
                   "mcp_job":mcp_value,"mcp_events":mcp_events,"server_logs":log_text},
   "protected_canaries":[telemetry_marker],"private_paths":[private_path_canary]}
- runtime=observe.load_runtime(Path(env["AXON_SQLITE_PATH"]),job_id)
  try:outcomes=observe.evaluate(capture,runtime)
  except BaseException as error:setattr(error,"axon_e2e_phase","observe-oracles");raise
  scenario=reporting.Scenario("source.observability",os.environ.get("AXON_E2E_TIER","hermetic"),"source","multi-observer")

@@ -84,9 +84,14 @@ def _launch(allocation):
  if allocation.get("seed_retrieval"):
   corpus=(ROOT/"tests/e2e/corpus/v1/documents/micro/atlas-v1.md").resolve();pid="11111111-1111-4111-8111-111111111111"
   points[pid]={"id":pid,"vector":{"dense":[.125]*8},"payload":{"chunk_id":"chunk-atlas","document_id":"doc-atlas",
-   "source_id":identities["source_id"],"source_item_key":identities["item_key"],"chunk_text":"The Atlas beacon emits an amber signal.","payload_contract_version":"2026-07-01",
-   "source_generation":1,"committed_generation":1,"job_id":"22222222-2222-4222-8222-222222222222",
-   "redaction_status":"clean","visibility":"public","redaction_version":"e2e-v1","redacted_field_count":0,
+   "source_id":identities["source_id"],"source_family":"web","source_kind":"web","source_adapter":"web","source_scope":"page",
+   "source_canonical_uri":corpus.as_uri(),"source_item_key":identities["item_key"],"item_canonical_uri":corpus.as_uri(),
+   "chunk_text":"The Atlas beacon emits an amber signal.","payload_contract_version":"2026-07-01",
+   "source_generation":1,"committed_generation":1,"born_epoch":1,"retired_epoch":None,
+   "job_id":"22222222-2222-4222-8222-222222222222",
+   "document_status":"published","content_kind":"markdown","vector_namespace":"dense",
+   "embedding_provider":"e2e","embedding_model":"e2e-owned","embedding_profile":"test","embedded_at":"2026-07-01T00:00:00Z",
+   "redaction_status":"clean","visibility":"public","redaction_version":"2026-07-16","redacted_field_count":0,
    "dropped_field_count":0,"detector_count":0,"detector_names":[],"embedding_refs":[],
    "chunk_locator":{"canonical_uri":corpus.as_uri(),"range":{"line_start":1,"line_end":2}},
    "source_range":{"line_start":1,"line_end":2},"canonical_uri":corpus.as_uri()}}
