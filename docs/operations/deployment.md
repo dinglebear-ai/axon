@@ -178,10 +178,6 @@ optional Qdrant profile:
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml --profile local-qdrant up -d axon-qdrant
 ```
 
-The Compose `axon` service publishes MCP HTTP through
-`127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001`. `AXON_HTTP_PUBLISH` is a numeric
-host port only; the committed mapping is loopback-only.
-
 **Local dev mode** (TEI/Chrome in Docker, Qdrant on tootie, Axon server run locally):
 
 ```bash
@@ -232,7 +228,10 @@ ssh tootie 'docker logs --tail=200 axon-qdrant'
 
 ## Rollback Procedure
 
-Code-only rollback is compose-based and image-based. A deployment that runs
+Production code rollback follows the owning native service guide: use the
+previous version-pinned binary, then restart `axon-native.service` using the
+Incus or bare-metal systemd procedure. Compose rollback applies only to the
+local/reference Qdrant, TEI, and Chrome infrastructure. A deployment that runs
 `axon reset` also changes durable state and requires a coordinated backup before
 the reset:
 
@@ -249,7 +248,8 @@ checklist. If a reset was interrupted but restoration is not required, rerun
 the same plan id: started plans remain resumable after their planning TTL and
 validate completed postconditions plus pending preconditions before continuing.
 
-1. Stop current stack:
+1. Stop the native Axon service and, when its infrastructure also needs to be
+   rolled back, stop the reference infrastructure:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml down
@@ -261,14 +261,14 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml down
 - previous env values if changed
 - previous image tags if using tagged images
 
-3. Rebuild/restart:
+3. Restore the previous native Axon binary and restart
+   `axon-native.service`. If infrastructure inputs changed, rebuild and restart
+   only the affected provider services, for example:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
+docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 ```
-
-Restart `axon serve` locally as in the standard deploy procedure.
 
 4. Re-run validation checklist.
 
@@ -294,8 +294,9 @@ axon update --force               # reinstall even if the version already matche
 
 The updater currently supports the `axon-linux-x86_64.tar.gz` GitHub Release
 asset and requires the matching `.sha256` sidecar. It downloads into a temporary
-directory, verifies the checksum, installs atomically over the destination, and
-only then syncs the Compose service. For local smoke tests or CI, set
+directory, verifies the checksum and mandatory minisign signature, and installs
+atomically over the destination. Restart the owning native systemd service after
+the update. For local smoke tests or CI, set
 `AXON_UPDATE_FILE_RELEASE_DIR` to a directory containing those two release files
 and `AXON_UPDATE_INSTALL_PATH` to a temporary destination.
 

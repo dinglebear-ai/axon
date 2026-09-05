@@ -61,6 +61,13 @@ deployment = (root / "docs/operations/deployment.md").read_text()
 plugin_readme = (root / "plugins/axon/README.md").read_text()
 if "deploy and roll back Axon safely in self-hosted environments using Docker Compose" in deployment:
     raise SystemExit("deployment guide treats Docker Compose as a supported Axon production runtime")
+for stale in (
+    "Code-only rollback is compose-based and image-based.",
+    "docker-compose.prod.yaml up -d\n",
+    "only then syncs the Compose service",
+):
+    if stale in deployment:
+        raise SystemExit(f"deployment guide retains unsupported Compose Axon lifecycle: {stale}")
 if "Axon supports Docker Compose, bare-metal systemd" in plugin_readme:
     raise SystemExit("plugin guide contradicts the root production deployment contract")
 
@@ -69,6 +76,13 @@ if "110 commands across 49" in readme:
     raise SystemExit("README command total is stale")
 if "raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" in readme:
     raise SystemExit("README executes a mutable Windows installer directly")
+for required in (
+    "releases/download/vX.Y.Z/install.sh",
+    "releases/download/vX.Y.Z/install.ps1",
+    "environments/release-signing/variables/AXON_UPDATE_MINISIGN_PUBKEY",
+):
+    if required not in readme:
+        raise SystemExit(f"README lacks concrete release installer trust path: {required}")
 windows_installer = (root / "install.ps1").read_text()
 if "raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" in windows_installer:
     raise SystemExit("Windows installer recommends executing a mutable bootstrap directly")

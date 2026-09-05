@@ -90,12 +90,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && npm install -g @google/gemini-cli@0.41.2 @openai/codex@0.136.0 \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
-# Non-root user with stable UID/GID 1000 — matches the host user that owns
-# bind-mounted ~/.axon, avoiding permission churn on writes.
-RUN groupadd --system --gid 1000 axon \
-    && useradd  --system --uid 1000 --gid 1000 \
-                --home-dir /home/axon --shell /usr/sbin/nologin \
-                --create-home axon
+# The Node base image already provides the non-root 1000:1000 account. Reuse
+# that numeric identity and create Axon's dedicated home instead of attempting
+# to create a colliding UID/GID on fresh images.
+RUN install -d -o 1000 -g 1000 /home/axon
 
 COPY --from=builder /usr/local/bin/axon /usr/local/bin/axon
 

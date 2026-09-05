@@ -163,6 +163,21 @@ fn native_release_embeds_the_required_signature_verification_key() {
 }
 
 #[test]
+fn native_release_publishes_versioned_installer_assets_with_integrity_metadata() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    for asset in [
+        "install.sh",
+        "install.sh.sha256",
+        "install.sh.minisig",
+        "install.ps1",
+        "install.ps1.sha256",
+        "install.ps1.minisig",
+    ] {
+        assert!(workflow.contains(asset), "release omits installer asset {asset}");
+    }
+}
+
+#[test]
 fn native_release_cleans_signing_key_on_every_exit_path() {
     let workflow = include_str!("../.github/workflows/release.yml");
     let signing = workflow_job_block(workflow, "sign-linux");

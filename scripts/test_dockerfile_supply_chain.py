@@ -7,6 +7,9 @@ import re
 dockerfile = Path(__file__).resolve().parents[1] / "config" / "Dockerfile"
 text = dockerfile.read_text(encoding="utf-8")
 
+if "groupadd --system --gid 1000" in text or "useradd  --system --uid 1000" in text:
+    raise SystemExit("runtime image must reuse the base image's numeric 1000:1000 account")
+
 for line in text.splitlines():
     if line.startswith("FROM "):
         image = line.split()[1]

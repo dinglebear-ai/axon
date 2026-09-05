@@ -153,15 +153,22 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
+          cp install.sh install.ps1 target/release/
           cd target/release
           tar -czf axon-linux-x86_64.tar.gz axon
           sha256sum axon-linux-x86_64.tar.gz > axon-linux-x86_64.tar.gz.sha256
+          sha256sum install.sh > install.sh.sha256
+          sha256sum install.ps1 > install.ps1.sha256
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-linux-x86_64
           path: |
             target/release/axon-linux-x86_64.tar.gz
             target/release/axon-linux-x86_64.tar.gz.sha256
+            target/release/install.sh
+            target/release/install.sh.sha256
+            target/release/install.ps1
+            target/release/install.ps1.sha256
           if-no-files-found: error
 
   sign-linux:
@@ -195,12 +202,21 @@ jobs:
           printf '%s' "$SIGNING_KEY" > "$SIGNING_KEY_FILE"
           echo "$SIGNING_KEY_PASSWORD" | minisign -S -s "$SIGNING_KEY_FILE" \
             -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
-          minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
-            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
+          for asset in axon-linux-x86_64.tar.gz install.sh install.ps1; do
+            if [ "$asset" != axon-linux-x86_64.tar.gz ]; then
+              echo "$SIGNING_KEY_PASSWORD" | minisign -S -s "$SIGNING_KEY_FILE" \
+                -m "$asset" -x "$asset.minisig"
+            fi
+            minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
+              -m "$asset" -x "$asset.minisig"
+          done
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-linux-signature
-          path: dist/axon-linux-x86_64.tar.gz.minisig
+          path: |
+            dist/axon-linux-x86_64.tar.gz.minisig
+            dist/install.sh.minisig
+            dist/install.ps1.minisig
           if-no-files-found: error
 
   axon-windows:
@@ -314,4 +330,10 @@ jobs:
             dist/axon-linux-x86_64.tar.gz.minisig \
             dist/axon-windows-x86_64.zip \
             dist/axon-windows-x86_64.zip.sha256 \
+            dist/install.sh \
+            dist/install.sh.sha256 \
+            dist/install.sh.minisig \
+            dist/install.ps1 \
+            dist/install.ps1.sha256 \
+            dist/install.ps1.minisig \
             --clobber
