@@ -147,6 +147,32 @@ fn openai_compat_rejects_chat_completions_suffix() {
     );
 }
 
+#[test]
+fn openai_compat_rejects_credentials_over_remote_plaintext_http() {
+    let mut config = LlmBackendConfig::default();
+    config.openai_base_url = Some("http://192.0.2.10:8080/v1".to_string());
+    config.openai_api_key = Some("secret-key".to_string());
+
+    let error = openai_chat_completions_url(&config)
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("HTTPS"));
+    assert!(!error.contains("secret-key"));
+}
+
+#[test]
+fn openai_compat_allows_credentials_over_loopback_plaintext_http() {
+    let mut config = LlmBackendConfig::default();
+    config.openai_base_url = Some("http://127.0.0.1:8080/v1".to_string());
+    config.openai_api_key = Some("local-key".to_string());
+
+    assert_eq!(
+        openai_chat_completions_url(&config).unwrap(),
+        "http://127.0.0.1:8080/v1/chat/completions"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn openai_compat_error_body_is_bounded_and_redacted() {
     let server = MockServer::start();

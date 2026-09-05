@@ -58,13 +58,20 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
     // version_files rather than the broad docs category.
     assert_eq!(out["version_files"], "false");
     assert_eq!(out["rust"], "false");
-    assert_eq!(out["docs_contracts"], "false");
+    assert_eq!(out["docs_contracts"], "true");
     assert_eq!(out["aurora_inventory"], "false");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
     assert_eq!(out["docker"], "false");
     assert_eq!(out["release"], "false");
     assert_eq!(out["codeql_rust"], "false");
+}
+
+#[test]
+fn plugin_only_changes_route_lightweight_contract_validation() {
+    let out = classify("pull_request", &["plugins/axon/.claude-plugin/plugin.json"]);
+    assert_eq!(out["docs_contracts"], "true");
+    assert_eq!(out["rust"], "false");
 }
 
 #[test]
@@ -91,7 +98,6 @@ fn agent_skill_changes_skip_expensive_runtime_categories() {
         "ci_all",
         "codeql_all",
         "docs",
-        "docs_contracts",
         "aurora_inventory",
         "workflow",
         "rust",
@@ -112,8 +118,9 @@ fn agent_skill_changes_skip_expensive_runtime_categories() {
         "codeql_rust",
         "codeql_java_kotlin",
     ] {
-        assert_eq!(out[key], "false", ".agents changes should not enable {key}");
+        assert_eq!(out[key], "false", "plugin skills should not enable {key}");
     }
+    assert_eq!(out["docs_contracts"], "true");
 }
 
 #[test]

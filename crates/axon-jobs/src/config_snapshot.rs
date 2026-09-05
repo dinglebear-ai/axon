@@ -133,6 +133,44 @@ struct ConfigSnapshot {
     viewport_height: Option<u32>,
     custom_headers: Option<Vec<String>>,
     quiet: Option<bool>,
+    tei_max_retries: Option<usize>,
+    tei_request_timeout_ms: Option<u64>,
+    tei_max_client_batch_size: Option<usize>,
+    embed_tei_max_concurrent: Option<usize>,
+    embed_tei_max_in_flight_inputs: Option<usize>,
+    embed_tei_retry_backoff_ms: Option<u64>,
+    embed_tei_cooldown_after_failures: Option<usize>,
+    embed_tei_cooldown_secs: Option<u64>,
+    embed_tei_interactive_reserved_requests: Option<usize>,
+    embed_tei_background_max_concurrent_requests: Option<usize>,
+    embed_tei_maintenance_max_concurrent_requests: Option<usize>,
+    embed_tei_query_instruction_enabled: Option<bool>,
+    embed_cache_enabled: Option<bool>,
+    embed_cache_max_entries: Option<usize>,
+    embed_pool_max_inputs: Option<usize>,
+    document_batch_size: Option<usize>,
+    document_status_batch_size: Option<usize>,
+    embed_tei_max_batch_tokens: Option<u32>,
+    embed_scheduler_enabled: Option<bool>,
+    vector_upsert_embed_overlap: Option<bool>,
+    embed_prepared_byte_budget: Option<usize>,
+    embed_prep_concurrency: Option<usize>,
+    embed_prep_max_in_flight_bytes: Option<usize>,
+    embed_scheduler_flush_ms: Option<u64>,
+    chunking_markdown_max_chars: Option<usize>,
+    chunking_markdown_min_chars: Option<usize>,
+    chunking_overlap_chars: Option<usize>,
+    embed_max_chunks_per_doc: Option<usize>,
+    embed_max_source_chunks_per_doc: Option<usize>,
+    embed_dedupe_exact_chunks: Option<bool>,
+    openai_embed_model: Option<String>,
+    openai_embed_max_client_batch_size: Option<usize>,
+    openai_embed_max_concurrent: Option<usize>,
+    openai_embed_max_in_flight_inputs: Option<usize>,
+    openai_embed_pool_max_inputs: Option<usize>,
+    unified_worker_concurrency: Option<usize>,
+    source_job_concurrency_limit: Option<usize>,
+    embed_doc_timeout_secs: Option<u64>,
     process_fallback_fields: Vec<String>,
 }
 
@@ -194,8 +232,26 @@ impl ConfigSnapshot {
             reddit_min_score: Some(cfg.reddit_min_score),
             reddit_depth: Some(cfg.reddit_depth),
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
-            tei_url: endpoints.tei_url,
-            qdrant_url: endpoints.qdrant_url,
+            ..Self::runtime_fields(
+                cfg,
+                endpoints.tei_url,
+                endpoints.qdrant_url,
+                endpoints.openai_base_url,
+                process_fallback_fields,
+            )
+        })
+    }
+
+    fn runtime_fields(
+        cfg: &Config,
+        tei_url: Option<String>,
+        qdrant_url: Option<String>,
+        openai_base_url: Option<String>,
+        process_fallback_fields: Vec<String>,
+    ) -> Self {
+        Self {
+            tei_url,
+            qdrant_url,
             llm_backend: Some(llm_backend_snapshot(cfg.llm_backend)),
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
@@ -203,7 +259,7 @@ impl ConfigSnapshot {
             codex_model: Some(cfg.codex_model.clone()),
             codex_completion_concurrency: Some(cfg.codex_completion_concurrency),
             codex_load_user_config: Some(cfg.codex_load_user_config),
-            openai_base_url: endpoints.openai_base_url,
+            openai_base_url,
             openai_model: Some(cfg.openai_model.clone()),
             llm_completion_concurrency: Some(cfg.llm_completion_concurrency),
             llm_completion_timeout_secs: Some(cfg.llm_completion_timeout_secs),
@@ -247,18 +303,82 @@ impl ConfigSnapshot {
             screenshot_full_page: Some(cfg.screenshot_full_page),
             viewport_width: Some(cfg.viewport_width),
             viewport_height: Some(cfg.viewport_height),
-            custom_headers: Some(cfg.custom_headers.clone()),
+            custom_headers: Some(
+                cfg.custom_headers
+                    .iter()
+                    .filter(|header| !header_contains_credential(header))
+                    .cloned()
+                    .collect(),
+            ),
             quiet: Some(cfg.quiet),
+            tei_max_retries: Some(cfg.tei_max_retries),
+            tei_request_timeout_ms: Some(cfg.tei_request_timeout_ms),
+            tei_max_client_batch_size: Some(cfg.tei_max_client_batch_size),
+            embed_tei_max_concurrent: Some(cfg.embed_tei_max_concurrent),
+            embed_tei_max_in_flight_inputs: Some(cfg.embed_tei_max_in_flight_inputs),
+            embed_tei_retry_backoff_ms: Some(cfg.embed_tei_retry_backoff_ms),
+            embed_tei_cooldown_after_failures: Some(cfg.embed_tei_cooldown_after_failures),
+            embed_tei_cooldown_secs: Some(cfg.embed_tei_cooldown_secs),
+            embed_tei_interactive_reserved_requests: Some(
+                cfg.embed_tei_interactive_reserved_requests,
+            ),
+            embed_tei_background_max_concurrent_requests: Some(
+                cfg.embed_tei_background_max_concurrent_requests,
+            ),
+            embed_tei_maintenance_max_concurrent_requests: Some(
+                cfg.embed_tei_maintenance_max_concurrent_requests,
+            ),
+            embed_tei_query_instruction_enabled: Some(cfg.embed_tei_query_instruction_enabled),
+            embed_cache_enabled: Some(cfg.embed_cache_enabled),
+            embed_cache_max_entries: Some(cfg.embed_cache_max_entries),
+            embed_pool_max_inputs: Some(cfg.embed_pool_max_inputs),
+            document_batch_size: Some(cfg.document_batch_size),
+            document_status_batch_size: Some(cfg.document_status_batch_size),
+            embed_tei_max_batch_tokens: Some(cfg.embed_tei_max_batch_tokens),
+            embed_scheduler_enabled: Some(cfg.embed_scheduler_enabled),
+            vector_upsert_embed_overlap: Some(cfg.vector_upsert_embed_overlap),
+            embed_prepared_byte_budget: Some(cfg.embed_prepared_byte_budget),
+            embed_prep_concurrency: Some(cfg.embed_prep_concurrency),
+            embed_prep_max_in_flight_bytes: Some(cfg.embed_prep_max_in_flight_bytes),
+            embed_scheduler_flush_ms: Some(cfg.embed_scheduler_flush_ms),
+            chunking_markdown_max_chars: Some(cfg.chunking_markdown_max_chars),
+            chunking_markdown_min_chars: Some(cfg.chunking_markdown_min_chars),
+            chunking_overlap_chars: Some(cfg.chunking_overlap_chars),
+            embed_max_chunks_per_doc: cfg.embed_max_chunks_per_doc,
+            embed_max_source_chunks_per_doc: cfg.embed_max_source_chunks_per_doc,
+            embed_dedupe_exact_chunks: Some(cfg.embed_dedupe_exact_chunks),
+            openai_embed_model: Some(cfg.openai_embed_model.clone()),
+            openai_embed_max_client_batch_size: Some(cfg.openai_embed_max_client_batch_size),
+            openai_embed_max_concurrent: Some(cfg.openai_embed_max_concurrent),
+            openai_embed_max_in_flight_inputs: Some(cfg.openai_embed_max_in_flight_inputs),
+            openai_embed_pool_max_inputs: Some(cfg.openai_embed_pool_max_inputs),
+            unified_worker_concurrency: Some(cfg.unified_worker_concurrency),
+            source_job_concurrency_limit: Some(cfg.source_job_concurrency_limit),
+            embed_doc_timeout_secs: Some(cfg.embed_doc_timeout_secs),
             process_fallback_fields,
-        })
+            ..Self::default()
+        }
     }
 }
 
-fn llm_backend_snapshot(kind: axon_llm::LlmBackendKind) -> String {
+fn header_contains_credential(header: &str) -> bool {
+    let name = header.split_once(':').map_or(header, |(name, _)| name);
+    let normalized = name.trim().to_ascii_lowercase().replace('_', "-");
+    normalized == "authorization"
+        || normalized == "proxy-authorization"
+        || normalized == "cookie"
+        || normalized == "set-cookie"
+        || normalized.contains("api-key")
+        || normalized.contains("apikey")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+}
+
+fn llm_backend_snapshot(kind: axon_core::llm::LlmBackendKind) -> String {
     match kind {
-        axon_llm::LlmBackendKind::GeminiHeadless => "gemini-headless".to_string(),
-        axon_llm::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
-        axon_llm::LlmBackendKind::CodexAppServer => "codex-app-server".to_string(),
+        axon_core::llm::LlmBackendKind::GeminiHeadless => "gemini-headless".to_string(),
+        axon_core::llm::LlmBackendKind::OpenAiCompat => "openai-compat".to_string(),
+        axon_core::llm::LlmBackendKind::CodexAppServer => "codex-app-server".to_string(),
     }
 }
 

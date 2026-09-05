@@ -46,8 +46,7 @@ pub(super) async fn upsert_batches_rest(
         .flatten();
     let write_slots = store.write_slots();
     let provider_id = store.provider_id().0.clone();
-    let chunks = ChunkedUpsertBatches::new(batch, store.point_buffer()).collect::<Vec<_>>();
-    let mut pending = stream::iter(chunks)
+    let mut pending = stream::iter(ChunkedUpsertBatches::new(batch, store.point_buffer()))
         .map(|chunk| {
             let url = &url;
             let write_slots = Arc::clone(&write_slots);
@@ -145,40 +144,23 @@ async fn upsert_chunk_rest(
         .map(|sparse| (sparse.chunk_id.0.as_str(), sparse))
         .collect::<HashMap<_, _>>();
     let max_request_bytes = max_request_bytes.max(1);
-    let mut ranges = Vec::with_capacity(1);
-    ranges.push(0..chunk.points.len());
+    let ranges = byte_bounded_ranges(chunk, spec, &batch_sparse, max_request_bytes, stage)?;
     let mut requests = 0u64;
 
-    while let Some(range) = ranges.pop() {
+    for range in ranges {
         let body = encode_upsert_body(
             &UpsertPointsBody::new(spec, &chunk.points[range.clone()], &batch_sparse),
             max_request_bytes,
             stage,
         )?;
 
-        let Some(body) = body else {
-            if range.len() == 1 {
-                let point = &chunk.points[range.start];
-                return Err(ApiError::new(
-                    "vector.qdrant.upsert_point_oversized",
-                    stage,
-                    "a single vector point exceeds the encoded qdrant request limit",
-                )
-                .with_context("chunk_id", point.chunk_id.0.clone())
-                .with_context(
-                    "encoded_bytes_min",
-                    max_request_bytes.saturating_add(1).to_string(),
-                )
-                .with_context("limit_bytes", max_request_bytes.to_string()));
-            }
-
-            let midpoint = range.start + range.len() / 2;
-            // Push right first so the left half is sent first, preserving the
-            // deterministic input order while guaranteeing forward progress.
-            ranges.push(midpoint..range.end);
-            ranges.push(range.start..midpoint);
-            continue;
-        };
+        let body = body.ok_or_else(|| {
+            ApiError::new(
+                "vector.qdrant.upsert_size_estimate_failed",
+                stage,
+                "qdrant upsert range exceeded its conservative byte estimate",
+            )
+        })?;
 
         if asynchronous {
             http.put_json_bytes(stage, url, body, "qdrant_upsert_async")
@@ -191,6 +173,54 @@ async fn upsert_chunk_rest(
     }
 
     Ok(requests)
+}
+
+fn byte_bounded_ranges(
+    chunk: &VectorPointBatch,
+    spec: &CollectionSpec,
+    sparse: &HashMap<&str, &SparseVector>,
+    limit: usize,
+    stage: ErrorStage,
+) -> Result<Vec<std::ops::Range<usize>>> {
+    let empty = serde_json::to_vec(&UpsertPointsBody::new(spec, &[], sparse))
+        .map_err(|error| ApiError::new("vector.qdrant.encode_failed", stage, error.to_string()))?
+        .len();
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    let mut estimated = empty;
+    for (index, point) in chunk.points.iter().enumerate() {
+        let encoded = serde_json::to_vec(&UpsertPointsBody::new(
+            spec,
+            std::slice::from_ref(point),
+            sparse,
+        ))
+        .map_err(|error| ApiError::new("vector.qdrant.encode_failed", stage, error.to_string()))?
+        .len();
+        if encoded > limit {
+            return Err(ApiError::new(
+                "vector.qdrant.upsert_point_oversized",
+                stage,
+                "a single vector point exceeds the encoded qdrant request limit",
+            )
+            .with_context("chunk_id", point.chunk_id.0.clone())
+            .with_context("encoded_bytes_min", encoded.to_string())
+            .with_context("limit_bytes", limit.to_string()));
+        }
+        // A singleton contains the fixed wrapper. Its delta from an empty
+        // body is the point payload; reserve punctuation for both dense and
+        // sparse arrays so the final range is encoded exactly once.
+        let contribution = encoded.saturating_sub(empty).saturating_add(4);
+        if index > start && estimated.saturating_add(contribution) > limit {
+            ranges.push(start..index);
+            start = index;
+            estimated = empty;
+        }
+        estimated = estimated.saturating_add(contribution);
+    }
+    if start < chunk.points.len() {
+        ranges.push(start..chunk.points.len());
+    }
+    Ok(ranges)
 }
 
 fn encode_upsert_body(

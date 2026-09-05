@@ -45,7 +45,7 @@ impl From<RestExtractMode> for ClientExtractMode {
 
 // ── Remaining forbidden-fork audit (WS-E / Q2-06) ───────────────────────────
 //
-// Every `Rest*Request` below is a genuine fork of an `axon_api::mcp_schema`
+// Every `Rest*Request` below is a genuine fork of an `axon_api::action`
 // counterpart (`ExtractRequest`, `QueryRequest`, `RetrieveRequest`,
 // `EvaluateRequest`, `SuggestRequest`, `MapRequest`, `SearchRequest`,
 // `ResearchRequest`, `AskRequest`, `SummarizeRequest`, `BrandRequest`,
@@ -59,7 +59,7 @@ impl From<RestExtractMode> for ClientExtractMode {
 // canonical DTO differs in shape ... leave that fork in place and list it as
 // a followup with the exact field-level diff"), the diffs are:
 //
-// - `RestExtractRequest` vs `mcp_schema::ExtractRequest`: MCP's is a
+// - `RestExtractRequest` vs `action::ExtractRequest`: MCP's is a
 //   job-management action DTO (`subaction`, `job_id`, `limit`, `offset`,
 //   `response_mode`) for the async extract job lifecycle; REST's is a
 //   one-shot submission body (`collection`, `headers: Vec<String>`). No

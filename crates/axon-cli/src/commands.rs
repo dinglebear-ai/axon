@@ -38,6 +38,7 @@ pub mod source;
 pub mod sources;
 pub mod stats;
 pub mod status;
+mod stream_output;
 pub mod suggest;
 pub mod summarize;
 pub mod sync;

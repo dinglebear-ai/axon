@@ -195,7 +195,7 @@ not accidentally treated as disabled.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_HTTP_PUBLISH` | `8001` | Docker Compose host publish address for the `axon` MCP HTTP service. The default `8001` maps to `0.0.0.0:8001` inside Compose — the container is reachable on the host's port 8001 from all interfaces. Set to `127.0.0.1:8001` to restrict to loopback only. |
+| `AXON_HTTP_PUBLISH` | `8001` | Numeric host port for the Compose Axon HTTP service. Compose fixes the host address to `127.0.0.1`; do not include an address in this value. |
 | `AXON_HTTP_HOST` | `127.0.0.1` | HTTP bind address for `axon serve` / MCP HTTP. Non-loopback requires bearer or OAuth auth. |
 | `AXON_HTTP_PORT` | `8001` | HTTP listen port for `axon serve` / MCP HTTP. |
 

@@ -26,6 +26,7 @@ use std::time::Duration;
 use super::{YoutubeTarget, parse_youtube_target};
 use anyhow::{Context, Result, bail};
 use axon_core::content::redact_url;
+use futures_util::{StreamExt, stream};
 use sha2::{Digest, Sha256};
 
 use self::map::{parse_vtt_to_text, video_dump_json};
@@ -34,6 +35,7 @@ use crate::acquisition_security::validate_source_url;
 /// Wall-clock cap for the yt-dlp subprocess before it is aborted. Generous for
 /// subtitle downloads / playlist enumeration, but bounds a hung process.
 const YTDLP_TIMEOUT: Duration = Duration::from_secs(300);
+const PLAYLIST_VIDEO_CONCURRENCY: usize = 4;
 
 /// Maximum single subtitle file size read into memory (50 MiB). A hostile or
 /// misconfigured endpoint cannot OOM us via one enormous `.vtt`.
@@ -156,18 +158,21 @@ async fn fetch_playlist(canonical_uri: &str, work_dir: &Path) -> Result<Vec<serd
         .await
         .map_err(|err| anyhow::anyhow!("youtube target failed SSRF validation: {err}"))?;
     let urls = enumerate_playlist_videos(canonical_uri).await?;
-    let mut videos = Vec::new();
-    for (idx, url) in urls.iter().enumerate() {
-        // Each video gets its own subdirectory so filenames don't collide.
-        let sub = work_dir.join(format!("v{idx}"));
-        tokio::fs::create_dir_all(&sub)
-            .await
-            .context("failed to create youtube per-video directory")?;
-        if let Some(video) = fetch_single_video(url, &sub).await? {
-            videos.push(video);
-        }
-    }
-    Ok(videos)
+    let mut videos = stream::iter(urls.into_iter().enumerate())
+        .map(|(idx, url)| async move {
+            let sub = work_dir.join(format!("v{idx}"));
+            tokio::fs::create_dir_all(&sub)
+                .await
+                .context("failed to create youtube per-video directory")?;
+            Ok::<_, anyhow::Error>((idx, fetch_single_video(&url, &sub).await?))
+        })
+        .buffer_unordered(PLAYLIST_VIDEO_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>>>()?;
+    videos.sort_by_key(|(idx, _)| *idx);
+    Ok(videos.into_iter().filter_map(|(_, video)| video).collect())
 }
 
 /// Run yt-dlp for a single canonical video URL, then read its info json +

@@ -1,12 +1,8 @@
-//! Target pipeline crate for `axon-document` (issue #298).
+//! Canonical document preparation for Axon's unified source pipeline.
 //!
-//! Live, not marker-only: `DocumentPreparer` is wired into every source
-//! family's vectorize path (feed/git/local/reddit/registry/sessions/web/
-//! youtube in `axon-services`, plus `axon-memory` and `axon-vector`'s
-//! `document_bridge`). `prepare_version` is currently the fixed literal
-//! `"axon-document-pr8"` (see `preparer.rs`) — a placeholder pending a real
-//! content-addressed or semantic versioning scheme, not yet load-bearing for
-//! cache invalidation.
+//! `DocumentPreparer` normalizes acquired source documents into deterministic
+//! chunks and parse facts. Publication is owned separately by `axon-vectors`;
+//! orchestration is provided by `axon-services`.
 
 #![allow(clippy::result_large_err)]
 

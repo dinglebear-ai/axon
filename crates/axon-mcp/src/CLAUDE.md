@@ -43,8 +43,7 @@ Current groups from `crates/axon-mcp/src/`:
 - Removed actions such as `code_search_watch`, purge, dedupe, and `vertical_scrape` remain absent; destructive reset stays under `action=reset` with admin scope.
 
 ## DTO ownership
-Wire DTOs and the response envelope live in **`axon-api`** (`axon_api::mcp_schema`
-lineage); this crate generates its schema from them and returns them. Transports
+Shared operation request DTOs live in **`axon-api`** (`axon_api::action`), while the MCP-only tagged action router and response envelope live in **`axon-mcp`** (`crate::schema`); this crate generates its schema from them and returns them. Transports
 call `axon-services`/`axon-api`, never a domain crate's `::ops::*` or internals.
 
 ## Keep in sync when shapes change

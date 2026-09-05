@@ -538,3 +538,39 @@ async fn output_parent_sync_failure_retains_journal_for_recovery() {
 
     assert_eq!(std::fs::read_dir(transactions).unwrap().count(), 0);
 }
+
+#[tokio::test]
+async fn successful_refetch_batch_commits_in_order_and_cleans_all_journals() {
+    let temp = tempfile::tempdir().unwrap();
+    tokio::fs::create_dir_all(temp.path().join("markdown"))
+        .await
+        .unwrap();
+    let results = vec![
+        RefetchResult {
+            url: "https://example.com/first".into(),
+            markdown: Some("first body".into()),
+            diagnostic: None,
+        },
+        RefetchResult {
+            url: "https://example.com/second".into(),
+            markdown: Some("second body".into()),
+            diagnostic: None,
+        },
+    ];
+
+    let summary = write_refetch_results(CrawlSummary::default(), results, temp.path())
+        .await
+        .unwrap();
+
+    assert_eq!(summary.markdown_files, 2);
+    let manifest = tokio::fs::read_to_string(temp.path().join("manifest.jsonl"))
+        .await
+        .unwrap();
+    assert!(manifest.find("/first").unwrap() < manifest.find("/second").unwrap());
+    assert_eq!(
+        std::fs::read_dir(temp.path().join(REFETCH_TRANSACTIONS_DIR))
+            .unwrap()
+            .count(),
+        0
+    );
+}

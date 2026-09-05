@@ -33,7 +33,43 @@ pub fn openai_chat_completions_url(
                 .into(),
         );
     }
+    validate_credential_transport(config, trimmed)?;
     Ok(format!("{trimmed}/chat/completions"))
+}
+
+fn validate_credential_transport(
+    config: &LlmBackendConfig,
+    base: &str,
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    let endpoint = reqwest::Url::parse(base)
+        .map_err(|_| "AXON_OPENAI_BASE_URL must be an absolute HTTP(S) URL")?;
+    if !matches!(endpoint.scheme(), "http" | "https") {
+        return Err("AXON_OPENAI_BASE_URL must use HTTP or HTTPS".into());
+    }
+    let has_configured_key = config
+        .openai_api_key
+        .as_deref()
+        .is_some_and(|key| !key.trim().is_empty());
+    let has_url_credentials = !endpoint.username().is_empty() || endpoint.password().is_some();
+    if endpoint.scheme() == "http"
+        && (has_configured_key || has_url_credentials)
+        && !endpoint_host_is_loopback(&endpoint)
+    {
+        return Err(
+            "OpenAI-compatible credentials require HTTPS for non-loopback endpoints".into(),
+        );
+    }
+    Ok(())
+}
+
+fn endpoint_host_is_loopback(endpoint: &reqwest::Url) -> bool {
+    let Some(host) = endpoint.host_str() else {
+        return false;
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
 }
 
 pub async fn complete_text(
@@ -110,6 +146,7 @@ async fn send_chat_completion(
         .or_try_insert_with(|| {
             reqwest::Client::builder()
                 .timeout(Duration::from_secs(timeout_secs))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
         })?
         .clone();

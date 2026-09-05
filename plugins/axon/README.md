@@ -2,10 +2,9 @@
 
 Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query indexed content via the MCP `axon` tool or the `axon` CLI.
 
-> Current pre-#298 plugin docs. The future source-pipeline contract lives in
-> `docs/pipeline-unification/`; after that cutover source acquisition should
-> route through the shared source action/model rather than legacy crawl/embed/
-> ingest action families.
+Source acquisition uses the canonical `source` action. `scrape`, `crawl`,
+`embed`, and `ingest` remain supported focused projections over that same
+pipeline; lifecycle management belongs to the unified `jobs` action.
 
 Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and a configurable LLM backend for `ask`, `research`, and extract fallback. Gemini headless is the default; OpenAI-compatible endpoints such as llama.cpp are supported with `AXON_LLM_BACKEND=openai-compat`.
 
@@ -20,7 +19,7 @@ only for connection details for an already-running Axon server.
 
 The current plugin prompt surface is intentionally small:
 
-- `server_url` — base URL for a running `axon serve` instance, defaulting to `http://localhost:8080`.
+- `server_url` — base URL for a running `axon serve` instance, defaulting to `http://localhost:8001`.
 - `api_token` — bearer token sent to `${server_url}/mcp`; leave empty only for loopback/unauthenticated development instances.
 
 Search providers, ingest credentials, Qdrant, TEI, Chrome, embedding, and LLM backend settings live in the shared Axon host configuration (`~/.axon/.env` and `~/.axon/config.toml`), not in plugin prompts.
@@ -37,7 +36,10 @@ axon memory context      # recall memories for the current git project
 
 To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 
-No systemd unit is created. Docker Compose is the only production deployment target. The `.mcp.json` uses HTTP transport and connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
+The `.mcp.json` uses HTTP transport and connects Claude Code to
+`${user_config.server_url}/mcp` with the configured bearer token. Axon supports
+Docker Compose, bare-metal systemd, and native systemd inside Incus; see the
+root deployment documentation and `deploy/systemd/README.md`.
 
 ### Session Memory and Auto-Ingest
 
@@ -66,7 +68,7 @@ by `action` plus an optional `subaction` for lifecycle families.
 { "action": "doctor" }
 { "action": "scrape", "url": "https://example.com" }
 { "action": "ask", "query": "How does axon handle Chrome auto-switching?" }
-{ "action": "crawl", "subaction": "status", "job_id": "<uuid>" }
+{ "action": "jobs", "subaction": "get", "job_id": "<uuid>" }
 ```
 
 Response envelope:

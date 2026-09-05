@@ -37,3 +37,28 @@ SH
   PATH="$shim_dir:$PATH"
   export PATH
 }
+
+live_cli_port_is_available() {
+  local port="$1"
+  command -v python3 >/dev/null 2>&1 || {
+    echo "python3 is required for portable live-test port allocation" >&2
+    return 2
+  }
+  python3 - "$port" <<'PY'
+import socket, sys
+port = int(sys.argv[1])
+sockets = []
+try:
+    for family, address in ((socket.AF_INET, ("127.0.0.1", port)),
+                            (socket.AF_INET6, ("::1", port))):
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        sockets.append(sock)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        sock.bind(address)
+except OSError:
+    raise SystemExit(1)
+finally:
+    for sock in sockets:
+        sock.close()
+PY
+}

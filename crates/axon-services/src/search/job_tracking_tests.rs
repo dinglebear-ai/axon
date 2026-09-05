@@ -1,6 +1,6 @@
 use super::*;
 use crate::context::ServiceContext;
-use axon_api::source::{JobKind, JobListRequest};
+use axon_api::source::{JobKind, JobListRequest, LifecycleStatus};
 use axon_core::config::Config;
 use std::sync::Arc;
 

@@ -1,6 +1,38 @@
 use serde_json::json;
+use std::sync::Arc;
 
-use super::build_reddit_post_extra_payload as build_extra;
+use super::{
+    RedditRateState, build_reddit_post_extra_payload as build_extra, wait_for_rate_slot_in,
+};
+use tokio::sync::Mutex;
+use tokio::time::{Duration, Instant};
+
+#[tokio::test]
+async fn simultaneous_rate_limit_callers_are_spaced() {
+    let state = Arc::new(Mutex::new(RedditRateState {
+        cached_token: None,
+        last_request_at: None,
+    }));
+    let interval = Duration::from_millis(10);
+    let started = Instant::now();
+    let mut callers = tokio::task::JoinSet::new();
+    for _ in 0..4 {
+        let state = Arc::clone(&state);
+        callers.spawn(async move {
+            wait_for_rate_slot_in(&state, interval).await;
+            Instant::now().duration_since(started)
+        });
+    }
+
+    let mut admissions = Vec::new();
+    while let Some(result) = callers.join_next().await {
+        admissions.push(result.unwrap());
+    }
+    admissions.sort();
+    for pair in admissions.windows(2) {
+        assert!(pair[1] - pair[0] >= interval);
+    }
+}
 
 #[test]
 fn build_extra_all_fields_present() {

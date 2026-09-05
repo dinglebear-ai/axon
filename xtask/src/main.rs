@@ -69,8 +69,12 @@ enum Command {
     CheckSqliteMigrations,
     /// Regenerate the SQLite job migration checksum manifest after adding a migration.
     UpdateSqliteMigrationChecksums,
-    /// Scan staged files for secrets and credentials.
-    CheckSecrets,
+    /// Scan staged files, or the complete tracked candidate tree, for credentials.
+    CheckSecrets {
+        /// Scan the checked-out tracked tree instead of the Git index.
+        #[arg(long)]
+        tree: bool,
+    },
     /// Compatibility check for the CLI component's version-bearing files.
     /// The full multi-component gate is `check-release-versions`.
     CheckVersionSync,
@@ -186,7 +190,13 @@ fn main() -> Result<()> {
         Command::GenPublicApi => checks::public_api::write(&root),
         Command::CheckSqliteMigrations => checks::sqlite_migrations::check(&root),
         Command::UpdateSqliteMigrationChecksums => checks::sqlite_migrations::update(&root),
-        Command::CheckSecrets => checks::secrets::check(&root),
+        Command::CheckSecrets { tree } => {
+            if tree {
+                checks::secrets::check_tree(&root)
+            } else {
+                checks::secrets::check(&root)
+            }
+        }
         Command::CheckVersionSync => checks::version_sync::check(&root),
         Command::CheckOpenapiDrift => checks::openapi_drift::check(&root),
         Command::CheckAndroidApiContract => checks::android_api_contract::check(&root),

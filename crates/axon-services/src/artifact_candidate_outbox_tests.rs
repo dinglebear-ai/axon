@@ -1,4 +1,23 @@
 use super::*;
+
+#[tokio::test]
+async fn shutdown_aborts_and_joins_registered_drain() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let outbox = ArtifactCandidateOutbox::new(root.path());
+    assert!(outbox.begin_drain());
+    let task = tokio::spawn(std::future::pending::<()>());
+    outbox.register_drain_task(task);
+
+    tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        outbox.shutdown_drain(),
+    )
+    .await
+    .expect("supervised shutdown must be bounded");
+
+    assert!(!outbox.draining.load(Ordering::Acquire));
+    assert!(outbox.drain_cancelled());
+}
 use axon_api::source::{
     ARTIFACT_CANDIDATE_SCHEMA_VERSION, ArtifactCandidateId, MetadataMap, Timestamp,
 };

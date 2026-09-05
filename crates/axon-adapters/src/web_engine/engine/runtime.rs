@@ -211,10 +211,9 @@ pub(super) async fn configure_website_with_crawl_id(
     apply_request_and_identity_settings(cfg, &mut website, start_url);
     apply_custom_headers(cfg, &mut website);
 
-    // Enable the spider control thread so in-process shutdown() can signal an
-    // immediate stop. The crawl worker calls spider::utils::shutdown() when a
-    // Redis cancel key is detected — this drains in-flight requests gracefully
-    // instead of abruptly dropping the crawl future.
+    // Enable Spider's control thread so the in-process memory guard can stop a
+    // crawl through `spider::utils::shutdown`. Durable job cancellation is a
+    // separate scheduler concern; see `web_engine/engine/memory_guard.rs`.
     website.with_no_control_thread(false);
 
     if cfg.cache {
@@ -224,14 +223,14 @@ pub(super) async fn configure_website_with_crawl_id(
         }
     }
 
-    // Conditional re-crawl: enable spider's ETag cache so seeded validators drive
-    // If-None-Match / If-Modified-Since requests. On a 304 spider drops the page
-    // silently; the engine reconciles those drops back into the manifest after the
-    // crawl (see src/crawl/engine/etag.rs). Crawl path only — single-page scrape
-    // would lose content on a 304 and has no reconciliation seam. Bead
-    // axon_rust-hiyf.
+    // Spider's visited set does not distinguish an explicit HTTP 304 from a
+    // failed request that emitted no page. Until the transport exposes that
+    // outcome, conditional caching remains disabled so a failed fetch can never
+    // be restored as a successful unchanged page.
     if cfg.etag_conditional {
-        website.configuration.with_etag_cache(true);
+        axon_core::logging::log_warn(
+            "conditional ETag reuse is disabled because the crawler does not expose explicit 304 outcomes",
+        );
     }
 
     // WARC archive output: when --warc <path> is set, spider writes every

@@ -6,9 +6,9 @@ use super::super::types::{
     SaveConfigRequest, SaveConfigResponse, SaveEnvConfigRequest,
 };
 use super::super::utils::authorized;
-use axon_api::mcp_schema::{
-    AxonRequest, ExtractRequest, ExtractSubaction, ResponseMode, ScreenshotRequest, SourceRequest,
-    StatusRequest,
+use axon_api::action::{
+    ActionRequest, ExtractRequest, ExtractSubaction, ResponseMode, ScreenshotRequest,
+    SourceRequest, StatusRequest,
 };
 use axon_api::source::{ArtifactId, AuthSnapshot, SourceScope};
 use axon_core::config::Config;
@@ -200,14 +200,7 @@ async fn collections_response(cfg: &Config) -> Result<PanelCollectionsResponse, 
 }
 
 fn collections_error_to_http(error: system::CollectionsError) -> HttpError {
-    match error {
-        system::CollectionsError::ClientBuild(err) => HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            err.to_string(),
-        ),
-        err => HttpError::new(StatusCode::BAD_GATEWAY, "bad_gateway", err.to_string()),
-    }
+    HttpError::new(StatusCode::BAD_GATEWAY, "bad_gateway", error.to_string())
 }
 
 pub async fn panel_status(
@@ -295,23 +288,14 @@ pub async fn panel_command(
             if let Some(priority) = request.priority {
                 api_request.execution.priority = priority;
             }
-            let service_context = state.service_context.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .map_err(|err| format!("build panel source runtime: {err}"))?;
-                runtime
-                    .block_on(axon_services::source::index_source_with_auth(
-                        api_request,
-                        &service_context,
-                        Some(AuthSnapshot::panel("runtime")),
-                    ))
-                    .map_err(|err| format!("panel source {source:?} failed: {err:#}"))
-            })
+            let result = axon_services::source::index_source_with_auth(
+                api_request,
+                state.service_context.as_ref(),
+                Some(AuthSnapshot::panel("runtime")),
+            )
             .await;
             match result {
-                Ok(Ok(result)) => Json(PanelCommandResponse {
+                Ok(result) => Json(PanelCommandResponse {
                     command: command.to_string(),
                     action: action_json,
                     result: serde_json::to_value(result).unwrap_or_else(
@@ -319,8 +303,11 @@ pub async fn panel_command(
                     ),
                 })
                 .into_response(),
-                Ok(Err(err)) => (StatusCode::BAD_GATEWAY, err).into_response(),
-                Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+                Err(err) => (
+                    StatusCode::BAD_GATEWAY,
+                    format!("panel source {source:?} failed: {err:#}"),
+                )
+                    .into_response(),
             }
         }
         Ok(ParsedPanelCommand::Action(action)) => {
@@ -364,12 +351,12 @@ fn panel_has_explicit_scope(required_scope: &str) -> bool {
     axon_authz::has_explicit_scope(&scopes, required_scope)
 }
 
-fn panel_authorizes_action(action: &AxonRequest) -> bool {
+fn panel_authorizes_action(action: &ActionRequest) -> bool {
     action_api::required_scope(action).is_some_and(panel_has_explicit_scope)
 }
 
 enum ParsedPanelCommand {
-    Action(Box<AxonRequest>),
+    Action(Box<ActionRequest>),
     Ask { query: String },
     Source(SourceRequest),
 }
@@ -380,7 +367,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
         .map(|(verb, rest)| (verb.trim().to_ascii_lowercase(), rest.trim()))
         .unwrap_or_else(|| (command.trim().to_ascii_lowercase(), ""));
     match verb.as_str() {
-        "status" => Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Status(
+        "status" => Ok(ParsedPanelCommand::Action(Box::new(ActionRequest::Status(
             StatusRequest {
                 response_mode: Some(ResponseMode::Inline),
             },
@@ -415,7 +402,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
         }
         "extract" => {
             let (prompt, url) = parse_extract_args(rest)?;
-            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Extract(
+            Ok(ParsedPanelCommand::Action(Box::new(ActionRequest::Extract(
                 ExtractRequest {
                     subaction: Some(ExtractSubaction::Start),
                     urls: Some(vec![normalize_url(url)]),
@@ -426,7 +413,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
         }
         "screenshot" => {
             let url = required_arg(rest, "screenshot requires a URL")?;
-            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Screenshot(
+            Ok(ParsedPanelCommand::Action(Box::new(ActionRequest::Screenshot(
                 ScreenshotRequest {
                     url: Some(normalize_url(url)),
                     full_page: Some(true),
@@ -518,8 +505,8 @@ mod tests {
 
     #[test]
     fn collections_status_errors_map_to_bad_gateway() {
-        let error = collections_error_to_http(system::CollectionsError::Status(
-            StatusCode::SERVICE_UNAVAILABLE,
+        let error = collections_error_to_http(system::CollectionsError::Provider(
+            "qdrant returned 503".to_string(),
         ));
 
         assert_eq!(error.status(), StatusCode::BAD_GATEWAY);

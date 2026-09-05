@@ -146,7 +146,16 @@ fn vector_plan(cfg: &Config, store: &str, qdrant_inv: Option<&QdrantInventory>) 
     };
     ResetStorePlan {
         store: store.to_string(),
-        location: format!("{}#{}", cfg.qdrant_url, cfg.collection),
+        location: format!(
+            "{}#{}",
+            axon_vectors::qdrant::QdrantVectorStore::new(
+                cfg.qdrant_url.clone(),
+                "qdrant-reset-plan"
+            )
+            .redacted_url()
+            .unwrap_or_else(|_| "configured".to_string()),
+            cfg.collection
+        ),
         non_empty: inv.non_empty(),
         item_count: (!inv.unreachable).then_some(inv.points),
         detail,

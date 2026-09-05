@@ -64,6 +64,10 @@ impl PreparedPoolVectorizer {
             embedding_work.push((sequence, prepared, counts));
         }
 
+        let final_sequence = embedding_work
+            .last()
+            .map(|(sequence, _, _)| *sequence)
+            .unwrap_or_default();
         let embedded = stream::iter(embedding_work)
             .map(|(sequence, prepared, counts)| async move {
                 let result = pipeline::call_embedding(
@@ -76,12 +80,10 @@ impl PreparedPoolVectorizer {
                 .await;
                 (sequence, prepared, result)
             })
-            .buffered(3)
-            .collect::<Vec<_>>()
-            .await;
-
-        let final_sequence = embedded.len().saturating_sub(1);
-        for (sequence, prepared, embeddings) in embedded {
+            .buffered(3);
+        tokio::pin!(embedded);
+        let mut next = embedded.next().await;
+        while let Some((sequence, prepared, embeddings)) = next {
             let mut embeddings = match embeddings {
                 Ok(embeddings) => embeddings,
                 Err(error) => {
@@ -112,13 +114,20 @@ impl PreparedPoolVectorizer {
             )
             .await?;
             if let Some(current) = self.ready.replace(built) {
-                let result =
-                    publish_built_batch(runtime, input, current, emitter, coordinator, progress)
-                        .await?;
+                // Keep polling the ordered embedding stream while Qdrant
+                // publishes the previously built batch. This removes the
+                // TEI-then-Qdrant phase barrier without changing ordering.
+                let (published, following) = tokio::join!(
+                    publish_built_batch(runtime, input, current, emitter, coordinator, progress),
+                    embedded.next(),
+                );
+                let result = published?;
                 self.checkpoint(runtime, &result).await?;
                 outcomes.push(PushOutcome::Published(result));
+                next = following;
             } else {
                 outcomes.push(PushOutcome::NoPublication);
+                next = embedded.next().await;
             }
         }
         Ok(outcomes)

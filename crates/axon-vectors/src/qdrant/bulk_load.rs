@@ -1,11 +1,10 @@
 //! Reference-counted Qdrant bulk-index lifecycle.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axon_api::source::{ApiError, ErrorStage};
 use axon_core::detached_workers::DetachedWorkerRegistry;
-use serde_json::json;
 
 use super::QdrantVectorStore;
 use crate::store::Result;
@@ -14,6 +13,7 @@ const OPTIMIZER_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const OPTIMIZER_READY_TIMEOUT: Duration = Duration::from_secs(300);
 
 mod journal;
+mod provider;
 use journal::BulkLoadJournal;
 #[cfg(test)]
 use journal::{JournalWriteBoundary, PendingBulkLoad};
@@ -31,6 +31,9 @@ struct BulkLoadState {
     // PATTERN: capture restoration state at first admission and retain it until drain.
     users: usize,
     restore_threshold: u64,
+    // Held from the first begin through the final finish. The OS releases it
+    // on crash, serializing bulk-index mode across independent Axon processes.
+    process_lease: Option<std::fs::File>,
 }
 
 static BULK_LOAD_USERS: std::sync::LazyLock<
@@ -41,7 +44,11 @@ static BULK_LOAD_USERS: std::sync::LazyLock<
 
 fn configured_journal() -> Result<Option<BulkLoadJournal>> {
     #[cfg(test)]
-    let data_dir = std::env::var_os("AXON_TEST_BULK_JOURNAL_DIR").map(PathBuf::from);
+    let data_dir = Some(
+        std::env::var_os("AXON_TEST_BULK_JOURNAL_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join("axon-vector-bulk-load-tests")),
+    );
     #[cfg(not(test))]
     let data_dir = std::env::var_os("AXON_DATA_DIR")
         .map(PathBuf::from)
@@ -224,11 +231,29 @@ impl QdrantVectorStore {
                     std::sync::Arc::new(tokio::sync::Mutex::new(BulkLoadState {
                         users: 0,
                         restore_threshold: self.normal_indexing_threshold,
+                        process_lease: None,
                     }))
                 })
                 .clone()
         };
         let mut state = entry.lock().await;
+        if state.users == 0 {
+            let durable = journal.ok_or_else(|| {
+                ApiError::new(
+                    "vector.qdrant.bulk_lease_unavailable",
+                    ErrorStage::Upserting,
+                    "bulk loading requires AXON_DATA_DIR or HOME for cross-process ownership",
+                )
+            })?;
+            state.process_lease =
+                Some(durable.acquire_collection_lease(&key).map_err(|error| {
+                    ApiError::new(
+                        "vector.qdrant.bulk_lease",
+                        ErrorStage::Upserting,
+                        format!("failed to acquire cross-process bulk-load lease: {error}"),
+                    )
+                })?);
+        }
         state.users += 1;
         if state.users > 1 {
             return Ok(());
@@ -248,6 +273,7 @@ impl QdrantVectorStore {
         };
         if let Err(error) = journal_setup {
             state.users = state.users.saturating_sub(1);
+            state.process_lease = None;
             remove_idle_entry(&key, &entry, state.users).await;
             return Err(error);
         }
@@ -276,6 +302,7 @@ impl QdrantVectorStore {
                 tracing::error!(%cleanup, collection, "failed to clear compensated bulk-load recovery state");
                 error = error.with_context("journal_cleanup_error", cleanup.to_string());
             }
+            state.process_lease = None;
             return Err(error);
         }
         Ok(())
@@ -407,6 +434,7 @@ impl QdrantVectorStore {
         // zero-user entry would make the next operation inherit a stale baseline.
         // PATTERN: evict process-local ownership before surfacing journal cleanup.
         remove_idle_entry(&key, &entry, state.users).await;
+        state.process_lease = None;
         restoring.and(journal_completion)
     }
 
@@ -429,14 +457,24 @@ impl QdrantVectorStore {
             if transition.endpoint != endpoint {
                 continue;
             }
-            self.set_indexing_threshold(&transition.collection, transition.restore_threshold)
-                .await?;
-            self.wait_for_optimizer_ready(&transition.collection)
-                .await?;
             let key = BulkLoadKey {
                 endpoint: endpoint.clone(),
                 collection: transition.collection.clone(),
             };
+            // A live owner retains this lease through restoration. Recovery
+            // waits for it (or for the OS to release it after a crash) before
+            // touching provider configuration.
+            let _lease = journal.acquire_collection_lease(&key).map_err(|error| {
+                ApiError::new(
+                    "vector.qdrant.bulk_lease",
+                    ErrorStage::Upserting,
+                    format!("failed to acquire recovery lease: {error}"),
+                )
+            })?;
+            self.set_indexing_threshold(&transition.collection, transition.restore_threshold)
+                .await?;
+            self.wait_for_optimizer_ready(&transition.collection)
+                .await?;
             journal.complete(&key).map_err(|error| {
                 ApiError::new(
                     "vector.qdrant.bulk_journal",
@@ -446,64 +484,6 @@ impl QdrantVectorStore {
             })?;
         }
         Ok(())
-    }
-
-    async fn restore_normal_indexing(&self, collection: &str) -> Result<()> {
-        self.restore_indexing_threshold(collection, self.normal_indexing_threshold)
-            .await
-    }
-
-    async fn restore_indexing_threshold(&self, collection: &str, threshold: u64) -> Result<()> {
-        self.set_indexing_threshold(collection, threshold).await?;
-        self.wait_for_optimizer_ready(collection).await
-    }
-
-    async fn set_indexing_threshold(&self, collection: &str, threshold: u64) -> Result<()> {
-        let http = self.http()?;
-        let url = http.endpoint().collection_path(collection, "");
-        http.patch_json(
-            ErrorStage::Upserting,
-            &url,
-            &json!({"optimizers_config": {"indexing_threshold": threshold}}),
-            "qdrant_bulk_indexing_threshold",
-        )
-        .await
-    }
-
-    async fn wait_for_optimizer_ready(&self, collection: &str) -> Result<()> {
-        let http = self.http()?;
-        let url = http.endpoint().collection_path(collection, "");
-        let started = Instant::now();
-        loop {
-            let body = http
-                .get_json(ErrorStage::Upserting, &url, "qdrant_optimizer_status")
-                .await?
-                .ok_or_else(|| {
-                    ApiError::new(
-                        "vector.qdrant.collection_missing",
-                        ErrorStage::Upserting,
-                        "collection disappeared while waiting for optimizer readiness",
-                    )
-                })?;
-            let result = &body["result"];
-            let status = result["status"].as_str().unwrap_or_default();
-            let optimizer = result["optimizer_status"]
-                .as_str()
-                .or_else(|| result["optimizer_status"]["status"].as_str())
-                .unwrap_or_default();
-            if status == "green" && optimizer == "ok" {
-                return Ok(());
-            }
-            if started.elapsed() >= OPTIMIZER_READY_TIMEOUT {
-                return Err(ApiError::new(
-                    "vector.qdrant.optimizer_timeout",
-                    ErrorStage::Upserting,
-                    "Qdrant optimizer did not become ready after restoring indexing",
-                )
-                .with_context("collection", collection.to_string()));
-            }
-            tokio::time::sleep(OPTIMIZER_POLL_INTERVAL).await;
-        }
     }
 }
 

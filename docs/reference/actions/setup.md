@@ -47,13 +47,13 @@ axon setup plugin-hook [--json]
 | `compose rebuild` | Rebuild the Axon image and start the Docker service stack. |
 | `smoke` | Prewarm TEI, index `example.com` through the source pipeline, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
-| `setup plugin-hook` | Probe-only path used by Claude Code SessionStart. Checks `/readyz`; exits silently when the stack is up, or advises `/axon-deploy` when it is down. Never deploys. |
+| `setup plugin-hook` | Explicit probe-only helper. Checks `/readyz`; exits silently when the stack is up, or advises `/axon-deploy` when it is down. Never deploys. |
 
 ## `setup plugin-hook` Behavior
 
-Run by the plugin's SessionStart hook on every session start. **It never deploys** —
-provisioning is the `/axon-deploy` slash command (or `axon setup` / `axon compose up`).
-The hook only does:
+The plugin does not register this helper automatically. When invoked explicitly
+it **never deploys**—provisioning is `/axon-deploy`, `axon setup`, or
+`axon compose up`. The helper only does:
 
 1. Refresh the user's `~/.local/bin/axon` copy and apply plugin env options.
 2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_HTTP_HOST`/`AXON_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself asserts qdrant + tei readiness, so a 200 means the whole stack is up.

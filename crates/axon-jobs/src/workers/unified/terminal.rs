@@ -22,43 +22,40 @@ use super::helpers::{empty_counts, enum_name, json_error, source_error_from_api,
 /// `ApiError`.
 pub(super) async fn fail_unified_claimed(
     pool: &SqlitePool,
-    store: &SqliteUnifiedJobStore,
     claimed: &UnifiedClaimedJob,
     error: ApiError,
 ) {
-    let _ = store
-        .append_event(SourceProgressEvent {
-            event_id: uuid::Uuid::new_v4().to_string(),
-            sequence: 0,
-            job_id: claimed.job_id,
-            attempt: claimed.attempt,
-            stage_id: None,
-            batch_id: None,
-            reservation_id: None,
-            checkpoint_id: None,
-            dedupe_key: Some(format!("job-failed:{}:{}", error.code, claimed.job_id.0)),
-            phase: PipelinePhase::Complete,
-            status: LifecycleStatus::Failed,
-            severity: Severity::Failed,
-            visibility: Visibility::Public,
-            message: error.message.clone(),
-            timestamp: Timestamp::from(chrono::Utc::now()),
-            source_id: None,
-            canonical_uri: None,
-            adapter: None,
-            scope: None,
-            generation: None,
-            counts: empty_counts(),
-            timing: None,
-            current: None,
-            throughput: None,
-            retry: None,
-            warning: None,
-            error: Some(error.clone()),
-        })
-        .await;
+    let event = SourceProgressEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
+        sequence: 0,
+        job_id: claimed.job_id,
+        attempt: claimed.attempt,
+        stage_id: None,
+        batch_id: None,
+        reservation_id: None,
+        checkpoint_id: None,
+        dedupe_key: Some(format!("job-failed:{}:{}", error.code, claimed.job_id.0)),
+        phase: PipelinePhase::Complete,
+        status: LifecycleStatus::Failed,
+        severity: Severity::Failed,
+        visibility: Visibility::Public,
+        message: error.message.clone(),
+        timestamp: Timestamp::from(chrono::Utc::now()),
+        source_id: None,
+        canonical_uri: None,
+        adapter: None,
+        scope: None,
+        generation: None,
+        counts: empty_counts(),
+        timing: None,
+        current: None,
+        throughput: None,
+        retry: None,
+        warning: None,
+        error: Some(error.clone()),
+    };
 
-    if let Err(mark_error) = mark_terminal(
+    if let Err(mark_error) = mark_terminal_with_event(
         pool,
         claimed,
         LifecycleStatus::Failed,
@@ -66,6 +63,7 @@ pub(super) async fn fail_unified_claimed(
         None,
         None,
         Some(error),
+        event,
     )
     .await
     {
@@ -75,6 +73,31 @@ pub(super) async fn fail_unified_claimed(
             "unified worker failed to mark claimed job terminal"
         );
     }
+}
+
+async fn mark_terminal_with_event(
+    pool: &SqlitePool,
+    claimed: &UnifiedClaimedJob,
+    status: LifecycleStatus,
+    phase: PipelinePhase,
+    counts: Option<StageCounts>,
+    result_json: Option<String>,
+    error: Option<ApiError>,
+    event: SourceProgressEvent,
+) -> Result<(), ApiError> {
+    retry_job_write("unified worker terminal transition with event", || {
+        mark_terminal_once(
+            pool,
+            claimed,
+            status,
+            phase,
+            counts.clone(),
+            result_json.clone(),
+            error.clone(),
+            Some(event.clone()),
+        )
+    })
+    .await
 }
 
 pub(super) async fn heartbeat(
@@ -172,6 +195,7 @@ pub(super) async fn mark_terminal(
             counts.clone(),
             result_json.clone(),
             error.clone(),
+            None,
         )
     })
     .await
@@ -185,6 +209,7 @@ async fn mark_terminal_once(
     counts: Option<StageCounts>,
     result_json: Option<String>,
     error: Option<ApiError>,
+    mut terminal_event: Option<SourceProgressEvent>,
 ) -> Result<(), ApiError> {
     let now = Timestamp::from(chrono::Utc::now());
     let terminal_severity = match status {
@@ -261,6 +286,9 @@ async fn mark_terminal_once(
                 claimed.job_id.0, claimed.attempt
             ),
         ));
+    }
+    if let Some(event) = terminal_event.as_mut() {
+        crate::unified::event_ops::append_job_event_tx(&mut tx, event).await?;
     }
     sqlx::query(
         "UPDATE job_attempts SET

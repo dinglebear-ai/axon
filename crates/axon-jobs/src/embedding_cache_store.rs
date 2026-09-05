@@ -1,10 +1,9 @@
 //! SQLite persistence adapter for `axon-embedding`'s cache boundary.
 
 use async_trait::async_trait;
-use axon_api::source::ProviderId;
-use axon_embedding::cache::{
+use axon_api::source::{
     CacheStoreError, CachedEmbedding, CorruptCacheEntry, EmbeddingCacheLookup,
-    EmbeddingVectorCacheStore,
+    EmbeddingVectorCacheStore, ProviderId,
 };
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 use std::sync::Arc;

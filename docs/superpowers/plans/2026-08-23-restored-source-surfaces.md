@@ -677,7 +677,7 @@ git commit -m "feat(cli): restore focused source commands"
 
 **Files:**
 - Modify: `crates/axon-api/src/mcp_schema.rs`
-- Modify: `crates/axon-api/src/mcp_schema/requests.rs`
+- Modify: `crates/axon-api/src/action/requests.rs`
 - Modify: `crates/axon-api/src/mcp_schema_tests.rs`
 - Create: `crates/axon-mcp/src/server/handlers_projections.rs`
 - Create: `crates/axon-mcp/src/server/handlers_projections_tests.rs`

@@ -1,5 +1,4 @@
 use super::*;
-use axon_core::redact::Redactor;
 #[cfg(test)]
 use std::sync::atomic::{AtomicIsize, Ordering};
 
@@ -48,7 +47,13 @@ pub(super) async fn save_plan(
     result: &ResetResult,
 ) -> Result<String, Box<dyn Error>> {
     let path = plan_path(cfg, &result.plan_id)?;
-    let bytes = serde_json::to_vec_pretty(result)?;
+    let value = serde_json::to_value(result)?;
+    let redacted = axon_core::redact::redact_public_write(
+        value,
+        &axon_core::redact::RedactionContext::artifact_metadata(),
+        &axon_core::redact::DefaultRedactor::new(),
+    )?;
+    let bytes = serde_json::to_vec_pretty(&redacted.payload)?;
     atomic_write(&path, &bytes).await?;
     Ok(path.display().to_string())
 }
@@ -97,11 +102,12 @@ pub(super) async fn save_receipt(
     }
     let path = receipt_path(cfg, &receipt.reset_id)?;
     let value = serde_json::to_value(receipt)?;
-    let (value, _) = axon_core::redact::DefaultRedactor::new().redact_json(
+    let value = axon_core::redact::redact_public_write(
         value,
         &axon_core::redact::RedactionContext::artifact_metadata(),
-    );
-    let bytes = serde_json::to_vec_pretty(&value)?;
+        &axon_core::redact::DefaultRedactor::new(),
+    )?;
+    let bytes = serde_json::to_vec_pretty(&value.payload)?;
     atomic_write(&path, &bytes).await?;
     Ok(path.display().to_string())
 }

@@ -32,7 +32,7 @@ crates/axon-mcp/src/
   server/handlers_extract.rs # action=extract
 ```
 
-The shared MCP request DTOs live in `crates/axon-api/src/mcp_schema/`.
+The shared MCP request DTOs live in `crates/axon-api/src/action/`.
 
 ## Development Cycle
 

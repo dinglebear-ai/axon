@@ -42,6 +42,15 @@ pub async fn code_search(
     code_search_with_progress(ctx, text, opts, None).await
 }
 
+/// Owned-input boundary for transport handlers whose futures must be `Send`.
+pub async fn code_search_owned(
+    ctx: &ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    code_search_with_progress(ctx, &text, opts, None).await
+}
+
 #[must_use = "code_search_with_progress returns a Result that should be handled"]
 pub async fn code_search_with_progress(
     ctx: &ServiceContext,

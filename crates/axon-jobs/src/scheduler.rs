@@ -138,7 +138,7 @@ mod grant;
 mod lease;
 mod reconcile;
 use lease::WaitingReservationGuard;
-pub use lease::{ActiveReservationLease, call_reserved};
+pub use lease::{ReservationObservation, call_reserved};
 pub use reconcile::Reconciliation;
 
 #[derive(Debug, thiserror::Error)]
@@ -519,6 +519,7 @@ impl ProviderScheduler {
         Ok(())
     }
 
+    #[cfg(test)]
     async fn cancel(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
         let changed = sqlx::query(

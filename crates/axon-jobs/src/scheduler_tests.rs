@@ -3,6 +3,27 @@ use crate::store::open_sqlite_pool;
 use std::future::{Future, poll_fn};
 use std::task::Poll;
 
+async fn wait_for_reservation_status(pool: &SqlitePool, fence: &str, status: &str) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = ?",
+            )
+            .bind(fence)
+            .bind(status)
+            .fetch_one(pool)
+            .await
+            .expect("reservation status count");
+            if count == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("fence {fence} never reached status {status}"));
+}
+
 #[test]
 fn priority_serialization_matches_scheduler_lane_order() {
     assert_eq!(enum_name(JobPriority::Interactive).unwrap(), "interactive");
@@ -534,7 +555,7 @@ async fn waiter_on_second_pool_observes_release_without_shared_notification() {
         )
         .await
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_reservation_status(&first_pool, "waiter-fence", "queued").await;
     assert!(!waiter.is_finished(), "waiter should remain durably queued");
     first
         .complete(held.reservation_id(), "held-fence")
@@ -637,7 +658,7 @@ async fn cross_process_recovery_is_independent_for_domains_sharing_an_authority(
         )
         .await
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_reservation_status(&pool, "domain-a-waiter", "queued").await;
     sqlx::query(
         "UPDATE provider_reservations SET status = 'released', granted_units = 0
          WHERE reservation_id = ?",
@@ -816,7 +837,7 @@ async fn capacity_release_wakes_a_waiter_owned_by_another_authority() {
             .reserve_wait(request(82, "other-waiter", JobPriority::Normal))
             .await
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    wait_for_reservation_status(&pool, "other-waiter", "queued").await;
     owner
         .complete(held.reservation_id(), "owner-held")
         .await
@@ -890,7 +911,7 @@ async fn dropping_a_waiter_cancels_its_durable_queue_row() {
             })
             .await
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_reservation_status(&pool, "dropped-waiter-fence", "queued").await;
     waiter.abort();
     let _ = waiter.await;
 
@@ -906,7 +927,7 @@ async fn dropping_a_waiter_cancels_its_durable_queue_row() {
             if row == Some(("canceled".into(), "waiter_dropped".into())) {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
         }
     })
     .await
@@ -951,6 +972,10 @@ async fn reserved_call_renews_long_running_active_lease() {
     )
     .expect("scheduler");
     let task_scheduler = scheduler.clone();
+    let operation_started = Arc::new(Notify::new());
+    let finish_operation = Arc::new(Notify::new());
+    let task_operation_started = Arc::clone(&operation_started);
+    let task_finish_operation = Arc::clone(&finish_operation);
     let task = tokio::spawn(async move {
         call_reserved::<(), _, &'static str, _, _>(
             &task_scheduler,
@@ -963,30 +988,17 @@ async fn reserved_call_renews_long_running_active_lease() {
                 units: 1,
             },
             |_lease| async move {
-                tokio::time::sleep(Duration::from_millis(180)).await;
+                task_operation_started.notify_one();
+                task_finish_operation.notified().await;
                 Ok("done")
             },
         )
         .await
     });
 
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let active: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = 'active'",
-            )
-            .bind("renew-fence")
-            .fetch_one(&pool)
-            .await
-            .expect("active count");
-            if active == 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .expect("reservation activated");
+    tokio::time::timeout(Duration::from_secs(2), operation_started.notified())
+        .await
+        .expect("reservation activated");
 
     sqlx::query(
         "UPDATE provider_reservations SET renewed_at = datetime('now', '-61 seconds'),
@@ -996,10 +1008,28 @@ async fn reserved_call_renews_long_running_active_lease() {
     .execute(&pool)
     .await
     .expect("age active lease");
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let renewed: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? \
+                 AND status = 'active' AND renewed_at > datetime('now', '-5 seconds')",
+            )
+            .bind("renew-fence")
+            .fetch_one(&pool)
+            .await
+            .expect("renewed lease count");
+            if renewed == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("active lease should renew after being aged");
     let reconciliation = scheduler.reconcile().await.expect("reconcile");
     assert_eq!(reconciliation.quarantined_active, 0);
 
+    finish_operation.notify_one();
     let result = task.await.expect("task join").expect("reserved call");
     assert_eq!(result, "done");
     let row: (String, i64) =
@@ -1076,27 +1106,6 @@ fn background_queue_wait_uses_liveness_instead_of_foreground_deadline() {
     assert_eq!(queue_wait_timeout(JobPriority::Maintenance), None);
 }
 
-async fn wait_for_status(pool: &SqlitePool, fence: &str, status: &str) {
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = ?",
-            )
-            .bind(fence)
-            .bind(status)
-            .fetch_one(pool)
-            .await
-            .expect("status count");
-            if count == 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("fence {fence} never reached status {status}"));
-}
-
 #[tokio::test]
 async fn dropping_active_reserved_call_releases_capacity() {
     let pool = open_sqlite_pool(":memory:").await.expect("migrations");
@@ -1108,16 +1117,16 @@ async fn dropping_active_reserved_call_releases_capacity() {
             &task_scheduler,
             request(41, "dropped-active-fence", JobPriority::Normal),
             |_lease| async move {
-                tokio::time::sleep(Duration::from_secs(300)).await;
+                std::future::pending::<()>().await;
                 Ok("never")
             },
         )
         .await
     });
-    wait_for_status(&pool, "dropped-active-fence", "active").await;
+    wait_for_reservation_status(&pool, "dropped-active-fence", "active").await;
     task.abort();
     let _ = task.await;
-    wait_for_status(&pool, "dropped-active-fence", "released").await;
+    wait_for_reservation_status(&pool, "dropped-active-fence", "released").await;
     let reason: String = sqlx::query_scalar(
         "SELECT terminal_reason FROM provider_reservations WHERE fence = 'dropped-active-fence'",
     )
@@ -1146,13 +1155,13 @@ async fn renew_failure_releases_capacity_without_wedging_domain() {
             &task_scheduler,
             request(51, "renew-fail-fence", JobPriority::Normal),
             |_lease| async move {
-                tokio::time::sleep(Duration::from_secs(300)).await;
+                std::future::pending::<()>().await;
                 Ok("never")
             },
         )
         .await
     });
-    wait_for_status(&pool, "renew-fail-fence", "active").await;
+    wait_for_reservation_status(&pool, "renew-fail-fence", "active").await;
     // Revoke the fence out from under the running call; the next renewal tick
     // must fail, drop the operation, and leave no active row behind.
     let reservation_id: String = sqlx::query_scalar(

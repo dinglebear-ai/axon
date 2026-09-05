@@ -8,8 +8,9 @@ pub(in crate::config) mod raw;
 
 /// TOML configuration — tuning knobs only, safe to commit to source control.
 ///
-/// Phase 1 scope (~15 fields across 4 sections). All fields are `Option<T>`
-/// so absent keys fall through to env var and hardcoded defaults.
+/// Flattened runtime projection of the current 20-section tuning contract.
+/// All fields are `Option<T>` so absent keys fall through to environment
+/// variables and hardcoded defaults.
 /// `#[serde(deny_unknown_fields)]` turns typos into parse errors rather than
 /// silent ignores.
 #[derive(Deserialize, Default)]
@@ -652,6 +653,9 @@ fn parse_toml_config_str(contents: &str, path: Option<&Path>) -> Result<TomlConf
     }
     let raw = toml::from_str::<raw::RawTomlConfig>(contents)
         .map_err(|e| format!("axon: error: config file{where_clause} has a parse error: {e}"))?;
+    raw.validate_supported().map_err(|error| {
+        format!("axon: error: config file{where_clause} has an unsupported setting: {error}")
+    })?;
     Ok(convert::flatten(raw))
 }
 

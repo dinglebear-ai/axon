@@ -64,7 +64,7 @@ pub struct RestMemoryRequest {
     pub archive_sources: Option<bool>,
 }
 
-impl From<RestMemorySubaction> for axon_api::mcp_schema::MemorySubaction {
+impl From<RestMemorySubaction> for axon_api::action::MemorySubaction {
     fn from(value: RestMemorySubaction) -> Self {
         match value {
             RestMemorySubaction::Remember => Self::Remember,
@@ -85,7 +85,7 @@ impl From<RestMemorySubaction> for axon_api::mcp_schema::MemorySubaction {
     }
 }
 
-impl From<RestMemoryNodeType> for axon_api::mcp_schema::MemoryNodeType {
+impl From<RestMemoryNodeType> for axon_api::action::MemoryNodeType {
     fn from(value: RestMemoryNodeType) -> Self {
         match value {
             RestMemoryNodeType::Decision => Self::Decision,
@@ -97,7 +97,7 @@ impl From<RestMemoryNodeType> for axon_api::mcp_schema::MemoryNodeType {
     }
 }
 
-impl From<RestMemoryEdgeType> for axon_api::mcp_schema::MemoryEdgeType {
+impl From<RestMemoryEdgeType> for axon_api::action::MemoryEdgeType {
     fn from(value: RestMemoryEdgeType) -> Self {
         match value {
             RestMemoryEdgeType::RelatesTo => Self::RelatesTo,
@@ -106,7 +106,7 @@ impl From<RestMemoryEdgeType> for axon_api::mcp_schema::MemoryEdgeType {
     }
 }
 
-impl From<RestMemoryRequest> for axon_api::mcp_schema::MemoryRequest {
+impl From<RestMemoryRequest> for axon_api::action::MemoryRequest {
     fn from(req: RestMemoryRequest) -> Self {
         Self {
             subaction: req.subaction.map(Into::into),

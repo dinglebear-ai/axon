@@ -63,10 +63,6 @@ fn every_selector_is_admin_gated() {
         PruneSelector::Collection {
             collection: "axon".into(),
         },
-        PruneSelector::JobRetention {
-            older_than_days: 30,
-        },
-        PruneSelector::Cache { older_than_days: 7 },
     ];
     for sel in selectors {
         assert!(selector_requires_admin(&sel), "{sel:?} must be admin-gated");

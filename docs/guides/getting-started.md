@@ -12,7 +12,7 @@ Step-by-step instructions to get Axon running locally or via Docker.
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| Rust | 1.94+ | Compiler and toolchain (see `rust-toolchain.toml`) |
+| Rust | 1.97.1 | Compiler and toolchain (see `rust-toolchain.toml`) |
 | Docker | 24+ | Infrastructure services |
 | Docker Compose | v2+ | Service orchestration |
 | just | latest | Task runner |

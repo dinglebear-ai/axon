@@ -31,7 +31,25 @@ pub(crate) fn should_abort_for_usage(snapshot: MemorySnapshot, abort_percent: f6
 }
 
 pub(crate) fn should_fail_closed_for_telemetry_failures(failures: u32) -> bool {
-    failures >= MAX_TELEMETRY_FAILURES
+    telemetry_is_supported() && failures >= MAX_TELEMETRY_FAILURES
+}
+
+const fn telemetry_is_supported() -> bool {
+    cfg!(any(target_os = "linux", target_os = "macos"))
+}
+
+async fn read_platform_memory_snapshot() -> Option<MemorySnapshot> {
+    #[cfg(target_os = "macos")]
+    {
+        return tokio::task::spawn_blocking(platform_memory_snapshot)
+            .await
+            .ok()
+            .flatten();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        platform_memory_snapshot()
+    }
 }
 
 pub fn is_memory_abort_message(message: &str) -> bool {
@@ -67,7 +85,7 @@ impl CrawlMemoryGuard {
                 tokio::select! {
                     _ = cancel_task.cancelled() => break,
                     _ = ticker.tick() => {
-                        let Some(snapshot) = platform_memory_snapshot() else {
+                        let Some(snapshot) = read_platform_memory_snapshot().await else {
                             telemetry_failures = telemetry_failures.saturating_add(1);
                             if !snapshot_warning_logged {
                                 log_warn("crawl memory guard could not read RSS/limit telemetry; uncapped crawl will fail closed after bounded retries");

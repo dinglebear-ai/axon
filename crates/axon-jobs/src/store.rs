@@ -34,6 +34,9 @@ async fn open_sqlite_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error
     let pool = axon_core::sqlite::open_pool_unlocked(path).await?;
 
     crate::migrations::apply_all_migrations(&pool).await?;
+    crate::config_snapshot_store::scrub_legacy_snapshot_credentials(&pool)
+        .await
+        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
 
     Ok(pool)
 }

@@ -231,7 +231,8 @@ pub async fn run_crawl_once(
 
     let inline_chrome_ws_url = inline_chrome_ws_url(cfg);
 
-    let join = tokio::spawn(collect_crawl_pages(
+    let mut collectors = tokio::task::JoinSet::new();
+    collectors.spawn(collect_crawl_pages(
         rx,
         CollectorConfig {
             markdown_dir,
@@ -280,8 +281,10 @@ pub async fn run_crawl_once(
     website.unsubscribe();
     memory_guard.stop();
 
-    let joined = join
+    let joined = collectors
+        .join_next()
         .await
+        .expect("crawl collector task is present")
         .map_err(|e| format!("collector join failure for {start_url}: {e}"));
     if let Some(reason) = memory_guard.abort_reason() {
         return Err(reason.into());
@@ -339,31 +342,17 @@ async fn reconcile_etag_and_cleanup(
     cfg: &Config,
     output_dir: &Path,
     recycling_bin: &Path,
-    previous_manifest: &Arc<HashMap<String, ManifestEntry>>,
-    etag_seeded_urls: &HashSet<String>,
+    _previous_manifest: &Arc<HashMap<String, ManifestEntry>>,
+    _etag_seeded_urls: &HashSet<String>,
     etag_previous_sidecar: &HashMap<String, etag::EtagEntry>,
     urls: &HashSet<String>,
     website: &Website,
-    summary: &mut CrawlSummary,
+    _summary: &mut CrawlSummary,
 ) -> Result<(), Box<dyn Error>> {
-    // MUST run before the recycling bin is purged — reconciliation relinks reused
-    // markdown out of markdown.old for genuine Spider 304 skips.
+    // Do not infer 304 from Spider's visited set: failed requests are visited too.
+    // Persist validators for a future transport with explicit response outcomes,
+    // but never resurrect absent content from this ambiguous signal.
     if cfg.etag_conditional {
-        let etag_visited: HashSet<String> = website
-            .get_links()
-            .iter()
-            .filter_map(|u| canonicalize_url_for_dedupe(u.as_ref()))
-            .collect();
-        let reused = etag::reconcile_unmodified(
-            output_dir,
-            previous_manifest,
-            etag_seeded_urls,
-            urls,
-            &etag_visited,
-            etag_previous_sidecar,
-        )
-        .await;
-        summary.reused_pages += reused as u32;
         etag::persist_next_sidecar(output_dir, website, etag_previous_sidecar, urls).await;
     }
 
@@ -421,7 +410,8 @@ pub async fn run_sitemap_only(
     let start_host = start_host(start_url);
     let crawl_start = Instant::now();
 
-    let join = tokio::spawn(collect_crawl_pages(
+    let mut collectors = tokio::task::JoinSet::new();
+    collectors.spawn(collect_crawl_pages(
         rx,
         CollectorConfig {
             markdown_dir,
@@ -453,8 +443,10 @@ pub async fn run_sitemap_only(
     website.unsubscribe();
     memory_guard.stop();
 
-    let joined = join
+    let joined = collectors
+        .join_next()
         .await
+        .expect("sitemap collector task is present")
         .map_err(|e| format!("sitemap collector join failure for {start_url}: {e}"));
     if let Some(reason) = memory_guard.abort_reason() {
         return Err(reason.into());

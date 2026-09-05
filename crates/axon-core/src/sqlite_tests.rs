@@ -42,6 +42,66 @@ async fn wal_sidecars_survive_the_last_pool_close() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn opening_existing_database_repairs_database_and_sidecar_modes() {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("jobs.db");
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .mode(0o666)
+        .open(&db)
+        .unwrap();
+    std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o666)).unwrap();
+    let pool = open_pool_unlocked(db.to_str().unwrap()).await.unwrap();
+    sqlx::query("CREATE TABLE permission_proof (value INTEGER)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::metadata(&db).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = PathBuf::from(format!("{}{suffix}", db.display()));
+        assert_eq!(
+            std::fs::metadata(sidecar).unwrap().permissions().mode() & 0o077,
+            0,
+        );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn sqlite_open_rejects_symlink_target_before_connecting() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target.db");
+    let link = dir.path().join("jobs.db");
+    std::fs::write(&target, b"").unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let error = open_pool_unlocked(link.to_str().unwrap())
+        .await
+        .expect_err("O_NOFOLLOW must reject a database symlink");
+    assert!(error.to_string().contains("refusing to open database"));
+}
+
+#[test]
+fn corruption_recovery_preserves_originals_when_sidecar_backup_fails() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("jobs.db");
+    std::fs::write(&db, b"database-bytes").unwrap();
+    std::fs::create_dir(format!("{}-wal", db.display())).unwrap();
+
+    let error = recover_corrupted_database(&db, "test corruption")
+        .expect_err("unpreservable WAL must abort recovery");
+    assert!(error.to_string().contains("preserve"));
+    assert_eq!(std::fs::read(&db).unwrap(), b"database-bytes");
+    assert!(PathBuf::from(format!("{}-wal", db.display())).is_dir());
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn external_reader_churn_keeps_wal_generation_linked_and_visible() {
     use std::os::unix::fs::MetadataExt;
     use std::process::Command;

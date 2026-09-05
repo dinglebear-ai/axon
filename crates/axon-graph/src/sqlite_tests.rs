@@ -897,6 +897,33 @@ async fn query_traverses_outbound_with_depth_and_edge_filter() {
 }
 
 #[tokio::test]
+async fn query_rejects_work_above_hard_depth_and_edge_budgets() {
+    let graph = store().await;
+    let request = |depth, limit| GraphQueryRequest {
+        start: GraphIdentifier {
+            kind: "repo".to_string(),
+            canonical_uri: None,
+            value: Some("https://github.com/x/y".to_string()),
+            node_id: None,
+            source_id: None,
+            source_item_key: None,
+            metadata: MetadataMap::new(),
+        },
+        edges: Vec::new(),
+        direction: GraphDirection::Both,
+        depth,
+        filters: None,
+        limit,
+        cursor: None,
+    };
+
+    let depth = graph.query(request(9, 10)).await.unwrap_err();
+    assert_eq!(depth.code.to_string(), "graph.depth_limit_exceeded");
+    let edges = graph.query(request(1, 1_001)).await.unwrap_err();
+    assert_eq!(edges.code.to_string(), "graph.edge_limit_exceeded");
+}
+
+#[tokio::test]
 async fn query_cursor_returns_stable_non_overlapping_pages() {
     let graph = store().await;
     let mut candidate = repo_docs_candidate(

@@ -30,6 +30,7 @@ use self::db_limited_ledger::DbLimitedLedgerStore;
 use crate::artifact_candidate_outbox::SharedArtifactCandidateOutbox;
 
 mod db_limited_ledger;
+mod queue_summary;
 mod scheduled_web;
 mod target_runtime;
 
@@ -76,20 +77,21 @@ impl QueueSummaryTask {
     }
 
     async fn shutdown(&self) {
-        self.stop_and_join();
-    }
-
-    fn stop_and_join(&self) {
         let _ = self.stop.send(());
         if let Some(thread) = self.thread.lock().expect("queue summary task lock").take() {
-            let _ = thread.join();
+            if let Err(error) = tokio::task::spawn_blocking(move || thread.join()).await {
+                tracing::warn!(%error, "background worker join task failed");
+            }
         }
     }
 }
 
 impl Drop for QueueSummaryTask {
     fn drop(&mut self) {
-        self.stop_and_join();
+        // Drop may run on a single-thread Tokio executor. Signal cancellation,
+        // but never synchronously join here; explicit service shutdown owns the
+        // observable join path and dropping a JoinHandle safely detaches it.
+        let _ = self.stop.send(());
     }
 }
 
@@ -254,27 +256,23 @@ impl ServiceContext {
     async fn build(
         cfg: Arc<Config>,
         spawn_workers: bool,
-        hold_drain_lock: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if spawn_workers {
             axon_core::health::assert_workers_allowed_by_cutover(&cfg)
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
         }
-        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
-        let target_local_source =
-            Self::build_target_local_source(&cfg, &jobs, spawn_workers).await?;
-        // A long-lived schedulers context (serve / HTTP mcp) owns the queue for
-        // its whole lifetime, so it holds the drain lock to advertise that —
-        // otherwise every detached CLI enqueue would auto-spawn a redundant
-        // worker (axon_rust-x4gxr.2). Short-lived `--wait` worker contexts must
-        // NOT hold it. Best-effort: if another worker already holds it, we start
-        // anyway (claiming is transactional).
-        let drain_lock = if hold_drain_lock {
-            Self::acquire_drain_lock(&cfg).await
+        // Provider cooling is process-local, so exactly one worker-bearing
+        // process may own a queue. Take the cross-process queue lock before
+        // constructing anything capable of claiming work.
+        let drain_lock = if spawn_workers {
+            Some(Self::acquire_drain_lock(&cfg).await?)
         } else {
             None
         };
+        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
+        let target_local_source =
+            Self::build_target_local_source(&cfg, &jobs, spawn_workers).await?;
         let mut context = Self {
             cfg: Arc::clone(&cfg),
             jobs: Arc::clone(&jobs),
@@ -303,26 +301,20 @@ impl ServiceContext {
         Ok(context)
     }
 
-    /// Best-effort acquire the worker drain lock for a long-lived schedulers
-    /// context. Returns `None` (and logs) when another worker process already
-    /// holds it or the lock DB can't be opened — the server still runs, it just
-    /// doesn't advertise liveness, so a detached enqueue may auto-spawn one
-    /// extra worker (correct, only mildly wasteful).
-    async fn acquire_drain_lock(cfg: &Config) -> Option<Arc<crate::runtime::WorkerDrainLock>> {
+    /// Acquire the exclusive cross-process worker lock or fail startup.
+    async fn acquire_drain_lock(
+        cfg: &Config,
+    ) -> Result<Arc<crate::runtime::WorkerDrainLock>, Box<dyn std::error::Error + Send + Sync>>
+    {
         let lock_path = crate::runtime::drain_lock_path(&cfg.sqlite_path);
         match crate::runtime::WorkerDrainLock::try_hold(&lock_path).await {
-            Ok(Some(lock)) => Some(Arc::new(lock)),
-            Ok(None) => {
-                tracing::info!(
-                    "worker drain lock already held by another process; \
-                     server runs without advertising liveness"
-                );
-                None
-            }
-            Err(error) => {
-                tracing::warn!(%error, "failed to acquire worker drain lock; continuing");
-                None
-            }
+            Ok(Some(lock)) => Ok(Arc::new(lock)),
+            Ok(None) => Err(
+                "jobs.worker_already_active: another worker process owns this queue"
+                    .to_string()
+                    .into(),
+            ),
+            Err(error) => Err(format!("jobs.worker_lock_failed: {error}").into()),
         }
     }
 
@@ -372,18 +364,17 @@ impl ServiceContext {
     /// This is the safe default for CLI commands that enqueue and exit.
     /// Use `new_with_workers()` for long-lived processes that should process jobs.
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, false, false).await
+        Self::build(cfg, false).await
     }
 
     /// Create a ServiceContext with in-process workers (SQLite runtime only).
     ///
-    /// Use for foreground CLI `--wait true` and the standalone `axon jobs
-    /// worker` (which owns the drain lock itself). Does NOT hold the drain lock:
-    /// a short-lived `--wait` context must not suppress auto-spawn.
+    /// Use for foreground CLI `--wait true` and the standalone worker. The
+    /// context holds the exclusive queue-worker lock for its lifetime.
     pub async fn new_with_workers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true, false).await
+        Self::build(cfg, true).await
     }
 
     /// Create a long-lived ServiceContext with in-process workers that holds the
@@ -395,7 +386,7 @@ impl ServiceContext {
     pub async fn new_with_workers_and_schedulers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true, true).await
+        Self::build(cfg, true).await
     }
 
     /// Factory for test helpers — inject a mock `ServiceJobRuntime`.
@@ -465,6 +456,13 @@ impl ServiceContext {
 
     /// Cancel and join background tasks owned by this context.
     pub async fn shutdown_background_tasks(&self) {
+        if let Some(outbox) = self
+            .target_local_source
+            .as_ref()
+            .and_then(|runtime| runtime.artifact_candidate_outbox.as_ref())
+        {
+            outbox.shutdown_drain().await;
+        }
         if let Some(task) = &self.queue_summary {
             task.shutdown().await;
         }
@@ -521,107 +519,7 @@ fn spawn_adapter_cleanup_worker_with_runtime(
 ///
 /// Spawned only by worker-bearing contexts. Interval is `AXON_QUEUE_SUMMARY_SECS`
 /// (default 30s).
-fn spawn_queue_summary_logger(
-    jobs: Arc<dyn ServiceJobRuntime>,
-    secs: u64,
-) -> std::io::Result<Option<Arc<QueueSummaryTask>>> {
-    spawn_queue_summary_logger_with_runtime(
-        jobs,
-        secs,
-        tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build(),
-        "axon-queue-summary",
-    )
-}
-
-fn spawn_queue_summary_logger_with_runtime(
-    jobs: Arc<dyn ServiceJobRuntime>,
-    secs: u64,
-    runtime: std::io::Result<tokio::runtime::Runtime>,
-    thread_name: &str,
-) -> std::io::Result<Option<Arc<QueueSummaryTask>>> {
-    if secs == 0 {
-        return Ok(None);
-    }
-    if thread_name.as_bytes().contains(&0) {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "background worker thread name contains a null byte",
-        ));
-    }
-    let (stop, stopped) = std::sync::mpsc::channel();
-    let (ready, startup) = std::sync::mpsc::sync_channel(1);
-    let thread = std::thread::Builder::new()
-        .name(thread_name.into())
-        .spawn(move || {
-            let runtime = match runtime {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    let _ = ready.send(Err(error));
-                    return;
-                }
-            };
-            if ready.send(Ok(())).is_err() {
-                return;
-            }
-            loop {
-                match stopped.recv_timeout(Duration::from_secs(secs)) {
-                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                }
-                runtime.block_on(async {
-                    let Some(source) = queue_depth(&jobs, JobKind::Source).await else {
-                        return;
-                    };
-                    let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
-                        return;
-                    };
-                    let Some(watch) = queue_depth(&jobs, JobKind::Watch).await else {
-                        return;
-                    };
-                    let Some(prune) = queue_depth(&jobs, JobKind::Prune).await else {
-                        return;
-                    };
-                    tracing::info!(
-                        source,
-                        extract,
-                        watch,
-                        prune,
-                        interval_secs = secs,
-                        "job queue summary"
-                    );
-                });
-            }
-        })?;
-    match startup.recv() {
-        Ok(Ok(())) => Ok(Some(Arc::new(QueueSummaryTask::new(stop, thread)))),
-        Ok(Err(error)) => {
-            let _ = thread.join();
-            Err(error)
-        }
-        Err(error) => {
-            let _ = thread.join();
-            Err(std::io::Error::other(format!(
-                "queue summary startup handshake failed: {error}"
-            )))
-        }
-    }
-}
-
-async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option<i64> {
-    match jobs.count_jobs(kind).await {
-        Ok(count) => Some(count),
-        Err(err) => {
-            tracing::warn!(
-                ?kind,
-                error = %err,
-                "failed to read job queue depth"
-            );
-            None
-        }
-    }
-}
+use queue_summary::{spawn_queue_summary_logger, spawn_queue_summary_logger_with_runtime};
 
 #[cfg(test)]
 #[path = "context_tests.rs"]

@@ -1,5 +1,5 @@
 use crate::types::ClientActionError;
-use axon_api::mcp_schema::McpRenderMode;
+use axon_api::action::McpRenderMode;
 use axon_core::config::RenderMode;
 
 pub(super) fn map_render_mode(mode: McpRenderMode) -> RenderMode {

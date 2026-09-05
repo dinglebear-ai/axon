@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, Write};
 #[cfg(all(unix, not(target_os = "linux")))]
 use std::os::fd::{AsFd, BorrowedFd};
 use std::path::{Component, Path, PathBuf};
@@ -317,6 +317,32 @@ pub(crate) fn content_fingerprint_from_file(mut file: File, path_hint: &Path) ->
             break;
         }
         hasher.update(&buffer[..read]);
+    }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+pub(crate) fn content_fingerprint_and_spool_from_file(
+    mut file: File,
+    path_hint: &Path,
+    spool_path: &Path,
+) -> Result<String> {
+    file.rewind()
+        .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
+    let mut spool = File::create(spool_path)
+        .map_err(|err| fs_error("adapter.local.spool_write_failed", path_hint, err))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        spool
+            .write_all(&buffer[..read])
+            .map_err(|err| fs_error("adapter.local.spool_write_failed", path_hint, err))?;
     }
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }

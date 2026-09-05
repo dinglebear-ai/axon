@@ -1,4 +1,20 @@
 use super::*;
+
+#[test]
+fn rejects_declared_but_unimplemented_runtime_settings() {
+    for config in [
+        "[providers.embedding]\nbackground-max-concurrent-requests = 3\n",
+        "[providers.embedding]\nmaintenance-max-concurrent-requests = 1\n",
+        "[memory]\ndecay-enabled = true\n",
+        "[graph]\nenabled = true\n",
+    ] {
+        let error = match load_toml_config_from_str(config) {
+            Ok(_) => panic!("inert setting must fail closed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("unsupported setting"), "{error}");
+    }
+}
 use crate::config::parse::build_config::tests::{env_guard, with_env_saved};
 use std::io::Write;
 use tempfile::NamedTempFile;

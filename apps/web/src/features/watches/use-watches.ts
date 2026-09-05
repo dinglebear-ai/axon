@@ -6,15 +6,18 @@ import type { WatchPage, WatchUpdateRequest } from '../../lib/panel-types';
 import { normalizeWatchEntries, parseScheduleSeconds, watchErrorMessage } from './watch-helpers';
 
 /**
- * Standalone hook for the Watches tab (GET/PATCH/DELETE /v1/watches,
- * POST /v1/watches/{id}/{pause,resume}). Kept separate from
+ * Standalone hook for the panel-authenticated Watches proxy
+ * (GET/PATCH/DELETE /api/panel/watches, plus pause/resume). Kept separate from
  * usePanelData()/use-panel-data.ts — that file is already at the monolith
  * line-count limit from the Sources tab (a sibling workstream), so watch
  * state and actions are self-contained here and consumed only by
  * watches-tab.tsx.
  */
 export function useWatchesPanel(token: string, active: boolean) {
-  const axonClient = useMemo(() => new AxonClient(), []);
+  const axonClient = useMemo(
+    () => new AxonClient({ pathPrefix: '/api/panel', headers: { 'x-axon-panel-token': token } }),
+    [token]
+  );
 
   const [watchesResult, setWatchesResult] = useState<WatchPage | null>(null);
   const [watchesLoading, setWatchesLoading] = useState(false);
@@ -40,7 +43,7 @@ export function useWatchesPanel(token: string, active: boolean) {
     if (!options.quiet) setWatchesLoading(true);
     setWatchesMessage('');
     try {
-      const result = (await axonClient.listWatches({ limit: 50 })) as WatchPage;
+      const result = await axonClient.listWatches({ limit: 50 });
       setWatchesResult(result);
       setWatchesUpdatedAt(new Date().toLocaleTimeString());
     } catch (error) {

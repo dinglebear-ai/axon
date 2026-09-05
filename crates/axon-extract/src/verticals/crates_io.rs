@@ -13,7 +13,6 @@ use super::docs_rs::fetch_rustdoc_docs;
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "crates_io",
@@ -117,10 +116,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
 
     let name = segs[1];
     let ua = ctx.api_ua();
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let data = fetch_crate_json(client, name, url, ua).await?;
     // If the URL specifies an explicit version (e.g. /crates/serde/1.0.219),

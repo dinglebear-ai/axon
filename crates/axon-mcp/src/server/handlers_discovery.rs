@@ -172,7 +172,7 @@ impl AxonMcpServer {
                 "name": "axon",
                 "version": env!("CARGO_PKG_VERSION"),
             },
-            "contract_version": axon_api::mcp_schema::MCP_CONTRACT_VERSION,
+            "contract_version": crate::schema::MCP_CONTRACT_VERSION,
             "actions": actions,
             "providers": providers,
         });

@@ -9,8 +9,8 @@ use super::unified::{self, JobRunnerRegistry};
 
 /// Spawn the unified durable worker task.
 ///
-/// Dispatches every unified `JobKind` (including `Extract`, since Phase 12's
-/// removal of `axon-extract`) through the injected `JobRunnerRegistry` when
+/// Dispatches every unified `JobKind`, including the live `axon-extract`
+/// implementation, through the injected `JobRunnerRegistry` when
 /// one is supplied (built by axon-services at composition time). Kinds with
 /// no registered runner keep failing with `job_runner.unsupported_stage` —
 /// spawning unconditionally is safe.

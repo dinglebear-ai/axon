@@ -374,8 +374,7 @@ fn toml_tei_max_client_batch_size_clamps_out_of_range() {
 // --- [providers.embedding] previously-silently-ignored keys (axon_rust-ldozg) ---
 //
 // `retry-backoff-ms`, `cooldown-after-failures`, `cooldown-secs`,
-// `interactive-reserved-requests`, `background-max-concurrent-requests`,
-// `maintenance-max-concurrent-requests`, and `query-instruction-enabled` were
+// `interactive-reserved-requests` and `query-instruction-enabled` were
 // parsed by `RawEmbeddingSection` (round-tripped cleanly, no "unknown field"
 // error) but `apply_providers()` never copied them onto the legacy
 // `TomlConfig` shape, so no `Config` field ever read them — setting any of
@@ -397,8 +396,6 @@ fn toml_embedding_previously_dead_keys_are_read_into_config() {
          cooldown-after-failures = 7\n\
          cooldown-secs = 45\n\
          interactive-reserved-requests = 2\n\
-         background-max-concurrent-requests = 5\n\
-         maintenance-max-concurrent-requests = 2\n\
          query-instruction-enabled = false"
     )
     .unwrap();
@@ -411,8 +408,6 @@ fn toml_embedding_previously_dead_keys_are_read_into_config() {
             "AXON_TEI_COOLDOWN_AFTER_FAILURES",
             "AXON_TEI_COOLDOWN_SECS",
             "AXON_TEI_INTERACTIVE_RESERVED_REQUESTS",
-            "AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS",
-            "AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS",
             "AXON_TEI_QUERY_INSTRUCTION_ENABLED",
         ],
         || unsafe {
@@ -421,8 +416,6 @@ fn toml_embedding_previously_dead_keys_are_read_into_config() {
             env::remove_var("AXON_TEI_COOLDOWN_AFTER_FAILURES");
             env::remove_var("AXON_TEI_COOLDOWN_SECS");
             env::remove_var("AXON_TEI_INTERACTIVE_RESERVED_REQUESTS");
-            env::remove_var("AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS");
-            env::remove_var("AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS");
             env::remove_var("AXON_TEI_QUERY_INSTRUCTION_ENABLED");
             got = into_config_via_args(&["status"]).ok();
         },
@@ -431,14 +424,11 @@ fn toml_embedding_previously_dead_keys_are_read_into_config() {
 
     // Defaults (for contrast — none of these should equal the fixture value):
     // retry_backoff_ms=500, cooldown_after_failures=3, cooldown_secs=30,
-    // interactive_reserved_requests=1, background_max_concurrent_requests=3,
-    // maintenance_max_concurrent_requests=1, query_instruction_enabled=true.
+    // interactive_reserved_requests=1, query_instruction_enabled=true.
     assert_eq!(cfg.embed_tei_retry_backoff_ms, 750);
     assert_eq!(cfg.embed_tei_cooldown_after_failures, 7);
     assert_eq!(cfg.embed_tei_cooldown_secs, 45);
     assert_eq!(cfg.embed_tei_interactive_reserved_requests, 2);
-    assert_eq!(cfg.embed_tei_background_max_concurrent_requests, 5);
-    assert_eq!(cfg.embed_tei_maintenance_max_concurrent_requests, 2);
     assert!(!cfg.embed_tei_query_instruction_enabled);
 }
 

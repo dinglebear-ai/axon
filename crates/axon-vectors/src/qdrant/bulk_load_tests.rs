@@ -103,6 +103,34 @@ fn bulk_journal_serializes_read_modify_write_across_processes() {
     std::fs::remove_dir_all(directory).expect("remove journal directory");
 }
 
+#[test]
+fn collection_lease_is_held_for_the_complete_bulk_lifecycle() {
+    use fs2::FileExt as _;
+    use sha2::Digest as _;
+    let directory = std::env::temp_dir().join(format!("axon-bulk-lease-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).expect("open journal");
+    let key = bulk_key("http://qdrant", "shared");
+    let first = journal.acquire_collection_lease(&key).expect("first lease");
+    let digest = sha2::Sha256::digest(format!("{}\0{}", key.endpoint, key.collection));
+    let lease_path = journal
+        .path
+        .with_file_name(format!("qdrant-bulk-{}.lease", hex::encode(digest)));
+    let second = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(lease_path)
+        .expect("second handle");
+    assert!(
+        second.try_lock_exclusive().is_err(),
+        "second owner must wait"
+    );
+    drop(first);
+    second
+        .try_lock_exclusive()
+        .expect("crash/drop releases lease");
+    std::fs::remove_dir_all(directory).expect("remove journal directory");
+}
+
 #[cfg(unix)]
 #[test]
 fn bulk_journal_is_private_and_rejects_symlink_root_and_file() {
@@ -167,12 +195,15 @@ async fn journal_setup_failure_releases_owner_and_retry_lowers_threshold() {
         .expect_err("journal setup must fail the begin");
     assert!(!BULK_LOAD_USERS.lock().await.contains_key(&key));
 
+    let retry_dir = std::env::temp_dir().join(format!("axon-bulk-retry-{}", uuid::Uuid::new_v4()));
+    let retry_journal = BulkLoadJournal::open(&retry_dir).expect("retry journal");
     store
-        .begin_bulk_load_transition_with_journal("journal-retry", Ok(None))
+        .begin_bulk_load_transition_with_journal("journal-retry", Ok(Some(&retry_journal)))
         .await
         .expect("retry must establish bulk mode");
     lower.assert_calls_async(1).await;
     BULK_LOAD_USERS.lock().await.remove(&key);
+    std::fs::remove_dir_all(retry_dir).expect("remove retry journal directory");
 }
 
 #[tokio::test]

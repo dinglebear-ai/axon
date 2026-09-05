@@ -12,7 +12,9 @@
 //! - [`read`] — raw-payload read/query primitives ported from legacy
 //!   `axon-vector` (facet, scroll, retrieve-by-url, canonical/prefix purge).
 
+mod admin;
 mod bulk_load;
+mod capability;
 mod collection_spec;
 pub use bulk_load::drain_bulk_load_transition_workers;
 pub(crate) mod commit;
@@ -249,6 +251,11 @@ impl QdrantVectorStore {
         &self.url
     }
 
+    /// Credential-free configured endpoint for durable plans and diagnostics.
+    pub fn redacted_url(&self) -> Result<String, ApiError> {
+        Ok(self.http()?.endpoint().root().to_string())
+    }
+
     /// The provider id used in capability snapshots and error attribution.
     pub fn provider_id(&self) -> &ProviderId {
         &self.provider_id
@@ -434,107 +441,4 @@ fn collection_cache_key(url: &str, collection: &str) -> String {
     format!("{}\0{collection}", url.trim_end_matches('/'))
 }
 
-/// Build the capability snapshot for this store.
-///
-/// Reports live health from two sources folded together: a root-liveness
-/// probe (unreachable server → `Unavailable`) and the store's own
-/// `record_success`/`record_failure` tracker fed by every
-/// [`VectorStore`](crate::store::VectorStore) call via
-/// [`QdrantVectorStore::track`] (repeated write/delete/search failures →
-/// `Cooling`, with a live `cooldown_until`). The tracker wins when it reports
-/// `Cooling` or `Unavailable` — those reflect *our own* scheduling decision
-/// even if a fresh probe happens to succeed. Declares dense + sparse + hybrid
-/// + generation-publish support.
-pub(crate) async fn capability_snapshot(store: &QdrantVectorStore) -> ProviderCapability {
-    let (probed_health, probe_error) = probe_health(store).await;
-    let tracked_health = store.health.health().await;
-    let cooldown_until = store.health.cooldown_until().await;
-    let (health, last_error) = if matches!(
-        tracked_health,
-        HealthStatus::Cooling | HealthStatus::Unavailable
-    ) {
-        let last_error = store
-            .health
-            .cooling_snapshot()
-            .await
-            .map(|cooling| {
-                ApiError::new("provider.cooling", ErrorStage::Observing, cooling.reason)
-                    .with_provider_id(store.provider_id().0.clone())
-            })
-            .or(probe_error);
-        (tracked_health, last_error)
-    } else {
-        (probed_health, probe_error)
-    };
-    ProviderCapability {
-        provider_id: store.provider_id().clone(),
-        provider_kind: ProviderKind::Vector,
-        implementation: "qdrant".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        health,
-        limits: ProviderLimits::default(),
-        features: vec![
-            "dense".to_string(),
-            "sparse".to_string(),
-            "hybrid".to_string(),
-            "payload_filters".to_string(),
-            "payload_indexes".to_string(),
-            "generation_publish".to_string(),
-        ],
-        cooldown_until,
-        last_error,
-        reservation_policy: ReservationPolicy {
-            supports_reservations: false,
-            queue_policy: QueuePolicy::Fifo,
-            interactive_reserve: 0,
-            cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
-            cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
-            retry_backoff_ms: None,
-        },
-        reservation_state: ReservationStateSnapshot {
-            queued: 0,
-            active: 0,
-            available_units: 0,
-            oldest_queued_ms: None,
-            priority_breakdown: Default::default(),
-            states: Vec::new(),
-        },
-        cost_class: ProviderCostClass::Internal,
-        degraded_modes: Vec::new(),
-        fake_overrides_supported: false,
-        embedding: None,
-        llm: None,
-        vector_store: Some(VectorStoreCapability {
-            dense: true,
-            sparse: true,
-            hybrid: true,
-            payload_filters: true,
-            payload_indexes: Vec::new(),
-            delete_by_filter: true,
-            generation_publish: true,
-            collection_aliases: true,
-            consistency: VectorConsistency::Strong,
-        }),
-        fetch: None,
-        render: None,
-        credential: None,
-    }
-}
-
-/// Probe the Qdrant root for liveness. Any transport/status failure downgrades
-/// health to `Unavailable` and carries a redaction-safe last error.
-async fn probe_health(store: &QdrantVectorStore) -> (HealthStatus, Option<ApiError>) {
-    let http = match store.http() {
-        Ok(http) => http,
-        Err(err) => return (HealthStatus::Unavailable, Some(err)),
-    };
-    // `GET /` returns a small JSON envelope (`{"title":...,"version":...}`).
-    let url = format!("{}/", http.endpoint().root());
-    match http
-        .get_json(ErrorStage::Observing, &url, "qdrant_health")
-        .await
-    {
-        Ok(_) => (HealthStatus::Healthy, None),
-        Err(err) => (HealthStatus::Unavailable, Some(err)),
-    }
-}
+pub(crate) use capability::snapshot as capability_snapshot;

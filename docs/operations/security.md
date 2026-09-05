@@ -257,7 +257,7 @@ path.
 
 | Service | Compose publish (`docker-compose.prod.yaml`) | Notes |
 |---------|----------------------------------------------|-------|
-| `axon mcp` / `axon serve` / Compose `axon` (HTTP) | `${AXON_HTTP_PUBLISH:-8001}:8001` | Host mapping publishes on all interfaces by default, but the in-container axon process binds `AXON_HTTP_HOST` (default `127.0.0.1`), so the port is not actually reachable until you set `AXON_HTTP_HOST=0.0.0.0`. A non-loopback process bind requires bearer or OAuth auth — the startup policy refuses to start a tokenless non-loopback bind. |
+| `axon mcp` / `axon serve` / Compose `axon` (HTTP) | `127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001` | Compose publishes on host loopback only. The container binds internally on all interfaces so Docker can forward traffic; direct non-loopback server binds require bearer or OAuth auth. |
 | `axon-qdrant` (compose) | `53333:6333`, `53334:6334` | **Published on all interfaces.** No `127.0.0.1:` prefix. |
 | `axon-tei` (compose) | `${TEI_HTTP_PORT:-52000}:80` | **Published on all interfaces.** |
 | `axon-chrome` (compose) | `6000:6000`, `9222:9222`, `9223:9223` | **Published on all interfaces.** Ports: 6000 = `headless_browser` management API, 9222 = CDP proxy, 9223 = raw Chrome DevTools. **All three are unauthenticated control planes** with no built-in access control. |

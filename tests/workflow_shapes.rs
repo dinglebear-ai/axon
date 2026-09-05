@@ -90,7 +90,7 @@ fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_ch
     }
     for job_name in ["axon-linux", "axon-windows"] {
         let job = workflow_job_block(workflow, job_name);
-        assert!(job.contains("uses: actions/checkout@v5"));
+        assert!(job.contains("uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd"));
         assert!(
             !job.contains("sparse-checkout:"),
             "{job_name} compiles the full workspace and must use a full checkout"
@@ -101,16 +101,16 @@ fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_ch
 #[test]
 fn native_release_requires_signed_linux_artifact_before_publication() {
     let workflow = include_str!("../.github/workflows/release.yml");
-    let linux = workflow_job_block(workflow, "axon-linux");
+    let signing = workflow_job_block(workflow, "sign-linux");
     let publish = workflow_job_block(workflow, "publish");
 
     assert!(
-        linux.contains("Fail when release signing material is unavailable"),
+        signing.contains("SIGNING_KEY is required"),
         "native Linux releases must fail closed when signing material is missing"
     );
     assert!(
-        linux.contains("target/release/axon-linux-x86_64.tar.gz.minisig"),
-        "the required Linux artifact must contain its detached signature"
+        signing.contains("dist/axon-linux-x86_64.tar.gz.minisig"),
+        "the isolated signing job must produce the detached signature"
     );
     assert!(
         publish.contains("dist/axon-linux-x86_64.tar.gz.minisig"),
@@ -165,11 +165,9 @@ fn native_release_embeds_the_required_signature_verification_key() {
 #[test]
 fn native_release_cleans_signing_key_on_every_exit_path() {
     let workflow = include_str!("../.github/workflows/release.yml");
-    assert!(workflow.contains("all three signing inputs are mandatory"));
-    assert!(!workflow.contains("optional signing secret"));
-    let linux = workflow_job_block(workflow, "axon-linux");
-    let sign = linux
-        .split("- name: Sign artifact (minisign)")
+    let signing = workflow_job_block(workflow, "sign-linux");
+    let sign = signing
+        .split("- name: Verify, sign, and re-verify Linux artifact")
         .nth(1)
         .expect("Linux release has a signing step");
     let umask = sign
@@ -446,7 +444,9 @@ fn android_ci_setup_does_not_install_unused_emulator_packages() {
         .expect("android SDK setup block exists");
 
     assert!(
-        setup.contains("uses: android-actions/setup-android@v3"),
+        setup.contains(
+            "uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407"
+        ),
         "android job must set up SDK licenses/tooling before Gradle runs"
     );
     assert!(
@@ -546,8 +546,8 @@ fn lefthook_cargo_descendants_clear_repository_local_git_environment() {
     }
 
     assert_eq!(
-        cargo_descendant_count, 4,
-        "the hook contract should cover pre-commit xtask/rustfmt and both pre-push xtask trees"
+        cargo_descendant_count, 5,
+        "the hook contract should cover pre-commit secret/xtask/rustfmt and both pre-push xtask trees"
     );
     for staged_name in ["compose-ports", "monolith"] {
         assert!(
@@ -1353,6 +1353,122 @@ fn kache_daemon_probe_is_pipefail_safe() {
 }
 
 #[test]
+fn pull_request_workflows_never_use_persistent_runner_pools() {
+    for (name, workflow) in [
+        ("ci", include_str!("../.github/workflows/ci.yml")),
+        (
+            "compose-smoke",
+            include_str!("../.github/workflows/compose-smoke.yml"),
+        ),
+    ] {
+        assert!(
+            workflow.contains("pull_request:"),
+            "{name} must remain a PR workflow"
+        );
+        assert!(
+            !workflow.lines().any(|line| {
+                let line = line.trim();
+                line.starts_with("runs-on:")
+                    && (line.contains("ci-pool-") || line.contains("self-hosted"))
+            }),
+            "PR-reachable workflow {name} must use disposable hosted runners"
+        );
+    }
+}
+
+#[test]
+fn release_resolves_a_canonical_tag_before_build_and_isolates_signing() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let resolve = workflow_job_block(workflow, "resolve-release");
+    let linux = workflow_job_block(workflow, "axon-linux");
+    let signing = workflow_job_block(workflow, "sign-linux");
+    let resolve = active_workflow_content(resolve);
+    let linux = active_workflow_content(linux);
+    let signing = active_workflow_content(signing);
+
+    assert!(resolve.contains("^v[0-9]+\\.[0-9]+\\.[0-9]+$"));
+    assert!(resolve.contains("refs/tags/$tag"));
+    assert!(resolve.contains("merge-base --is-ancestor"));
+    assert!(linux.contains("needs.resolve-release.outputs.commit"));
+    assert!(!linux.contains("SIGNING_KEY"));
+    assert!(!signing.contains("actions/checkout@"));
+    assert!(signing.contains("environment: release-signing"));
+    assert!(signing.contains("SIGNING_KEY: ${{ secrets.SIGNING_KEY }}"));
+    assert!(!resolve.contains("if: false") && !signing.contains("if: false"));
+}
+
+#[test]
+fn workflow_actions_are_immutably_pinned() {
+    for path in [
+        ".github/workflows/ci.yml",
+        ".github/workflows/codeql.yml",
+        ".github/workflows/docker-image.yml",
+        ".github/workflows/release.yml",
+        ".github/workflows/release-please.yml",
+        ".github/actions/setup-rust-kache/action.yml",
+    ] {
+        let workflow = fs::read_to_string(path).expect("read workflow");
+        for line in workflow
+            .lines()
+            .filter(|line| line.trim_start().starts_with("uses:"))
+        {
+            let reference = line
+                .split('#')
+                .next()
+                .unwrap_or(line)
+                .trim()
+                .strip_prefix("uses:")
+                .expect("uses prefix")
+                .trim();
+            if reference.starts_with("./") {
+                continue;
+            }
+            let revision = reference.rsplit_once('@').map(|(_, rev)| rev).unwrap_or("");
+            assert!(
+                revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                "{} has mutable action reference {reference}",
+                path
+            );
+        }
+    }
+}
+
+#[test]
+fn ci_has_lightweight_plugin_docs_and_candidate_secret_gates() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let contracts = workflow_job_block(workflow, "lightweight-contracts");
+    assert!(contracts.contains("just validate-plugin"));
+    assert!(contracts.contains("check-doc-contracts"));
+    assert!(contracts.contains("check-secrets --tree"));
+    assert!(!contracts.contains("cargo test --workspace"));
+}
+
+#[test]
+fn operational_test_entrypoints_are_cataloged_and_required_tests_are_dispatched() {
+    let justfile = include_str!("../Justfile");
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    for path in [
+        "scripts/test-axon-env.sh",
+        "scripts/test-bench-source-pipeline.sh",
+        "scripts/test-chrome-extension-agent-os.sh",
+        "scripts/test-evaluate-retrieval.sh",
+        "scripts/test-install-behavior.sh",
+        "scripts/test-mcp-tasks-wire.py",
+        "scripts/test-mlx-metrics.py",
+        "scripts/test_mcp_doc_renderer.py",
+        "scripts/test_qdrant_quality.py",
+        "scripts/test_qdrant_tune.py",
+        "scripts/test_tei_tune.py",
+    ] {
+        assert!(
+            justfile.contains(&format!("# test-catalog: {path} ")),
+            "uncataloged {path}"
+        );
+    }
+    assert!(workflow.contains("just operational-test-contracts"));
+}
+
+#[test]
 fn ci_has_changed_path_classifier_and_stable_gate() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     assert!(
@@ -1702,7 +1818,7 @@ fn release_builds_web_assets_once_for_both_native_targets() {
     assert!(web.contains("name: axon-release-web-assets"));
     for job_name in ["axon-linux", "axon-windows"] {
         let job = workflow_job_block(workflow, job_name);
-        assert!(job.contains("needs: web-assets"));
+        assert!(job.contains("needs: [resolve-release, web-assets]"));
         assert!(job.contains("name: axon-release-web-assets"));
         assert!(!job.contains("npm ci"));
     }
@@ -1737,15 +1853,15 @@ fn release_manual_backfill_builds_and_publishes_the_exact_existing_tag() {
     assert!(workflow.contains("release_tag:"));
     assert_eq!(
         workflow
-            .matches("ref: ${{ inputs.release_tag || github.ref }}")
+            .matches("ref: ${{ needs.resolve-release.outputs.commit }}")
             .count(),
         3,
-        "every source checkout must use the requested immutable release tag"
+        "every source checkout must use the resolver's immutable commit"
     );
-    assert!(workflow.contains("startsWith(inputs.release_tag, 'v')"));
+    assert!(workflow.contains("^v[0-9]+\\.[0-9]+\\.[0-9]+$"));
     assert_eq!(
         workflow
-            .matches("tag=\"${{ inputs.release_tag || github.ref_name }}\"")
+            .matches("tag=\"${{ needs.resolve-release.outputs.tag }}\"")
             .count(),
         1,
         "the atomic release upload must target the requested release"
@@ -1984,6 +2100,14 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
         })
         .unwrap_or(rest.len());
     &rest[..end]
+}
+
+fn active_workflow_content(block: &str) -> String {
+    block
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn workflow_step_script(job: &str, step_name: &str, next_step_name: &str) -> String {

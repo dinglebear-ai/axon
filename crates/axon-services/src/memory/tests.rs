@@ -1,5 +1,5 @@
 use super::*;
-use axon_api::mcp_schema::MemorySubaction;
+use axon_api::action::MemorySubaction;
 use uuid::Uuid;
 
 use crate::memory::import_export::replaced_scope_memory_ids;

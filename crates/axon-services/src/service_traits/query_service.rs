@@ -12,7 +12,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use axon_api::mcp_schema::QueryRequest;
+use axon_api::action::QueryRequest;
 use axon_api::result::{QueryHit, QueryResult};
 use axon_core::config::ConfigOverrides;
 

@@ -137,6 +137,7 @@ pub(super) async fn update_latest_reflink_with_failure(
 // makes filesystem-critical flags and error propagation easy to drift.
 // PATTERN: keep the blocking rename exchange behind one async helper and reuse
 // it for both publication and compensation.
+#[cfg(unix)]
 async fn exchange_directories(left: &Path, right: &Path) -> Result<(), Box<dyn Error>> {
     let left = left.to_path_buf();
     let right = right.to_path_buf();
@@ -151,6 +152,29 @@ async fn exchange_directories(left: &Path, right: &Path) -> Result<(), Box<dyn E
     })
     .await??;
     Ok(())
+}
+
+#[cfg(not(unix))]
+async fn exchange_directories(left: &Path, right: &Path) -> Result<(), Box<dyn Error>> {
+    let left = left.to_path_buf();
+    let right = right.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let parent = left.parent().ok_or("publication directory has no parent")?;
+        let swap = parent.join(format!(".axon-directory-swap-{}", uuid::Uuid::new_v4()));
+        std::fs::rename(&left, &swap)?;
+        if let Err(error) = std::fs::rename(&right, &left) {
+            let _ = std::fs::rename(&swap, &left);
+            return Err(error.into());
+        }
+        if let Err(error) = std::fs::rename(&swap, &right) {
+            let _ = std::fs::rename(&left, &right);
+            let _ = std::fs::rename(&swap, &left);
+            return Err(error.into());
+        }
+        Ok::<(), Box<dyn Error + Send + Sync>>(())
+    })
+    .await?
+    .map_err(|error| -> Box<dyn Error> { error })
 }
 
 async fn populate_latest_staging(

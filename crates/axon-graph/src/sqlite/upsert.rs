@@ -58,14 +58,16 @@ mod tests;
 
 /// Write a batch of validated candidates into the durable graph.
 ///
-/// Each candidate is validated first; a rejection fails the whole batch. Then
-/// nodes are upserted by stable key, edges by tuple (merging evidence), and
-/// aliases populated for resolution. Runs in a single transaction so a partial
-/// batch never lands.
+/// Each candidate is validated and resolved before acquiring SQLite's writer
+/// lock, then committed atomically in its own short transaction. A later
+/// candidate failure therefore leaves an idempotent committed prefix visible;
+/// callers must treat the returned error as an incomplete publication and
+/// retry the generation.
 pub async fn upsert_candidates(
     pool: &SqlitePool,
     candidates: Vec<GraphCandidate>,
 ) -> StoreResult<GraphWriteResult> {
+    prevalidate_candidate_batch(&candidates)?;
     upsert_candidate_iter(pool, candidates).await
 }
 
@@ -76,19 +78,29 @@ pub async fn upsert_candidate_iter<I>(
 where
     I: IntoIterator<Item = GraphCandidate>,
 {
-    let candidates = candidates.into_iter().collect::<Vec<_>>();
-    let source_id = prevalidate_candidate_batch(&candidates)?;
-    let mut tx = ImmediateTx::begin(pool)
-        .await
-        .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
-
+    let mut source_id: Option<SourceId> = None;
     let mut candidates_seen = 0u64;
     let mut nodes_upserted = 0u64;
     let mut edges_upserted = 0u64;
     let mut evidence_records = 0u64;
     for candidate in candidates {
-        candidates_seen = candidates_seen.saturating_add(1);
+        // Validation and deterministic graph resolution are CPU-only and must
+        // not run while SQLite's process-wide writer lane is held.
+        validate_candidate(&candidate)?;
+        if let Some(expected) = &source_id {
+            if expected != &candidate.source_id {
+                return Err(graph_validation_error(
+                    "mixed-source graph batches require per-source receipts",
+                ));
+            }
+        } else {
+            source_id = Some(candidate.source_id.clone());
+        }
         let (resolved_nodes, resolved_edges) = resolve_candidate(&candidate);
+        let mut tx = ImmediateTx::begin(pool)
+            .await
+            .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
+        candidates_seen = candidates_seen.saturating_add(1);
 
         nodes::upsert_nodes(
             &mut tx,
@@ -135,11 +147,10 @@ where
             .map_err(|error| {
                 graph_storage_error(format!("failed to clear graph checkpoint: {error}"))
             })?;
+        tx.commit()
+            .await
+            .map_err(|e| graph_storage_error(format!("failed to commit graph transaction: {e}")))?;
     }
-
-    tx.commit()
-        .await
-        .map_err(|e| graph_storage_error(format!("failed to commit graph transaction: {e}")))?;
 
     Ok(GraphWriteResult {
         header: stage_header(),

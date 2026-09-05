@@ -11,6 +11,59 @@ fn lock_path_is_sibling_of_jobs_db() {
     assert_eq!(got, PathBuf::from("/data/axon/jobs.db.drain-lock"));
 }
 
+#[test]
+fn worker_lock_process_holder() {
+    let Some(path) = std::env::var_os("AXON_WORKER_LOCK_CHILD_PATH") else {
+        return;
+    };
+    let ready = std::env::var_os("AXON_WORKER_LOCK_CHILD_READY").expect("ready path");
+    let release = std::env::var_os("AXON_WORKER_LOCK_CHILD_RELEASE").expect("release path");
+    let runtime = tokio::runtime::Runtime::new().expect("child runtime");
+    let _lock = runtime
+        .block_on(WorkerDrainLock::try_hold(Path::new(&path)))
+        .expect("child lock attempt")
+        .expect("child owns lock");
+    std::fs::write(&ready, b"ready").expect("publish child readiness");
+    while !Path::new(&release).exists() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[tokio::test]
+async fn worker_lock_excludes_a_second_process() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = lock_path(&dir);
+    let ready = dir.path().join("ready");
+    let release = dir.path().join("release");
+    let mut child = std::process::Command::new(std::env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "runtime::drain_lock::tests::worker_lock_process_holder",
+            "--nocapture",
+        ])
+        .env("AXON_WORKER_LOCK_CHILD_PATH", &path)
+        .env("AXON_WORKER_LOCK_CHILD_READY", &ready)
+        .env("AXON_WORKER_LOCK_CHILD_RELEASE", &release)
+        .spawn()
+        .expect("spawn lock holder");
+    for _ in 0..200 {
+        if ready.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(ready.exists(), "child must acquire the worker lock");
+    assert!(
+        WorkerDrainLock::try_hold(&path)
+            .await
+            .expect("parent probe")
+            .is_none(),
+        "a second process must not become a provider worker"
+    );
+    std::fs::write(release, b"release").expect("release child");
+    assert!(child.wait().expect("wait child").success());
+}
+
 #[tokio::test]
 async fn holder_excludes_second_holder_until_dropped() {
     let dir = tempfile::tempdir().expect("tempdir");

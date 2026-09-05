@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ── Web assets ────────────────────────────────────────────────────────────────
-FROM node:24-bookworm-slim AS web-builder
+FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS web-builder
 
 WORKDIR /web
 COPY apps/web/package.json apps/web/package-lock.json ./
@@ -11,7 +11,7 @@ COPY assets ./public/assets
 RUN npm run build
 
 # ── Builder ───────────────────────────────────────────────────────────────────
-FROM rust:1.94.0-bookworm AS builder
+FROM rust:1.97.1-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
 
 # Build deps for sqlx-sqlite (libsqlite3), reqwest+rustls (pkg-config), and
 # anything that links against system libraries during cargo build.
@@ -67,16 +67,14 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && cp /build/target/container-fast/axon /usr/local/bin/axon
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
+FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS runtime
 
 # Runtime deps:
 #   ca-certificates — TLS to qdrant/tei/openai/etc.
 #   libsqlite3-0    — sqlx-sqlite runtime
-#   curl            — healthcheck + NodeSource setup
+#   curl            — healthcheck
 #   tini            — PID 1 reaper for clean signal handling
-#   nodejs (22 LTS) — required to run the Gemini CLI (ask/evaluate/research synthesis)
-#                     Debian bookworm ships Node 18 which is too old for @google/gemini-cli;
-#                     use NodeSource for Node 22 LTS.
+#   nodejs (22 LTS) — inherited from the digest-pinned official Node image
 #   @openai/codex   — the codex-app-server LLM backend (AXON_LLM_BACKEND=codex-app-server).
 #                     Installed in-image so the container has a FRESH codex home
 #                     (no host MCP servers/skills/hooks) — fast by default, and
@@ -89,8 +87,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
         tini \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @google/gemini-cli@0.41.2 @openai/codex@0.136.0 \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
@@ -133,7 +129,7 @@ CMD ["serve"]
 # fails any workflow that builds this file without a target.
 # Use a newer libc than the production image so the host binary can run without
 # rebuilding the full container for ordinary Rust code changes.
-FROM node:24-trixie-slim AS dev-runtime
+FROM node:24-trixie-slim@sha256:50c3b2f6988dfc307b86e5301d69611af31f4789bdf232863b07d3b02fe55ae0 AS dev-runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \

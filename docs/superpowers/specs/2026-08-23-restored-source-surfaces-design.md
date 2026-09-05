@@ -287,7 +287,7 @@ are no longer rejected, while genuinely removed surfaces remain rejected.
 
 ## MCP Design
 
-Extend `axon_api::mcp_schema::AxonRequest` with first-class variants:
+Extend `axon_api::action::AxonRequest` with first-class variants:
 
 - `Scrape(ScrapeRequest)`
 - `Crawl(CrawlRequest)`

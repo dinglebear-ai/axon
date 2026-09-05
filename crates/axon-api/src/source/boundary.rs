@@ -7,7 +7,7 @@ use super::document::SourceDocument;
 use super::enums::*;
 use super::ids::*;
 use super::job_listing::{JobSummary, WatchSummary};
-use super::lifecycle::JobDescriptor;
+use super::lifecycle::{JobDescriptor, WatchResult};
 use super::listing::Page;
 use super::vector::CollectionSpec;
 
@@ -366,6 +366,20 @@ pub struct WatchHistoryResult {
     pub watch_id: WatchId,
     pub jobs: Vec<JobDescriptor>,
     pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WatchStatusResponse {
+    pub watch: WatchResult,
+    pub latest_job_summary: Option<JobSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WatchDeleteResponse {
+    pub watch_id: String,
+    pub deleted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

@@ -30,11 +30,6 @@
 //! caller cannot bypass the local-filesystem/tool-execution scope upgrade by
 //! calling through MCP instead of REST.
 //!
-//! `index_source`'s future is not `Send` (the web-source bridge holds a
-//! `Box<dyn Error>` across an `.await`), so — like `admin::run_watch` — the
-//! call runs on a blocking thread via `spawn_blocking` + `Handle::block_on`,
-//! whose `JoinHandle` is `Send` and thus a valid axum handler future.
-//!
 //! ## Async / detached execution
 //!
 //! `request.execution.detached == true` (and `execution.mode != Wait`) routes
@@ -105,11 +100,14 @@ pub(crate) async fn index_source(
     // AuthContext (LoopbackDev), matching the router's scope-layer decision.
     let auth_snapshot = if let Some(Extension(auth)) = auth {
         authorize_source_request(&request, &auth).await?;
-        Some(AuthSnapshot::from_caller(
-            &caller_context_from_auth(&auth),
-            Visibility::Internal,
-            "runtime",
-        ))
+        Some(
+            if auth.issuer == super::super::routing::security::PANEL_AUTH_ISSUER {
+                AuthSnapshot::panel("runtime")
+            } else {
+                let caller = caller_context_from_auth(&auth);
+                AuthSnapshot::from_caller(&caller, caller.visibility_ceiling, "runtime")
+            },
+        )
     } else {
         None
     };
@@ -135,34 +133,27 @@ pub(crate) async fn index_source(
         return Ok((StatusCode::ACCEPTED, Json(result)));
     }
     if want_async {
-        // No job store configured — degrade to the synchronous path below
-        // rather than failing a detached request outright.
+        return Err(HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "durable_jobs_unavailable",
+            "detached source execution requires the durable job runtime",
+        ));
     }
 
-    let service_context = Arc::clone(&state.service_context);
-    let handle = tokio::runtime::Handle::current();
-    let result = tokio::task::spawn_blocking(move || {
-        handle.block_on(async move {
-            axon_services::source::index_source_with_auth(
-                request,
-                service_context.as_ref(),
-                auth_snapshot,
-            )
-            .await
-            .map_err(|err| err.to_string())
-        })
-    })
+    axon_services::source::index_source_with_auth(
+        request,
+        state.service_context.as_ref(),
+        auth_snapshot,
+    )
     .await
-    .map_err(|err| {
+    .map(|source_result| (StatusCode::OK, Json(source_result)))
+    .map_err(|error| {
         HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            format!("source indexing task failed: {err}"),
+            StatusCode::BAD_GATEWAY,
+            "upstream_unavailable",
+            error.to_string(),
         )
-    })?;
-    result
-        .map(|source_result| (StatusCode::OK, Json(source_result)))
-        .map_err(|message| HttpError::new(StatusCode::BAD_GATEWAY, "upstream_unavailable", message))
+    })
 }
 
 /// Run the per-source authorization boundary for one [`SourceRequest`].

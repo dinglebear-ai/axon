@@ -60,10 +60,14 @@ mod artifacts;
 mod control;
 #[path = "unified/control_helpers.rs"]
 mod control_helpers;
+#[path = "unified/cooling.rs"]
+mod cooling;
+#[path = "unified/deadline.rs"]
+mod deadline;
 #[path = "unified/event_listing.rs"]
 mod event_listing;
 #[path = "unified/event_ops.rs"]
-mod event_ops;
+pub(crate) mod event_ops;
 #[path = "unified/heartbeat.rs"]
 mod heartbeat;
 #[path = "unified/observe.rs"]

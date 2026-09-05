@@ -8,7 +8,6 @@ use axon_services::events::ServiceEvent;
 use axon_services::query as query_svc;
 use axon_services::types::AskResult;
 use std::error::Error;
-use std::io::Write;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -274,13 +273,15 @@ async fn run_in_process_ask(
                     if !started {
                         started = true;
                     }
-                    let _ = stdout.write_all(text.as_bytes());
-                    let _ = stdout.flush();
+                    if !super::stream_output::write_chunk(&mut stdout, &text)? {
+                        return Ok::<(), std::io::Error>(());
+                    }
                 }
             }
             if started {
-                let _ = writeln!(stdout);
+                super::stream_output::finish_line(&mut stdout)?;
             }
+            Ok::<(), std::io::Error>(())
         })
     });
 
@@ -296,13 +297,15 @@ async fn run_in_process_ask(
         }
     };
 
-    if let Some(ref mut task) = consumer
-        && tokio::time::timeout(ASK_CONSUMER_DRAIN_TIMEOUT, &mut *task)
-            .await
-            .is_err()
-    {
-        task.abort();
-        log_warn("ask synthesis consumer timed out");
+    if let Some(mut task) = consumer.take() {
+        match tokio::time::timeout(ASK_CONSUMER_DRAIN_TIMEOUT, &mut task).await {
+            Ok(joined) => joined
+                .map_err(|error| anyhow::anyhow!("ask synthesis consumer failed: {error}"))??,
+            Err(_) => {
+                task.abort();
+                log_warn("ask synthesis consumer timed out");
+            }
+        }
     }
 
     result

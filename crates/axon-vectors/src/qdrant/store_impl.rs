@@ -24,6 +24,9 @@ use crate::store::Result;
 use crate::store_helpers::delete_result;
 
 impl QdrantVectorStore {
+    /// Count the exact points matched by a delete selector without mutating
+    /// the collection. This is the authoritative dry-run primitive used by
+    /// prune planning.
     pub(super) async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
         self.recover_bulk_load_transitions().await?;
         let stage = ErrorStage::Upserting;
@@ -262,13 +265,7 @@ struct RetrieveResponse {
 }
 
 /// Count the exact points targeted by a Qdrant delete before issuing it.
-///
-/// Qdrant's synchronous delete acknowledgement does not contain a deletion
-/// count. Filtered selectors use `/points/count` and explicit point-id
-/// selectors use `/points` retrieval against the same request body. The count
-/// is exact at observation time, but it is not transactionally coupled to the
-/// subsequent delete; the receipt therefore marks it as an estimate.
-async fn count_delete_matches(
+pub(super) async fn count_delete_matches(
     http: &QdrantHttp,
     collection: &str,
     delete_body: &serde_json::Value,
@@ -300,7 +297,11 @@ async fn count_delete_matches(
 }
 
 /// Count every point in `collection`, no filter (exact server-side count).
-async fn count_all_points(http: &QdrantHttp, collection: &str, stage: ErrorStage) -> Result<u64> {
+pub(super) async fn count_all_points(
+    http: &QdrantHttp,
+    collection: &str,
+    stage: ErrorStage,
+) -> Result<u64> {
     let url = http.endpoint().collection_path(collection, "points/count");
     let body = serde_json::json!({ "exact": true });
     let response: CountResponse = http
@@ -314,10 +315,7 @@ const COLLECTION_DELETE_BATCH_SIZE: usize = 1000;
 
 /// Delete every point in `collection`, keeping the collection itself.
 ///
-/// Normal prune/delete must not recreate a collection; destructive collection
-/// recreation belongs to reset receipts only. Qdrant does not expose a stable
-/// match-all filter contract, so collection prune pages point ids and deletes
-/// those ids in bounded batches.
+/// Pages point IDs and deletes them in bounded batches without recreation.
 async fn delete_collection_points_by_scroll(
     store: &QdrantVectorStore,
     http: &QdrantHttp,
@@ -416,7 +414,7 @@ fn generation_delete_filter(
     ))
 }
 
-fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
+pub(super) fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
     match selector {
         VectorDeleteSelector::Points { point_ids, .. } => Ok(serde_json::json!({
             "points": point_ids.iter().map(|id| id.0.clone()).collect::<Vec<_>>()

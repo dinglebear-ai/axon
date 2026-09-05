@@ -103,7 +103,7 @@ for port_attempt in $(seq 0 1999); do
   if mkdir "$PORT_LEASE_DIR" 2>/dev/null; then
     busy=0
     for port_offset in $(seq 0 9); do
-      if ss -H -ltn "sport = :$((LIVE_PORT_BASE + port_offset))" 2>/dev/null | grep -q .; then
+      if ! live_cli_port_is_available "$((LIVE_PORT_BASE + port_offset))"; then
         busy=1
         break
       fi

@@ -532,6 +532,41 @@ async fn local_manifest_fingerprint_changes_for_same_size_file_edits() {
 }
 
 #[tokio::test]
+async fn local_acquisition_uses_verified_discovery_spool_after_source_changes() {
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    let file = root.join("README.md");
+    fs::write(&file, "abcd").unwrap();
+    let plan = source_plan(root, SourceScope::Directory);
+    let discovered = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, discovered.items);
+
+    fs::write(&file, "wxyz").unwrap();
+
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+    let fetched = acquisition.fetched_items.first().unwrap();
+    assert_eq!(
+        fetched.content_ref,
+        ContentRef::InlineText {
+            text: "abcd".to_string()
+        }
+    );
+    assert_eq!(
+        fetched.manifest_item.content_hash,
+        diff.added[0].content_hash
+    );
+    assert_eq!(adapter.discovery_spool_count(), 1);
+    adapter
+        .release(&AdapterReleaseRequest {
+            job_id: plan.job_id,
+            source_id: plan.route.source.source_id.clone(),
+            source_kind: plan.route.source.source_kind,
+        })
+        .unwrap();
+    assert_eq!(adapter.discovery_spool_count(), 0);
+}
+
+#[tokio::test]
 async fn local_adapter_applies_include_exclude_gitignore_and_binary_policy() {
     let adapter = LocalSourceAdapter::new();
     let root = temp_source_dir();

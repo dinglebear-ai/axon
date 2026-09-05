@@ -1,7 +1,9 @@
 use axon_api::source::*;
 use axon_core::redact::{MAX_REDACTABLE_TEXT_BYTES, REDACTION_VERSION};
+use std::future::{Future, poll_fn};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::Poll;
 use tokio_util::sync::CancellationToken;
 
 use crate::boundary::{JobDeleteResult, JobStore};
@@ -94,19 +96,19 @@ async fn public_status_update_reserves_writer_before_reading_snapshot() {
     });
 
     entered_wait.await;
-    let writer_job_id = job.job_id;
-    let competing_writer = tokio::spawn(async move {
+    let mut competing_write = Box::pin(
         sqlx::query("UPDATE jobs SET updated_at = updated_at WHERE job_id = ?")
-            .bind(writer_job_id.0.to_string())
-            .execute(&writer)
-            .await
-            .expect("competing writer commits after status transaction")
-    });
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert!(
-        !competing_writer.is_finished(),
-        "BEGIN IMMEDIATE must reserve the writer before the status read"
+            .bind(job.job_id.0.to_string())
+            .execute(&writer),
     );
+    poll_fn(|cx| {
+        assert!(
+            competing_write.as_mut().poll(cx).is_pending(),
+            "BEGIN IMMEDIATE must reserve the writer before the status read"
+        );
+        Poll::Ready(())
+    })
+    .await;
     resume.notify_one();
 
     updating
@@ -123,7 +125,9 @@ async fn public_status_update_reserves_writer_before_reading_snapshot() {
         LifecycleStatus::Running
     );
 
-    competing_writer.await.expect("competing writer task joins");
+    competing_write
+        .await
+        .expect("competing writer commits after status transaction");
     std::fs::remove_file(path).expect("remove snapshot test database");
 }
 
@@ -2005,23 +2009,24 @@ async fn unified_test_harness() -> (
     )
 }
 
-/// Poll `store.get(job_id)` until its status is no longer `Queued`, or the
-/// timeout elapses.
+/// Observe `store.get(job_id)` until its status is no longer `Queued`.
 async fn wait_for_status_change(
     store: &SqliteUnifiedJobStore,
     job_id: JobId,
     timeout: std::time::Duration,
-) -> Option<std::time::Duration> {
-    let started = std::time::Instant::now();
-    while started.elapsed() < timeout {
-        if let Ok(Some(summary)) = store.get(job_id).await
-            && summary.status != LifecycleStatus::Queued
-        {
-            return Some(started.elapsed());
+) {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if let Ok(Some(summary)) = store.get(job_id).await
+                && summary.status != LifecycleStatus::Queued
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    None
+    })
+    .await
+    .expect("job should leave Queued after one explicit wakeup");
 }
 
 #[tokio::test]
@@ -2036,23 +2041,16 @@ async fn enqueued_job_is_claimed_within_one_wakeup_not_a_full_poll_interval() {
     let store = SqliteUnifiedJobStore::new((*pool).clone());
     let job = store.create(create_request()).await.unwrap();
     notify.notify_one();
-    let claimed_after =
-        wait_for_status_change(&store, job.job_id, std::time::Duration::from_millis(500))
-            .await
-            .expect("job should leave Queued well before a full poll interval");
-    assert!(
-        claimed_after < std::time::Duration::from_secs(1),
-        "job took a full poll interval to be claimed — notify_unified() is not being called"
-    );
+    wait_for_status_change(&store, job.job_id, std::time::Duration::from_secs(1)).await;
     shutdown.cancel();
     let _ = handle.await;
 }
 
-/// A fake [`UnifiedJobRunner`] that holds a permit from a shared semaphore
-/// for the duration of its (simulated) work, so the test can observe how
-/// many jobs are in-flight at once via `Semaphore::available_permits()`.
+/// A fake [`UnifiedJobRunner`] that announces admission and waits for an
+/// explicit test-owned release permit.
 struct SlowConcurrentRunner {
-    marker: Arc<tokio::sync::Semaphore>,
+    entered: Arc<tokio::sync::Semaphore>,
+    release: Arc<tokio::sync::Semaphore>,
 }
 
 #[async_trait::async_trait]
@@ -2063,21 +2061,24 @@ impl crate::workers::UnifiedJobRunner for SlowConcurrentRunner {
         _store: &SqliteUnifiedJobStore,
         _shutdown: &CancellationToken,
     ) -> Result<crate::workers::UnifiedJobOutcome, ApiError> {
-        let _permit = self.marker.acquire().await.unwrap();
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        self.entered.add_permits(1);
+        self.release
+            .acquire()
+            .await
+            .expect("test release semaphore remains open")
+            .forget();
         Ok(crate::workers::UnifiedJobOutcome::completed_without_counts())
     }
 }
 
 fn registry_with_slow_concurrent_runner(
-    concurrency_marker: Arc<tokio::sync::Semaphore>,
+    entered: Arc<tokio::sync::Semaphore>,
+    release: Arc<tokio::sync::Semaphore>,
 ) -> Arc<crate::workers::JobRunnerRegistry> {
     let mut registry = crate::workers::JobRunnerRegistry::new();
     registry.register(
         JobKind::Source,
-        Arc::new(SlowConcurrentRunner {
-            marker: concurrency_marker,
-        }),
+        Arc::new(SlowConcurrentRunner { entered, release }),
     );
     Arc::new(registry)
 }
@@ -2085,11 +2086,9 @@ fn registry_with_slow_concurrent_runner(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn unified_worker_claims_and_runs_multiple_jobs_concurrently() {
     let (pool, notify, shutdown) = unified_test_harness().await;
-    // A semaphore with 4 permits: the runner acquires one per in-flight job
-    // and holds it for the sleep duration, so `available_permits()` dropping
-    // below the starting count proves overlap.
-    let concurrency_marker = Arc::new(tokio::sync::Semaphore::new(4));
-    let registry = registry_with_slow_concurrent_runner(Arc::clone(&concurrency_marker));
+    let entered = Arc::new(tokio::sync::Semaphore::new(0));
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let registry = registry_with_slow_concurrent_runner(Arc::clone(&entered), Arc::clone(&release));
     let handle = tokio::spawn(
         crate::workers::unified::unified_worker_loop_with_concurrency_limits(
             Arc::clone(&pool),
@@ -2112,23 +2111,14 @@ async fn unified_worker_claims_and_runs_multiple_jobs_concurrently() {
     }
     notify.notify_one();
 
-    // Poll (bounded) until at least 2 jobs are observed running concurrently,
-    // proving the claim loop did not serialize them.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    let mut max_in_use = 0usize;
-    while std::time::Instant::now() < deadline {
-        let in_use = 4usize.saturating_sub(concurrency_marker.available_permits());
-        max_in_use = max_in_use.max(in_use);
-        if max_in_use >= 2 {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    assert!(
-        max_in_use >= 2,
-        "expected at least 2 jobs running concurrently, saw {max_in_use} in flight"
-    );
+    let admitted =
+        tokio::time::timeout(std::time::Duration::from_secs(10), entered.acquire_many(2))
+            .await
+            .expect("at least two jobs should be admitted concurrently")
+            .expect("admission semaphore remains open");
+    admitted.forget();
 
+    release.add_permits(4);
     shutdown.cancel();
     let _ = handle.await;
 }

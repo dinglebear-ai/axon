@@ -117,9 +117,9 @@ fn assert_jobs_request_fields(subaction: &str, req: &JobsRequest) {
             assert!(matches!(req.subaction, Some(JobsSubaction::List)));
             assert!(matches!(
                 req.status,
-                Some(crate::source::LifecycleStatus::CompletedDegraded)
+                Some(axon_api::source::LifecycleStatus::CompletedDegraded)
             ));
-            assert!(matches!(req.kind, Some(crate::source::JobKind::Source)));
+            assert!(matches!(req.kind, Some(axon_api::source::JobKind::Source)));
             assert_eq!(req.limit, Some(5));
         }
         "get" => {
@@ -148,18 +148,18 @@ fn assert_jobs_request_fields(subaction: &str, req: &JobsRequest) {
             assert!(matches!(req.subaction, Some(JobsSubaction::Retry)));
             assert!(matches!(
                 req.retry_mode,
-                Some(crate::source::JobRetryMode::SameConfig)
+                Some(axon_api::source::JobRetryMode::SameConfig)
             ));
         }
         "recover" => {
             assert!(matches!(req.subaction, Some(JobsSubaction::Recover)));
-            assert!(matches!(req.kind, Some(crate::source::JobKind::Source)));
+            assert!(matches!(req.kind, Some(axon_api::source::JobKind::Source)));
         }
         "cleanup" => {
             assert!(matches!(req.subaction, Some(JobsSubaction::Cleanup)));
             assert!(matches!(
                 req.status,
-                Some(crate::source::LifecycleStatus::Completed)
+                Some(axon_api::source::LifecycleStatus::Completed)
             ));
             assert_eq!(req.dry_run, Some(true));
         }
@@ -329,7 +329,10 @@ fn parse_source_action_with_canonical_source_field() {
         panic!("expected source request");
     };
     assert_eq!(req.source.as_deref(), Some("https://example.com"));
-    assert!(matches!(req.scope, Some(crate::source::SourceScope::Page)));
+    assert!(matches!(
+        req.scope,
+        Some(axon_api::source::SourceScope::Page)
+    ));
     assert!(matches!(req.response_mode, Some(ResponseMode::AutoInline)));
 }
 

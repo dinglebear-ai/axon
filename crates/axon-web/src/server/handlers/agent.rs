@@ -23,7 +23,7 @@ pub async fn v1_agent_status(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match axon_services::agent_runtime::status(&cfg, &id, &auth.sub) {
+    match axon_services::agent_runtime::status(&cfg, &id, &auth.sub).await {
         Ok(result) => Json(result).into_response(),
         Err(error) => HttpError::new(
             StatusCode::NOT_FOUND,
@@ -41,7 +41,7 @@ pub async fn v1_agent_events(
     Path(id): Path<String>,
     Query(cursor): Query<EventCursor>,
 ) -> impl IntoResponse {
-    match axon_services::agent_runtime::events(&cfg, &id, &auth.sub, cursor.after) {
+    match axon_services::agent_runtime::events(&cfg, &id, &auth.sub, cursor.after).await {
         Ok(events) => Json(serde_json::json!({ "items": events })).into_response(),
         Err(error) => HttpError::new(
             StatusCode::NOT_FOUND,
@@ -58,7 +58,7 @@ pub async fn v1_agent_cancel(
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    if !axon_authz::scope_satisfies(&auth.scopes, axon_authz::AXON_WRITE_SCOPE) {
+    if !cancel_scope_allowed(&auth.scopes) {
         return HttpError::new(
             StatusCode::FORBIDDEN,
             "forbidden",
@@ -117,6 +117,10 @@ pub async fn v1_agent_resume(
 }
 
 fn resume_scope_allowed(scopes: &[String]) -> bool {
+    axon_authz::has_explicit_scope(scopes, axon_authz::AXON_WRITE_SCOPE)
+}
+
+fn cancel_scope_allowed(scopes: &[String]) -> bool {
     axon_authz::has_explicit_scope(scopes, axon_authz::AXON_WRITE_SCOPE)
 }
 

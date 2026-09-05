@@ -69,7 +69,7 @@ impl AxonMcpServer {
         let prepared = preflight_source_batch(
             operation,
             requests,
-            auth.as_ref(),
+            auth,
             &self.cfg.projection_batch,
             &access,
         )
@@ -96,20 +96,14 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|error| logged_internal_error("code_search.context", error.as_ref()))?;
-        let handle = tokio::runtime::Handle::current();
-        let result = tokio::task::spawn_blocking(move || {
-            handle
-                .block_on(execute_code_search_projection_batch(
-                    ctx.as_ref(),
-                    prepared,
-                    axon_api::CodeSearchCaller::Mcp,
-                    auth.as_ref(),
-                ))
-                .map_err(Box::new)
-        })
+        let result = execute_code_search_projection_batch(
+            ctx.as_ref(),
+            prepared,
+            axon_api::CodeSearchCaller::Mcp,
+            auth.as_ref(),
+        )
         .await
-        .map_err(|error| super::common::internal_error(format!("code_search task: {error}")))?
-        .map_err(|error| logged_internal_error("code_search.execute", error.as_ref()))?;
+        .map_err(|error| logged_internal_error("code_search.execute", &error))?;
         projection_response(ProjectionOperation::CodeSearch, result)
     }
 }

@@ -95,13 +95,10 @@ pub(super) async fn resolve_signature(
     }
 }
 
-/// Verify the detached signature when both a public key (`AXON_UPDATE_MINISIGN_PUBKEY`)
-/// and a signature file are available. Inert otherwise — returns `Ok(())`.
-///
-/// When enforcement is active, a missing/invalid signature is a hard failure:
-/// once an operator opts in by setting the public key, the updater must not
-/// silently fall back to SHA256-only. Shells out to `minisign` to avoid adding
-/// a crypto crate in this bounded pass.
+/// Verify the mandatory detached release signature. The build must embed a
+/// non-empty `AXON_UPDATE_MINISIGN_PUBKEY`, the release must provide its
+/// signature asset, and `minisign` must be runnable. Any missing prerequisite
+/// or invalid signature fails closed; SHA256 is not an authentication fallback.
 pub(super) fn verify_signature(
     archive_path: &Path,
     signature_path: &Path,

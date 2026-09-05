@@ -4431,7 +4431,9 @@
             "description": "Persistent memories",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemsResponse"
+                }
               }
             }
           },
@@ -4499,19 +4501,11 @@
         },
         "responses": {
           "200": {
-            "description": "Persistent memory result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid memory request",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
+                  "$ref": "#/components/schemas/MemoryItemResponse"
                 }
               }
             }
@@ -4528,16 +4522,6 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector or embedding service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4585,7 +4569,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -4668,7 +4654,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryContextResponse"
+                }
               }
             }
           },
@@ -4943,7 +4931,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemsResponse"
+                }
               }
             }
           },
@@ -5023,19 +5013,11 @@
         },
         "responses": {
           "200": {
-            "description": "Persistent memory result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid memory request",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
+                  "$ref": "#/components/schemas/MemoryItemsResponse"
                 }
               }
             }
@@ -5052,16 +5034,6 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector or embedding service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -5110,7 +5082,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5193,7 +5167,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5287,7 +5263,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5381,7 +5359,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5475,7 +5455,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEdgeResponse"
+                }
               }
             }
           },
@@ -5570,7 +5552,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEdgeResponse"
+                }
               }
             }
           },
@@ -5664,7 +5648,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5758,7 +5744,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5852,7 +5840,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySupersedeResponse"
+                }
               }
             }
           },
@@ -7521,7 +7511,9 @@
             "description": "Indexed sources",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesResponse"
+                }
               }
             }
           },
@@ -8678,7 +8670,9 @@
             "description": "Paged watch summaries",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Page"
+                }
               }
             }
           },
@@ -8749,7 +8743,9 @@
             "description": "Created watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -8823,7 +8819,9 @@
             "description": "Watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -8905,7 +8903,9 @@
             "description": "Deletion result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchDeleteResponse"
+                }
               }
             }
           },
@@ -8997,7 +8997,9 @@
             "description": "Updated watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -9091,7 +9093,9 @@
             "description": "Watch execution job descriptor",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobDescriptor"
+                }
               }
             }
           },
@@ -9214,7 +9218,9 @@
             "description": "Watch execution history",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResult"
+                }
               }
             }
           },
@@ -9298,7 +9304,9 @@
             "description": "Updated watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -9382,7 +9390,9 @@
             "description": "Updated watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -9466,7 +9476,9 @@
             "description": "Watch status with latest source job summary",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchStatusResponse"
+                }
               }
             }
           },
@@ -11480,6 +11492,51 @@
       "DocumentId": {
         "type": "string"
       },
+      "DomainSourcesResponse": {
+        "type": "object",
+        "required": [
+          "domain",
+          "count",
+          "limit",
+          "truncated",
+          "urls"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "EmbedOptions": {
         "type": "object",
         "properties": {
@@ -12617,6 +12674,46 @@
         },
         "additionalProperties": false
       },
+      "IndexedSourcesResponse": {
+        "type": "object",
+        "required": [
+          "count",
+          "limit",
+          "offset",
+          "urls"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "IngestOptions": {
         "type": "object",
         "properties": {
@@ -13678,6 +13775,49 @@
           "blocked"
         ]
       },
+      "MemoryContext": {
+        "type": "object",
+        "required": [
+          "context",
+          "memories",
+          "token_budget",
+          "token_estimate",
+          "truncated"
+        ],
+        "properties": {
+          "context": {
+            "type": "string"
+          },
+          "memories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            }
+          },
+          "token_budget": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "token_estimate": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MemoryContextResponse": {
+        "type": "object",
+        "required": [
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/MemoryContext"
+          }
+        }
+      },
       "MemoryDecayPolicy": {
         "type": "object",
         "description": "Explicit, inspectable decay configuration.\n\nContract: \"Decay Contract\" required fields.",
@@ -13736,6 +13876,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "MemoryEdgeItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "source_id",
+          "target_id",
+          "edge_type",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "edge_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "MemoryEdgeResponse": {
+        "type": "object",
+        "required": [
+          "edge"
+        ],
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/MemoryEdgeItem"
+          }
+        }
       },
       "MemoryExportRequest": {
         "type": "object",
@@ -13892,6 +14076,144 @@
           }
         },
         "additionalProperties": false
+      },
+      "MemoryItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "memory_type",
+          "title",
+          "confidence",
+          "status",
+          "created_at",
+          "updated_at",
+          "last_seen_at",
+          "access_count"
+        ],
+        "properties": {
+          "access_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_commit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_dirty": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory_type": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MemoryItemResponse": {
+        "type": "object",
+        "properties": {
+          "memory": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemoryItem"
+              }
+            ]
+          }
+        }
+      },
+      "MemoryItemsResponse": {
+        "type": "object",
+        "required": [
+          "memories"
+        ],
+        "properties": {
+          "memories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            }
+          }
+        }
       },
       "MemoryLink": {
         "type": "object",
@@ -14051,6 +14373,25 @@
           "forgotten",
           "working"
         ]
+      },
+      "MemorySupersedeResponse": {
+        "type": "object",
+        "required": [
+          "edge",
+          "superseded_id",
+          "replacement_id"
+        ],
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/MemoryEdgeItem"
+          },
+          "replacement_id": {
+            "type": "string"
+          },
+          "superseded_id": {
+            "type": "string"
+          }
+        }
       },
       "MemoryType": {
         "type": "string",
@@ -14365,7 +14706,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/JobSummary"
+              "$ref": "#/components/schemas/WatchSummary"
             }
           },
           "limit": {
@@ -18118,6 +18459,16 @@
           "enabled"
         ]
       },
+      "SourcesResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/IndexedSourcesResponse"
+          },
+          {
+            "$ref": "#/components/schemas/DomainSourcesResponse"
+          }
+        ]
+      },
       "StageCounts": {
         "type": "object",
         "required": [
@@ -19055,6 +19406,22 @@
           "derived"
         ]
       },
+      "WatchDeleteResponse": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "watch_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "WatchExecRequest": {
         "type": "object",
         "properties": {
@@ -19079,6 +19446,31 @@
               "boolean",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchHistoryResult": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobDescriptor"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "watch_id": {
+            "$ref": "#/components/schemas/WatchId"
           }
         },
         "additionalProperties": false
@@ -19222,6 +19614,76 @@
               "string",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchStatusResponse": {
+        "type": "object",
+        "required": [
+          "watch"
+        ],
+        "properties": {
+          "latest_job_summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobSummary"
+              }
+            ]
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchResult"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchSummary": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "source_id",
+          "enabled",
+          "schedule",
+          "next_run_at"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "last_job_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobId"
+              }
+            ]
+          },
+          "last_status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          },
+          "next_run_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/WatchSchedule"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "watch_id": {
+            "$ref": "#/components/schemas/WatchId"
           }
         },
         "additionalProperties": false

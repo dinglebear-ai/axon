@@ -31,3 +31,18 @@ fn headers_present() {
 fn headers_empty() {
     assert!(conditional_headers(None, None).is_empty());
 }
+
+#[tokio::test]
+async fn rejected_probe_does_not_echo_credentialed_url() {
+    let secret = "credential-value";
+    let probe = conditional_probe(
+        &format!("http://user:{secret}@127.0.0.1/private?api_key={secret}"),
+        None,
+        None,
+    )
+    .await;
+    let Probe::Failed(message) = probe else {
+        panic!("private target must be rejected")
+    };
+    assert!(!message.contains(secret));
+}

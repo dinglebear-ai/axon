@@ -287,7 +287,8 @@ impl AxonMcpServer {
             dashboard_uri = STATUS_DASHBOARD_URI,
             "mcp_app dedicated status dashboard tool called"
         );
-        let ctx = ServiceContext::new(self.cfg.clone())
+        let ctx = self
+            .base_service_context()
             .await
             .map_err(|e| internal_error(format!("initialize status dashboard context: {e}")))?;
         let status = system::full_status(&ctx)

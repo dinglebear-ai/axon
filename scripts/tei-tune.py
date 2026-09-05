@@ -318,7 +318,7 @@ def main() -> int:
             concurrencies = [positive_int(value) for value in args.concurrencies.split(",")]
             sweep_client(tei, positive_int(str(args.total_inputs)), positive_int(str(args.repeats)),
                          batch_sizes, concurrencies, args.output,
-                         positive_int(str(args.sample_chars)))
+                         positive_int(str(args.sample_chars)), args.seed)
         return 0
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         print(f"error: {error}", file=sys.stderr)
@@ -327,3 +327,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+    sweep.add_argument("--seed", type=int, default=0, help="Recorded shuffle seed for interleaved trials")

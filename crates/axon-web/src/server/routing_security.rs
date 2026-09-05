@@ -15,6 +15,38 @@ use axum::{
 use lab_auth::AuthContext;
 use std::sync::Arc;
 
+pub(crate) const PANEL_AUTH_ISSUER: &str = "axon-panel";
+
+pub(super) fn panel_auth_context() -> AuthContext {
+    AuthContext {
+        sub: "axon-panel".to_string(),
+        actor_key: None,
+        scopes: vec!["axon:read".to_string(), "axon:write".to_string()],
+        issuer: PANEL_AUTH_ISSUER.to_string(),
+        via_session: true,
+        csrf_token: None,
+        email: None,
+    }
+}
+
+pub(super) async fn authenticate_panel_request(
+    axum::extract::State(panel): axum::extract::State<Arc<crate::server::state::PanelRuntimeState>>,
+    mut request: Request<Body>,
+    next: middleware::Next,
+) -> Response {
+    let authorized = request
+        .headers()
+        .get("x-axon-panel-token")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|token| panel.password.verify(token));
+    if !authorized {
+        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
+            .into_response();
+    }
+    request.extensions_mut().insert(panel_auth_context());
+    next.run(request).await
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum ScopeRequirement {
     Read,
@@ -146,3 +178,7 @@ pub(super) async fn security_headers(request: Request<Body>, next: middleware::N
     );
     response
 }
+
+#[cfg(test)]
+#[path = "routing_security_tests.rs"]
+mod tests;

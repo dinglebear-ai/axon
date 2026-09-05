@@ -79,24 +79,6 @@ pub enum PruneSelector {
     CleanupDebt { debt_id: CleanupDebtId },
     /// Prune a whole vector collection.
     Collection { collection: String },
-    /// Prune a single artifact by id (never by arbitrary path).
-    Artifact { artifact_id: ArtifactId },
-    /// Prune graph nodes/edges (orphan cleanup).
-    Graph {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        node_id: Option<GraphNodeId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        edge_id: Option<GraphEdgeId>,
-    },
-    /// Prune (forget) memory records.
-    Memory {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        memory_id: Option<MemoryId>,
-    },
-    /// Job-retention cleanup older than N days.
-    JobRetention { older_than_days: u32 },
-    /// Cache cleanup older than N days.
-    Cache { older_than_days: u32 },
 }
 
 /// A resolved, reviewable plan describing exactly what a prune would delete.

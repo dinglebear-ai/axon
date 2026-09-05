@@ -14,7 +14,17 @@ pub(super) async fn await_with_renewal<F: Future>(
         tokio::select! {
             output = &mut future => return output,
             _ = heartbeat.tick() => {
-                let _ = store.renew_lease(turn_id, lease_version, now_ms());
+                let store = store.clone();
+                let turn_id = turn_id.to_string();
+                let renewal = tokio::task::spawn_blocking(move || {
+                    store.renew_lease(&turn_id, lease_version, now_ms())
+                });
+                match tokio::time::timeout(Duration::from_secs(2), renewal).await {
+                    Ok(Ok(Ok(()))) => {}
+                    Ok(Ok(Err(error))) => tracing::warn!(%error, "agent lease renewal failed"),
+                    Ok(Err(error)) => tracing::warn!(%error, "agent lease renewal task failed"),
+                    Err(_) => tracing::warn!("agent lease renewal exceeded its two-second budget"),
+                }
             },
         }
     }

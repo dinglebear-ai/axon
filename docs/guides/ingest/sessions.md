@@ -45,9 +45,11 @@ Sessions defaults to **async queued execution** when `--wait false` (default): i
 
 Use `--wait true` for synchronous execution.
 
-## Auto-Capture vs SessionStart Recall
+## Auto-Capture vs Explicit Recall
 
-The Claude plugin SessionStart hook is recall-only: it calls `axon memory context` for the current git project and must stay fast and best-effort. It does not scan or ingest session files.
+The Claude plugin registers no SessionStart hook. Run `axon memory context`
+explicitly for fast, best-effort recall; it does not scan or ingest session
+files.
 
 Automatic capture must use the unified source/watch pipeline. The old
 session-specific watcher, status/smoke helpers, and setup service are not

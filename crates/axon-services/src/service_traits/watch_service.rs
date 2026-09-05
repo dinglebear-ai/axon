@@ -21,6 +21,7 @@ use crate::watch::{self, SourceWatchStoreTrait};
 
 #[async_trait]
 pub trait WatchService: Send + Sync {
+    async fn resolve(&self, id_or_source: &str) -> anyhow::Result<WatchId>;
     async fn create(&self, request: WatchRequest) -> anyhow::Result<WatchResult>;
     async fn update(
         &self,
@@ -52,6 +53,12 @@ impl WatchServiceImpl {
 
 #[async_trait]
 impl WatchService for WatchServiceImpl {
+    async fn resolve(&self, id_or_source: &str) -> anyhow::Result<WatchId> {
+        let pool = self.ctx.jobs.sqlite_pool();
+        watch::resolve_source_watch_id(&self.ctx.cfg, pool.as_deref(), id_or_source)
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))
+    }
     async fn create(&self, request: WatchRequest) -> anyhow::Result<WatchResult> {
         let pool = self.ctx.jobs.sqlite_pool();
         watch::create_source_watch(&self.ctx.cfg, pool.as_deref(), request, None)
@@ -194,6 +201,15 @@ impl FakeWatchService {
 
 #[async_trait]
 impl WatchService for FakeWatchService {
+    async fn resolve(&self, id_or_source: &str) -> anyhow::Result<WatchId> {
+        let watches = self.watches.lock().unwrap();
+        watches
+            .values()
+            .find(|watch| watch.watch_id.0 == id_or_source || watch.canonical_uri == id_or_source)
+            .map(|watch| watch.watch_id.clone())
+            .ok_or_else(|| anyhow::anyhow!("watch {id_or_source} not found"))
+    }
+
     async fn create(&self, request: WatchRequest) -> anyhow::Result<WatchResult> {
         let watch_id = WatchId::new(format!("watch-{}", uuid::Uuid::new_v4()));
         let result = fake_watch_result(watch_id.clone(), &request);

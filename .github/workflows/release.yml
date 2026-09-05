@@ -40,14 +40,50 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  resolve-release:
+    name: resolve immutable release commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      commit: ${{ steps.resolve.outputs.commit }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      # The resolver always checks out protected main, never the caller-selected ref.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Resolve and validate canonical release tag
+        id: resolve
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_TAG: ${{ github.ref_name }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            [[ "$EVENT_REF" == "refs/heads/main" ]] || { echo "manual releases must be dispatched from main" >&2; exit 1; }
+            tag="$REQUESTED_TAG"
+          else
+            tag="$EVENT_TAG"
+          fi
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release tag must be canonical vMAJOR.MINOR.PATCH" >&2; exit 1; }
+          git fetch --force origin "refs/tags/$tag:refs/tags/$tag" main
+          [[ "$(git cat-file -t "refs/tags/$tag")" == "tag" ]] || { echo "release tag must be annotated" >&2; exit 1; }
+          commit="$(git rev-parse "refs/tags/$tag^{}")"
+          git merge-base --is-ancestor "$commit" origin/main || { echo "release tag is not reachable from protected main" >&2; exit 1; }
+          printf 'commit=%s\ntag=%s\n' "$commit" "$tag" >> "$GITHUB_OUTPUT"
+
   web-assets:
     name: build web assets
+    needs: resolve-release
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ needs.resolve-release.outputs.commit }}
           sparse-checkout: |
             apps/web
             assets
@@ -67,23 +103,16 @@ jobs:
 
   axon-linux:
     name: build axon (linux)
-    needs: web-assets
+    needs: [resolve-release, web-assets]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    # The `secrets` context is not allowed in step-level `if:` conditionals, so
-    # credentials are promoted to job-level env; all three signing inputs are mandatory,
-    # publication fails closed when any input is unavailable.
-    env:
-      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-      AXON_UPDATE_MINISIGN_PUBKEY: ${{ vars.AXON_UPDATE_MINISIGN_PUBKEY }}
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ needs.resolve-release.outputs.commit }}
       - uses: ./.github/actions/setup-rust-kache
         with:
           toolchain: 1.97.1
@@ -127,54 +156,69 @@ jobs:
           cd target/release
           tar -czf axon-linux-x86_64.tar.gz axon
           sha256sum axon-linux-x86_64.tar.gz > axon-linux-x86_64.tar.gz.sha256
-      - name: Fail when release signing material is unavailable
-        run: |
-          set -euo pipefail
-          test -n "$SIGNING_KEY" || { echo "SIGNING_KEY is required for release publication" >&2; exit 1; }
-          test -n "$SIGNING_KEY_PASSWORD" || { echo "SIGNING_KEY_PASSWORD is required for release publication" >&2; exit 1; }
-          test -n "$AXON_UPDATE_MINISIGN_PUBKEY" || { echo "AXON_UPDATE_MINISIGN_PUBKEY is required for release publication" >&2; exit 1; }
-      - name: Sign artifact (minisign)
-        run: |
-          set -euo pipefail
-          # Install minisign (rsign2 is a drop-in alternative if preferred).
-          sudo apt-get update && sudo apt-get install -y minisign
-          umask 077
-          SIGNING_KEY_FILE=$(mktemp)
-          trap 'shred -u "$SIGNING_KEY_FILE"' EXIT
-          printf '%s' "$SIGNING_KEY" > "$SIGNING_KEY_FILE"
-          cd target/release
-          echo "$SIGNING_KEY_PASSWORD" | minisign -S -s "$SIGNING_KEY_FILE" \
-            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
-          minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
-            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
-          shred -u "$SIGNING_KEY_FILE"
-          trap - EXIT
-          echo "Signed axon-linux-x86_64.tar.gz -> .minisig"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-linux-x86_64
           path: |
             target/release/axon-linux-x86_64.tar.gz
             target/release/axon-linux-x86_64.tar.gz.sha256
-            target/release/axon-linux-x86_64.tar.gz.minisig
+          if-no-files-found: error
+
+  sign-linux:
+    name: sign immutable Linux artifact
+    needs: [resolve-release, axon-linux]
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    timeout-minutes: 10
+    steps:
+      # This job deliberately has no checkout and executes no selected source.
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: axon-linux-x86_64
+          path: dist
+      - name: Verify, sign, and re-verify Linux artifact
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          AXON_UPDATE_MINISIGN_PUBKEY: ${{ vars.AXON_UPDATE_MINISIGN_PUBKEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY" || { echo "SIGNING_KEY is required" >&2; exit 1; }
+          test -n "$SIGNING_KEY_PASSWORD" || { echo "SIGNING_KEY_PASSWORD is required" >&2; exit 1; }
+          test -n "$AXON_UPDATE_MINISIGN_PUBKEY" || { echo "AXON_UPDATE_MINISIGN_PUBKEY is required for release publication" >&2; exit 1; }
+          cd dist
+          sha256sum --check axon-linux-x86_64.tar.gz.sha256
+          sudo apt-get update && sudo apt-get install -y minisign
+          umask 077
+          SIGNING_KEY_FILE=$(mktemp)
+          trap 'shred -u "$SIGNING_KEY_FILE"' EXIT
+          printf '%s' "$SIGNING_KEY" > "$SIGNING_KEY_FILE"
+          echo "$SIGNING_KEY_PASSWORD" | minisign -S -s "$SIGNING_KEY_FILE" \
+            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
+          minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
+            -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: axon-linux-signature
+          path: dist/axon-linux-x86_64.tar.gz.minisig
           if-no-files-found: error
 
   axon-windows:
     name: build axon (windows)
-    needs: web-assets
+    needs: [resolve-release, web-assets]
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
-      - uses: dtolnay/rust-toolchain@stable
+          ref: ${{ needs.resolve-release.outputs.commit }}
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: release-axon-windows
       - name: Verify TLS fingerprinting build prerequisites
@@ -239,16 +283,14 @@ jobs:
 
   publish:
     name: publish github release
-    needs: [axon-linux, axon-windows]
+    needs: [resolve-release, axon-linux, sign-linux, axon-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # Attach artifacts only when release-please dispatches this workflow on an
     # existing v* release tag.
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      inputs.publish &&
-      (startsWith(github.ref, 'refs/tags/v') ||
-      startsWith(inputs.release_tag, 'v'))
+      inputs.publish
     permissions:
       contents: write
     steps:
@@ -264,7 +306,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.release_tag || github.ref_name }}"
+          tag="${{ needs.resolve-release.outputs.tag }}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" \
             dist/axon-linux-x86_64.tar.gz \

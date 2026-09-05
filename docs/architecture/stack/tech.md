@@ -10,7 +10,7 @@ updated: 2026-07-30
 
 | Component | Technology | Version | Purpose |
 |-----------|-----------|---------|---------|
-| Core binary | Rust | 1.94+ (edition 2024) | CLI, MCP server, workers, HTTP server |
+| Core binary | Rust | 1.97.1 (edition 2024) | CLI, MCP server, workers, HTTP server |
 | Web panel assets | TypeScript | Node 24+ | Embedded setup/config panel assets |
 | Scripts | Bash + Python | -- | Maintenance, testing, analysis |
 

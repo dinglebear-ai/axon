@@ -1,5 +1,4 @@
 use crate::types::supported_routes;
-use axon_api::mcp_schema::AxonRequest;
 use serde::{Deserialize, Serialize};
 
 pub const CLIENT_SERVER_SCHEMA_VERSION: &str = "client-server.v1";
@@ -7,7 +6,9 @@ pub const CLIENT_SERVER_SCHEMA_VERSION: &str = "client-server.v1";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientActionRequest {
     pub request_id: String,
-    pub action: AxonRequest,
+    /// Legacy panel action payload. Kept opaque here so the services layer does
+    /// not depend on the MCP transport's tagged action router.
+    pub action: axon_api::action::ActionRequest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

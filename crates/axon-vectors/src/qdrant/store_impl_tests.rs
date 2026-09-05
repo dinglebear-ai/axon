@@ -232,6 +232,28 @@ fn qdrant_stores_share_parallelism_gates_for_the_same_endpoint_and_profile() {
 }
 
 #[tokio::test]
+async fn admin_collection_listing_uses_the_credential_aware_transport() {
+    let server = httpmock::MockServer::start_async().await;
+    let expected = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/collections")
+                .header("api-key", "secret");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"collections": [{"name": "axon"}]}
+            }));
+        })
+        .await;
+    let store = QdrantVectorStore::new(format!("{}?api_key=secret", server.base_url()), "qdrant");
+    let value = store
+        .list_collections_json()
+        .await
+        .expect("list collections");
+    assert_eq!(value["result"]["collections"][0]["name"], "axon");
+    expected.assert_calls_async(1).await;
+}
+
+#[tokio::test]
 async fn qdrant_stores_share_one_aggregate_limit_across_config_and_url_aliases() {
     let mut first = QdrantVectorStore::new("http://qdrant-admission.test", "first");
     configure_parallelism(&mut first, 1, 1);

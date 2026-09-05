@@ -78,17 +78,20 @@ Deployment (Incus or systemd) is a separate step above.
 
 ### Linux
 
-Prerequisites: Linux x86_64, `curl`, `sha256sum`, `install`, and (for GPU
+Prerequisites: Linux x86_64, `curl`, `sha256sum`, `minisign`, `install`, and (for GPU
 synthesis or a configured OpenAI-compatible endpoint) the relevant credentials.
 
 One-line installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' \
+  AXON_VERSION=vX.Y.Z ./install.sh
 ```
 
-The installer verifies the release checksum and installs `axon` to
-`~/.local/bin/axon`. Useful controls:
+The installer requires the trusted `AXON_UPDATE_MINISIGN_PUBKEY`, verifies the
+release's detached minisign signature and checksum, and installs `axon` to
+`~/.local/bin/axon`. Fetch a version-pinned installer from the reviewed release
+source instead of piping the mutable `main` branch directly to a shell.
 
 ```bash
 AXON_INSTALL_DRY_RUN=1 ./install.sh
@@ -116,12 +119,10 @@ Controls: `AXON_INSTALL_DRY_RUN`, `AXON_INSTALL_PREFIX`, `AXON_VERSION`,
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin ships no binary — install `axon` first. Its `SessionStart` hook runs
-`scripts/plugin-setup.sh`, which syncs `CLAUDE_PLUGIN_OPTION_*` settings into
-process env and delegates to `axon setup plugin-hook`. That subcommand is
-**probe-only and never deploys**: it checks `/readyz` and exits silently when the
-stack is up, or prints a one-line `run /axon-deploy` advisory when it is down.
-Provisioning is the `/axon-deploy` slash command (or `axon setup`).
+The plugin ships no binary and registers no automatic hooks. Install `axon`
+first, then invoke `axon setup plugin-hook` explicitly for a probe-only
+`/readyz` check. Provisioning is the `/axon-deploy` slash command (or
+`axon setup`).
 
 ## Deploy
 
@@ -366,8 +367,8 @@ axon memory context               # recall relevant memories for a query
 Memory lives in its own Qdrant collection (`axon_memory`, or
 `AXON_MEMORY_COLLECTION`) with a decay model: `base_score` blended from
 semantic/confidence/salience/scope/reinforcement, multiplied by a
-half-life decay unless pinned. The Claude plugin's `SessionStart` hook calls
-`axon memory context` for session recall (gated by `AXON_SESSION_MEMORY_*`).
+half-life decay unless pinned. Run `axon memory context` explicitly for session
+recall; the Claude plugin does not register a `SessionStart` hook.
 
 ## CLI
 

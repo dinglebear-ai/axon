@@ -137,7 +137,15 @@ impl GraphStore for SqliteGraphStore {
     }
 
     async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>> {
-        resolve::nodes_for_source(&self.pool, &source_id).await
+        resolve::nodes_for_source(&self.pool, &source_id, None).await
+    }
+
+    async fn nodes_for_source_limited(
+        &self,
+        source_id: SourceId,
+        limit: usize,
+    ) -> Result<Vec<GraphNode>> {
+        resolve::nodes_for_source(&self.pool, &source_id, Some(limit)).await
     }
 
     async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {

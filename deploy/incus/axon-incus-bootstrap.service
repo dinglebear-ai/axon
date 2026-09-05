@@ -18,7 +18,7 @@ Type=oneshot
 # into bootstrap.sh's own more generic "AXON_EXTERNAL_QDRANT_URL must be set"
 # error, which would conflate "file missing" with "file present but empty".
 EnvironmentFile=/etc/axon-incus-bootstrap.env
-ExecStart=/home/jmagar/workspace/axon/deploy/incus/bootstrap.sh external-qdrant
+ExecStart=/usr/local/libexec/axon-incus-bootstrap external-qdrant
 # Fail closed and stay failed (do not retry silently) — a discoverable
 # `systemctl status axon-incus-bootstrap` failure is the intended signal for
 # an operator investigating "why didn't the stack come back after reboot".

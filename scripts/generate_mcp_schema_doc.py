@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/reference/mcp/tool-schema.md from crates/axon-api/src/mcp_schema.rs.
+"""Generate docs/reference/mcp/tool-schema.md from Axon's action and MCP schemas.
 
 Parses the Rust source for struct/enum definitions across the schema module and
 produces a markdown document that stays in sync with the actual wire contract.
@@ -47,7 +47,7 @@ def find_repo_root(start: Path | None = None) -> Path | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate docs/reference/mcp/tool-schema.md from crates/axon-api/src/mcp_schema.rs",
+        description="Generate docs/reference/mcp/tool-schema.md from Axon's action and MCP schemas",
     )
     parser.add_argument(
         "--check",
@@ -73,17 +73,21 @@ def main() -> int:
         print("ERROR: Could not find repo root. Pass --repo-root.", file=sys.stderr)
         return 2
 
-    schema_path = repo_root / "crates" / "axon-api" / "src" / "mcp_schema.rs"
+    schema_path = repo_root / "crates" / "axon-mcp" / "src" / "schema.rs"
+    action_schema_path = repo_root / "crates" / "axon-api" / "src" / "action.rs"
     doc_path = repo_root / "docs" / "reference" / "mcp" / "tool-schema.md"
 
     if not schema_path.is_file():
         print(f"ERROR: Schema file not found: {schema_path}", file=sys.stderr)
         return 2
+    if not action_schema_path.is_file():
+        print(f"ERROR: Action schema file not found: {action_schema_path}", file=sys.stderr)
+        return 2
 
     # Parse. The schema module keeps AxonRequest in schema.rs and request models
     # in child files to stay under the Rust file-size policy, so concatenate the
     # module sources before feeding the lightweight parser.
-    source = read_schema_sources(schema_path)
+    source = read_schema_sources(schema_path, action_schema_path)
     structs, enums = parse_schema(source)
 
     errors = validate_parsed(structs, enums)
@@ -132,11 +136,11 @@ def main() -> int:
     return 0
 
 
-def read_schema_sources(schema_path: Path) -> str:
-    schema_dir = schema_path.with_suffix("")
-    parts = [schema_path.read_text(encoding="utf-8")]
-    if schema_dir.is_dir():
-        for child in sorted(schema_dir.glob("*.rs")):
+def read_schema_sources(schema_path: Path, action_schema_path: Path) -> str:
+    parts = [schema_path.read_text(encoding="utf-8"), action_schema_path.read_text(encoding="utf-8")]
+    action_dir = action_schema_path.with_suffix("")
+    if action_dir.is_dir():
+        for child in sorted(action_dir.rglob("*.rs")):
             parts.append(child.read_text(encoding="utf-8"))
     return "\n\n".join(parts)
 

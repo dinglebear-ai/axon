@@ -9,10 +9,13 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
-use reqwest::header::HeaderValue;
+use reqwest::header::{HeaderValue, RETRY_AFTER};
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+mod endpoint;
+pub(crate) use endpoint::QdrantEndpoint;
 
 /// Opaque endpoint context marker attached to errors.
 ///
@@ -45,130 +48,6 @@ pub(crate) fn shared_client_build_count() -> usize {
     CLIENT_BUILDS.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-/// A Qdrant REST endpoint with credentials split away from the base URL.
-#[derive(Clone)]
-pub struct QdrantEndpoint {
-    /// Redacted endpoint root, preserving any configured reverse-proxy prefix.
-    base: String,
-    /// Optional API key extracted from userinfo password or `api_key` query.
-    api_key: Option<String>,
-}
-
-impl std::fmt::Debug for QdrantEndpoint {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("QdrantEndpoint")
-            .field("base", &self.base)
-            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
-            .finish()
-    }
-}
-
-impl QdrantEndpoint {
-    /// Parse the configured URL into a redaction-safe base + optional API key.
-    ///
-    /// Best-effort: if the URL cannot be parsed the trimmed input is used as the
-    /// base and no key is extracted. Path and query segments are discarded so a
-    /// value like `http://host:6333/collections?api_key=…` cannot leak.
-    pub fn parse(url: &str) -> Self {
-        let trimmed = url.trim();
-        match url::Url::parse(trimmed) {
-            Ok(parsed) => {
-                let mut api_key = None;
-                if !parsed.password().unwrap_or_default().is_empty() {
-                    api_key = parsed.password().map(ToString::to_string);
-                } else if !parsed.username().is_empty() {
-                    // A bare `token@host` form carries the key as the username.
-                    api_key = Some(parsed.username().to_string());
-                }
-                if api_key.is_none() {
-                    api_key = parsed
-                        .query_pairs()
-                        .find(|(key, _)| key == "api_key")
-                        .map(|(_, value)| value.into_owned());
-                }
-                let mut redacted = parsed;
-                let _ = redacted.set_username("");
-                let _ = redacted.set_password(None);
-                redacted.set_query(None);
-                redacted.set_fragment(None);
-                let base = redacted.as_str().trim_end_matches('/').to_string();
-                // Live CI passes the gateway credential separately so it can
-                // never appear in a URL, argv, diagnostic, or retained report.
-                let api_key = api_key.or_else(|| {
-                    std::env::var("QDRANT_API_KEY")
-                        .ok()
-                        .filter(|value| !value.is_empty())
-                });
-                Self { base, api_key }
-            }
-            Err(_) => Self {
-                base: trimmed.trim_end_matches('/').to_string(),
-                api_key: None,
-            },
-        }
-    }
-
-    /// Build a full request URL for a collection sub-path (e.g. `points/query`).
-    pub fn collection_path(&self, collection: &str, suffix: &str) -> String {
-        let mut url = url::Url::parse(&format!("{}/", self.base))
-            .expect("QdrantEndpoint base was parsed successfully");
-        let suffix = suffix.trim_start_matches('/');
-        let (suffix_path, query) = suffix.split_once('?').unwrap_or((suffix, ""));
-        {
-            let mut segments = url
-                .path_segments_mut()
-                .expect("Qdrant HTTP endpoint must be a hierarchical URL");
-            segments.pop_if_empty().push("collections").push(collection);
-            for segment in suffix_path.split('/').filter(|segment| !segment.is_empty()) {
-                segments.push(segment);
-            }
-        }
-        if !query.is_empty() {
-            url.set_query(Some(query));
-        }
-        url.into()
-    }
-
-    /// The bare `scheme://host[:port]` root, used for liveness probes.
-    pub fn root(&self) -> &str {
-        &self.base
-    }
-
-    /// Credential-free origin for transports such as tonic that construct
-    /// their own RPC paths and therefore cannot inherit an HTTP proxy prefix.
-    pub(super) fn grpc_origin(&self) -> String {
-        let Ok(mut url) = url::Url::parse(&self.base) else {
-            return self.base.clone();
-        };
-        url.set_path("");
-        url.set_query(None);
-        url.set_fragment(None);
-        url.as_str().trim_end_matches('/').to_string()
-    }
-
-    pub(super) fn api_key(&self) -> Option<&str> {
-        self.api_key.as_deref()
-    }
-
-    pub(super) fn credentials_use_safe_transport(&self) -> bool {
-        self.transport_is_safe_for_credentials(self.api_key.is_some())
-    }
-
-    pub(super) fn transport_is_safe_for_credentials(&self, credentials_present: bool) -> bool {
-        if !credentials_present {
-            return true;
-        }
-        let Ok(url) = url::Url::parse(&self.base) else {
-            return false;
-        };
-        if url.scheme() == "https" {
-            return true;
-        }
-        matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"))
-    }
-}
-
 /// Reqwest client wrapper carrying a parsed, redaction-safe endpoint.
 #[derive(Debug, Clone)]
 pub struct QdrantHttp {
@@ -189,6 +68,15 @@ impl QdrantHttp {
     /// surfaced error to `provider_id`.
     pub fn new(url: &str, provider_id: &str) -> Result<Self, ApiError> {
         let endpoint = QdrantEndpoint::parse(url);
+        if !endpoint.valid {
+            return Err(ApiError::new(
+                "vector.qdrant.invalid_endpoint",
+                axon_error::ErrorStage::Authorizing,
+                "Qdrant endpoint must be an absolute HTTP or HTTPS URL",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(provider_id));
+        }
         if !endpoint.credentials_use_safe_transport() {
             return Err(ApiError::new(
                 "vector.qdrant.insecure_credentials",
@@ -289,6 +177,27 @@ impl QdrantHttp {
         Err(self.status_error(stage, context, resp.status()))
     }
 
+    pub async fn delete(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        context: &str,
+    ) -> Result<bool, ApiError> {
+        let response = self
+            .request(Method::DELETE)
+            .delete(url)
+            .send()
+            .await
+            .map_err(|error| self.transport(stage, context, &error))?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if response.status().is_success() {
+            return Ok(true);
+        }
+        Err(self.status_error(stage, context, response.status()))
+    }
+
     /// PUT an idempotently-created resource, accepting a conflict that means
     /// another caller already created the same collection or payload index.
     pub async fn put_json_idempotent_create<B: Serialize + ?Sized>(
@@ -345,6 +254,7 @@ impl QdrantHttp {
     ) -> Result<StatusCode, ApiError> {
         let started = Instant::now();
         for attempt in 1..=MAX_ATTEMPTS {
+            let mut server_delay = None;
             let replay = request.try_clone().ok_or_else(|| {
                 ApiError::new(
                     "vector.qdrant.non_replayable_request",
@@ -355,6 +265,10 @@ impl QdrantHttp {
             match replay.send().await {
                 Ok(response) => {
                     let status = response.status();
+                    server_delay = response
+                        .headers()
+                        .get(RETRY_AFTER)
+                        .and_then(parse_retry_after);
                     if attempt == MAX_ATTEMPTS
                         || !(status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error())
                     {
@@ -366,7 +280,7 @@ impl QdrantHttp {
                 }
                 Err(_) => {}
             }
-            tokio::time::sleep(retry_delay(attempt, started)).await;
+            tokio::time::sleep(server_delay.unwrap_or_else(|| retry_delay(attempt, started))).await;
         }
         unreachable!("the final attempt always returns")
     }
@@ -392,8 +306,13 @@ impl QdrantHttp {
                     let retryable =
                         status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
                     if retryable && attempt < MAX_ATTEMPTS {
+                        let server_delay =
+                            resp.headers().get(RETRY_AFTER).and_then(parse_retry_after);
                         last = Some(self.status_error(stage, context, status));
-                        tokio::time::sleep(retry_delay(attempt, started)).await;
+                        tokio::time::sleep(
+                            server_delay.unwrap_or_else(|| retry_delay(attempt, started)),
+                        )
+                        .await;
                         continue;
                     }
                     if !status.is_success() {
@@ -466,6 +385,16 @@ impl QdrantHttp {
     }
 }
 
+fn parse_retry_after(value: &HeaderValue) -> Option<Duration> {
+    value
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(Duration::from_secs)
+}
+
 /// Small builder that injects the `api-key` header when configured.
 struct AuthedBuilder<'a> {
     client: &'a Client,
@@ -475,6 +404,10 @@ struct AuthedBuilder<'a> {
 impl<'a> AuthedBuilder<'a> {
     fn get(self, url: &str) -> reqwest::RequestBuilder {
         self.apply(self.client.get(url))
+    }
+
+    fn delete(self, url: &str) -> reqwest::RequestBuilder {
+        self.apply(self.client.delete(url))
     }
 
     fn put(self, url: &str) -> reqwest::RequestBuilder {

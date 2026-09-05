@@ -483,7 +483,7 @@ pub(super) fn required_scope_for_tool(
 /// (`handle_research` always calls
 /// `axon_services::search::synthesis::research_with_context`, same
 /// unconditional source auto-index). Neither request DTO (`SearchRequest`,
-/// `ResearchRequest` in `axon-api::mcp_schema`) exposes an opt-out field, so
+/// `ResearchRequest` in `axon-api::action`) exposes an opt-out field, so
 /// the predicate is unconditionally true for these two actions today. This
 /// function is the dispatch-time authority actually consulted by
 /// `call_tool`/`tasks.rs` — when it returns `Some`, the caller must upgrade

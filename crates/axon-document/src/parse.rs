@@ -57,14 +57,19 @@ fn registry() -> &'static ParserRegistry {
 /// parser supports degrades cleanly to an empty `DocumentParse` (routing then
 /// falls back to the content-kind router). This is the single call site that
 /// activates `axon-parse` on the acquisition path.
-pub(crate) fn parse_document(document: &SourceDocument) -> DocumentParse {
+#[cfg(test)]
+pub(crate) fn parse_document(document: SourceDocument) -> DocumentParse {
+    parse_document_owned(document).0
+}
+
+pub(crate) fn parse_document_owned(document: SourceDocument) -> (DocumentParse, SourceDocument) {
     let input = ParseInput {
         // Preparation is decoupled from a specific job/stage; stamp deterministic
         // ids derived from the document identity so repeated preparation is
         // stable and candidate keys do not churn.
         job_id: JobId::new(deterministic_uuid("job", &document.document_id.0)),
         stage_id: StageId::new(deterministic_uuid("stage", &document.document_id.0)),
-        document: document.clone(),
+        document,
         requested_parser: None,
     };
 
@@ -72,8 +77,8 @@ pub(crate) fn parse_document(document: &SourceDocument) -> DocumentParse {
 
     tracing::info!(
         target: "axon_document::parse",
-        document_id = %document.document_id.0,
-        canonical_uri = %document.canonical_uri,
+        document_id = %input.document.document_id.0,
+        canonical_uri = %input.document.canonical_uri,
         parser_id = %result.parser_id,
         parser_version = %result.parser_version,
         facts = result.facts.len(),
@@ -81,14 +86,15 @@ pub(crate) fn parse_document(document: &SourceDocument) -> DocumentParse {
         "axon-parse produced parse facts for document preparation"
     );
 
-    DocumentParse {
+    let parsed = DocumentParse {
         parser_id: result.parser_id,
         parser_version: result.parser_version,
         parse_facts: result.facts,
         graph_candidates: result.graph_candidates,
         warnings: result.warnings,
         errors: result.errors,
-    }
+    };
+    (parsed, input.document)
 }
 
 fn deterministic_uuid(namespace: &str, seed: &str) -> Uuid {

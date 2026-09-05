@@ -3,8 +3,8 @@ use std::pin::Pin;
 use std::task::Poll;
 use std::time::Duration;
 
+use axon_api::source::EmbeddingVectorCacheStore;
 use axon_api::source::ProviderKind;
-use axon_embedding::cache::EmbeddingVectorCacheStore;
 use sqlx::sqlite::SqlitePoolOptions;
 
 use super::*;

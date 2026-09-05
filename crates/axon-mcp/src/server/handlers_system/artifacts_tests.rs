@@ -1,7 +1,7 @@
 use super::super::super::AxonMcpServer;
 use super::super::super::system_requests::{ArtifactsMcpRequest, ArtifactsSubaction};
 use super::MAX_INLINE_CONTENT_BYTES;
-use axon_api::mcp_schema::ResponseMode;
+use axon_api::action::ResponseMode;
 use std::path::Path;
 
 /// Seed one artifact (manifest + content file) into `<output_dir>/artifacts`

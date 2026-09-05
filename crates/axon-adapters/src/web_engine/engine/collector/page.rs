@@ -17,6 +17,7 @@ use axon_core::content::{
 };
 use axon_core::error::ChallengeVendor;
 
+#[derive(Clone)]
 pub struct CollectorConfig {
     pub markdown_dir: PathBuf,
     pub manifest_path: PathBuf,

@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 
+mod recovery;
+use recovery::{content_matches, rollback_manifest};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CommitFailurePoint {
     Metadata,
@@ -34,53 +37,6 @@ pub(super) struct RefetchCommitJournal {
     pub(super) manifest_line_len: Option<u64>,
     #[serde(default)]
     pub(super) manifest_line_hash: Option<String>,
-}
-
-async fn content_matches(path: &Path, expected_len: u64, expected_hash: &str) -> bool {
-    let Ok(bytes) = tokio::fs::read(path).await else {
-        return false;
-    };
-    bytes.len() as u64 == expected_len && hex::encode(Sha256::digest(&bytes)) == expected_hash
-}
-
-async fn rollback_manifest(
-    output_dir: &Path,
-    journal: &RefetchCommitJournal,
-) -> std::io::Result<()> {
-    let manifest_path = output_dir.join("manifest.jsonl");
-    let manifest = tokio::fs::OpenOptions::new()
-        .write(true)
-        .open(&manifest_path)
-        .await?;
-    let current_len = manifest.metadata().await?.len();
-    if current_len < journal.manifest_start {
-        return Err(std::io::Error::other(
-            "manifest is shorter than recorded transaction offset",
-        ));
-    }
-    let owned_len = journal.manifest_line_len.unwrap_or(0);
-    let expected_end = journal.manifest_start.saturating_add(owned_len);
-    if current_len != expected_end {
-        return Err(std::io::Error::other(
-            "manifest changed after this transaction; refusing unsafe truncation",
-        ));
-    }
-    if let Some(expected_hash) = journal.manifest_line_hash.as_deref() {
-        use tokio::io::{AsyncReadExt, AsyncSeekExt};
-        let mut readable = tokio::fs::File::open(&manifest_path).await?;
-        readable
-            .seek(std::io::SeekFrom::Start(journal.manifest_start))
-            .await?;
-        let mut suffix = Vec::with_capacity(owned_len as usize);
-        readable.read_to_end(&mut suffix).await?;
-        if hex::encode(Sha256::digest(&suffix)) != expected_hash {
-            return Err(std::io::Error::other(
-                "manifest suffix does not belong to this transaction",
-            ));
-        }
-    }
-    manifest.set_len(journal.manifest_start).await?;
-    manifest.sync_all().await
 }
 
 pub(super) struct PreparedRefetch {
@@ -222,6 +178,39 @@ pub(super) async fn write_refetch_results_with_failure(
     };
     let mut manifest = file;
 
+    if failure.is_none() {
+        let mut manifest_offset = match manifest.metadata().await {
+            Ok(metadata) => metadata.len(),
+            Err(error) => {
+                log_warn(&format!(
+                    "thin_refetch: failed to read manifest metadata: {error}"
+                ));
+                return summary;
+            }
+        };
+        let mut prepared_batch = Vec::new();
+        for result in results {
+            if let Some(ref diagnostic) = result.diagnostic {
+                summary.push_diagnostic(diagnostic.clone());
+            }
+            if let Some(prepared) =
+                prepare_refetch(result, &markdown_dir, output_dir, manifest_offset, None).await
+            {
+                manifest_offset += prepared.line.len() as u64;
+                prepared_batch.push(prepared);
+            }
+        }
+        if commit_refetch_batch(&mut manifest, &markdown_dir, &prepared_batch).await {
+            for prepared in prepared_batch {
+                summary.thin_urls.remove(&prepared.canonical);
+                summary.thin_pages = summary.thin_pages.saturating_sub(1);
+                summary.markdown_files += 1;
+                log_info(&format!("thin_refetch: recovered {}", prepared.canonical));
+            }
+        }
+        return summary;
+    }
+
     for result in results {
         if let Some(ref diagnostic) = result.diagnostic {
             summary.push_diagnostic(diagnostic.clone());
@@ -257,6 +246,81 @@ pub(super) async fn write_refetch_results_with_failure(
     }
 
     summary
+}
+
+async fn commit_refetch_batch(
+    manifest: &mut tokio::fs::File,
+    markdown_dir: &Path,
+    prepared: &[PreparedRefetch],
+) -> bool {
+    if prepared.is_empty() {
+        return true;
+    }
+    for entry in prepared {
+        if let Err(error) = manifest.write_all(entry.line.as_bytes()).await {
+            rollback_refetch_batch(manifest, prepared).await;
+            log_warn(&format!(
+                "thin_refetch: batched manifest write failed: {error}"
+            ));
+            return false;
+        }
+    }
+    if manifest.flush().await.is_err() || manifest.sync_data().await.is_err() {
+        rollback_refetch_batch(manifest, prepared).await;
+        log_warn("thin_refetch: batched manifest durability barrier failed");
+        return false;
+    }
+    for entry in prepared {
+        let journal = RefetchCommitJournal {
+            phase: CommitPhase::ManifestCommitted,
+            ..entry.journal.clone()
+        };
+        if persist_refetch_journal(&entry.journal_path, &journal)
+            .await
+            .is_err()
+        {
+            rollback_refetch_batch(manifest, prepared).await;
+            return false;
+        }
+    }
+    for entry in prepared {
+        if let Err(error) = tokio::fs::rename(&entry.tmp_path, &entry.path).await {
+            rollback_refetch_batch(manifest, prepared).await;
+            log_warn(&format!(
+                "thin_refetch: batched output rename failed: {error}"
+            ));
+            return false;
+        }
+    }
+    if let Err(error) = sync_directory(markdown_dir).await {
+        log_warn(&format!(
+            "thin_refetch: batched output sync failed: {error}"
+        ));
+        return false;
+    }
+    for entry in prepared {
+        if let Err(error) = tokio::fs::remove_file(&entry.journal_path).await {
+            log_warn(&format!(
+                "thin_refetch: batched journal cleanup failed: {error}"
+            ));
+            return false;
+        }
+    }
+    if let Some(transaction_dir) = prepared[0].journal_path.parent()
+        && let Err(error) = sync_directory(transaction_dir).await
+    {
+        log_warn(&format!(
+            "thin_refetch: transaction directory sync failed: {error}"
+        ));
+        return false;
+    }
+    true
+}
+
+async fn rollback_refetch_batch(manifest: &mut tokio::fs::File, prepared: &[PreparedRefetch]) {
+    for entry in prepared.iter().rev() {
+        rollback_prepared(manifest, entry).await;
+    }
 }
 
 pub(super) async fn prepare_refetch(

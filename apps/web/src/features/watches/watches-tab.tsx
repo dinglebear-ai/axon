@@ -95,7 +95,7 @@ export function WatchesTab({ token, active }: { token: string; active: boolean }
       </div>
       {watchesMessage && <p className="error">{watchesMessage}</p>}
       <div className="status-panel">
-        <SubsectionTitle icon={Eye} title="Source Watches" note="GET /v1/watches — schedule, status, and per-watch controls." />
+        <SubsectionTitle icon={Eye} title="Source Watches" note="Panel-authenticated schedules, status, and per-watch controls." />
         {watchEntries.length ? (
           <div className="job-list">
             {watchEntries.map((entry, index) => (

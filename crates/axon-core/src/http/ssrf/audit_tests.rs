@@ -46,6 +46,20 @@ fn allowed_public_url_records_allow_decision() {
 }
 
 #[test]
+fn audit_urls_strip_userinfo_query_and_fragment() {
+    let secret = "credential-value";
+    let (_, event) = validate_url_with_audit(
+        &format!("https://user:{secret}@example.com/path?api_key={secret}#token={secret}"),
+        0,
+        true,
+    );
+    let detail = event.ssrf.expect("ssrf detail");
+    assert_eq!(detail.requested_url, "https://example.com/path");
+    assert_eq!(detail.canonical_url, "https://example.com/path");
+    assert!(!serde_json::to_string(&detail).unwrap().contains(secret));
+}
+
+#[test]
 fn hostname_literal_ip_is_classified_without_dns() {
     let (_, event) = validate_url_with_audit("http://8.8.8.8/", 0, false);
     let detail = event.ssrf.expect("ssrf detail present");

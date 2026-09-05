@@ -13,14 +13,14 @@
 //! `Retry-After` response header.
 
 use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 use serde_json::{Value, json};
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
@@ -90,7 +90,7 @@ async fn get_oauth_token(ctx: &VerticalContext) -> Option<String> {
     } // lock released here before any async I/O
 
     // Fetch a fresh token (no lock held during network calls).
-    let client = http_client().ok()?;
+    let client = ctx.http_client();
     let resp = client
         .post("https://www.reddit.com/api/v1/access_token")
         .basic_auth(id, Some(secret))
@@ -122,14 +122,15 @@ async fn get_oauth_token(ctx: &VerticalContext) -> Option<String> {
 
 /// Enforce the minimum inter-request delay, then record the request time.
 async fn wait_for_rate_slot() {
-    let mut state = rate_state().lock().await;
+    wait_for_rate_slot_in(rate_state(), MIN_REQUEST_INTERVAL).await;
+}
+
+async fn wait_for_rate_slot_in(state: &Mutex<RedditRateState>, interval: Duration) {
+    let mut state = state.lock().await;
     if let Some(last) = state.last_request_at {
         let elapsed = last.elapsed();
-        if elapsed < MIN_REQUEST_INTERVAL {
-            let wait = MIN_REQUEST_INTERVAL - elapsed;
-            drop(state);
-            tokio::time::sleep(wait).await;
-            state = rate_state().lock().await;
+        if elapsed < interval {
+            tokio::time::sleep(interval - elapsed).await;
         }
     }
     state.last_request_at = Some(Instant::now());
@@ -178,10 +179,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let base = parsed.as_str().trim_end_matches('/');
     let json_url = format!("{base}.json");
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let token = get_oauth_token(ctx).await;
 

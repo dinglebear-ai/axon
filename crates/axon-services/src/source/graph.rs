@@ -28,7 +28,7 @@
 //! Per the crate-ownership rule, `axon-graph` owns the store, the closed kind
 //! registry, and candidate/merge-key/authority validation; this module only
 //! assembles and filters [`GraphCandidate`] values and sends one candidate
-//! batch through the scheduler-owned reserved-call facade per index. When no target pool is available (no
+//! bounded candidate batches through the scheduler-owned reserved-call facade. When no target pool is available (no
 //! unified SQLite runtime), the write is skipped and a degraded
 //! [`GraphWriteSummary`] with zero counts is returned — acquisition never
 //! crashes because of the graph write.
@@ -48,13 +48,16 @@ use tokio::sync::Semaphore;
 
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-use crate::reserved_call::{self, ProviderCallContext};
+use crate::reserved_call::ProviderCallContext;
+
+mod publication;
 
 /// Confidence stamped on baseline skeleton nodes/edges. These are structural
 /// containment facts derived directly from the acquired manifest, not inferred
 /// text mentions, so they carry high confidence.
 const BASELINE_CONFIDENCE: f32 = 0.95;
 const BASELINE_GRAPH_BATCH_SIZE: usize = 512;
+const GRAPH_WRITE_CANDIDATE_BATCH_SIZE: usize = 1;
 
 /// Producer version reported on every baseline candidate.
 const PRODUCER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -168,8 +171,8 @@ pub(crate) async fn write_baseline_graph_with_db_gate(
         .len()
         .max(1)
         .div_ceil(BASELINE_GRAPH_BATCH_SIZE);
-    let baseline = baseline_candidates(kind, counts, canonical_uri, &manifest);
-    let candidates = baseline.chain(valid_extras).collect::<Vec<_>>();
+    let candidates =
+        baseline_candidates(kind, counts, canonical_uri, &manifest).chain(valid_extras);
 
     let _db_permit = match db_stage_slots {
         Some(slots) => match slots.acquire_owned().await {
@@ -184,23 +187,14 @@ pub(crate) async fn write_baseline_graph_with_db_gate(
         },
         None => None,
     };
-    let write = match (runtime, graph_context) {
-        (Some(runtime), Some(context)) => {
-            reserved_call::upsert_graph_candidates(runtime, context, (*pool).clone(), candidates)
-                .await
-        }
-        #[cfg(test)]
-        (None, None) => {
-            reserved_call::upsert_graph_candidates_for_test((*pool).clone(), candidates).await
-        }
-        _ => {
-            tracing::warn!(
-                source_id = %counts.source_id.0,
-                "graph write is missing scheduler runtime/context; returning degraded summary"
-            );
-            return degraded_summary();
-        }
-    };
+    let write = publication::upsert_candidate_batches(
+        runtime,
+        graph_context,
+        &pool,
+        candidates,
+        GRAPH_WRITE_CANDIDATE_BATCH_SIZE,
+    )
+    .await;
     match write {
         Ok(result) => GraphWriteSummary {
             // Every baseline chunk repeats the container node so its edges can
@@ -265,8 +259,8 @@ fn degraded_summary() -> GraphWriteSummary {
 }
 
 /// Lazily assemble bounded baseline graph candidates. Every chunk repeats the
-/// source container node so containment edges resolve locally, while the graph
-/// store consumes the iterator inside one transaction for atomic publication.
+/// source container node so containment edges resolve locally. Each chunk is
+/// candidate-atomic; generation retries reconcile any visible committed prefix.
 fn baseline_candidates<'a>(
     kind: SourceKind,
     counts: &'a IndexCounts,

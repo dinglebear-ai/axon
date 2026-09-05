@@ -71,18 +71,9 @@ pub(super) async fn get_source_detail(
             .map_err(sqlite_error)?;
     let committed_generation = committed.map(SourceGenerationId::new);
     let manifest = if let Some(generation) = committed_generation.as_ref() {
-        let row = sqlx::query(
-            "SELECT manifest_json FROM source_manifests WHERE source_id = ?1 AND generation = ?2",
-        )
-        .bind(&source_id.0)
-        .bind(&generation.0)
-        .fetch_optional(&store.pool)
-        .await
-        .map_err(sqlite_error)?;
-        row.map(|row| -> Result<LedgerManifestState> {
-            let raw: String = row.get("manifest_json");
-            let value: SourceManifest = serde_json::from_str(&raw).map_err(json_error)?;
-            Ok(LedgerManifestState {
+        super::manifest::read_manifest(store, &source_id, generation)
+            .await?
+            .map(|value| LedgerManifestState {
                 generation: generation.clone(),
                 status: summary.status.clone(),
                 item_count: value.items.len() as u64,
@@ -96,8 +87,6 @@ pub(super) async fn get_source_detail(
                     })
                     .collect(),
             })
-        })
-        .transpose()?
     } else {
         None
     };

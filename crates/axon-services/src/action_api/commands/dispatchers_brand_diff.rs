@@ -6,7 +6,7 @@ use crate::brand as brand_svc;
 use crate::context::ServiceContext;
 use crate::diff as diff_svc;
 use crate::types::ClientActionError;
-use axon_api::mcp_schema::{BrandRequest, DiffRequest};
+use axon_api::action::{BrandRequest, DiffRequest};
 use axon_core::config::ConfigOverrides;
 
 pub async fn dispatch_diff(

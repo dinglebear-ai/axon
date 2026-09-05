@@ -18,6 +18,34 @@ pub struct Page<T> {
     pub total: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IndexedSourcesResponse {
+    pub count: usize,
+    pub limit: usize,
+    pub offset: usize,
+    pub urls: Vec<(String, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DomainSourcesResponse {
+    pub domain: String,
+    pub count: usize,
+    pub limit: usize,
+    pub cursor: Option<String>,
+    pub next_cursor: Option<String>,
+    pub truncated: bool,
+    pub urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(untagged)]
+pub enum SourcesResponse {
+    Indexed(IndexedSourcesResponse),
+    Domain(DomainSourcesResponse),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceSummary {

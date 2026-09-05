@@ -6,6 +6,7 @@ import concurrent.futures
 import json
 import math
 from pathlib import Path
+import random
 import statistics
 import time
 import urllib.request
@@ -109,26 +110,50 @@ def benchmark(tei, requests: int, batch_size: int, concurrency: int,
 
 def sweep_client(tei, total_inputs: int, repeats: int, batch_sizes: list[int],
                  concurrencies: list[int], output: Path | None,
-                 sample_chars: int = 1168) -> None:
-    results = []
-    for batch_size in batch_sizes:
+                 sample_chars: int = 1168, seed: int = 0) -> None:
+    candidates = [(batch, concurrency) for batch in batch_sizes for concurrency in concurrencies]
+    trials_by_candidate = {candidate: [] for candidate in candidates}
+    rng = random.Random(seed)
+    for batch_size, concurrency in candidates:
         requests, actual_inputs = fixed_input_shape(total_inputs, batch_size)
-        for concurrency in concurrencies:
-            benchmark_once(tei, max(1, concurrency), batch_size, concurrency, sample_chars)
-            trials = [
+        benchmark_once(tei, max(1, concurrency), batch_size, concurrency, sample_chars)
+    schedule = []
+    for round_index in range(repeats):
+        ordered = candidates.copy()
+        rng.shuffle(ordered)
+        for batch_size, concurrency in ordered:
+            requests, _ = fixed_input_shape(total_inputs, batch_size)
+            trials_by_candidate[(batch_size, concurrency)].append(
                 benchmark_once(tei, requests, batch_size, concurrency, sample_chars)
-                for _ in range(repeats)
-            ]
-            rates = [trial["inputs_per_second"] for trial in trials if trial["errors"] == 0]
-            result = {
-                "batch_size": batch_size, "concurrency": concurrency,
-                "requested_inputs": total_inputs, "actual_inputs": actual_inputs,
-                "repeats": repeats, "trials": trials,
-                "median_inputs_per_second": round(statistics.median(rates), 2) if rates else 0,
-            }
-            results.append(result)
-            print(json.dumps(result), flush=True)
-    report = {"kind": "tei-http-client-sweep", "results": results}
+            )
+            schedule.append({"round": round_index, "batch_size": batch_size, "concurrency": concurrency})
+    results = []
+    for batch_size, concurrency in candidates:
+        _, actual_inputs = fixed_input_shape(total_inputs, batch_size)
+        trials = trials_by_candidate[(batch_size, concurrency)]
+        rates = [trial["inputs_per_second"] for trial in trials if trial["errors"] == 0]
+        result = {
+            "batch_size": batch_size, "concurrency": concurrency,
+            "requested_inputs": total_inputs, "actual_inputs": actual_inputs,
+            "repeats": repeats, "trials": trials, "successful_trials": len(rates),
+            "median_inputs_per_second": round(statistics.median(rates), 2) if rates else 0,
+            "stdev_inputs_per_second": round(statistics.stdev(rates), 2) if len(rates) > 1 else 0,
+        }
+        results.append(result)
+        print(json.dumps(result), flush=True)
+    eligible = [result for result in results if result["successful_trials"] == repeats]
+    eligible.sort(key=lambda result: result["median_inputs_per_second"], reverse=True)
+    confirmation = []
+    if len(eligible) >= 2:
+        finalists = [(item["batch_size"], item["concurrency"]) for item in eligible[:2]]
+        for round_index in range(2):
+            for batch_size, concurrency in (finalists if round_index == 0 else finalists[::-1]):
+                requests, _ = fixed_input_shape(total_inputs, batch_size)
+                trial = benchmark_once(tei, requests, batch_size, concurrency, sample_chars)
+                confirmation.append({"round": round_index, "batch_size": batch_size,
+                                     "concurrency": concurrency, "trial": trial})
+    report = {"kind": "tei-http-client-sweep", "seed": seed, "schedule": schedule,
+              "results": results, "paired_confirmation": confirmation}
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2) + "\n")

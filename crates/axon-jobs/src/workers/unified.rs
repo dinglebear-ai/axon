@@ -290,13 +290,12 @@ async fn observe_worker_join(
                 "unified worker task terminated unexpectedly"
             );
             if let Some(claimed) = claimed {
-                let store = SqliteUnifiedJobStore::new(pool.clone());
                 let error = ApiError::new(
                     "job_runner.task_terminated",
                     ErrorStage::Planning,
                     format!("job worker task terminated unexpectedly: {join_error}"),
                 );
-                terminal::fail_unified_claimed(pool, &store, &claimed, error).await;
+                terminal::fail_unified_claimed(pool, &claimed, error).await;
             }
         }
     }
@@ -321,7 +320,7 @@ pub(crate) async fn mark_job_failed_for_tests(
         ErrorStage::Publishing,
         "synthetic test failure",
     );
-    terminal::mark_terminal(
+    terminal::fail_unified_claimed(
         pool,
         &UnifiedClaimedJob {
             job_id,
@@ -330,13 +329,10 @@ pub(crate) async fn mark_job_failed_for_tests(
             request_json: None,
             auth_snapshot: AuthSnapshot::default(),
         },
-        axon_api::source::LifecycleStatus::Failed,
-        PipelinePhase::Complete,
-        None,
-        None,
-        Some(error),
+        error,
     )
-    .await
+    .await;
+    Ok(())
 }
 
 pub(crate) async fn run_unified_claimed(
@@ -365,14 +361,14 @@ pub(crate) async fn run_unified_claimed(
         && let Err(error) = require_job_scope(&claimed.auth_snapshot, required)
     {
         super::cancel_registry::unregister(claimed.job_id, claimed.attempt);
-        terminal::fail_unified_claimed(pool, &store, claimed, error).await;
+        terminal::fail_unified_claimed(pool, claimed, error).await;
         return;
     }
 
     // Every unified job kind goes through the dependency-inversion registry
-    // the composition layer (axon-services) populates at startup (including
-    // `Extract`, since Phase 12's removal of `axon-extract`); kinds with no
-    // registered runner keep failing with job_runner.unsupported_stage.
+    // populated by the composition layer. `Extract` is implemented by the
+    // live `axon-extract` crate and registered through that same boundary;
+    // kinds with no registered runner fail with job_runner.unsupported_stage.
 
     let Some(runner) = registry.and_then(|registry| registry.get(claimed.kind)) else {
         let error = ApiError::new(
@@ -384,7 +380,7 @@ pub(crate) async fn run_unified_claimed(
             ),
         );
         super::cancel_registry::unregister(claimed.job_id, claimed.attempt);
-        terminal::fail_unified_claimed(pool, &store, claimed, error).await;
+        terminal::fail_unified_claimed(pool, claimed, error).await;
         return;
     };
 
@@ -430,7 +426,7 @@ pub(crate) async fn run_unified_claimed(
             }
         }
         Ok(Err(error)) => {
-            terminal::fail_unified_claimed(pool, &store, claimed, error).await;
+            terminal::fail_unified_claimed(pool, claimed, error).await;
         }
         Err(panic_payload) => {
             let message = panic_message(&panic_payload);
@@ -445,7 +441,7 @@ pub(crate) async fn run_unified_claimed(
                 ErrorStage::Planning,
                 format!("job runner panicked: {message}"),
             );
-            terminal::fail_unified_claimed(pool, &store, claimed, error).await;
+            terminal::fail_unified_claimed(pool, claimed, error).await;
         }
     }
 }

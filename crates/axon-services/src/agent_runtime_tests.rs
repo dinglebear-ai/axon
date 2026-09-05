@@ -53,6 +53,49 @@ fn durable_turn_rejects_idempotency_mismatch() {
 }
 
 #[test]
+fn durable_agent_content_is_redacted_before_storage() {
+    let store = AgentTurnStore::memory().unwrap();
+    let turn = store
+        .create(
+            "turn-secret",
+            "loadout-a",
+            7,
+            "use https://user:password@example.test/private",
+            i64::MAX,
+            "owner-a",
+            "profile-a",
+            8,
+            "model-a",
+            &context(),
+        )
+        .unwrap();
+    assert!(!turn.prompt.contains("password"));
+    turn.verify_create_replay(
+        "owner-a",
+        "profile-a",
+        "loadout-a",
+        7,
+        "use https://user:password@example.test/private",
+    )
+    .unwrap();
+
+    let version = lease(&store, "turn-secret");
+    store
+        .complete_tool_fenced(
+            "turn-secret",
+            version,
+            "call-1",
+            serde_json::json!({"output":"https://user:password@example.test/private"}),
+        )
+        .unwrap();
+    let stored = store.load("turn-secret").unwrap().unwrap();
+    let encoded = serde_json::to_string(&stored.tool_results).unwrap();
+    assert!(!encoded.contains("password"));
+    let events = store.events("turn-secret", 0).unwrap();
+    assert!(!serde_json::to_string(&events).unwrap().contains("password"));
+}
+
+#[test]
 fn proposal_and_receipt_preserve_attribution_and_correlation() {
     let store = AgentTurnStore::memory().unwrap();
     store
@@ -331,6 +374,81 @@ fn persisted_budget_deadline_model_and_profile_are_immutable() {
     assert!(
         turn.verify_create_replay("owner-a", "profile-b", "loadout-a", 7, "hello")
             .is_err()
+    );
+}
+
+#[test]
+fn corrupt_durable_event_fails_closed() {
+    let store = AgentTurnStore::memory().unwrap();
+    store
+        .create(
+            "turn-corrupt",
+            "loadout-a",
+            1,
+            "hello",
+            i64::MAX,
+            "owner-a",
+            "profile-a",
+            8,
+            "model-a",
+            &context(),
+        )
+        .unwrap();
+    store
+        .execute_test_sql(
+            "INSERT INTO agent_turn_events(turn_id, sequence, event_json) VALUES('turn-corrupt', 1, '{broken')",
+        )
+        .unwrap();
+
+    let error = store.events("turn-corrupt", 0).unwrap_err().to_string();
+    assert!(error.contains("agent_event_corrupt"));
+    assert!(error.contains("turn-corrupt"));
+}
+
+#[test]
+fn reused_tool_call_id_with_different_proposal_fails_closed() {
+    let store = AgentTurnStore::memory().unwrap();
+    store
+        .create(
+            "turn-collision",
+            "loadout-a",
+            1,
+            "hello",
+            i64::MAX,
+            "owner-a",
+            "profile-a",
+            8,
+            "model-a",
+            &context(),
+        )
+        .unwrap();
+    let version = lease(&store, "turn-collision");
+    let first = AgentToolProposal {
+        tool_call_id: "call-a".into(),
+        tool_id: "tool-a".into(),
+        contract_hash: "hash-a".into(),
+        arguments: serde_json::json!({"value": 1}),
+        destructive: false,
+    };
+    store
+        .set_proposal_fenced("turn-collision", version, &first)
+        .unwrap();
+    store
+        .reserve_execution_fenced("turn-collision", version, "call-a", "idem-a")
+        .unwrap();
+
+    let mut second = first;
+    second.arguments = serde_json::json!({"value": 2});
+    store
+        .set_proposal_fenced("turn-collision", version, &second)
+        .unwrap();
+
+    assert!(
+        store
+            .execution_request_id("turn-collision", "call-a")
+            .unwrap_err()
+            .to_string()
+            .contains("agent_tool_call_collision")
     );
 }
 

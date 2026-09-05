@@ -1,4 +1,4 @@
-use spider::url::Url;
+use url::Url;
 
 use axon_core::config::Config;
 use axon_core::config::parse::is_docker_service_host;

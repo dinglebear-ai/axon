@@ -1,7 +1,6 @@
 use super::AxonMcpServer;
 use super::common::MCP_TOOL_SCHEMA_URI;
 use crate::schema::AxonToolResponse;
-use axon_services::context::ServiceContext;
 use axon_services::system;
 use rmcp::{
     ErrorData, RoleServer,
@@ -172,7 +171,7 @@ pub(super) async fn read_resource(
     if request.uri == STATUS_DASHBOARD_URI {
         // Inject current status data so the widget renders immediately, bypassing
         // the MCP Apps postMessage bridge which may not be available in all hosts.
-        let status_json = match ServiceContext::new(server.cfg.clone()).await {
+        let status_json = match server.base_service_context().await {
             Ok(ctx) => match system::full_status(&ctx).await {
                 Ok(r) => serde_json::to_string(&r.payload).unwrap_or_else(|_| "null".to_string()),
                 Err(_) => "null".to_string(),

@@ -27,17 +27,24 @@ async fn queue_summary_shutdown_joins_the_cancelled_task() {
     assert!(dropped.load(Ordering::SeqCst));
 }
 
-#[test]
-fn queue_summary_drop_synchronously_joins_the_thread() {
+#[tokio::test(flavor = "current_thread")]
+async fn queue_summary_drop_never_joins_the_thread_on_the_executor() {
     let dropped = Arc::new(AtomicBool::new(false));
     let task_dropped = Arc::clone(&dropped);
-    let (stop, stopped) = std::sync::mpsc::channel();
+    let (stop, _stopped) = std::sync::mpsc::channel();
+    let (release, released) = std::sync::mpsc::channel();
     let thread = std::thread::spawn(move || {
         let _guard = Dropped(task_dropped);
-        let _ = stopped.recv();
+        let _ = released.recv();
     });
     drop(QueueSummaryTask::new(stop, thread));
-    assert!(dropped.load(Ordering::SeqCst));
+    tokio::time::timeout(std::time::Duration::from_millis(100), async {
+        tokio::task::yield_now().await;
+    })
+    .await
+    .expect("dropping a worker supervisor must not block the executor");
+    assert!(!dropped.load(Ordering::SeqCst));
+    release.send(()).expect("release worker");
 }
 
 #[test]

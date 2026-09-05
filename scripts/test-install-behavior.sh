@@ -58,6 +58,10 @@ make_fake_bin() {
     '  *) printf "%s\n" "#!/usr/bin/env sh" "printf \"%s\\\\n\" \"\$*\" >> \"\$AXON_TEST_LOG\"" >"$out" ;;' \
     'esac'
   make_exe "$dir/sha256sum" 'printf "%s  %s\n" "${FAKE_ACTUAL_SHA:-okhash}" "$1"'
+  make_exe "$dir/minisign" \
+    '[ "${FAKE_MINISIGN_VALID:-1}" = "1" ]'
+  make_exe "$dir/uname" \
+    'if [ "${1:-}" = "-s" ]; then echo Linux; else echo x86_64; fi'
   make_exe "$dir/install" \
     'last=' \
     'prev=' \
@@ -91,7 +95,7 @@ test_dry_run_skips_setup_prereqs() {
   fake="$work/bin"
   make_fake_bin "$fake"
   rm -f "$fake/docker" "$fake/nvidia-smi" "$fake/gemini"
-  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_DRY_RUN=1; then
+  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_DRY_RUN=1 AXON_INSTALL_REPO=dinglebear-ai/axon; then
     fail "dry run should succeed without setup prereqs"
   fi
   assert_contains "$work/stderr" "Dry run OK"
@@ -103,7 +107,7 @@ test_checksum_mismatch_fails() {
   tmp="$work/tmp"
   mkdir -p "$tmp"
   make_fake_bin "$fake"
-  if run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_SKIP_SETUP=1 AXON_INSTALL_TMPDIR="$tmp" FAKE_EXPECTED_SHA=expected FAKE_ACTUAL_SHA=actual; then
+  if run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_SKIP_SETUP=1 AXON_INSTALL_TMPDIR="$tmp" AXON_UPDATE_MINISIGN_PUBKEY=test-key FAKE_EXPECTED_SHA=expected FAKE_ACTUAL_SHA=actual; then
     fail "checksum mismatch should fail"
   fi
   assert_contains "$work/stderr" "checksum mismatch"
@@ -126,7 +130,7 @@ test_skip_setup_does_not_require_runtime_prereqs() {
   mkdir -p "$tmp"
   make_fake_bin "$fake"
   rm -f "$fake/docker" "$fake/nvidia-smi" "$fake/gemini"
-  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_PREFIX="$work/prefix" AXON_INSTALL_SKIP_SETUP=1 AXON_INSTALL_TMPDIR="$tmp"; then
+  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_PREFIX="$work/prefix" AXON_INSTALL_SKIP_SETUP=1 AXON_INSTALL_TMPDIR="$tmp" AXON_UPDATE_MINISIGN_PUBKEY=test-key; then
     fail "skip setup should not require Docker/Gemini/NVIDIA"
   fi
   [ -x "$work/prefix/bin/axon" ] || fail "axon binary was not installed"
@@ -139,7 +143,7 @@ test_success_delegates_to_setup_without_logging_token() {
   log="$work/axon.log"
   mkdir -p "$tmp"
   make_fake_bin "$fake"
-  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_PREFIX="$work/prefix" AXON_INSTALL_TMPDIR="$tmp" AXON_TEST_LOG="$log" AXON_HTTP_TOKEN="secret-token"; then
+  if ! run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_PREFIX="$work/prefix" AXON_INSTALL_TMPDIR="$tmp" AXON_UPDATE_MINISIGN_PUBKEY=test-key AXON_TEST_LOG="$log" AXON_HTTP_TOKEN="secret-token"; then
     fail "install with setup should succeed"
   fi
   assert_contains "$log" "setup"
@@ -158,11 +162,24 @@ test_unsupported_platform_fails() {
   assert_contains "$work/stderr" "unsupported platform"
 }
 
+test_invalid_signature_fails() {
+  work="$(mktemp -d)"
+  fake="$work/bin"
+  tmp="$work/tmp"
+  mkdir -p "$tmp"
+  make_fake_bin "$fake"
+  if run_install "$work" PATH="$fake:$PATH" HOME="$work/home" AXON_INSTALL_SKIP_SETUP=1 AXON_INSTALL_TMPDIR="$tmp" AXON_UPDATE_MINISIGN_PUBKEY=test-key FAKE_MINISIGN_VALID=0; then
+    fail "invalid signature should fail"
+  fi
+  assert_contains "$work/stderr" "minisign verification failed"
+}
+
 test_dry_run_skips_setup_prereqs
 test_checksum_mismatch_fails
 test_unsafe_tmpdir_rejected
 test_skip_setup_does_not_require_runtime_prereqs
 test_success_delegates_to_setup_without_logging_token
 test_unsupported_platform_fails
+test_invalid_signature_fails
 
 printf 'ok - install.sh behavior tests passed\n'

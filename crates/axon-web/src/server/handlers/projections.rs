@@ -95,9 +95,10 @@ async fn source_projection(
         for request in &requests {
             authorize_source_request(request, &auth).await?;
         }
+        let caller = caller_context_from_auth(&auth);
         Some(AuthSnapshot::from_caller(
-            &caller_context_from_auth(&auth),
-            Visibility::Internal,
+            &caller,
+            caller.visibility_ceiling,
             "runtime",
         ))
     } else {
@@ -111,7 +112,7 @@ async fn source_projection(
     let prepared = preflight_source_batch(
         operation,
         requests,
-        auth_snapshot.as_ref(),
+        auth_snapshot,
         &cfg.projection_batch,
         &access,
     )
@@ -154,36 +155,20 @@ pub(crate) async fn code_search(
     Json(request): Json<CodeSearchRequest>,
 ) -> Result<Json<BatchResult<QueryResult>>, HttpError> {
     let auth_snapshot = auth.map(|Extension(auth)| {
-        AuthSnapshot::from_caller(
-            &caller_context_from_auth(&auth),
-            Visibility::Internal,
-            "runtime",
-        )
+        let caller = caller_context_from_auth(&auth);
+        AuthSnapshot::from_caller(&caller, caller.visibility_ceiling, "runtime")
     });
     let plans = project_code_search(&request).map_err(unbox_api_error)?;
     let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)
         .map_err(HttpError::from_api_error)?;
-    let ctx = Arc::clone(&state.service_context);
-    let handle = tokio::runtime::Handle::current();
-    let result = tokio::task::spawn_blocking(move || {
-        handle
-            .block_on(execute_code_search_projection_batch(
-                ctx.as_ref(),
-                prepared,
-                axon_api::CodeSearchCaller::Rest,
-                auth_snapshot.as_ref(),
-            ))
-            .map_err(Box::new)
-    })
+    let result = execute_code_search_projection_batch(
+        state.service_context.as_ref(),
+        prepared,
+        axon_api::CodeSearchCaller::Rest,
+        auth_snapshot.as_ref(),
+    )
     .await
-    .map_err(|error| {
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            format!("code search task failed: {error}"),
-        )
-    })?
-    .map_err(|error| HttpError::from_api_error(*error))?;
+    .map_err(HttpError::from_api_error)?;
     Ok(Json(result))
 }
 

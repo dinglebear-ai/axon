@@ -99,3 +99,23 @@ async fn distinct_ids_store_distinct_content() {
         Some(r#"{"n":2}"#.to_string())
     );
 }
+
+#[tokio::test]
+async fn startup_scrub_removes_credentials_from_legacy_snapshots() {
+    let (_dir, pool) = test_pool().await;
+    let id = "cfg_legacy";
+    sqlx::query(
+        "INSERT INTO config_snapshots(config_snapshot_id, config_json, created_at) VALUES(?, ?, ?)",
+    )
+    .bind(id)
+    .bind(r#"{"custom_headers":["Authorization: Bearer legacy-secret","X-Safe: yes"]}"#)
+    .bind("2026-01-01T00:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    scrub_legacy_snapshot_credentials(&pool).await.unwrap();
+    let stored = get_config_snapshot(&pool, id).await.unwrap().unwrap();
+    assert!(!stored.contains("legacy-secret"));
+    assert!(stored.contains("X-Safe: yes"));
+}

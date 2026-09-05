@@ -183,7 +183,7 @@ pub async fn fetch_web(url: &str, opts: &FetchWebOptions) -> Result<WebDocument,
             let redetected = classify(&doc.body, opts);
             if is_block_like_status(doc.status) || redetected.is_some() {
                 return Err(FetchError::Challenge {
-                    url: doc.final_url,
+                    url: safe_error_url(&doc.final_url),
                     status: doc.status,
                     detection: redetected,
                     escalation: EscalationOutcome::StillWalled,
@@ -195,19 +195,19 @@ pub async fn fetch_web(url: &str, opts: &FetchWebOptions) -> Result<WebDocument,
         // An operator told "bot challenge" gives up on the domain; told
         // "escalation failed: dns timeout" they retry.
         Escalation::ClientInitializationFailed(reason) => Err(FetchError::Challenge {
-            url: url.to_string(),
+            url: safe_error_url(url),
             status,
             detection,
             escalation: EscalationOutcome::ClientInitializationFailed(reason),
         }),
         Escalation::RequestFailed(reason) => Err(FetchError::Challenge {
-            url: url.to_string(),
+            url: safe_error_url(url),
             status,
             detection,
             escalation: EscalationOutcome::RequestFailed(reason),
         }),
         Escalation::Disabled => Err(FetchError::Challenge {
-            url: url.to_string(),
+            url: safe_error_url(url),
             status,
             detection,
             escalation: EscalationOutcome::Disabled,
@@ -239,7 +239,7 @@ fn finish(
 ) -> Result<WebDocument, FetchError> {
     if !(200..300).contains(&status) {
         return Err(FetchError::Status {
-            url: url.to_string(),
+            url: safe_error_url(url),
             status,
         });
     }
@@ -277,18 +277,35 @@ async fn escalate(url: &str, opts: &FetchWebOptions) -> Escalation {
             escalated: true,
         }),
         Err(HttpError::ImpersonationInit(reason)) => {
-            log_warn(&format!(
-                "acquire: impersonating client initialization failed for {url}: {reason}"
-            ));
-            Escalation::ClientInitializationFailed(reason)
+            log_warn("acquire: impersonating client initialization failed");
+            Escalation::ClientInitializationFailed(redact_error_text(&reason))
         }
         Err(e) => {
-            log_warn(&format!(
-                "acquire: impersonated request failed for {url}: {e}"
-            ));
-            Escalation::RequestFailed(e.to_string())
+            log_warn("acquire: impersonated request failed");
+            Escalation::RequestFailed(redact_error_text(&e.to_string()))
         }
     }
+}
+
+fn safe_error_url(raw: &str) -> String {
+    let Ok(mut url) = url::Url::parse(raw) else {
+        return "[invalid-url]".to_string();
+    };
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.to_string()
+}
+
+fn redact_error_text(raw: &str) -> String {
+    use crate::redact::{DefaultRedactor, RedactionContext, redact_text_checked};
+    redact_text_checked(
+        &DefaultRedactor::new(),
+        raw,
+        &RedactionContext::transport_response(),
+    )
+    .unwrap_or_else(|_| "upstream request failed".to_string())
 }
 
 #[cfg(test)]

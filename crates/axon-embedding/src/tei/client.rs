@@ -16,9 +16,20 @@ use axon_error::ErrorStage;
 use axon_error::cooling::ProviderCooling;
 use chrono::Utc;
 use futures_util::{StreamExt, stream::FuturesUnordered};
+use reqwest::header::RETRY_AFTER;
 use reqwest::{Client, StatusCode};
 use tokio::sync::Semaphore;
 
+mod policy;
+mod types;
+#[cfg(test)]
+use policy::estimated_tokens;
+use policy::{
+    credential_transport_is_safe, error_category, pack_batches, parse_retry_after,
+    resolve_batch_size,
+};
+pub use policy::{is_batch_too_large, is_retryable_status, retry_delay};
+pub use types::{TeiEmbedOutcome, TeiInfo};
 /// Opaque endpoint context marker attached to errors.
 ///
 /// The raw URL and any embedded credentials are intentionally never surfaced.
@@ -32,14 +43,8 @@ pub(crate) const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 /// `cooldown_secs` used by [`crate::reservation::ProviderReservations`].
 const TEI_COOLDOWN_SECS: i64 = 30;
 
-/// Absolute safety ceiling matching the instrumented server's default row
-/// limit. The effective value remains controlled by
-/// `TEI_MAX_CLIENT_BATCH_SIZE`; raising the ceiling avoids silently defeating
-/// a generation pool that has already been bounded by chunks and bytes.
+/// Absolute safety ceiling for the single typed batch-size authority.
 const MAX_CLIENT_BATCH_SIZE: usize = 4096;
-
-/// Environment override for the initial client-side batch size.
-const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
 
 /// Process-wide reqwest client shared by every [`TeiClient`].
 ///
@@ -51,6 +56,7 @@ static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
     #[cfg(test)]
     CLIENT_BUILDS.fetch_add(1, Ordering::SeqCst);
     Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("failed to build shared TEI reqwest client")
 });
@@ -105,22 +111,6 @@ struct BatchLimits {
     max_batch_tokens: usize,
     max_batch_bytes: usize,
 }
-/// Result of an `embed_all` call: the ordered vectors plus how many HTTP
-/// requests were actually issued (initial batches + retries + 413 splits).
-#[derive(Debug)]
-pub struct TeiEmbedOutcome {
-    pub vectors: Vec<Vec<f32>>,
-    pub requests: u64,
-}
-
-/// A subset of the TEI `/info` response. TEI serves `model_id` here, but NOT the
-/// output dimensionality — dimensions are measured with a probe embed instead.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct TeiInfo {
-    #[serde(default)]
-    pub model_id: Option<String>,
-}
-
 /// Reqwest-backed TEI embed transport carrying a redaction-safe embed URL.
 #[derive(Debug)]
 pub struct TeiClient {
@@ -159,6 +149,36 @@ impl TeiClient {
         input_slots: Arc<Semaphore>,
     ) -> Result<Self, ApiError> {
         let base = params.endpoint.trim().trim_end_matches('/');
+        let parsed = url::Url::parse(base).map_err(|_| {
+            ApiError::new(
+                "embedding.tei.invalid_endpoint",
+                ErrorStage::Authorizing,
+                "TEI endpoint must be an absolute HTTP or HTTPS URL",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(&params.provider_id)
+        })?;
+        if !matches!(parsed.scheme(), "http" | "https") || parsed.host().is_none() {
+            return Err(ApiError::new(
+                "embedding.tei.invalid_endpoint",
+                ErrorStage::Authorizing,
+                "TEI endpoint must be an absolute HTTP or HTTPS URL",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(&params.provider_id));
+        }
+        let bearer_token = std::env::var("AXON_TEI_BEARER_TOKEN")
+            .ok()
+            .filter(|value| !value.is_empty());
+        if !credential_transport_is_safe(&parsed, bearer_token.is_some()) {
+            return Err(ApiError::new(
+                "embedding.tei.insecure_credentials",
+                ErrorStage::Authorizing,
+                "TEI credentials require HTTPS for non-loopback endpoints",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(&params.provider_id));
+        }
         let embed_url = format!("{base}/embed");
         let info_url = format!("{base}/info");
         let max_in_flight_inputs = params.max_in_flight_inputs.max(1);
@@ -169,9 +189,7 @@ impl TeiClient {
             embed_url,
             info_url,
             provider_id: params.provider_id,
-            bearer_token: std::env::var("AXON_TEI_BEARER_TOKEN")
-                .ok()
-                .filter(|value| !value.is_empty()),
+            bearer_token,
             max_batch_inputs,
             max_input_tokens: params.max_input_tokens.max(1),
             max_batch_tokens: params.max_batch_tokens.max(1),
@@ -402,12 +420,18 @@ impl TeiClient {
             }
 
             let retryable = is_retryable_status(status);
+            let retry_after = resp.headers().get(RETRY_AFTER).and_then(parse_retry_after);
             last = Some(self.status_error(status));
             last_retryable = retryable;
             if retryable && attempt < self.max_attempts {
                 drop(input_permit);
                 drop(request_permit);
-                tokio::time::sleep(retry_delay(attempt, started, self.retry_backoff_base_ms)).await;
+                tokio::time::sleep(
+                    retry_after.unwrap_or_else(|| {
+                        retry_delay(attempt, started, self.retry_backoff_base_ms)
+                    }),
+                )
+                .await;
                 continue;
             }
             let err = last.unwrap();
@@ -470,130 +494,6 @@ impl TeiClient {
         .with_context("status", status.as_u16().to_string())
         .with_provider_id(&self.provider_id)
     }
-}
-
-/// Estimate tokens without coupling the transport to a model-specific tokenizer.
-///
-/// Common English and source code average more than two ASCII bytes per token,
-/// so charging one token per two bytes is deliberately conservative without the
-/// severe under-batching of charging every character as a token. Non-ASCII text
-/// is charged by UTF-8 byte count: this safely covers CJK, emoji, and tokenizer
-/// byte-fallback pieces. TEI's tokenizer remains authoritative; HTTP 413 still
-/// drives recursive splitting when an estimate is too optimistic.
-fn estimated_tokens(text: &str) -> usize {
-    let (ascii, non_ascii_bytes) = text.chars().fold((0_usize, 0_usize), |counts, ch| {
-        if ch.is_ascii() {
-            (counts.0 + 1, counts.1)
-        } else {
-            (counts.0, counts.1 + ch.len_utf8())
-        }
-    });
-    ascii.div_ceil(2).saturating_add(non_ascii_bytes).max(1)
-}
-
-/// Form canonical request batches before any admission permits are acquired.
-/// Inputs estimated above the per-input model limit are isolated as singletons,
-/// allowing TEI to make the final tokenization decision without contaminating a
-/// following normal batch.
-fn pack_batches(
-    inputs: &[String],
-    limits: BatchLimits,
-) -> Result<Vec<IndexedBatch<'_>>, &'static str> {
-    let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
-    ordered.sort_by_key(|(index, text)| (estimated_tokens(text), text.chars().count(), *index));
-
-    let mut batches = Vec::new();
-    let mut indices = Vec::new();
-    let mut texts = Vec::new();
-    let mut batch_tokens = 0_usize;
-    let mut batch_bytes = 0_usize;
-
-    for (index, text) in ordered {
-        let tokens = estimated_tokens(text);
-        let bytes = text.len().saturating_add(4);
-        if bytes > limits.max_batch_bytes {
-            return Err("one embedding input exceeds the configured payload limit");
-        }
-
-        if tokens > limits.max_input_tokens {
-            push_batch(&mut batches, &mut indices, &mut texts);
-            batches.push((vec![index], vec![text.as_str()]));
-            batch_tokens = 0;
-            batch_bytes = 0;
-            continue;
-        }
-
-        if !texts.is_empty()
-            && (texts.len() >= limits.max_inputs
-                || batch_tokens.saturating_add(tokens) > limits.max_batch_tokens
-                || batch_bytes.saturating_add(bytes) > limits.max_batch_bytes)
-        {
-            push_batch(&mut batches, &mut indices, &mut texts);
-            batch_tokens = 0;
-            batch_bytes = 0;
-        }
-        indices.push(index);
-        texts.push(text.as_str());
-        batch_tokens = batch_tokens.saturating_add(tokens);
-        batch_bytes = batch_bytes.saturating_add(bytes);
-    }
-    push_batch(&mut batches, &mut indices, &mut texts);
-    Ok(batches)
-}
-
-fn push_batch<'a>(
-    batches: &mut Vec<IndexedBatch<'a>>,
-    indices: &mut Vec<usize>,
-    texts: &mut Vec<&'a str>,
-) {
-    if !texts.is_empty() {
-        batches.push((std::mem::take(indices), std::mem::take(texts)));
-    }
-}
-
-/// Resolve the initial client-side batch size, honouring the
-/// `TEI_MAX_CLIENT_BATCH_SIZE` environment override, then clamp to `[1, 4096]`.
-fn resolve_batch_size(config_batch: usize) -> usize {
-    let base = std::env::var(TEI_MAX_CLIENT_BATCH_SIZE_ENV)
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(config_batch);
-    base.clamp(1, MAX_CLIENT_BATCH_SIZE)
-}
-
-/// 429 and any 5xx are retryable; everything else (including 413) is not.
-pub fn is_retryable_status(status: StatusCode) -> bool {
-    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
-}
-
-/// HTTP 413 signals the batch is too large for the server and must be split.
-pub fn is_batch_too_large(status: StatusCode) -> bool {
-    status == StatusCode::PAYLOAD_TOO_LARGE
-}
-
-fn error_category(err: &reqwest::Error) -> &'static str {
-    if err.is_timeout() {
-        "timeout"
-    } else if err.is_connect() {
-        "connect"
-    } else if err.is_decode() {
-        "decode"
-    } else {
-        "request"
-    }
-}
-
-/// Exponential backoff (`base_ms`, `2*base_ms`, `4*base_ms`, …, capped at 60s)
-/// with lightweight jitter derived from the elapsed clock — no `rand`
-/// dependency, mirroring the qdrant store's `retry_delay`. `base_ms` is
-/// caller-configured (`[providers.embedding].retry-backoff-ms`, default
-/// 500ms) rather than a hardcoded literal.
-pub fn retry_delay(attempt: usize, started: Instant, base_ms: u64) -> Duration {
-    let exponent = (attempt as u32).saturating_sub(1);
-    let scaled_ms = base_ms.saturating_mul(2u64.saturating_pow(exponent));
-    let capped_ms = scaled_ms.min(MAX_BACKOFF_MS);
-    let jitter_ms = (started.elapsed().subsec_nanos() as u64) % 500;
-    Duration::from_millis(capped_ms + jitter_ms)
 }
 
 #[cfg(test)]

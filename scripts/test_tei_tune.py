@@ -176,6 +176,20 @@ class TeiTuneTests(unittest.TestCase):
         self.assertEqual(len(tei_tune_benchmark.benchmark_sample(1000)), 1000)
         self.assertEqual(len(tei_tune_benchmark.benchmark_sample(1)), 1)
 
+    def test_sweep_interleaves_candidates_reproducibly(self):
+        tei = object.__new__(tei_tune.Tei)
+        calls = []
+        def fake_once(_tei, requests, batch_size, concurrency, sample_chars):
+            calls.append((batch_size, concurrency))
+            return {"inputs_per_second": float(batch_size + concurrency), "errors": 0}
+        with mock.patch.object(tei_tune_benchmark, "benchmark_once", side_effect=fake_once):
+            tei_tune_benchmark.sweep_client(tei, 64, 3, [8, 16], [1, 2], None, seed=42)
+        # One equivalent warmup per candidate, followed by shuffled rounds.
+        self.assertEqual(calls[:4], [(8, 1), (8, 2), (16, 1), (16, 2)])
+        self.assertEqual(len(calls), 20)
+        self.assertNotEqual(calls[4:8], calls[8:12])
+        self.assertEqual(calls[-4:], [(16, 2), (16, 1), (16, 1), (16, 2)])
+
     def test_snapshot_preserves_entrypoint_needed_for_exact_rollback(self):
         tei = object.__new__(tei_tune.Tei)
         tei.inspect = lambda: {

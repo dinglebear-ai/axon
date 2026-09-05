@@ -508,10 +508,66 @@ fn retry_delay_scales_with_configured_base_ms() {
 
 #[test]
 fn resolve_batch_size_clamps_to_valid_range() {
-    // Env var is not set in this test, so config value is used and clamped.
     assert_eq!(resolve_batch_size(64), 64);
     assert_eq!(resolve_batch_size(0), 1);
     assert_eq!(resolve_batch_size(10_000), 4096);
+}
+
+#[test]
+fn retry_after_delta_seconds_is_honored() {
+    let value = reqwest::header::HeaderValue::from_static("7");
+    assert_eq!(parse_retry_after(&value), Some(Duration::from_secs(7)));
+    assert_eq!(
+        parse_retry_after(&reqwest::header::HeaderValue::from_static("later")),
+        None
+    );
+}
+
+#[test]
+fn invalid_tei_endpoint_is_rejected_without_echoing_it() {
+    let mut params = TeiClientParams {
+        endpoint: "not a url".to_string(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 8,
+        max_input_tokens: 8_192,
+        max_batch_tokens: 131_072,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 8,
+        max_attempts: 1,
+        request_timeout: Duration::from_millis(10),
+        retry_backoff_base_ms: 1,
+    };
+    let error = TeiClient::new(params.clone()).expect_err("invalid endpoint");
+    assert_eq!(error.code.0, "embedding.tei.invalid_endpoint");
+    assert!(!error.to_string().contains("not a url"));
+    params.endpoint = "mailto:tei@example.test".to_string();
+    assert_eq!(
+        TeiClient::new(params)
+            .expect_err("unsupported scheme")
+            .code
+            .0,
+        "embedding.tei.invalid_endpoint"
+    );
+}
+
+#[test]
+fn tei_credentials_require_tls_except_on_loopback() {
+    assert!(!credential_transport_is_safe(
+        &url::Url::parse("http://tei.internal:80").unwrap(),
+        true
+    ));
+    assert!(credential_transport_is_safe(
+        &url::Url::parse("https://tei.internal").unwrap(),
+        true
+    ));
+    assert!(credential_transport_is_safe(
+        &url::Url::parse("http://127.0.0.1:52000").unwrap(),
+        true
+    ));
+    assert!(credential_transport_is_safe(
+        &url::Url::parse("http://127.0.0.2:52000").unwrap(),
+        true
+    ));
 }
 
 #[tokio::test]

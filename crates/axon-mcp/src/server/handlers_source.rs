@@ -131,28 +131,15 @@ impl AxonMcpServer {
         // Isolate it on a blocking thread with its own current-thread runtime —
         // the same pattern the `evaluate` handler uses. `SourceResult` and the
         // error string both cross the boundary as `Send` values.
-        let source_for_task = source.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| format!("build source runtime: {e}"))?;
-            runtime
-                .block_on(axon_services::source::index_source_with_auth(
-                    api_request,
-                    service_context.as_ref(),
-                    caller_auth_snapshot,
-                ))
-                .map_err(|e| format!("source '{source_for_task}' failed: {e:#}"))
-        })
+        let result = axon_services::source::index_source_with_auth(
+            api_request,
+            service_context.as_ref(),
+            caller_auth_snapshot,
+        )
         .await
-        .map_err(|e| {
-            tracing::error!("join source task: {e}");
+        .map_err(|error| {
+            tracing::error!("source '{source}' failed: {error:#}");
             internal_error(format!("source '{source}' failed"))
-        })?
-        .map_err(|message| {
-            tracing::error!("{message}");
-            internal_error(message)
         })?;
 
         let payload = source_result_payload(&result);

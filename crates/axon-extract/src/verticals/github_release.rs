@@ -7,7 +7,6 @@ use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_release",
@@ -141,10 +140,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=10")
     };
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let mut req = client
         .get(&api_url)

@@ -1,11 +1,10 @@
 use super::*;
-use axon_api::mcp_schema::{AxonRequest, StatusRequest};
 
 #[test]
 fn client_server_envelope_serializes_nested_axon_request() {
     let request = ClientActionRequest {
         request_id: "req-1".to_string(),
-        action: AxonRequest::Status(StatusRequest {
+        action: axon_api::action::ActionRequest::Status(axon_api::action::StatusRequest {
             response_mode: None,
         }),
     };

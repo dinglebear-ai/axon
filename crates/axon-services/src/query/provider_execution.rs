@@ -25,20 +25,24 @@ impl ReadExecution {
         operation: OperationKind,
         request: serde_json::Value,
         auth_snapshot: Option<AuthSnapshot>,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let runtime = if let Some(runtime) = ctx.target_local_source_runtime() {
             Arc::new(runtime.clone())
         } else {
-            let store = ctx.job_store().ok_or_else(|| -> Box<dyn Error> {
-                "unified job store is unavailable for scheduled read execution".into()
-            })?;
-            let pool = ctx.sqlite_pool().ok_or_else(|| -> Box<dyn Error> {
-                "SQLite scheduler pool is unavailable for scheduled read execution".into()
-            })?;
+            let store = ctx
+                .job_store()
+                .ok_or_else(|| -> Box<dyn Error + Send + Sync> {
+                    "unified job store is unavailable for scheduled read execution".into()
+                })?;
+            let pool = ctx
+                .sqlite_pool()
+                .ok_or_else(|| -> Box<dyn Error + Send + Sync> {
+                    "SQLite scheduler pool is unavailable for scheduled read execution".into()
+                })?;
             Arc::new(
                 TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone())
                     .await
-                    .map_err(|error| -> Box<dyn Error> { error })?,
+                    .map_err(|error| -> Box<dyn Error + Send + Sync> { error })?,
             )
         };
 
@@ -116,7 +120,7 @@ async fn begin_read_descriptor(
     operation: OperationKind,
     request: serde_json::Value,
     auth_snapshot: Option<AuthSnapshot>,
-) -> Result<Option<JobDescriptor>, Box<dyn Error>> {
+) -> Result<Option<JobDescriptor>, Box<dyn Error + Send + Sync>> {
     if ctx.job_store().is_none() {
         return Ok(None);
     }

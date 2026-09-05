@@ -21,8 +21,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use axon_api::mcp_schema::AskRequest;
-use axon_api::mcp_schema::SuggestRequest;
+use axon_api::action::AskRequest;
+use axon_api::action::SuggestRequest;
 use axon_api::result::{AskResult, AskTiming, EvaluateResult, EvaluateTiming, SuggestResult};
 
 use crate::context::ServiceContext;

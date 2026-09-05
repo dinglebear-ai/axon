@@ -103,7 +103,11 @@ pub async fn source_subgraph(
     edge_kind: Option<String>,
     limit: u32,
 ) -> Result<GraphQueryResult, ApiError> {
-    let direct_nodes = store.nodes_for_source(source_id).await?;
+    let (_, bounded_limit) = axon_graph::store::bounded_limits(depth, limit)?;
+    let limit = bounded_limit as u32;
+    let direct_nodes = store
+        .nodes_for_source_limited(source_id, bounded_limit.saturating_add(1))
+        .await?;
     let mut seen_nodes: BTreeSet<String> = BTreeSet::new();
     let mut nodes = Vec::new();
     for direct in &direct_nodes {

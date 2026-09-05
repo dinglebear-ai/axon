@@ -13,8 +13,8 @@ Last Modified: 2026-08-31
 - Response control field: `response_mode` (`path|inline|both|auto_inline`; omitted mode auto-inlines small non-document payloads and otherwise falls back to path metadata, while `retrieve` defaults to inline paged reads)
 
 Code references:
-- `crates/axon-api/src/mcp_schema.rs`
-- `crates/axon-api/src/mcp_schema/*.rs`
+- `crates/axon-mcp/src/schema.rs`
+- `crates/axon-api/src/action/*.rs`
 - `crates/axon-mcp/src/server.rs`
 - `crates/axon-mcp/src/server/handlers_*.rs`
 

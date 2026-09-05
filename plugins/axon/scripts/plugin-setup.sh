@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code SessionStart hook. Delegates all Axon setup work to the shared
+# Optional explicit setup helper. Delegates all Axon setup work to the shared
 # Docker Compose setup path; this script intentionally owns no service manager.
 set -euo pipefail
 

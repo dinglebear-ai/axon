@@ -6,7 +6,6 @@
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 #[cfg(test)]
 #[path = "huggingface_model_tests.rs"]
@@ -58,7 +57,7 @@ pub fn matches(url: &str) -> bool {
 
 /// Fetch the model card README (non-fatal).
 async fn fetch_model_card(model_id: &str, ctx: &VerticalContext) -> Option<String> {
-    let client = http_client().ok()?;
+    let client = ctx.http_client();
     let readme_url = format!("https://huggingface.co/{model_id}/raw/main/README.md");
     let mut req = client
         .get(&readme_url)
@@ -159,10 +158,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let model_id = format!("{org}/{model}");
     let api_url = format!("https://huggingface.co/api/models/{model_id}");
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let mut req = client
         .get(&api_url)

@@ -14,10 +14,10 @@
 //! not the data dir, so its identity tracks the queue identity even when
 //! `AXON_SQLITE_PATH` redirects the jobs DB away from the default data dir.
 //!
-//! The lock is advisory for *spawn dedup only* — job execution correctness
-//! never depends on it. Workers claim jobs transactionally from the unified
-//! store, so two racing drainers (or a drainer racing `axon serve`) merely
-//! split the queue between them.
+//! The lock is also the provider-worker singleton boundary: worker-bearing
+//! startup fails while another process owns the queue. Transactional claims
+//! remain the underlying job-correctness guard, while this stricter invariant
+//! keeps process-local provider cooling authoritative.
 //!
 //! ## Holder vs probe asymmetry
 //!
@@ -32,10 +32,9 @@
 //! ## Squat property
 //!
 //! Any local process holding `BEGIN EXCLUSIVE` on the lock file (even an idle
-//! `sqlite3 <path> "BEGIN EXCLUSIVE;"` shell) suppresses auto-spawn for its
-//! lifetime. This is an accepted same-user-only tradeoff — there is
-//! deliberately no TTL/heartbeat staleness path — because job-claim correctness
-//! is independent of the lock; only auto-spawn availability is affected.
+//! `sqlite3 <path> "BEGIN EXCLUSIVE;"` shell) suppresses provider-worker startup
+//! for its lifetime. This is an accepted same-user-only tradeoff; there is no
+//! TTL/heartbeat staleness path because kernel lock release is crash-safe.
 
 use std::error::Error;
 use std::ffi::OsString;

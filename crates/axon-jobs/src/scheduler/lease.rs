@@ -21,7 +21,7 @@ use super::{
 };
 
 #[derive(Debug)]
-pub struct ActiveReservationLease<K> {
+struct ActiveReservationLease<K> {
     scheduler: ProviderScheduler,
     reservation_id: String,
     fence: String,
@@ -238,6 +238,36 @@ impl<K> Clone for ActiveReservationLease<K> {
 }
 
 impl<K> ActiveReservationLease<K> {
+    async fn renew(&self) -> Result<(), SchedulerError> {
+        self.scheduler
+            .renew(&self.reservation_id, &self.fence)
+            .await
+    }
+
+    async fn complete(self) -> Result<(), SchedulerError> {
+        self.scheduler
+            .complete(&self.reservation_id, &self.fence)
+            .await
+    }
+
+    async fn fail(self) -> Result<(), SchedulerError> {
+        self.scheduler.fail(&self.reservation_id, &self.fence).await
+    }
+}
+
+/// Read-only reservation context passed to provider operations.
+///
+/// Terminal lifecycle ownership stays in [`call_reserved`], so provider code
+/// cannot release capacity before its operation future completes.
+#[derive(Debug)]
+pub struct ReservationObservation<K> {
+    reservation_id: String,
+    provider_kind: axon_api::source::ProviderKind,
+    provider_id: String,
+    _kind: std::marker::PhantomData<fn() -> K>,
+}
+
+impl<K> ReservationObservation<K> {
     #[must_use]
     pub fn snapshot(
         &self,
@@ -246,8 +276,8 @@ impl<K> ActiveReservationLease<K> {
     ) -> ProviderReservationSnapshot {
         ProviderReservationSnapshot {
             reservation_id: ReservationId::new(self.reservation_id.clone()),
-            provider_kind: self.scheduler.domain.kind,
-            provider_id: Some(ProviderId::new(self.scheduler.domain.instance_id.clone())),
+            provider_kind: self.provider_kind,
+            provider_id: Some(ProviderId::new(self.provider_id.clone())),
             priority,
             requested_units,
             granted_units: requested_units,
@@ -257,28 +287,6 @@ impl<K> ActiveReservationLease<K> {
             queue_depth: None,
             cooling: None,
         }
-    }
-
-    pub async fn renew(&self) -> Result<(), SchedulerError> {
-        self.scheduler
-            .renew(&self.reservation_id, &self.fence)
-            .await
-    }
-
-    pub async fn complete(self) -> Result<(), SchedulerError> {
-        self.scheduler
-            .complete(&self.reservation_id, &self.fence)
-            .await
-    }
-
-    pub async fn cancel(self) -> Result<(), SchedulerError> {
-        self.scheduler
-            .cancel(&self.reservation_id, &self.fence)
-            .await
-    }
-
-    pub async fn fail(self) -> Result<(), SchedulerError> {
-        self.scheduler.fail(&self.reservation_id, &self.fence).await
     }
 }
 
@@ -332,12 +340,12 @@ pub async fn call_reserved<K, T, E, F, Fut>(
     operation: F,
 ) -> Result<T, ReservedCallError<E>>
 where
-    F: FnOnce(ActiveReservationLease<K>) -> Fut,
+    F: FnOnce(ReservationObservation<K>) -> Fut,
     Fut: Future<Output = Result<T, E>>,
 {
     let fence = request.fence.clone();
     let grant = scheduler.reserve_wait(request).await?;
-    let lease = ActiveReservationLease {
+    let lease: ActiveReservationLease<K> = ActiveReservationLease {
         scheduler: scheduler.clone(),
         reservation_id: grant.reservation_id().to_string(),
         fence,
@@ -351,7 +359,12 @@ where
         lease.reservation_id.clone(),
         lease.fence.clone(),
     );
-    let operation = operation(lease.clone());
+    let operation = operation(ReservationObservation {
+        reservation_id: lease.reservation_id.clone(),
+        provider_kind: lease.scheduler.domain.kind,
+        provider_id: lease.scheduler.domain.instance_id.clone(),
+        _kind: std::marker::PhantomData,
+    });
     tokio::pin!(operation);
     let mut renewal = tokio::time::interval(RENEW_INTERVAL);
     renewal.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);

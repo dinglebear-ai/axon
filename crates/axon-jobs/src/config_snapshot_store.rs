@@ -105,6 +105,69 @@ pub async fn get_config_snapshot(
         .map_err(sql_error)
 }
 
+/// Remove credential-bearing custom headers written by versions predating the
+/// durable snapshot boundary. Legacy identifiers remain stable so referencing
+/// jobs stay valid; all newly-created snapshots remain content-addressed.
+pub(crate) async fn scrub_legacy_snapshot_credentials(pool: &SqlitePool) -> Result<()> {
+    let rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT config_snapshot_id, config_json FROM config_snapshots",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(sql_error)?;
+    for (id, encoded) in rows {
+        let mut value = serde_json::from_str::<serde_json::Value>(&encoded).map_err(|_| {
+            ApiError::new(
+                "config_snapshot.redaction_failed",
+                ErrorStage::Authorizing,
+                "legacy config snapshot could not be safely inspected",
+            )
+        })?;
+        let Some(headers) = value
+            .get_mut("custom_headers")
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            continue;
+        };
+        let before = headers.len();
+        headers.retain(|header| {
+            header
+                .as_str()
+                .is_some_and(|header| !header_contains_credential(header))
+        });
+        if headers.len() == before {
+            continue;
+        }
+        let scrubbed = serde_json::to_string(&value).map_err(|error| {
+            ApiError::new(
+                "config_snapshot.redaction_failed",
+                ErrorStage::Publishing,
+                error.to_string(),
+            )
+        })?;
+        sqlx::query("UPDATE config_snapshots SET config_json = ? WHERE config_snapshot_id = ?")
+            .bind(scrubbed)
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(sql_error)?;
+    }
+    Ok(())
+}
+
+fn header_contains_credential(header: &str) -> bool {
+    let name = header.split_once(':').map_or(header, |(name, _)| name);
+    let normalized = name.trim().to_ascii_lowercase().replace('_', "-");
+    normalized == "authorization"
+        || normalized == "proxy-authorization"
+        || normalized == "cookie"
+        || normalized == "set-cookie"
+        || normalized.contains("api-key")
+        || normalized.contains("apikey")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+}
+
 #[cfg(test)]
 #[path = "config_snapshot_store_tests.rs"]
 mod tests;

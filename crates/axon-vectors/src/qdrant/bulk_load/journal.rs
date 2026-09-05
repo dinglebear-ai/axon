@@ -1,4 +1,4 @@
-#[cfg(unix)]
+use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -61,6 +61,24 @@ pub(super) enum JournalWriteBoundary {
 static JOURNAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 impl BulkLoadJournal {
+    pub(super) fn acquire_collection_lease(&self, key: &BulkLoadKey) -> std::io::Result<File> {
+        use fs2::FileExt as _;
+        let digest = Sha256::digest(format!("{}\0{}", key.endpoint, key.collection));
+        let path = self
+            .path
+            .with_file_name(format!("qdrant-bulk-{}.lease", hex::encode(digest)));
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        let file = options.open(path)?;
+        file.lock_exclusive()?;
+        Ok(file)
+    }
+
     pub(super) fn open(data_dir: &Path) -> std::io::Result<Self> {
         match std::fs::symlink_metadata(data_dir) {
             Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {

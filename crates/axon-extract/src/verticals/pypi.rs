@@ -6,7 +6,6 @@
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "pypi",
@@ -155,10 +154,7 @@ async fn fetch_pypi_data(
         Some(v) => format!("https://pypi.org/pypi/{name}/{v}/json"),
         None => format!("https://pypi.org/pypi/{name}/json"),
     };
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
     let resp = client
         .get(&api_url)
         .header("User-Agent", ctx.api_ua())

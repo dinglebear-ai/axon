@@ -87,16 +87,18 @@ pub async fn compact(
     // Read the synthesis inputs without holding the store mutex across the
     // potentially slow async synthesizer. The write phase below re-reads any
     // sources it must archive inside one IMMEDIATE transaction.
-    let sources = {
-        let conn = store.conn().lock().await;
-        let mut sources = Vec::with_capacity(request.memory_ids.len());
-        for memory_id in &request.memory_ids {
-            let record = SqliteMemoryStore::load_record(&conn, &memory_id.0)?
-                .ok_or_else(|| not_found(&memory_id.0))?;
-            sources.push(record);
-        }
-        sources
-    };
+    let source_ids = request.memory_ids.clone();
+    let sources = store
+        .with_conn(move |conn| {
+            let mut sources = Vec::with_capacity(source_ids.len());
+            for memory_id in &source_ids {
+                let record = SqliteMemoryStore::load_record(conn, &memory_id.0)?
+                    .ok_or_else(|| not_found(&memory_id.0))?;
+                sources.push(record);
+            }
+            Ok(sources)
+        })
+        .await?;
 
     let body = compute_compacted_body(store, &request, &sources).await?;
 
@@ -116,7 +118,7 @@ pub async fn compact(
             .iter()
             .map(|record| record.salience)
             .fold(0.0f32, f32::max),
-        scope: request.scope,
+        scope: request.scope.clone(),
         history: vec![MemoryHistoryEvent {
             status: MemoryStatus::Active,
             message: format!(
@@ -130,7 +132,7 @@ pub async fn compact(
             ),
             timestamp: request.timestamp.clone(),
         }],
-        title: request.title,
+        title: request.title.clone(),
         links: Vec::new(),
         decay: Some(MemoryDecayPolicy {
             profile: crate::sqlite::decay_profile_str(decay_profile).to_string(),
@@ -149,38 +151,53 @@ pub async fn compact(
     // and commit the new record plus all requested source archives atomically.
     // BEGIN IMMEDIATE also avoids repeatedly losing the writer race to job
     // heartbeats/status updates between independent autocommit statements.
-    {
-        let mut conn = store.conn().lock().await;
-        let tx = conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| store_error(format!("begin compaction transaction: {error}")))?;
+    let compacted_for_write = compacted.clone();
+    let request_for_write = request.clone();
+    let memory_id_for_write = memory_id.clone();
+    let now_for_write = now.clone();
+    store
+        .with_conn(move |conn| {
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|error| store_error(format!("begin compaction transaction: {error}")))?;
 
-        let mut archive_sources = Vec::new();
-        if request.archive_sources {
-            archive_sources.reserve(request.memory_ids.len());
-            for source_id in &request.memory_ids {
-                let source = SqliteMemoryStore::load_record(&tx, &source_id.0)?
-                    .ok_or_else(|| not_found(&source_id.0))?;
-                archive_sources.push(source);
+            let mut archive_sources = Vec::new();
+            if request_for_write.archive_sources {
+                archive_sources.reserve(request_for_write.memory_ids.len());
+                for source_id in &request_for_write.memory_ids {
+                    let source = SqliteMemoryStore::load_record(&tx, &source_id.0)?
+                        .ok_or_else(|| not_found(&source_id.0))?;
+                    archive_sources.push(source);
+                }
             }
-        }
 
-        insert_record(&tx, &compacted, &now)?;
-        for mut source in archive_sources {
-            source.status = MemoryStatus::Archived;
-            source.history.push(MemoryHistoryEvent {
-                status: MemoryStatus::Archived,
-                message: format!("archived: compacted into {}", memory_id.0),
-                timestamp: request.timestamp.clone(),
-            });
-            update_record(&tx, &source, &now)?;
-        }
-        tx.commit()
-            .map_err(|error| store_error(format!("commit compaction transaction: {error}")))?;
-    }
+            insert_record(&tx, &compacted_for_write, &now_for_write)?;
+            for mut source in archive_sources {
+                source.status = MemoryStatus::Archived;
+                source.history.push(MemoryHistoryEvent {
+                    status: MemoryStatus::Archived,
+                    message: format!("archived: compacted into {}", memory_id_for_write.0),
+                    timestamp: request_for_write.timestamp.clone(),
+                });
+                update_record(&tx, &source, &now_for_write)?;
+            }
+            tx.commit()
+                .map_err(|error| store_error(format!("commit compaction transaction: {error}")))?;
+            Ok(())
+        })
+        .await?;
 
-    let age = age_days(&compacted, now_secs);
-    let score = crate::decay::score_record(&compacted, age, 0.0, 1.0, false);
+    finish_compaction(store, compacted, now_secs, now).await
+}
+
+async fn finish_compaction(
+    store: &SqliteMemoryStore,
+    compacted: MemoryRecord,
+    now_secs: i64,
+    now: String,
+) -> Result<MemoryResult> {
+    let score =
+        crate::decay::score_record(&compacted, age_days(&compacted, now_secs), 0.0, 1.0, false);
     let (_, created, _) = age_and_bounds(&compacted, now_secs);
     crate::observe::emit(
         store.sink(),
@@ -255,109 +272,85 @@ pub async fn import(
     request: MemoryImportRequest,
 ) -> Result<MemoryImportResult> {
     let now = store.clock().now_rfc3339();
-    let conn = store.conn().lock().await;
+    let generated_ids: Vec<_> = (0..request.records.len())
+        .map(|_| store.next_id())
+        .collect();
+    let now_for_write = now.clone();
+    let (result, imported_records) = store
+        .with_conn(move |conn| {
+            let mode = request.mode;
+            let dry_run = request.dry_run;
+            let mut generated_ids = generated_ids.into_iter();
+            let mut created = 0u32;
+            let updated = 0u32;
+            let mut skipped = 0u32;
+            let mut created_ids = Vec::new();
+            let mut warnings = Vec::new();
+            let mut imported_records = Vec::new();
+            let redactor = axon_core::redact::DefaultRedactor::new();
+            let redaction_context = axon_core::redact::RedactionContext::memory_record();
 
-    let mut created = 0u32;
-    let updated = 0u32;
-    let mut skipped = 0u32;
-    let mut created_ids = Vec::new();
-    let mut warnings = Vec::new();
-    let redactor = axon_core::redact::DefaultRedactor::new();
-    let redaction_context = axon_core::redact::RedactionContext::memory_record();
-
-    if request.mode == MemoryImportMode::ReplaceScope && !request.dry_run {
-        let mut archived_scopes = std::collections::HashSet::new();
-        for record in &request.records {
-            let scope_key = (record.scope.kind.clone(), record.scope.value.clone());
-            if !archived_scopes.insert(scope_key) {
-                continue;
+            if mode == MemoryImportMode::ReplaceScope && !dry_run {
+                let mut archived_scopes = std::collections::HashSet::new();
+                for record in &request.records {
+                    let scope_key = (record.scope.kind.clone(), record.scope.value.clone());
+                    if !archived_scopes.insert(scope_key) {
+                        continue;
+                    }
+                    archive_scope(conn, &record.scope, &now_for_write)?;
+                }
             }
-            archive_scope(&conn, &record.scope, &now)?;
-        }
-    }
 
-    // One `job_id` for the whole import call, shared by every imported
-    // record's emit below — they all belong to the same logical import
-    // request, not N unrelated single-event jobs.
+            // One `job_id` for the whole import call, shared by every imported
+            // record's emit below — they all belong to the same logical import
+            // request, not N unrelated single-event jobs.
+            for incoming in request.records {
+                let duplicate =
+                    mode == MemoryImportMode::Merge && content_duplicate_exists(conn, &incoming)?;
+                if duplicate {
+                    skipped += 1;
+                    continue;
+                }
+                if dry_run {
+                    created += 1;
+                    continue;
+                }
+
+                let Some(mut record) = prepare_import_record(
+                    incoming,
+                    &now_for_write,
+                    &redactor,
+                    &redaction_context,
+                    &mut warnings,
+                ) else {
+                    skipped += 1;
+                    continue;
+                };
+                let memory_id = generated_ids
+                    .next()
+                    .expect("one generated id per import record");
+                record.memory_id = memory_id.clone();
+                insert_record(conn, &record, &now_for_write)?;
+                created += 1;
+                created_ids.push(memory_id);
+                imported_records.push(record);
+            }
+            Ok((
+                MemoryImportResult {
+                    created,
+                    updated,
+                    skipped,
+                    dry_run,
+                    created_ids,
+                    warnings,
+                },
+                imported_records,
+            ))
+        })
+        .await?;
+
     let job_id = JobId::from(uuid::Uuid::new_v4());
-    for incoming in request.records {
-        let duplicate =
-            request.mode == MemoryImportMode::Merge && content_duplicate_exists(&conn, &incoming)?;
-        if duplicate {
-            skipped += 1;
-            continue;
-        }
-        if request.dry_run {
-            created += 1;
-            continue;
-        }
-
-        let original_status = incoming.status;
-        let original_scope_kind = incoming.scope.kind.clone();
-        let body = match axon_core::redact::redact_text_checked(
-            &redactor,
-            &incoming.body,
-            &redaction_context,
-        ) {
-            Ok(body) => body,
-            Err(_) => {
-                skipped += 1;
-                warnings.push(SourceWarning {
-                    code: "memory.import_redaction_failed".to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "skipped import record (scope={original_scope_kind}): body could not be \
-                         safely redacted"
-                    ),
-                    source_item_key: None,
-                    retryable: false,
-                });
-                continue;
-            }
-        };
-        let title = match incoming
-            .title
-            .as_deref()
-            .map(|title| {
-                axon_core::redact::redact_text_checked(&redactor, title, &redaction_context)
-            })
-            .transpose()
-        {
-            Ok(title) => title,
-            Err(_) => {
-                skipped += 1;
-                warnings.push(SourceWarning {
-                    code: "memory.import_redaction_failed".to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "skipped import record (scope={original_scope_kind}): title could not be \
-                         safely redacted"
-                    ),
-                    source_item_key: None,
-                    retryable: false,
-                });
-                continue;
-            }
-        };
-
-        let memory_id = store.next_id();
-        let mut record = incoming;
-        record.memory_id = memory_id.clone();
-        record.body = body;
-        record.title = title;
-        // Provenance: imported content always enters review regardless of
-        // the status it carried on the wire — an import is an external
-        // claim, not an already-vetted local assertion.
-        record.status = MemoryStatus::Review;
-        record.history.push(MemoryHistoryEvent {
-            status: MemoryStatus::Review,
-            message: format!("imported: provenance=import original_status={original_status:?}"),
-            timestamp: Timestamp(now.clone()),
-        });
-        insert_record(&conn, &record, &now)?;
-        created += 1;
-        created_ids.push(memory_id);
-
+    for record in &imported_records {
         crate::observe::emit(
             store.sink(),
             job_id,
@@ -370,15 +363,56 @@ pub async fn import(
         )
         .await;
     }
+    Ok(result)
+}
 
-    Ok(MemoryImportResult {
-        created,
-        updated,
-        skipped,
-        dry_run: request.dry_run,
-        created_ids,
-        warnings,
-    })
+fn prepare_import_record(
+    mut record: MemoryRecord,
+    now: &str,
+    redactor: &axon_core::redact::DefaultRedactor,
+    context: &axon_core::redact::RedactionContext,
+    warnings: &mut Vec<SourceWarning>,
+) -> Option<MemoryRecord> {
+    let original_status = record.status;
+    let scope = record.scope.kind.clone();
+    let body = axon_core::redact::redact_text_checked(redactor, &record.body, context);
+    let title = record
+        .title
+        .as_deref()
+        .map(|value| axon_core::redact::redact_text_checked(redactor, value, context))
+        .transpose();
+    let (body, title) = match (body, title) {
+        (Ok(body), Ok(title)) => (body, title),
+        (Err(_), _) => {
+            push_import_redaction_warning(warnings, &scope, "body");
+            return None;
+        }
+        (_, Err(_)) => {
+            push_import_redaction_warning(warnings, &scope, "title");
+            return None;
+        }
+    };
+    record.body = body;
+    record.title = title;
+    record.status = MemoryStatus::Review;
+    record.history.push(MemoryHistoryEvent {
+        status: MemoryStatus::Review,
+        message: format!("imported: provenance=import original_status={original_status:?}"),
+        timestamp: Timestamp(now.to_string()),
+    });
+    Some(record)
+}
+
+fn push_import_redaction_warning(warnings: &mut Vec<SourceWarning>, scope: &str, field: &str) {
+    warnings.push(SourceWarning {
+        code: "memory.import_redaction_failed".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "skipped import record (scope={scope}): {field} could not be safely redacted"
+        ),
+        source_item_key: None,
+        retryable: false,
+    });
 }
 
 /// Export memory records matching an optional scope filter.
@@ -390,48 +424,51 @@ pub async fn export(
     store: &SqliteMemoryStore,
     request: MemoryExportRequest,
 ) -> Result<MemoryExportResult> {
-    let conn = store.conn().lock().await;
-    let mut stmt = conn
-        .prepare("SELECT memory_id FROM memory_records ORDER BY created_at, memory_id")
-        .map_err(|e| store_error(format!("prepare export: {e}")))?;
-    let ids: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| store_error(format!("query export: {e}")))?
-        .collect::<std::result::Result<_, _>>()
-        .map_err(|e| store_error(format!("export row: {e}")))?;
+    store
+        .with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare("SELECT memory_id FROM memory_records ORDER BY created_at, memory_id")
+                .map_err(|e| store_error(format!("prepare export: {e}")))?;
+            let ids: Vec<String> = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| store_error(format!("query export: {e}")))?
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| store_error(format!("export row: {e}")))?;
 
-    let mut records = Vec::new();
-    for id in ids {
-        let Some(record) = SqliteMemoryStore::load_record(&conn, &id)? else {
-            continue;
-        };
-        if !request.include_archived && record.status == MemoryStatus::Archived {
-            continue;
-        }
-        if !request.include_working && record.status == MemoryStatus::Working {
-            continue;
-        }
-        if record.status == MemoryStatus::Forgotten {
-            continue;
-        }
-        if let Some(scope) = &request.scope
-            && record.scope != *scope
-        {
-            continue;
-        }
-        records.push(record);
-    }
-    let count = records.len() as u32;
-    // Artifact backing (contract "Import and Export": "export writes an
-    // artifact or stream ... according to caller scope") is layered on at
-    // the `axon-services` boundary, which owns artifact-root resolution and
-    // caller-scope redaction policy — this crate does not own filesystem
-    // artifact writing (see the crate's "Boundary — keep OUT" list).
-    Ok(MemoryExportResult {
-        records,
-        count,
-        artifact: None,
-    })
+            let mut records = Vec::new();
+            for id in ids {
+                let Some(record) = SqliteMemoryStore::load_record(conn, &id)? else {
+                    continue;
+                };
+                if !request.include_archived && record.status == MemoryStatus::Archived {
+                    continue;
+                }
+                if !request.include_working && record.status == MemoryStatus::Working {
+                    continue;
+                }
+                if record.status == MemoryStatus::Forgotten {
+                    continue;
+                }
+                if let Some(scope) = &request.scope
+                    && record.scope != *scope
+                {
+                    continue;
+                }
+                records.push(record);
+            }
+            let count = records.len() as u32;
+            // Artifact backing (contract "Import and Export": "export writes an
+            // artifact or stream ... according to caller scope") is layered on at
+            // the `axon-services` boundary, which owns artifact-root resolution and
+            // caller-scope redaction policy — this crate does not own filesystem
+            // artifact writing (see the crate's "Boundary — keep OUT" list).
+            Ok(MemoryExportResult {
+                records,
+                count,
+                artifact: None,
+            })
+        })
+        .await
 }
 
 fn content_duplicate_exists(conn: &Connection, record: &MemoryRecord) -> Result<bool> {

@@ -12,6 +12,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+async-trait = "0.1"
 axon-error = { path = "../axon-error" }
 serde = { version = "1", features = ["derive"] }
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }

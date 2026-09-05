@@ -15,8 +15,8 @@ use axum::{
 use std::sync::Arc;
 
 #[path = "routing_security.rs"]
-mod security;
-use security::{ScopeRequirement, protect_routes, security_headers};
+pub(crate) mod security;
+use security::{ScopeRequirement, authenticate_panel_request, protect_routes, security_headers};
 
 #[path = "routing_loopback_guard.rs"]
 mod loopback_guard;
@@ -79,7 +79,7 @@ pub(super) fn router(
         // exposed route is a plain 404 from `api_aware_not_found`, not a
         // dedicated remap-guidance handler.
         .merge(super::openapi::docs_router())
-        .merge(panel_routes())
+        .merge(panel_routes(Arc::clone(&state.panel)))
         .merge(rest_routes)
         // Unknown paths: API prefixes get the contract `ErrorEnvelope` 404;
         // everything else falls through to the SPA static-asset server.
@@ -349,7 +349,7 @@ fn memory_bulk_routes() -> Router<ServeState> {
 }
 
 /// Panel-scoped routes — all protected by the panel password session cookie.
-fn panel_routes() -> Router<ServeState> {
+fn panel_routes(panel: Arc<crate::server::state::PanelRuntimeState>) -> Router<ServeState> {
     Router::new()
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
@@ -382,6 +382,94 @@ fn panel_routes() -> Router<ServeState> {
         .route(
             "/api/panel/artifacts/{artifact_id}/content",
             get(handlers::panel_artifact),
+        )
+        .merge(
+            panel_resource_routes().route_layer(middleware::from_fn_with_state(
+                panel,
+                authenticate_panel_request,
+            )),
+        )
+}
+
+fn panel_resource_routes() -> Router<ServeState> {
+    Router::new()
+        .route(
+            "/api/panel/sources",
+            get(handlers::discovery::sources).post(handlers::sources::index_source),
+        )
+        .route(
+            "/api/panel/watches",
+            get(handlers::source_watch::list_watches).post(handlers::source_watch::create_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}",
+            get(handlers::source_watch::get_watch)
+                .patch(handlers::source_watch::update_watch)
+                .delete(handlers::source_watch::delete_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/status",
+            get(handlers::source_watch::status_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/history",
+            get(handlers::source_watch::history_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/exec",
+            post(handlers::source_watch::exec_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/pause",
+            post(handlers::source_watch::pause_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/resume",
+            post(handlers::source_watch::resume_watch),
+        )
+        .route(
+            "/api/panel/memories",
+            get(handlers::memory::list_memories).post(handlers::memory::remember_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}",
+            get(handlers::memory::show_memory).delete(handlers::memory::forget_memory),
+        )
+        .route(
+            "/api/panel/memories/search",
+            post(handlers::memory::search_memories),
+        )
+        .route(
+            "/api/panel/memories/context",
+            post(handlers::memory::memory_context),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/link",
+            post(handlers::memory::link_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/supersede",
+            post(handlers::memory::supersede_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/reinforce",
+            post(handlers::memory::reinforce_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/contradict",
+            post(handlers::memory::contradict_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/pin",
+            post(handlers::memory::pin_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/archive",
+            post(handlers::memory::archive_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/compact",
+            post(handlers::memory::compact_one_memory),
         )
 }
 

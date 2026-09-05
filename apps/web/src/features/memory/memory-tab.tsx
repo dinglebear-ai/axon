@@ -38,7 +38,7 @@ export function MemoryListRow({ entry, busy, onView, onDelete }: MemoryListRowPr
   );
 }
 
-export function MemoryTab() {
+export function MemoryTab({ token }: { token: string }) {
   const {
     searchQuery, setSearchQuery,
     searchResults,
@@ -64,7 +64,7 @@ export function MemoryTab() {
     rememberMessage,
     rememberResult,
     submitRemember
-  } = useMemoryPanel();
+  } = useMemoryPanel(token);
 
   return (
     <section className="stack-panel">
@@ -83,7 +83,7 @@ export function MemoryTab() {
 
       <div className="status-grid">
         <div className="status-panel">
-          <SubsectionTitle icon={Search} title="Search Memories" note="POST /v1/memories/search — semantic recall over durable memory." />
+          <SubsectionTitle icon={Search} title="Search Memories" note="Panel-authenticated semantic recall over durable memory." />
           <label>
             Query
             <input
@@ -118,7 +118,7 @@ export function MemoryTab() {
         </div>
 
         <div className="status-panel command-card">
-          <SubsectionTitle icon={Save} title="Remember" note="POST /v1/memories — store a new durable memory." />
+          <SubsectionTitle icon={Save} title="Remember" note="Store a new durable memory through the panel session." />
           <label>
             Type
             <select value={rememberType} onChange={(event) => setRememberType(event.target.value as typeof rememberType)}>
@@ -167,14 +167,14 @@ export function MemoryTab() {
       {selectedMemoryId && (
         <div className="status-panel">
           <div className="section-heading">
-            <SubsectionTitle icon={Eye} title="Memory Detail" note={`GET /v1/memories/${selectedMemoryId}`} />
+            <SubsectionTitle icon={Eye} title="Memory Detail" note={`Memory ${selectedMemoryId}`} />
             <button className="ghost icon-button" title="Close detail" onClick={closeMemoryDetail}>
               <X aria-hidden="true" className="button-icon" />
             </button>
           </div>
           {detailLoading && <EmptyState loading text="Loading memory..." />}
           {detailMessage && <p className="error">{detailMessage}</p>}
-          {selectedMemory && (
+          {selectedMemory && selectedMemory.id === selectedMemoryId && (
             <div className="job-row-main">
               <strong>{selectedMemory.title || selectedMemory.id}</strong>
               <p>{selectedMemory.body}</p>

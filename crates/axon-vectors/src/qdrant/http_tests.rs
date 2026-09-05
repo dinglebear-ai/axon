@@ -37,6 +37,27 @@ fn loopback_plaintext_endpoint_allows_credentials_for_local_development() {
 }
 
 #[test]
+fn invalid_endpoints_fail_without_panicking_or_echoing_input() {
+    for input in ["not a url", "mailto:qdrant@example.test", "http://"] {
+        let error = QdrantHttp::new(input, "qdrant").expect_err("invalid endpoint");
+        assert_eq!(error.code.0, "vector.qdrant.invalid_endpoint");
+        assert!(!error.to_string().contains(input));
+    }
+}
+
+#[test]
+fn retry_after_delta_seconds_is_parsed() {
+    assert_eq!(
+        parse_retry_after(&HeaderValue::from_static("9")),
+        Some(Duration::from_secs(9))
+    );
+    assert_eq!(
+        parse_retry_after(&HeaderValue::from_static("tomorrow")),
+        None
+    );
+}
+
+#[test]
 fn api_key_header_is_marked_sensitive_before_request_debugging() {
     let http = QdrantHttp::new("http://super-secret@127.0.0.1:6333", "qdrant")
         .expect("loopback credential");

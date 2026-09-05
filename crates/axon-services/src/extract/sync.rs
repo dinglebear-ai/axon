@@ -215,13 +215,17 @@ async fn run_single_extract(
 ) -> Result<ExtractRun, Box<dyn Error + Send + Sync>> {
     if should_try_vertical_extractor(&cfg, &wcfg) {
         let extractor_timeout = vertical_extractor_timeout(&cfg);
-        let ctx = VerticalContext::new(cfg.user_agent.clone(), cfg.auto_dispatch_skip.clone())
-            .with_credentials(axon_extract::VerticalCredentials {
-                github_token: cfg.github_token.clone(),
-                huggingface_token: std::env::var("HF_TOKEN").ok(),
-                reddit_client_id: cfg.reddit_client_id.clone(),
-                reddit_client_secret: cfg.reddit_client_secret.clone(),
-            });
+        let ctx = VerticalContext::new(
+            cfg.user_agent.clone(),
+            cfg.auto_dispatch_skip.clone(),
+            axon_core::http::http_client()?.clone(),
+        )
+        .with_credentials(axon_extract::VerticalCredentials {
+            github_token: cfg.github_token.clone(),
+            huggingface_token: std::env::var("HF_TOKEN").ok(),
+            reddit_client_id: cfg.reddit_client_id.clone(),
+            reddit_client_secret: cfg.reddit_client_secret.clone(),
+        });
         match tokio::time::timeout(extractor_timeout, dispatch_by_url(&wcfg.start_url, &ctx)).await
         {
             Ok(Some(Ok(doc))) => return Ok(vertical_doc_to_extract_run(doc)),

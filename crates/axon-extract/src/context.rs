@@ -2,23 +2,24 @@
 //!
 //! Verticals receive this instead of a full `&ServiceContext` so they can't
 //! accidentally call unrelated services. The HTTP client is the shared
-//! static singleton from `core::http` — SSRF-guarded, pooled, never
-//! re-created per call.
+//! provider is constructed by the owning adapter/service and injected here, so
+//! extractors cannot bypass transport policy or create clients per call.
 
 use axon_core::http::{axon_api_ua, axon_ua};
+use reqwest::Client;
 
 /// Narrowed view over `ServiceContext` for vertical extractors.
 ///
 /// Contains exactly what an extractor needs: a public user agent and the
 /// automatic-dispatch skip list. It deliberately cannot expose credentials,
-/// provider endpoints, or unrelated runtime configuration. Extractors MUST NOT
-/// perform raw HTTP fetches — use `http_client()` from `axon_core::http`
-/// inside the extractor, which goes through the SSRF guard.
+/// provider endpoints, or unrelated runtime configuration. Extractors issue
+/// requests only through the injected adapter-owned client.
 #[derive(Clone)]
 pub struct VerticalContext {
     user_agent: Option<String>,
     auto_dispatch_skip: Vec<String>,
     credentials: VerticalCredentials,
+    http_client: Client,
 }
 
 #[derive(Clone, Default)]
@@ -30,12 +31,22 @@ pub struct VerticalCredentials {
 }
 
 impl VerticalContext {
-    pub fn new(user_agent: Option<String>, auto_dispatch_skip: Vec<String>) -> Self {
+    pub fn new(
+        user_agent: Option<String>,
+        auto_dispatch_skip: Vec<String>,
+        http_client: Client,
+    ) -> Self {
         Self {
             user_agent,
             auto_dispatch_skip,
             credentials: VerticalCredentials::default(),
+            http_client,
         }
+    }
+
+    /// Adapter-owned HTTP provider used by vertical implementations.
+    pub fn http_client(&self) -> &Client {
+        &self.http_client
     }
 
     pub fn with_credentials(mut self, credentials: VerticalCredentials) -> Self {

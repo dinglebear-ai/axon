@@ -7,6 +7,7 @@ use crate::context::TargetLocalSourceRuntime;
 use crate::source::events::SourceEventEmitter;
 
 pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
+    const MAX_RETRY_ATTEMPTS_PER_DRAIN: u32 = 10;
     let Some(outbox) = runtime.artifact_candidate_outbox.clone() else {
         return;
     };
@@ -16,13 +17,17 @@ pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
     let sink = runtime.artifact_candidate_sink.clone();
     let ledger = runtime.ledger.clone();
     let jobs = runtime.jobs.clone();
-    tokio::spawn(async move {
+    let task_outbox = outbox.clone();
+    let task = tokio::spawn(async move {
         let mut retry_attempt = 0_u32;
         loop {
-            outbox.start_drain_pass();
+            if task_outbox.drain_cancelled() {
+                break;
+            }
+            task_outbox.start_drain_pass();
             let drain = async {
                 let mut retryable_remaining = false;
-                let scan = outbox.scan().await?;
+                let scan = task_outbox.scan().await?;
                 for finding in scan.findings {
                     tracing::warn!(
                         code = finding.code,
@@ -36,7 +41,7 @@ pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
                         .await?;
                     if committed.as_ref() != Some(&pending.generation) {
                         if delivery_is_stale(pending.staged_at_unix_ms) {
-                            outbox.complete(&pending.delivery_key).await?;
+                            task_outbox.complete(&pending.delivery_key).await?;
                         } else {
                             retryable_remaining = true;
                         }
@@ -62,7 +67,7 @@ pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
                     }
                     match outcome.disposition {
                         CandidateDeliveryDisposition::Terminal => {
-                            outbox.complete(&pending.delivery_key).await?;
+                            task_outbox.complete(&pending.delivery_key).await?;
                         }
                         CandidateDeliveryDisposition::Retryable => {
                             retryable_remaining = true;
@@ -85,15 +90,24 @@ pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
             };
             if retryable_remaining {
                 retry_attempt = retry_attempt.saturating_add(1);
+                if retry_attempt >= MAX_RETRY_ATTEMPTS_PER_DRAIN {
+                    tracing::warn!(
+                        attempts = retry_attempt,
+                        "artifact candidate outbox drain exhausted its retry budget; durable deliveries remain for the next supervised pass"
+                    );
+                    let _ = task_outbox.continue_or_finish_drain();
+                    break;
+                }
                 tokio::time::sleep(retry_delay(retry_attempt)).await;
                 continue;
             }
             retry_attempt = 0;
-            if !outbox.continue_or_finish_drain() {
+            if !task_outbox.continue_or_finish_drain() {
                 break;
             }
         }
     });
+    outbox.register_drain_task(task);
 }
 
 fn retry_delay(attempt: u32) -> std::time::Duration {

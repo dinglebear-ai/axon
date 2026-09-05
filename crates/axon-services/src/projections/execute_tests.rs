@@ -1,5 +1,20 @@
 use super::*;
 
+fn assert_send<T: Send>(_: T) {}
+
+#[allow(dead_code)]
+fn code_search_projection_future_is_send(
+    ctx: &ServiceContext,
+    preflight: ProjectionPreflight<PreparedCodeSearchItem>,
+) {
+    assert_send(execute_code_search_projection_batch(
+        ctx,
+        preflight,
+        CodeSearchCaller::Rest,
+        None,
+    ));
+}
+
 #[test]
 fn projection_execute_fingerprint_is_stable_and_semantic() {
     let value = serde_json::json!({"operation":"crawl","source":"https://example.test"});

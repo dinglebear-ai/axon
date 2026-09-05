@@ -16,7 +16,7 @@
 //!    If a future edit to `MCP_ACTION_SPECS` adds/removes/rescoped an
 //!    action without a matching edit here, that test fails.
 //! 2. Shared action request DTOs are resolved from the real,
-//!    schemars-derived `axon_api::mcp_schema` types. The two system requests
+//!    schemars-derived `axon_api::action` types. The two system requests
 //!    owned privately by `axon-mcp` (`reset` and `collections`) are mirrored
 //!    explicitly here and covered by focused generator expectations.
 //!
@@ -52,7 +52,7 @@ pub(super) struct ActionSpec {
     pub scope: &'static str,
     pub mutates: bool,
     pub async_job: bool,
-    /// The real `axon_api::mcp_schema` request DTO type name for this
+    /// The real `axon_api::action` request DTO type name for this
     /// action, resolved to a schema via `request_schema_for`.
     pub request_dto: &'static str,
     pub subaction: SubactionKind,
@@ -387,8 +387,8 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
 ];
 
-/// Action names that exist on the shared `axon_api::mcp_schema::AxonRequest`
-/// enum (REST/CLI compatibility) but are rejected pre-dispatch by MCP authz
+/// Action names represented by `axon_mcp::schema::AxonRequest` but rejected
+/// pre-dispatch by MCP authz
 /// (`crates/axon-mcp/src/server.rs`'s removed/HTTP-only match arms) — read
 /// there for reference. Used only by the drift test's negative-space check;
 /// not part of the generated schema.

@@ -1,6 +1,7 @@
 //! Durable Axon-owned orchestration for Labby-executed agent tool calls.
 
 mod client;
+mod execution;
 mod lease;
 mod store;
 mod support;
@@ -10,6 +11,7 @@ use axon_api::agent::{
     AgentTurnResult, AgentTurnStatus,
 };
 use axon_core::config::Config;
+use execution::{ensure_turn, run_loop};
 use lease::await_with_renewal;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -30,6 +32,16 @@ const MAX_MODEL_OUTPUT_BYTES: usize = 1024 * 1024;
 
 pub type CompletionFuture = Pin<Box<dyn Future<Output = anyhow::Result<String>> + Send>>;
 pub type CompletionFn = Arc<dyn Fn(String) -> CompletionFuture + Send + Sync>;
+
+async fn persist<T: Send + 'static>(
+    store: &AgentTurnStore,
+    operation: impl FnOnce(&AgentTurnStore) -> anyhow::Result<T> + Send + 'static,
+) -> anyhow::Result<T> {
+    let store = store.clone();
+    tokio::task::spawn_blocking(move || operation(&store))
+        .await
+        .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))?
+}
 
 #[derive(Debug, Clone)]
 pub struct AgentTurnOwner {
@@ -76,7 +88,10 @@ pub async fn run(
     completion: CompletionFn,
 ) -> anyhow::Result<AgentTurnResult> {
     validate_options(&options)?;
-    let store = AgentTurnStore::open(cfg)?;
+    let store_cfg = cfg.clone();
+    let store = tokio::task::spawn_blocking(move || AgentTurnStore::open(&store_cfg))
+        .await
+        .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))??;
     let turn_id = options
         .turn_id
         .clone()
@@ -99,12 +114,29 @@ pub async fn run(
             .unwrap_or("configured-default"),
     )
     .await?;
-    let persisted = store.load_owned(&turn_id, &owner.principal)?;
+    let persisted_store = store.clone();
+    let persisted_turn_id = turn_id.clone();
+    let persisted_owner = owner.principal.clone();
+    let persisted = tokio::task::spawn_blocking(move || {
+        persisted_store.load_owned(&persisted_turn_id, &persisted_owner)
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))??;
     if persisted.status.is_terminal() {
-        return store.result(&turn_id);
+        let result_store = store.clone();
+        let result_turn_id = turn_id.clone();
+        return tokio::task::spawn_blocking(move || result_store.result(&result_turn_id))
+            .await
+            .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))?;
     }
-    let lease_version =
-        store.acquire_lease(&turn_id, &owner.principal, persisted.version, now_ms())?;
+    let lease_store = store.clone();
+    let lease_turn_id = turn_id.clone();
+    let lease_owner = owner.principal.clone();
+    let lease_version = tokio::task::spawn_blocking(move || {
+        lease_store.acquire_lease(&lease_turn_id, &lease_owner, persisted.version, now_ms())
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))??;
     let approvals: HashMap<_, _> = options
         .approval_tokens
         .into_iter()
@@ -121,291 +153,17 @@ pub async fn run(
     .await
 }
 
-async fn run_loop(
-    store: &AgentTurnStore,
-    client: &LabbyAgentClient,
-    turn_id: &str,
-    lease_version: u64,
-    approvals: &HashMap<String, String>,
-    completion: CompletionFn,
-) -> anyhow::Result<AgentTurnResult> {
-    loop {
-        store.assert_lease(turn_id, lease_version, now_ms())?;
-        let mut turn = store.load(turn_id)?.expect("persisted turn");
-        if turn.cancel_requested || turn.status == AgentTurnStatus::Cancelled {
-            store.release_lease(turn_id, lease_version)?;
-            return store.result(turn_id);
-        }
-        if now_ms() >= turn.deadline_at_ms {
-            store.transition_fenced(turn_id, lease_version, AgentTurnStatus::TimedOut, None)?;
-            store.release_lease(turn_id, lease_version)?;
-            return store.result(turn_id);
-        }
-        if turn.tool_call_count >= turn.max_tool_calls {
-            store.transition_fenced(
-                turn_id,
-                lease_version,
-                AgentTurnStatus::Failed,
-                Some("tool_budget_exceeded"),
-            )?;
-            store.release_lease(turn_id, lease_version)?;
-            return store.result(turn_id);
-        }
-        if let Some(pending) = turn.pending_proposal.clone() {
-            let approval = approvals.get(&pending.tool_call_id).map(String::as_str);
-            if pending.destructive && approval.is_none() {
-                store.release_lease(turn_id, lease_version)?;
-                return store.result(turn_id);
-            }
-            execute_proposal(&store, &client, &mut turn, pending, approval).await?;
-            continue;
-        }
-        store.transition_fenced(
-            turn_id,
-            lease_version,
-            if turn.tool_call_count == 0 {
-                AgentTurnStatus::Proposing
-            } else {
-                AgentTurnStatus::Continuing
-            },
-            None,
-        )?;
-        let model_prompt = build_model_prompt(&turn)?;
-        let output = await_with_renewal(
-            store,
-            turn_id,
-            lease_version,
-            tokio::time::timeout(
-                Duration::from_millis((turn.deadline_at_ms - now_ms()).max(1) as u64),
-                completion(model_prompt),
-            ),
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("agent_deadline_exceeded"))??;
-        store.assert_lease(turn_id, lease_version, now_ms())?;
-        if store
-            .load(turn_id)?
-            .is_some_and(|value| value.cancel_requested)
-        {
-            store.release_lease(turn_id, lease_version)?;
-            return store.result(turn_id);
-        }
-        if output.len() > MAX_MODEL_OUTPUT_BYTES {
-            anyhow::bail!("agent_model_output_too_large");
-        }
-        match parse_action(&output)? {
-            ModelAction::Final { answer } => {
-                store.append_event_fenced(
-                    turn_id,
-                    lease_version,
-                    AgentEvent::Final {
-                        sequence: 0,
-                        answer: answer.clone(),
-                    },
-                )?;
-                store.transition_fenced(
-                    turn_id,
-                    lease_version,
-                    AgentTurnStatus::Succeeded,
-                    Some(&answer),
-                )?;
-                store.release_lease(turn_id, lease_version)?;
-                return store.result(turn_id);
-            }
-            ModelAction::Tool {
-                tool_id,
-                contract_hash,
-                arguments,
-                destructive,
-            } => {
-                let proposal = AgentToolProposal {
-                    tool_call_id: format!("{}:{}", turn_id, turn.tool_call_count + 1),
-                    tool_id,
-                    contract_hash,
-                    arguments,
-                    destructive,
-                };
-                store.set_proposal_fenced(turn_id, lease_version, &proposal)?;
-                if destructive && !approvals.contains_key(&proposal.tool_call_id) {
-                    store.transition_fenced(
-                        turn_id,
-                        lease_version,
-                        AgentTurnStatus::AwaitingApproval,
-                        None,
-                    )?;
-                    store.release_lease(turn_id, lease_version)?;
-                    return store.result(turn_id);
-                }
-                continue;
-            }
-        }
-    }
-}
-
-async fn ensure_turn(
-    store: &AgentTurnStore,
-    client: &LabbyAgentClient,
-    turn_id: &str,
-    loadout_id: &str,
-    loadout_revision: u64,
-    prompt: &str,
-    deadline: i64,
-    delegation_token: &str,
-    owner: &AgentTurnOwner,
-    max_tool_calls: u32,
-    model: &str,
-) -> anyhow::Result<()> {
-    if let Some(existing) = store.load(turn_id)? {
-        return existing.verify_create_replay(
-            &owner.principal,
-            &owner.profile_id,
-            loadout_id,
-            loadout_revision,
-            prompt,
-        );
-    }
-    let context = client
-        .create_context(delegation_token, loadout_id, loadout_revision, deadline)
-        .await?;
-    store.create(
-        turn_id,
-        loadout_id,
-        loadout_revision,
-        prompt,
-        deadline,
-        &owner.principal,
-        &owner.profile_id,
-        max_tool_calls,
-        model,
-        &context,
-    )?;
-    Ok(())
-}
-
-async fn execute_proposal(
-    store: &AgentTurnStore,
-    client: &LabbyAgentClient,
-    turn: &mut store::StoredTurn,
-    proposal: AgentToolProposal,
-    approval: Option<&str>,
-) -> anyhow::Result<()> {
-    let lease_version = turn.version;
-    store.assert_lease(&turn.id, lease_version, now_ms())?;
-    store.transition_fenced(&turn.id, lease_version, AgentTurnStatus::Executing, None)?;
-    let key = format!("axon-agent:{}:{}", turn.id, proposal.tool_call_id);
-    let mut receipt = match store.execution_request_id(&turn.id, &proposal.tool_call_id)? {
-        Some(request_id) => {
-            await_with_renewal(store, &turn.id, lease_version, client.status(&request_id)).await?
-        }
-        None => {
-            store.reserve_execution_fenced(
-                &turn.id,
-                lease_version,
-                &proposal.tool_call_id,
-                &key,
-            )?;
-            await_with_renewal(
-                store,
-                &turn.id,
-                lease_version,
-                client.execute(
-                    &turn.execution_context_id,
-                    &key,
-                    &proposal,
-                    approval,
-                    turn.deadline_at_ms,
-                ),
-            )
-            .await?
-        }
-    };
-    // Persist Labby's request identity before any cancellation check or status await.
-    // A crash after dispatch therefore resumes through status, while a crash before
-    // this write safely replays the distinct idempotency key through Labby.
-    let reconciled = store.reconcile_dispatched_request(
-        &turn.id,
-        &proposal.tool_call_id,
-        &key,
-        &receipt.request_id,
-    )?;
-    if !reconciled {
-        anyhow::bail!("labby_request_reconciliation_failed");
-    }
-    if store
-        .load(&turn.id)?
-        .is_some_and(|value| value.cancel_requested)
-    {
-        let cancelled = client.cancel(&receipt.request_id).await;
-        return match cancelled {
-            Ok(value) if value.status == "cancelled" => {
-                store.confirm_cancel(&turn.id, &turn.owner)?;
-                Ok(())
-            }
-            _ => Ok(()),
-        };
-    }
-    while receipt.status == "running" && now_ms() < turn.deadline_at_ms {
-        await_with_renewal(
-            store,
-            &turn.id,
-            lease_version,
-            tokio::time::sleep(Duration::from_millis(100)),
-        )
-        .await;
-        if store
-            .load(&turn.id)?
-            .is_some_and(|value| value.cancel_requested)
-        {
-            receipt = client.cancel(&receipt.request_id).await?;
-            break;
-        }
-        receipt = await_with_renewal(
-            store,
-            &turn.id,
-            lease_version,
-            client.status(&receipt.request_id),
-        )
-        .await?;
-    }
-    store.record_receipt_fenced(&turn.id, lease_version, &proposal, &receipt)?;
-    match receipt.status.as_str() {
-        "succeeded" => store.complete_tool_fenced(
-            &turn.id,
-            lease_version,
-            &proposal.tool_call_id,
-            receipt.result.unwrap_or(Value::Null),
-        )?,
-        "running" => store.transition_fenced(
-            &turn.id,
-            lease_version,
-            AgentTurnStatus::TimedOut,
-            Some("labby_status_deadline"),
-        )?,
-        "cancelled" => store.transition_fenced(
-            &turn.id,
-            lease_version,
-            AgentTurnStatus::Cancelled,
-            Some("labby_cancelled"),
-        )?,
-        "timed_out" => store.transition_fenced(
-            &turn.id,
-            lease_version,
-            AgentTurnStatus::TimedOut,
-            Some("labby_timed_out"),
-        )?,
-        _ => store.transition_fenced(
-            &turn.id,
-            lease_version,
-            AgentTurnStatus::Failed,
-            receipt.error_kind.as_deref(),
-        )?,
-    }
-    Ok(())
-}
-
 pub async fn cancel(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<AgentTurnResult> {
-    let store = AgentTurnStore::open(cfg)?;
-    let turn = store.request_cancel(turn_id, owner)?;
+    let store_cfg = cfg.clone();
+    let turn_id_owned = turn_id.to_string();
+    let owner_owned = owner.to_string();
+    let (store, turn) = tokio::task::spawn_blocking(move || {
+        let store = AgentTurnStore::open(&store_cfg)?;
+        let turn = store.request_cancel(&turn_id_owned, &owner_owned)?;
+        Ok::<_, anyhow::Error>((store, turn))
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))??;
     if let Some(request_id) = turn.active_request_id.as_deref() {
         let receipt = LabbyAgentClient::from_config(cfg)?
             .cancel(request_id)
@@ -413,9 +171,17 @@ pub async fn cancel(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<
         if receipt.status != "cancelled" {
             anyhow::bail!("agent_cancel_unconfirmed");
         }
-        store.confirm_cancel(turn_id, owner)?;
+        let store_for_cancel = store.clone();
+        let turn_id = turn_id.to_string();
+        let owner = owner.to_string();
+        tokio::task::spawn_blocking(move || store_for_cancel.confirm_cancel(&turn_id, &owner))
+            .await
+            .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))??;
     }
-    store.result(turn_id)
+    let turn_id = turn_id.to_string();
+    tokio::task::spawn_blocking(move || store.result(&turn_id))
+        .await
+        .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))?
 }
 
 pub async fn resume(
@@ -425,8 +191,14 @@ pub async fn resume(
     approvals: Vec<AgentApprovalToken>,
     completion: CompletionFn,
 ) -> anyhow::Result<AgentTurnResult> {
-    let store = AgentTurnStore::open(cfg)?;
-    let turn = store.load_owned(turn_id, &owner.principal)?;
+    let store_cfg = cfg.clone();
+    let turn_id_owned = turn_id.to_string();
+    let principal = owner.principal.clone();
+    let turn = tokio::task::spawn_blocking(move || {
+        AgentTurnStore::open(&store_cfg)?.load_owned(&turn_id_owned, &principal)
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))??;
     turn.verify_resume(&owner.principal)?;
     let configured_model = axon_core::llm::configured_chat_model_from_config(cfg)
         .unwrap_or_else(|| "configured-default".into());
@@ -451,20 +223,34 @@ pub async fn resume(
     .await
 }
 
-pub fn status(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<AgentTurnResult> {
-    let store = AgentTurnStore::open(cfg)?;
-    store.load_owned(turn_id, owner)?;
-    store.result(turn_id)
+pub async fn status(cfg: &Config, turn_id: &str, owner: &str) -> anyhow::Result<AgentTurnResult> {
+    let cfg = cfg.clone();
+    let turn_id = turn_id.to_string();
+    let owner = owner.to_string();
+    tokio::task::spawn_blocking(move || {
+        let store = AgentTurnStore::open(&cfg)?;
+        store.load_owned(&turn_id, &owner)?;
+        store.result(&turn_id)
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))?
 }
-pub fn events(
+pub async fn events(
     cfg: &Config,
     turn_id: &str,
     owner: &str,
     after: u64,
 ) -> anyhow::Result<Vec<AgentEvent>> {
-    let store = AgentTurnStore::open(cfg)?;
-    store.load_owned(turn_id, owner)?;
-    store.events(turn_id, after)
+    let cfg = cfg.clone();
+    let turn_id = turn_id.to_string();
+    let owner = owner.to_string();
+    tokio::task::spawn_blocking(move || {
+        let store = AgentTurnStore::open(&cfg)?;
+        store.load_owned(&turn_id, &owner)?;
+        store.events(&turn_id, after)
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("agent persistence task failed: {error}"))?
 }
 
 #[cfg(test)]

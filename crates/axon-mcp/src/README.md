@@ -45,9 +45,9 @@ mcporter --config config/mcporter.json call axon.axon action:doctor --output jso
 mcporter --config config/mcporter.json call axon.axon action:source source:https://example.com scope:page embed:true --output json
 ```
 
-The smoke harness uses SQLite/in-process jobs. Legacy source-family actions
-such as `crawl`, `scrape`, `embed`, and `ingest` were removed from MCP; use
-`action=source`.
+The smoke harness uses SQLite/in-process jobs. `source` is the canonical
+acquisition action; `crawl`, `scrape`, `embed`, and `ingest` are supported
+focused projections over the same pipeline. Use `jobs` for lifecycle work.
 
 ## Change Rule
 When changing tool behavior, update in the same commit:

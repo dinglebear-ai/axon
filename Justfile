@@ -374,8 +374,57 @@ validate-plugin:
     if not monitors.exists():
         raise SystemExit(f"MISSING: {monitors}")
     json.loads(monitors.read_text())
+    mcp_config = manifest.parent.parent / ".mcp.json"
+    if not mcp_config.exists():
+        raise SystemExit(f"MISSING: {mcp_config}")
+    json.loads(mcp_config.read_text())
+
+    readme = manifest.parent.parent / "README.md"
+    text = readme.read_text()
+    if '"action": "crawl", "subaction": "status"' in text:
+        raise SystemExit(f"REMOVED PER-FAMILY LIFECYCLE in {readme}")
+    if '"action": "jobs", "subaction": "get"' not in text:
+        raise SystemExit(f"MISSING unified jobs example in {readme}")
     PY
     echo "OK"
+
+# Machine-readable operational-test catalog. The token following each path is
+# the execution class consumed by repository contract review.
+# test-catalog: scripts/test-axon-env.sh hermetic-required
+# test-catalog: scripts/test-axon-wrapper-fast-path.sh hermetic-required
+# test-catalog: scripts/test-axon-backup.sh hermetic-required
+# test-catalog: scripts/test-bench-source-pipeline.sh hermetic-required
+# test-catalog: scripts/test-chrome-extension-agent-os.sh live-optional
+# test-catalog: scripts/test-evaluate-retrieval.sh hermetic-required
+# test-catalog: scripts/test-install-behavior.sh platform-required:linux
+# test-catalog: scripts/test-incus-bootstrap.sh hermetic-required
+# test-catalog: scripts/test-live-cli-portability.sh hermetic-required
+# test-catalog: scripts/test-mcp-tasks-wire.py live-optional
+# test-catalog: scripts/test-mlx-metrics.py hermetic-required
+# test-catalog: scripts/test_mcp_doc_renderer.py hermetic-required
+# test-catalog: scripts/test_qdrant_quality.py hermetic-required
+# test-catalog: scripts/test_qdrant_tune.py hermetic-required
+# test-catalog: scripts/test_tei_tune.py hermetic-required
+# test-catalog: scripts/test_dockerfile_supply_chain.py hermetic-required
+# test-catalog: scripts/test_operational_docs.py hermetic-required
+# test-catalog: scripts/test-with-timeout.sh hermetic-required
+operational-test-contracts:
+    scripts/test-axon-env.sh
+    scripts/test-axon-wrapper-fast-path.sh
+    scripts/test-axon-backup.sh
+    scripts/test-bench-source-pipeline.sh
+    scripts/test-evaluate-retrieval.sh
+    if [ "$(uname -s)" = "Linux" ]; then scripts/test-install-behavior.sh; else echo "SKIP test-install-behavior.sh (Linux platform required)"; fi
+    scripts/test-incus-bootstrap.sh
+    scripts/test-live-cli-portability.sh
+    python3 scripts/test-mlx-metrics.py
+    python3 scripts/test_mcp_doc_renderer.py
+    python3 scripts/test_qdrant_quality.py
+    python3 scripts/test_qdrant_tune.py
+    python3 scripts/test_tei_tune.py
+    python3 scripts/test_dockerfile_supply_chain.py
+    python3 scripts/test_operational_docs.py
+    scripts/test-with-timeout.sh
 
 runtime-current:
     ./scripts/axon doctor
@@ -386,6 +435,7 @@ verify:
     just blocking-async-check
     just primitive-inventory-check
     just validate-plugin
+    just operational-test-contracts
     just web-check
     just fmt-check
     just clippy
@@ -397,6 +447,7 @@ ci:
     just verify
 
 precommit:
+    cargo xtask check-secrets
     python3 scripts/check_compose_port_bindings.py --staged
     python3 scripts/enforce_no_legacy_symbols.py
     just legacy-runtime-check
@@ -443,11 +494,13 @@ services-up:
     just services-up-local
 
 services-up-local:
+    just ensure-compose-network
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant up -d axon-qdrant axon-tei axon-chrome
 
 services-up-external-qdrant:
     #!/usr/bin/env bash
     set -euo pipefail
+    just ensure-compose-network
     source scripts/lib/axon-env.sh
     repo="$(pwd)"
     load_axon_env_file "$repo"
@@ -460,15 +513,18 @@ services-up-external-qdrant:
 services-down:
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant stop axon-qdrant axon-tei axon-chrome
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant rm -f axon-qdrant axon-tei axon-chrome
+    just remove-compose-network-if-owned
 
 # Start/stop an explicitly local Qdrant. Use this only for local test data or
 # when AXON_QDRANT_URL=http://axon-qdrant:6333 is set for the axon container.
 qdrant-up:
+    just ensure-compose-network
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant up -d axon-qdrant
 
 qdrant-down:
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant stop axon-qdrant
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml --profile local-qdrant rm -f axon-qdrant
+    just remove-compose-network-if-owned
 
 # Production stack (docker-compose.prod.yaml), bundled qdrant mode — the default.
 # Every invocation guarantees --env-file so .env's values actually reach

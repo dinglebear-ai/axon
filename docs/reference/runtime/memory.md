@@ -139,9 +139,8 @@ active memories matching a query/project/repo/file seed, joins their bodies,
 and truncates to `token_budget` (estimated via whitespace-split word count,
 not a tokenizer) if the assembled context exceeds it — truncation is recorded
 in the result's `exclusions` list. This is what the CLI's `axon memory
-context` and the Claude Code SessionStart recall hook
-(`docs/reference/actions/memory.md` → "Claude Plugin SessionStart Recall")
-both call through the service layer.
+context` and the optional standalone recall helper both call through the
+service layer. The bundled plugin does not register an automatic hook.
 
 ## CLI/transport parity
 

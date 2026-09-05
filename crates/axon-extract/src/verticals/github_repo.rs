@@ -9,7 +9,6 @@ use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_repo",
@@ -69,7 +68,7 @@ fn github_auth_header(ctx: &VerticalContext) -> Option<String> {
 
 /// Fetch and decode the README for a repo. Non-fatal — returns None on any error.
 async fn fetch_readme(owner: &str, repo: &str, ctx: &VerticalContext) -> Option<String> {
-    let client = http_client().ok()?;
+    let client = ctx.http_client();
     let readme_url = format!("https://api.github.com/repos/{owner}/{repo}/readme");
     let mut req = client
         .get(&readme_url)
@@ -211,10 +210,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let (owner, repo) = (segs[0], segs[1]);
     let api_url = format!("https://api.github.com/repos/{owner}/{repo}");
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let mut repo_req = client
         .get(&api_url)

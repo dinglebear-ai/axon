@@ -232,9 +232,9 @@ pub async fn execute_code_search_projection_batch(
     ctx: &ServiceContext,
     preflight: ProjectionPreflight<PreparedCodeSearchItem>,
     caller: CodeSearchCaller,
-    auth: Option<&AuthSnapshot>,
+    auth: Option<AuthSnapshot>,
 ) -> Result<BatchResult<QueryResult>, ApiError> {
-    let principal_id = principal_digest(auth);
+    let principal_id = principal_digest(auth.as_ref());
     let _admission = acquire_projection_admission(&principal_id, &ctx.cfg().projection_batch)?;
     let mut items = Vec::with_capacity(preflight.items.len());
     let mut outcomes: std::collections::HashMap<String, BatchOutcome<QueryResult>> =
@@ -247,9 +247,9 @@ pub async fn execute_code_search_projection_batch(
         let outcome = if let Some(outcome) = outcomes.get(&key) {
             outcome.clone()
         } else {
-            let result = crate::query::code_search(
+            let result = crate::query::code_search_owned(
                 ctx,
-                &plan.query,
+                plan.query,
                 CodeSearchOptions {
                     collection: plan.collection,
                     limit: plan.limit,

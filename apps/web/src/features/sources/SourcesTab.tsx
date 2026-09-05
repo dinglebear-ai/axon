@@ -70,7 +70,7 @@ export function SourcesTab({
       {sourcesMessage && <p className="error">{sourcesMessage}</p>}
       <div className="status-grid">
         <div className="status-panel">
-          <SubsectionTitle icon={Database} title="Indexed Sources" note="GET /v1/sources — family, adapter, and chunk counts." />
+          <SubsectionTitle icon={Database} title="Indexed Sources" note="Panel-authenticated source inventory." />
           {sourceEntries.length ? (
             <div className="job-list">
               {sourceEntries.map((entry, index) => (
@@ -82,7 +82,7 @@ export function SourcesTab({
           )}
         </div>
         <div className="status-panel command-card">
-          <SubsectionTitle icon={UploadCloud} title="Submit Source" note="POST /v1/sources — acquires and indexes a URL, repo, feed, or path." />
+          <SubsectionTitle icon={UploadCloud} title="Submit Source" note="Panel-authenticated acquisition for a URL, repo, feed, or path." />
           <label>
             Source URL or target
             <input
@@ -109,6 +109,7 @@ export function SourcesTab({
             <input
               type="number"
               min={0}
+              step={1}
               value={sourceFormMaxPages}
               onChange={(event) => setSourceFormMaxPages(event.target.value)}
               placeholder="unbounded"

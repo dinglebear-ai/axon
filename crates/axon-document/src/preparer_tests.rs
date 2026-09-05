@@ -9,10 +9,19 @@ use axon_parse::vertical::{
 
 use crate::{
     ChunkingProfile, DocumentPreparer, DocumentPreparerConfig, PrepareSourceDocumentRequest,
-    preparer::{validate_prepared_document, validate_prepared_document_ranges_against_bounds},
+    preparer::{
+        PREPARATION_SCHEMA_VERSION, validate_prepared_document,
+        validate_prepared_document_ranges_against_bounds,
+    },
     source_range::bounds_for_text,
     testing::RecordingPreparer,
 };
+
+#[test]
+fn preparation_schema_version_is_semantic_and_stable() {
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-1");
+    assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
+}
 
 #[test]
 fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {

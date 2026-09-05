@@ -7,10 +7,13 @@
 - Added OpenAI skill metadata at `agents/openai.yaml` for every shipped skill.
 - Added shared workflow references under `references/`, including capture recipes, workflow authoring guidance, and output templates.
 - Documented the `memory.remember`, `memory.search`, `memory.show`, `memory.link`, `memory.supersede`, and `memory.context` agent-memory actions in the `using-axon` skill.
-- Added a defensive SessionStart hook that recalls compact `memory.context` for the current git project when Axon memory is available.
+- Added an explicit helper that can recall compact `memory.context`; the plugin
+  does not register a SessionStart hook.
 
 ### Changed
-- Realigned the whole skill surface, both references, and the `researcher` agent with the unified source pipeline. Removed every reference to the retired `crawl`/`ingest`/`embed`/`refresh` commands and the retired `crawl`/`scrape`/`embed`/`ingest` MCP actions in favor of `axon <source> [--scope …]` and `action: "source"`, and replaced per-family job lifecycles with the unified `jobs` surface.
+- Realigned the skill surface with the unified source pipeline. The canonical
+  `source` action and its supported focused projections share one lifecycle;
+  per-family lifecycle commands were replaced by `jobs`.
 - Rewrote `skills/monitor` for the unified watch model: `axon watch create <SOURCE> --every-seconds N`, dropping the nonexistent `--task-type`/`--task-payload` flags.
 - Rewrote `references/async-job-lifecycle.md` around the single durable job model, including the opposite MCP (`detached`) and CLI (`--wait`) async defaults and the worker requirement.
 - Replaced the nonexistent `--respect-robots` guidance in four workflow skills with explicit page/depth/budget bounding, since Axon has no robots.txt enforcement.

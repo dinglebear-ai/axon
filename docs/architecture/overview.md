@@ -378,62 +378,24 @@ Resilience patterns implemented:
 
 ## Key Source Map
 
-Core runtime:
+The thin root binary delegates to `axon-cli`. Current ownership follows the
+workspace crates:
 
-- `main.rs`
-- `lib.rs`
-- `src/core/config/cli.rs`
-- `src/core/config/cli/global_args.rs`
-- `src/core/config/parse.rs`
-- `src/core/config/types/config.rs`
-- `src/core/config/types.rs`
-- `src/core/http.rs`
-- `src/core/content.rs`
-
-Crawl/jobs/vector:
-
-- `src/crawl/engine.rs`
-- `src/jobs/status.rs`
-- `src/jobs/runtime.rs`
-- `src/jobs/workers.rs`
-- `src/jobs/ops/enqueue.rs`
-- `src/jobs/ops/lifecycle.rs`
-- `src/jobs/store.rs`
-- `src/jobs/workers/runners/{crawl,embed,extract,ingest}.rs`
-- `src/vector/ops.rs`
-- `src/vector/ops/tei.rs`
-
-Ingest:
-
-- `src/ingest/classify.rs`
-- `src/ingest/github.rs` + `src/ingest/github/` (files, issues, meta, wiki)
-- `src/ingest/reddit.rs` + `src/ingest/reddit/` (client, comments, meta, types)
-- `src/ingest/youtube.rs` + `src/ingest/youtube/` (meta, vtt)
-- `src/ingest/sessions.rs`
-
-LLM backend:
-
-- `src/core/llm.rs`
-- `src/core/llm/types.rs`
-- `src/core/llm/concurrency.rs`
-- `src/core/llm/openai_compat.rs`
-- `src/core/llm/headless.rs`
-- `src/core/llm/headless/` (common, env, gemini)
-- `src/mcp/server/artifacts.rs`
-- `src/mcp/server/artifacts/` (lifecycle, path, respond, shape)
+- `crates/axon-core/` — configuration, HTTP policy, content utilities
+- `crates/axon-adapters/` — web, local, Git, feed, Reddit, YouTube, and tool acquisition
+- `crates/axon-jobs/` — unified SQLite job lifecycle and workers
+- `crates/axon-document/` and `crates/axon-extract/` — parsing and preparation
+- `crates/axon-embedding/` and `crates/axon-vectors/` — TEI and Qdrant providers
+- `crates/axon-llm/` — synthesis backends
+- `crates/axon-services/` — transport-neutral orchestration
+- `crates/axon-cli/`, `crates/axon-mcp/`, and `crates/axon-web/` — transports
 
 ## Security: Destructive Operations
 
-The following CLI operations are **unauthenticated** — any process with access to
-the SQLite database can invoke them:
-
-- `axon crawl clear` — deletes ALL crawl jobs
-- `axon extract clear` — deletes ALL extract jobs
-- `axon crawl cancel <id>` — cancels a specific job
-
-**Accepted risk**: Axon is a self-hosted single-user tool. The SQLite database is a
-local file. Qdrant is bound to `127.0.0.1` (or internal Docker network). External
-exposure is prevented at the infrastructure layer (Docker port mappings, Tailscale ACLs).
+Destructive job operations use the unified `axon jobs cancel|cleanup|clear`
+surface. Local CLI access is bounded by filesystem permissions; HTTP and MCP
+access is governed by the configured static-token or OAuth authorization
+policy. Qdrant remains loopback- or internal-network-bound by default.
 
 ---
 

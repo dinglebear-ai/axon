@@ -63,6 +63,7 @@ fn real_values_not_placeholder() {
 fn skip_binary_extensions() {
     assert!(should_skip_path("image.png"));
     assert!(should_skip_path("font.woff2"));
+    assert!(should_skip_path("gradle-wrapper.jar"));
 }
 #[test]
 fn skip_example_env_files() {
@@ -74,6 +75,50 @@ fn dont_skip_text_files() {
     assert!(!should_skip_path("config.toml"));
     assert!(!should_skip_path("session.md")); // session logs MUST be scanned
     assert!(!should_skip_path("notes.txt"));
+}
+
+#[test]
+fn tree_mode_scans_tracked_candidate_content_without_a_staged_index() {
+    let temp = std::env::temp_dir().join(format!(
+        "axon-secret-tree-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&temp).unwrap();
+    assert!(
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&temp)
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(temp.join("candidate.txt"), "documented placeholder\n").unwrap();
+    assert!(
+        Command::new("git")
+            .args(["add", "candidate.txt"])
+            .current_dir(&temp)
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(
+        temp.join("candidate.txt"),
+        "OPENAI_API_KEY=sk-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n",
+    )
+    .unwrap(); // gitleaks:allow
+    let result = check_tree(&temp);
+    std::fs::remove_dir_all(&temp).unwrap();
+    assert!(
+        result
+            .expect_err("candidate-tree canary must be rejected")
+            .to_string()
+            .contains("secrets check blocked"),
+        "tree scan must inspect candidate files without relying on the index"
+    );
 }
 
 // ---------------------------------------------------------------------------

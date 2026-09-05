@@ -177,12 +177,9 @@ optional Qdrant profile:
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml --profile local-qdrant up -d axon-qdrant
 ```
 
-The Compose `axon` service publishes MCP HTTP via `${AXON_HTTP_PUBLISH:-8001}:8001`.
-The default value `8001` is a bare port, which Docker binds on **all interfaces**
-(`0.0.0.0:8001`) — reachable from the host's network. Set
-`AXON_HTTP_PUBLISH=127.0.0.1:8001` in `~/.axon/.env` to restrict it to
-loopback, and ensure `AXON_HTTP_TOKEN` is set (or OAuth mode enabled)
-whenever the port is exposed beyond loopback.
+The Compose `axon` service publishes MCP HTTP through
+`127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001`. `AXON_HTTP_PUBLISH` is a numeric
+host port only; the committed mapping is loopback-only.
 
 **Local dev mode** (TEI/Chrome in Docker, Qdrant on tootie, Axon server run locally):
 
@@ -311,11 +308,10 @@ For code/config upgrades:
 
 ```bash
 ./scripts/axon status
-./scripts/axon crawl list
-./scripts/axon ingest list
+./scripts/axon jobs list
 ```
 
-6. If stale runs from prior version appear, run recover commands.
+6. If stale runs from a prior version appear, run `./scripts/axon jobs recover`.
 
 ## Notes for Web Panel Paths
 
