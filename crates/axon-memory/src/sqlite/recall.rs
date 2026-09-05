@@ -206,7 +206,7 @@ fn review_blocking(conn: &Connection, request: MemoryReviewRequest) -> Result<Me
 
     let mut memories = Vec::new();
     for id in ids {
-        if let Some(record) = SqliteMemoryStore::load_record(&conn, &id)? {
+        if let Some(record) = SqliteMemoryStore::load_record(conn, &id)? {
             if let Some(mt) = request.memory_type
                 && record.memory_type != mt
             {

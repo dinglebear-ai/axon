@@ -355,7 +355,7 @@ pub async fn import(
             store.sink(),
             job_id,
             MemoryPhase::Reviewing,
-            &record,
+            record,
             Severity::Info,
             None,
             None,
