@@ -81,7 +81,14 @@ Deployment (Incus or systemd) is a separate step above.
 Prerequisites: Linux x86_64, `curl`, `sha256sum`, `minisign`, `install`, and (for GPU
 synthesis or a configured OpenAI-compatible endpoint) the relevant credentials.
 
-Download the versioned installer and its integrity metadata from the release:
+Release installation is fail-closed and is not yet available to the public:
+releases through `v7.2.23` do not include signatures, and no public release
+signing key has been provisioned. Build from reviewed source until a future
+release publishes the key fingerprint in `SECURITY.md` and the key itself at
+`security/axon-release.minisign.pub`. Do not substitute a key downloaded beside
+the release artifacts.
+
+After those two trust-anchor files exist, the authenticated flow will be:
 
 ```bash
 curl -fLO https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.sh
@@ -93,16 +100,7 @@ minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" -m install.sh -x install.sh.minisi
 AXON_VERSION=vX.Y.Z ./install.sh
 ```
 
-Release maintainers obtain the out-of-band trust anchor from the protected
-`release-signing` environment before distributing it through an authenticated
-channel:
-
-```bash
-gh api repos/dinglebear-ai/axon/environments/release-signing/variables/AXON_UPDATE_MINISIGN_PUBKEY --jq .value
-```
-
-Do not treat a public key downloaded beside a release artifact as a trust
-anchor. The installer requires `AXON_UPDATE_MINISIGN_PUBKEY`, verifies the
+The installer requires `AXON_UPDATE_MINISIGN_PUBKEY`, verifies the
 release's detached minisign signature and checksum, and installs `axon` to
 `~/.local/bin/axon`. Fetch a version-pinned installer from the reviewed release
 source instead of piping the mutable `main` branch directly to a shell.
@@ -117,8 +115,9 @@ AXON_INSTALL_METHOD=build ./install.sh    # local cargo build; no release downlo
 
 ### Windows
 
-Prerequisites: Windows x86_64, PowerShell 5.1+ or PowerShell Core, and
-`minisign`.
+Prerequisites: Windows x86_64, PowerShell 5.1+ or PowerShell Core, `minisign`,
+and the provisioned key described above. Until that key is published, build
+from reviewed source instead of using the release installer.
 
 Download the installer and integrity metadata from the versioned release,
 validate the checksum, inspect it locally, and then execute that pinned file:
@@ -128,6 +127,7 @@ Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.
 Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1.sha256' -OutFile install.ps1.sha256
 Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1.minisig' -OutFile install.ps1.minisig
 if ((Get-FileHash .\install.ps1 -Algorithm SHA256).Hash.ToLowerInvariant() -ne ((Get-Content .\install.ps1.sha256).Split()[0]).ToLowerInvariant()) { throw 'installer checksum mismatch' }
+$env:AXON_UPDATE_MINISIGN_PUBKEY = Get-Content .\axon-release.minisign.pub -Raw
 minisign -V -P $env:AXON_UPDATE_MINISIGN_PUBKEY -m install.ps1 -x install.ps1.minisig
 Get-Content .\install.ps1
 .\install.ps1

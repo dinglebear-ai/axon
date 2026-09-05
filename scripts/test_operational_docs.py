@@ -79,7 +79,8 @@ if "raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" in read
 for required in (
     "releases/download/vX.Y.Z/install.sh",
     "releases/download/vX.Y.Z/install.ps1",
-    "environments/release-signing/variables/AXON_UPDATE_MINISIGN_PUBKEY",
+    "security/axon-release.minisign.pub",
+    "releases through `v7.2.23` do not include signatures",
 ):
     if required not in readme:
         raise SystemExit(f"README lacks concrete release installer trust path: {required}")

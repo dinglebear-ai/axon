@@ -276,9 +276,9 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-te
 
 ### Updating the local Axon binary from GitHub Releases
 
-Use `axon update` to install the latest published Linux release binary into
-`~/.local/bin/axon` and restart the local Axon container against the same
-binary:
+Use `axon update` to atomically install the latest published Linux release
+binary into `~/.local/bin/axon`. Then restart `axon-native.service` through the
+owning Incus or bare-metal systemd procedure:
 
 ```bash
 axon update
@@ -297,7 +297,8 @@ asset and requires the matching `.sha256` sidecar. It downloads into a temporary
 directory, verifies the checksum and mandatory minisign signature, and installs
 atomically over the destination. Restart the owning native systemd service after
 the update. For local smoke tests or CI, set
-`AXON_UPDATE_FILE_RELEASE_DIR` to a directory containing those two release files
+`AXON_UPDATE_FILE_RELEASE_DIR` to a directory containing the archive, its
+`.sha256` sidecar, and its `.minisig` signature
 and `AXON_UPDATE_INSTALL_PATH` to a temporary destination.
 
 For code/config upgrades:
