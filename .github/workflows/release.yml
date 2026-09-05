@@ -64,8 +64,14 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            [[ "$EVENT_REF" == "refs/heads/main" ]] || { echo "manual releases must be dispatched from main" >&2; exit 1; }
-            tag="$REQUESTED_TAG"
+            if [[ "$EVENT_REF" == "refs/heads/main" ]]; then
+              tag="$REQUESTED_TAG"
+            elif [[ "$EVENT_REF" == refs/tags/v* && -z "$REQUESTED_TAG" ]]; then
+              tag="$EVENT_TAG"
+            else
+              echo "releases must be dispatched from main with release_tag or directly from the release tag" >&2
+              exit 1
+            fi
           else
             tag="$EVENT_TAG"
           fi

@@ -1897,10 +1897,14 @@ fn release_capability_smokes_provide_required_provider_endpoints() {
 #[test]
 fn release_dispatch_builds_and_publishes_the_exact_existing_tag() {
     let workflow = include_str!("../.github/workflows/release.yml");
+    let producer = include_str!("../.github/workflows/release-please.yml");
     assert!(workflow.contains("release_tag:"));
     assert_eq!(workflow.matches("ref: main").count(), 1);
     assert!(workflow.contains("EVENT_SHA: ${{ github.sha }}"));
     assert!(workflow.contains("[[ \"$commit\" == \"$EVENT_SHA\" ]]"));
+    assert!(producer.contains("gh workflow run \"$workflow\" --ref \"$tag\" -f publish=true"));
+    assert!(workflow.contains("$EVENT_REF\" == refs/tags/v*"));
+    assert!(workflow.contains("tag=\"$EVENT_TAG\""));
     assert!(workflow.contains("^v[0-9]+\\.[0-9]+\\.[0-9]+$"));
     assert_eq!(
         workflow
