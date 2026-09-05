@@ -17,6 +17,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 type WebState = (AppState, Arc<axon_core::config::Config>);
+type CodeSearchResponseFuture =
+    Pin<Box<dyn Future<Output = Result<Json<BatchResult<QueryResult>>, HttpError>> + Send>>;
 
 macro_rules! source_handler {
     ($name:ident, $path:literal, $request:ty, $operation:ident, $project:ident, $operation_id:literal) => {
@@ -155,7 +157,7 @@ pub(crate) fn code_search(
     State((state, cfg)): State<WebState>,
     auth: Option<Extension<AuthContext>>,
     Json(request): Json<CodeSearchRequest>,
-) -> Pin<Box<dyn Future<Output = Result<Json<BatchResult<QueryResult>>, HttpError>> + Send>> {
+) -> CodeSearchResponseFuture {
     Box::pin(code_search_owned(state, cfg, auth, request))
 }
 
