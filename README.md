@@ -88,25 +88,31 @@ AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' \
   AXON_VERSION=vX.Y.Z ./install.sh
 ```
 
-The installer requires the trusted `AXON_UPDATE_MINISIGN_PUBKEY`, verifies the
+Obtain the trusted release public key from the reviewed, version-pinned release
+metadata. The installer requires `AXON_UPDATE_MINISIGN_PUBKEY`, verifies the
 release's detached minisign signature and checksum, and installs `axon` to
 `~/.local/bin/axon`. Fetch a version-pinned installer from the reviewed release
 source instead of piping the mutable `main` branch directly to a shell.
 
 ```bash
-AXON_INSTALL_DRY_RUN=1 ./install.sh
-AXON_INSTALL_PREFIX=/opt/axon ./install.sh
-AXON_VERSION=vX.Y.Z ./install.sh          # pin a release; defaults to latest
-AXON_INSTALL_SKIP_SETUP=1 ./install.sh    # skip the axon setup handoff
-AXON_INSTALL_METHOD=build ./install.sh    # cargo build --release instead of pulling
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_INSTALL_DRY_RUN=1 ./install.sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_INSTALL_PREFIX=/opt/axon ./install.sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_VERSION=vX.Y.Z ./install.sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_INSTALL_SKIP_SETUP=1 ./install.sh
+AXON_INSTALL_METHOD=build ./install.sh    # local cargo build; no release download
 ```
 
 ### Windows
 
 Prerequisites: Windows x86_64 (PowerShell 5.1+ or PowerShell Core).
 
+Download `install.ps1` from the reviewed, version-pinned release source, inspect
+it locally, and then execute that pinned file:
+
 ```powershell
-irm https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex
+Invoke-WebRequest '<version-pinned release URL>/install.ps1' -OutFile install.ps1
+Get-Content .\install.ps1
+.\install.ps1
 ```
 
 Installs `axon.exe` to `%USERPROFILE%\.local\bin` and adds it to the user PATH.
@@ -384,7 +390,7 @@ axon memory / sources / domains / stats / status
 axon serve / mcp / doctor / preflight / smoke / config
 ```
 
-For the authoritative, always-current full registry — 110 commands across 49
+For the authoritative, always-current full registry — 113 commands across 49
 groups with summaries and async/mutates markers — see the generated
 [`docs/reference/cli/commands.md`](docs/reference/cli/commands.md) and the
 machine-readable [`docs/reference/cli/commands.json`](docs/reference/cli/commands.json).

@@ -238,6 +238,13 @@ impl QdrantVectorStore {
         };
         let mut state = entry.lock().await;
         if state.users == 0 {
+            if state.process_lease.is_some() {
+                return Err(ApiError::new(
+                    "vector.qdrant.bulk_recovery_required",
+                    ErrorStage::Upserting,
+                    "bulk-load restoration is still pending; recover it before starting a new bulk load",
+                ));
+            }
             let durable = journal.ok_or_else(|| {
                 ApiError::new(
                     "vector.qdrant.bulk_lease_unavailable",
@@ -430,11 +437,15 @@ impl QdrantVectorStore {
         } else {
             Ok(())
         };
-        // LEARNED: durable cleanup can fail after provider restoration; retaining a
-        // zero-user entry would make the next operation inherit a stale baseline.
-        // PATTERN: evict process-local ownership before surfacing journal cleanup.
-        remove_idle_entry(&key, &entry, state.users).await;
-        state.process_lease = None;
+        // A failed provider restore leaves the original recovery threshold live
+        // in the journal. Retain both the registry entry and process lease so a
+        // new begin cannot overwrite that baseline before recovery succeeds.
+        // Once provider restoration succeeds, process-local ownership can be
+        // evicted even if durable journal cleanup itself reports an error.
+        if restoring.is_ok() {
+            remove_idle_entry(&key, &entry, state.users).await;
+            state.process_lease = None;
+        }
         restoring.and(journal_completion)
     }
 

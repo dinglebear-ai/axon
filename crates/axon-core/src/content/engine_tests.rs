@@ -30,7 +30,8 @@ async fn collector_reports_broadcast_lag_as_incomplete() {
         then.status(200).body("<html>ok</html>");
     });
     let client = http_client().unwrap().clone();
-    let page = spider::page::Page::new_page(&server.base_url(), &client).await;
+    let page_client = Website::new(&server.base_url()).configure_http_client();
+    let page = spider::page::Page::new_page(&server.base_url(), &page_client).await;
     let (tx, rx) = tokio::sync::broadcast::channel(1);
     tx.send(page.clone()).unwrap();
     tx.send(page).unwrap();

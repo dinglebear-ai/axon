@@ -162,10 +162,10 @@ pub(crate) async fn code_search(
     let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)
         .map_err(HttpError::from_api_error)?;
     let result = execute_code_search_projection_batch(
-        state.service_context.as_ref(),
+        state.service_context.as_ref().clone(),
         prepared,
         axon_api::CodeSearchCaller::Rest,
-        auth_snapshot.as_ref(),
+        auth_snapshot,
     )
     .await
     .map_err(HttpError::from_api_error)?;

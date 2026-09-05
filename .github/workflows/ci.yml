@@ -191,9 +191,25 @@ jobs:
         with:
           toolchain: 1.97.1
       - name: Validate plugin contract
-        run: just validate-plugin
+        run: python3 scripts/validate_plugin.py
       - name: Run hermetic operational regression catalog
-        run: just operational-test-contracts
+        run: |
+          scripts/test-axon-env.sh
+          scripts/test-axon-wrapper-fast-path.sh
+          scripts/test-axon-backup.sh
+          scripts/test-bench-source-pipeline.sh
+          scripts/test-evaluate-retrieval.sh
+          scripts/test-install-behavior.sh
+          scripts/test-incus-bootstrap.sh
+          scripts/test-live-cli-portability.sh
+          python3 scripts/test-mlx-metrics.py
+          python3 scripts/test_mcp_doc_renderer.py
+          python3 scripts/test_qdrant_quality.py
+          python3 scripts/test_qdrant_tune.py
+          python3 scripts/test_tei_tune.py
+          python3 scripts/test_dockerfile_supply_chain.py
+          python3 scripts/test_operational_docs.py
+          scripts/test-with-timeout.sh
       - name: Validate active documentation semantics
         run: cargo xtask check-doc-contracts
       - name: Scan immutable candidate tree for credentials

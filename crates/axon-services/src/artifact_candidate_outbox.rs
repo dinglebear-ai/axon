@@ -281,6 +281,13 @@ impl ArtifactCandidateOutbox {
         false
     }
 
+    /// Finish an exhausted retry cycle while preserving a request queued during
+    /// its final pass. `true` keeps the current supervised runner responsible
+    /// for that request; `false` releases ownership before the task exits.
+    pub(crate) fn finish_exhausted_drain(&self) -> bool {
+        self.continue_or_finish_drain()
+    }
+
     fn path(&self, delivery_key: &str) -> PathBuf {
         let file_key = file_key_for(delivery_key).expect("validated delivery key");
         self.root.join(format!("{file_key}.json"))

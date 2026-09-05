@@ -47,7 +47,7 @@ async fn opening_existing_database_repairs_database_and_sidecar_modes() {
 
     let dir = tempfile::tempdir().expect("tempdir");
     let db = dir.path().join("jobs.db");
-    std::fs::OpenOptions::new()
+    OpenOptions::new()
         .create(true)
         .write(true)
         .mode(0o666)

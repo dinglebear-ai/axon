@@ -47,6 +47,41 @@ for path in (root / "docs/guides/getting-started.md", root / "docs/architecture/
     if "1.94" in path.read_text():
         raise SystemExit(f"stale Rust version in {path.relative_to(root)}")
 
+security = (root / "docs/operations/security.md").read_text()
+for stale in (
+    "Published on all interfaces.",
+    "forbids adding such a prefix",
+    "do not rely on the compose file to loopback-bind them",
+    "Do **not** add `127.0.0.1:` prefixes",
+):
+    if stale in security:
+        raise SystemExit(f"security guide contradicts loopback-only compose policy: {stale}")
+
+deployment = (root / "docs/operations/deployment.md").read_text()
+plugin_readme = (root / "plugins/axon/README.md").read_text()
+if "deploy and roll back Axon safely in self-hosted environments using Docker Compose" in deployment:
+    raise SystemExit("deployment guide treats Docker Compose as a supported Axon production runtime")
+if "Axon supports Docker Compose, bare-metal systemd" in plugin_readme:
+    raise SystemExit("plugin guide contradicts the root production deployment contract")
+
+readme = (root / "README.md").read_text()
+if "110 commands across 49" in readme:
+    raise SystemExit("README command total is stale")
+if "raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" in readme:
+    raise SystemExit("README executes a mutable Windows installer directly")
+windows_installer = (root / "install.ps1").read_text()
+if "raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" in windows_installer:
+    raise SystemExit("Windows installer recommends executing a mutable bootstrap directly")
+
+overview = (root / "docs/reference/cli/overview.md").read_text()
+if "110 commands" in overview:
+    raise SystemExit("CLI overview command total is stale")
+
+env_matrix = (root / "docs/reference/env-matrix.toml").read_text()
+minisign_entry = env_matrix.split('key = "AXON_UPDATE_MINISIGN_PUBKEY"', 1)[1].split("[[env]]", 1)[0]
+if "Optional minisign public key" in minisign_entry or "SHA256-only" in minisign_entry:
+    raise SystemExit("env matrix describes mandatory updater authentication as optional")
+
 integrity = (root / "crates/axon-cli/src/commands/update/integrity.rs").read_text()
 for stale in ("Inert otherwise", "signature verification is optional"):
     if stale in integrity:

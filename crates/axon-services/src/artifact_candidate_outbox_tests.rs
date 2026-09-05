@@ -167,6 +167,28 @@ fn drain_request_is_not_lost_during_an_active_pass() {
     assert!(!outbox.continue_or_finish_drain());
 }
 
+#[test]
+fn retry_exhaustion_releases_runner_without_consuming_queued_drain() {
+    let outbox = ArtifactCandidateOutbox::new("unused");
+    assert!(outbox.begin_drain());
+    outbox.start_drain_pass();
+
+    // A producer queues another supervised pass while the current pass is
+    // consuming its final retry attempt.
+    assert!(!outbox.begin_drain());
+    assert!(
+        outbox.finish_exhausted_drain(),
+        "the active runner must own the queued follow-up pass"
+    );
+
+    outbox.start_drain_pass();
+    assert!(!outbox.finish_exhausted_drain());
+    assert!(
+        outbox.begin_drain(),
+        "runner exit after the follow-up pass must release drain ownership"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn staged_entries_are_private() {

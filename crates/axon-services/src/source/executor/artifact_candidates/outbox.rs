@@ -95,7 +95,10 @@ pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
                         attempts = retry_attempt,
                         "artifact candidate outbox drain exhausted its retry budget; durable deliveries remain for the next supervised pass"
                     );
-                    let _ = task_outbox.continue_or_finish_drain();
+                    if task_outbox.finish_exhausted_drain() {
+                        retry_attempt = 0;
+                        continue;
+                    }
                     break;
                 }
                 tokio::time::sleep(retry_delay(retry_attempt)).await;

@@ -58,7 +58,7 @@ pub async fn refresh_code_search_index_with_progress(
     ctx: &ServiceContext,
     cwd: Option<&Path>,
     caller: CodeSearchCaller,
-    progress: Option<&dyn ReindexProgressSink>,
+    progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
     refresh_target_local_code_search_index_with_progress(ctx, cwd, caller, progress).await
 }
@@ -67,7 +67,7 @@ async fn refresh_target_local_code_search_index_with_progress(
     ctx: &ServiceContext,
     cwd: Option<&Path>,
     caller: CodeSearchCaller,
-    progress: Option<&dyn ReindexProgressSink>,
+    progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
     let root = resolve_code_search_root(cwd, caller).await?;
     let identity = code_search_identity(ctx.cfg(), root, &ctx.cfg().collection).await;
@@ -79,10 +79,10 @@ async fn refresh_target_local_code_search_index_with_progress(
     let mut request = SourceRequest::local_path(project_root.to_string_lossy(), true);
     request.scope = Some(SourceScope::Repo);
     request.collection = Some(ctx.cfg().collection.clone());
-    emit_target_progress_started(progress);
+    emit_target_progress_started(progress.as_deref());
     match index_source(request, ctx).await {
         Ok(output) if output.status == LifecycleStatus::Completed => {
-            emit_target_progress_finished(progress);
+            emit_target_progress_finished(progress.as_deref());
             let generation = output
                 .ledger
                 .committed_generation

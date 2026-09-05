@@ -1437,7 +1437,11 @@ fn workflow_actions_are_immutably_pinned() {
 fn ci_has_lightweight_plugin_docs_and_candidate_secret_gates() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let contracts = workflow_job_block(workflow, "lightweight-contracts");
-    assert!(contracts.contains("just validate-plugin"));
+    assert!(!contracts.contains("cargo install"));
+    assert!(!contracts.contains("just "));
+    assert!(contracts.contains("python3 scripts/validate_plugin.py"));
+    assert!(contracts.contains("scripts/test-axon-env.sh"));
+    assert!(contracts.contains("python3 scripts/test_operational_docs.py"));
     assert!(contracts.contains("check-doc-contracts"));
     assert!(contracts.contains("check-secrets --tree"));
     assert!(!contracts.contains("cargo test --workspace"));
@@ -1465,7 +1469,20 @@ fn operational_test_entrypoints_are_cataloged_and_required_tests_are_dispatched(
             "uncataloged {path}"
         );
     }
-    assert!(workflow.contains("just operational-test-contracts"));
+    let contracts = workflow_job_block(workflow, "lightweight-contracts");
+    assert!(!contracts.contains("just operational-test-contracts"));
+    for required in [
+        "scripts/test-axon-env.sh",
+        "scripts/test-bench-source-pipeline.sh",
+        "scripts/test-install-behavior.sh",
+        "python3 scripts/test_mcp_doc_renderer.py",
+        "python3 scripts/test_operational_docs.py",
+    ] {
+        assert!(
+            contracts.contains(required),
+            "CI does not dispatch {required}"
+        );
+    }
 }
 
 #[test]

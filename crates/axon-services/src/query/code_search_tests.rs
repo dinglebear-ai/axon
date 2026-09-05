@@ -131,13 +131,13 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
             "fake-embedding",
             8,
         ));
-    let progress = RecordingReindexProgress::default();
+    let progress = Arc::new(RecordingReindexProgress::default());
 
     let refreshed = refresh_code_search_index_with_progress(
         &ctx,
         Some(repo.path()),
         CodeSearchCaller::Cli,
-        Some(&progress),
+        Some(progress.clone()),
     )
     .await
     .expect("target refresh");
@@ -341,11 +341,11 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
         .await
         .expect("initial target refresh");
     std::fs::write(repo.path().join("bad.rs"), [0xff, 0xfe, 0xfd]).expect("bad source file");
-    let progress = RecordingReindexProgress::default();
+    let progress = Arc::new(RecordingReindexProgress::default());
 
     let searched = code_search_with_progress(
-        &ctx,
-        "target_answer",
+        ctx.clone(),
+        "target_answer".to_string(),
         CodeSearchOptions {
             collection: None,
             limit: 10,
@@ -356,7 +356,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             ensure_fresh: true,
             caller: CodeSearchCaller::Cli,
         },
-        Some(&progress),
+        Some(progress.clone()),
     )
     .await
     .expect("ensure_fresh target search should fall back after refresh failure");

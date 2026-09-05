@@ -352,41 +352,7 @@ primitive-inventory-check:
     python3 scripts/check_aurora_primitive_inventory.py
 
 validate-plugin:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    python3 - <<'PY'
-    import json
-    from pathlib import Path
-
-    # The plugin manifest lives under plugins/axon/ (split out of the repo root
-    # in 557591eb); fall back to the legacy root path for older checkouts.
-    manifest = Path("plugins/axon/.claude-plugin/plugin.json")
-    if not manifest.exists():
-        manifest = Path(".claude-plugin/plugin.json")
-    plugin = json.loads(manifest.read_text())
-    for key in ["name", "description", "author"]:
-        if not plugin.get(key):
-            raise SystemExit(f"MISSING: {manifest} {key}")
-    if "version" in plugin:
-        raise SystemExit(f"FORBIDDEN: {manifest} version")
-
-    monitors = manifest.parent / "monitors" / "monitors.json"
-    if not monitors.exists():
-        raise SystemExit(f"MISSING: {monitors}")
-    json.loads(monitors.read_text())
-    mcp_config = manifest.parent.parent / ".mcp.json"
-    if not mcp_config.exists():
-        raise SystemExit(f"MISSING: {mcp_config}")
-    json.loads(mcp_config.read_text())
-
-    readme = manifest.parent.parent / "README.md"
-    text = readme.read_text()
-    if '"action": "crawl", "subaction": "status"' in text:
-        raise SystemExit(f"REMOVED PER-FAMILY LIFECYCLE in {readme}")
-    if '"action": "jobs", "subaction": "get"' not in text:
-        raise SystemExit(f"MISSING unified jobs example in {readme}")
-    PY
-    echo "OK"
+    python3 scripts/validate_plugin.py
 
 # Machine-readable operational-test catalog. The token following each path is
 # the execution class consumed by repository contract review.

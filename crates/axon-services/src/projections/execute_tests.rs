@@ -8,7 +8,7 @@ fn code_search_projection_future_is_send(
     preflight: ProjectionPreflight<PreparedCodeSearchItem>,
 ) {
     assert_send(execute_code_search_projection_batch(
-        ctx,
+        ctx.clone(),
         preflight,
         CodeSearchCaller::Rest,
         None,

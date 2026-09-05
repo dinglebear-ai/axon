@@ -202,8 +202,8 @@ fn rag_paths_use_the_shared_classifier() {
 #[test]
 fn axon_api_mcp_schema_changes_enable_mcp_contract_checks() {
     for file in [
-        "crates/axon-api/src/mcp_schema.rs",
-        "crates/axon-api/src/mcp_schema/requests.rs",
+        "crates/axon-api/src/action.rs",
+        "crates/axon-api/src/action/requests.rs",
     ] {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true");

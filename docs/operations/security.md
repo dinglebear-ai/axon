@@ -258,27 +258,19 @@ path.
 | Service | Compose publish (`docker-compose.prod.yaml`) | Notes |
 |---------|----------------------------------------------|-------|
 | `axon mcp` / `axon serve` / Compose `axon` (HTTP) | `127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001` | Compose publishes on host loopback only. The container binds internally on all interfaces so Docker can forward traffic; direct non-loopback server binds require bearer or OAuth auth. |
-| `axon-qdrant` (compose) | `53333:6333`, `53334:6334` | **Published on all interfaces.** No `127.0.0.1:` prefix. |
-| `axon-tei` (compose) | `${TEI_HTTP_PORT:-52000}:80` | **Published on all interfaces.** |
-| `axon-chrome` (compose) | `6000:6000`, `9222:9222`, `9223:9223` | **Published on all interfaces.** Ports: 6000 = `headless_browser` management API, 9222 = CDP proxy, 9223 = raw Chrome DevTools. **All three are unauthenticated control planes** with no built-in access control. |
+| `axon-qdrant` (compose) | `127.0.0.1:${QDRANT_HTTP_PORT:-53333}:6333`, `127.0.0.1:${QDRANT_GRPC_PORT:-53334}:6334` | Published on host loopback only. |
+| `axon-tei` (compose) | `127.0.0.1:${TEI_HTTP_PORT:-52000}:80` | Published on host loopback only. |
+| `axon-chrome` (compose) | `127.0.0.1:${AXON_CHROME_MANAGEMENT_PORT:-6000}:6000`, `127.0.0.1:${AXON_CHROME_CDP_PORT:-9222}:9222`, `127.0.0.1:${AXON_CHROME_DEVTOOLS_PORT:-9223}:9223` | Published on host loopback only. Ports 6000, 9222, and 9223 remain unauthenticated control planes inside the trusted host boundary. |
 
-> **Caution: the compose files publish these ports on all interfaces.** Every
-> port mapping in `docker-compose.prod.yaml` (and the `docker-compose.yaml` dev
-> stack, which `extends` it) uses a **bare** `host:container` mapping with no
-> `127.0.0.1:` prefix — and the pre-commit check `scripts/check_compose_port_bindings.py`
-> **forbids** adding such a prefix. The host-port mapping is therefore NOT the
-> access boundary. The remaining protections are (a) the in-container process
-> bind — `axon` binds `AXON_HTTP_HOST` (default `127.0.0.1`), so its port is
-> unreachable unless opened deliberately — and (b) whatever host firewall /
-> private network you place around the stack. Qdrant, TEI (`axon-tei:80`), and the
-> unauthenticated Chrome control planes listen on
-> `0.0.0.0` inside their containers, so on a host reachable from an untrusted
-> network their published ports ARE exposed. Restrict them with a host firewall or
-> a private Docker network — do not rely on the compose file to loopback-bind them.
+> **Caution:** the compose files publish provider ports on host loopback, and
+> `scripts/check_compose_port_bindings.py` rejects non-loopback mappings. The
+> provider processes still listen on container interfaces, so any custom
+> override that publishes them beyond loopback must add an explicit authenticated
+> tunnel or proxy. Chrome's CDP and management APIs have no built-in authentication.
 
 Hardening guidance:
 
-- Do not run this stack as-is on a host with untrusted network reachability. Front the infra ports with a host firewall or a private/internal Docker network before exposing the host. (Do **not** add `127.0.0.1:` prefixes to the compose mappings — the repo lint rejects them.)
+- Keep the loopback prefixes on every published provider port. Use an authenticated tunnel or proxy for deliberate cross-host access; never publish Qdrant or Chrome directly to an untrusted network.
 - For the MCP server on a non-loopback host, set a long random `AXON_HTTP_TOKEN` (`openssl rand -hex 32`) or configure `AXON_AUTH_MODE=oauth`.
 - Never expose Qdrant or Chrome's CDP / management ports to a network. The upstream `headless_browser` and Chrome DevTools Protocol have **no built-in authentication** — anyone who can reach 6000/9222/9223 can run arbitrary JS, navigate to internal URLs, exfiltrate cookies from any origin Chrome has visited, and (via `Page.navigate` on `file://` URLs) read local files inside the container.
 

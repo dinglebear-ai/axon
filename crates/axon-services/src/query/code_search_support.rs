@@ -61,7 +61,7 @@ pub enum ReindexProgress {
     },
 }
 
-pub trait ReindexProgressSink: Sync {
+pub trait ReindexProgressSink: Send + Sync {
     fn emit(&self, progress: ReindexProgress);
 }
 

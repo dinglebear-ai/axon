@@ -39,7 +39,7 @@ Headline command groups:
 
 The authoritative, always-current registry is generated:
 [`commands.md`](commands.md) (grouped tables) and [`commands.json`](commands.json)
-(machine-readable, 110 commands, `contract_version: 2026-06-30`). Regenerated
+(machine-readable, 113 commands, `contract_version: 2026-06-30`). Regenerated
 by `cargo xtask schemas cli`; cross-checked against the live clap tree.
 Per-command flags: `axon <cmd> --help`.
 

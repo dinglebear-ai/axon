@@ -3596,7 +3596,7 @@ url_or_path = false
 container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
-reason = "Optional minisign public key for the self-updater to verify release-archive signatures; inert (SHA256-only) when unset. Host-side CLI updater only."
+reason = "Mandatory release-authentication key embedded into published binaries and required by the installer; installation and self-update fail closed when absent. Host-side only."
 
 [[env]]
 key = "AXON_OPENAI_BASE_URL"

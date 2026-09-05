@@ -39,24 +39,24 @@ pub async fn code_search(
     text: &str,
     opts: CodeSearchOptions,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
-    code_search_with_progress(ctx, text, opts, None).await
+    code_search_with_progress(ctx.clone(), text.to_owned(), opts, None).await
 }
 
 /// Owned-input boundary for transport handlers whose futures must be `Send`.
 pub async fn code_search_owned(
-    ctx: &ServiceContext,
+    ctx: ServiceContext,
     text: String,
     opts: CodeSearchOptions,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
-    code_search_with_progress(ctx, &text, opts, None).await
+    code_search_with_progress(ctx, text, opts, None).await
 }
 
 #[must_use = "code_search_with_progress returns a Result that should be handled"]
 pub async fn code_search_with_progress(
-    ctx: &ServiceContext,
-    text: &str,
+    ctx: ServiceContext,
+    text: String,
     opts: CodeSearchOptions,
-    progress: Option<&dyn ReindexProgressSink>,
+    progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     if text.len() > MAX_CODE_SEARCH_QUERY_LEN_BYTES {
         return Err(format!(
@@ -72,23 +72,23 @@ pub async fn code_search_with_progress(
         .map(validate_path_prefix)
         .transpose()?
         .flatten();
-    target_code_search(ctx, text, opts, path_prefix.as_deref(), progress).await
+    target_code_search(ctx, text, opts, path_prefix, progress).await
 }
 
 async fn target_code_search(
-    ctx: &ServiceContext,
-    text: &str,
+    ctx: ServiceContext,
+    text: String,
     opts: CodeSearchOptions,
-    path_prefix: Option<&str>,
-    progress: Option<&dyn ReindexProgressSink>,
+    path_prefix: Option<String>,
+    progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     let refresh = if opts.ensure_fresh {
-        refresh_code_search_index_with_progress(ctx, opts.cwd.as_deref(), opts.caller, progress)
+        refresh_code_search_index_with_progress(&ctx, opts.cwd.as_deref(), opts.caller, progress)
             .await?
     } else {
         let collection = opts.collection.as_deref().unwrap_or(&ctx.cfg().collection);
         refresh::target_code_search_committed_state(
-            ctx,
+            &ctx,
             opts.cwd.as_deref(),
             opts.caller,
             collection,
@@ -96,20 +96,20 @@ async fn target_code_search(
         .await?
     };
     let Some(source_id) = refresh.target_source_id.clone() else {
-        return Ok(code_search_missing_index_result(text, refresh.freshness));
+        return Ok(code_search_missing_index_result(&text, refresh.freshness));
     };
     let Some(generation) = refresh.target_source_generation.clone() else {
-        return Ok(code_search_missing_index_result(text, refresh.freshness));
+        return Ok(code_search_missing_index_result(&text, refresh.freshness));
     };
     if ctx.target_local_source_runtime().is_none() {
-        return Ok(code_search_missing_index_result(text, refresh.freshness));
+        return Ok(code_search_missing_index_result(&text, refresh.freshness));
     }
     let execution = ReadExecution::begin(
-        ctx,
+        &ctx,
         ctx.cfg(),
         OperationKind::Query,
         serde_json::json!({
-            "query": text,
+            "query": &text,
             "collection": ctx.cfg().collection,
             "source_id": source_id.0,
             "generation": generation.0,
@@ -133,7 +133,7 @@ async fn target_code_search(
                 model,
                 items: vec![EmbeddingInput {
                     chunk_id: ChunkId::new("code-search-query"),
-                    text: text.to_string(),
+                    text: text.clone(),
                     content_kind: ContentKind::Code,
                     metadata: MetadataMap::new(),
                 }],
@@ -155,12 +155,12 @@ async fn target_code_search(
             opts.collection
                 .clone()
                 .unwrap_or_else(|| ctx.cfg().collection.clone()),
-            text,
+            &text,
             opts.limit.saturating_add(opts.offset).max(1),
             dense_vector,
             &source_id,
             &generation,
-            path_prefix,
+            path_prefix.as_deref(),
             opts.language.as_deref(),
         )?;
         let matches = store
@@ -179,14 +179,14 @@ async fn target_code_search(
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(CodeSearchResult {
-            query: text.to_string(),
+            query: text.clone(),
             content_trust: "untrusted_local_code".to_string(),
             results,
             freshness: refresh.freshness,
         })
     }
     .await;
-    execution.finish(ctx, &result).await;
+    execution.finish(&ctx, &result).await;
     result
 }
 

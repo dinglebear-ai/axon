@@ -694,6 +694,59 @@ async fn failed_finish_journal_clear_evicts_owner_and_next_begin_captures_fresh_
 }
 
 #[tokio::test]
+async fn failed_final_restore_blocks_new_baseline_until_recovery() {
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method("PATCH")
+                .path("/collections/restore-pending")
+                .json_body(serde_json::json!({
+                    "optimizers_config": {"indexing_threshold": 10_485_760}
+                }));
+            then.status(200);
+        })
+        .await;
+    server
+        .mock_async(|when, then| {
+            when.method("PATCH")
+                .path("/collections/restore-pending")
+                .json_body(serde_json::json!({
+                    "optimizers_config": {"indexing_threshold": 20_000}
+                }));
+            then.status(500);
+        })
+        .await;
+    let directory = std::env::temp_dir().join(format!(
+        "axon-bulk-failed-final-restore-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let journal = BulkLoadJournal::open(&directory).unwrap();
+    let mut first = QdrantVectorStore::new(server.base_url(), "first");
+    configure_bulk_load(&mut first, true, 10_485_760, 20_000);
+    let key = first.bulk_load_key("restore-pending").unwrap();
+    first
+        .begin_bulk_load_transition_with_journal("restore-pending", Ok(Some(&journal)))
+        .await
+        .unwrap();
+    first
+        .finish_bulk_load_transition_with_journal("restore-pending", Ok(Some(&journal)))
+        .await
+        .expect_err("final restore must fail");
+
+    let mut second = QdrantVectorStore::new(server.base_url(), "second");
+    configure_bulk_load(&mut second, true, 9_000_000, 30_000);
+    let error = second
+        .begin_bulk_load_transition_with_journal("restore-pending", Ok(Some(&journal)))
+        .await
+        .expect_err("new begin must wait for recovery");
+    assert_eq!(error.code.0, "vector.qdrant.bulk_recovery_required");
+    assert_eq!(journal.pending().unwrap()[0].restore_threshold, 20_000);
+
+    BULK_LOAD_USERS.lock().await.remove(&key);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
 async fn unrelated_collections_do_not_hold_the_registry_during_provider_io() {
     let server = MockServer::start_async().await;
     server

@@ -97,10 +97,10 @@ impl AxonMcpServer {
             .await
             .map_err(|error| logged_internal_error("code_search.context", error.as_ref()))?;
         let result = execute_code_search_projection_batch(
-            ctx.as_ref(),
+            ctx.as_ref().clone(),
             prepared,
             axon_api::CodeSearchCaller::Mcp,
-            auth.as_ref(),
+            auth,
         )
         .await
         .map_err(|error| logged_internal_error("code_search.execute", &error))?;

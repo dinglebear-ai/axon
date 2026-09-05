@@ -229,7 +229,7 @@ fn validate_response_size<T: serde::Serialize>(value: &T, maximum: usize) -> Res
 }
 
 pub async fn execute_code_search_projection_batch(
-    ctx: &ServiceContext,
+    ctx: ServiceContext,
     preflight: ProjectionPreflight<PreparedCodeSearchItem>,
     caller: CodeSearchCaller,
     auth: Option<AuthSnapshot>,
@@ -248,7 +248,7 @@ pub async fn execute_code_search_projection_batch(
             outcome.clone()
         } else {
             let result = crate::query::code_search_owned(
-                ctx,
+                ctx.clone(),
                 plan.query,
                 CodeSearchOptions {
                     collection: plan.collection,

@@ -37,9 +37,10 @@ axon memory context      # recall memories for the current git project
 To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 
 The `.mcp.json` uses HTTP transport and connects Claude Code to
-`${user_config.server_url}/mcp` with the configured bearer token. Axon supports
-Docker Compose, bare-metal systemd, and native systemd inside Incus; see the
-root deployment documentation and `deploy/systemd/README.md`.
+`${user_config.server_url}/mcp` with the configured bearer token. Supported
+production runtimes are bare-metal systemd and native systemd inside Incus.
+Docker Compose is limited to local/reference infrastructure; see the root
+deployment documentation and `deploy/systemd/README.md`.
 
 ### Session Memory and Auto-Ingest
 

@@ -26,12 +26,16 @@ Last Updated: 10:25:00 | 03/11/2026 EST
 
 ## Scope
 
-This guide defines how to deploy and roll back Axon safely in self-hosted environments using Docker Compose.
+This guide defines how to provision and roll back Axon's local/reference
+infrastructure with Docker Compose. Production deployments run the Axon binary
+under systemd, either on bare metal or inside an Incus system container; see
+`deploy/systemd/README.md` and `deploy/incus/README.md`.
 
 ## Deployment Targets
 
-- Primary: compose stack defined in `docker-compose.prod.yaml`
-- Optional runtime clients: CLI (`./scripts/axon`) and MCP HTTP clients
+- Production Axon runtime: native systemd, preferably inside Incus
+- Local/reference infrastructure: services from `docker-compose.prod.yaml`
+- Runtime clients: CLI (`./scripts/axon`) and MCP HTTP clients
 
 ## Prerequisites
 
@@ -141,7 +145,7 @@ AXON_BIN=/workspace/axon/target/release/axon
 
 Ensure `.env` is never committed. `.env.example` remains tracked.
 
-## Standard Deploy Procedure
+## Standard Infrastructure Procedure
 
 1. Run bootstrap (first time only, or after pulling a new checkout):
 
@@ -163,11 +167,8 @@ docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 ```
 
-To run the `axon` service through Compose, start the full stack:
-
-```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d
-```
+Do not use the Compose `axon` service as a supported production deployment.
+Install the native binary and follow the Incus or bare-metal systemd guide.
 
 To run Qdrant locally for test data instead, set
 `AXON_QDRANT_URL=http://axon-qdrant:6333` for the Axon container and start the
