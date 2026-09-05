@@ -445,17 +445,17 @@ pub(crate) fn code_search_missing_index_freshness(
 }
 
 pub(crate) async fn resolve_code_search_root(
-    cwd: Option<&Path>,
+    cwd: Option<PathBuf>,
     caller: CodeSearchCaller,
 ) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
     let cwd = match (caller, cwd) {
-        (CodeSearchCaller::Cli, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Cli, Some(cwd)) => cwd,
         (CodeSearchCaller::Cli, None) => std::env::current_dir()?,
-        (CodeSearchCaller::Mcp, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Mcp, Some(cwd)) => cwd,
         (CodeSearchCaller::Mcp, None) => {
             return Err("code_search MCP requests must provide cwd".into());
         }
-        (CodeSearchCaller::Rest, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Rest, Some(cwd)) => cwd,
         (CodeSearchCaller::Rest, None) => {
             return Err("code_search REST requests must provide an explicit root".into());
         }

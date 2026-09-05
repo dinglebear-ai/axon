@@ -95,20 +95,21 @@ pub(super) struct CodeSearchAllowedRoots {
 impl CodeSearchAllowedRoots {
     pub(super) async fn from_env() -> Result<Self, Box<dyn Error + Send + Sync>> {
         let raw = std::env::var("AXON_CODE_SEARCH_ALLOWED_ROOTS").unwrap_or_default();
-        Self::from_root_strings(
-            raw.split([':', ','])
-                .map(str::trim)
-                .filter(|part| !part.is_empty()),
-        )
-        .await
+        let parts = raw
+            .split([':', ','])
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        Self::from_root_strings(parts).await
     }
 
-    async fn from_root_strings<'a>(
-        parts: impl IntoIterator<Item = &'a str>,
+    async fn from_root_strings(
+        parts: impl IntoIterator<Item = String>,
     ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mut roots = Vec::new();
         for part in parts {
-            roots.push(validate_allowed_root(part).await?);
+            roots.push(validate_allowed_root(&part).await?);
         }
         Ok(Self { roots })
     }

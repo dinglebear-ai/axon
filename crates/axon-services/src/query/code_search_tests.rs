@@ -510,7 +510,7 @@ fn code_search_allowed_roots_error_does_not_leak_absolute_path() {
 async fn code_search_resolution_errors_do_not_echo_probe_paths() {
     let dir = crate::test_support::visible_tempdir().expect("tempdir");
     let missing = dir.path().join("secret-checkout");
-    let err = resolve_code_search_root(Some(&missing), CodeSearchCaller::Cli)
+    let err = resolve_code_search_root(Some(missing), CodeSearchCaller::Cli)
         .await
         .unwrap_err()
         .to_string();

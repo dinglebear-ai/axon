@@ -36,7 +36,7 @@ pub async fn resolve_code_search_project(
     cwd: Option<&Path>,
     caller: CodeSearchCaller,
 ) -> Result<CodeSearchProjectResult, Box<dyn Error + Send + Sync>> {
-    let root = resolve_code_search_root(cwd, caller).await?;
+    let root = resolve_code_search_root(cwd.map(Path::to_path_buf), caller).await?;
     let identity =
         code_search_identity(ctx.cfg().clone(), root, ctx.cfg().collection.clone()).await;
     Ok(CodeSearchProjectResult {
@@ -76,7 +76,7 @@ pub(super) async fn refresh_code_search_index_owned_with_progress(
     caller: CodeSearchCaller,
     progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    let root = resolve_code_search_root(cwd.as_deref(), caller).await?;
+    let root = resolve_code_search_root(cwd, caller).await?;
     let identity =
         code_search_identity(ctx.cfg().clone(), root, ctx.cfg().collection.clone()).await;
     let Some(_) = ctx.target_local_source_runtime() else {
@@ -217,7 +217,7 @@ pub(super) async fn target_code_search_committed_state_owned(
     caller: CodeSearchCaller,
     collection: String,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    let root = resolve_code_search_root(cwd.as_deref(), caller).await?;
+    let root = resolve_code_search_root(cwd, caller).await?;
     let identity = code_search_identity(ctx.cfg().clone(), root, collection).await;
     let Some(target) = ctx.target_local_source_runtime() else {
         return Ok(target_refresh_unavailable_result(identity));
