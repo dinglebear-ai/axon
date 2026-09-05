@@ -13966,9 +13966,6 @@
       "title": "PrunePlan",
       "type": "object"
     },
-    "PrunePlan_ArtifactId": {
-      "type": "string"
-    },
     "PrunePlan_ChunkId": {
       "type": "string"
     },
@@ -13979,9 +13976,6 @@
       "type": "string"
     },
     "PrunePlan_GraphEdgeId": {
-      "type": "string"
-    },
-    "PrunePlan_GraphNodeId": {
       "type": "string"
     },
     "PrunePlan_JobId": {
@@ -14120,117 +14114,6 @@
           "required": [
             "kind",
             "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a single artifact by id (never by arbitrary path).",
-          "properties": {
-            "artifact_id": {
-              "$ref": "#/$defs/PrunePlan_ArtifactId"
-            },
-            "kind": {
-              "const": "artifact",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "artifact_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune graph nodes/edges (orphan cleanup).",
-          "properties": {
-            "edge_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PrunePlan_GraphEdgeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "graph",
-              "type": "string"
-            },
-            "node_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PrunePlan_GraphNodeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune (forget) memory records.",
-          "properties": {
-            "kind": {
-              "const": "memory",
-              "type": "string"
-            },
-            "memory_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PrunePlan_MemoryId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Job-retention cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "job_retention",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Cache cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "cache",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
           ],
           "type": "object"
         }
@@ -14617,19 +14500,7 @@
       "title": "PruneRequest",
       "type": "object"
     },
-    "PruneRequest_ArtifactId": {
-      "type": "string"
-    },
     "PruneRequest_CleanupDebtId": {
-      "type": "string"
-    },
-    "PruneRequest_GraphEdgeId": {
-      "type": "string"
-    },
-    "PruneRequest_GraphNodeId": {
-      "type": "string"
-    },
-    "PruneRequest_MemoryId": {
       "type": "string"
     },
     "PruneRequest_PruneSelector": {
@@ -14704,117 +14575,6 @@
           "required": [
             "kind",
             "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a single artifact by id (never by arbitrary path).",
-          "properties": {
-            "artifact_id": {
-              "$ref": "#/$defs/PruneRequest_ArtifactId"
-            },
-            "kind": {
-              "const": "artifact",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "artifact_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune graph nodes/edges (orphan cleanup).",
-          "properties": {
-            "edge_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneRequest_GraphEdgeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "graph",
-              "type": "string"
-            },
-            "node_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneRequest_GraphNodeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune (forget) memory records.",
-          "properties": {
-            "kind": {
-              "const": "memory",
-              "type": "string"
-            },
-            "memory_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneRequest_MemoryId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Job-retention cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "job_retention",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Cache cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "cache",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
           ],
           "type": "object"
         }

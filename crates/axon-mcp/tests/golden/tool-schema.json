@@ -1118,7 +1118,6 @@
     "AxonToolResponse": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`AxonToolResponse` is the MCP `axon` tool's response envelope. Per the\ntool contract (`docs/pipeline-unification/surfaces/tool-contract.md`,\n§Design Rules: \"Return structured envelopes for every response\"), it is\nconverging toward the same shared envelope shape REST uses\n(`axon_api::source::SuccessEnvelope`) — `request_id`/`contract_version`\nare populated on every response; `job`/`watch`/`artifacts`/`pagination`/\n`trace` are populated only where the constructing handler already has\nthat data (most call sites do not yet thread it through — see WS-G\nfollowups), so they stay optional/empty rather than fabricated.",
       "properties": {
         "action": {
           "type": "string"
@@ -1128,7 +1127,6 @@
           "type": "array"
         },
         "contract_version": {
-          "description": "See [`MCP_CONTRACT_VERSION`].",
           "type": "string"
         },
         "data": true,
@@ -1138,7 +1136,6 @@
         },
         "pagination": true,
         "request_id": {
-          "description": "Unique id for this response, generated once per call. Present on\nevery response (unlike the REST envelope's `request_id`, which is\nassigned by transport middleware, this one is assigned here because\nMCP has no equivalent per-request middleware seam yet).",
           "type": "string"
         },
         "subaction": {
@@ -5662,11 +5659,6 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:d2f9859a8ac45aafaddb449a2b0a7b3733be0cf12f8046c2cc498cbe2d4bbb61",
-        "kind": "rust_module",
-        "path": "crates/axon-api/src/mcp_schema.rs"
-      },
-      {
         "checksum": "sha256:56370b8c7b8fa0062f040c3d579ad7c12ad29ed36d8a4e48e0f9d13c1013afec",
         "kind": "rust_module",
         "path": "crates/axon-api/src/action/prune_request.rs"
@@ -5697,17 +5689,22 @@
         "path": "crates/axon-api/src/action/utility.rs"
       },
       {
+        "checksum": "sha256:0d6b3812c3e9bff0e9557fcbf553f6cfe5c329b30726979b4f2987566dc0e73f",
+        "kind": "rust_module",
+        "path": "crates/axon-mcp/src/schema.rs"
+      },
+      {
         "checksum": "sha256:035319b6947e58f23490e85eed25d3d1abdb87b2954eaa8e943ad40b516a6cb1",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:fc0ef44267927f7086e20d9c86735ea676d2484989491633beb35e55a65036f8",
+        "checksum": "sha256:85d7775c9616eb56c3cb9205a687c9fe0f6954731221a8c0775fee7c94898b3b",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:3717c3f9668f67df14915497d250ed8270bbfc7daf514d8f900e53bae8082bdb",
+        "checksum": "sha256:c818f4f3c5ae3d2a70b946f0ae88795e74a1e6ba0a2a5844beb1037df1de3667",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },
@@ -5717,7 +5714,7 @@
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:c1f983a8fe02ec10747e7deb25b71e03d901012710e2834f0abdc82ff331bedd",
+        "checksum": "sha256:b54190a8b9c46db3306558115e2955830ede6eff6b25e62df3205aac66c400e3",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }
