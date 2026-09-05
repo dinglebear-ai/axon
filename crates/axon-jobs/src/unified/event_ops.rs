@@ -63,7 +63,7 @@ pub(crate) async fn append_job_event_tx(
         })?;
     event.validate_bounds().map_err(|error| *error)?;
     let (details, redaction_report) =
-        redact_metadata(event_details(&event), &redaction_context, &redactor);
+        redact_metadata(event_details(event), &redaction_context, &redactor);
     let details = stamp_redaction_metadata(details, &redaction_report);
     sqlx::query(
         "INSERT INTO job_events (
