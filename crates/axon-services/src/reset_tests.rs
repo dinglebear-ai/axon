@@ -80,6 +80,21 @@ fn cfg_with(stores: Vec<&str>, dry_run: bool, yes: bool) -> Config {
     cfg
 }
 
+#[tokio::test]
+async fn planned_reset_equals_the_durable_plan_read_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = cfg_with(vec![RESET_STORE_ARTIFACTS], true, false);
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    cfg.output_dir = dir.path().join("artifacts");
+
+    let planned = reset(&cfg).await.expect("reset plan");
+    let loaded = reset_get_saved_plan(&cfg, &planned.plan_id)
+        .await
+        .expect("durable reset plan");
+
+    assert_eq!(planned, loaded);
+}
+
 #[test]
 fn resolve_stores_defaults_to_all_in_canonical_order() {
     let cfg = cfg_with(vec![], false, false);

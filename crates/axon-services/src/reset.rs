@@ -186,7 +186,7 @@ pub async fn reset_with_authz(
     let prepared = prepare_reset(cfg, stores, reset_id, plan_id, dry_run).await?;
     let result = planned_reset_result(prepared);
     plan_store::save_plan(cfg, &result).await?;
-    Ok(result)
+    plan_store::load_plan(cfg, &result.plan_id).await
 }
 
 async fn execute_saved_plan(
