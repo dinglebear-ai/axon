@@ -1902,6 +1902,7 @@ fn release_dispatch_builds_and_publishes_the_exact_existing_tag() {
     assert_eq!(workflow.matches("ref: main").count(), 1);
     assert!(workflow.contains("EVENT_SHA: ${{ github.sha }}"));
     assert!(workflow.contains("[[ \"$commit\" == \"$EVENT_SHA\" ]]"));
+    assert!(workflow.contains("git merge-base --is-ancestor \"$commit\" origin/main"));
     assert!(producer.contains("gh workflow run \"$workflow\" --ref \"$tag\" -f publish=true"));
     assert!(workflow.contains("$EVENT_REF\" == refs/tags/v*"));
     assert!(workflow.contains("tag=\"$EVENT_TAG\""));
