@@ -85,7 +85,7 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | `crates/axon-api/src/action/requests/graph.rs` | `sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1` |
 | `crates/axon-api/src/action/requests/watch.rs` | `sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a` |
 | `crates/axon-api/src/action/utility.rs` | `sha256:87986a79e3cf49b28af6bd41672e2395ddbb41dbbf9c8b791c85cc0515a16a56` |
-| `crates/axon-mcp/src/schema.rs` | `sha256:0d6b3812c3e9bff0e9557fcbf553f6cfe5c329b30726979b4f2987566dc0e73f` |
+| `crates/axon-mcp/src/schema.rs` | `sha256:4c30bc10efdd0744361ec5525a578a453787891072a507fbe0ea3a3bc6dc8fd9` |
 | `crates/axon-mcp/src/schema_registry.rs` | `sha256:035319b6947e58f23490e85eed25d3d1abdb87b2954eaa8e943ad40b516a6cb1` |
 | `crates/axon-mcp/src/server.rs` | `sha256:85d7775c9616eb56c3cb9205a687c9fe0f6954731221a8c0775fee7c94898b3b` |
 | `crates/axon-mcp/src/server/authz.rs` | `sha256:c818f4f3c5ae3d2a70b946f0ae88795e74a1e6ba0a2a5844beb1037df1de3667` |

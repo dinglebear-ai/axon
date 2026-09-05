@@ -1118,6 +1118,7 @@
     "AxonToolResponse": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
+      "description": "`AxonToolResponse` is the MCP `axon` tool's response envelope. Per the\ntool contract (`docs/pipeline-unification/surfaces/tool-contract.md`,\n§Design Rules: \"Return structured envelopes for every response\"), it is\nconverging toward the same shared envelope shape REST uses\n(`axon_api::source::SuccessEnvelope`) — `request_id`/`contract_version`\nare populated on every response; `job`/`watch`/`artifacts`/`pagination`/\n`trace` are populated only where the constructing handler already has\nthat data (most call sites do not yet thread it through — see WS-G\nfollowups), so they stay optional/empty rather than fabricated.",
       "properties": {
         "action": {
           "type": "string"
@@ -1127,6 +1128,7 @@
           "type": "array"
         },
         "contract_version": {
+          "description": "See [`MCP_CONTRACT_VERSION`].",
           "type": "string"
         },
         "data": true,
@@ -1136,6 +1138,7 @@
         },
         "pagination": true,
         "request_id": {
+          "description": "Unique id for this response, generated once per call. Present on\nevery response (unlike the REST envelope's `request_id`, which is\nassigned by transport middleware, this one is assigned here because\nMCP has no equivalent per-request middleware seam yet).",
           "type": "string"
         },
         "subaction": {
@@ -5689,7 +5692,7 @@
         "path": "crates/axon-api/src/action/utility.rs"
       },
       {
-        "checksum": "sha256:0d6b3812c3e9bff0e9557fcbf553f6cfe5c329b30726979b4f2987566dc0e73f",
+        "checksum": "sha256:4c30bc10efdd0744361ec5525a578a453787891072a507fbe0ea3a3bc6dc8fd9",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema.rs"
       },
