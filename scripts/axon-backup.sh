@@ -76,7 +76,9 @@ fi
 
 mkdir -p -m 0700 "${OUTPUT_DIR}" "${QDRANT_DIR}" "${SQLITE_DIR}"
 chmod 0700 "${OUTPUT_DIR}" "${QDRANT_DIR}" "${SQLITE_DIR}"
-output_owner="$(stat -f '%u' "$OUTPUT_DIR" 2>/dev/null || stat -c '%u' "$OUTPUT_DIR")"
+# GNU stat accepts -f with different semantics, so try its -c form first.
+# BSD stat rejects -c and falls back to the macOS-compatible -f form.
+output_owner="$(stat -c '%u' "$OUTPUT_DIR" 2>/dev/null || stat -f '%u' "$OUTPUT_DIR")"
 [[ "$output_owner" = "$(id -u)" ]] || {
     echo "ERROR: backup output root is not owned by the invoking user: ${OUTPUT_DIR}" >&2
     exit 1
@@ -178,10 +180,10 @@ fi
 echo "[3/3] Backup complete."
 echo "  Manifest: ${MANIFEST}"
 for protected_file in "$QDRANT_DEST" "$MANIFEST"; do
-    protected_mode="$(stat -f '%Lp' "$protected_file" 2>/dev/null || stat -c '%a' "$protected_file")"
+    protected_mode="$(stat -c '%a' "$protected_file" 2>/dev/null || stat -f '%Lp' "$protected_file")"
     [[ "$protected_mode" = 600 ]] || { echo "ERROR: insecure backup mode on $protected_file" >&2; exit 1; }
 done
 if [[ -n "$SQLITE_DEST" ]]; then
-    sqlite_mode="$(stat -f '%Lp' "$SQLITE_DEST" 2>/dev/null || stat -c '%a' "$SQLITE_DEST")"
+    sqlite_mode="$(stat -c '%a' "$SQLITE_DEST" 2>/dev/null || stat -f '%Lp' "$SQLITE_DEST")"
     [[ "$sqlite_mode" = 600 ]] || { echo "ERROR: insecure backup mode on $SQLITE_DEST" >&2; exit 1; }
 fi
