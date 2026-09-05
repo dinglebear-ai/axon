@@ -90,8 +90,6 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: lts/*
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
       - name: Build web panel once
         working-directory: apps/web
         run: npm ci && npm run build

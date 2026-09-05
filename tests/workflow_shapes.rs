@@ -1860,6 +1860,18 @@ fn release_builds_web_assets_once_for_both_native_targets() {
 }
 
 #[test]
+fn release_web_assets_do_not_cache_code_from_a_resolved_commit() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let web = workflow_job_block(workflow, "web-assets");
+
+    assert!(web.contains("uses: actions/setup-node@"));
+    assert!(
+        !web.contains("cache: npm") && !web.contains("cache-dependency-path:"),
+        "release builds execute a resolved commit and must not populate a shared npm cache"
+    );
+}
+
+#[test]
 fn release_capability_smokes_provide_required_provider_endpoints() {
     let workflow = include_str!("../.github/workflows/release.yml");
     for job_name in ["axon-linux", "axon-windows"] {
