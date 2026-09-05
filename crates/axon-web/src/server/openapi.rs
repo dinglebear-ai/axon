@@ -222,7 +222,7 @@ use super::{handlers, routing};
         axon_api::source::MemorySupersedeResponse,
         axon_api::source::WatchResult,
         axon_api::source::WatchSummary,
-        axon_api::source::WatchSummaryPage,
+        axon_api::source::Page<axon_api::source::WatchSummary>,
         axon_api::source::WatchHistoryResult,
         axon_api::source::WatchStatusResponse,
         axon_api::source::WatchDeleteResponse,

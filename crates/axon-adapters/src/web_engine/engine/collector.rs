@@ -423,8 +423,8 @@ async fn process_received_page(
     crawl_started: std::time::Instant,
     discovered: &mut HashSet<String>,
 ) -> Result<(), String> {
-    let url = canonicalize_url_for_dedupe(page.get_url().as_ref())
-        .unwrap_or_else(|| page.get_url().to_string());
+    let url =
+        canonicalize_url_for_dedupe(page.get_url()).unwrap_or_else(|| page.get_url().to_string());
     let html_bytes = page.get_html_bytes_u8().to_vec();
     let outcome = process_page(&html_bytes, &url, col);
     commit_received_page(

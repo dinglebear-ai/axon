@@ -2984,7 +2984,15 @@ export interface components {
             json: boolean;
             response_mode: components["schemas"]["ResponseMode"];
         };
-        Page: {
+        Page_JobSummary: {
+            items: components["schemas"]["JobSummary"][];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
+        Page_WatchSummary: {
             items: components["schemas"]["WatchSummary"][];
             /** Format: int32 */
             limit: number;
@@ -6622,7 +6630,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page"];
+                    "application/json": components["schemas"]["Page_JobSummary"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10008,7 +10016,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page"];
+                    "application/json": components["schemas"]["Page_WatchSummary"];
                 };
             };
             /** @description Missing or invalid authentication */

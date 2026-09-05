@@ -83,7 +83,7 @@ where
     get,
     path = "/v1/jobs",
     params(UnifiedJobListQuery),
-    responses((status = 200, description = "Unified jobs", body = axon_api::source::JobSummaryPage)),
+    responses((status = 200, description = "Unified jobs", body = axon_api::source::Page<axon_api::source::JobSummary>)),
     tag = "jobs"
 )]
 pub(crate) async fn list_unified_jobs(

@@ -109,9 +109,9 @@ async fn target_code_search(
     if ctx.target_local_source_runtime().is_none() {
         return Ok(code_search_missing_index_result(&text, refresh.freshness));
     }
-    let execution = ReadExecution::begin(
-        &ctx,
-        ctx.cfg(),
+    let execution = ReadExecution::begin_owned(
+        ctx.clone(),
+        std::sync::Arc::new(ctx.cfg().clone()),
         OperationKind::Query,
         serde_json::json!({
             "query": &text,

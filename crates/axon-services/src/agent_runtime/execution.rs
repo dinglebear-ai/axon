@@ -58,7 +58,7 @@ pub(super) async fn run_loop(
                 })
                 .await;
             }
-            execute_proposal(&store, &client, &mut turn, pending, approval).await?;
+            execute_proposal(store, client, &mut turn, pending, approval).await?;
             continue;
         }
         let id = turn_id.to_string();

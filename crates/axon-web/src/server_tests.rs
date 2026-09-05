@@ -241,6 +241,25 @@ fn openapi_document_matches_openapi_route_inventory() {
 }
 
 #[test]
+fn openapi_keeps_job_and_watch_page_item_schemas_distinct() {
+    let document = serde_json::to_value(crate::server::openapi_document()).unwrap();
+    let jobs_schema = &document["paths"]["/v1/jobs"]["get"]["responses"]["200"]["content"]["application/json"]
+        ["schema"];
+    let watches_schema = &document["paths"]["/v1/watches"]["get"]["responses"]["200"]["content"]["application/json"]
+        ["schema"];
+
+    assert_ne!(jobs_schema, watches_schema);
+    assert_eq!(
+        document.pointer("/components/schemas/Page_JobSummary/properties/items/items/$ref"),
+        Some(&serde_json::json!("#/components/schemas/JobSummary"))
+    );
+    assert_eq!(
+        document.pointer("/components/schemas/Page_WatchSummary/properties/items/items/$ref"),
+        Some(&serde_json::json!("#/components/schemas/WatchSummary"))
+    );
+}
+
+#[test]
 fn codex_openapi_exposes_typed_responses_and_server_owned_revisions() {
     let document = serde_json::to_value(crate::server::openapi_document()).unwrap();
     let schemas = &document["components"]["schemas"];

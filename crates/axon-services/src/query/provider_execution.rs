@@ -19,6 +19,16 @@ pub(super) struct ReadExecution {
 }
 
 impl ReadExecution {
+    pub(super) async fn begin_owned(
+        ctx: ServiceContext,
+        cfg: Arc<Config>,
+        operation: OperationKind,
+        request: serde_json::Value,
+        auth_snapshot: Option<AuthSnapshot>,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        Self::begin(&ctx, &cfg, operation, request, auth_snapshot).await
+    }
+
     pub(super) async fn begin(
         ctx: &ServiceContext,
         cfg: &Config,

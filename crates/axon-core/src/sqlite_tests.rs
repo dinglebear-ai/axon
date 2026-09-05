@@ -50,6 +50,7 @@ async fn opening_existing_database_repairs_database_and_sidecar_modes() {
     OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(false)
         .mode(0o666)
         .open(&db)
         .unwrap();

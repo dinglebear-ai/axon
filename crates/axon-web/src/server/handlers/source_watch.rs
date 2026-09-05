@@ -90,7 +90,7 @@ pub(crate) async fn create_watch(
     operation_id = "watches_list",
     params(WatchListQuery),
     responses(
-        (status = 200, description = "Paged watch summaries", body = axon_api::source::WatchSummaryPage),
+        (status = 200, description = "Paged watch summaries", body = axon_api::source::Page<axon_api::source::WatchSummary>),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "watch"
