@@ -60,16 +60,22 @@ pub async fn refresh_code_search_index_with_progress(
     caller: CodeSearchCaller,
     progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    refresh_target_local_code_search_index_with_progress(ctx, cwd, caller, progress).await
+    refresh_code_search_index_owned_with_progress(
+        ctx.clone(),
+        cwd.map(Path::to_path_buf),
+        caller,
+        progress,
+    )
+    .await
 }
 
-async fn refresh_target_local_code_search_index_with_progress(
-    ctx: &ServiceContext,
-    cwd: Option<&Path>,
+pub(super) async fn refresh_code_search_index_owned_with_progress(
+    ctx: ServiceContext,
+    cwd: Option<PathBuf>,
     caller: CodeSearchCaller,
     progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    let root = resolve_code_search_root(cwd, caller).await?;
+    let root = resolve_code_search_root(cwd.as_deref(), caller).await?;
     let identity = code_search_identity(ctx.cfg(), root, &ctx.cfg().collection).await;
     let Some(_) = ctx.target_local_source_runtime() else {
         return Ok(target_refresh_unavailable_result(identity));
@@ -80,7 +86,7 @@ async fn refresh_target_local_code_search_index_with_progress(
     request.scope = Some(SourceScope::Repo);
     request.collection = Some(ctx.cfg().collection.clone());
     emit_target_progress_started(progress.as_deref());
-    match index_source(request, ctx).await {
+    match index_source(request, &ctx).await {
         Ok(output) if output.status == LifecycleStatus::Completed => {
             emit_target_progress_finished(progress.as_deref());
             let generation = output
@@ -119,10 +125,10 @@ async fn refresh_target_local_code_search_index_with_progress(
                         .map(|warning| warning.message.clone())
                 })
                 .unwrap_or_else(|| format!("source refresh ended as {:?}", output.status));
-            target_refresh_failure(ctx, project_root, project_key, warning).await
+            target_refresh_failure(&ctx, project_root, project_key, warning).await
         }
         Err(err) => {
-            target_refresh_failure(ctx, project_root, project_key, format!("{err:#}")).await
+            target_refresh_failure(&ctx, project_root, project_key, format!("{err:#}")).await
         }
     }
 }
@@ -203,14 +209,14 @@ fn emit_target_progress_finished(progress: Option<&dyn ReindexProgressSink>) {
     }
 }
 
-pub(super) async fn target_code_search_committed_state(
-    ctx: &ServiceContext,
-    cwd: Option<&Path>,
+pub(super) async fn target_code_search_committed_state_owned(
+    ctx: ServiceContext,
+    cwd: Option<PathBuf>,
     caller: CodeSearchCaller,
-    collection: &str,
+    collection: String,
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
-    let root = resolve_code_search_root(cwd, caller).await?;
-    let identity = code_search_identity(ctx.cfg(), root, collection).await;
+    let root = resolve_code_search_root(cwd.as_deref(), caller).await?;
+    let identity = code_search_identity(ctx.cfg(), root, &collection).await;
     let Some(target) = ctx.target_local_source_runtime() else {
         return Ok(target_refresh_unavailable_result(identity));
     };

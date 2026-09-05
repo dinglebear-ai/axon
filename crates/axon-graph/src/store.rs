@@ -333,8 +333,8 @@ impl GraphStore for FakeGraphStore {
             .edges_by_id
             .values()
             .filter(|edge| edge.from_node_id == node_id || edge.to_node_id == node_id)
-            .cloned()
             .take(MAX_GRAPH_EDGE_LIMIT as usize + 1)
+            .cloned()
             .collect::<Vec<_>>();
         if edges.len() > MAX_GRAPH_EDGE_LIMIT as usize {
             return Err(ApiError::new(

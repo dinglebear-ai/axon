@@ -12,7 +12,7 @@ use rmcp::ErrorData;
 
 impl AxonMcpServer {
     pub(super) async fn handle_scrape_projection(
-        &self,
+        self,
         request: ScrapeRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         self.handle_source_projection(
@@ -23,7 +23,7 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_crawl_projection(
-        &self,
+        self,
         request: CrawlRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         self.handle_source_projection(
@@ -34,7 +34,7 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_embed_projection(
-        &self,
+        self,
         request: EmbedRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         self.handle_source_projection(
@@ -45,7 +45,7 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_ingest_projection(
-        &self,
+        self,
         request: IngestRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         self.handle_source_projection(
@@ -56,7 +56,7 @@ impl AxonMcpServer {
     }
 
     async fn handle_source_projection(
-        &self,
+        self,
         operation: ProjectionOperation,
         requests: Vec<SourceRequest>,
     ) -> Result<AxonToolResponse, ErrorData> {
@@ -69,13 +69,13 @@ impl AxonMcpServer {
         let prepared = preflight_source_batch(
             operation,
             requests,
-            auth,
+            auth.as_ref(),
             &self.cfg.projection_batch,
             &access,
         )
         .map_err(projection_preflight_error)?;
         let ctx = self
-            .base_service_context()
+            .base_service_context_owned()
             .await
             .map_err(|error| logged_internal_error("projection.context", error.as_ref()))?;
         let result = execute_source_projection_batch(ctx.as_ref(), operation, prepared, auth)
@@ -85,7 +85,7 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_code_search_projection(
-        &self,
+        self,
         request: CodeSearchRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let auth = current_auth();
@@ -93,7 +93,7 @@ impl AxonMcpServer {
         let prepared = preflight_code_search_batch(plans, &self.cfg.projection_batch)
             .map_err(projection_preflight_error)?;
         let ctx = self
-            .base_service_context()
+            .base_service_context_owned()
             .await
             .map_err(|error| logged_internal_error("code_search.context", error.as_ref()))?;
         let result = execute_code_search_projection_batch(

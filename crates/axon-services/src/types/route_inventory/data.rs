@@ -171,6 +171,12 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/reset/plans/{plan_id}",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "POST",
         path: "/v1/reset/exec",
         auth: RestRouteAuth::Admin,
@@ -467,6 +473,12 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
     RestRouteInfo {
         method: "POST",
         path: "/v1/prune/plan",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/prune/plans/{plan_id}",
         auth: RestRouteAuth::Admin,
         openapi: true,
     },

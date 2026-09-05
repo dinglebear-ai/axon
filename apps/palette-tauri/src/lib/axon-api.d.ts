@@ -2160,6 +2160,15 @@ export interface components {
         /** @enum {string} */
         DocumentBackend: "qdrant" | "stored_source" | "live_scrape";
         DocumentId: string;
+        DomainSourcesResponse: {
+            count: number;
+            cursor?: string | null;
+            domain: string;
+            limit: number;
+            next_cursor?: string | null;
+            truncated: boolean;
+            urls: string[];
+        };
         EmbedOptions: {
             collection?: string | null;
             execution?: components["schemas"]["ExecutionPolicy"];
@@ -2410,6 +2419,15 @@ export interface components {
             evidence_records: number;
             /** Format: int64 */
             nodes_upserted: number;
+        };
+        IndexedSourcesResponse: {
+            count: number;
+            limit: number;
+            offset: number;
+            urls: [
+                string,
+                number
+            ][];
         };
         IngestOptions: {
             collection?: string | null;
@@ -2675,6 +2693,16 @@ export interface components {
          * @enum {string}
          */
         McpProbeOutcome: "confirmed" | "unconfirmed" | "blocked";
+        MemoryContext: {
+            context: string;
+            memories: components["schemas"]["MemoryItem"][];
+            token_budget: number;
+            token_estimate: number;
+            truncated: boolean;
+        };
+        MemoryContextResponse: {
+            context: components["schemas"]["MemoryContext"];
+        };
         /**
          * @description Explicit, inspectable decay configuration.
          *
@@ -2690,6 +2718,19 @@ export interface components {
             /** Format: int32 */
             reinforcement_count?: number;
             review_after?: null | components["schemas"]["Timestamp"];
+        };
+        MemoryEdgeItem: {
+            /** Format: int64 */
+            created_at: number;
+            edge_type: string;
+            id: string;
+            source_id: string;
+            target_id: string;
+            /** Format: int64 */
+            updated_at: number;
+        };
+        MemoryEdgeResponse: {
+            edge: components["schemas"]["MemoryEdgeItem"];
         };
         /**
          * @description Export memory records matching a scope. Contract: "Memory DTOs" —
@@ -2757,6 +2798,39 @@ export interface components {
             updated: number;
             warnings?: components["schemas"]["SourceWarning"][];
         };
+        MemoryItem: {
+            /** Format: int64 */
+            access_count: number;
+            body?: string | null;
+            /** Format: double */
+            confidence: number;
+            /** Format: int64 */
+            created_at: number;
+            cwd?: string | null;
+            file?: string | null;
+            git_branch?: string | null;
+            git_commit?: string | null;
+            git_dirty?: boolean | null;
+            id: string;
+            /** Format: int64 */
+            last_seen_at: number;
+            memory_type: string;
+            project?: string | null;
+            repo?: string | null;
+            /** Format: double */
+            score?: number | null;
+            status: string;
+            title: string;
+            /** Format: int64 */
+            updated_at: number;
+            workspace?: string | null;
+        };
+        MemoryItemResponse: {
+            memory?: null | components["schemas"]["MemoryItem"];
+        };
+        MemoryItemsResponse: {
+            memories: components["schemas"]["MemoryItem"][];
+        };
         /** @description Evidence-backed link from a memory to a source/entity/decision. */
         MemoryLink: {
             /** Format: float */
@@ -2809,6 +2883,11 @@ export interface components {
          * @enum {string}
          */
         MemoryStatus: "active" | "review" | "superseded" | "contradicted" | "archived" | "forgotten" | "working";
+        MemorySupersedeResponse: {
+            edge: components["schemas"]["MemoryEdgeItem"];
+            replacement_id: string;
+            superseded_id: string;
+        };
         /**
          * @description Closed set of durable memory kinds.
          *
@@ -2906,7 +2985,7 @@ export interface components {
             response_mode: components["schemas"]["ResponseMode"];
         };
         Page: {
-            items: components["schemas"]["JobSummary"][];
+            items: components["schemas"]["WatchSummary"][];
             /** Format: int32 */
             limit: number;
             next_cursor?: string | null;
@@ -3811,6 +3890,7 @@ export interface components {
         };
         /** @enum {string} */
         SourceWatchPolicy: "disabled" | "ensure" | "enabled";
+        SourcesResponse: components["schemas"]["IndexedSourcesResponse"] | components["schemas"]["DomainSourcesResponse"];
         StageCounts: {
             /** Format: int64 */
             bytes_done: number;
@@ -4029,10 +4109,19 @@ export interface components {
         VectorPointId: string;
         /** @enum {string} */
         Visibility: "public" | "internal" | "sensitive" | "redacted" | "derived";
+        WatchDeleteResponse: {
+            deleted: boolean;
+            watch_id: string;
+        };
         WatchExecRequest: {
             reason?: string | null;
             refresh?: null | components["schemas"]["SourceRefreshPolicy"];
             wait?: boolean | null;
+        };
+        WatchHistoryResult: {
+            jobs: components["schemas"]["JobDescriptor"][];
+            next_cursor?: string | null;
+            watch_id: components["schemas"]["WatchId"];
         };
         WatchId: string;
         WatchRequest: {
@@ -4063,6 +4152,19 @@ export interface components {
             /** Format: int64 */
             every_seconds: number;
             timezone?: string | null;
+        };
+        WatchStatusResponse: {
+            latest_job_summary?: null | components["schemas"]["JobSummary"];
+            watch: components["schemas"]["WatchResult"];
+        };
+        WatchSummary: {
+            enabled: boolean;
+            last_job_id?: null | components["schemas"]["JobId"];
+            last_status?: null | components["schemas"]["LifecycleStatus"];
+            next_run_at: components["schemas"]["Timestamp"];
+            schedule: components["schemas"]["WatchSchedule"];
+            source_id: components["schemas"]["SourceId"];
+            watch_id: components["schemas"]["WatchId"];
         };
         WatchUpdateRequest: {
             collection?: string | null;
@@ -7014,7 +7116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemsResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -7059,22 +7161,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Persistent memory result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Invalid memory request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -7088,15 +7180,6 @@ export interface operations {
             };
             /** @description Authenticated token lacks Axon access */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Upstream vector or embedding service unavailable */
-            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7125,7 +7208,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7185,7 +7268,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryContextResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7383,7 +7466,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemsResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7437,22 +7520,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Persistent memory result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Invalid memory request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
+                    "application/json": components["schemas"]["MemoryItemsResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -7466,15 +7539,6 @@ export interface operations {
             };
             /** @description Authenticated token lacks Axon access */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Upstream vector or embedding service unavailable */
-            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7502,7 +7566,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7561,7 +7625,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7624,7 +7688,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7687,7 +7751,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7750,7 +7814,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryEdgeResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7813,7 +7877,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryEdgeResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7876,7 +7940,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -7939,7 +8003,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryItemResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -8002,7 +8066,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemorySupersedeResponse"];
                 };
             };
             /** @description Invalid memory request */
@@ -8500,6 +8564,24 @@ export interface operations {
                     "application/json": components["schemas"]["StoredPrunePlan"];
                 };
             };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description Plan not found */
             404: {
                 headers: {
@@ -8812,6 +8894,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResetResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Plan not found */
@@ -9172,7 +9272,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SourcesResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -9908,7 +10008,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -9959,7 +10059,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchResult"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10009,7 +10109,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchResult"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10068,7 +10168,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchDeleteResponse"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10131,7 +10231,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchResult"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10194,7 +10294,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobDescriptor"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10257,7 +10357,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchHistoryResult"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10316,7 +10416,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchResult"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10375,7 +10475,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchResult"];
                 };
             };
             /** @description Missing or invalid authentication */
@@ -10434,7 +10534,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WatchStatusResponse"];
                 };
             };
             /** @description Missing or invalid authentication */

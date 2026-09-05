@@ -156,6 +156,21 @@ impl AxonMcpServer {
             .await
             .map(Arc::clone)
     }
+
+    pub(super) async fn base_service_context_owned(
+        self,
+    ) -> Result<Arc<ServiceContext>, Box<dyn std::error::Error + Send + Sync>> {
+        let service_context = Arc::clone(&self.service_context);
+        let cfg = Arc::clone(&self.cfg);
+        service_context
+            .get_or_try_init(|| async move {
+                ServiceContext::new_with_workers_and_schedulers(cfg)
+                    .await
+                    .map(Arc::new)
+            })
+            .await
+            .map(Arc::clone)
+    }
 }
 
 #[tool_router]
@@ -165,13 +180,15 @@ impl AxonMcpServer {
         description = "Unified Axon MCP tool. Use action/subaction routing. Actions: artifacts, ask, brand, capabilities, chat, code_search, codex, collections, crawl, diff, doctor, embed, endpoints, evaluate, extract, graph, help, ingest, jobs, map, memory, providers, prune, query, research, reset, resolve, retrieve, scrape, screenshot, search, source, status, suggest, summarize, uploads, watch. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool.",
         input_schema = tool_schema::axon_tool_input_schema()
     )]
-    async fn axon<'a>(
-        &'a self,
+    async fn axon(
+        &self,
         // No dispatch arm currently needs the live MCP peer.
         _peer: rmcp::Peer<RoleServer>,
         Parameters(raw): Parameters<serde_json::Map<String, Value>>,
     ) -> Result<String, ErrorData> {
-        let action = raw
+        let owned = self.clone();
+        async move {
+            let action = raw
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown")
@@ -194,10 +211,10 @@ impl AxonMcpServer {
                 invalid_params(format!("invalid request: {e}"))
             })?;
             match request {
-                McpSystemRequest::Reset(req) => self.handle_reset(req).await?,
-                McpSystemRequest::Collections(req) => self.handle_collections(req).await?,
-                McpSystemRequest::Uploads(req) => self.handle_uploads(req).await?,
-                McpSystemRequest::Artifacts(req) => self.handle_artifacts(req).await?,
+                McpSystemRequest::Reset(req) => owned.handle_reset(req).await?,
+                McpSystemRequest::Collections(req) => owned.handle_collections(req).await?,
+                McpSystemRequest::Uploads(req) => owned.handle_uploads(req).await?,
+                McpSystemRequest::Artifacts(req) => owned.handle_artifacts(req).await?,
             }
         } else if action == "watch" {
             let request: McpWatchRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {
@@ -205,35 +222,35 @@ impl AxonMcpServer {
                 invalid_params(format!("invalid request: {e}"))
             })?;
             let McpWatchRequest::Watch(req) = request;
-            self.handle_watch(req).await?
+            owned.handle_watch(req).await?
         } else {
             let request: AxonRequest = parse_axon_request(raw).map_err(|e| {
                 tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
                 invalid_params(format!("invalid request: {e}"))
             })?;
             match request {
-                AxonRequest::Scrape(req) => self.handle_scrape_projection(req).await?,
-                AxonRequest::Crawl(req) => self.handle_crawl_projection(req).await?,
-                AxonRequest::Embed(req) => self.handle_embed_projection(req).await?,
-                AxonRequest::Ingest(req) => self.handle_ingest_projection(req).await?,
-                AxonRequest::CodeSearch(req) => self.handle_code_search_projection(req).await?,
-                AxonRequest::Status(req) => self.handle_status(req).await?,
-                AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
-                AxonRequest::Source(req) => self.handle_source(req).await?,
-                AxonRequest::Extract(req) => self.handle_extract(req).await?,
-                AxonRequest::Memory(req) => self.handle_memory(req).await?,
-                AxonRequest::Query(req) => self.handle_query(req).await?,
-                AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
-                AxonRequest::Search(req) => self.handle_search(req).await?,
-                AxonRequest::Map(req) => self.handle_map(req).await?,
-                AxonRequest::Endpoints(req) => self.handle_endpoints(req).await?,
-                AxonRequest::Evaluate(req) => self.handle_evaluate(req).await?,
-                AxonRequest::Suggest(req) => self.handle_suggest(req).await?,
-                AxonRequest::Doctor(req) => self.handle_doctor(req).await?,
-                AxonRequest::Help(req) => self.handle_help(req).await?,
-                AxonRequest::Resolve(req) => self.handle_resolve(req).await?,
-                AxonRequest::Capabilities(req) => self.handle_capabilities(req).await?,
-                AxonRequest::Providers(req) => self.handle_providers(req).await?,
+                AxonRequest::Scrape(req) => owned.handle_scrape_projection(req).await?,
+                AxonRequest::Crawl(req) => owned.handle_crawl_projection(req).await?,
+                AxonRequest::Embed(req) => owned.handle_embed_projection(req).await?,
+                AxonRequest::Ingest(req) => owned.handle_ingest_projection(req).await?,
+                AxonRequest::CodeSearch(req) => owned.handle_code_search_projection(req).await?,
+                AxonRequest::Status(req) => owned.handle_status(req).await?,
+                AxonRequest::Jobs(req) => owned.handle_jobs(req).await?,
+                AxonRequest::Source(req) => owned.handle_source(req).await?,
+                AxonRequest::Extract(req) => owned.handle_extract(req).await?,
+                AxonRequest::Memory(req) => owned.handle_memory(req).await?,
+                AxonRequest::Query(req) => owned.handle_query(req).await?,
+                AxonRequest::Retrieve(req) => owned.handle_retrieve(req).await?,
+                AxonRequest::Search(req) => owned.handle_search(req).await?,
+                AxonRequest::Map(req) => owned.handle_map(req).await?,
+                AxonRequest::Endpoints(req) => owned.handle_endpoints(req).await?,
+                AxonRequest::Evaluate(req) => owned.handle_evaluate(req).await?,
+                AxonRequest::Suggest(req) => owned.handle_suggest(req).await?,
+                AxonRequest::Doctor(req) => owned.handle_doctor(req).await?,
+                AxonRequest::Help(req) => owned.handle_help(req).await?,
+                AxonRequest::Resolve(req) => owned.handle_resolve(req).await?,
+                AxonRequest::Capabilities(req) => owned.handle_capabilities(req).await?,
+                AxonRequest::Providers(req) => owned.handle_providers(req).await?,
                 // `sources`, `domains`, and `stats` are removed
                 // from the MCP surface per the tool contract (issue #298 WS-G):
                 // `sources`/`domains` have no contracted equivalent yet (tracked
@@ -250,21 +267,21 @@ impl AxonMcpServer {
                      content lookups, or action=doctor for service health",
                     ));
                 }
-                AxonRequest::Research(req) => self.handle_research(req).await?,
-                AxonRequest::Ask(req) => self.handle_ask(req).await?,
-                AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
-                AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
-                AxonRequest::Diff(req) => self.handle_diff(req).await?,
-                AxonRequest::Brand(req) => self.handle_brand(req).await?,
-                AxonRequest::Prune(req) => self.handle_prune(req).await?,
+                AxonRequest::Research(req) => owned.handle_research(req).await?,
+                AxonRequest::Ask(req) => owned.handle_ask(req).await?,
+                AxonRequest::Summarize(req) => owned.handle_summarize(req).await?,
+                AxonRequest::Screenshot(req) => owned.handle_screenshot(req).await?,
+                AxonRequest::Diff(req) => owned.handle_diff(req).await?,
+                AxonRequest::Brand(req) => owned.handle_brand(req).await?,
+                AxonRequest::Prune(req) => owned.handle_prune(req).await?,
                 AxonRequest::Watch(_) => {
                     return Err(invalid_params(
                         "watch requests must use the canonical MCP watch DTO",
                     ));
                 }
-                AxonRequest::Graph(req) => self.handle_graph(req).await?,
-                AxonRequest::Chat(req) => self.handle_chat(req).await?,
-                AxonRequest::Codex(req) => self.handle_codex(req).await?,
+                AxonRequest::Graph(req) => owned.handle_graph(req).await?,
+                AxonRequest::Chat(req) => owned.handle_chat(req).await?,
+                AxonRequest::Codex(req) => owned.handle_codex(req).await?,
                 AxonRequest::Debug(_) | AxonRequest::Migrate(_) | AxonRequest::Setup(_) => {
                     return Err(invalid_params(
                         "this action is available through the HTTP API, not MCP",
@@ -273,8 +290,10 @@ impl AxonMcpServer {
             }
         };
         let response = handler_meta::append_stale_binary_warning(response);
-        serde_json::to_string(&response)
-            .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
+            serde_json::to_string(&response)
+                .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
+        }
+        .await
     }
 
     #[tool(

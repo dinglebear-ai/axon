@@ -47,26 +47,26 @@ run_case() {
 }
 run_case
 jq -e '.benchmark_mode=="pinned-replay" and .collection_owned and (.provider_contract.model_id=="observed/fake") and (.throughput_configuration.sha256|length==64) and (.metal_busy_interval.seconds==0.1) and (.wall_minus_metal_busy_seconds>=0) and (.critical_path_seconds==0.1) and (.overlap_seconds==0.04) and (.unattributed_seconds==0.02) and (.unattributed_ratio==0.2) and (.attribution_ratio==0.8) and (.attribution_gate==false) and (.evidence_gate==false) and (.environment_comparable==false) and (.timing.stage_active|has("cross-job")|not) and (.timing.stage_active|has("missing")|not) and (.evidence_reasons|index("critical_path_attribution_below_95_percent")!=null)' "$root/result.json" >/dev/null || fail report-attribution-contract
-! rg -q 'do-not-leak|http://secret' "$root/result.json" || fail config-secret
-rg -q -- 'source .+ --scope site --cache false --wait true --json --quiet --collection axon_bench_' "$axon_log" || fail argv
-[[ $(rg -c -- '--request DELETE .*/collections/axon_bench_' "$curl_log") == 1 ]] || fail success-cleanup
+! grep -Eq 'do-not-leak|http://secret' "$root/result.json" || fail config-secret
+grep -Eq -- 'source .+ --scope site --cache false --wait true --json --quiet --collection axon_bench_' "$axon_log" || fail argv
+[[ $(grep -Ec -- '--request DELETE .*/collections/axon_bench_' "$curl_log") == 1 ]] || fail success-cleanup
 
 AXON_BENCH_RETAIN_COLLECTION=1 run_case
 jq -e '.collection_retained==true' "$root/result.json" >/dev/null || fail retain-result-contract
-! rg -q -- '--request DELETE .*/collections/axon_bench_' "$curl_log" || fail retain-opt-in
+! grep -Eq -- '--request DELETE .*/collections/axon_bench_' "$curl_log" || fail retain-opt-in
 
 rm -f "$metrics_count"; : >"$curl_log"; set +e
 AXON_BENCH_LIBRARY_MODE=0 FAKE_AXON_FAIL=1 FAKE_CURL_LOG="$curl_log" FAKE_METRICS_COUNT="$metrics_count" FAKE_AXON_LOG="$axon_log" AXON_BENCH_MODE=live-cold-crawl AXON_BENCH_SOURCE=https://example.invalid AXON_BENCH_AXON_BIN="$root/bin/axon" AXON_BENCH_CURL_BIN="$root/bin/curl" AXON_BENCH_ENV_FILE="$root/env" AXON_BENCH_SKIP_STALE_CHECK=1 bash "$SCRIPT_DIR/bench-source-pipeline.sh" 2>"$root/failure.log"; status=$?; set -e
 [[ $status == 17 ]] || fail failure-status
-[[ $(rg -c -- '--request DELETE .*/collections/axon_bench_' "$curl_log") == 1 ]] || fail failure-cleanup
-! rg -q 'super-secret|secret.invalid' "$root/failure.log" || fail failure-redaction
+[[ $(grep -Ec -- '--request DELETE .*/collections/axon_bench_' "$curl_log") == 1 ]] || fail failure-cleanup
+! grep -Eq 'super-secret|secret.invalid' "$root/failure.log" || fail failure-redaction
 
 rm -f "$metrics_count"; : >"$curl_log"
 AXON_BENCH_LIBRARY_MODE=0 FAKE_AXON_SLEEP=30 FAKE_CURL_LOG="$curl_log" FAKE_METRICS_COUNT="$metrics_count" FAKE_AXON_LOG="$axon_log" AXON_BENCH_MODE=live-cold-crawl AXON_BENCH_SOURCE=https://example.invalid AXON_BENCH_AXON_BIN="$root/bin/axon" AXON_BENCH_CURL_BIN="$root/bin/curl" AXON_BENCH_ENV_FILE="$root/env" AXON_BENCH_SKIP_STALE_CHECK=1 bash "$SCRIPT_DIR/bench-source-pipeline.sh" & pid=$!
-for _ in {1..100}; do rg -q -- '/collections/axon_bench_' "$curl_log" && break; sleep 0.02; done
+for _ in {1..100}; do grep -Eq -- '/collections/axon_bench_' "$curl_log" && break; sleep 0.02; done
 kill -TERM "$pid"; set +e; wait "$pid"; status=$?; set -e
 [[ $status == 143 ]] || fail signal-status
-[[ $(rg -c -- '--request DELETE .*/collections/axon_bench_' "$curl_log") == 1 ]] || fail signal-cleanup
+[[ $(grep -Ec -- '--request DELETE .*/collections/axon_bench_' "$curl_log") == 1 ]] || fail signal-cleanup
 grep -q 'umask 077' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail umask
 grep -q 'mktemp -d' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail private-temp
 grep -q -- '--cache false' "$SCRIPT_DIR/bench-source-pipeline.sh" || fail embedding-cache-disabled

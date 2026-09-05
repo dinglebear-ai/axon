@@ -48,13 +48,13 @@ pub(super) async fn authenticate_panel_request(
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum ScopeRequirement {
+pub(crate) enum ScopeRequirement {
     Read,
     Write,
     Admin,
 }
 
-pub(super) fn protect_routes<S>(
+pub(crate) fn protect_routes<S>(
     router: Router<S>,
     auth_policy: &AuthPolicy,
     scope: ScopeRequirement,

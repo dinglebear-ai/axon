@@ -16,7 +16,8 @@ use std::sync::Arc;
 
 #[path = "routing_security.rs"]
 pub(crate) mod security;
-use security::{ScopeRequirement, authenticate_panel_request, protect_routes, security_headers};
+pub(super) use security::{ScopeRequirement, protect_routes};
+use security::{authenticate_panel_request, security_headers};
 
 #[path = "routing_loopback_guard.rs"]
 mod loopback_guard;

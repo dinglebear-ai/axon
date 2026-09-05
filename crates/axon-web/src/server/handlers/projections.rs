@@ -12,6 +12,8 @@ use axon_services::projections::{
 };
 use axum::{Extension, extract::State, http::StatusCode};
 use lab_auth::AuthContext;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 type WebState = (AppState, Arc<axon_core::config::Config>);
@@ -112,7 +114,7 @@ async fn source_projection(
     let prepared = preflight_source_batch(
         operation,
         requests,
-        auth_snapshot,
+        auth_snapshot.as_ref(),
         &cfg.projection_batch,
         &access,
     )
@@ -149,10 +151,19 @@ fn source_projection_status(status: BatchStatus) -> StatusCode {
     ),
     tag = "projections"
 )]
-pub(crate) async fn code_search(
+pub(crate) fn code_search(
     State((state, cfg)): State<WebState>,
     auth: Option<Extension<AuthContext>>,
     Json(request): Json<CodeSearchRequest>,
+) -> Pin<Box<dyn Future<Output = Result<Json<BatchResult<QueryResult>>, HttpError>> + Send>> {
+    Box::pin(code_search_owned(state, cfg, auth, request))
+}
+
+async fn code_search_owned(
+    state: AppState,
+    cfg: Arc<axon_core::config::Config>,
+    auth: Option<Extension<AuthContext>>,
+    request: CodeSearchRequest,
 ) -> Result<Json<BatchResult<QueryResult>>, HttpError> {
     let auth_snapshot = auth.map(|Extension(auth)| {
         let caller = caller_context_from_auth(&auth);

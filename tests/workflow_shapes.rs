@@ -173,7 +173,10 @@ fn native_release_publishes_versioned_installer_assets_with_integrity_metadata()
         "install.ps1.sha256",
         "install.ps1.minisig",
     ] {
-        assert!(workflow.contains(asset), "release omits installer asset {asset}");
+        assert!(
+            workflow.contains(asset),
+            "release omits installer asset {asset}"
+        );
     }
 }
 

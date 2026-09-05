@@ -83,15 +83,20 @@ async fn target_code_search(
     progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     let refresh = if opts.ensure_fresh {
-        refresh_code_search_index_with_progress(&ctx, opts.cwd.as_deref(), opts.caller, progress)
-            .await?
+        refresh::refresh_code_search_index_owned_with_progress(
+            ctx.clone(),
+            opts.cwd.clone(),
+            opts.caller,
+            progress,
+        )
+        .await?
     } else {
         let collection = opts.collection.as_deref().unwrap_or(&ctx.cfg().collection);
-        refresh::target_code_search_committed_state(
-            &ctx,
-            opts.cwd.as_deref(),
+        refresh::target_code_search_committed_state_owned(
+            ctx.clone(),
+            opts.cwd.clone(),
             opts.caller,
-            collection,
+            collection.to_owned(),
         )
         .await?
     };
