@@ -158,7 +158,7 @@ export type SourcesListResult = components['schemas']['SourcesResponse'];
 // ---------------------------------------------------------------------------
 export type WatchSchedule = components['schemas']['WatchSchedule'];
 export type WatchSummary = components['schemas']['WatchSummary'];
-export type WatchPage = components['schemas']['Page'];
+export type WatchPage = components['schemas']['Page_WatchSummary'];
 export type WatchUpdateRequest = components['schemas']['WatchUpdateRequest'];
 
 // ---------------------------------------------------------------------------
