@@ -51,6 +51,28 @@ pub async fn code_search_owned(
     code_search_with_progress(ctx, text, opts, None).await
 }
 
+/// Owned committed-index boundary for server projections, which never refresh.
+pub async fn code_search_committed_owned(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    if text.len() > MAX_CODE_SEARCH_QUERY_LEN_BYTES {
+        return Err(format!(
+            "code_search query exceeds {MAX_CODE_SEARCH_QUERY_LEN_BYTES}-byte cap (got {} bytes)",
+            text.len()
+        )
+        .into());
+    }
+    let path_prefix = opts
+        .path_prefix
+        .as_deref()
+        .map(validate_path_prefix)
+        .transpose()?
+        .flatten();
+    target_code_search_committed(ctx, text, opts, path_prefix).await
+}
+
 #[must_use = "code_search_with_progress returns a Result that should be handled"]
 pub async fn code_search_with_progress(
     ctx: ServiceContext,
@@ -100,6 +122,36 @@ async fn target_code_search(
         )
         .await?
     };
+    complete_target_code_search(ctx, text, opts, path_prefix, refresh).await
+}
+
+async fn target_code_search_committed(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+    path_prefix: Option<String>,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    let collection = opts
+        .collection
+        .clone()
+        .unwrap_or_else(|| ctx.cfg().collection.clone());
+    let refresh = refresh::target_code_search_committed_state_owned(
+        ctx.clone(),
+        opts.cwd.clone(),
+        opts.caller,
+        collection,
+    )
+    .await?;
+    complete_target_code_search(ctx, text, opts, path_prefix, refresh).await
+}
+
+async fn complete_target_code_search(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+    path_prefix: Option<String>,
+    refresh: CodeSearchRefreshResult,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     let Some(source_id) = refresh.target_source_id.clone() else {
         return Ok(code_search_missing_index_result(&text, refresh.freshness));
     };
@@ -111,7 +163,7 @@ async fn target_code_search(
     }
     let execution = ReadExecution::begin_owned(
         ctx.clone(),
-        std::sync::Arc::new(ctx.cfg().clone()),
+        ctx.cfg().clone(),
         OperationKind::Query,
         serde_json::json!({
             "query": &text,
@@ -191,7 +243,7 @@ async fn target_code_search(
         })
     }
     .await;
-    execution.finish(&ctx, &result).await;
+    execution.finish_owned(ctx, &result).await;
     result
 }
 

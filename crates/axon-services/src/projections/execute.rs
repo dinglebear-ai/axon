@@ -247,7 +247,7 @@ pub async fn execute_code_search_projection_batch(
         let outcome = if let Some(outcome) = outcomes.get(&key) {
             outcome.clone()
         } else {
-            let result = crate::query::code_search_owned(
+            let result = crate::query::code_search_committed_owned(
                 ctx.clone(),
                 plan.query,
                 CodeSearchOptions {

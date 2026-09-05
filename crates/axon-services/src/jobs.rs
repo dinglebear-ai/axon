@@ -186,6 +186,25 @@ pub async fn enqueue_operation_with_context(
     priority: JobPriority,
     auth_snapshot: AuthSnapshot,
 ) -> Result<Option<JobDescriptor>, Box<dyn Error + Send + Sync>> {
+    enqueue_operation_with_owned_context(
+        service_context.clone(),
+        operation,
+        mode,
+        request,
+        priority,
+        auth_snapshot,
+    )
+    .await
+}
+
+pub(crate) async fn enqueue_operation_with_owned_context(
+    service_context: ServiceContext,
+    operation: OperationKind,
+    mode: JobExecutionMode,
+    request: serde_json::Value,
+    priority: JobPriority,
+    auth_snapshot: AuthSnapshot,
+) -> Result<Option<JobDescriptor>, Box<dyn Error + Send + Sync>> {
     if job_policy_for_operation(operation, mode) == JobPolicy::Synchronous {
         return Ok(None);
     }
@@ -234,6 +253,13 @@ pub async fn start_operation_job(
     service_context: &ServiceContext,
     descriptor: &JobDescriptor,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    start_operation_job_owned(service_context.clone(), descriptor.clone()).await
+}
+
+pub(crate) async fn start_operation_job_owned(
+    service_context: ServiceContext,
+    descriptor: JobDescriptor,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let store = service_context
         .job_store()
         .ok_or_else(|| box_send_sync("unified job store is not available"))?;
@@ -264,6 +290,14 @@ pub async fn start_operation_job(
 pub async fn complete_operation_job(
     service_context: &ServiceContext,
     descriptor: &JobDescriptor,
+    outcome: Result<(), String>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    complete_operation_job_owned(service_context.clone(), descriptor.clone(), outcome).await
+}
+
+pub(crate) async fn complete_operation_job_owned(
+    service_context: ServiceContext,
+    descriptor: JobDescriptor,
     outcome: Result<(), String>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let store = service_context

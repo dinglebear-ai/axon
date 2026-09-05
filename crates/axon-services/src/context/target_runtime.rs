@@ -274,7 +274,7 @@ fn build_embedding_composition(
 }
 
 async fn build_target_runtime(
-    cfg: &Config,
+    cfg: Config,
     jobs: Arc<dyn JobStore>,
     pool: SqlitePool,
 ) -> Result<TargetLocalSourceRuntime, Box<dyn std::error::Error + Send + Sync>> {
@@ -310,7 +310,7 @@ async fn build_target_runtime(
         receiver: verified_embedding.clone(),
     });
 
-    let vector_store = build_qdrant_store(cfg)?;
+    let vector_store = build_qdrant_store(&cfg)?;
 
     let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
     let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
@@ -323,7 +323,7 @@ async fn build_target_runtime(
         graph: graph_scheduler,
         artifact: artifact_scheduler,
     } = build_runtime_schedulers(
-        cfg,
+        &cfg,
         &pool,
         &embedding_provider_id,
         &vector_provider_id,
@@ -332,7 +332,7 @@ async fn build_target_runtime(
     .await?;
 
     let (fetch_provider, render_provider, web_source_adapter) =
-        build_scheduled_web_boundaries(cfg, fetch_scheduler, render_scheduler);
+        build_scheduled_web_boundaries(&cfg, fetch_scheduler, render_scheduler);
     let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
     let document_cache = crate::source::document_cache::InProcessDocumentCache::new();
     let artifact_candidate_sink = artifact_candidate_sink_from_env()?;
@@ -446,6 +446,14 @@ impl TargetLocalSourceRuntime {
     /// connect eagerly; only the ledger `connect` performs I/O (migrations).
     pub async fn from_config(
         cfg: &Config,
+        jobs: Arc<dyn JobStore>,
+        pool: SqlitePool,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        build_target_runtime(cfg.clone(), jobs, pool).await
+    }
+
+    pub(crate) async fn from_config_owned(
+        cfg: Config,
         jobs: Arc<dyn JobStore>,
         pool: SqlitePool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
