@@ -467,9 +467,9 @@ fn reject_unsafe_code_root(root: &Path) -> Result<(), Box<dyn Error + Send + Syn
 }
 
 pub(super) async fn code_search_identity(
-    cfg: &Config,
+    cfg: Config,
     project_root: PathBuf,
-    collection: &str,
+    collection: String,
 ) -> CodeIndexIdentity {
     let origin = code_search_project_origin(&project_root).await;
     let embedder = if cfg.tei_url.trim().is_empty() {
@@ -477,7 +477,7 @@ pub(super) async fn code_search_identity(
     } else {
         cfg.tei_url.clone()
     };
-    CodeIndexIdentity::new(project_root, origin, collection, &embedder)
+    CodeIndexIdentity::new(project_root, origin, &collection, &embedder)
 }
 
 pub(crate) async fn code_search_project_origin(project_root: &Path) -> String {
