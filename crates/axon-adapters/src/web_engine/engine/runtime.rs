@@ -45,10 +45,10 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     let client = axon_core::http::http_client().ok()?;
 
     let mut request = client.get(&discovery_url);
-    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN") {
-        if !token.is_empty() {
-            request = request.bearer_auth(token);
-        }
+    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        && !token.is_empty()
+    {
+        request = request.bearer_auth(token);
     }
     let body: serde_json::Value = request.send().await.ok()?.json().await.ok()?;
 

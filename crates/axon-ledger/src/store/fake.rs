@@ -181,7 +181,7 @@ impl LedgerStore for FakeLedgerStore {
                 .get(&(source_id.clone(), generation.clone()))
                 .map(|value| LedgerManifestState {
                     generation: generation.clone(),
-                    status: summary.status.clone(),
+                    status: summary.status,
                     item_count: value.items.len() as u64,
                     items: value
                         .items
@@ -203,7 +203,7 @@ impl LedgerStore for FakeLedgerStore {
                     document_id: value.document_id.clone(),
                     source_item_key: value.source_item_key.clone(),
                     generation: value.generation.clone()?,
-                    status: value.status.clone(),
+                    status: value.status,
                     chunk_count: value.chunk_count,
                     vector_point_count: value.vector_point_count,
                     updated_at: value.updated_at.clone(),

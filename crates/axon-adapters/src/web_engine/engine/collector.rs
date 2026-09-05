@@ -258,7 +258,7 @@ pub(super) async fn collect_crawl_pages(
             let transform_config = col.clone();
             transforms.spawn(async move {
                 tokio::task::spawn_blocking(move || {
-                    let url = canonicalize_url_for_dedupe(page.get_url().as_ref())
+                    let url = canonicalize_url_for_dedupe(page.get_url())
                         .unwrap_or_else(|| page.get_url().to_string());
                     let html_bytes = page.get_html_bytes_u8().to_vec();
                     let outcome = process_page(&html_bytes, &url, &transform_config);

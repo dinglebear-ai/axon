@@ -75,7 +75,7 @@ pub(super) async fn get_source_detail(
             .await?
             .map(|value| LedgerManifestState {
                 generation: generation.clone(),
-                status: summary.status.clone(),
+                status: summary.status,
                 item_count: value.items.len() as u64,
                 items: value
                     .items
