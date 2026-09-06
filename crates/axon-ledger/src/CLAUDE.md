@@ -13,12 +13,9 @@ generation, and what is safe to search." Full contract (owns / API / deps / test
 source upsert, generation create/commit/publish with failed-generation state,
 manifest diffing, document status tracking, leases, and cleanup debt recording.
 Per the DTO ownership rule, `SourceRecord`/`SourceManifest`/`SourceGeneration`/
-`DocumentStatus`/`CleanupDebt`/etc. live in `axon-api`, not here — `source.rs`,
-`item.rs`, `manifest.rs`, `diff.rs`, `generation.rs`, `document_status.rs`,
-`lease.rs`, and `transaction.rs` remain marker files for that
-reason, not because the functionality is unimplemented (`cleanup_debt.rs` is
-**not** a marker — it holds real shared row-builder logic like
-`vector_delete_debt`). Do not add
+`DocumentStatus`/`CleanupDebt`/etc. live in `axon-api`, not here. The obsolete
+marker modules for those DTO names have been removed; live ledger behavior is
+organized by backend operation under `sqlite/` and `store/`. Do not add
 acquisition/embedding/vector behavior here.
 
 ## Module map
@@ -26,15 +23,14 @@ acquisition/embedding/vector behavior here.
 |---|---|
 | `store.rs` | `LedgerStore` trait — the durable boundary all callers use |
 | `sqlite.rs` | `SqliteLedgerStore` — the only concrete implementation |
-| `source.rs` / `item.rs` | `SourceRecord`, `SourceItemRecord` |
-| `manifest.rs` / `diff.rs` | `SourceManifest`, `SourceManifestDiff` (added/changed/removed/unchanged) |
-| `generation.rs` | `SourceGeneration` — create → commit → publish, and failed-generation state |
-| `document_status.rs` | `DocumentStatus` (prepared/embedded/published/cleaned) |
-| `lease.rs` | `LedgerLease` — refresh/watch leases |
+| `sqlite/source.rs` | durable source records and source detail projection |
+| `sqlite/manifest.rs` | normalized manifests and deterministic manifest diffs |
+| `sqlite/generation.rs` | create → commit → publish and failed-generation state |
+| `sqlite/document.rs` | prepared/embedded/published/cleaned document status |
+| `sqlite/lease.rs` | refresh/watch lease persistence |
 | `cleanup_debt.rs` | `CleanupDebt` — **recorded here, executed by `axon-prune`** |
-| `transaction.rs` | `LedgerTransaction` — the atomic commit unit |
 | `migration.rs` | forward-only SQLite schema (no legacy migration baggage) |
-| `testing.rs` | in-memory fake store + SQLite temp-db fixtures |
+| `store/fake.rs` | in-memory fake used by focused contract tests |
 
 ## Boundary — keep OUT of this crate
 - Source acquisition, parsing, chunking, embedding, vector writes, graph parsing, transport output.

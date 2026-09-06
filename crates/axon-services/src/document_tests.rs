@@ -2,6 +2,7 @@ use super::{
     decode_document_cursor_backend, is_stale, paginate_document, read_latest_stored_source,
 };
 use crate::types::{DocumentBackend, PagedDocument};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::time::{Duration, SystemTime};
 use tempfile::TempDir;
 
@@ -38,14 +39,100 @@ fn paginate_document_returns_opaque_continuation_cursor() {
 }
 
 #[test]
+fn document_cursor_rejects_tampering_staleness_bounds_and_unknown_versions() {
+    let content = "abcdefghij";
+    let first = paginate_document(content, None, Some(1), DocumentBackend::StoredSource)
+        .expect("first page");
+    let cursor = first.next_cursor.expect("cursor");
+
+    let mut decoded: serde_json::Value =
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(&cursor).expect("base64 cursor"))
+            .expect("cursor json");
+    decoded["offset"] = serde_json::json!(9);
+    let tampered = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&decoded).unwrap());
+    assert!(
+        paginate_document(
+            content,
+            Some(&tampered),
+            Some(1),
+            DocumentBackend::StoredSource
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("checksum")
+    );
+
+    assert!(
+        paginate_document(
+            "changed",
+            Some(&cursor),
+            Some(1),
+            DocumentBackend::StoredSource
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("stale")
+    );
+
+    decoded["version"] = serde_json::json!(2);
+    let unknown = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&decoded).unwrap());
+    assert!(
+        paginate_document(
+            content,
+            Some(&unknown),
+            Some(1),
+            DocumentBackend::StoredSource
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("version")
+    );
+
+    let out_of_bounds = super::encode_document_cursor(&super::DocumentCursor::new(
+        DocumentBackend::StoredSource,
+        content,
+        content.len() + 1,
+    ))
+    .expect("cursor");
+    assert!(
+        paginate_document(
+            content,
+            Some(&out_of_bounds),
+            Some(1),
+            DocumentBackend::StoredSource
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("bounds")
+    );
+}
+
+#[test]
+fn document_cursor_continuation_is_exact_for_multibyte_content() {
+    let content = "ééééé";
+    let mut cursor = None;
+    let mut reconstructed = String::new();
+    loop {
+        let page = paginate_document(
+            content,
+            cursor.as_deref(),
+            Some(1),
+            DocumentBackend::StoredSource,
+        )
+        .unwrap();
+        reconstructed.push_str(&page.content);
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(reconstructed, content);
+}
+
+#[test]
 fn paginate_document_tolerates_non_char_boundary_cursor() {
     let content = "éclair";
-    let page = PagedDocument::from_full_content(
-        content,
-        Some("1"),
-        Some(1),
-        DocumentBackend::StoredSource,
-    );
+    let page = PagedDocument::from_full_content(content, 1, Some(1), DocumentBackend::StoredSource);
 
     assert_eq!(page.content, "clai");
     assert!(page.truncated);

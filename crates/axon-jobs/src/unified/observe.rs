@@ -27,11 +27,19 @@ impl SqliteUnifiedJobStore {
     ///
     /// No-op when the store was built without an observability sink. Errors are
     /// logged, not propagated — the durable status write already committed.
-    pub(super) async fn observe_status(&self, status: &JobStatusUpdate) {
+    pub(super) async fn observe_status(&self, status: &JobStatusUpdate, attempt: u32) {
         let Some(sink) = self.observe.as_ref() else {
             return;
         };
-        let event = status_event(status);
+        tracing::info!(
+            target: "axon::observe",
+            job_id = %status.job_id.0,
+            phase = ?status.phase,
+            status = ?status.status,
+            stage_id = status.stage_id.map(|value| value.0.to_string()),
+            "observe.status"
+        );
+        let event = status_event(status, attempt);
         if let Err(err) = sink.emit(event).await {
             tracing::warn!(
                 job_id = %status.job_id.0,
@@ -39,7 +47,7 @@ impl SqliteUnifiedJobStore {
                 "observe sink emit failed for status transition"
             );
         }
-        let heartbeat = status_heartbeat(status);
+        let heartbeat = status_heartbeat(status, attempt);
         if let Err(err) = sink.heartbeat(heartbeat).await {
             tracing::warn!(
                 job_id = %status.job_id.0,
@@ -70,12 +78,12 @@ impl SqliteUnifiedJobStore {
 ///
 /// The `sequence` is a placeholder (`0`); the sink's `SequenceRegistry`
 /// overwrites it with the next strictly-increasing per-job value on persist.
-fn status_event(status: &JobStatusUpdate) -> SourceProgressEvent {
+fn status_event(status: &JobStatusUpdate, attempt: u32) -> SourceProgressEvent {
     SourceProgressEvent {
         event_id: format!("obs-{}", Uuid::new_v4()),
         sequence: 0,
         job_id: status.job_id,
-        attempt: 0,
+        attempt,
         stage_id: status.stage_id,
         batch_id: None,
         reservation_id: None,
@@ -106,10 +114,10 @@ fn status_event(status: &JobStatusUpdate) -> SourceProgressEvent {
 }
 
 /// Build a durable [`JobHeartbeat`] carrying the transition's phase/status/counts.
-fn status_heartbeat(status: &JobStatusUpdate) -> JobHeartbeat {
+fn status_heartbeat(status: &JobStatusUpdate, attempt: u32) -> JobHeartbeat {
     JobHeartbeat {
         job_id: status.job_id,
-        attempt: 0,
+        attempt,
         worker_id: None,
         phase: status.phase,
         status: status.status,

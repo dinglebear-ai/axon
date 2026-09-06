@@ -47,6 +47,44 @@ async fn file_store_waits_for_a_transient_external_writer() {
     }
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn sqlite_contention_does_not_block_unrelated_tokio_work() {
+    let path = std::env::temp_dir().join(format!(
+        "axon-memory-contention-runtime-{}.db",
+        uuid::Uuid::new_v4()
+    ));
+    let store = Arc::new(
+        SqliteMemoryStore::open(&path.to_string_lossy(), Arc::new(FixedClock::at_2026()))
+            .expect("open file-backed memory store"),
+    );
+    let locker = rusqlite::Connection::open(&path).expect("open competing connection");
+    locker
+        .execute_batch("BEGIN IMMEDIATE")
+        .expect("hold writer lock");
+
+    let blocked_store = Arc::clone(&store);
+    let blocked = tokio::spawn(async move {
+        blocked_store
+            .remember(request(MemoryType::Fact, "blocked write", "axon"))
+            .await
+    });
+    tokio::time::timeout(std::time::Duration::from_millis(100), async {
+        tokio::task::yield_now().await;
+    })
+    .await
+    .expect("unrelated Tokio work must progress during SQLite busy wait");
+
+    locker.execute_batch("COMMIT").expect("release writer lock");
+    blocked
+        .await
+        .expect("join blocked write")
+        .expect("write succeeds");
+    drop(store);
+    for suffix in ["", "-shm", "-wal"] {
+        let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+    }
+}
+
 fn request(memory_type: MemoryType, body: &str, scope_value: &str) -> MemoryRequest {
     MemoryRequest {
         memory_type,
@@ -239,6 +277,46 @@ async fn scope_filter_narrows_results() {
         .unwrap();
     assert_eq!(result.results.len(), 1);
     assert_eq!(result.results[0].record.scope.value, "axon");
+}
+
+#[tokio::test]
+async fn facet_filter_is_applied_before_the_result_limit() {
+    let (store, _clock) = store();
+    for index in 0..125 {
+        store
+            .remember(request(
+                MemoryType::Fact,
+                &format!("common memory {index}"),
+                "axon",
+            ))
+            .await
+            .unwrap();
+    }
+    let mut matching = request(MemoryType::Fact, "common matching memory", "axon");
+    matching.links.push(MemoryLink {
+        link_type: "project".to_string(),
+        target: "needle".to_string(),
+        confidence: 1.0,
+        evidence: Vec::new(),
+    });
+    let expected = store.remember(matching).await.unwrap().memory_id;
+
+    let mut filters = MetadataMap::new();
+    filters.insert("project".to_string(), serde_json::json!("needle"));
+    let result = store
+        .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
+            query: "common".to_string(),
+            limit: 1,
+            filters,
+            include_graph: false,
+            include_archived: false,
+            reinforce: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!(result.results.len(), 1);
+    assert_eq!(result.results[0].record.memory_id, expected);
 }
 
 #[tokio::test]

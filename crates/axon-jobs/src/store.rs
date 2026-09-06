@@ -34,6 +34,9 @@ async fn open_sqlite_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error
     let pool = axon_core::sqlite::open_pool_unlocked(path).await?;
 
     crate::migrations::apply_all_migrations(&pool).await?;
+    crate::config_snapshot_store::scrub_legacy_snapshot_credentials(&pool)
+        .await
+        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
 
     Ok(pool)
 }
@@ -207,11 +210,14 @@ pub fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-/// The unified job table now owns queue state; this helper remains a harmless
-/// advisory for older status callers that only need a "queue busy?" number.
-pub async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
-    let _ = sqlite_path;
-    0
+/// Count jobs waiting for worker execution in the canonical unified store.
+pub async fn count_pending_jobs(sqlite_path: &Path) -> Result<i64, sqlx::Error> {
+    let pool = open_sqlite_pool_or_recover(&sqlite_path.to_string_lossy()).await?;
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM jobs WHERE status IN ('queued', 'pending', 'waiting', 'blocked')",
+    )
+    .fetch_one(&pool)
+    .await
 }
 
 #[cfg(test)]

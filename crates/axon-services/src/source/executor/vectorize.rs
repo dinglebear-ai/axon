@@ -17,20 +17,7 @@ mod prepared_pool;
 
 use batching::chunk_batches;
 use pipeline::{embed_and_build_batch, publish_and_build_next, publish_built_batch};
-pub(super) use prepared_pool::PreparedPoolVectorizer;
-
-// Match the acquisition wave so the next web fetch overlaps this batch's
-// prepare/embed/upsert work.
-const DOCUMENT_BATCH_SIZE: usize = 16;
-const DOCUMENT_STATUS_BATCH_SIZE: usize = 64;
-
-fn env_batch_size(name: &str, default: usize, maximum: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(default)
-        .clamp(1, maximum)
-}
+pub(super) use prepared_pool::{PreparedPoolVectorizer, PushOutcome};
 
 #[derive(Debug, Default)]
 pub(super) struct VectorizeResult {
@@ -57,16 +44,11 @@ pub(super) async fn prepare_embed_publish(
     is_final_generation_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
-    let document_batch_size = env_batch_size("AXON_DOCUMENT_BATCH_SIZE", DOCUMENT_BATCH_SIZE, 1024);
-    let source_batch_count = documents.len().div_ceil(document_batch_size);
-    let mut documents = documents.into_iter();
-    for source_index in 0..source_batch_count {
-        let source_batch = documents
-            .by_ref()
-            .take(document_batch_size)
-            .collect::<Vec<_>>();
-        let is_final_source_batch =
-            is_final_generation_batch && source_index + 1 == source_batch_count;
+    let mut source_batches = generation_document_batches(documents, runtime.document_batch_size)
+        .enumerate()
+        .peekable();
+    while let Some((source_index, source_batch)) = source_batches.next() {
+        let is_final_source_batch = is_final_generation_batch && source_batches.peek().is_none();
         coordinator
             .report(
                 emitter,
@@ -93,6 +75,7 @@ pub(super) async fn prepare_embed_publish(
                         enrichment_graph,
                         document_preparer,
                         runtime.document_prepare_concurrency,
+                        runtime.document_prepare_max_in_flight_bytes,
                     )
                 }
             },
@@ -134,11 +117,12 @@ pub(super) async fn prepare_embed_publish(
             emitter,
             coordinator,
             progress,
-            is_final_source_batch && first_index + 1 == batch_count,
+            is_final_vector_batch(is_final_source_batch, first_index, batch_count),
         )
         .await?;
         for (batch_index, batch) in batches {
-            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
+            let final_vector_batch =
+                is_final_vector_batch(is_final_source_batch, batch_index, batch_count);
             report_batching(input, &batch, emitter, coordinator, progress).await;
             // The current batch's write accounting is absorbed into `output`
             // inside `publish_and_build_next`, before an overlapped embedding
@@ -153,7 +137,7 @@ pub(super) async fn prepare_embed_publish(
                 coordinator,
                 progress,
                 &mut output,
-                is_final_vector_batch,
+                final_vector_batch,
             )
             .await?;
         }
@@ -161,7 +145,12 @@ pub(super) async fn prepare_embed_publish(
             publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
         merge_vectorize_result(&mut output, result);
     }
-    write_document_statuses(runtime.ledger.as_ref(), &output.document_statuses).await?;
+    write_document_statuses(
+        runtime.ledger.as_ref(),
+        &output.document_statuses,
+        runtime.document_status_batch_size,
+    )
+    .await?;
     Ok(output)
 }
 
@@ -199,6 +188,7 @@ pub(super) async fn prepare_generation_documents(
             let generation = generation.clone();
             let enrichment_graph = enrichment_graph.clone();
             let concurrency = runtime.document_prepare_concurrency;
+            let max_in_flight_bytes = runtime.document_prepare_max_in_flight_bytes;
             move || async move {
                 prepare_documents(
                     documents,
@@ -206,6 +196,7 @@ pub(super) async fn prepare_generation_documents(
                     &enrichment_graph,
                     document_preparer,
                     concurrency,
+                    max_in_flight_bytes,
                 )
                 .await
             }
@@ -231,6 +222,24 @@ pub(super) async fn prepare_generation_documents(
     Ok(prepared)
 }
 
+pub(super) fn generation_document_batches(
+    documents: Vec<SourceDocument>,
+    batch_size: usize,
+) -> impl Iterator<Item = Vec<SourceDocument>> {
+    let mut documents = documents.into_iter();
+    std::iter::from_fn(move || {
+        let batch = documents.by_ref().take(batch_size).collect::<Vec<_>>();
+        (!batch.is_empty()).then_some(batch)
+    })
+}
+
+fn is_final_vector_batch(
+    is_final_source_batch: bool,
+    batch_index: usize,
+    batch_count: usize,
+) -> bool {
+    is_final_source_batch && batch_index + 1 == batch_count
+}
 async fn report_batching(
     input: &SourcePipelineInput<'_>,
     batch: &[PreparedDocument],
@@ -365,12 +374,8 @@ fn statuses_only(
 pub(super) async fn write_document_statuses(
     ledger: &dyn LedgerStore,
     statuses: &[DocumentStatus],
+    status_batch_size: usize,
 ) -> anyhow::Result<()> {
-    let status_batch_size = env_batch_size(
-        "AXON_DOCUMENT_STATUS_BATCH_SIZE",
-        DOCUMENT_STATUS_BATCH_SIZE,
-        4096,
-    );
     for batch in statuses.chunks(status_batch_size) {
         ledger.update_document_statuses(batch.to_vec()).await?;
     }

@@ -2,41 +2,37 @@
 
 use crate::types::CollectionsResult;
 use axon_core::config::Config;
-use std::time::Duration;
+use axon_vectors::qdrant::QdrantVectorStore;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CollectionsError {
-    #[error("failed to build qdrant metadata client: {0}")]
-    ClientBuild(reqwest::Error),
     #[error("qdrant collections request failed: {0}")]
-    Request(reqwest::Error),
-    #[error("qdrant collections request failed: {0}")]
-    Status(reqwest::StatusCode),
-    #[error("qdrant returned invalid collections response: {0}")]
-    InvalidResponse(reqwest::Error),
+    Provider(String),
+}
+
+/// Probe Qdrant readiness behind the service boundary used by transports.
+pub async fn qdrant_ready(cfg: &Config) -> bool {
+    QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant-readiness")
+        .service_ready()
+        .await
+        .unwrap_or(false)
 }
 
 #[must_use = "collections returns a Result that should be handled"]
 pub async fn collections(cfg: &Config) -> Result<CollectionsResult, CollectionsError> {
-    let url = format!("{}/collections", cfg.qdrant_url.trim_end_matches('/'));
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(CollectionsError::ClientBuild)?;
-
-    let resp = client
-        .get(url)
-        .send()
+    let value = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant")
+        .list_collections_json()
         .await
-        .map_err(CollectionsError::Request)?;
-    if !resp.status().is_success() {
-        return Err(CollectionsError::Status(resp.status()));
+        .map_err(|error| CollectionsError::Provider(error.to_string()))?;
+    if value
+        .pointer("/result/collections")
+        .and_then(serde_json::Value::as_array)
+        .is_none()
+    {
+        return Err(CollectionsError::Provider(
+            "qdrant returned an invalid collections response".to_string(),
+        ));
     }
-
-    let value = resp
-        .json::<serde_json::Value>()
-        .await
-        .map_err(CollectionsError::InvalidResponse)?;
     Ok(map_collections_payload(&value))
 }
 
@@ -118,10 +114,7 @@ mod tests {
 
         let err = collections(&cfg).await.expect_err("status error");
 
-        assert!(matches!(
-            err,
-            CollectionsError::Status(reqwest::StatusCode::SERVICE_UNAVAILABLE)
-        ));
+        assert!(matches!(err, CollectionsError::Provider(_)));
     }
 
     #[tokio::test]
@@ -135,6 +128,6 @@ mod tests {
 
         let err = collections(&cfg).await.expect_err("invalid json error");
 
-        assert!(matches!(err, CollectionsError::InvalidResponse(_)));
+        assert!(matches!(err, CollectionsError::Provider(_)));
     }
 }

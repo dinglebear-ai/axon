@@ -5,6 +5,24 @@ use super::{EnvKeySpec, spec};
 
 pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
     spec("QDRANT_URL", KeepEnv, Both, None, Canonical, false),
+    spec("QDRANT_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec(
+        "AXON_CHROME_BEARER_TOKEN",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        true,
+    ),
+    spec(
+        "AXON_TEI_BEARER_TOKEN",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        true,
+    ),
+    spec("QDRANT_GRPC_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_QDRANT_URL",
         ComposeEnv,
@@ -72,6 +90,31 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         true,
     ),
+    spec(
+        "AXON_GOOGLE_AUTHORIZE_ENDPOINT",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
+        "AXON_GOOGLE_TOKEN_ENDPOINT",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
+        "AXON_GOOGLE_JWKS_ENDPOINT",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec("AXON_GOOGLE_ISSUER", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_AUTH_ADMIN_EMAIL",
         KeepEnv,

@@ -1,24 +1,16 @@
-//! Target pipeline crate skeleton for `axon-ledger`.
+//! Durable SQLite ledger for source generations and publication state.
 //!
-//! This crate is intentionally marker-only in PR0. Runtime behavior moves here
-//! in issue #298 implementation PRs after contract tests exist.
+//! The ledger is the system of record for source manifests, normalized source
+//! items, document status, leases, and idempotent cleanup debt. It owns atomic
+//! generation transitions while transport-facing DTOs remain in `axon-api`.
 
 #![allow(clippy::result_large_err)]
 
 pub mod cleanup_debt;
-pub mod diff;
-pub mod document_status;
-pub mod generation;
-pub mod item;
-pub mod lease;
 pub mod listing;
-pub mod manifest;
 pub mod migration;
-pub mod source;
 pub mod sqlite;
 pub mod store;
-pub mod testing;
-pub mod transaction;
 pub mod validation;
 
 pub const CRATE_NAME: &str = "axon-ledger";

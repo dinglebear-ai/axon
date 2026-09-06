@@ -1,16 +1,20 @@
 //! Neutral work exchanged between generation preparation and vectorization.
 
 use axon_api::source::*;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use super::vectorize::batching::chunk_batches;
+use super::vectorize::batching::{charged_chunk_count, chunk_batches};
 use crate::source::output::SourceOutput;
 
 const CHANNEL_CAPACITY: usize = 2;
 const BYTE_BUDGET_KIB: u32 = 1_048_576;
+const PER_JOB_BYTE_BUDGET_KIB: u32 = 262_144;
 const KIB: usize = 1024;
+
+static PROCESS_BYTE_PERMITS: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(BYTE_BUDGET_KIB as usize)));
 
 /// Side effects are cleanup-owned before this value is constructed. Moving it
 /// into the accumulator transfers only finalization/accounting ownership.
@@ -39,6 +43,24 @@ impl PreparedBatchSideEffects {
         }
     }
 
+    fn estimated_resident_bytes(&self) -> usize {
+        std::mem::size_of_val(self)
+            .saturating_add(vector_resident_bytes(&self.acquisition_artifacts))
+            .saturating_add(vector_resident_bytes(&self.enrichment_artifacts))
+            .saturating_add(vector_resident_bytes(&self.archive_items))
+            .saturating_add(vector_resident_bytes(&self.artifact_candidates))
+            .saturating_add(vector_resident_bytes(&self.warnings))
+            .saturating_add(vector_resident_bytes(&self.reused_item_keys))
+            .saturating_add(vector_resident_bytes(&self.refreshed_manifest_items))
+            .saturating_add(vector_resident_bytes(&self.clean_output.artifacts))
+            .saturating_add(
+                self.clean_output
+                    .inline
+                    .as_ref()
+                    .map_or(0, |_| std::mem::size_of::<InlineSourceResult>() + 256),
+            )
+    }
+
     fn estimated_bytes(&self) -> anyhow::Result<usize> {
         let serializable = (
             &self.acquisition_artifacts,
@@ -51,27 +73,30 @@ impl PreparedBatchSideEffects {
             &self.clean_output.artifacts,
             &self.clean_output.inline,
         );
-        Ok(serde_json::to_vec(&serializable)?.len())
+        serialized_size(&serializable)
     }
 }
 
-/// One lossless, prepared acquisition wave. The sender may split this into
-/// smaller envelopes, but must retain every document and side effect exactly
-/// once and preserve FIFO sequence order.
-pub(super) struct PreparedGenerationBatch {
-    pub(super) sequence: u64,
-    pub(super) prepared: Vec<PreparedDocument>,
-    pub(super) side_effects: PreparedBatchSideEffects,
-    pub(super) is_final: bool,
+fn vector_resident_bytes<T>(values: &Vec<T>) -> usize {
+    values
+        .capacity()
+        .saturating_mul(std::mem::size_of::<T>())
+        .saturating_add(values.len().saturating_mul(256))
 }
 
-impl PreparedGenerationBatch {
-    pub(super) fn chunk_count(&self) -> usize {
-        self.prepared
-            .iter()
-            .map(|document| document.chunks.len())
-            .sum()
-    }
+fn prepared_resident_bytes(documents: &[PreparedDocument]) -> usize {
+    documents
+        .iter()
+        .fold(std::mem::size_of_val(documents), |total, document| {
+            document.chunks.iter().fold(total, |total, chunk| {
+                total
+                    .saturating_add(std::mem::size_of::<PreparedChunk>())
+                    .saturating_add(chunk.content.capacity())
+                    .saturating_add(chunk.chunk_key.capacity())
+                    .saturating_add(chunk.content_hash.capacity())
+                    .saturating_add(chunk.embedding_text.as_ref().map_or(0, String::capacity))
+            })
+        })
 }
 
 pub(super) struct PreparedWorkEnvelope {
@@ -81,13 +106,16 @@ pub(super) struct PreparedWorkEnvelope {
     pub(super) is_final: bool,
     pub(super) estimated_bytes: usize,
     _chunk_permit: OwnedSemaphorePermit,
-    _byte_permit: OwnedSemaphorePermit,
+    _job_byte_permit: OwnedSemaphorePermit,
+    _process_byte_permit: OwnedSemaphorePermit,
 }
 
 pub(super) struct PreparedBatchSender {
     sender: mpsc::Sender<PreparedWorkEnvelope>,
     chunk_permits: Arc<Semaphore>,
-    byte_permits: Arc<Semaphore>,
+    job_byte_permits: Arc<Semaphore>,
+    process_byte_permits: Arc<Semaphore>,
+    byte_budget: usize,
     pool_size: usize,
     sequence: u64,
 }
@@ -96,10 +124,23 @@ pub(super) struct PreparedBatchReceiver {
     receiver: mpsc::Receiver<PreparedWorkEnvelope>,
 }
 
+#[cfg(test)]
 pub(super) fn prepared_work_channel(
     pool_size: usize,
 ) -> anyhow::Result<(PreparedBatchSender, PreparedBatchReceiver)> {
+    prepared_work_channel_with_byte_budget(pool_size, BYTE_BUDGET_KIB as usize * KIB)
+}
+
+pub(super) fn prepared_work_channel_with_byte_budget(
+    pool_size: usize,
+    byte_budget: usize,
+) -> anyhow::Result<(PreparedBatchSender, PreparedBatchReceiver)> {
     anyhow::ensure!(pool_size > 0, "embedding pool size must be positive");
+    anyhow::ensure!(
+        byte_budget > 0,
+        "prepared work byte budget must be positive"
+    );
+    let byte_budget_kib = byte_budget.div_ceil(KIB).min(u32::MAX as usize);
     let chunk_capacity = pool_size
         .checked_mul(3)
         .ok_or_else(|| anyhow::anyhow!("embedding pool size overflows chunk capacity"))?;
@@ -112,7 +153,11 @@ pub(super) fn prepared_work_channel(
         PreparedBatchSender {
             sender,
             chunk_permits: Arc::new(Semaphore::new(chunk_capacity)),
-            byte_permits: Arc::new(Semaphore::new(BYTE_BUDGET_KIB as usize)),
+            job_byte_permits: Arc::new(Semaphore::new(
+                byte_budget_kib.min(PER_JOB_BYTE_BUDGET_KIB as usize),
+            )),
+            process_byte_permits: Arc::clone(&PROCESS_BYTE_PERMITS),
+            byte_budget: byte_budget.min(PER_JOB_BYTE_BUDGET_KIB as usize * KIB),
             pool_size,
             sequence: 0,
         },
@@ -121,6 +166,7 @@ pub(super) fn prepared_work_channel(
 }
 
 impl PreparedBatchSender {
+    #[cfg(test)]
     pub(super) async fn send(
         &mut self,
         prepared: Vec<PreparedDocument>,
@@ -137,19 +183,6 @@ impl PreparedBatchSender {
         is_final: bool,
         cancel: &CancellationToken,
     ) -> anyhow::Result<()> {
-        let batch = PreparedGenerationBatch {
-            sequence: self.sequence,
-            prepared,
-            side_effects,
-            is_final,
-        };
-        let _chunk_count = batch.chunk_count();
-        let PreparedGenerationBatch {
-            sequence: _batch_sequence,
-            prepared,
-            side_effects,
-            is_final,
-        } = batch;
         let mut pools = chunk_batches(prepared, self.pool_size)
             .into_iter()
             .peekable();
@@ -182,21 +215,22 @@ impl PreparedBatchSender {
         cancel: &CancellationToken,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(!cancel.is_cancelled(), "prepared work send canceled");
-        let charged_chunks = prepared
-            .iter()
-            .map(|document| document.chunks.len().max(1))
-            .sum::<usize>();
+        let charged_chunks = charged_chunk_count(&prepared);
         anyhow::ensure!(
             charged_chunks <= self.pool_size,
             "prepared pool exceeds chunk limit"
         );
-        let prepared_bytes = serde_json::to_vec(&prepared)?.len();
+        let prepared_bytes = prepared_resident_bytes(&prepared).max(serialized_size(&prepared)?);
         let estimated_bytes = prepared_bytes
-            .checked_add(side_effects.estimated_bytes()?)
+            .checked_add(
+                side_effects
+                    .estimated_resident_bytes()
+                    .max(side_effects.estimated_bytes()?),
+            )
             .ok_or_else(|| anyhow::anyhow!("prepared work byte size overflow"))?;
         anyhow::ensure!(
-            estimated_bytes <= 1024 * 1024 * 1024,
-            "prepared item exceeds 1 GiB"
+            estimated_bytes <= self.byte_budget,
+            "prepared item exceeds configured byte budget"
         );
         let byte_units = estimated_bytes.max(1).div_ceil(KIB);
         let chunk_units = u32::try_from(charged_chunks.max(1))?;
@@ -205,9 +239,13 @@ impl PreparedBatchSender {
             _ = cancel.cancelled() => anyhow::bail!("prepared work send canceled"),
             permit = Arc::clone(&self.chunk_permits).acquire_many_owned(chunk_units) => permit?,
         };
-        let byte_permit = tokio::select! {
+        let job_byte_permit = tokio::select! {
             _ = cancel.cancelled() => anyhow::bail!("prepared work send canceled"),
-            permit = Arc::clone(&self.byte_permits).acquire_many_owned(byte_units) => permit?,
+            permit = Arc::clone(&self.job_byte_permits).acquire_many_owned(byte_units) => permit?,
+        };
+        let process_byte_permit = tokio::select! {
+            _ = cancel.cancelled() => anyhow::bail!("prepared work send canceled"),
+            permit = Arc::clone(&self.process_byte_permits).acquire_many_owned(byte_units) => permit?,
         };
         let envelope = PreparedWorkEnvelope {
             sequence: self.sequence,
@@ -216,7 +254,8 @@ impl PreparedBatchSender {
             is_final,
             estimated_bytes,
             _chunk_permit: chunk_permit,
-            _byte_permit: byte_permit,
+            _job_byte_permit: job_byte_permit,
+            _process_byte_permit: process_byte_permit,
         };
         tokio::select! {
             _ = cancel.cancelled() => anyhow::bail!("prepared work send canceled"),
@@ -225,6 +264,28 @@ impl PreparedBatchSender {
         self.sequence = self.sequence.saturating_add(1);
         Ok(())
     }
+}
+
+#[derive(Default)]
+struct SizeWriter(usize);
+
+impl std::io::Write for SizeWriter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.checked_add(buffer.len()).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::OutOfMemory, "serialized size overflow")
+        })?;
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn serialized_size(value: &impl serde::Serialize) -> anyhow::Result<usize> {
+    let mut writer = SizeWriter::default();
+    serde_json::to_writer(&mut writer, value)?;
+    Ok(writer.0)
 }
 
 impl PreparedBatchReceiver {

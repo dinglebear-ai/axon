@@ -9,18 +9,20 @@ use axon_api::source::{JobId, JobPriority, ProviderKind, StageId};
 use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
+use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{LazyLock, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
-const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
-const POLL_MIN: Duration = Duration::from_millis(20);
-const POLL_MAX: Duration = Duration::from_millis(250);
+const FOREGROUND_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+const RECOVERY_POLL: Duration = Duration::from_secs(5);
 const AGING_QUANTUM_SECS: i64 = 30;
 /// A queued waiter proves liveness by touching `renewed_at` on every grant
 /// poll, so abandonment means "no poll recently", not "queued for a while".
-/// Deliberately larger than the slowest poll cadence (`POLL_MAX` plus
+/// Deliberately larger than the recovery cadence (`RECOVERY_POLL` plus
 /// writer-gate stalls) and decoupled from `WAIT_TIMEOUT` so third parties
 /// never expire a live waiter and priority aging (`AGING_QUANTUM_SECS`,
 /// measured from the untouched `updated_at`) can actually progress.
@@ -36,6 +38,11 @@ const RENEW_INTERVAL: Duration = Duration::from_secs(20);
 #[cfg(test)]
 const RENEW_INTERVAL: Duration = Duration::from_millis(20);
 
+fn queue_wait_timeout(priority: JobPriority) -> Option<Duration> {
+    (!matches!(priority, JobPriority::Background | JobPriority::Maintenance))
+        .then_some(FOREGROUND_WAIT_TIMEOUT)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderCapacityDomain {
     pub kind: ProviderKind,
@@ -45,10 +52,44 @@ pub struct ProviderCapacityDomain {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchedulerConfig {
-    pub capacity: u32,
-    pub interactive_reserve: u32,
-    pub max_entries: u32,
-    pub max_units: u32,
+    capacity: u32,
+    interactive_reserve: u32,
+    max_entries: u32,
+    max_units: u32,
+}
+
+impl SchedulerConfig {
+    pub fn new(
+        capacity: u32,
+        interactive_reserve: u32,
+        max_entries: u32,
+        max_units: u32,
+    ) -> Result<Self, SchedulerError> {
+        if capacity == 0 {
+            return Err(SchedulerError::InvalidConfig("capacity must be positive"));
+        }
+        if interactive_reserve > capacity {
+            return Err(SchedulerError::InvalidConfig(
+                "interactive reserve cannot exceed capacity",
+            ));
+        }
+        if max_entries == 0 {
+            return Err(SchedulerError::InvalidConfig(
+                "maximum queue entries must be positive",
+            ));
+        }
+        if max_units < capacity {
+            return Err(SchedulerError::InvalidConfig(
+                "maximum queued units cannot be lower than capacity",
+            ));
+        }
+        Ok(Self {
+            capacity,
+            interactive_reserve,
+            max_entries,
+            max_units,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -62,25 +103,54 @@ pub struct ReservationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReservationGrant {
-    pub reservation_id: String,
-    pub granted: bool,
-    pub units: u32,
+pub enum ReservationGrant {
+    Queued {
+        reservation_id: String,
+    },
+    Granted {
+        reservation_id: String,
+        units: NonZeroU32,
+    },
+}
+
+impl ReservationGrant {
+    pub fn reservation_id(&self) -> &str {
+        match self {
+            Self::Queued { reservation_id } | Self::Granted { reservation_id, .. } => {
+                reservation_id
+            }
+        }
+    }
+
+    pub fn is_granted(&self) -> bool {
+        matches!(self, Self::Granted { .. })
+    }
+
+    pub fn units(&self) -> u32 {
+        match self {
+            Self::Queued { .. } => 0,
+            Self::Granted { units, .. } => units.get(),
+        }
+    }
 }
 
 mod grant;
 mod lease;
 mod reconcile;
 use lease::WaitingReservationGuard;
-pub use lease::{ActiveReservationLease, call_reserved};
+pub use lease::{ReservationObservation, call_reserved};
 pub use reconcile::Reconciliation;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SchedulerError {
     #[error("scheduler database error: {0}")]
     Database(#[from] SqlxError),
+    #[error("scheduler database state is inconsistent: {0}")]
+    DatabaseState(&'static str),
     #[error("provider request exceeds declared capacity")]
     RequestTooLarge,
+    #[error("invalid scheduler configuration: {0}")]
+    InvalidConfig(&'static str),
     #[error("scheduler queue limit reached")]
     QueueFull,
     #[error("scheduler lease fence rejected")]
@@ -89,6 +159,30 @@ pub enum SchedulerError {
     Queued,
     #[error("scheduler reservation wait deadline expired")]
     WaitTimeout,
+    #[error("scheduler operation failed ({operation}); rollback also failed ({rollback})")]
+    RollbackFailed { operation: String, rollback: String },
+}
+
+async fn rollback_after_error(
+    connection: &mut PoolConnection<Sqlite>,
+    operation_error: SchedulerError,
+) -> SchedulerError {
+    match sqlx::query("ROLLBACK").execute(&mut **connection).await {
+        Ok(_) => operation_error,
+        Err(rollback_error) => {
+            // The transaction state is uncertain. Never return this connection
+            // to the pool, even though the pool's release hook is a second net.
+            connection.close_on_drop();
+            tracing::error!(
+                error_code = "provider_scheduler_rollback_failed",
+                "provider scheduler rollback failed; evicting connection"
+            );
+            SchedulerError::RollbackFailed {
+                operation: operation_error.to_string(),
+                rollback: rollback_error.to_string(),
+            }
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,6 +199,54 @@ pub struct ProviderScheduler {
     domain: ProviderCapacityDomain,
     config: SchedulerConfig,
     write_gate: SqliteWriteGate,
+    dispatch_signal: Arc<DispatchSignal>,
+}
+
+#[derive(Debug, Default)]
+struct DispatchSignal {
+    changed: Notify,
+    recovery_claimed: AtomicBool,
+}
+
+struct RecoveryClaim(Arc<DispatchSignal>);
+
+impl DispatchSignal {
+    fn try_claim_recovery(self: &Arc<Self>) -> Option<RecoveryClaim> {
+        self.recovery_claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| RecoveryClaim(Arc::clone(self)))
+    }
+}
+
+impl Drop for RecoveryClaim {
+    fn drop(&mut self) {
+        self.0.recovery_claimed.store(false, Ordering::Release);
+        self.0.changed.notify_waiters();
+    }
+}
+
+type CapacityNotifierKey = (String, String);
+type CapacityNotifierMap = std::collections::HashMap<CapacityNotifierKey, Weak<DispatchSignal>>;
+
+static CAPACITY_NOTIFIERS: LazyLock<StdMutex<CapacityNotifierMap>> =
+    LazyLock::new(|| StdMutex::new(std::collections::HashMap::new()));
+
+fn shared_dispatch_signal(
+    _authority_id: &str,
+    capacity_domain: &str,
+    instance_id: &str,
+) -> Arc<DispatchSignal> {
+    let mut notifiers = CAPACITY_NOTIFIERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let key = (capacity_domain.to_string(), instance_id.to_string());
+    if let Some(notify) = notifiers.get(&key).and_then(Weak::upgrade) {
+        return notify;
+    }
+    let signal = Arc::new(DispatchSignal::default());
+    notifiers.insert(key, Arc::downgrade(&signal));
+    signal
 }
 
 /// Process-local admission gate for scheduler mutations sharing one SQLite DB.
@@ -151,18 +293,15 @@ impl ProviderScheduler {
         config: SchedulerConfig,
         write_gate: SqliteWriteGate,
     ) -> Result<Self, SchedulerError> {
-        if config.capacity == 0
-            || config.interactive_reserve > config.capacity
-            || config.max_entries == 0
-            || config.max_units < config.capacity
-        {
-            return Err(SchedulerError::RequestTooLarge);
-        }
+        let capacity_domain = domain_name(domain.kind)?;
+        let dispatch_signal =
+            shared_dispatch_signal(&domain.authority_id, &capacity_domain, &domain.instance_id);
         Ok(Self {
             pool,
             domain,
             config,
             write_gate,
+            dispatch_signal,
         })
     }
 
@@ -176,10 +315,6 @@ impl ProviderScheduler {
         if request.units == 0 || request.units > self.config.capacity {
             return Err(SchedulerError::RequestTooLarge);
         }
-        // Reclaim grants whose holder never activated them before computing
-        // capacity. Previously these rows survived until an external
-        // reconciliation pass and could exhaust the domain indefinitely.
-        self.reconcile().await?;
         let _write_permit = self.write_gate.lock().await;
         let mut connection = self.pool.acquire().await?;
         begin_immediate(&mut connection).await?;
@@ -187,12 +322,10 @@ impl ProviderScheduler {
         match result {
             Ok(grant) => {
                 sqlx::query("COMMIT").execute(&mut *connection).await?;
+                self.dispatch_signal.changed.notify_waiters();
                 Ok(grant)
             }
-            Err(error) => {
-                let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
-                Err(error)
-            }
+            Err(error) => Err(rollback_after_error(&mut connection, error).await),
         }
     }
 
@@ -201,13 +334,20 @@ impl ProviderScheduler {
         request: ReservationRequest,
     ) -> Result<ReservationGrant, SchedulerError> {
         let fence = request.fence.clone();
+        // Durable worker work may legitimately queue behind a provider call
+        // whose timeout plus retries exceeds 30 seconds. Its continuously
+        // renewed queue row is the liveness boundary; foreground requests keep
+        // the bounded UX deadline.
+        let wait_timeout = queue_wait_timeout(request.priority);
         let grant = self.reserve(request).await?;
-        if grant.granted {
+        if grant.is_granted() {
             return Ok(grant);
         }
         let mut guard =
-            WaitingReservationGuard::new(self.clone(), grant.reservation_id.clone(), fence);
-        let result = self.wait_for_grant(grant.reservation_id).await;
+            WaitingReservationGuard::new(self.clone(), grant.reservation_id().to_string(), fence);
+        let result = self
+            .wait_for_grant(grant.reservation_id().to_string(), wait_timeout)
+            .await;
         if matches!(
             &result,
             Ok(_) | Err(SchedulerError::WaitTimeout | SchedulerError::StaleFence)
@@ -220,15 +360,18 @@ impl ProviderScheduler {
     async fn wait_for_grant(
         &self,
         reservation_id: String,
+        wait_timeout: Option<Duration>,
     ) -> Result<ReservationGrant, SchedulerError> {
         let started = Instant::now();
-        let mut poll = 0_u32;
         loop {
-            let grant = self.try_grant_existing(&reservation_id).await?;
-            if grant.granted {
+            let capacity_changed = self.dispatch_signal.changed.notified();
+            tokio::pin!(capacity_changed);
+            capacity_changed.as_mut().enable();
+            let grant = self.reservation_grant(&reservation_id).await?;
+            if grant.is_granted() {
                 return Ok(grant);
             }
-            if started.elapsed() >= WAIT_TIMEOUT {
+            if wait_timeout.is_some_and(|timeout| started.elapsed() >= timeout) {
                 let _write_permit = self.write_gate.lock().await;
                 let changed = sqlx::query(
                     "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
@@ -245,8 +388,19 @@ impl ProviderScheduler {
                 }
                 continue;
             }
-            tokio::time::sleep(poll_delay(&reservation_id, poll)).await;
-            poll = poll.saturating_add(1);
+            // Normal in-process capacity changes are event-driven. The slow
+            // timeout remains solely as cross-process/crash recovery because
+            // another process cannot signal this Notify.
+            if let Some(_claim) = self.dispatch_signal.try_claim_recovery() {
+                tokio::select! {
+                    _ = &mut capacity_changed => {}
+                    _ = tokio::time::sleep(RECOVERY_POLL) => {}
+                }
+                self.dispatch_queued().await?;
+                self.dispatch_signal.changed.notify_waiters();
+            } else {
+                capacity_changed.await;
+            }
         }
     }
 
@@ -269,6 +423,7 @@ impl ProviderScheduler {
         .bind(&self.domain.authority_id)
         .execute(&self.pool)
         .await?;
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
 
@@ -288,6 +443,7 @@ impl ProviderScheduler {
         if changed == 0 {
             return Err(SchedulerError::StaleFence);
         }
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
 
@@ -359,9 +515,11 @@ impl ProviderScheduler {
         if changed == 0 {
             return Err(SchedulerError::StaleFence);
         }
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
 
+    #[cfg(test)]
     async fn cancel(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
         let changed = sqlx::query(
@@ -378,18 +536,9 @@ impl ProviderScheduler {
         if changed == 0 {
             return Err(SchedulerError::StaleFence);
         }
+        self.dispatch_signal.changed.notify_waiters();
         Ok(())
     }
-}
-
-fn poll_delay(reservation_id: &str, poll: u32) -> Duration {
-    let growth = POLL_MIN
-        .saturating_mul(1_u32.checked_shl(poll.min(4)).unwrap_or(u32::MAX))
-        .min(POLL_MAX);
-    let jitter = reservation_id.bytes().fold(u64::from(poll), |hash, byte| {
-        hash.wrapping_mul(31).wrapping_add(u64::from(byte))
-    }) % 17;
-    growth.saturating_add(Duration::from_millis(jitter))
 }
 
 async fn begin_immediate(connection: &mut PoolConnection<Sqlite>) -> Result<(), SqlxError> {

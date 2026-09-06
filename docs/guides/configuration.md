@@ -195,7 +195,7 @@ not accidentally treated as disabled.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_HTTP_PUBLISH` | `8001` | Docker Compose host publish address for the `axon` MCP HTTP service. The default `8001` maps to `0.0.0.0:8001` inside Compose — the container is reachable on the host's port 8001 from all interfaces. Set to `127.0.0.1:8001` to restrict to loopback only. |
+| `AXON_HTTP_PUBLISH` | `8001` | Numeric host port for the Compose Axon HTTP service. Compose fixes the host address to `127.0.0.1`; do not include an address in this value. |
 | `AXON_HTTP_HOST` | `127.0.0.1` | HTTP bind address for `axon serve` / MCP HTTP. Non-loopback requires bearer or OAuth auth. |
 | `AXON_HTTP_PORT` | `8001` | HTTP listen port for `axon serve` / MCP HTTP. |
 
@@ -247,7 +247,7 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `TEI_MAX_CONCURRENT_REQUESTS` | `512` | Max concurrent TEI server requests |
 | `TEI_MAX_BATCH_TOKENS` | `196608` | Max TEI server batch tokens for Qwen3-Embedding-0.6B on the RTX 4070 profile; `245760` OOM'd during warmup in local testing |
 | `TEI_MAX_BATCH_REQUESTS` | `512` | Max TEI server batch requests; keeps concurrent docs batches from tripping overload at the old 256-input boundary |
-| `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | `256` | Max TEI server client batch size. Distinct from Axon's `providers.embedding.batch-size` client tuning knob. |
+| `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | `128` | Max TEI server client batch size, sourced from the Compose RTX 4070 profile. Distinct from Axon's `providers.embedding.batch-size` client tuning knob. |
 | `TEI_POOLING` | `last-token` | Pooling strategy |
 | `TEI_TOKENIZATION_WORKERS` | `20` | Tokenization workers |
 | `HF_TOKEN` | -- | HuggingFace token for gated models |

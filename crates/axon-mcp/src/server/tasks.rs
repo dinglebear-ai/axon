@@ -181,7 +181,15 @@ fn authorize_task_lifecycle(
 ) -> Result<(), ErrorData> {
     let auth = server_authz::require_auth_context(&server.auth_policy, context)?;
     if let Some(auth_ctx) = auth {
-        server_authz::check_scope(auth_ctx, "axon:write", action)?;
+        if action == "tasks/cancel" {
+            // Cancellation mutates durable job state. The normal Axon scope
+            // compatibility rule intentionally lets either broad Axon scope
+            // satisfy ordinary routes, so lifecycle mutations must use the
+            // explicit check just like elevated tool actions do.
+            server_authz::check_scope_explicit(auth_ctx, "axon:write", action)?;
+        } else {
+            server_authz::check_scope(auth_ctx, "axon:read", action)?;
+        }
     }
     Ok(())
 }

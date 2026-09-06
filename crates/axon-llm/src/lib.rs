@@ -33,10 +33,10 @@ pub use runtime::doctor_probe::build_llm_doctor_probe;
 pub use runtime::{
     CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult,
     LlmBackendConfig, LlmBackendKind, LlmModelPurpose, ReasoningEffort, SynthesisModelProfile,
-    SynthesisModelTier, UsageSnapshot, complete_streaming, complete_streaming_with_runner,
-    complete_text, complete_text_with_runner, configured_chat_model_from_config,
-    configured_model_for_config, configured_model_from_config, extract_completion_result,
-    normalize_stream_flag,
+    SynthesisModelTier, UsageSnapshot, complete_agent_text, complete_streaming,
+    complete_streaming_with_runner, complete_text, complete_text_with_runner,
+    configured_chat_model_from_config, configured_model_for_config, configured_model_from_config,
+    extract_completion_result, normalize_stream_flag,
 };
 
 pub const CRATE_NAME: &str = "axon-llm";

@@ -11,6 +11,41 @@ use crate::sqlite::util::{json_error, stage_header};
 use crate::store::Result;
 use crate::validation::validate_manifest;
 
+#[derive(serde::Serialize)]
+struct ManifestHeader<'a> {
+    source_id: &'a SourceId,
+    generation: &'a SourceGenerationId,
+    adapter: &'a AdapterRef,
+    scope: &'a SourceScope,
+    items: &'a [ManifestItem],
+    created_at: &'a Timestamp,
+    metadata: &'a MetadataMap,
+}
+
+fn serialize_manifest_header(manifest: &SourceManifest) -> Result<String> {
+    serde_json::to_string(&ManifestHeader {
+        source_id: &manifest.source_id,
+        generation: &manifest.generation,
+        adapter: &manifest.adapter,
+        scope: &manifest.scope,
+        items: &[],
+        created_at: &manifest.created_at,
+        metadata: &manifest.metadata,
+    })
+    .map_err(json_error)
+}
+
+pub(super) fn reconstruct_manifest(
+    manifest_json: &str,
+    normalized_items: Vec<ManifestItem>,
+) -> Result<SourceManifest> {
+    let mut manifest: SourceManifest = serde_json::from_str(manifest_json).map_err(json_error)?;
+    if !normalized_items.is_empty() || manifest.items.is_empty() {
+        manifest.items = normalized_items;
+    }
+    Ok(manifest)
+}
+
 pub(super) async fn put_manifest(
     store: &SqliteLedgerStore,
     manifest: &SourceManifest,
@@ -20,7 +55,7 @@ pub(super) async fn put_manifest(
         .await
         .map_err(sqlite_error)?;
     ensure_generation_for_manifest_in_tx(&mut tx, manifest).await?;
-    let manifest_json = serde_json::to_string(&manifest).map_err(json_error)?;
+    let manifest_json = serialize_manifest_header(manifest)?;
     sqlx::query(
         r#"
         INSERT INTO source_manifests (
@@ -337,9 +372,25 @@ pub(super) async fn read_manifest(
     .await
     .map_err(sqlite_error)?;
 
-    row.map(|row| {
-        let manifest_json: String = row.get("manifest_json");
-        serde_json::from_str(&manifest_json).map_err(json_error)
-    })
-    .transpose()
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let manifest_json: String = row.get("manifest_json");
+    let item_rows = sqlx::query(
+        "SELECT item_json FROM source_items WHERE source_id = ?1 AND generation = ?2 \
+         ORDER BY source_item_key",
+    )
+    .bind(&source_id.0)
+    .bind(&generation.0)
+    .fetch_all(&store.pool)
+    .await
+    .map_err(sqlite_error)?;
+    let items = item_rows
+        .into_iter()
+        .map(|row| {
+            let item_json: String = row.get("item_json");
+            serde_json::from_str(&item_json).map_err(json_error)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some(reconstruct_manifest(&manifest_json, items)?))
 }

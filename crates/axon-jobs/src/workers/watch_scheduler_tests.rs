@@ -1,4 +1,5 @@
 use super::*;
+use crate::boundary::WatchStore;
 use axon_api::source::{
     AdapterOptions, AdapterRef, AuthSnapshot, SourceId, SourceScope, WatchRequest, WatchSchedule,
 };

@@ -45,7 +45,7 @@ def generate_markdown(
     _emit_preferred_client_actions(emit, lifecycle_actions, direct_actions)
     _emit_response_policy(emit)
     _emit_direct_actions(emit, direct_actions, structs)
-    if "crawl" in lifecycle_actions:
+    if "CrawlRequest" in structs:
         _emit_crawl_parameters(emit, structs)
     _emit_lifecycle_families(emit, lifecycle_actions, structs, enums)
     if "ingest" in lifecycle_actions:
@@ -90,8 +90,8 @@ def _emit_contract(emit) -> None:
     )
     emit()
     emit("Code references:")
-    emit("- `crates/axon-api/src/mcp_schema.rs`")
-    emit("- `crates/axon-api/src/mcp_schema/*.rs`")
+    emit("- `crates/axon-mcp/src/schema.rs`")
+    emit("- `crates/axon-api/src/action/*.rs`")
     emit("- `crates/axon-mcp/src/server.rs`")
     emit("- `crates/axon-mcp/src/server/handlers_*.rs`")
     emit()

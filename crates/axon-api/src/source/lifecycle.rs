@@ -40,6 +40,15 @@ pub struct SourceRequest {
     pub idempotency_key: Option<String>,
 }
 
+/// Minimal durable identity needed to retry adapter-owned terminal cleanup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AdapterReleaseRequest {
+    pub job_id: JobId,
+    pub source_id: SourceId,
+    pub source_kind: SourceKind,
+}
+
 impl SourceRequest {
     pub fn new(source: impl Into<String>) -> Self {
         Self {

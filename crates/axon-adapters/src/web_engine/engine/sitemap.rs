@@ -10,6 +10,8 @@ mod backfill;
 mod discover;
 mod filter;
 
+use super::collector::sanitized_url_for_log;
+
 pub use backfill::append_candidate_backfill;
 pub use backfill::{BackfillStats, append_sitemap_backfill};
 pub(crate) use discover::sitemap_url_limit;
@@ -85,7 +87,10 @@ pub(crate) async fn fetch_text_with_metadata(
         Ok(resource) if (200..300).contains(&resource.status) => resource,
         Ok(_) => return None,
         Err(error) => {
-            log_warn(&format!("command=fetch provider error url={url}: {error}"));
+            log_warn(&format!(
+                "command=fetch provider error url={}: {error}",
+                sanitized_url_for_log(url)
+            ));
             return None;
         }
     };
@@ -96,7 +101,8 @@ pub(crate) async fn fetch_text_with_metadata(
                 Ok(bytes) => bytes,
                 Err(error) => {
                     log_warn(&format!(
-                        "command=fetch invalid inline bytes url={url}: {error}"
+                        "command=fetch invalid inline bytes url={}: {error}",
+                        sanitized_url_for_log(url)
                     ));
                     return None;
                 }
@@ -106,8 +112,9 @@ pub(crate) async fn fetch_text_with_metadata(
     };
     if max_bytes.is_some_and(|cap| bytes.len() as u64 > cap) {
         log_warn(&format!(
-            "command=fetch oversized body rejected cap_bytes={} url={url}",
-            max_bytes.unwrap_or_default()
+            "command=fetch oversized body rejected cap_bytes={} url={}",
+            max_bytes.unwrap_or_default(),
+            sanitized_url_for_log(url)
         ));
         return None;
     }

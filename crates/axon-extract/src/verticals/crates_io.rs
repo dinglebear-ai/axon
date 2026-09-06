@@ -13,7 +13,6 @@ use super::docs_rs::fetch_rustdoc_docs;
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "crates_io",
@@ -117,10 +116,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
 
     let name = segs[1];
     let ua = ctx.api_ua();
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let data = fetch_crate_json(client, name, url, ua).await?;
     // If the URL specifies an explicit version (e.g. /crates/serde/1.0.219),
@@ -187,13 +183,15 @@ async fn fetch_crate_json(
         let status = resp.status().as_u16();
         match status {
             200 => {
-                return resp
-                    .json()
-                    .await
-                    .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                        vertical: INFO.name,
-                        status,
-                    });
+                let payload =
+                    resp.json()
+                        .await
+                        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                            vertical: INFO.name,
+                            status,
+                        })?;
+                validate_crate_payload(&payload)?;
+                return Ok(payload);
             }
             404 => {
                 return Err(VerticalError::VerticalTargetNotFound {
@@ -221,6 +219,22 @@ async fn fetch_crate_json(
         }
     }
     unreachable!()
+}
+
+fn validate_crate_payload(data: &serde_json::Value) -> Result<(), VerticalError> {
+    let has_crate = data.get("crate").is_some_and(serde_json::Value::is_object);
+    let has_version = data
+        .get("versions")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|versions| !versions.is_empty());
+    if has_crate && has_version {
+        return Ok(());
+    }
+    Err(VerticalError::StructuredDataMalformed {
+        source: INFO.name,
+        reason: "crates.io response must contain a crate object and at least one version"
+            .to_string(),
+    })
 }
 
 /// Parse the `Retry-After` header as seconds. Returns `None` when absent or

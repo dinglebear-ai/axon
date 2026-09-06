@@ -1,0 +1,2281 @@
+use super::*;
+use std::fs;
+use std::path::{Path, PathBuf};
+use tempfile::TempDir;
+
+#[test]
+fn reads_component_manifest() {
+    let root = repo_root();
+    let manifest = load_manifest(&root).expect("manifest loads");
+    assert_eq!(manifest.schema_version, 1);
+    assert_eq!(manifest.components.len(), 4);
+    let actual = manifest
+        .components
+        .iter()
+        .map(|component| {
+            (
+                component.id.as_str(),
+                component.tag_prefix.as_str(),
+                component.release_please_path.as_str(),
+                component.release_workflow.as_str(),
+                component.shipping_paths.as_slice(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        [
+            (
+                "cli",
+                "v",
+                ".",
+                "release.yml",
+                &[
+                    "src".to_owned(),
+                    "crates".to_owned(),
+                    "Cargo.toml".to_owned(),
+                    "Cargo.lock".to_owned(),
+                    "build.rs".to_owned(),
+                    "apps/web".to_owned(),
+                    "rust-toolchain.toml".to_owned(),
+                    "vendor".to_owned(),
+                ][..],
+            ),
+            (
+                "palette",
+                "palette-v",
+                "apps/palette-tauri",
+                "palette-release.yml",
+                &["apps/palette-tauri".to_owned()][..],
+            ),
+            (
+                "android",
+                "android-v",
+                "apps/android",
+                "android-release.yml",
+                &["apps/android".to_owned()][..],
+            ),
+            (
+                "chrome",
+                "chrome-ext-v",
+                "apps/chrome-extension",
+                "chrome-extension-release.yml",
+                &["apps/chrome-extension".to_owned()][..],
+            ),
+        ]
+    );
+}
+
+#[test]
+fn release_plan_serializes_release_driver_for_every_component() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).expect("release plan");
+    let serialized = serde_json::to_value(plans).expect("serialize release plan");
+    let components = serialized.as_array().expect("component array");
+    let drivers = components
+        .iter()
+        .map(|component| {
+            (
+                component["id"].as_str().expect("component id"),
+                component["release_driver"]
+                    .as_str()
+                    .expect("serialized release driver"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        drivers,
+        [
+            ("cli", "axon-native"),
+            ("palette", "release-please"),
+            ("android", "release-please"),
+            ("chrome", "release-please"),
+        ]
+    );
+}
+
+#[test]
+fn cargo_package_version_reader_ignores_workspace_version() {
+    let content = r#"
+[workspace.package]
+version = "9.9.9"
+
+[package]
+name = "axon"
+version = "1.2.3"
+"#;
+    assert_eq!(
+        read_cargo_package_version(content, Some("axon")).expect("version"),
+        "1.2.3"
+    );
+}
+
+#[test]
+fn package_lock_writer_updates_root_and_workspace_package_versions() {
+    let content = r#"{
+  "name": "@axon/admin-panel",
+  "version": "7.2.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "@axon/admin-panel",
+      "version": "7.2.0"
+    },
+    "node_modules/example": {
+      "version": "7.2.0"
+    }
+  }
+}"#;
+
+    let updated = replace_npm_package_lock_version(content, Some("@axon/admin-panel"), "7.2.1")
+        .expect("package-lock versions update");
+
+    assert_eq!(
+        read_npm_package_lock_version(&updated, Some("@axon/admin-panel")).expect("version"),
+        "7.2.1"
+    );
+    assert!(updated.contains(
+        r#""node_modules/example": {
+      "version": "7.2.0""#
+    ));
+}
+
+#[test]
+fn read_workspace_package_version_present_and_absent() {
+    let with = r#"[workspace.package]
+version = "5.19.0"
+
+[package]
+name = "axon"
+version = "5.19.0"
+"#;
+    assert_eq!(
+        read_workspace_package_version(with).expect("parse"),
+        Some("5.19.0".to_owned())
+    );
+    let without = r#"[package]
+name = "axon-palette-tauri"
+version = "5.10.2"
+"#;
+    assert_eq!(
+        read_workspace_package_version(without).expect("parse"),
+        None
+    );
+}
+
+#[test]
+fn workspace_package_version_must_equal_product_version() {
+    let temp = TempDir::new().expect("tempdir");
+    let manifest = |ws: &str, pkg: &str| {
+        format!(
+            "[workspace.package]\nversion = \"{ws}\"\n\n[package]\nname = \"axon\"\nversion = \"{pkg}\"\n"
+        )
+    };
+    let path = temp.path().join("Cargo.toml");
+
+    fs::write(&path, manifest("5.19.0", "5.19.0")).unwrap();
+    check_workspace_package_version(temp.path(), "5.19.0").expect("matching versions pass");
+
+    fs::write(&path, manifest("5.18.0", "5.19.0")).unwrap();
+    let err = check_workspace_package_version(temp.path(), "5.19.0")
+        .expect_err("drifted workspace version must fail");
+    assert!(err.to_string().contains("[workspace.package] version"));
+
+    // No [workspace.package] table → guard is a no-op.
+    fs::write(&path, "[package]\nname = \"axon\"\nversion = \"5.19.0\"\n").unwrap();
+    check_workspace_package_version(temp.path(), "5.19.0").expect("no workspace table is a no-op");
+}
+
+#[test]
+fn cargo_lock_package_version_reader_targets_one_package() {
+    let content = r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.2.3"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+"#;
+    assert_eq!(
+        read_cargo_lock_package_version(content, Some("axon")).expect("version"),
+        "1.2.3"
+    );
+}
+
+#[test]
+fn json_version_reader_handles_pretty_and_compact_json() {
+    assert_eq!(
+        read_json_version(
+            r#"{ "name": "axon", "version": "1.2.3" }"#,
+            Some("/version")
+        )
+        .expect("pretty"),
+        "1.2.3"
+    );
+    assert_eq!(
+        read_json_version(r#"{"name":"axon","version":"1.2.4"}"#, Some("/version"))
+            .expect("compact"),
+        "1.2.4"
+    );
+    assert_eq!(
+        read_json_version(r#"{"info":{"version":"1.2.5"}}"#, Some("/info/version"))
+            .expect("nested"),
+        "1.2.5"
+    );
+}
+
+#[test]
+fn json_version_reader_uses_configured_pointer() {
+    let content = r#"{"version":"0.1.0","info":{"version":"1.2.5"}}"#;
+    assert_eq!(
+        read_json_version(content, Some("/info/version")).expect("openapi info version"),
+        "1.2.5"
+    );
+}
+
+#[test]
+fn npm_package_lock_version_reader_uses_root_package() {
+    let content = r#"{
+  "name": "@axon/admin-panel",
+  "version": "1.2.3",
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "name": "@axon/admin-panel",
+      "version": "1.2.3"
+    }
+  }
+}"#;
+    assert_eq!(
+        read_npm_package_lock_version(content, Some("@axon/admin-panel")).expect("version"),
+        "1.2.3"
+    );
+}
+
+#[test]
+fn gradle_version_reader_extracts_version_name_and_code() {
+    let content = r#"
+android {
+    defaultConfig {
+        versionCode = 42
+        versionName = "1.3.2"
+    }
+}
+"#;
+    assert_eq!(read_gradle_version_name(content).expect("name"), "1.3.2");
+    assert_eq!(read_gradle_version_code(content).expect("code"), 42);
+}
+
+#[test]
+fn gradle_version_code_enforces_google_play_bounds() {
+    assert!(read_gradle_version_code("versionCode = 1\n").is_ok());
+    assert!(read_gradle_version_code("versionCode = 2100000000\n").is_ok());
+    let zero = read_gradle_version_code("versionCode = 0\n").expect_err("zero invalid");
+    assert!(zero.to_string().contains("between 1 and"));
+    let too_large =
+        read_gradle_version_code("versionCode = 2100000001\n").expect_err("too large invalid");
+    assert!(too_large.to_string().contains("between 1 and"));
+}
+
+#[test]
+fn gradle_version_code_bump_rejects_cap() {
+    let error = increment_gradle_version_code("versionCode = 2100000000\n")
+        .expect_err("cap cannot be bumped");
+    assert!(error.to_string().contains("between 1 and"));
+}
+
+#[test]
+fn cli_parity_requires_changelog_and_web_versions() {
+    let fixture = Fixture::new();
+    fs::write(fixture.path("CHANGELOG.md"), "# Changelog\n\n## [0.9.9]\n").unwrap();
+    fs::write(
+        fixture.path("apps/web/package.json"),
+        r#"{"version":"0.9.9"}"#,
+    )
+    .unwrap();
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let cli = manifest
+        .components
+        .iter()
+        .find(|component| component.id == "cli")
+        .unwrap();
+    let errors = check_component_parity(fixture.root(), cli, "1.0.0").unwrap();
+    assert!(errors.iter().any(|error| error.contains("CHANGELOG.md")));
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("apps/web/package.json"))
+    );
+}
+
+#[test]
+fn plugin_json_version_is_rejected() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("plugins/axon/.claude-plugin/plugin.json"),
+        r#"{"name":"axon","version":"1.0.0"}"#,
+    )
+    .unwrap();
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let cli = manifest
+        .components
+        .iter()
+        .find(|component| component.id == "cli")
+        .unwrap();
+    let errors = check_component_parity(fixture.root(), cli, "1.0.0").unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("must not contain"))
+    );
+}
+
+#[test]
+fn android_parity_requires_version_code() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionName = "1.3.2"
+    }
+}
+"#,
+    )
+    .unwrap();
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let android = manifest
+        .components
+        .iter()
+        .find(|component| component.id == "android")
+        .unwrap();
+    let errors = check_component_parity(fixture.root(), android, "1.3.2").unwrap();
+    assert!(
+        !errors.iter().any(|error| error.contains("versionName")),
+        "fixture should isolate the missing versionCode error"
+    );
+    assert!(errors.iter().any(|error| error.contains("versionCode")));
+}
+
+#[test]
+fn cli_parity_rejects_invalid_semver_even_when_versions_match() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("Cargo.toml"),
+        r#"[package]
+name = "axon"
+version = "banana"
+"#,
+    )
+    .unwrap();
+    fs::write(fixture.path("README.md"), "# Axon\n\nVersion: banana\n").unwrap();
+    fs::write(fixture.path("CHANGELOG.md"), "# Changelog\n\n## [banana]\n").unwrap();
+    fs::write(
+        fixture.path("apps/web/package.json"),
+        r#"{"version":"banana"}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/web/openapi/axon.json"),
+        r#"{"info":{"version":"banana"}}"#,
+    )
+    .unwrap();
+
+    let error =
+        check_cli_parity_only(fixture.root()).expect_err("invalid semver should fail parity");
+    assert!(error.to_string().contains("not valid semver"));
+}
+
+#[test]
+fn semver_tag_sorting_keeps_component_prefixes_separate() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.9.0"]);
+    fixture.git(&["tag", "v1.10.0"]);
+    fixture.git(&["tag", "palette-v9.9.9"]);
+
+    assert_eq!(
+        latest_tag(fixture.root(), "v").unwrap(),
+        Some("v1.10.0".to_owned())
+    );
+    assert_eq!(
+        latest_tag(fixture.root(), "palette-v").unwrap(),
+        Some("palette-v9.9.9".to_owned())
+    );
+}
+
+#[test]
+fn changed_shipping_path_requires_new_tag() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(fixture.path("src/lib.rs"), "pub fn changed() {}\n").unwrap();
+    fixture.git(&["add", "src/lib.rs"]);
+    fixture.git(&["commit", "-m", "change cli"]);
+
+    let error = check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect_err("unchanged version should fail");
+    assert!(error.to_string().contains("release version check failed"));
+}
+
+#[test]
+fn docs_only_change_does_not_require_component_bump() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::create_dir_all(fixture.path("docs")).unwrap();
+    fs::write(fixture.path("docs/notes.md"), "docs only\n").unwrap();
+    fixture.git(&["add", "docs/notes.md"]);
+    fixture.git(&["commit", "-m", "docs"]);
+
+    check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect("docs-only change is allowed");
+}
+
+#[test]
+fn documentation_inside_shipping_paths_does_not_require_component_bump() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fixture.git(&["tag", "palette-v1.0.0"]);
+    fixture.git(&["tag", "android-v1.0.0"]);
+    fixture.git(&["tag", "chrome-ext-v1.0.0"]);
+    fs::create_dir_all(fixture.path("crates/axon-ingest/src")).unwrap();
+    fs::write(
+        fixture.path("crates/axon-ingest/src/README.md"),
+        "crate docs\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("crates/axon-ingest/src/CLAUDE.md"),
+        "agent notes\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/README.md"),
+        "palette docs\n",
+    )
+    .unwrap();
+    fs::write(fixture.path("apps/android/README.md"), "android docs\n").unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/README.md"),
+        "chrome docs\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "crates/axon-ingest/src/README.md",
+        "crates/axon-ingest/src/CLAUDE.md",
+        "apps/palette-tauri/README.md",
+        "apps/android/README.md",
+        "apps/chrome-extension/README.md",
+    ]);
+    fixture.git(&["commit", "-m", "docs in shipping paths"]);
+
+    check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect("documentation inside shipping paths is allowed");
+}
+
+#[test]
+fn pr_mode_ignores_shipping_changes_that_only_exist_on_base_branch() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "feature"]);
+    fs::create_dir_all(fixture.path("docs")).unwrap();
+    fs::write(fixture.path("docs/notes.md"), "feature docs\n").unwrap();
+    fixture.git(&["add", "docs/notes.md"]);
+    fixture.git(&["commit", "-m", "docs"]);
+    fixture.git(&["checkout", "main"]);
+    fs::write(fixture.path("src/lib.rs"), "pub fn main_changed() {}\n").unwrap();
+    fixture.git(&["add", "src/lib.rs"]);
+    fixture.git(&["commit", "-m", "main cli change"]);
+    fixture.git(&["checkout", "feature"]);
+
+    check(fixture.root(), Some("main"), "HEAD", GateMode::Pr, false)
+        .expect("base-only shipping changes do not force PR bump");
+}
+
+#[test]
+fn xtask_only_lockfile_change_does_not_require_cli_bump() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+]
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "Cargo.lock"]);
+    fixture.git(&["commit", "-m", "update xtask lock deps"]);
+
+    let plans = build_plan(
+        fixture.root(),
+        &load_manifest(fixture.root()).unwrap(),
+        Some("v1.0.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(!cli.changed, "xtask-only lockfile changes are tooling-only");
+    check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect("xtask-only lockfile change is allowed");
+}
+
+#[test]
+fn xtask_lockfile_change_with_new_package_sections_requires_cli_bump() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "Cargo.lock"]);
+    fixture.git(&["commit", "-m", "add xtask dep"]);
+
+    let plans = build_plan(
+        fixture.root(),
+        &load_manifest(fixture.root()).unwrap(),
+        Some("v1.0.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(
+        cli.changed,
+        "a third-party lockfile section is not dev-only tooling churn"
+    );
+}
+
+#[test]
+fn adding_a_dev_tooling_workspace_member_does_not_require_cli_bump() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    // Exactly the shape of extracting release tooling out of xtask: the xtask
+    // section gains a dependency and a brand-new tooling member appears.
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "xtask-release",
+]
+
+[[package]]
+name = "xtask-release"
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "Cargo.lock"]);
+    fixture.git(&["commit", "-m", "extract release tooling"]);
+
+    let plans = build_plan(
+        fixture.root(),
+        &load_manifest(fixture.root()).unwrap(),
+        Some("v1.0.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(
+        !cli.changed,
+        "workspace members outside every shipping path ship nothing"
+    );
+    check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect("tooling-only lockfile churn is allowed");
+}
+
+#[test]
+fn shipping_workspace_crate_lockfile_change_requires_cli_bump() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "axon-core"
+version = "1.0.0"
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "axon-core"
+version = "1.0.0"
+dependencies = [
+ "serde",
+]
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "Cargo.lock"]);
+    fixture.git(&["commit", "-m", "rewire axon-core deps"]);
+
+    let plans = build_plan(
+        fixture.root(),
+        &load_manifest(fixture.root()).unwrap(),
+        Some("v1.0.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(
+        cli.changed,
+        "crates/ members are CLI shipping paths, so their lock churn ships"
+    );
+}
+
+#[test]
+fn non_xtask_lockfile_change_requires_cli_bump() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(
+        fixture.path("Cargo.lock"),
+        r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "serde",
+]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "Cargo.lock"]);
+    fixture.git(&["commit", "-m", "update app lock deps"]);
+
+    let plans = build_plan(
+        fixture.root(),
+        &load_manifest(fixture.root()).unwrap(),
+        Some("v1.0.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(cli.changed, "app lockfile changes are release-relevant");
+    let error = check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+        .expect_err("app lockfile change requires CLI bump");
+    assert!(error.to_string().contains("release version check failed"));
+}
+
+#[test]
+fn android_change_requires_version_code_increase() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 6
+        versionName = "1.3.3"
+    }
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fixture.git(&["commit", "-m", "bump android version name"]);
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("android versionCode must increase");
+    assert!(format!("{error:?}").contains("versionCode must increase"));
+}
+
+#[test]
+fn managed_android_feature_pr_defers_the_release_bump() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    write(
+        &fixture.path("apps/android/app/src/main/kotlin/Feature.kt"),
+        "package axon\n\nclass Feature\n",
+    );
+    fixture.git(&["add", "apps/android/app/src/main/kotlin/Feature.kt"]);
+    fixture.git(&["commit", "-m", "feat(android): add feature"]);
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("release-please-managed feature PR defers its version bump");
+
+    let plans =
+        plan(fixture.root(), Some("android-v1.3.2"), "HEAD", GateMode::Pr).expect("release plan");
+    let android = plans.iter().find(|plan| plan.id == "android").unwrap();
+    assert!(android.changed, "the full plan retains the shipping change");
+}
+
+#[test]
+fn managed_android_gradle_config_pr_defers_when_version_fields_are_unchanged() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    let gradle_path = fixture.path("apps/android/app/build.gradle.kts");
+    let mut gradle = fs::read_to_string(&gradle_path).unwrap();
+    gradle.push_str(
+        r#"
+dependencies {
+    implementation("androidx.core:core-ktx:1.17.0")
+}
+"#,
+    );
+    fs::write(&gradle_path, gradle).unwrap();
+    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fixture.git(&["commit", "-m", "build(android): update dependency"]);
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("ordinary Gradle config changes defer the managed release bump");
+}
+
+#[test]
+fn managed_android_feature_pr_rejects_mixed_version_field_ownership() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    write(
+        &fixture.path("apps/android/app/src/main/kotlin/Feature.kt"),
+        "package axon\n\nclass Feature\n",
+    );
+    let gradle_path = fixture.path("apps/android/app/build.gradle.kts");
+    let gradle = fs::read_to_string(&gradle_path)
+        .unwrap()
+        .replace("versionCode = 6", "versionCode = 7");
+    fs::write(&gradle_path, gradle).unwrap();
+    fixture.git(&[
+        "add",
+        "apps/android/app/src/main/kotlin/Feature.kt",
+        "apps/android/app/build.gradle.kts",
+    ]);
+    fixture.git(&[
+        "commit",
+        "-m",
+        "feat(android): mix feature and release ownership",
+    ]);
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("feature PR must not edit release-please-owned version fields");
+    let message = error.to_string();
+    assert!(
+        message
+            .contains("mixes ordinary shipping changes with release-please-owned version fields"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/android/app/build.gradle.kts"));
+    assert!(message.contains("apps/android/app/src/main/kotlin/Feature.kt"));
+}
+
+#[test]
+fn managed_android_feature_pr_rejects_a_manual_release_heading() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    write(
+        &fixture.path("apps/android/app/src/main/kotlin/Feature.kt"),
+        "package axon\n\nclass Feature\n",
+    );
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n\n## [1.3.2]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/android/app/src/main/kotlin/Feature.kt",
+        "apps/android/CHANGELOG.md",
+    ]);
+    fixture.git(&[
+        "commit",
+        "-m",
+        "feat(android): mix feature and release notes",
+    ]);
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("a feature PR must not add a release heading");
+    let message = error.to_string();
+    assert!(
+        message
+            .contains("mixes ordinary shipping changes with release-please-owned version fields"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/android/CHANGELOG.md"));
+}
+
+#[test]
+fn managed_android_changelog_only_pr_rejects_a_manual_release_heading() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n\n## [1.3.2]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "docs(android): add manual release heading"]);
+
+    let plans =
+        plan(fixture.root(), Some("android-v1.3.2"), "HEAD", GateMode::Pr).expect("release plan");
+    let android = plans.iter().find(|plan| plan.id == "android").unwrap();
+    assert!(
+        !android.changed,
+        "a changelog-only edit is not a shipping change"
+    );
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("a manual semver heading must not bypass managed release ownership");
+    let message = error.to_string();
+    assert!(
+        message.contains(
+            "changes release-please-owned version fields without a synchronized managed release version change"
+        ),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/android/CHANGELOG.md"));
+}
+
+#[test]
+fn managed_android_changelog_only_pr_allows_prose_edits() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.2]\n\n- Clarify the existing release notes.\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "docs(android): clarify release notes"]);
+
+    let plans =
+        plan(fixture.root(), Some("android-v1.3.2"), "HEAD", GateMode::Pr).expect("release plan");
+    let android = plans.iter().find(|plan| plan.id == "android").unwrap();
+    assert!(
+        !android.changed,
+        "a prose-only changelog edit is not a shipping change"
+    );
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("prose-only changelog edits do not claim release ownership");
+}
+
+#[test]
+fn android_change_allows_version_code_increase() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 7
+        versionName = "1.3.3"
+    }
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.3",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/android/app/build.gradle.kts",
+        "apps/android/CHANGELOG.md",
+        ".release-please-manifest.json",
+    ]);
+    fixture.git(&["commit", "-m", "bump android version"]);
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("android versionName and versionCode bump is accepted");
+}
+
+#[test]
+fn changed_shipping_path_rejects_version_downgrade_without_existing_tag() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.2.0"]);
+    fs::write(
+        fixture.path("Cargo.toml"),
+        r#"[package]
+name = "axon"
+version = "1.1.0"
+"#,
+    )
+    .unwrap();
+    fs::write(fixture.path("README.md"), "# Axon\n\nVersion: 1.1.0\n").unwrap();
+    fs::write(fixture.path("CHANGELOG.md"), "# Changelog\n\n## [1.1.0]\n").unwrap();
+    fs::write(
+        fixture.path("apps/web/package.json"),
+        r#"{"version":"1.1.0"}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/web/openapi/axon.json"),
+        r#"{"info":{"version":"1.1.0"}}"#,
+    )
+    .unwrap();
+    fs::write(fixture.path("src/lib.rs"), "pub fn downgraded() {}\n").unwrap();
+    fixture.git(&["add", "."]);
+    fixture.git(&["commit", "-m", "downgrade cli"]);
+
+    let error = check(fixture.root(), Some("v1.2.0"), "HEAD", GateMode::Pr, false)
+        .expect_err("version downgrade should fail even when tag does not exist");
+    let message = error.to_string();
+    assert!(message.contains("not greater than latest"));
+    assert!(
+        message.contains("Run cargo xtask bump-version patch|minor|major --component cli"),
+        "Axon-native CLI guidance must name its actual release driver: {message}"
+    );
+}
+
+#[test]
+fn managed_chrome_asset_pr_defers_the_release_bump() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::create_dir_all(fixture.path("apps/chrome-extension/assets")).unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/assets/axon-glyph.svg"),
+        "<svg />\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/chrome-extension/assets/axon-glyph.svg"]);
+    fixture.git(&["commit", "-m", "change asset"]);
+
+    check(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("release-please-managed asset PR defers its version bump");
+
+    let plans = plan(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .expect("release plan");
+    let chrome = plans.iter().find(|plan| plan.id == "chrome").unwrap();
+    assert!(chrome.changed, "the full plan retains the shipping change");
+}
+
+#[test]
+fn managed_chrome_config_pr_defers_when_version_fields_are_unchanged() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::write(
+        fixture.path("apps/chrome-extension/manifest.json"),
+        r#"{"manifest_version":3,"version":"0.2.0","permissions":["storage"]}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/package.json"),
+        r#"{"name":"axon-chrome-extension","version":"0.2.0","dependencies":{"example":"1.0.0"}}"#,
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+    ]);
+    fixture.git(&["commit", "-m", "build(chrome): update runtime config"]);
+
+    check(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("ordinary Chrome config changes defer the managed release bump");
+}
+
+#[test]
+fn managed_chrome_pr_rejects_version_bump_mixed_into_manifest_config() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::write(
+        fixture.path("apps/chrome-extension/manifest.json"),
+        r#"{"manifest_version":3,"version":"0.2.1","permissions":["storage"]}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/package.json"),
+        r#"{"name":"axon-chrome-extension","version":"0.2.1"}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/CHANGELOG.md"),
+        "# Changelog\n\n## [0.2.1]\n\n## [0.2.0]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.1"
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+        "apps/chrome-extension/CHANGELOG.md",
+        ".release-please-manifest.json",
+    ]);
+    fixture.git(&[
+        "commit",
+        "-m",
+        "feat(chrome): mix permission and release bump",
+    ]);
+
+    let error = check(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("ordinary manifest changes must not ride a managed version bump");
+    let message = error.to_string();
+    assert!(
+        message
+            .contains("mixes ordinary shipping changes with release-please-owned version fields"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/chrome-extension/manifest.json"));
+}
+
+#[test]
+fn main_mode_marks_changed_since_latest_tag() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    bump_cli_fixture_to(&fixture, "1.0.1");
+    fs::write(fixture.path("src/lib.rs"), "pub fn changed() {}\n").unwrap();
+    fixture.git(&["add", "."]);
+    fixture.git(&["commit", "-m", "change cli"]);
+
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(cli.changed);
+    assert_eq!(cli.last_tag.as_deref(), Some("v1.0.0"));
+}
+
+#[test]
+fn main_mode_skips_changed_component_when_candidate_tag_already_exists() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+    fs::write(fixture.path("src/lib.rs"), "pub fn post_release_fix() {}\n").unwrap();
+    fixture.git(&["add", "src/lib.rs"]);
+    fixture.git(&["commit", "-m", "post release fix"]);
+
+    check(fixture.root(), None, "HEAD", GateMode::Main, false)
+        .expect("post-release same-version changes do not make auto-tag fail");
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(!cli.changed);
+    assert_eq!(cli.candidate_tag, "v1.0.0");
+    assert_eq!(cli.last_tag.as_deref(), Some("v1.0.0"));
+}
+
+#[test]
+fn pr_mode_allows_release_please_source_fixup_after_tag_exists() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.1"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/CHANGELOG.md"),
+        "# Changelog\n\n## [0.2.1]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/chrome-extension/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release chrome-ext 0.2.1"]);
+    fixture.git(&["tag", "chrome-ext-v0.2.1"]);
+
+    release_please_fixups(fixture.root(), "chrome", "0.2.1", None).unwrap();
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+    ]);
+    fixture.git(&["commit", "-m", "chore: apply release-please fixups"]);
+
+    check(fixture.root(), Some("HEAD~1"), "HEAD", GateMode::Pr, false)
+        .expect("source-only release fixups are allowed after release-please tags");
+}
+
+#[test]
+fn release_please_fixups_must_be_committed_before_pr_validation() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.1"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/CHANGELOG.md"),
+        "# Changelog\n\n## [0.2.1]\n\n## [0.2.0]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/chrome-extension/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release chrome-ext 0.2.1"]);
+
+    release_please_fixups(fixture.root(), "chrome", "0.2.1", None).unwrap();
+    let error = check(fixture.root(), Some("HEAD~1"), "HEAD", GateMode::Pr, false)
+        .expect_err("dirty source fixups must not make a changelog-only HEAD valid");
+    assert!(
+        error.to_string().contains(
+            "changes release-please-owned version fields without a synchronized managed release version change"
+        ),
+        "unexpected error: {error}"
+    );
+
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+    ]);
+    fixture.git(&["commit", "-m", "chore: apply release-please fixups"]);
+    check(fixture.root(), Some("HEAD~2"), "HEAD", GateMode::Pr, false)
+        .expect("the committed release-please sources and changelog validate together");
+}
+
+#[test]
+fn main_mode_marks_unchanged_when_latest_tag_points_at_head() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "v1.0.0"]);
+
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(!cli.changed);
+}
+
+#[test]
+fn main_mode_treats_missing_component_tag_as_first_release() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).unwrap();
+    let cli = plans.iter().find(|plan| plan.id == "cli").unwrap();
+    assert!(cli.changed);
+    assert!(cli.last_tag.is_none());
+}
+
+#[test]
+fn main_mode_android_version_code_compares_against_latest_tag() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 6
+        versionName = "1.3.3"
+    }
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fixture.git(&["commit", "-m", "bump android name only"]);
+
+    let error = check(fixture.root(), None, "HEAD", GateMode::Main, false)
+        .expect_err("main mode must compare versionCode with latest tag");
+    assert!(error.to_string().contains("versionCode must increase"));
+}
+
+#[test]
+fn release_manifest_requires_release_please_path() {
+    let fixture = Fixture::new();
+    let path = fixture.path("release/components.toml");
+    let content = fs::read_to_string(&path).unwrap();
+    fs::write(&path, content.replace("release_please_path = \".\"", "")).unwrap();
+
+    let err = plan(fixture.root(), Some("origin/main"), "HEAD", GateMode::Pr)
+        .expect_err("missing release_please_path must fail");
+    assert!(err.to_string().contains("release_please_path"));
+}
+
+#[test]
+fn release_manifest_requires_release_driver() {
+    let fixture = Fixture::new();
+    let path = fixture.path("release/components.toml");
+    let content = fs::read_to_string(&path).unwrap();
+    fs::write(
+        &path,
+        content.replace("release_driver = \"axon-native\"", ""),
+    )
+    .unwrap();
+
+    let err = plan(fixture.root(), Some("origin/main"), "HEAD", GateMode::Pr)
+        .expect_err("missing release_driver must fail closed");
+    assert!(err.to_string().contains("release_driver"));
+}
+
+#[test]
+fn release_please_manifest_matches_component_versions() {
+    let fixture = Fixture::new();
+    // Palette is release-please-driven and must agree with its source
+    // version even though the Axon-native CLI is absent from this manifest.
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "9.9.9",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let errors =
+        release_please::check_manifest_versions(fixture.root(), &manifest.components).unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.contains("apps/palette-tauri")
+                && error.contains(".release-please-manifest.json"))
+    );
+}
+
+#[test]
+fn release_please_manifest_check_skips_axon_native_cli_component() {
+    // cli's release/components.toml entry sets release_driver =
+    // "axon-native" because Axon's own xtask + auto-tag pipeline owns it. The
+    // "." entry must be absent because release-please does not own that path.
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let errors =
+        release_please::check_manifest_versions(fixture.root(), &manifest.components).unwrap();
+    assert!(
+        errors.is_empty(),
+        "expected no errors with cli's manifest entry absent, got: {errors:?}"
+    );
+}
+
+#[test]
+fn manual_bump_rejects_release_please_driven_components() {
+    let fixture = Fixture::new();
+    let before = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
+
+    let error = bump_component_version(fixture.root(), "android", BumpLevel::Patch)
+        .expect_err("release-please-driven components must reject manual bumps");
+
+    assert!(error.to_string().contains(
+        "android uses release-please as its release driver and cannot be bumped manually"
+    ));
+    assert_eq!(
+        fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap(),
+        before,
+        "the rejected bump must not mutate managed version files"
+    );
+}
+
+#[test]
+fn release_plan_ignores_inherited_repository_local_git_environment() {
+    let outer = Fixture::new();
+    outer.init_repo();
+    let outer_git_dir = outer.path(".git");
+    let outer_index = outer_git_dir.join("index");
+    let test_binary = std::env::current_exe().expect("resolve the xtask test binary");
+
+    let output = std::process::Command::new(test_binary)
+        .args([
+            "checks::release_versions::tests::managed_android_changelog_only_pr_rejects_a_manual_release_heading",
+            "--exact",
+            "--nocapture",
+        ])
+        .env("GIT_DIR", &outer_git_dir)
+        .env("GIT_WORK_TREE", outer.root())
+        .env("GIT_INDEX_FILE", &outer_index)
+        .env("GIT_PREFIX", "")
+        .output()
+        .expect("run a release-plan regression under hook-like Git environment variables");
+
+    assert!(
+        output.status.success(),
+        "release planning must honor fixture roots under inherited hook variables; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_uses_manifest_metadata() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\"apps/palette-tauri\"]",
+  "palette_tag": "palette-v5.10.2"
+}"#;
+    let items = release_please_dispatch_plan(fixture.root(), release_outputs).unwrap();
+    assert_eq!(
+        items,
+        vec![ReleasePleaseDispatchItem {
+            id: "palette".to_owned(),
+            workflow: "palette-release.yml".to_owned(),
+            tag: "palette-v5.10.2".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_a_tag_with_the_wrong_prefix() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\"apps/palette-tauri\"]",
+  "palette_tag": "desktop-v5.10.2"
+}"#;
+
+    let error = release_please_dispatch_plan(fixture.root(), release_outputs)
+        .expect_err("release output tags must use the component prefix");
+    let message = error.to_string();
+    assert!(
+        message.contains("palette_tag"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("desktop-v5.10.2"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("palette-v5.10.2"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_a_tag_with_the_wrong_manifest_version() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\"apps/palette-tauri\"]",
+  "palette_tag": "palette-v5.10.3"
+}"#;
+
+    let error = release_please_dispatch_plan(fixture.root(), release_outputs)
+        .expect_err("release output tags must use the release-please manifest version");
+    let message = error.to_string();
+    assert!(
+        message.contains("palette_tag"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("palette-v5.10.3"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("palette-v5.10.2"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_axon_native_cli_output() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\".\"]",
+  "cli_tag": "v1.0.0"
+}"#;
+    let error = release_please_dispatch_plan(fixture.root(), release_outputs)
+        .expect_err("release-please must not dispatch the Axon-native CLI");
+    assert!(
+        error
+            .to_string()
+            .contains("release outputs include path . owned by axon-native"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_object_paths() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "{\".\": \"yes\"}",
+  "cli_tag": "v1.0.0"
+}"#;
+    let err = release_please_dispatch_plan(fixture.root(), release_outputs).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("paths_released must be a JSON array")
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_uses_component_manifest() {
+    let fixture = Fixture::new();
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let files = [
+        "apps/palette-tauri/CHANGELOG.md".to_owned(),
+        "apps/android/app/build.gradle.kts".to_owned(),
+        "apps/chrome-extension/CHANGELOG.md".to_owned(),
+    ];
+    let items = release_please::fixup_items(fixture.root(), &manifest.components, &files).unwrap();
+    assert_eq!(
+        items,
+        vec![
+            ReleasePleaseFixupItem {
+                id: "palette".to_owned(),
+                version: "5.10.2".to_owned(),
+            },
+            ReleasePleaseFixupItem {
+                id: "android".to_owned(),
+                version: "1.3.2".to_owned(),
+            },
+            ReleasePleaseFixupItem {
+                id: "chrome".to_owned(),
+                version: "0.2.0".to_owned(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_derives_changed_files_from_git_refs() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-palette"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "6.0.0",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/CHANGELOG.md"),
+        "# Changelog\n\n## [6.0.0]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", ".release-please-manifest.json"]);
+    fixture.git(&["add", "apps/palette-tauri/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "chore(main): release palette 6.0.0"]);
+
+    let items = release_please_fixup_plan(fixture.root(), "main", "HEAD").unwrap();
+
+    assert_eq!(
+        items,
+        vec![ReleasePleaseFixupItem {
+            id: "palette".to_owned(),
+            version: "6.0.0".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_ignores_changes_added_only_to_an_advanced_base() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-palette"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "6.0.0",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/CHANGELOG.md"),
+        "# Changelog\n\n## [6.0.0]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/palette-tauri/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release palette 6.0.0"]);
+
+    fixture.git(&["checkout", "main"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "chore: advance main with android release"]);
+    fixture.git(&["checkout", "release-palette"]);
+
+    let items = release_please_fixup_plan(fixture.root(), "main", "HEAD").unwrap();
+
+    assert_eq!(
+        items,
+        vec![ReleasePleaseFixupItem {
+            id: "palette".to_owned(),
+            version: "6.0.0".to_owned(),
+        }],
+        "fixup planning must use the release branch diff from the merge base, not base-only changes"
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_rejects_an_invalid_base_ref() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+
+    let error = release_please_fixup_plan(fixture.root(), "missing-base", "HEAD")
+        .expect_err("an invalid base ref must not produce an empty fixup plan");
+
+    assert!(error.to_string().contains("merge-base"));
+    assert!(error.to_string().contains("missing-base"));
+}
+
+#[test]
+fn chrome_fixup_updates_manifest_and_package_versions() {
+    let fixture = Fixture::new();
+    release_please_fixups(fixture.root(), "chrome", "0.3.0", None).unwrap();
+
+    let manifest = fs::read_to_string(fixture.path("apps/chrome-extension/manifest.json")).unwrap();
+    let package = fs::read_to_string(fixture.path("apps/chrome-extension/package.json")).unwrap();
+
+    assert_eq!(
+        read_json_version(&manifest, Some("/version")).unwrap(),
+        "0.3.0"
+    );
+    assert_eq!(
+        read_json_version(&package, Some("/version")).unwrap(),
+        "0.3.0"
+    );
+}
+
+#[test]
+fn android_fixup_increments_version_code() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 14 // x-release-please-version-code
+        // x-release-please-start-version
+        versionName = "1.5.1"
+        // x-release-please-end
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    release_please_fixups(fixture.root(), "android", "1.5.1", None).unwrap();
+    release_please_fixups(fixture.root(), "android", "1.5.1", None).unwrap();
+
+    let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
+    assert_eq!(read_gradle_version_name(&content).unwrap(), "1.5.1");
+    assert_eq!(read_gradle_version_code(&content).unwrap(), 15);
+    assert!(content.contains("x-release-please-version-code 1.5.1"));
+}
+
+#[test]
+fn android_fixup_repairs_force_refreshed_stale_version_code() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.6.4",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.6.4]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 20 // x-release-please-version-code 1.6.4
+        // x-release-please-start-version
+        versionName = "1.6.4"
+        // x-release-please-end
+    }
+}
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-android"]);
+
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "2.0.0",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [2.0.0]\n\n## [1.6.4]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 20 // x-release-please-version-code 2.0.0
+        // x-release-please-start-version
+        versionName = "2.0.0"
+        // x-release-please-end
+    }
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "."]);
+    fixture.git(&["commit", "-m", "chore(main): release android 2.0.0"]);
+
+    release_please_fixups(fixture.root(), "android", "2.0.0", Some("main")).unwrap();
+
+    let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
+    assert_eq!(read_gradle_version_name(&content).unwrap(), "2.0.0");
+    assert_eq!(read_gradle_version_code(&content).unwrap(), 21);
+    assert!(content.contains("x-release-please-version-code 2.0.0"));
+
+    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fixture.git(&["commit", "-m", "chore: apply release-please fixups"]);
+    check(fixture.root(), Some("main"), "HEAD", GateMode::Pr, false)
+        .expect("repaired force-refreshed release branch passes version checks");
+}
+
+#[test]
+fn manifest_validation_rejects_duplicate_ids() {
+    let fixture = Fixture::new();
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    manifest.components[1].id = manifest.components[0].id.clone();
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("duplicate id invalid");
+    assert!(error.to_string().contains("duplicate release component id"));
+}
+
+#[test]
+fn manifest_validation_rejects_overlapping_tag_prefixes() {
+    let fixture = Fixture::new();
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    manifest.components[1].tag_prefix = "v".to_owned();
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("overlap invalid");
+    assert!(error.to_string().contains("tag_prefix overlaps"));
+}
+
+#[test]
+fn manifest_validation_rejects_empty_shipping_paths() {
+    let fixture = Fixture::new();
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    manifest.components[0].shipping_paths.clear();
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("empty paths invalid");
+    assert!(error.to_string().contains("has no shipping_paths"));
+}
+
+#[test]
+fn manifest_validation_rejects_missing_shipping_path_and_workflow() {
+    let fixture = Fixture::new();
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    manifest.components[0]
+        .shipping_paths
+        .push("missing/path".to_owned());
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("missing path invalid");
+    assert!(error.to_string().contains("shipping path does not exist"));
+
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    manifest.components[0].release_workflow = "missing.yml".to_owned();
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("missing workflow invalid");
+    assert!(
+        error
+            .to_string()
+            .contains("release_workflow does not exist")
+    );
+}
+
+#[test]
+fn manifest_validation_rejects_bad_json_pointer() {
+    let fixture = Fixture::new();
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    let file = manifest.components[0]
+        .version_files
+        .iter_mut()
+        .find(|file| file.kind == VersionKind::JsonVersion)
+        .unwrap();
+    file.json_pointer = Some("version".to_owned());
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("relative pointer invalid");
+    assert!(
+        error
+            .to_string()
+            .contains("requires an absolute json_pointer")
+    );
+}
+
+#[test]
+fn manifest_validation_rejects_missing_version_source_in_version_files() {
+    let fixture = Fixture::new();
+    let mut manifest = load_manifest(fixture.root()).unwrap();
+    let source = manifest.components[0].version_source.clone();
+    manifest.components[0]
+        .version_files
+        .retain(|file| !same_version_file(file, &source));
+    let error = validate_manifest(fixture.root(), &manifest).expect_err("source must be listed");
+    assert!(error.to_string().contains("version_source is not listed"));
+}
+
+struct Fixture {
+    temp: TempDir,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        let temp = TempDir::new().expect("tempdir");
+        let fixture = Self { temp };
+        fixture.write_minimal_tree();
+        fixture
+    }
+
+    fn root(&self) -> &Path {
+        self.temp.path()
+    }
+
+    fn path(&self, path: &str) -> PathBuf {
+        self.root().join(path)
+    }
+
+    fn init_repo(&self) {
+        self.git(&["init"]);
+        self.git(&["config", "user.email", "test@example.com"]);
+        self.git(&["config", "user.name", "Test User"]);
+        self.git(&["add", "."]);
+        self.git(&["commit", "-m", "initial"]);
+        self.git(&["branch", "-M", "main"]);
+    }
+
+    fn git(&self, args: &[&str]) {
+        git(self.root(), args);
+    }
+
+    fn write_minimal_tree(&self) {
+        let manifest = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../release/components.toml"),
+        )
+        .expect("release/components.toml fixture exists");
+        write(&self.path("release/components.toml"), &manifest);
+        let release_please_config = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../release-please-config.json"),
+        )
+        .expect("release-please-config.json fixture exists");
+        write(
+            &self.path("release-please-config.json"),
+            &release_please_config,
+        );
+        write(
+            &self.path(".release-please-manifest.json"),
+            r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+        );
+        for workflow in [
+            "release.yml",
+            "palette-release.yml",
+            "android-release.yml",
+            "chrome-extension-release.yml",
+        ] {
+            write(
+                &self.path(&format!(".github/workflows/{workflow}")),
+                "name: test\n",
+            );
+        }
+        // Mirrors the real repository: shipping crates under `crates/`, plus
+        // dev-only tooling members outside every shipping path. The lockfile
+        // carve-out for tooling-only churn is derived from this list.
+        write(
+            &self.path("Cargo.toml"),
+            r#"[workspace]
+members = [
+    "xtask",
+    "xtask-release",
+    "crates/axon-core",
+]
+
+[package]
+name = "axon"
+version = "1.0.0"
+"#,
+        );
+        write(
+            &self.path("xtask/Cargo.toml"),
+            r#"[package]
+name = "xtask"
+version = "0.1.0"
+"#,
+        );
+        write(
+            &self.path("xtask-release/Cargo.toml"),
+            r#"[package]
+name = "xtask-release"
+version = "0.1.0"
+"#,
+        );
+        write(
+            &self.path("crates/axon-core/Cargo.toml"),
+            r#"[package]
+name = "axon-core"
+version = "1.0.0"
+"#,
+        );
+        write(
+            &self.path("Cargo.lock"),
+            r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "1.0.0"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+"#,
+        );
+        write(&self.path("README.md"), "# Axon\n\nVersion: 1.0.0\n");
+        write(&self.path("CHANGELOG.md"), "# Changelog\n\n## [1.0.0]\n");
+        write(
+            &self.path("apps/web/package.json"),
+            r#"{"version":"1.0.0"}"#,
+        );
+        write(
+            &self.path("apps/web/package-lock.json"),
+            &package_lock("@axon/admin-panel", "1.0.0"),
+        );
+        write(
+            &self.path("apps/web/openapi/axon.json"),
+            r#"{"info":{"version":"1.0.0"}}"#,
+        );
+        write(
+            &self.path("plugins/axon/.claude-plugin/plugin.json"),
+            r#"{"name":"axon"}"#,
+        );
+        write(&self.path("src/lib.rs"), "pub fn original() {}\n");
+        write(&self.path("crates/.keep"), "");
+        write(&self.path("build.rs"), "");
+        write(&self.path("migrations/.keep"), "");
+        write(&self.path("rust-toolchain.toml"), "");
+        write(&self.path("vendor/.keep"), "");
+        write(
+            &self.path("apps/palette-tauri/src-tauri/tauri.conf.json"),
+            r#"{"version":"5.10.2"}"#,
+        );
+        write(
+            &self.path("apps/palette-tauri/package.json"),
+            r#"{"version":"5.10.2"}"#,
+        );
+        write(
+            &self.path("apps/palette-tauri/src-tauri/Cargo.toml"),
+            r#"[package]
+name = "axon-palette-tauri"
+version = "5.10.2"
+"#,
+        );
+        write(
+            &self.path("apps/palette-tauri/src-tauri/Cargo.lock"),
+            r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon-palette-tauri"
+version = "5.10.2"
+"#,
+        );
+        write(
+            &self.path("apps/android/app/build.gradle.kts"),
+            r#"android {
+    defaultConfig {
+        versionCode = 6
+        versionName = "1.3.2"
+    }
+}
+"#,
+        );
+        write(
+            &self.path("apps/chrome-extension/manifest.json"),
+            r#"{"manifest_version":3,"version":"0.2.0"}"#,
+        );
+        write(
+            &self.path("apps/chrome-extension/package.json"),
+            r#"{"name":"axon-chrome-extension","version":"0.2.0"}"#,
+        );
+        // Per-component changelogs (headings match each version_source above) so
+        // the copied manifest's changelog_heading entries validate and pass parity.
+        write(
+            &self.path("apps/palette-tauri/CHANGELOG.md"),
+            "# Changelog\n\n## [5.10.2]\n",
+        );
+        write(
+            &self.path("apps/android/CHANGELOG.md"),
+            "# Changelog\n\n## [1.3.2]\n",
+        );
+        write(
+            &self.path("apps/chrome-extension/CHANGELOG.md"),
+            "# Changelog\n\n## [0.2.0]\n",
+        );
+        write(&self.path("assets/.keep"), "");
+    }
+}
+
+fn bump_cli_fixture_to(fixture: &Fixture, version: &str) {
+    fs::write(
+        fixture.path("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "axon"
+version = "{version}"
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("README.md"),
+        format!("# Axon\n\nVersion: {version}\n"),
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("CHANGELOG.md"),
+        format!("# Changelog\n\n## [{version}]\n"),
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("Cargo.lock"),
+        format!(
+            r#"# This file is automatically @generated by Cargo.
+version = 4
+
+[[package]]
+name = "axon"
+version = "{version}"
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/web/package.json"),
+        format!(r#"{{"version":"{version}"}}"#),
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/web/package-lock.json"),
+        package_lock("@axon/admin-panel", version),
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/web/openapi/axon.json"),
+        format!(r#"{{"info":{{"version":"{version}"}}}}"#),
+    )
+    .unwrap();
+}
+
+fn package_lock(name: &str, version: &str) -> String {
+    format!(
+        r#"{{
+  "name": "{name}",
+  "version": "{version}",
+  "lockfileVersion": 3,
+  "packages": {{
+    "": {{
+      "name": "{name}",
+      "version": "{version}"
+    }}
+  }}
+}}"#
+    )
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask parent")
+        .to_path_buf()
+}
+
+fn write(path: &Path, content: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(path, content).unwrap();
+}
+
+fn git(root: &Path, args: &[&str]) {
+    let local_env = std::process::Command::new("git")
+        .args(["rev-parse", "--local-env-vars"])
+        .output()
+        .expect("list repository-local Git environment variables");
+    assert!(
+        local_env.status.success(),
+        "git rev-parse --local-env-vars failed: {}",
+        String::from_utf8_lossy(&local_env.stderr)
+    );
+
+    let mut command = std::process::Command::new("git");
+    for variable in String::from_utf8_lossy(&local_env.stdout)
+        .lines()
+        .filter(|variable| !variable.is_empty())
+    {
+        command.env_remove(variable);
+    }
+    let status = command
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .status()
+        .expect("git runs");
+    assert!(status.success(), "git {:?} failed", args);
+}

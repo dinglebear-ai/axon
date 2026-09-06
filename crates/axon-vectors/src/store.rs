@@ -36,6 +36,12 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 #[async_trait]
 pub trait VectorStore: Send + Sync {
     async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()>;
+    async fn begin_bulk_load(&self, _collection: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn finish_bulk_load(&self, _collection: &str) -> Result<()> {
+        Ok(())
+    }
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult>;
     async fn mark_generation_committed(
         &self,
@@ -240,6 +246,16 @@ impl VectorStore for FakeVectorStore {
         } else {
             state.collections.insert(spec.collection.clone(), spec);
         }
+        Ok(())
+    }
+
+    async fn begin_bulk_load(&self, _collection: &str) -> Result<()> {
+        self.state.lock().await.calls.push("begin_bulk_load");
+        Ok(())
+    }
+
+    async fn finish_bulk_load(&self, _collection: &str) -> Result<()> {
+        self.state.lock().await.calls.push("finish_bulk_load");
         Ok(())
     }
 

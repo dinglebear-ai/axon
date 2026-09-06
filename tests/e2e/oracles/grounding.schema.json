@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Axon E2E grounding evidence envelope",
+  "type": "object",
+  "required": ["schema_version", "scenario_id", "operation", "surface", "run_id", "result", "assertions"],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "scenario_id": {"type": "string"},
+    "operation": {"type": "string"},
+    "surface": {"type": "string"},
+    "run_id": {"type": "string", "pattern": "^axon_e2e_"},
+    "result": {"type": "string", "enum": ["pass", "fail"]},
+    "failure_class": {"type": ["string", "null"]},
+    "corpus_version": {"type": "string"},
+    "corpus_checksum": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timing_ms": {"type": ["object", "null"], "additionalProperties": {"type": "number", "minimum": 0}},
+    "index_timing_ms": {"type": "object", "required": ["harness_index_total"], "properties": {"harness_index_total": {"type": "number", "minimum": 0}, "public_embed": {"type": "number", "minimum": 0}, "harness_provider_embed": {"type": "number", "minimum": 0}}},
+    "provider_observation": {"type": "object", "required": ["calls", "retries", "tokens", "artifacts", "artifact_ids"], "properties": {"calls": {"type": "integer", "minimum": 0}, "retries": {"type": "integer", "minimum": 0}, "tokens": {"type": "integer", "minimum": 0}, "artifacts": {"type": "integer", "minimum": 0}, "artifact_ids": {"type": "array", "items": {"type": "string"}}}},
+    "assertions": {"type": "array", "items": {"type": "object", "required": ["id", "passed", "detail"], "properties": {"id": {"type": "string"}, "passed": {"type": "boolean"}, "detail": {"type": "string"}}}}
+  },
+  "additionalProperties": true
+}

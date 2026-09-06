@@ -76,22 +76,88 @@ pub async fn v1_ask(
     }
 
     let want_diagnostics = req_cfg.ask_diagnostics;
+    if req.agent.is_some() && req.loadout.is_none() {
+        return HttpError::bad_request("agent mode requires a revision-bound loadout")
+            .into_response();
+    }
 
-    match query_svc::ask_with_auth(
+    let resolved = match req.loadout.as_ref() {
+        Some(binding) => match axon_services::loadout_context::resolve(&req_cfg, binding).await {
+            Ok(value) => Some(value),
+            Err(error) => {
+                return HttpError::new(
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "loadout_resolution_failed",
+                    error.to_string(),
+                )
+                .into_response();
+            }
+        },
+        None => None,
+    };
+    let question = resolved.as_ref().map_or_else(
+        || req.query.clone(),
+        |context| format!("{}\n\n{}", context.prompt_context, req.query),
+    );
+    let mut result = match query_svc::ask_with_auth(
         &ctx,
         &req_cfg,
-        &req.query,
+        &question,
         None,
         auth.as_ref()
             .map(|extension| auth_snapshot_from_auth(&extension.0)),
     )
     .await
     {
-        Ok(result) => Json(result).into_response(),
+        Ok(result) => result,
         Err(err) => {
-            HttpError::from_error_with_diagnostics(err.as_ref(), want_diagnostics).into_response()
+            return HttpError::from_error_with_diagnostics(err.as_ref(), want_diagnostics)
+                .into_response();
+        }
+    };
+    result.query = req.query;
+    if let Some(options) = req.agent {
+        let binding = req.loadout.as_ref().expect("agent loadout validated");
+        let resolution = resolved.as_ref().expect("agent loadout resolved");
+        let prompt = format!(
+            "{}\n\nUSER QUESTION:\n{}\n\nINITIAL RAG ANSWER:\n{}",
+            resolution.prompt_context, result.query, result.answer
+        );
+        match axon_services::agent_runtime::run(
+            &req_cfg,
+            &binding.loadout_id,
+            resolution.metadata.effective_revision,
+            &prompt,
+            options,
+            axon_services::agent_runtime::AgentTurnOwner {
+                principal: auth
+                    .as_ref()
+                    .map(|v| v.sub.clone())
+                    .unwrap_or_else(|| "loopback-local".into()),
+                profile_id: binding.integration_id.clone(),
+            },
+            axon_services::agent_runtime::configured_completion(req_cfg.clone()),
+        )
+        .await
+        {
+            Ok(agent) => {
+                if let Some(answer) = agent.answer.clone() {
+                    result.answer = answer;
+                }
+                result.agent = Some(agent);
+            }
+            Err(error) => {
+                return HttpError::new(
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "agent_runtime_failed",
+                    error.to_string(),
+                )
+                .into_response();
+            }
         }
     }
+    result.loadout = resolved.map(|value| value.metadata);
+    Json(result).into_response()
 }
 
 #[cfg(test)]

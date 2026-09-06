@@ -58,7 +58,7 @@ pub async fn conditional_probe(
     last_modified: Option<&str>,
 ) -> Probe {
     if let Err(e) = validate_url(url) {
-        return Probe::Failed(format!("ssrf guard rejected {url}: {e}"));
+        return Probe::Failed(format!("ssrf guard rejected request: {e}"));
     }
     let client = match http_client() {
         Ok(c) => c,
@@ -70,7 +70,7 @@ pub async fn conditional_probe(
     }
     let resp = match req.send().await {
         Ok(r) => r,
-        Err(e) => return Probe::Failed(format!("conditional probe request failed: {e}")),
+        Err(_) => return Probe::Failed("conditional probe request failed".to_string()),
     };
     let status = resp.status().as_u16();
     let header = |name: &str| {

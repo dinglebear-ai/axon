@@ -76,7 +76,13 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     assert_eq!(refreshed.freshness.removed_files, 0);
     assert_eq!(
         vectors.calls().await,
-        vec!["ensure_collection", "upsert", "mark_generation_committed"]
+        vec![
+            "ensure_collection",
+            "begin_bulk_load",
+            "upsert",
+            "finish_bulk_load",
+            "mark_generation_committed"
+        ]
     );
     let jobs = JobStore::list(
         source_jobs.as_ref(),
@@ -125,13 +131,13 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
             "fake-embedding",
             8,
         ));
-    let progress = RecordingReindexProgress::default();
+    let progress = Arc::new(RecordingReindexProgress::default());
 
     let refreshed = refresh_code_search_index_with_progress(
         &ctx,
         Some(repo.path()),
         CodeSearchCaller::Cli,
-        Some(&progress),
+        Some(progress.clone()),
     )
     .await
     .expect("target refresh");
@@ -289,7 +295,9 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
         vectors.calls().await,
         vec![
             "ensure_collection",
+            "begin_bulk_load",
             "upsert",
+            "finish_bulk_load",
             "mark_generation_committed",
             "upsert",
             "search"
@@ -333,11 +341,11 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
         .await
         .expect("initial target refresh");
     std::fs::write(repo.path().join("bad.rs"), [0xff, 0xfe, 0xfd]).expect("bad source file");
-    let progress = RecordingReindexProgress::default();
+    let progress = Arc::new(RecordingReindexProgress::default());
 
     let searched = code_search_with_progress(
-        &ctx,
-        "target_answer",
+        ctx.clone(),
+        "target_answer".to_string(),
         CodeSearchOptions {
             collection: None,
             limit: 10,
@@ -348,7 +356,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             ensure_fresh: true,
             caller: CodeSearchCaller::Cli,
         },
-        Some(&progress),
+        Some(progress.clone()),
     )
     .await
     .expect("ensure_fresh target search should fall back after refresh failure");
@@ -358,7 +366,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             .freshness
             .warning
             .as_deref()
-            .is_some_and(|warning| warning.contains("valid UTF-8")),
+            .is_some_and(|warning| warning.to_ascii_lowercase().contains("utf-8")),
         "refresh failure warning should mention the indexing failure: {searched:#?}"
     );
     assert_eq!(searched.results.len(), 1);
@@ -502,7 +510,7 @@ fn code_search_allowed_roots_error_does_not_leak_absolute_path() {
 async fn code_search_resolution_errors_do_not_echo_probe_paths() {
     let dir = crate::test_support::visible_tempdir().expect("tempdir");
     let missing = dir.path().join("secret-checkout");
-    let err = resolve_code_search_root(Some(&missing), CodeSearchCaller::Cli)
+    let err = resolve_code_search_root(Some(missing), CodeSearchCaller::Cli)
         .await
         .unwrap_err()
         .to_string();

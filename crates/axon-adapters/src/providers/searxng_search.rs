@@ -21,6 +21,7 @@ use axon_api::source::*;
 use axon_core::http::{axon_ua, build_ssrf_guarded_client_builder, validate_url};
 use axon_error::ErrorStage;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
+use futures_util::StreamExt;
 use serde::Deserialize;
 
 use crate::boundary::{Result, SearchProvider};
@@ -36,6 +37,7 @@ const MAX_PAGES: usize = 10;
 const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 2;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
+const MAX_SEARXNG_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct SearxngSearchConfig {
@@ -169,13 +171,33 @@ impl SearxngSearchProvider {
             ));
         }
 
-        let bytes = match response.bytes().await {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                self.record_fatal().await;
-                return Err(self.error("search.body_read", err.to_string()));
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_SEARXNG_RESPONSE_BYTES as u64)
+        {
+            self.record_fatal().await;
+            return Err(self.error("search.response_too_large", "response exceeds byte budget"));
+        }
+        let mut bytes = Vec::new();
+        let mut body = response.bytes_stream();
+        loop {
+            match body.next().await {
+                Some(Ok(chunk)) => {
+                    if bytes.len().saturating_add(chunk.len()) > MAX_SEARXNG_RESPONSE_BYTES {
+                        self.record_fatal().await;
+                        return Err(
+                            self.error("search.response_too_large", "response exceeds byte budget")
+                        );
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                None => break,
+                Some(Err(err)) => {
+                    self.record_fatal().await;
+                    return Err(self.error("search.body_read", err.to_string()));
+                }
             }
-        };
+        }
         let parsed: SearxResponse = match serde_json::from_slice(&bytes) {
             Ok(parsed) => parsed,
             Err(err) => {

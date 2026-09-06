@@ -4,10 +4,11 @@ use std::time::Duration;
 use std::{future::Future, future::poll_fn, task::Poll};
 
 use axon_api::source::{
-    BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
-    ProviderId,
+    BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, FetchRequest, JobId,
+    JobPriority, MetadataMap, ProviderId, RedactedHeaders,
 };
 use axon_core::config::Config;
+use axon_core::http::LoopbackGuard;
 use axon_embedding::cache::{CachedEmbedding, EmbeddingVectorCacheStore};
 use axon_embedding::provider::EmbeddingProvider;
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
@@ -18,9 +19,9 @@ use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Barrier;
 
 use super::{
-    RuntimeSchedulers, artifact_candidate_sink_from_values, build_runtime_schedulers,
-    invalidate_embedding_identity_cache, resolve_embedding_identity,
-    tei_client_max_batch_tokens_from_value, tei_max_attempts,
+    RuntimeSchedulers, abort_embedding_identity_probe, artifact_candidate_sink_from_values,
+    build_runtime_schedulers, invalidate_embedding_identity_cache, resolve_embedding_identity,
+    tei_max_attempts,
 };
 use crate::context::TargetLocalSourceRuntime;
 
@@ -109,24 +110,6 @@ fn tei_max_attempts_reflects_configured_retry_count_not_a_hardcoded_default() {
         tei_max_attempts(&cfg),
         1,
         "zero retries still allows exactly one (the initial) attempt"
-    );
-}
-
-#[test]
-fn tei_client_batch_token_override_defaults_and_clamps_without_global_env_mutation() {
-    assert_eq!(tei_client_max_batch_tokens_from_value(None), 65_536);
-    assert_eq!(
-        tei_client_max_batch_tokens_from_value(Some("invalid")),
-        65_536
-    );
-    assert_eq!(tei_client_max_batch_tokens_from_value(Some("1")), 8_192);
-    assert_eq!(
-        tei_client_max_batch_tokens_from_value(Some("131072")),
-        131_072
-    );
-    assert_eq!(
-        tei_client_max_batch_tokens_from_value(Some("99999999")),
-        1_048_576
     );
 }
 
@@ -337,7 +320,11 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     cfg.tei_url = "http://127.0.0.1:1".to_string();
     cfg.tei_request_timeout_ms = 250;
     cfg.embed_prep_concurrency = 3;
+    cfg.embed_prep_max_in_flight_bytes = 24 * 1024 * 1024;
+    cfg.embed_scheduler_flush_ms = 2_750;
     cfg.embed_pool_max_inputs = 640;
+    cfg.document_batch_size = 23;
+    cfg.document_status_batch_size = 79;
     // Cache enabled in config, but the identity below is unverified fallback —
     // the runtime must fail open to the raw provider with no cache decoration.
     cfg.embed_cache_enabled = true;
@@ -362,7 +349,14 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     assert_eq!(runtime.embedding_model, "Qwen3-Embedding-0.6B");
     assert_eq!(runtime.embedding_dimensions, 1024);
     assert_eq!(runtime.document_prepare_concurrency, 3);
+    assert_eq!(
+        runtime.document_prepare_max_in_flight_bytes,
+        24 * 1024 * 1024
+    );
+    assert_eq!(runtime.embed_scheduler_flush_delay.as_millis(), 2_750);
     assert_eq!(runtime.embed_pool_max_inputs, 640);
+    assert_eq!(runtime.document_batch_size, 23);
+    assert_eq!(runtime.document_status_batch_size, 79);
     let persisted: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM provider_identity_cache")
         .fetch_one(&pool)
         .await
@@ -370,10 +364,6 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     assert_eq!(
         persisted, 0,
         "unverified fallback identity must never poison the durable cache"
-    );
-    assert!(
-        runtime.embedding_cache_store.is_none(),
-        "an unverified embedding identity must not enable the embedding vector cache"
     );
 }
 
@@ -415,11 +405,6 @@ async fn runtime_embedding_cache_respects_enabled_and_disabled_configuration() {
         let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
             .await
             .unwrap();
-        assert_eq!(
-            runtime.embedding_cache_store.is_some(),
-            cache_enabled,
-            "a verified identity must decorate with the cache exactly when enabled"
-        );
         let request = EmbeddingBatch {
             batch_id: BatchId::new(uuid::Uuid::new_v4()),
             job_id: JobId::new(uuid::Uuid::new_v4()),
@@ -450,6 +435,78 @@ async fn runtime_embedding_cache_respects_enabled_and_disabled_configuration() {
             .unwrap();
         assert_eq!(rows, expected_cache_rows);
     }
+}
+
+#[tokio::test]
+async fn cold_acquisition_overlaps_identity_and_vector_plane_waits_for_verification() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    let info = server
+        .mock_async(|when, then| {
+            when.method("GET").path("/info");
+            then.status(200)
+                .delay(Duration::from_millis(300))
+                .json_body(serde_json::json!({ "model_id": "acme/overlap" }));
+        })
+        .await;
+    let embed = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32]]));
+        })
+        .await;
+    let page = server
+        .mock_async(|when, then| {
+            when.method("GET").path("/page");
+            then.status(200).body("acquired before identity");
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.tei_url = server.base_url();
+    cfg.tei_request_timeout_ms = 1_000;
+    invalidate_embedding_identity_cache(&cfg);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    axon_jobs::migrations::apply_all_migrations(&pool)
+        .await
+        .unwrap();
+    let jobs: Arc<dyn JobStore> = Arc::new(FakeJobWatchStore::new());
+
+    let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool)
+        .await
+        .expect("acquisition plane must not await cold identity");
+    let plane_wait = runtime.verified_embedding_plane();
+    tokio::pin!(plane_wait);
+    assert_pending(plane_wait.as_mut(), "vector plane must await identity").await;
+
+    runtime
+        .fetch_provider
+        .fetch(FetchRequest {
+            uri: format!("{}/page", server.base_url()),
+            method: "GET".into(),
+            headers: RedactedHeaders {
+                headers: Vec::new(),
+            },
+            body: None,
+            timeout_ms: Some(1_000),
+            max_bytes: None,
+            credential_refs: Vec::new(),
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .expect("acquisition must run while identity is pending");
+    page.assert_calls_async(1).await;
+    assert_pending(plane_wait.as_mut(), "vector plane must still be gated").await;
+
+    let plane = plane_wait.await.expect("verified vector plane");
+    assert_eq!(plane.identity.model, "acme/overlap");
+    assert_eq!(plane.identity.dimensions, 3);
+    info.assert_calls_async(1).await;
+    embed.assert_calls_async(1).await;
 }
 
 #[tokio::test]
@@ -508,6 +565,47 @@ async fn embedding_identity_cache_singleflights_cold_probes_and_can_be_invalidat
 }
 
 #[tokio::test]
+async fn aborted_embedding_identity_probe_is_recovered_by_waiters() {
+    let server = MockServer::start_async().await;
+    let info = server
+        .mock_async(|when, then| {
+            when.method("GET").path("/info");
+            then.status(200)
+                .delay(Duration::from_millis(150))
+                .json_body(serde_json::json!({ "model_id": "acme/recovered" }));
+        })
+        .await;
+    let embed = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32]]));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.tei_url = server.base_url();
+    cfg.tei_request_timeout_ms = 1_000;
+    invalidate_embedding_identity_cache(&cfg);
+
+    let waiter_cfg = cfg.clone();
+    let waiter = tokio::spawn(async move { resolve_embedding_identity(&waiter_cfg).await });
+    tokio::time::sleep(Duration::from_millis(25)).await;
+    abort_embedding_identity_probe(&cfg);
+
+    let identity = tokio::time::timeout(Duration::from_secs(2), waiter)
+        .await
+        .expect("waiter must not be stranded")
+        .expect("waiter task");
+    assert_eq!(identity.model, "acme/recovered");
+    assert_eq!(identity.dimensions, 2);
+    assert!(info.calls_async().await >= 1);
+    // The canceled HTTP request may already have reached the mock server; the
+    // lifecycle guarantee is bounded waiter recovery, not retracting I/O that
+    // the provider accepted before cancellation.
+    assert!((1..=2).contains(&embed.calls_async().await));
+}
+
+#[tokio::test]
 async fn from_config_reuses_verified_embedding_identity_after_process_cache_invalidation() {
     let server = MockServer::start_async().await;
     let info = server
@@ -543,8 +641,9 @@ async fn from_config_reuses_verified_embedding_identity_after_process_cache_inva
     let first = TargetLocalSourceRuntime::from_config(&cfg, Arc::clone(&jobs), pool.clone())
         .await
         .expect("first runtime");
-    assert_eq!(first.embedding_model, "acme/durable-embedding");
-    assert_eq!(first.embedding_dimensions, 3);
+    let first_plane = first.verified_embedding_plane().await.unwrap();
+    assert_eq!(first_plane.identity.model, "acme/durable-embedding");
+    assert_eq!(first_plane.identity.dimensions, 3);
     info.assert_calls_async(1).await;
     embed.assert_calls_async(1).await;
 
@@ -555,8 +654,9 @@ async fn from_config_reuses_verified_embedding_identity_after_process_cache_inva
     let second = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
         .await
         .expect("second runtime");
-    assert_eq!(second.embedding_model, "acme/durable-embedding");
-    assert_eq!(second.embedding_dimensions, 3);
+    let second_plane = second.verified_embedding_plane().await.unwrap();
+    assert_eq!(second_plane.identity.model, "acme/durable-embedding");
+    assert_eq!(second_plane.identity.dimensions, 3);
     info.assert_calls_async(1).await;
     embed.assert_calls_async(1).await;
 

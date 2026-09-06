@@ -17,6 +17,7 @@ use axon_core::content::{
 };
 use axon_core::error::ChallengeVendor;
 
+#[derive(Clone)]
 pub struct CollectorConfig {
     pub markdown_dir: PathBuf,
     pub manifest_path: PathBuf,
@@ -75,6 +76,7 @@ pub enum PageOutcome {
 }
 
 pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> PageOutcome {
+    let log_url = super::sanitized_url_for_log(url);
     let ladder = extract_with_ladder(
         html_bytes,
         col.selector_config.as_ref(),
@@ -82,7 +84,7 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
     );
     if ladder.tier != LadderTier::Scored {
         tracing::debug!(
-            url = %url,
+            url = %log_url,
             tier = ladder.tier.as_str(),
             words = ladder.word_count,
             "ladder.tier_used"
@@ -101,7 +103,7 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
         axon_core::http::detect_challenge(&html_str, |_| None, col.antibot_max_scan_bytes)
     {
         tracing::warn!(
-            url = %url,
+            url = %log_url,
             vendor = %cd.vendor.as_str(),
             akamai_recoverable = cd.akamai_warmup_recoverable,
             "antibot.detected: challenge page, skipping"
@@ -119,7 +121,7 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
 
     if chars < col.min_chars {
         axon_core::logging::log_debug(&format!(
-            "content thin_page url={url} chars={chars} min={}",
+            "content thin_page url={log_url} chars={chars} min={}",
             col.min_chars
         ));
         return PageOutcome::Thin {

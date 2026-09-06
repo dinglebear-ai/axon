@@ -21,8 +21,8 @@ domain crate's internals.
 
 ## Step 1: Add the request variant
 
-`axon-api::mcp_schema::AxonRequest` (`crates/axon-api/src/mcp_schema.rs`) is
-the enum every dispatched action belongs to:
+`axon_mcp::schema::AxonRequest` (`crates/axon-mcp/src/schema.rs`) is the
+transport-owned enum every dispatched MCP action belongs to:
 
 ```rust
 pub enum AxonRequest {

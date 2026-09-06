@@ -1,10 +1,10 @@
 use axon_core::config::Config;
 use axon_core::ui::{muted, primary};
 use axon_services::context::ServiceContext;
+use axon_services::service_traits::{WatchService, WatchServiceImpl};
 use axon_services::watch as watch_svc;
 use clap::{Parser, Subcommand};
-use sqlx::SqlitePool;
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
 #[derive(Debug, Parser)]
 struct WatchRuntimeArgs {
@@ -68,35 +68,23 @@ pub async fn run_watch(
 ) -> Result<(), Box<dyn Error>> {
     let parsed = parse_watch_runtime_args(&cfg.positional)?;
     let subcmd = parsed.action.unwrap_or(WatchRuntimeSubcommand::List);
-    let shared_pool = service_context.jobs.sqlite_pool();
+    let service = WatchServiceImpl::new(Arc::new(service_context.clone()));
     match subcmd {
         WatchRuntimeSubcommand::Create {
             source,
             every_seconds,
             collection,
-        } => {
-            handle_watch_create(
-                cfg,
-                shared_pool.as_deref(),
-                source,
-                every_seconds,
-                collection,
-            )
-            .await?
-        }
+        } => handle_watch_create(cfg, &service, source, every_seconds, collection).await?,
         WatchRuntimeSubcommand::List => {
-            let store = watch_svc::open_source_watch_store(cfg, shared_pool.as_deref()).await?;
-            let watches = watch_svc::SourceWatchStoreTrait::list(
-                &store,
-                watch_svc::WatchListRequest {
+            let watches = service
+                .list(watch_svc::WatchListRequest {
                     enabled: None,
                     source_id: None,
                     adapter: None,
                     limit: Some(200),
                     cursor: None,
-                },
-            )
-            .await?;
+                })
+                .await?;
             if cfg.json_output {
                 crate::json::print_json_gated(&watches)?;
             } else {
@@ -117,17 +105,13 @@ pub async fn run_watch(
                 );
             }
         }
-        WatchRuntimeSubcommand::Exec { id } => {
-            handle_watch_exec(cfg, service_context, shared_pool.as_deref(), &id).await?
-        }
+        WatchRuntimeSubcommand::Exec { id } => handle_watch_exec(cfg, &service, &id).await?,
         WatchRuntimeSubcommand::History { id, limit } => {
-            handle_watch_history(cfg, shared_pool.as_deref(), &id, limit).await?
+            handle_watch_history(cfg, &service, &id, limit).await?
         }
-        WatchRuntimeSubcommand::Get { id } => {
-            handle_watch_get(cfg, shared_pool.as_deref(), &id).await?
-        }
+        WatchRuntimeSubcommand::Get { id } => handle_watch_get(cfg, &service, &id).await?,
         WatchRuntimeSubcommand::Status { id } => {
-            handle_watch_status(cfg, service_context, shared_pool.as_deref(), &id).await?
+            handle_watch_status(cfg, service_context, &service, &id).await?
         }
         WatchRuntimeSubcommand::Update {
             id,
@@ -148,7 +132,7 @@ pub async fn run_watch(
                 collection,
                 scope: None,
             };
-            handle_watch_update(cfg, shared_pool.as_deref(), &id, request).await?
+            handle_watch_update(cfg, &service, &id, request).await?
         }
         WatchRuntimeSubcommand::Pause { id } => {
             let request = watch_svc::WatchUpdateRequest {
@@ -161,7 +145,7 @@ pub async fn run_watch(
                 collection: None,
                 scope: None,
             };
-            handle_watch_update(cfg, shared_pool.as_deref(), &id, request).await?
+            handle_watch_update(cfg, &service, &id, request).await?
         }
         WatchRuntimeSubcommand::Resume { id } => {
             let request = watch_svc::WatchUpdateRequest {
@@ -174,24 +158,20 @@ pub async fn run_watch(
                 collection: None,
                 scope: None,
             };
-            handle_watch_update(cfg, shared_pool.as_deref(), &id, request).await?
+            handle_watch_update(cfg, &service, &id, request).await?
         }
-        WatchRuntimeSubcommand::Delete { id } => {
-            handle_watch_delete(cfg, shared_pool.as_deref(), &id).await?
-        }
+        WatchRuntimeSubcommand::Delete { id } => handle_watch_delete(cfg, &service, &id).await?,
     }
     Ok(())
 }
 
 async fn handle_watch_create(
     cfg: &Config,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     source: String,
     every_seconds: i64,
     collection: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    axon_jobs::watch_schedule::validate_every_seconds(every_seconds)
-        .map_err(|msg| format!("watch create: {msg}"))?;
     let source = source_from_arg(&source)?;
     let request = watch_svc::WatchRequest {
         source,
@@ -208,10 +188,7 @@ async fn handle_watch_create(
         collection,
         enabled: Some(true),
     };
-    let created = match pool {
-        Some(pool) => watch_svc::create_source_watch(cfg, Some(pool), request, None).await?,
-        None => watch_svc::create_source_watch(cfg, None, request, None).await?,
-    };
+    let created = service.create(request).await?;
     if cfg.json_output {
         crate::json::print_json_gated(&watch_create_json_output(&created))?;
     } else {
@@ -241,23 +218,20 @@ fn source_from_arg(raw_source: &str) -> Result<String, Box<dyn Error>> {
 
 async fn handle_watch_exec(
     cfg: &Config,
-    service_context: &ServiceContext,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     raw_id_or_source: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let watch_id = watch_svc::resolve_source_watch_id(cfg, pool, raw_id_or_source).await?;
-    let run = watch_svc::exec_source_watch(
-        service_context,
-        pool,
-        watch_id,
-        watch_svc::WatchExecRequest {
-            reason: None,
-            refresh: None,
-            wait: None,
-        },
-        None,
-    )
-    .await?;
+    let watch_id = service.resolve(raw_id_or_source).await?;
+    let run = service
+        .exec(
+            watch_id,
+            watch_svc::WatchExecRequest {
+                reason: None,
+                refresh: None,
+                wait: None,
+            },
+        )
+        .await?;
     if cfg.json_output {
         crate::json::print_json_gated(&run)?;
     } else {
@@ -268,14 +242,12 @@ async fn handle_watch_exec(
 
 async fn handle_watch_get(
     cfg: &Config,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let store = watch_svc::open_source_watch_store(cfg, pool).await?;
     let watch_id = watch_svc::WatchId::new(raw_id);
-    let found = watch_svc::SourceWatchStoreTrait::get(&store, watch_id).await?;
-    match found {
-        Some(watch) => {
+    match service.get(watch_id).await {
+        Ok(watch) => {
             if cfg.json_output {
                 crate::json::print_json_gated(&watch)?;
             } else {
@@ -289,21 +261,18 @@ async fn handle_watch_get(
             }
             Ok(())
         }
-        None => Err(format!("watch {raw_id} not found").into()),
+        Err(error) => Err(error.into()),
     }
 }
 
 async fn handle_watch_status(
     cfg: &Config,
     service_context: &ServiceContext,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     raw_id_or_source: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let watch_id = watch_svc::resolve_source_watch_id(cfg, pool, raw_id_or_source).await?;
-    let store = watch_svc::open_source_watch_store(cfg, pool).await?;
-    let watch = watch_svc::SourceWatchStoreTrait::get(&store, watch_id.clone())
-        .await?
-        .ok_or_else(|| format!("watch {} not found", watch_id.0))?;
+    let watch_id = service.resolve(raw_id_or_source).await?;
+    let watch = service.get(watch_id).await?;
     let latest_job_summary = match watch.latest_job.as_ref() {
         Some(job) => axon_services::jobs::unified_job_status(service_context, job.job_id)
             .await
@@ -336,13 +305,12 @@ async fn handle_watch_status(
 /// Shared implementation for `axon watch update|pause|resume`.
 async fn handle_watch_update(
     cfg: &Config,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     raw_id: &str,
     request: watch_svc::WatchUpdateRequest,
 ) -> Result<(), Box<dyn Error>> {
-    let store = watch_svc::open_source_watch_store(cfg, pool).await?;
     let watch_id = watch_svc::WatchId::new(raw_id);
-    let updated = watch_svc::SourceWatchStoreTrait::update(&store, watch_id, request).await?;
+    let updated = service.update(watch_id, request).await?;
     if cfg.json_output {
         crate::json::print_json_gated(&updated)?;
     } else {
@@ -358,13 +326,12 @@ async fn handle_watch_update(
 /// (`ON DELETE CASCADE`) from the source-request-backed watch store.
 async fn handle_watch_delete(
     cfg: &Config,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     raw_id: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let store = watch_svc::open_source_watch_store(cfg, pool).await?;
     let watch_id = watch_svc::WatchId::new(raw_id);
-    let deleted = store.delete(watch_id.clone()).await?;
-    if !deleted {
+    let deleted = service.delete(watch_id.clone()).await?;
+    if !deleted.deleted {
         return Err(format!("watch {raw_id} not found").into());
     }
     if cfg.json_output {
@@ -380,23 +347,20 @@ async fn handle_watch_delete(
 
 async fn handle_watch_history(
     cfg: &Config,
-    pool: Option<&SqlitePool>,
+    service: &dyn WatchService,
     raw_id_or_source: &str,
     limit: i64,
 ) -> Result<(), Box<dyn Error>> {
     let limit = u32::try_from(limit.max(0)).unwrap_or(u32::MAX);
-    let watch_id = watch_svc::resolve_source_watch_id(cfg, pool, raw_id_or_source).await?;
-    let history = watch_svc::history_source_watch(
-        cfg,
-        pool,
-        watch_svc::WatchHistoryRequest {
+    let watch_id = service.resolve(raw_id_or_source).await?;
+    let history = service
+        .history(watch_svc::WatchHistoryRequest {
             watch_id,
             limit: Some(limit),
             cursor: None,
             status: None,
-        },
-    )
-    .await?;
+        })
+        .await?;
     if cfg.json_output {
         crate::json::print_json_gated(&history)?;
     } else {

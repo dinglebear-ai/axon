@@ -6,6 +6,8 @@ use sqlx::SqlitePool;
 use crate::store::{checkpoint_and_close, open_sqlite_pool, open_sqlite_pool_or_recover};
 use crate::workers;
 
+const WORKER_SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// SQLite job runtime: persistence plus optional in-process unified workers.
 ///
 /// By default, `new()` creates an enqueue-only runtime. Use
@@ -105,7 +107,9 @@ impl SqliteJobBackend {
 
     /// Graceful shutdown: stop workers, checkpoint the WAL, then close the pool.
     pub async fn shutdown(mut self) {
-        drop(self.workers.take());
+        if let Some(workers) = self.workers.take() {
+            workers.shutdown_and_join(WORKER_SHUTDOWN_GRACE).await;
+        }
         checkpoint_and_close(&self.pool).await;
     }
 

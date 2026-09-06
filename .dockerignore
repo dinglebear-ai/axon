@@ -13,6 +13,11 @@
 /target
 /bin
 /docs
+!/docs
+/docs/*
+!/docs/reference
+/docs/reference/*
+!/docs/reference/codex-app-server-methods.json
 /storage
 /data
 /specs

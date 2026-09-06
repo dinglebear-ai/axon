@@ -13,36 +13,33 @@
 //! load-bearing trick that lets every existing caller — including the
 //! concurrent memory workflow's `DocumentPreparer::prepare(
 //! PrepareSourceDocumentRequest)` calls — keep compiling untouched while the
-//! new trait-shaped methods become reachable only through `&dyn Trait` /
-//! generic-bound dispatch. This round is purely additive: no inherent
-//! signature changes.
+//! trait-shaped methods become reachable through `&dyn Trait` / generic-bound
+//! dispatch while requiring the same lineage-bearing request as production.
 //!
 //! Contract: `docs/pipeline-unification/foundation/types/trait-contract.md`.
 
 use async_trait::async_trait;
 use axon_api::source::{
     ApiError, ChunkProfile, ChunkProfileCapability, DocumentPreparerCapability, ErrorStage,
-    HealthStatus, MetadataMap, PreparedDocument, SourceDocument, SourceGenerationId, SourceWarning,
+    HealthStatus, MetadataMap, PreparedDocument, SourceDocument,
 };
 
+use crate::PrepareSourceDocumentRequest;
 use crate::profile::ChunkingProfile;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
 /// Contract-shaped document preparer boundary.
 ///
-/// The contract's `prepare(&self, SourceDocument) -> Result<PreparedDocument>`
-/// cannot be faithfully backed by the production inherent
-/// `DocumentPreparer::prepare(&self, PrepareSourceDocumentRequest) ->
-/// Result<PrepareSourceDocumentResult, String>` — a bare `SourceDocument`
-/// carries no real `SourceGenerationId`. `crate::preparer::DocumentPreparer`'s
-/// impl below synthesizes a placeholder generation id and stamps a warning;
-/// see that impl's doc comment. The inherent `PrepareSourceDocumentRequest`
-/// path remains the sole production call site and is untouched by this trait.
+/// Preparation requires a [`PrepareSourceDocumentRequest`] so source-generation
+/// lineage cannot be omitted or synthesized by trait-object callers.
 #[async_trait]
 pub trait DocumentPreparer: Send + Sync {
-    async fn prepare(&self, document: SourceDocument) -> Result<PreparedDocument>;
-    async fn prepare_many(&self, documents: Vec<SourceDocument>) -> Result<Vec<PreparedDocument>>;
+    async fn prepare(&self, request: PrepareSourceDocumentRequest) -> Result<PreparedDocument>;
+    async fn prepare_many(
+        &self,
+        requests: Vec<PrepareSourceDocumentRequest>,
+    ) -> Result<Vec<PreparedDocument>>;
     async fn capabilities(&self) -> Result<DocumentPreparerCapability>;
 }
 
@@ -53,48 +50,22 @@ pub trait ChunkRouter: Send + Sync {
     fn supported_profiles(&self) -> Vec<ChunkProfileCapability>;
 }
 
-/// CRITICAL DEVIATION: this impl's `prepare(SourceDocument)` synthesizes a
-/// placeholder `SourceGenerationId::default()` (an empty-string id) and
-/// attaches a `document.prepare.synthetic_generation` warning, because a bare
-/// `SourceDocument` carries no real generation id. It is NOT semantically
-/// equivalent to the real inherent `prepare(PrepareSourceDocumentRequest)`
-/// and must never replace it as the production call path — it exists only to
-/// satisfy the boundary/contract-test shape this round.
 #[async_trait]
 impl DocumentPreparer for crate::preparer::DocumentPreparer {
-    async fn prepare(&self, document: SourceDocument) -> Result<PreparedDocument> {
-        let source_item_key = document.source_item_key.clone();
-        let generation = SourceGenerationId::default();
-        let request = crate::prepared::PrepareSourceDocumentRequest {
-            document,
-            generation,
-            profile: None,
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: vec![SourceWarning {
-                code: "document.prepare.synthetic_generation".to_string(),
-                severity: axon_api::source::Severity::Warning,
-                message: "boundary DocumentPreparer::prepare synthesized a placeholder \
-                          SourceGenerationId; the inherent PrepareSourceDocumentRequest \
-                          path remains authoritative for production callers"
-                    .to_string(),
-                source_item_key: Some(source_item_key),
-                retryable: false,
-            }],
-            errors: Vec::new(),
-        };
-        // Inherent-shadow: resolves to `DocumentPreparer::prepare(&self,
-        // PrepareSourceDocumentRequest)`, not this trait method (no recursion).
+    async fn prepare(&self, request: PrepareSourceDocumentRequest) -> Result<PreparedDocument> {
         let result = self
             .prepare(request)
             .map_err(|err| ApiError::new("document.prepare.failed", ErrorStage::Preparing, err))?;
         Ok(result.document)
     }
 
-    async fn prepare_many(&self, documents: Vec<SourceDocument>) -> Result<Vec<PreparedDocument>> {
-        let mut prepared = Vec::with_capacity(documents.len());
-        for document in documents {
-            prepared.push(DocumentPreparer::prepare(self, document).await?);
+    async fn prepare_many(
+        &self,
+        requests: Vec<PrepareSourceDocumentRequest>,
+    ) -> Result<Vec<PreparedDocument>> {
+        let mut prepared = Vec::with_capacity(requests.len());
+        for request in requests {
+            prepared.push(DocumentPreparer::prepare(self, request).await?);
         }
         Ok(prepared)
     }

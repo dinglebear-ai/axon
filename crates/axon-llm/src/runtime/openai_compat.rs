@@ -5,6 +5,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -32,13 +33,49 @@ pub fn openai_chat_completions_url(
                 .into(),
         );
     }
+    validate_credential_transport(config, trimmed)?;
     Ok(format!("{trimmed}/chat/completions"))
+}
+
+fn validate_credential_transport(
+    config: &LlmBackendConfig,
+    base: &str,
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    let endpoint = reqwest::Url::parse(base)
+        .map_err(|_| "AXON_OPENAI_BASE_URL must be an absolute HTTP(S) URL")?;
+    if !matches!(endpoint.scheme(), "http" | "https") {
+        return Err("AXON_OPENAI_BASE_URL must use HTTP or HTTPS".into());
+    }
+    let has_configured_key = config
+        .openai_api_key
+        .as_deref()
+        .is_some_and(|key| !key.trim().is_empty());
+    let has_url_credentials = !endpoint.username().is_empty() || endpoint.password().is_some();
+    if endpoint.scheme() == "http"
+        && (has_configured_key || has_url_credentials)
+        && !endpoint_host_is_loopback(&endpoint)
+    {
+        return Err(
+            "OpenAI-compatible credentials require HTTPS for non-loopback endpoints".into(),
+        );
+    }
+    Ok(())
+}
+
+fn endpoint_host_is_loopback(endpoint: &reqwest::Url) -> bool {
+    let Some(host) = endpoint.host_str() else {
+        return false;
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
 }
 
 pub async fn complete_text(
     req: CompletionRequest,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
-    let response = send_chat_completion(&req, false).await?;
+    let response = send_chat_completion_with_retry(&req, false).await?;
     parse_chat_completion(response).await
 }
 
@@ -49,8 +86,27 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
 {
-    let response = send_chat_completion(&req, true).await?;
+    let response = send_chat_completion_with_retry(&req, true).await?;
     parse_sse_completion(response, &mut on_delta).await
+}
+
+async fn send_chat_completion_with_retry(
+    req: &CompletionRequest,
+    stream: bool,
+) -> Result<reqwest::Response, Box<dyn StdError + Send + Sync>> {
+    match send_chat_completion(req, stream).await {
+        Ok(response) => Ok(response),
+        Err(error) if is_retryable_openai_error(error.as_ref()) => {
+            send_chat_completion(req, stream).await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn is_retryable_openai_error(error: &(dyn StdError + Send + Sync + 'static)) -> bool {
+    error
+        .downcast_ref::<OpenAiProviderError>()
+        .is_some_and(|error| error.retryable)
 }
 
 async fn send_chat_completion(
@@ -90,6 +146,7 @@ async fn send_chat_completion(
         .or_try_insert_with(|| {
             reqwest::Client::builder()
                 .timeout(Duration::from_secs(timeout_secs))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
         })?
         .clone();
@@ -103,16 +160,41 @@ async fn send_chat_completion(
     {
         request = request.bearer_auth(key);
     }
-    let response = request.send().await?;
+    let response = request.send().await.map_err(|error| {
+        Box::new(OpenAiProviderError {
+            code: if error.is_timeout() {
+                "provider.timeout"
+            } else {
+                "provider.unavailable"
+            },
+            message: format!("OpenAI-compatible completion request failed: {error}"),
+            retryable: error.is_connect(),
+        }) as Box<dyn StdError + Send + Sync>
+    })?;
     if !response.status().is_success() {
         return Err(format_openai_error(response).await.into());
     }
     Ok(response)
 }
 
-async fn format_openai_error(response: reqwest::Response) -> String {
+#[derive(Debug)]
+struct OpenAiProviderError {
+    code: &'static str,
+    message: String,
+    retryable: bool,
+}
+
+impl Display for OpenAiProviderError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl StdError for OpenAiProviderError {}
+
+async fn format_openai_error(response: reqwest::Response) -> OpenAiProviderError {
     let status = response.status();
-    match read_bounded_error_body(response).await {
+    let message = match read_bounded_error_body(response).await {
         Ok(text) => {
             let safe_text = sanitize_openai_error_body(&text);
             if safe_text.trim().is_empty() {
@@ -124,6 +206,21 @@ async fn format_openai_error(response: reqwest::Response) -> String {
         Err(err) => format!(
             "OpenAI-compatible completion failed with HTTP {status}; failed reading error body: {err}"
         ),
+    };
+    let code = if message.contains("provider.scheduler.queue_full") {
+        "provider.scheduler.queue_full"
+    } else if message.contains("context_length_exceeded") {
+        "provider.token_limit"
+    } else {
+        "provider.unavailable"
+    };
+    let retryable = status == StatusCode::REQUEST_TIMEOUT
+        || status == StatusCode::TOO_MANY_REQUESTS
+        || status.is_server_error();
+    OpenAiProviderError {
+        code,
+        message,
+        retryable,
     }
 }
 
@@ -245,14 +342,24 @@ struct OpenAiUsage {
 async fn parse_chat_completion(
     response: reqwest::Response,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
-    let parsed: ChatCompletionResponse = response.json().await?;
+    let parsed: ChatCompletionResponse = response.json().await.map_err(|error| {
+        Box::new(OpenAiProviderError {
+            code: "provider.malformed_response",
+            message: format!("OpenAI-compatible completion JSON was malformed: {error}"),
+            retryable: false,
+        }) as Box<dyn StdError + Send + Sync>
+    })?;
     let text = parsed
         .choices
         .into_iter()
         .find_map(|choice| choice.message.and_then(|message| message.content))
         .unwrap_or_default();
     if text.trim().is_empty() {
-        return Err("OpenAI-compatible completion returned no answer text".into());
+        return Err(Box::new(OpenAiProviderError {
+            code: "provider.schema_mismatch",
+            message: "OpenAI-compatible completion omitted answer text".to_string(),
+            retryable: false,
+        }));
     }
     let usage = parsed.usage.map(|usage| UsageSnapshot {
         prompt_tokens: usage.prompt_tokens.unwrap_or(0),

@@ -47,6 +47,13 @@ fn sparse_modifier_kind(modifier: SparseVectorModifier) -> &'static str {
 /// REST body for `PUT /collections/{name}` — named dense + optional sparse.
 pub fn collection_create_json(spec: &CollectionSpec) -> serde_json::Value {
     let settings = QdrantCollectionSettings::default();
+    collection_create_json_with_settings(spec, settings)
+}
+
+pub fn collection_create_json_with_settings(
+    spec: &CollectionSpec,
+    settings: QdrantCollectionSettings,
+) -> serde_json::Value {
     let mut vectors = serde_json::Map::new();
     vectors.insert(
         spec.dense.name.clone(),
@@ -65,6 +72,15 @@ pub fn collection_create_json(spec: &CollectionSpec) -> serde_json::Value {
         },
         "optimizers_config": { "indexing_threshold": settings.indexing_threshold },
     });
+    if settings.quantization_enabled {
+        body["quantization_config"] = json!({
+            "scalar": {
+                "type": "int8",
+                "quantile": settings.quantization_quantile,
+                "always_ram": settings.quantization_always_ram,
+            }
+        });
+    }
     if let Some(sparse) = &spec.sparse {
         body["sparse_vectors"] = json!({
             sparse.name.clone(): { "modifier": sparse_modifier_kind(sparse.modifier) }
@@ -214,7 +230,16 @@ struct SparseVectorRef<'a> {
 pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_json::Value>> {
     validate_search_filters(request)?;
     let mut must = Vec::new();
+    let mut must_not = Vec::new();
     for (field, value) in request.filters.iter() {
+        if field == crate::filter::EXCLUDED_SOURCE_KINDS {
+            must_not.push(condition_json("source_kind", value));
+            continue;
+        }
+        if field == crate::filter::REQUIRE_SOURCE_KIND {
+            must_not.push(json!({ "is_empty": { "key": "source_kind" } }));
+            continue;
+        }
         if field == PATH_PREFIX {
             must.push(path_prefix_filter_json(value));
             continue;
@@ -227,7 +252,16 @@ pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_
             &serde_json::Value::from(generation_payload_i64(generation, SEARCH_GENERATION_FIELD)?),
         ));
     }
-    Ok((!must.is_empty()).then(|| json!({ "must": must })))
+    Ok((!must.is_empty() || !must_not.is_empty()).then(|| {
+        let mut filter = serde_json::Map::new();
+        if !must.is_empty() {
+            filter.insert("must".to_string(), serde_json::Value::Array(must));
+        }
+        if !must_not.is_empty() {
+            filter.insert("must_not".to_string(), serde_json::Value::Array(must_not));
+        }
+        serde_json::Value::Object(filter)
+    }))
 }
 
 fn path_prefix_filter_json(value: &serde_json::Value) -> serde_json::Value {

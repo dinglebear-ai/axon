@@ -18,6 +18,34 @@ pub struct Page<T> {
     pub total: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct IndexedSourcesResponse {
+    pub count: usize,
+    pub limit: usize,
+    pub offset: usize,
+    pub urls: Vec<(String, usize)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DomainSourcesResponse {
+    pub domain: String,
+    pub count: usize,
+    pub limit: usize,
+    pub cursor: Option<String>,
+    pub next_cursor: Option<String>,
+    pub truncated: bool,
+    pub urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(untagged)]
+pub enum SourcesResponse {
+    Indexed(IndexedSourcesResponse),
+    Domain(DomainSourcesResponse),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceSummary {
@@ -91,6 +119,44 @@ pub struct SourceDetail {
     pub documents: Page<DocumentSummary>,
     pub graph_refs: Vec<GraphRef>,
     pub metadata: MetadataMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerManifestState {
+    pub generation: SourceGenerationId,
+    pub status: LifecycleStatus,
+    pub item_count: u64,
+    pub items: Vec<LedgerItemState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerItemState {
+    pub source_item_key: SourceItemKey,
+    pub canonical_uri: String,
+    pub content_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerDocumentState {
+    pub document_id: DocumentId,
+    pub source_item_key: SourceItemKey,
+    pub generation: SourceGenerationId,
+    pub status: DocumentLifecycleStatus,
+    pub chunk_count: u32,
+    pub vector_point_count: u32,
+    pub updated_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerSourceDetail {
+    pub summary: SourceSummary,
+    pub committed_generation: Option<SourceGenerationId>,
+    pub manifest: Option<LedgerManifestState>,
+    pub documents: Vec<LedgerDocumentState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

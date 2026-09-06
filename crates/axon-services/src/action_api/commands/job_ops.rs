@@ -1,7 +1,7 @@
 use crate::context::ServiceContext;
 use crate::jobs as job_svc;
 use crate::types::ClientActionError;
-use axon_api::mcp_schema::{JobsRequest, JobsSubaction};
+use axon_api::action::{JobsRequest, JobsSubaction};
 use axon_api::source::{
     JobCancelRequest, JobCleanupRequest, JobClearRequest, JobEventListRequest, JobId, JobKind,
     JobListRequest, JobRecoveryRequest, JobRetryMode, JobRetryRequest,

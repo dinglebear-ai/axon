@@ -13,7 +13,7 @@ layer and the services facade can depend on it without a cycle. Full contract
 ## Status — live transport contract
 The full transport-neutral DTO/enum spine is real and tested, not a marker:
 `source.rs` (`SourceIntent`, `SourceRefreshPolicy`, source request/result
-shapes), `mcp_schema.rs` (MCP wire DTOs, generated tool schema), `result.rs`,
+shapes), `action.rs` (shared operation request DTOs), `result.rs`,
 job/status/reset/route-inventory DTOs, and the schema/enum registries used by
 `xtask schemas` generation. Do not add provider clients, stores, or runtime
 side effects.
@@ -27,7 +27,7 @@ side effects.
 | `diff.rs` | diff DTOs |
 | `job_dto.rs` / `job_status.rs` / `job_progress.rs` | `JobRequest`, `JobStatus`, `JobEvent`, `JobProgress`, `JobHeartbeat` |
 | `service_job.rs` | `ServiceJob` — the job-runtime handoff shape |
-| `mcp_schema.rs` + `mcp_schema/` | MCP wire-contract input/output schema source of truth |
+| `action.rs` + `action/` | Shared operation request DTOs used by service and transport adapters; MCP routing and response envelopes live in `axon-mcp` |
 | `schema_registry.rs` | shared schema-registry helpers for schema-contract generation + runtime tool-schema publication |
 | `migration.rs` | transport-neutral migration descriptors shared by every SQLite-backed crate |
 | `reset.rs` | reset plan/execute DTOs, canonical store selectors, `TARGET_PAYLOAD_CONTRACT_VERSION` |

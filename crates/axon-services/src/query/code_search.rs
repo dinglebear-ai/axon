@@ -39,15 +39,46 @@ pub async fn code_search(
     text: &str,
     opts: CodeSearchOptions,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    code_search_with_progress(ctx.clone(), text.to_owned(), opts, None).await
+}
+
+/// Owned-input boundary for transport handlers whose futures must be `Send`.
+pub async fn code_search_owned(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     code_search_with_progress(ctx, text, opts, None).await
+}
+
+/// Owned committed-index boundary for server projections, which never refresh.
+pub async fn code_search_committed_owned(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    if text.len() > MAX_CODE_SEARCH_QUERY_LEN_BYTES {
+        return Err(format!(
+            "code_search query exceeds {MAX_CODE_SEARCH_QUERY_LEN_BYTES}-byte cap (got {} bytes)",
+            text.len()
+        )
+        .into());
+    }
+    let path_prefix = opts
+        .path_prefix
+        .as_deref()
+        .map(validate_path_prefix)
+        .transpose()?
+        .flatten();
+    target_code_search_committed(ctx, text, opts, path_prefix).await
 }
 
 #[must_use = "code_search_with_progress returns a Result that should be handled"]
 pub async fn code_search_with_progress(
-    ctx: &ServiceContext,
-    text: &str,
+    ctx: ServiceContext,
+    text: String,
     opts: CodeSearchOptions,
-    progress: Option<&dyn ReindexProgressSink>,
+    progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     if text.len() > MAX_CODE_SEARCH_QUERY_LEN_BYTES {
         return Err(format!(
@@ -63,44 +94,79 @@ pub async fn code_search_with_progress(
         .map(validate_path_prefix)
         .transpose()?
         .flatten();
-    target_code_search(ctx, text, opts, path_prefix.as_deref(), progress).await
+    target_code_search(ctx, text, opts, path_prefix, progress).await
 }
 
 async fn target_code_search(
-    ctx: &ServiceContext,
-    text: &str,
+    ctx: ServiceContext,
+    text: String,
     opts: CodeSearchOptions,
-    path_prefix: Option<&str>,
-    progress: Option<&dyn ReindexProgressSink>,
+    path_prefix: Option<String>,
+    progress: Option<std::sync::Arc<dyn ReindexProgressSink>>,
 ) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     let refresh = if opts.ensure_fresh {
-        refresh_code_search_index_with_progress(ctx, opts.cwd.as_deref(), opts.caller, progress)
-            .await?
+        refresh::refresh_code_search_index_owned_with_progress(
+            ctx.clone(),
+            opts.cwd.clone(),
+            opts.caller,
+            progress,
+        )
+        .await?
     } else {
         let collection = opts.collection.as_deref().unwrap_or(&ctx.cfg().collection);
-        refresh::target_code_search_committed_state(
-            ctx,
-            opts.cwd.as_deref(),
+        refresh::target_code_search_committed_state_owned(
+            ctx.clone(),
+            opts.cwd.clone(),
             opts.caller,
-            collection,
+            collection.to_owned(),
         )
         .await?
     };
+    complete_target_code_search(ctx, text, opts, path_prefix, refresh).await
+}
+
+async fn target_code_search_committed(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+    path_prefix: Option<String>,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
+    let collection = opts
+        .collection
+        .clone()
+        .unwrap_or_else(|| ctx.cfg().collection.clone());
+    let refresh = refresh::target_code_search_committed_state_owned(
+        ctx.clone(),
+        opts.cwd.clone(),
+        opts.caller,
+        collection,
+    )
+    .await?;
+    complete_target_code_search(ctx, text, opts, path_prefix, refresh).await
+}
+
+async fn complete_target_code_search(
+    ctx: ServiceContext,
+    text: String,
+    opts: CodeSearchOptions,
+    path_prefix: Option<String>,
+    refresh: CodeSearchRefreshResult,
+) -> Result<CodeSearchResult, Box<dyn Error + Send + Sync>> {
     let Some(source_id) = refresh.target_source_id.clone() else {
-        return Ok(code_search_missing_index_result(text, refresh.freshness));
+        return Ok(code_search_missing_index_result(&text, refresh.freshness));
     };
     let Some(generation) = refresh.target_source_generation.clone() else {
-        return Ok(code_search_missing_index_result(text, refresh.freshness));
+        return Ok(code_search_missing_index_result(&text, refresh.freshness));
     };
     if ctx.target_local_source_runtime().is_none() {
-        return Ok(code_search_missing_index_result(text, refresh.freshness));
+        return Ok(code_search_missing_index_result(&text, refresh.freshness));
     }
-    let execution = ReadExecution::begin(
-        ctx,
-        ctx.cfg(),
+    let execution = ReadExecution::begin_owned(
+        ctx.clone(),
+        ctx.cfg().clone(),
         OperationKind::Query,
         serde_json::json!({
-            "query": text,
+            "query": &text,
             "collection": ctx.cfg().collection,
             "source_id": source_id.0,
             "generation": generation.0,
@@ -124,7 +190,7 @@ async fn target_code_search(
                 model,
                 items: vec![EmbeddingInput {
                     chunk_id: ChunkId::new("code-search-query"),
-                    text: text.to_string(),
+                    text: text.clone(),
                     content_kind: ContentKind::Code,
                     metadata: MetadataMap::new(),
                 }],
@@ -146,12 +212,12 @@ async fn target_code_search(
             opts.collection
                 .clone()
                 .unwrap_or_else(|| ctx.cfg().collection.clone()),
-            text,
+            &text,
             opts.limit.saturating_add(opts.offset).max(1),
             dense_vector,
             &source_id,
             &generation,
-            path_prefix,
+            path_prefix.as_deref(),
             opts.language.as_deref(),
         )?;
         let matches = store
@@ -170,14 +236,14 @@ async fn target_code_search(
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(CodeSearchResult {
-            query: text.to_string(),
+            query: text.clone(),
             content_trust: "untrusted_local_code".to_string(),
             results,
             freshness: refresh.freshness,
         })
     }
     .await;
-    execution.finish(ctx, &result).await;
+    execution.finish_owned(ctx, &result).await;
     result
 }
 
@@ -379,17 +445,17 @@ pub(crate) fn code_search_missing_index_freshness(
 }
 
 pub(crate) async fn resolve_code_search_root(
-    cwd: Option<&Path>,
+    cwd: Option<PathBuf>,
     caller: CodeSearchCaller,
 ) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
     let cwd = match (caller, cwd) {
-        (CodeSearchCaller::Cli, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Cli, Some(cwd)) => cwd,
         (CodeSearchCaller::Cli, None) => std::env::current_dir()?,
-        (CodeSearchCaller::Mcp, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Mcp, Some(cwd)) => cwd,
         (CodeSearchCaller::Mcp, None) => {
             return Err("code_search MCP requests must provide cwd".into());
         }
-        (CodeSearchCaller::Rest, Some(cwd)) => cwd.to_path_buf(),
+        (CodeSearchCaller::Rest, Some(cwd)) => cwd,
         (CodeSearchCaller::Rest, None) => {
             return Err("code_search REST requests must provide an explicit root".into());
         }
@@ -453,9 +519,9 @@ fn reject_unsafe_code_root(root: &Path) -> Result<(), Box<dyn Error + Send + Syn
 }
 
 pub(super) async fn code_search_identity(
-    cfg: &Config,
+    cfg: Config,
     project_root: PathBuf,
-    collection: &str,
+    collection: String,
 ) -> CodeIndexIdentity {
     let origin = code_search_project_origin(&project_root).await;
     let embedder = if cfg.tei_url.trim().is_empty() {
@@ -463,7 +529,7 @@ pub(super) async fn code_search_identity(
     } else {
         cfg.tei_url.clone()
     };
-    CodeIndexIdentity::new(project_root, origin, collection, &embedder)
+    CodeIndexIdentity::new(project_root, origin, &collection, &embedder)
 }
 
 pub(crate) async fn code_search_project_origin(project_root: &Path) -> String {

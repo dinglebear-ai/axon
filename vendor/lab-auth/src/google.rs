@@ -12,9 +12,6 @@ use tracing::{debug, info, warn};
 use crate::error::AuthError;
 use crate::util::fingerprint;
 
-const GOOGLE_AUTHORIZE_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
-const GOOGLE_JWKS_ENDPOINT: &str = "https://www.googleapis.com/oauth2/v3/certs";
 const GOOGLE_ISSUER: &str = "https://accounts.google.com";
 const GOOGLE_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Per-request timeout on the JWKS GET. Bound aggressively (5s) so a slow
@@ -42,6 +39,7 @@ pub struct GoogleProvider {
     authorize_endpoint: Url,
     token_endpoint: Url,
     jwks_endpoint: Url,
+    issuer: String,
     jwks_cache: Arc<RwLock<Option<CachedGoogleJwks>>>,
 }
 
@@ -252,12 +250,12 @@ impl GoogleProvider {
             .map_err(|error| {
                 AuthError::Storage(format!("build google oauth http client: {error}"))
             })?;
-        let authorize_endpoint = Url::parse(GOOGLE_AUTHORIZE_ENDPOINT).map_err(|error| {
+        let authorize_endpoint = Url::parse("https://accounts.google.com/o/oauth2/v2/auth").map_err(|error| {
             AuthError::Config(format!("parse google authorize endpoint: {error}"))
         })?;
-        let token_endpoint = Url::parse(GOOGLE_TOKEN_ENDPOINT)
+        let token_endpoint = Url::parse("https://oauth2.googleapis.com/token")
             .map_err(|error| AuthError::Config(format!("parse google token endpoint: {error}")))?;
-        let jwks_endpoint = Url::parse(GOOGLE_JWKS_ENDPOINT)
+        let jwks_endpoint = Url::parse("https://www.googleapis.com/oauth2/v3/certs")
             .map_err(|error| AuthError::Config(format!("parse google jwks endpoint: {error}")))?;
 
         Ok(Self {
@@ -273,8 +271,24 @@ impl GoogleProvider {
             authorize_endpoint,
             token_endpoint,
             jwks_endpoint,
+            issuer: GOOGLE_ISSUER.to_string(),
             jwks_cache: Arc::new(RwLock::new(None)),
         })
+    }
+
+    #[must_use]
+    pub fn with_identity_provider(
+        mut self,
+        authorize_endpoint: Url,
+        token_endpoint: Url,
+        jwks_endpoint: Url,
+        issuer: String,
+    ) -> Self {
+        self.authorize_endpoint = authorize_endpoint;
+        self.token_endpoint = token_endpoint;
+        self.jwks_endpoint = jwks_endpoint;
+        self.issuer = issuer;
+        self
     }
 
     #[cfg(test)]
@@ -440,7 +454,8 @@ impl GoogleProvider {
             .map(|data| data.claims)
             .map_err(|error| AuthError::Storage(format!("invalid google id_token: {error}")))?;
 
-        if claims.iss != GOOGLE_ISSUER && claims.iss != "accounts.google.com" {
+        let legacy_google_issuer = self.issuer == GOOGLE_ISSUER && claims.iss == "accounts.google.com";
+        if claims.iss != self.issuer && !legacy_google_issuer {
             return Err(AuthError::Storage(format!(
                 "invalid google id_token issuer `{}`",
                 claims.iss

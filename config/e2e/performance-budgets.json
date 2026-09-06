@@ -1,0 +1,11 @@
+{
+  "schema": "axon-e2e-performance-budgets/v1",
+  "mode": "report_only",
+  "promotion": {
+    "minimum_baselines": 10,
+    "minimum_samples_per_mode": 5,
+    "maximum_cv": 0.15,
+    "requires_owner_approval": true
+  },
+  "budgets": []
+}

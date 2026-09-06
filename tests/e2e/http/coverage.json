@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "tag_groups": {
+    "discovery": ["discovery", "providers", "system"],
+    "jobs": ["jobs"],
+    "uploads": ["uploads"],
+    "artifacts": ["artifacts"],
+    "resources": ["graph", "memory", "mobile", "watch"],
+    "codex_control": ["codex-control"],
+    "destructive_plans": ["admin"],
+    "behavioral_operations": ["sources", "rag", "projections"],
+    "contract_only": ["exploration"]
+  },
+  "contract_only_rationale": "Exploration provider permutations are exercised by provider scenario packs; HTTP verifies their generated request, auth, and error contract here.",
+  "required_probes": [
+    "auth.valid", "auth.missing", "auth.invalid", "auth.non_loopback_bind", "auth.query_token",
+    "auth.conflicting", "auth.forwarded_host", "auth.forwarded_origin",
+    "error.malformed_json", "error.unknown_id", "error.conflict",
+    "error.oversize", "error.traversal", "error.hostile_headers",
+    "redirect.cross_origin", "stream.progress_final", "stream.disconnect_reconnect",
+    "compat.health", "compat.ready", "compat.openapi", "compat.status"
+  ]
+}

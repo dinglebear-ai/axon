@@ -1790,6 +1790,12 @@
             "null"
           ]
         },
+        "origin_attempt": {
+          "description": "Attempt of `job_id` that created this debt, for durable audit joins.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "selector": {
           "$ref": "#/$defs/CleanupDebt_CleanupSelector"
         },
@@ -1798,11 +1804,19 @@
         },
         "status": {
           "$ref": "#/$defs/CleanupDebt_LifecycleStatus"
+        },
+        "vector_collection": {
+          "description": "Immutable vector collection identity for `VectorDelete` debt. Legacy\nrows deserialize as `None` and must fail closed during autonomous retry.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "debt_id",
         "job_id",
+        "origin_attempt",
         "source_id",
         "kind",
         "selector",
@@ -1830,7 +1844,8 @@
         "graph_prune",
         "memory_prune",
         "job_retention",
-        "cache_prune"
+        "cache_prune",
+        "adapter_release"
       ],
       "type": "string"
     },
@@ -3511,6 +3526,12 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "chunk_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "cleanup_status": {
           "anyOf": [
             {
@@ -3555,6 +3576,12 @@
         },
         "updated_at": {
           "type": "string"
+        },
+        "vector_point_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
@@ -11890,7 +11917,8 @@
         "graph_prune",
         "memory_prune",
         "job_retention",
-        "cache_prune"
+        "cache_prune",
+        "adapter_release"
       ],
       "type": "string"
     },
@@ -13938,9 +13966,6 @@
       "title": "PrunePlan",
       "type": "object"
     },
-    "PrunePlan_ArtifactId": {
-      "type": "string"
-    },
     "PrunePlan_ChunkId": {
       "type": "string"
     },
@@ -13951,9 +13976,6 @@
       "type": "string"
     },
     "PrunePlan_GraphEdgeId": {
-      "type": "string"
-    },
-    "PrunePlan_GraphNodeId": {
       "type": "string"
     },
     "PrunePlan_JobId": {
@@ -14092,117 +14114,6 @@
           "required": [
             "kind",
             "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a single artifact by id (never by arbitrary path).",
-          "properties": {
-            "artifact_id": {
-              "$ref": "#/$defs/PrunePlan_ArtifactId"
-            },
-            "kind": {
-              "const": "artifact",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "artifact_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune graph nodes/edges (orphan cleanup).",
-          "properties": {
-            "edge_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PrunePlan_GraphEdgeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "graph",
-              "type": "string"
-            },
-            "node_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PrunePlan_GraphNodeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune (forget) memory records.",
-          "properties": {
-            "kind": {
-              "const": "memory",
-              "type": "string"
-            },
-            "memory_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PrunePlan_MemoryId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Job-retention cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "job_retention",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Cache cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "cache",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
           ],
           "type": "object"
         }
@@ -14589,19 +14500,7 @@
       "title": "PruneRequest",
       "type": "object"
     },
-    "PruneRequest_ArtifactId": {
-      "type": "string"
-    },
     "PruneRequest_CleanupDebtId": {
-      "type": "string"
-    },
-    "PruneRequest_GraphEdgeId": {
-      "type": "string"
-    },
-    "PruneRequest_GraphNodeId": {
-      "type": "string"
-    },
-    "PruneRequest_MemoryId": {
       "type": "string"
     },
     "PruneRequest_PruneSelector": {
@@ -14676,117 +14575,6 @@
           "required": [
             "kind",
             "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a single artifact by id (never by arbitrary path).",
-          "properties": {
-            "artifact_id": {
-              "$ref": "#/$defs/PruneRequest_ArtifactId"
-            },
-            "kind": {
-              "const": "artifact",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "artifact_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune graph nodes/edges (orphan cleanup).",
-          "properties": {
-            "edge_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneRequest_GraphEdgeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "graph",
-              "type": "string"
-            },
-            "node_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneRequest_GraphNodeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune (forget) memory records.",
-          "properties": {
-            "kind": {
-              "const": "memory",
-              "type": "string"
-            },
-            "memory_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneRequest_MemoryId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Job-retention cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "job_retention",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Cache cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "cache",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
           ],
           "type": "object"
         }
@@ -14984,6 +14772,11 @@
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "attempt": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "expected_previous_generation": {
           "anyOf": [
             {
@@ -14997,16 +14790,25 @@
         "generation": {
           "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
         },
+        "job_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_JobId"
+        },
         "source_id": {
           "$ref": "#/$defs/PublishGenerationRequest_SourceId"
         }
       },
       "required": [
+        "job_id",
+        "attempt",
         "source_id",
         "generation"
       ],
       "title": "PublishGenerationRequest",
       "type": "object"
+    },
+    "PublishGenerationRequest_JobId": {
+      "format": "uuid",
+      "type": "string"
     },
     "PublishGenerationRequest_SourceGenerationId": {
       "type": "string"
@@ -17331,6 +17133,12 @@
             "null"
           ]
         },
+        "origin_attempt": {
+          "description": "Attempt of `job_id` that created this debt, for durable audit joins.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "selector": {
           "$ref": "#/$defs/SourceGenerationDetail_CleanupSelector"
         },
@@ -17339,11 +17147,19 @@
         },
         "status": {
           "$ref": "#/$defs/SourceGenerationDetail_LifecycleStatus"
+        },
+        "vector_collection": {
+          "description": "Immutable vector collection identity for `VectorDelete` debt. Legacy\nrows deserialize as `None` and must fail closed during autonomous retry.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "debt_id",
         "job_id",
+        "origin_attempt",
         "source_id",
         "kind",
         "selector",
@@ -17364,7 +17180,8 @@
         "graph_prune",
         "memory_prune",
         "job_retention",
-        "cache_prune"
+        "cache_prune",
+        "adapter_release"
       ],
       "type": "string"
     },
@@ -18517,6 +18334,12 @@
     "SourceItemDetail_DocumentStatus": {
       "additionalProperties": false,
       "properties": {
+        "chunk_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "cleanup_status": {
           "anyOf": [
             {
@@ -18561,6 +18384,12 @@
         },
         "updated_at": {
           "type": "string"
+        },
+        "vector_point_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
@@ -28865,7 +28694,8 @@
           "graph_prune",
           "memory_prune",
           "job_retention",
-          "cache_prune"
+          "cache_prune",
+          "adapter_release"
         ],
         "type": "string",
         "x-axon": {
@@ -29339,7 +29169,7 @@
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:e1883f7ab3543709f2621409b8675189bc3933b5388a22d9ddcecfd4b3685f15",
+        "checksum": "sha256:e4a544711f4a2b7e861353184abdcb3c884efbb82fd868ade4264b64e22087ef",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -29354,12 +29184,12 @@
         "path": "crates/axon-api/src/source/audit.rs"
       },
       {
-        "checksum": "sha256:d446c35a44749d950566daf91d6626b6260a0e97ea5f263a1f6dbe14acf449a4",
+        "checksum": "sha256:17dcc0911e5fdd14f0381d13a6e556bb97e9a2b1559daa31568b2f4dd8c9bfc9",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/auth.rs"
       },
       {
-        "checksum": "sha256:fcfda23e0f4a826a24b966ee331351cc2979d65bb824331fb4467624b7906bb8",
+        "checksum": "sha256:7f7566f127bed82bbdc4f5687cd2f3b39c47127aa9f21f015e0c69eaf5d71c58",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/boundary.rs"
       },
@@ -29374,9 +29204,14 @@
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e",
+        "checksum": "sha256:f60074bd1841a702461c9bc3ed4887612e4159dfda20690b21909a6097995e84",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
+      },
+      {
+        "checksum": "sha256:83b290cda25b88f95a8ea3d1c2ed3c2a8a4fe13ccf903d4ee412eb15baccc0d6",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/embedding_cache.rs"
       },
       {
         "checksum": "sha256:9d146e2590f64696658beb9043337c53225f56748648d3bbf7856f959de1c6c0",
@@ -29389,7 +29224,7 @@
         "path": "crates/axon-api/src/source/enums/pipeline_phase.rs"
       },
       {
-        "checksum": "sha256:bb9d8b2ee6d755e5f3d392ee21cda60ee0de18ad04c9f78a751bd4354b04b435",
+        "checksum": "sha256:f345f86201ac3fef08fb889695fd11735a42f880e1c7712234c85f41389389c6",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums/runtime.rs"
       },
@@ -29419,12 +29254,12 @@
         "path": "crates/axon-api/src/source/job_policy.rs"
       },
       {
-        "checksum": "sha256:476e1beaf6df536d05126c2ff3ef5570bdab4408989e299c8c4345031011d87b",
+        "checksum": "sha256:557da00d71ed8c72c6d21a8a65000a8a27e452e8c11ddf766dcd29591d2c30c1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
       },
       {
-        "checksum": "sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb",
+        "checksum": "sha256:e44d98355e2962913e993372e4c603a0309096cf0effe74f00803c548900908b",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/listing.rs"
       },
@@ -29434,7 +29269,7 @@
         "path": "crates/axon-api/src/source/llm.rs"
       },
       {
-        "checksum": "sha256:1379621c768b5ca22fcb63ac058b21220c87cbf63de6991119d141b3b92c6dc8",
+        "checksum": "sha256:d9c5214876e12fb891be3e434f3d06a31f2f255befb00fe6fac7694aaab00279",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/memory.rs"
       },
@@ -29454,7 +29289,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:fbd7cdfd5175b4511170d270bb4d70d511e2875dac0c4ffea86cbe3b6e6cfde3",
+        "checksum": "sha256:6d6d06c66512163a666a3d461d716e54ba83c481c315db177e03aadb148b5d53",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
@@ -29474,7 +29309,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:e63a61305335e11cbdec0efba913d890cf482e9356543ca9647a461f8f7d7127",
+        "checksum": "sha256:0e0a13dd0acbdaf8b4de2a8b309a279a3a423d286a0bad6133461c7be99bd860",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },
@@ -29564,7 +29399,7 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:18a853822432f4e514faad577fea407b9e7e944c74a21446637feb3795c02e1a",
+        "checksum": "sha256:0aaf932d940307911b67c90b53dabdd226786c26effe7aabb323495e90795679",
         "kind": "rust_module",
         "path": "xtask/src/schemas/families.rs"
       },
@@ -29579,7 +29414,7 @@
         "path": "xtask/src/schemas/registry.rs"
       },
       {
-        "checksum": "sha256:a3b8a626e1f5a9b0b8c871f789a739554a0e5bd75e2782f79faed44e7738c9de",
+        "checksum": "sha256:4958876459f54085e8e9d323bf9b8d3c4bade8d565a4dc34e5f0e7d1740789fa",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry/canonical_enums.rs"
       },

@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 #[cfg(desktop)]
 use tauri::{
-    LogicalSize, Size,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
@@ -15,6 +14,8 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
+mod backend_credentials;
+mod backend_transport;
 mod browser;
 mod date_math;
 mod diag;
@@ -28,20 +29,32 @@ mod sftp_bridge;
 mod sftp_known_hosts;
 mod stream;
 mod terminal;
+mod window_commands;
 #[cfg(desktop)]
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
+use backend_credentials::{delete_backend_credential, save_backend_credential};
+use backend_transport::BackendTransport;
 use github_bridge::GitHubClient;
 use persistence::*;
 use stream::axon_http_stream_request;
 use terminal::TerminalState;
+#[cfg(all(test, desktop))]
+use window_commands::center_position;
+#[cfg(desktop)]
+use window_commands::resize_and_center;
+use window_commands::{hide_palette, resize_palette, show_palette, toggle_maximize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PaletteSettings {
     server_url: String,
     token: Option<String>,
+    #[serde(default)]
+    backend_profiles: Vec<BackendProfile>,
+    #[serde(default)]
+    active_backend_profiles: std::collections::HashMap<BackendProduct, String>,
     shortcut: String,
     collection: String,
     result_limit: u16,
@@ -58,6 +71,28 @@ struct PaletteSettings {
     /// each one.
     #[serde(default)]
     sftp_connections: Vec<SftpConnectionProfile>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackendProfile {
+    pub id: String,
+    pub label: String,
+    pub product: BackendProduct,
+    pub origin: String,
+    pub credential_handle: Option<String>,
+    #[serde(default)]
+    pub credential_generation: Option<String>,
+    pub pinned_server_id: Option<String>,
+    pub accepted_api_major: u16,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum BackendProduct {
+    Axon,
+    Labby,
+    Cortex,
 }
 
 /// A persisted SFTP connection profile. Deliberately excludes any password
@@ -145,70 +180,6 @@ fn update_shortcut(_app: &AppHandle, _settings: &PaletteSettings) -> Result<(), 
     Ok(())
 }
 
-#[cfg(desktop)]
-#[tauri::command]
-fn hide_palette(app: AppHandle) -> Result<(), String> {
-    app.get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?
-        .hide()
-        .map_err(|err| err.to_string())
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-fn hide_palette(_app: AppHandle) -> Result<(), String> {
-    Ok(())
-}
-
-#[tauri::command]
-fn show_palette(app: AppHandle) -> Result<(), String> {
-    show_main_window(&app)
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    // A maximized window ignores set_size on Windows; drop maximize first so the
-    // auto-sizer (and the next launcher open) always lands at the intended size.
-    if window.is_maximized().unwrap_or(false) {
-        let _ = window.unmaximize();
-    }
-    window
-        .set_size(Size::Logical(LogicalSize { width, height }))
-        .map_err(|err| err.to_string())?;
-    // Per-view native shadow toggle (see useWindowChrome.ts for the policy).
-    let _ = window.set_shadow(shadow);
-    window.center().map_err(|err| err.to_string())
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-fn resize_palette(_app: AppHandle, _width: f64, _height: f64, _shadow: bool) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn toggle_maximize(app: AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    if window.is_maximized().map_err(|err| err.to_string())? {
-        window.unmaximize().map_err(|err| err.to_string())
-    } else {
-        window.maximize().map_err(|err| err.to_string())
-    }
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-fn toggle_maximize(_app: AppHandle) -> Result<(), String> {
-    Ok(())
-}
-
 #[tauri::command]
 fn set_blur_dismiss(state: tauri::State<'_, BlurDismiss>, enabled: bool) {
     state.0.store(enabled, Ordering::Relaxed);
@@ -239,6 +210,12 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
             .or(Some(defaults.server_url))
             .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string()),
         token: persisted.token.unwrap_or(defaults.token),
+        backend_profiles: persisted
+            .backend_profiles
+            .unwrap_or(defaults.backend_profiles),
+        active_backend_profiles: persisted
+            .active_backend_profiles
+            .unwrap_or(defaults.active_backend_profiles),
         shortcut: persisted
             .shortcut
             .unwrap_or_else(|| DEFAULT_SHORTCUT.to_string()),
@@ -257,6 +234,45 @@ fn default_settings() -> PaletteSettings {
     PaletteSettings {
         server_url: DEFAULT_SERVER_URL.to_string(),
         token: None,
+        backend_profiles: vec![
+            BackendProfile {
+                id: "axon-default".to_string(),
+                label: "Axon".to_string(),
+                product: BackendProduct::Axon,
+                origin: DEFAULT_SERVER_URL.to_string(),
+                credential_handle: Some("legacy-axon".to_string()),
+                credential_generation: None,
+                pinned_server_id: None,
+                accepted_api_major: 1,
+            },
+            BackendProfile {
+                id: "labby-default".to_string(),
+                label: "Labby".to_string(),
+                product: BackendProduct::Labby,
+                origin: "https://dev.dinglebear.ai".to_string(),
+                credential_handle: Some("labby-default-cred".to_string()),
+                credential_generation: Some("gen-labby-1".to_string()),
+                pinned_server_id: Some("srv-labby".to_string()),
+                accepted_api_major: 1,
+            },
+            BackendProfile {
+                id: "cortex-default".to_string(),
+                label: "Cortex".to_string(),
+                product: BackendProduct::Cortex,
+                origin: "https://cortex.tootie.tv".to_string(),
+                credential_handle: Some("cortex-default-cred".to_string()),
+                credential_generation: Some("gen-cortex-1".to_string()),
+                pinned_server_id: Some("srv-cortex".to_string()),
+                accepted_api_major: 1,
+            },
+        ],
+        active_backend_profiles: [
+            (BackendProduct::Axon, "axon-default".to_string()),
+            (BackendProduct::Labby, "labby-default".to_string()),
+            (BackendProduct::Cortex, "cortex-default".to_string()),
+        ]
+        .into_iter()
+        .collect(),
         shortcut: DEFAULT_SHORTCUT.to_string(),
         collection: "axon".to_string(),
         result_limit: 10,
@@ -274,6 +290,8 @@ fn default_settings() -> PaletteSettings {
 struct PartialPaletteSettings {
     server_url: Option<String>,
     token: Option<Option<String>>,
+    backend_profiles: Option<Vec<BackendProfile>>,
+    active_backend_profiles: Option<std::collections::HashMap<BackendProduct, String>>,
     shortcut: Option<String>,
     collection: Option<String>,
     result_limit: Option<u16>,
@@ -294,6 +312,13 @@ fn normalize_settings(mut settings: PaletteSettings) -> PaletteSettings {
         .token
         .map(|token| token.trim().to_string())
         .filter(|token| !token.is_empty());
+    settings.backend_profiles = backend_transport::normalize_profiles(settings.backend_profiles);
+    settings.active_backend_profiles.retain(|product, id| {
+        settings
+            .backend_profiles
+            .iter()
+            .any(|profile| profile.product == *product && profile.id == *id)
+    });
     settings.shortcut = normalize_shortcut_label(&settings.shortcut);
     settings.collection = settings.collection.trim().to_string();
     if settings.collection.is_empty() {
@@ -318,9 +343,11 @@ fn normalize_shortcut_label(shortcut: &str) -> String {
     match shortcut.trim().to_ascii_lowercase().as_str() {
         "alt+space" | "option+space" => "Alt+Space".to_string(),
         "ctrl+space" | "control+space" => "Ctrl+Space".to_string(),
+        "cmd+space" | "command+space" | "super+space" => "Cmd+Space".to_string(),
         "cmd+shift+space" | "command+shift+space" | "super+shift+space" => {
             "Cmd+Shift+Space".to_string()
         }
+        "ctrl+shift+space" | "control+shift+space" => "Ctrl+Shift+Space".to_string(),
         _ => DEFAULT_SHORTCUT.to_string(),
     }
 }
@@ -350,9 +377,14 @@ fn shortcut_for_label(label: &str) -> Shortcut {
     match normalize_shortcut_label(label).as_str() {
         "Alt+Space" => Shortcut::new(Some(Modifiers::ALT), Code::Space),
         "Ctrl+Space" => Shortcut::new(Some(Modifiers::CONTROL), Code::Space),
+        "Cmd+Space" => Shortcut::new(Some(Modifiers::SUPER), Code::Space),
         "Cmd+Shift+Space" => Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space),
         _ => Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space),
     }
+}
+
+fn shortcut_needs_registration(active_label: Option<&str>, new_label: &str) -> bool {
+    active_label != Some(new_label)
 }
 
 #[cfg(desktop)]
@@ -364,6 +396,9 @@ fn register_configured_shortcut(app: &AppHandle, settings: &PaletteSettings) -> 
     // rather than calling `unregister_all` which would also unregister shortcuts
     // registered by other parts of the app.
     if let Ok(mut guard) = app.state::<ActiveShortcut>().0.lock() {
+        if !shortcut_needs_registration(guard.as_deref(), &new_label) {
+            return Ok(());
+        }
         if let Some(old_label) = guard.take().filter(|l| l != &new_label) {
             let old_shortcut = shortcut_for_label(&old_label);
             if let Err(err) = app.global_shortcut().unregister(old_shortcut) {
@@ -396,17 +431,14 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     if window.is_maximized().unwrap_or(false) {
         let _ = window.unmaximize();
     }
-    window
-        .set_size(Size::Logical(LogicalSize {
-            // Compact launcher — matches COMPACT in useWindowChrome.ts (bar + inset).
-            width: 720.0,
-            height: 92.0,
-        }))
-        .map_err(|err| err.to_string())?;
+    // Compact launcher — matches COMPACT in useWindowChrome.ts (bar + inset).
+    resize_and_center(&window, 720.0, 92.0)?;
     // Compact floats a CSS-glowing bar; keep the native shadow off (JS re-asserts).
     let _ = window.set_shadow(false);
-    window.center().map_err(|err| err.to_string())?;
     window.show().map_err(|err| err.to_string())?;
+    if let Ok(true) = window.is_minimized() {
+        window.unminimize().map_err(|err| err.to_string())?;
+    }
     window.set_focus().map_err(|err| err.to_string())?;
     if let Err(err) = window.emit("palette://shown", ()) {
         diag::warn_with_context("failed to emit shown event", err);
@@ -431,16 +463,15 @@ fn toggle_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
-    match window.is_visible() {
-        Ok(true) => {
-            if let Err(err) = window.hide() {
-                diag::warn_with_context("failed to hide main window", err);
-            }
+    let is_visible = window.is_visible().unwrap_or(false);
+    let is_focused = window.is_focused().unwrap_or(false);
+    if is_visible && is_focused {
+        if let Err(err) = window.hide() {
+            diag::warn_with_context("failed to hide main window", err);
         }
-        _ => {
-            if let Err(err) = show_main_window(app) {
-                diag::warn_with_context("failed to show main window", err);
-            }
+    } else {
+        if let Err(err) = show_main_window(app) {
+            diag::warn_with_context("failed to show main window", err);
         }
     }
 }

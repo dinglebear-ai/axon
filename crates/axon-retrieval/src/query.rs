@@ -56,7 +56,7 @@ pub struct RetrievalResult {
 
 /// Retrieval-domain query request for [`crate::boundary::RetrievalEngine::query`].
 ///
-/// Distinct from `axon_api::mcp_schema::QueryRequest`, which is MCP/CLI
+/// Distinct from `axon_api::action::QueryRequest`, which is MCP/CLI
 /// transport-shaped (carries file_path/symbol/line-number CLI-output fields)
 /// and is barred from trait signatures by the pipeline-unification trait
 /// contract's "traits do not accept CLI/MCP/REST transport structs" rule.
@@ -70,7 +70,7 @@ pub struct QueryRequest {
 
 /// Retrieval-domain query result for [`crate::boundary::RetrievalEngine::query`].
 ///
-/// Distinct from `axon_api::mcp_schema::QueryResult`/`QueryHit` for the same
+/// Distinct from `axon_api::action::QueryResult`/`QueryHit` for the same
 /// reason as [`QueryRequest`] — those are transport-shaped result rows, not a
 /// retrieval-domain match set.
 #[derive(Debug, Clone, PartialEq)]

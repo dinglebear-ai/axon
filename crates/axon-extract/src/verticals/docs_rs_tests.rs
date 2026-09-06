@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn rustdoc_gzip_rejects_decompressed_expansion_past_budget() {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::io::Write;
+
+    let json = serde_json::json!({"payload": "x".repeat(1024)}).to_string();
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(json.as_bytes()).unwrap();
+    let compressed = encoder.finish().unwrap();
+
+    assert!(decompress_and_parse_gz_with_limits(&compressed, 4096, 100).is_none());
+}
+
+#[test]
 fn docs_rs_extra_fields() {
     let extra = build_extra("tokio", "1.38.0", 42);
     assert_eq!(extra["pkg_registry"], "docs_rs");

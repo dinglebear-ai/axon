@@ -12,15 +12,15 @@
 //! `extract` is SKIP — `extract/sync.rs::extract_sync`'s exact signature vs.
 //! the contract's `ExtractRequest`/`ExtractResult` shape was not confirmed in
 //! this pass, and no `axon-api::ExtractResult` DTO exists (only the
-//! job-lifecycle-shaped `ExtractRequest` in `mcp_schema::requests`) — see the
+//! job-lifecycle-shaped `ExtractRequest` in `action::requests`) — see the
 //! approved wiring plan's deferred list.
 
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use axon_api::mcp_schema::ExtractRequest;
-use axon_api::mcp_schema::McpRenderMode;
-use axon_api::mcp_schema::{ResearchRequest, SummarizeRequest};
+use axon_api::action::ExtractRequest;
+use axon_api::action::McpRenderMode;
+use axon_api::action::{ResearchRequest, SummarizeRequest};
 use axon_core::config::{ConfigOverrides, RenderMode};
 
 use crate::context::ServiceContext;

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "fixture_id": "epoch1-jobs-v5",
+  "source": {
+    "version": "schema-epoch-1/jobs-v5",
+    "schema_epoch": 1,
+    "artifact_kind": "repository-migration-set",
+    "artifact_digest": "sha256:935d861c682668fff1b3ffe137f29a5fe147942ff753c5c67a0c348dcca95db3",
+    "tag": null,
+    "commit_sha": null,
+    "platform": "portable-sqlite3",
+    "toolchain": "python-stdlib-sqlite3",
+    "signature": null,
+    "attestation": "migration paths and SHA-256 digests below are the reviewed immutable inputs",
+    "release_identity_rationale": "This is the declared schema receipt-prefix transition, not a release-tag compatibility claim; release-number windows are explicitly excluded below"
+  },
+  "target": {
+    "version_source": "Cargo.toml workspace.package.version",
+    "schema_epoch": 1
+  },
+  "support_policy": {
+    "supported_transitions": ["schema-epoch-1 receipt-prefix to current schema-epoch-1"],
+    "excluded_release_windows": [
+      {
+        "window": "N-1/N-2 product release database blobs",
+        "reason": "Axon declares no release-number persisted-state compatibility window; pre-cutover stores fail closed and require plan-first reset"
+      },
+      {
+        "window": "client-server.v0 and older",
+        "reason": "The only declared wire compatibility version is client-server.v1"
+      }
+    ]
+  },
+  "generator": {
+    "path": "scripts/e2e/build-upgrade-fixture.py",
+    "version": 1
+  },
+  "explicit_collection_migration": {
+    "contract": "unnamed dense source to named dense plus BM42 destination",
+    "driver": "tests/e2e/scenarios/admin/hermetic_entry.py",
+    "provider": "allocation-owned Qdrant contract service",
+    "assertions": ["point count", "payload preservation", "named destination", "non-owned refusal"],
+    "teardown_owner": "axon_rust-nnzde.15"
+  },
+  "migrations": [
+    {"namespace":"ledger","version":1,"name":"0001_ledger_lifecycle","path":"crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql","sha256":"16b0313a9f47d7f18492bc19560f6b58d7278c1e0fd46fcb30cfe2227e228240"},
+    {"namespace":"ledger","version":2,"name":"0002_publication_state","path":"crates/axon-ledger/src/migrations/0002_publication_state.sql","sha256":"7c0c0fcafb7231e6d8ba1b1eafb1816559fc5d06f5a4d1d52947fb208a3e9308"},
+    {"namespace":"jobs","version":1,"name":"0001_canonical_jobs","path":"crates/axon-jobs/src/migrations/0001_canonical_jobs.sql","sha256":"51b238e740621b42a5b1bc53f4f0aab0c97fa19e70168d1597742290202551bf"},
+    {"namespace":"jobs","version":2,"name":"0002_provider_scheduler","path":"crates/axon-jobs/src/migrations/0002_provider_scheduler.sql","sha256":"41a9120f9cc01385daa0d39739d693ae4e35340b346ed4ab9b1c3b7bef4b22a1"},
+    {"namespace":"jobs","version":3,"name":"0003_provider_scheduler_performance","path":"crates/axon-jobs/src/migrations/0003_provider_scheduler_performance.sql","sha256":"649dce68efc4f37421046cf37006cb7902ac775c88e7fe8198f94673e325cc42"},
+    {"namespace":"jobs","version":4,"name":"0004_provider_scheduler_parser_kind","path":"crates/axon-jobs/src/migrations/0004_provider_scheduler_parser_kind.sql","sha256":"02115d3aee17b19cb7242efa6a4c4ea52151ea13674b83af51848b630624af02"},
+    {"namespace":"jobs","version":5,"name":"0005_provider_identity_cache","path":"crates/axon-jobs/src/migrations/0005_provider_identity_cache.sql","sha256":"e4d1b0356f4323f8d00cae5a3ed2c445c07b6b4a1b2f32201e9e85ee3ed0af8b"},
+    {"namespace":"observe","version":1,"name":"0001_create_observability_tables","path":"crates/axon-observe/src/migrations/0001_create_observability_tables.sql","sha256":"1a76f2350e0178842585fa6f8262bb8f61d31e0e51af5d8dbf5d84e0e0bbb7f1"},
+    {"namespace":"graph","version":1,"name":"0001_create_graph_tables","path":"crates/axon-graph/src/migrations/0001_create_graph_tables.sql","sha256":"c8f9fb2ba205872633432505d3b8691c553c4aaa26f803ac9bcd5b043a37decf"},
+    {"namespace":"graph","version":2,"name":"0002_publication_state","path":"crates/axon-graph/src/migrations/0002_publication_state.sql","sha256":"965cde73f7b398124e877edec6d27fc3b334ecb9d1609e9bc6d390030ea0b100"},
+    {"namespace":"memory","version":1,"name":"0001_create_memory_tables","path":"crates/axon-memory/src/migrations/0001_create_memory_tables.sql","sha256":"27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3"},
+    {"namespace":"memory","version":2,"name":"0002_batch_recovery_indexes","path":"crates/axon-memory/src/migrations/0002_batch_recovery_indexes.sql","sha256":"1ffee54372287e607c49a909fbb89f8b4732cfb1bd0f6c8671429ccca178d74a"},
+    {"namespace":"memory","version":3,"name":"0003_add_memory_visibility","path":"crates/axon-memory/src/migrations/0003_add_memory_visibility.sql","sha256":"ff07e5966ea8df767e5bff28cd7ef863985f3dea6b8f6b0078314e885604b4dd"}
+  ]
+}

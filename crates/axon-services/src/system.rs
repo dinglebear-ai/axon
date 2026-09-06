@@ -15,7 +15,7 @@ mod stats;
 mod status;
 mod watchdog;
 
-pub use self::collections::{CollectionsError, collections, map_collections_payload};
+pub use self::collections::{CollectionsError, collections, map_collections_payload, qdrant_ready};
 pub(crate) use self::doctor::doctor_inner;
 pub use self::doctor::{doctor, map_doctor_payload};
 pub use self::domains::{

@@ -12,39 +12,46 @@ use axon_core::sqlite::ImmediateTx;
 impl SqliteUnifiedJobStore {
     pub(crate) async fn append_job_event(&self, mut event: SourceProgressEvent) -> Result<()> {
         let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
-        ensure_job(&mut tx, event.job_id).await?;
-        if let Some(dedupe_key) = event.dedupe_key.as_deref() {
-            let existing = sqlx::query_scalar::<_, i64>(
-                "SELECT sequence FROM job_events WHERE job_id = ? AND dedupe_key = ?",
-            )
-            .bind(event.job_id.0.to_string())
-            .bind(dedupe_key)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(sql_error)?;
-            if existing.is_some() {
-                tx.commit().await.map_err(sql_error)?;
+        append_job_event_tx(&mut tx, &mut event).await?;
+        tx.commit().await.map_err(sql_error)
+    }
+}
+
+pub(crate) async fn append_job_event_tx(
+    tx: &mut sqlx::SqliteConnection,
+    event: &mut SourceProgressEvent,
+) -> Result<()> {
+    ensure_job(tx, event.job_id).await?;
+    if let Some(dedupe_key) = event.dedupe_key.as_deref() {
+        let existing = sqlx::query_scalar::<_, i64>(
+            "SELECT sequence FROM job_events WHERE job_id = ? AND dedupe_key = ?",
+        )
+        .bind(event.job_id.0.to_string())
+        .bind(dedupe_key)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sql_error)?;
+        if existing.is_some() {
+            return Ok(());
+        }
+    }
+    let auto_sequence = event.sequence == 0;
+    let sequence = if auto_sequence {
+        next_sequence(tx, event.job_id).await?
+    } else {
+        match validate_explicit_sequence(tx, event).await? {
+            Some(sequence) => sequence,
+            None => {
                 return Ok(());
             }
         }
-        let auto_sequence = event.sequence == 0;
-        let sequence = if auto_sequence {
-            next_sequence(&mut tx, event.job_id).await?
-        } else {
-            match validate_explicit_sequence(&mut tx, &event).await? {
-                Some(sequence) => sequence,
-                None => {
-                    tx.commit().await.map_err(sql_error)?;
-                    return Ok(());
-                }
-            }
-        };
-        event.sequence = sequence;
+    };
+    event.sequence = sequence;
 
-        let redactor = DefaultRedactor::new();
-        let redaction_context = RedactionContext::job_event();
-        let redacted_message = redact_text_checked(&redactor, &event.message, &redaction_context)
-            .map_err(|status| {
+    let redactor = DefaultRedactor::new();
+    let redaction_context = RedactionContext::job_event();
+    let redacted_message = redact_text_checked(&redactor, &event.message, &redaction_context)
+        .map_err(|status| {
             ApiError::new(
                 "job_event.redaction_failed",
                 ErrorStage::Publishing,
@@ -54,42 +61,41 @@ impl SqliteUnifiedJobStore {
                 ),
             )
         })?;
-        event.validate_bounds().map_err(|error| *error)?;
-        let (details, redaction_report) =
-            redact_metadata(event_details(&event), &redaction_context, &redactor);
-        let details = stamp_redaction_metadata(details, &redaction_report);
-        sqlx::query(
-            "INSERT INTO job_events (
+    event.validate_bounds().map_err(|error| *error)?;
+    let (details, redaction_report) =
+        redact_metadata(event_details(event), &redaction_context, &redactor);
+    let details = stamp_redaction_metadata(details, &redaction_report);
+    sqlx::query(
+        "INSERT INTO job_events (
                 event_id, job_id, sequence, attempt, stage_id, phase, status, severity,
                 visibility, message, timestamp, dedupe_key, details_json
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(event.event_id)
-        .bind(event.job_id.0.to_string())
-        .bind(event.sequence as i64)
-        .bind(event.attempt as i64)
-        .bind(event.stage_id.map(|id| id.0.to_string()))
-        .bind(enum_name(event.phase)?)
-        .bind(enum_name(event.status)?)
-        .bind(enum_name(event.severity)?)
-        .bind(enum_name(event.visibility)?)
-        .bind(redacted_message)
-        .bind(event.timestamp.0)
-        .bind(event.dedupe_key.as_deref())
-        .bind(to_json(&details)?)
-        .execute(&mut *tx)
-        .await
-        .map_err(sql_error)?;
-        if !auto_sequence {
-            sqlx::query("UPDATE jobs SET last_event_sequence = ? WHERE job_id = ?")
-                .bind(event.sequence as i64)
-                .bind(event.job_id.0.to_string())
-                .execute(&mut *tx)
-                .await
-                .map_err(sql_error)?;
-        }
-        tx.commit().await.map_err(sql_error)
+    )
+    .bind(&event.event_id)
+    .bind(event.job_id.0.to_string())
+    .bind(event.sequence as i64)
+    .bind(event.attempt as i64)
+    .bind(event.stage_id.map(|id| id.0.to_string()))
+    .bind(enum_name(event.phase)?)
+    .bind(enum_name(event.status)?)
+    .bind(enum_name(event.severity)?)
+    .bind(enum_name(event.visibility)?)
+    .bind(redacted_message)
+    .bind(&event.timestamp.0)
+    .bind(event.dedupe_key.as_deref())
+    .bind(to_json(&details)?)
+    .execute(&mut *tx)
+    .await
+    .map_err(sql_error)?;
+    if !auto_sequence {
+        sqlx::query("UPDATE jobs SET last_event_sequence = ? WHERE job_id = ?")
+            .bind(event.sequence as i64)
+            .bind(event.job_id.0.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(sql_error)?;
     }
+    Ok(())
 }
 
 async fn next_sequence(tx: &mut sqlx::SqliteConnection, job_id: JobId) -> Result<u64> {

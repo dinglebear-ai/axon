@@ -123,7 +123,7 @@ impl AuthSnapshot {
                 .iter()
                 .filter_map(|scope| AuthScope::from_scope_str(scope))
                 .collect(),
-            visibility_ceiling,
+            visibility_ceiling: clamp_visibility(visibility_ceiling, caller.visibility_ceiling),
             request_time: Timestamp::from(Utc::now()),
             policy_version: policy_version.into(),
             auth_mode: caller.auth_mode.clone(),
@@ -132,6 +132,26 @@ impl AuthSnapshot {
         }
     }
 }
+
+fn clamp_visibility(requested: Visibility, caller: Visibility) -> Visibility {
+    fn rank(value: Visibility) -> u8 {
+        match value {
+            Visibility::Public => 0,
+            Visibility::Internal | Visibility::Derived => 1,
+            Visibility::Sensitive => 2,
+            Visibility::Redacted => 3,
+        }
+    }
+    if rank(requested) <= rank(caller) {
+        requested
+    } else {
+        caller
+    }
+}
+
+#[cfg(test)]
+#[path = "auth_tests.rs"]
+mod tests;
 
 impl Default for AuthSnapshot {
     fn default() -> Self {

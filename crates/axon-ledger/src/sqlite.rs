@@ -141,6 +141,10 @@ impl LedgerStore for SqliteLedgerStore {
         source::get_source(self, source_id).await
     }
 
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>> {
+        source::get_source_detail(self, source_id).await
+    }
+
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
         source::list_sources(self, request).await
     }
@@ -281,6 +285,18 @@ impl LedgerStore for SqliteLedgerStore {
 
     async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>> {
         cleanup::list_pending_cleanup_debt(self, &source_id).await
+    }
+
+    async fn list_pending_cleanup_debt_after(
+        &self,
+        after: Option<CleanupDebtId>,
+        limit: usize,
+    ) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_pending_cleanup_debt_after(self, after.as_ref(), limit).await
+    }
+
+    async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_adapter_release_debt(self, limit).await
     }
 
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()> {

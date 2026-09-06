@@ -8,6 +8,11 @@ use axon_api::source::*;
 use tokio::sync::Mutex;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
+mod limits;
+pub use limits::{
+    DEFAULT_GRAPH_EDGE_LIMIT, MAX_GRAPH_DEPTH, MAX_GRAPH_EDGE_KINDS, MAX_GRAPH_EDGE_LIMIT,
+    MAX_GRAPH_IDENTIFIER_BYTES, bounded_limits, bounded_query,
+};
 
 #[async_trait]
 pub trait GraphStore: Send + Sync {
@@ -28,6 +33,16 @@ pub trait GraphStore: Send + Sync {
     /// source-linked subgraph read (REST `GET /v1/graph/sources/{source_id}`,
     /// MCP `graph.source`).
     async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>>;
+
+    async fn nodes_for_source_limited(
+        &self,
+        source_id: SourceId,
+        limit: usize,
+    ) -> Result<Vec<GraphNode>> {
+        let mut nodes = self.nodes_for_source(source_id).await?;
+        nodes.truncate(limit);
+        Ok(nodes)
+    }
 
     /// Delete graph nodes identified by stable key, cascading to their
     /// incident edges (and, for the durable store, evidence/aliases via FK
@@ -191,6 +206,7 @@ impl GraphStore for FakeGraphStore {
     }
 
     async fn query(&self, request: GraphQueryRequest) -> Result<GraphQueryResult> {
+        let (max_depth, limit) = bounded_query(&request)?;
         let state = self.state.lock().await;
         let Some(start_node_id) = resolve_identifier(&state, &request.start) else {
             return Ok(GraphQueryResult {
@@ -209,11 +225,6 @@ impl GraphStore for FakeGraphStore {
         let mut seen_edges = BTreeSet::new();
         let mut frontier = VecDeque::from([(start_node_id, 0)]);
         let mut edges = Vec::new();
-        let max_depth = request.depth;
-        let limit = usize::try_from(request.limit)
-            .ok()
-            .filter(|limit| *limit > 0)
-            .unwrap_or(usize::MAX);
         let fetch_limit = limit.saturating_add(1);
         let mut cursor_seen = request.cursor.is_none();
 
@@ -318,12 +329,21 @@ impl GraphStore for FakeGraphStore {
 
     async fn node_edges(&self, node_id: GraphNodeId) -> Result<Vec<GraphEdge>> {
         let state = self.state.lock().await;
-        Ok(state
+        let edges = state
             .edges_by_id
             .values()
             .filter(|edge| edge.from_node_id == node_id || edge.to_node_id == node_id)
+            .take(MAX_GRAPH_EDGE_LIMIT as usize + 1)
             .cloned()
-            .collect())
+            .collect::<Vec<_>>();
+        if edges.len() > MAX_GRAPH_EDGE_LIMIT as usize {
+            return Err(ApiError::new(
+                "graph.edge_limit_exceeded",
+                ErrorStage::Retrieving,
+                format!("node has more than {MAX_GRAPH_EDGE_LIMIT} incident edges"),
+            ));
+        }
+        Ok(edges)
     }
 
     async fn nodes_for_source(&self, source_id: SourceId) -> Result<Vec<GraphNode>> {
@@ -332,6 +352,21 @@ impl GraphStore for FakeGraphStore {
             .nodes_by_id
             .values()
             .filter(|node| node.source_ids.contains(&source_id))
+            .cloned()
+            .collect())
+    }
+
+    async fn nodes_for_source_limited(
+        &self,
+        source_id: SourceId,
+        limit: usize,
+    ) -> Result<Vec<GraphNode>> {
+        let state = self.state.lock().await;
+        Ok(state
+            .nodes_by_id
+            .values()
+            .filter(|node| node.source_ids.contains(&source_id))
+            .take(limit)
             .cloned()
             .collect())
     }

@@ -137,6 +137,10 @@ provider clients).
   `SourceItem`, and must be internally consistent with the debt's own
   `source_id`/`generation` (`validate_cleanup_debt` rejects mismatches before
   insert).
+- `vector_collection` persists the exact Qdrant collection for
+  `VectorDelete` debt. Autonomous retries use only this stored identity; legacy
+  rows without it remain pending with an actionable warning rather than
+  guessing the process's current default collection.
 - Debt rows are deduplicated by `(source_id, generation_key, kind,
   selector_hash)`. `record_cleanup_debt` (public API) upserts and refreshes an
   existing pending row if the incoming debt is newer; the internal

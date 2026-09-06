@@ -21,7 +21,11 @@ impl ContextBundle {
         byte_budget: u64,
         token_budget: u32,
     ) -> Self {
-        Self::from_items(chunks, byte_budget, token_budget)
+        Self::from_items(
+            chunks.iter().map(|(id, text)| (id, text.as_str())),
+            byte_budget,
+            token_budget,
+        )
     }
 
     pub(crate) fn from_matches(
@@ -32,14 +36,14 @@ impl ContextBundle {
         Self::from_items(
             matches
                 .iter()
-                .map(|item| (item.chunk_id.clone(), item.text.clone())),
+                .map(|item| (&item.chunk_id, item.text.as_str())),
             byte_budget,
             token_budget,
         )
     }
 
-    fn from_items(
-        items: impl IntoIterator<Item = (ChunkId, String)>,
+    fn from_items<'a>(
+        items: impl IntoIterator<Item = (&'a ChunkId, &'a str)>,
         byte_budget: u64,
         token_budget: u32,
     ) -> Self {
@@ -50,9 +54,8 @@ impl ContextBundle {
         let mut truncated = false;
 
         for (chunk_id, text) in items {
-            let text = defang_chunk_text(&text);
             let separator_bytes = if text_parts.is_empty() { 0 } else { 2 };
-            let next_bytes_used = bytes_used + separator_bytes + text.len() as u64;
+            let next_bytes_used = bytes_used + separator_bytes + defanged_byte_len(text) as u64;
             let next_token_estimate = estimate_tokens(next_bytes_used);
             if next_bytes_used > byte_budget || next_token_estimate > token_budget {
                 truncated = true;
@@ -60,8 +63,8 @@ impl ContextBundle {
             }
             bytes_used = next_bytes_used;
             token_estimate = next_token_estimate;
-            chunk_ids.push(chunk_id);
-            text_parts.push(text);
+            chunk_ids.push(chunk_id.clone());
+            text_parts.push(defang_chunk_text(text));
         }
 
         Self {
@@ -78,7 +81,28 @@ fn estimate_tokens(bytes: u64) -> u32 {
     bytes.div_ceil(4).try_into().unwrap_or(u32::MAX)
 }
 
-fn defang_chunk_text(text: &str) -> String {
+pub(crate) fn defanged_byte_len(text: &str) -> usize {
+    let heading_insertions = [
+        "## Sources",
+        "## Source Document",
+        "## Top Chunk",
+        "## Supplemental Chunk",
+    ]
+    .iter()
+    .map(|pattern| text.match_indices(pattern).count())
+    .sum::<usize>();
+    let citation_insertions = text
+        .match_indices("[S")
+        .filter(|(position, _)| {
+            let tail = &text[position + 2..];
+            let digit_end = tail.bytes().take_while(u8::is_ascii_digit).count();
+            digit_end > 0 && tail[digit_end..].starts_with(']')
+        })
+        .count();
+    text.len() + (heading_insertions + citation_insertions) * '\u{200b}'.len_utf8()
+}
+
+pub(crate) fn defang_chunk_text(text: &str) -> String {
     let text = text
         .replace("## Sources", "## \u{200b}Sources")
         .replace("## Source Document", "## \u{200b}Source Document")

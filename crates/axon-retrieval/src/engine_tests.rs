@@ -6,10 +6,10 @@ use crate::engine::{RetrievalAccess, RetrievalEngine, RetrievalEngineConfig};
 use crate::query::RetrievalRequest;
 use async_trait::async_trait;
 use axon_api::source::{
-    BatchId, ChunkId, ContentKind, DocumentId, EmbeddingInput, EmbeddingResult, EmbeddingVector,
-    JobId, JobPriority, MetadataMap, ProviderCapability, ProviderId, ProviderUsage,
-    RedactionMetadata, RedactionStatus, SourceGenerationId, SourceId, SourceItemKey, SourceRange,
-    SourceWarning, VectorPoint, VectorPointBatch, VectorPointId, Visibility,
+    BatchId, ChunkId, ContentKind, DocumentId, EmbeddingBatch, EmbeddingInput, EmbeddingResult,
+    EmbeddingVector, JobId, JobPriority, MetadataMap, ProviderCapability, ProviderId,
+    ProviderUsage, RedactionMetadata, RedactionStatus, SourceGenerationId, SourceId, SourceItemKey,
+    SourceRange, SourceWarning, VectorPoint, VectorPointBatch, VectorPointId, Visibility,
 };
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_embedding::provider::{EmbeddingProvider, Result as EmbeddingProviderResult};
@@ -66,7 +66,7 @@ async fn ranking_is_deterministic_with_fixed_fake_vector_search_results() {
 
     let provider = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
     let query_vector = provider
-        .embed(axon_api::source::EmbeddingBatch {
+        .embed(EmbeddingBatch {
             batch_id: BatchId::new(Uuid::from_u128(10)),
             job_id: JobId::new(Uuid::from_u128(11)),
             provider_id: ProviderId::new("fake-embedding"),
@@ -155,6 +155,75 @@ async fn dense_only_request_omits_the_sparse_arm() {
     let result = engine.retrieve(request).await.unwrap();
 
     assert_eq!(result.matches.len(), 1);
+}
+
+#[tokio::test]
+async fn excluded_source_kinds_are_filtered_before_limit_and_missing_provenance_fails_closed() {
+    let store = Arc::new(FakeVectorStore::new("fake-vectors"));
+    let spec = test_collection_spec(4);
+    store.ensure_collection(spec.clone()).await.unwrap();
+    let provider = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
+    let query_vector = provider
+        .embed(EmbeddingBatch {
+            batch_id: BatchId::new(Uuid::from_u128(20)),
+            job_id: JobId::new(Uuid::from_u128(21)),
+            provider_id: ProviderId::new("fake-embedding"),
+            model: "fake-embedding".to_string(),
+            items: vec![EmbeddingInput {
+                chunk_id: ChunkId::new("query"),
+                text: request().query.clone(),
+                content_kind: ContentKind::PlainText,
+                metadata: MetadataMap::new(),
+            }],
+            instruction: None,
+            priority: JobPriority::Interactive,
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .unwrap()
+        .vectors
+        .remove(0)
+        .values;
+
+    let mut memory = point("memory", "memory", &query_vector, "memory");
+    memory
+        .payload
+        .insert("source_kind".to_string(), json!("memory"));
+    let mut memory_two = point("memory-two", "memory-two", &query_vector, "memory two");
+    memory_two
+        .payload
+        .insert("source_kind".to_string(), json!("memory"));
+    store
+        .upsert(VectorPointBatch {
+            batch_id: BatchId::new(Uuid::from_u128(12)),
+            collection: "axon-test".to_string(),
+            model: "fake-embedding".to_string(),
+            dimensions: 4,
+            sparse_vectors: None,
+            payload_indexes: spec.payload_indexes,
+            points: vec![
+                memory,
+                memory_two,
+                point("web-a", "web-a", &[1.0, 0.0, 0.0, 0.0], "allowed a"),
+                point("web-b", "web-b", &[0.9, 0.0, 0.0, 0.0], "allowed b"),
+            ],
+        })
+        .await
+        .unwrap();
+
+    let engine = RetrievalEngine::new(store, provider, retrieval_config());
+    let mut retrieval = request();
+    retrieval.hybrid = false;
+    retrieval.limit = 2;
+    retrieval.excluded_source_kinds = vec!["memory".to_string()];
+    let result = engine.retrieve(retrieval).await.unwrap();
+    let ids = result
+        .matches
+        .iter()
+        .map(|item| item.chunk_id.0.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(ids, vec!["web-a", "web-b"]);
 }
 
 #[tokio::test]
@@ -677,6 +746,15 @@ fn context_assembly_defangs_structural_markers_and_citations() {
 }
 
 #[test]
+fn context_budget_can_measure_defanged_text_without_materializing_it() {
+    let text = "## Sources\nquoted [S12] and [Something]";
+    assert_eq!(
+        crate::context::defanged_byte_len(text),
+        crate::context::defang_chunk_text(text).len()
+    );
+}
+
+#[test]
 fn context_assembly_counts_separator_bytes_against_budget() {
     let context = ContextBundle::from_chunks(
         vec![
@@ -1071,10 +1149,7 @@ impl MalformedEmbeddingProvider {
 
 #[async_trait]
 impl EmbeddingProvider for MalformedEmbeddingProvider {
-    async fn embed(
-        &self,
-        batch: axon_api::source::EmbeddingBatch,
-    ) -> EmbeddingProviderResult<EmbeddingResult> {
+    async fn embed(&self, batch: EmbeddingBatch) -> EmbeddingProviderResult<EmbeddingResult> {
         Ok(EmbeddingResult {
             batch_id: batch.batch_id,
             job_id: batch.job_id,

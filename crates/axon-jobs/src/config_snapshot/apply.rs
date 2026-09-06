@@ -24,7 +24,7 @@ impl ConfigSnapshot {
         cfg: &mut Config,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(value) = self.llm_backend.take() {
-            let kind = axon_llm::LlmBackendKind::parse(&value).map_err(|err| {
+            let kind = axon_core::llm::LlmBackendKind::parse(&value).map_err(|err| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("invalid llm_backend in config snapshot {value:?}: {err}"),
@@ -49,6 +49,16 @@ impl ConfigSnapshot {
                 $(if let Some(value) = self.$field.take() { cfg.$field = value; })+
             };
         }
+        if let Some(snapshot_headers) = self.custom_headers.take() {
+            let mut headers = cfg
+                .custom_headers
+                .iter()
+                .filter(|header| super::header_contains_credential(header))
+                .cloned()
+                .collect::<Vec<_>>();
+            headers.extend(snapshot_headers);
+            cfg.custom_headers = headers;
+        }
         set!(
             collection,
             output_dir,
@@ -58,7 +68,6 @@ impl ConfigSnapshot {
             include_subdomains,
             exclude_path_prefix,
             render_mode,
-            custom_headers,
             chrome_bootstrap_timeout_ms,
             chrome_bootstrap_retries,
             chrome_remote_local_policy,
@@ -174,6 +183,42 @@ impl ConfigSnapshot {
             viewport_width,
             viewport_height,
             quiet,
+            tei_max_retries,
+            tei_request_timeout_ms,
+            tei_max_client_batch_size,
+            embed_tei_max_concurrent,
+            embed_tei_max_in_flight_inputs,
+            embed_tei_retry_backoff_ms,
+            embed_tei_cooldown_after_failures,
+            embed_tei_cooldown_secs,
+            embed_tei_interactive_reserved_requests,
+            embed_tei_background_max_concurrent_requests,
+            embed_tei_maintenance_max_concurrent_requests,
+            embed_tei_query_instruction_enabled,
+            embed_cache_enabled,
+            embed_cache_max_entries,
+            embed_pool_max_inputs,
+            document_batch_size,
+            document_status_batch_size,
+            embed_tei_max_batch_tokens,
+            embed_scheduler_enabled,
+            vector_upsert_embed_overlap,
+            embed_prepared_byte_budget,
+            embed_prep_concurrency,
+            embed_prep_max_in_flight_bytes,
+            embed_scheduler_flush_ms,
+            chunking_markdown_max_chars,
+            chunking_markdown_min_chars,
+            chunking_overlap_chars,
+            embed_dedupe_exact_chunks,
+            openai_embed_model,
+            openai_embed_max_client_batch_size,
+            openai_embed_max_concurrent,
+            openai_embed_max_in_flight_inputs,
+            openai_embed_pool_max_inputs,
+            unified_worker_concurrency,
+            source_job_concurrency_limit,
+            embed_doc_timeout_secs,
         );
     }
 
@@ -227,6 +272,8 @@ impl ConfigSnapshot {
             since,
             before,
             seed_url,
+            embed_max_chunks_per_doc,
+            embed_max_source_chunks_per_doc,
         );
     }
 }

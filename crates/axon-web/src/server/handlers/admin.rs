@@ -5,7 +5,11 @@ use axon_core::config::Config;
 use axon_services as services;
 use axon_services::prune::PruneAuthz;
 use axon_services::reset::ResetAuthz;
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 use lab_auth::AuthContext;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -62,8 +66,32 @@ pub(crate) async fn prune_plan(
     // ledger-backed estimate (`prune_plan_estimated`) rather than the
     // always-zero `NullScopeSource` fallback, since a `ServiceContext` (and
     // therefore a ledger handle) is available here.
-    let plan = services::prune::prune_plan_estimated(&state.service_context, &request).await;
+    let (plan, result) =
+        services::prune::prune(&state.service_context, &request, &PruneAuthz::anonymous())
+            .await
+            .map_err(destructive_error)?;
+    debug_assert!(result.is_none(), "dry-run prune planning cannot execute");
     Ok(Json(plan))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/prune/plans/{plan_id}",
+    params(("plan_id" = String, Path, description = "Persisted prune plan id")),
+    responses(
+        (status = 200, description = "Exact persisted prune plan", body = axon_api::source::prune::StoredPrunePlan),
+        (status = 404, description = "Plan not found", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn prune_get_plan(
+    State((state, _cfg)): State<WebState>,
+    Path(plan_id): Path<String>,
+) -> Result<Json<axon_api::source::prune::StoredPrunePlan>, HttpError> {
+    services::prune::prune_get_saved_plan(&state.service_context, plan_id.trim())
+        .await
+        .map(Json)
+        .map_err(destructive_error)
 }
 
 #[utoipa::path(
@@ -161,6 +189,26 @@ pub(crate) async fn reset_plan(
         .await
         .map_err(destructive_error)?;
     Ok(Json(result.reset_plan))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/reset/plans/{plan_id}",
+    params(("plan_id" = String, Path, description = "Persisted reset plan id")),
+    responses(
+        (status = 200, description = "Exact persisted reset plan", body = ResetResult),
+        (status = 404, description = "Plan not found", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn reset_get_plan(
+    State((_state, cfg)): State<WebState>,
+    Path(plan_id): Path<String>,
+) -> Result<Json<ResetResult>, HttpError> {
+    services::reset::reset_get_saved_plan(cfg.as_ref(), plan_id.trim())
+        .await
+        .map(Json)
+        .map_err(destructive_error)
 }
 
 #[utoipa::path(

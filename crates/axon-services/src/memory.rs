@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use crate::context::ServiceContext;
 use crate::types::ClientActionError;
-use axon_api::mcp_schema::{MemoryEdgeType, MemoryRequest, MemorySubaction};
+use axon_api::action::{MemoryEdgeType, MemoryRequest, MemorySubaction};
 use axon_api::source::{
     MemoryCompactRequest, MemoryId, MemoryLink, MemorySearchRequest, MemorySupersedeRequest,
     Timestamp,
@@ -153,13 +153,13 @@ pub async fn dispatch(
 pub async fn list(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<MemoryItem>> {
     let store = memory_store(ctx).await?;
     let limit = req.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-    // Empty-query search returns the full recall-visible set; then facet-filter.
+    let filters = store_filters(&req);
     let search = store
         .search(MemorySearchRequest {
             include_statuses: Vec::new(),
             query: String::new(),
             limit: MAX_LIMIT as u32,
-            filters: Default::default(),
+            filters,
             include_graph: false,
             include_archived: req.status.as_deref() != Some("active"),
             reinforce: false,
@@ -218,12 +218,13 @@ pub async fn search(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<Memo
     let query = required_text(req.query.as_deref(), "query")?.to_string();
     let limit = req.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let store = memory_store(ctx).await?;
+    let filters = store_filters(&req);
     let search = store
         .search(MemorySearchRequest {
             include_statuses: Vec::new(),
             query,
             limit: MAX_LIMIT as u32,
-            filters: Default::default(),
+            filters,
             include_graph: false,
             include_archived: false,
             reinforce: false,
@@ -240,6 +241,30 @@ pub async fn search(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<Memo
         .collect();
     items.truncate(limit);
     Ok(items)
+}
+
+fn store_filters(req: &MemoryRequest) -> axon_api::source::MetadataMap {
+    let mut filters = axon_api::source::MetadataMap::new();
+    for (key, value) in [
+        ("project", req.project.as_deref()),
+        ("repo", req.repo.as_deref()),
+        ("file", req.file.as_deref()),
+        ("status", req.status.as_deref()),
+    ] {
+        if let Some(value) = value {
+            filters.insert(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+    if let Some(memory_type) = req.memory_type {
+        filters.insert(
+            "memory_type".to_string(),
+            serde_json::Value::String(node_type_name(memory_type).to_string()),
+        );
+    }
+    filters
 }
 
 pub async fn show(ctx: &ServiceContext, req: MemoryRequest) -> Result<Option<MemoryItem>> {

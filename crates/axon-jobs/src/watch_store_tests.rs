@@ -54,6 +54,35 @@ async fn insert_job(pool: &SqlitePool) -> JobId {
 }
 
 #[tokio::test]
+async fn concurrent_explicit_exec_lease_has_one_winner() {
+    let (store, _pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(3));
+
+    let contenders = (0..2)
+        .map(|_| {
+            let store = store.clone();
+            let watch_id = created.watch_id.clone();
+            let barrier = barrier.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+                store.acquire_exec_lease(&watch_id, 60_000).await.unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait().await;
+
+    let mut winners = 0;
+    for contender in contenders {
+        winners += usize::from(contender.await.unwrap());
+    }
+    assert_eq!(
+        winners, 1,
+        "only one overlapping watch exec may acquire the lease"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_watch_store_creates_gets_updates_and_lists() {
     let (store, pool, _temp) = store().await;
 
@@ -122,6 +151,44 @@ async fn sqlite_watch_store_creates_gets_updates_and_lists() {
             chrono::DateTime::<chrono::Utc>::from_timestamp_millis(forced_next_run_at).unwrap()
         )
     );
+}
+
+#[tokio::test]
+async fn corrupt_durable_watch_fields_fail_closed() {
+    let (store, pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+    sqlx::query(
+        "UPDATE axon_source_watches SET scope = 'not-a-scope', next_run_at = -9223372036854775808 \
+         WHERE watch_id = ?",
+    )
+    .bind(&created.watch_id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let get_error = WatchStore::get(&store, created.watch_id.clone())
+        .await
+        .expect_err("corrupt scope must not silently become page");
+    assert_eq!(get_error.code.to_string(), "watch.storage_error");
+
+    sqlx::query("UPDATE axon_source_watches SET scope = 'directory' WHERE watch_id = ?")
+        .bind(&created.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let list_error = WatchStore::list(
+        &store,
+        WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: Some(10),
+            cursor: None,
+        },
+    )
+    .await
+    .expect_err("invalid timestamp must not silently become now");
+    assert_eq!(list_error.code.to_string(), "watch.storage_error");
 }
 
 #[tokio::test]
@@ -450,6 +517,41 @@ async fn sqlite_watch_store_reports_capabilities() {
     let capability = WatchStore::capabilities(&store).await.unwrap();
     assert_eq!(capability.0.owner_crate, "axon-jobs");
     assert_eq!(capability.0.name, "sqlite-watch-store");
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_rejects_corrupt_boolean_and_interval_fields() {
+    let (store, pool, _temp) = store().await;
+    let watch = WatchStore::create(&store, watch_request()).await.unwrap();
+
+    sqlx::query("UPDATE axon_source_watches SET enabled = 2 WHERE watch_id = ?")
+        .bind(&watch.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let error = WatchStore::get(&store, watch.watch_id.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code.to_string(), "watch.storage_error");
+    assert!(error.message.contains("enabled"));
+
+    sqlx::query("UPDATE axon_source_watches SET enabled = 1, embed = -1 WHERE watch_id = ?")
+        .bind(&watch.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let error = store.request(watch.watch_id.clone()).await.unwrap_err();
+    assert_eq!(error.code.to_string(), "watch.storage_error");
+    assert!(error.message.contains("embed"));
+
+    sqlx::query("UPDATE axon_source_watches SET embed = 1, every_seconds = -60 WHERE watch_id = ?")
+        .bind(&watch.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let error = WatchStore::get(&store, watch.watch_id).await.unwrap_err();
+    assert_eq!(error.code.to_string(), "watch.storage_error");
+    assert!(error.message.contains("every_seconds"));
 }
 
 #[tokio::test]

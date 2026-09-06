@@ -342,6 +342,8 @@ fn ask_result_exposes_typed_answer() {
             streamed: None,
             normalize_ms: None,
         },
+        loadout: None,
+        agent: None,
     };
     assert_eq!(r.answer, "42");
 }

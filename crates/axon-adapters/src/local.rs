@@ -10,6 +10,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use axon_api::source::*;
+use base64::Engine as _;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -46,12 +47,23 @@ impl SourceAdapter for LocalSourceAdapter {
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
         let root_handle = self.root_for_discovery(plan)?;
         let retained_handle = Arc::clone(&root_handle);
+        let spool = Arc::new(tempfile::tempdir().map_err(|error| {
+            ApiError::new(
+                "adapter.local.spool_create_failed",
+                ErrorStage::Discovering,
+                "failed to create the local discovery content spool",
+            )
+            .with_context("cause", error.to_string())
+        })?);
+        let retained_spool = Arc::clone(&spool);
         let job_id = plan.job_id;
         let plan = plan.clone();
-        let manifest = tokio::task::spawn_blocking(move || discover_sync(&plan, &root_handle))
-            .await
-            .map_err(blocking_join_error)??;
-        self.retain_discovered_root(job_id, retained_handle)?;
+        let manifest = tokio::task::spawn_blocking(move || {
+            discover_sync(&plan, &root_handle, retained_spool.path())
+        })
+        .await
+        .map_err(blocking_join_error)??;
+        self.retain_discovered_root(job_id, retained_handle, spool)?;
         Ok(manifest)
     }
 
@@ -61,9 +73,10 @@ impl SourceAdapter for LocalSourceAdapter {
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition> {
         let root_handle = self.held_root_for_acquisition(plan)?;
+        let spool = self.discovery_spool(plan.job_id)?;
         let plan = plan.clone();
         let diff = diff.clone();
-        tokio::task::spawn_blocking(move || acquire_sync(&plan, &diff, &root_handle))
+        tokio::task::spawn_blocking(move || acquire_sync(&plan, &diff, &root_handle, spool.path()))
             .await
             .map_err(blocking_join_error)?
     }
@@ -93,8 +106,9 @@ impl SourceAdapter for LocalSourceAdapter {
         })
     }
 
-    fn release(&self, plan: &SourcePlan) {
-        self.release_root(plan.job_id);
+    fn release(&self, request: &AdapterReleaseRequest) -> Result<()> {
+        self.release_root(request.job_id);
+        Ok(())
     }
 }
 
@@ -113,7 +127,11 @@ fn local_capability(version: &str) -> AdapterCapability {
     .with_scope(SourceScope::Map)
 }
 
-fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<SourceManifest> {
+fn discover_sync(
+    plan: &SourcePlan,
+    root_handle: &LocalRootHandle,
+    spool_dir: &std::path::Path,
+) -> Result<SourceManifest> {
     let capability = local_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION);
     capability.validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
@@ -147,6 +165,7 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
                     &base_uri,
                     root_for_keys,
                     root.clone(),
+                    spool_dir,
                 )?
                 .into_iter()
                 .collect()
@@ -162,7 +181,14 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
                     root_handle,
                     limit,
                 )?;
-                hash_file_candidates_parallel(plan, root_handle, &options, &base_uri, &candidates)?
+                hash_file_candidates_parallel(
+                    plan,
+                    root_handle,
+                    &options,
+                    &base_uri,
+                    &candidates,
+                    spool_dir,
+                )?
             } else {
                 collect_manifest_items_parallel(
                     plan,
@@ -171,6 +197,7 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
                     &base_uri,
                     root_for_keys,
                     &root,
+                    spool_dir,
                 )?
             }
         }
@@ -199,7 +226,8 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
 fn acquire_sync(
     plan: &SourcePlan,
     diff: &SourceManifestDiff,
-    root_handle: &LocalRootHandle,
+    _root_handle: &LocalRootHandle,
+    spool_dir: &std::path::Path,
 ) -> Result<SourceAcquisition> {
     validate_adapter(plan)?;
     if plan.route.scope == SourceScope::Map {
@@ -242,11 +270,33 @@ fn acquire_sync(
         if !options.fetches_body(&path) {
             continue;
         }
-        let content_ref = read_content_ref_from_file(
-            root_handle.open_file(&item.source_item_key.0)?,
-            &path,
-            &options,
-        )?;
+        let file = std::fs::File::open(discovery::spool_path(spool_dir, &item.source_item_key.0))
+            .map_err(|error| {
+            local_io::fs_error("adapter.local.spool_read_failed", &path, error)
+        })?;
+        let acquired_size = file
+            .metadata()
+            .map_err(|error| local_io::fs_error("adapter.local.stat_failed", &path, error))?
+            .len();
+        let content_ref = read_content_ref_from_file(file, &path, &options)?;
+        let acquired_hash = content_ref_fingerprint(&content_ref)?;
+        if item.size_bytes != Some(acquired_size)
+            || item.content_hash.as_deref() != Some(&acquired_hash)
+        {
+            let mut error = ApiError::new(
+                "adapter.local.source_changed",
+                ErrorStage::Fetching,
+                "local source changed between discovery and acquisition; retry the source job",
+            )
+            .with_context("source_item_key", item.source_item_key.0.clone())
+            .with_context(
+                "discovered_hash",
+                item.content_hash.clone().unwrap_or_default(),
+            )
+            .with_context("acquired_hash", acquired_hash);
+            error.retryable = true;
+            return Err(error);
+        }
         fetched_items.push(AcquiredSourceItem {
             manifest_item: item.clone(),
             fetch_status: LifecycleStatus::Completed,
@@ -285,6 +335,30 @@ fn acquire_sync(
         fetched_items,
         artifacts: Vec::new(),
     })
+}
+
+fn content_ref_fingerprint(content: &ContentRef) -> Result<String> {
+    let bytes = match content {
+        ContentRef::InlineText { text } => text.as_bytes().to_vec(),
+        ContentRef::InlineBytes { bytes_base64, .. } => base64::engine::general_purpose::STANDARD
+            .decode(bytes_base64)
+            .map_err(|error| {
+                ApiError::new(
+                    "adapter.local.content_decode_failed",
+                    ErrorStage::Fetching,
+                    "local binary content could not be verified",
+                )
+                .with_context("cause", error.to_string())
+            })?,
+        ContentRef::Artifact { .. } | ContentRef::External { .. } => {
+            return Err(ApiError::new(
+                "adapter.local.content_verification_unsupported",
+                ErrorStage::Fetching,
+                "local acquired content is not inline and cannot be verified",
+            ));
+        }
+    };
+    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
 
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {

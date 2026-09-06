@@ -16,6 +16,10 @@ use sqlx::SqlitePool;
 /// for the shared SQLite vector lane.
 const VECTOR_RESERVATION_CAPACITY: u32 = 2;
 const VECTOR_RESERVATION_INTERACTIVE_RESERVE: u32 = 1;
+/// Durable scheduler capacity is expressed in logical embedding calls/jobs,
+/// not HTTP requests or input weights. TEI's endpoint-shared semaphores are
+/// the sole authoritative admission boundary for those lower-level units.
+const EMBEDDING_LOGICAL_CALL_CAPACITY: u32 = 3;
 
 pub(super) struct RuntimeSchedulers {
     pub(super) embedding: ProviderScheduler,
@@ -42,10 +46,7 @@ pub(super) async fn build_runtime_schedulers(
             instance_id: embedding_provider_id.0.clone(),
             authority_id: authority_id.clone(),
         },
-        scheduler_config(
-            cfg.embed_tei_max_concurrent as u32,
-            cfg.embed_tei_interactive_reserved_requests as u32,
-        ),
+        scheduler_config(EMBEDDING_LOGICAL_CALL_CAPACITY, 0),
         write_gate.clone(),
     )?;
     let vector = ProviderScheduler::new_with_write_gate(
@@ -156,10 +157,11 @@ pub(super) fn scheduler_authority_id(path: &Path) -> String {
 
 fn scheduler_config(capacity: u32, interactive_reserve: u32) -> SchedulerConfig {
     let capacity = capacity.max(1);
-    SchedulerConfig {
+    SchedulerConfig::new(
         capacity,
-        interactive_reserve: interactive_reserve.min(capacity),
-        max_entries: capacity.saturating_mul(256).max(256),
-        max_units: capacity.saturating_mul(256).max(256),
-    }
+        interactive_reserve.min(capacity),
+        capacity.saturating_mul(256).max(256),
+        capacity.saturating_mul(256).max(256),
+    )
+    .expect("normalized scheduler configuration must be valid")
 }

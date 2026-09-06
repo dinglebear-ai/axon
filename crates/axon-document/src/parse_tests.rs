@@ -32,7 +32,7 @@ fn code_document_yields_ast_symbol_facts_and_code_route() {
         "pub struct Widget;\npub fn render() {}\n",
     );
 
-    let parse = parse_document(&doc);
+    let parse = parse_document(doc);
 
     assert_eq!(parse.parser_id, "code_symbols");
     assert!(
@@ -67,7 +67,7 @@ fn manifest_document_routes_to_code_manifest() {
         "[package]\nname = \"demo\"\n\n[dependencies]\ntokio = \"1\"\n",
     );
 
-    let parse = parse_document(&doc);
+    let parse = parse_document(doc);
 
     assert_eq!(parse.parser_id, "manifest");
     assert!(
@@ -97,7 +97,7 @@ fn web_document_with_stale_route_hint_still_parses_markdown() {
         options: MetadataMap::new(),
     }];
 
-    let parse = parse_document(&doc);
+    let parse = parse_document(doc);
 
     assert_eq!(parse.parser_id, "markdown_headings");
     assert_ne!(parse.parser_version, "unavailable");
@@ -123,7 +123,7 @@ fn prose_document_has_no_routed_profile_override() {
         "# Title\n\nsome prose body\n",
     );
 
-    let parse = parse_document(&doc);
+    let parse = parse_document(doc);
 
     // Markdown parser produces heading facts but defers routing to the
     // content-kind router (returns None so the router picks MarkdownSections).

@@ -41,17 +41,82 @@ PREFIXES = (
 )
 
 IGNORED_TOKENS = {
+    # Comprehensive E2E harness controls and GitHub runner metadata. These are
+    # deliberately not Axon runtime configuration and must stay out of the
+    # user-facing environment contract.
+    "AXON_E2E_ACTIVE_STAGE",
+    "AXON_E2E_ALLOWED_ENDPOINTS",
+    "AXON_E2E_ATTEMPT_ID",
+    "AXON_E2E_CATALOG",
+    "AXON_E2E_CHROME_GATEWAY_URL",
+    "AXON_E2E_CHROME_TOKEN",
+    "AXON_E2E_CLEANUP_REGISTRY",
+    "AXON_E2E_EXPECTED_PEERS",
+    "AXON_E2E_FAKE_PROVIDER_URL",
+    "AXON_E2E_FIXTURE_BASE_URL",
+    "AXON_E2E_FIXTURE_JOB_ID",
+    "AXON_E2E_HERMETIC",
+    "AXON_E2E_LIVE",
+    "AXON_E2E_LLM_GATEWAY_URL",
+    "AXON_E2E_LLM_TOKEN",
+    "AXON_E2E_MANIFEST",
+    "AXON_E2E_NAMESPACE",
+    "AXON_E2E_NATIVE_ISOLATION",
+    "AXON_E2E_NETWORK_CAPABILITY",
+    "AXON_E2E_NETWORK_POLICY",
+    "AXON_E2E_OWNED_ROOT",
+    "AXON_E2E_PERFORMANCE_ONLY",
+    "AXON_E2E_PERFORMANCE_TEARDOWN_HANDLE",
+    "AXON_E2E_PROCESS_NONCE",
+    "AXON_E2E_PROVIDER_MODE",
+    "AXON_E2E_QDRANT_GATEWAY_URL",
+    "AXON_E2E_QDRANT_TOKEN",
+    "AXON_E2E_REAL_AXON_BIN",
+    "AXON_E2E_REQUIRE_REAL_SOURCE_JOBS",
+    "AXON_E2E_RESOURCE_MANIFEST",
+    "AXON_E2E_RUNNER_CLASS",
+    "AXON_E2E_RUN_ID",
+    "AXON_E2E_STAGE_GATES",
+    "AXON_E2E_TEI_GATEWAY_URL",
+    "AXON_E2E_TEI_TOKEN",
+    "AXON_E2E_TESTED_SHA",
+    "AXON_MCP_ALLOWED_ORIGIN",
+    "AXON_MCP_AUTH_TOKEN",
+    "AXON_MCP_ORIGIN",
+    "AXON_MCP_READ_TOKEN",
+    "AXON_MCP_TASK_TRANSPORT",
+    "AXON_MCP_URL",
+    "AXON_REMOTE_URL",
+    "GITHUB_ACTIONS",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_HEAD_REF",
+    "GITHUB_REPOSITORY",
+    "GITHUB_RUN_ATTEMPT",
+    "GITHUB_RUN_ID",
     "AXON_RUST",  # issue id prefix in docs/tests
     "AXON_DEV_BIN",  # local shell variable in scripts/axon
     "AXON_DEV_BIN_DIR",  # local shell variable in scripts/axon
     "AXON_HOME_DIR",  # local shell variable in scripts/axon
     "AXON_BACKUP_DIR",  # operational var in scripts/axon-backup.sh, not axon runtime config
     "AXON_BENCH_AXON_BIN",  # source-pipeline benchmark harness control
+    "AXON_BENCH_CONFIG_PATH",  # source-pipeline benchmark harness fixture config
     "AXON_BENCH_COLLECTION",  # source-pipeline benchmark fixture state
     "AXON_BENCH_LIBRARY_MODE",  # source-pipeline benchmark harness control
     "AXON_BENCH_MLX_URL",  # source-pipeline benchmark fixture endpoint
     "AXON_BENCH_OUTPUT",  # source-pipeline benchmark report destination
     "AXON_BENCH_SOURCE",  # source-pipeline benchmark fixture input
+    "AXON_BENCH_COMPARISON_ENV_SHA256",
+    "AXON_BENCH_CURL_BIN",
+    "AXON_BENCH_ENV_FILE",
+    "AXON_BENCH_MAX_LOAD",
+    "AXON_BENCH_MODE",
+    "AXON_BENCH_OWN_COLLECTION",
+    "AXON_BENCH_QDRANT_URL",
+    "AXON_BENCH_REPLAY_FIXTURE",
+    "AXON_BENCH_RETAIN_COLLECTION",
+    "AXON_BENCH_RETAIN_WORK_DIR",
+    "AXON_BENCH_SKIP_STALE_CHECK",
+    "AXON_BENCH_WORK_DIR",
     "AXON_ALLOW_FALLBACK_WEB_ASSETS",  # local/CI build escape hatch, not runtime config
     "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
     "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
@@ -111,6 +176,16 @@ IGNORED_TOKENS = {
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
     "TEI_MODE",  # local Incus bootstrap shell variable, not runtime configuration
+    "TEI_TUNE_CACHE",  # TEI benchmark harness control
+    "TEI_TUNE_CONTAINER",  # TEI benchmark harness control
+    "TEI_TUNE_ENTRYPOINT",  # TEI benchmark harness control
+    "TEI_TUNE_GPU",  # TEI benchmark harness control
+    "TEI_TUNE_HOST",  # TEI benchmark harness control
+    "TEI_TUNE_IMAGE",  # TEI benchmark harness control
+    "TEI_TUNE_NETWORK",  # TEI benchmark harness control
+    "TEI_TUNE_PORT",  # TEI benchmark harness control
+    "TEI_TUNE_STATE_DIR",  # TEI benchmark harness control
+    "TEI_TUNE_URL",  # TEI benchmark harness control
 }
 
 VALID_CLASSIFICATIONS = {
@@ -178,6 +253,9 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.cooldown-secs",
     "providers.embedding.interactive-reserved-requests",
     "providers.embedding.background-max-concurrent-requests",
+    "qdrant.async-writes",
+    "qdrant.quantization-enabled",
+    "qdrant.transport",
     "providers.embedding.maintenance-max-concurrent-requests",
     "providers.embedding.query-instruction-enabled",
     "providers.embedding.cache-enabled",
@@ -185,6 +263,12 @@ VALID_TOML_DESTINATIONS = {
     "providers.embedding.max-concurrent-requests",
     "providers.embedding.max-in-flight-inputs",
     "providers.embedding.pool-max-inputs",
+    "providers.embedding.prepared-byte-budget",
+    "providers.embedding.scheduler-enabled",
+    "providers.embedding.scheduler-flush-ms",
+    "providers.embedding.prep-max-in-flight-bytes",
+    "providers.embedding.max-batch-tokens",
+    "providers.embedding.vector-upsert-overlap-enabled",
     "providers.embedding.prep-concurrency",
     "providers.embedding.max-chunks-per-doc",
     "providers.embedding.max-source-chunks-per-doc",

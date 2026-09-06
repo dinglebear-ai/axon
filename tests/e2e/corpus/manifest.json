@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "corpus_version": "1.0.0",
+  "corpus_checksum": "45d98fca5480750912488ae81c88f510c9580b247d4f1f8ca4ec2776d76584e6",
+  "components": {
+    "bytes": "1.0.0",
+    "semantics": "1.0.0",
+    "chunking": "1.0.0",
+    "retrieval": "1.0.0"
+  },
+  "license_spdx": "CC0-1.0",
+  "root": "v1",
+  "documents": [
+    {
+      "id": "doc.atlas.v1",
+      "source_id": "source.atlas",
+      "tier": "micro",
+      "path": "v1/documents/micro/atlas-v1.md",
+      "sha256": "63898563d9a0d2c7b019f566ee3d00f989a0d247b0e3aa268c522ac3d408849c"
+    },
+    {
+      "id": "doc.near_duplicate.a",
+      "source_id": "source.near_duplicate_a",
+      "tier": "micro",
+      "path": "v1/documents/micro/near-duplicate-a.txt",
+      "sha256": "1a1841deee934a5f94c913258e984db04c134017749d862c82c2b8b06211f806"
+    },
+    {
+      "id": "doc.near_duplicate.b",
+      "source_id": "source.near_duplicate_b",
+      "tier": "micro",
+      "path": "v1/documents/micro/near-duplicate-b.txt",
+      "sha256": "8164259f6cb4441699e2877605316e65abab248cf594642e1df903fff3c0e39c"
+    },
+    {
+      "id": "doc.unicode",
+      "source_id": "source.unicode",
+      "tier": "micro",
+      "path": "v1/documents/micro/unicode-東京-🧪.txt",
+      "sha256": "221147975eb8c21aa04b7364baafa8a04ce6ab908b959f04e89e8a5ef36eeb2e"
+    },
+    {
+      "id": "doc.contradiction",
+      "source_id": "source.contradiction",
+      "tier": "representative",
+      "path": "v1/documents/representative/contradiction.md",
+      "sha256": "01c4216e640ae69e2173516463d575cacc3562009a946e12f1b04be13e167392"
+    },
+    {
+      "id": "doc.hostile",
+      "source_id": "source.hostile",
+      "tier": "representative",
+      "path": "v1/documents/representative/hostile.txt",
+      "sha256": "d6cc0fa079db0c992e4abffb0e5ccf5f23ddd7187c482b95ed7412f7ccd6c220"
+    },
+    {
+      "id": "doc.dotfile",
+      "source_id": "source.dotfile",
+      "tier": "representative",
+      "path": "v1/documents/representative/.fixture-note",
+      "sha256": "70770168579c90d23f26f0f0c9eeafc57e0b22d5a6eae373d05793b759fc17c7"
+    },
+    {
+      "id": "doc.boundary",
+      "source_id": "source.boundary",
+      "tier": "representative",
+      "path": "v1/documents/representative/boundary.md",
+      "sha256": "abd4911edd4e82b4dd9c199267a85d42dd8c9b71be52f833a44f424227b0722e"
+    },
+    {
+      "id": "doc.malformed",
+      "source_id": "source.malformed",
+      "tier": "representative",
+      "path": "v1/documents/representative/malformed.json",
+      "sha256": "32e8f988d2dcfd830e801a161ce22ef3c380531425e35e044f8d46f330b0cb3d",
+      "expected_parse": "reject"
+    },
+    {
+      "id": "doc.oversized",
+      "source_id": "source.oversized",
+      "tier": "representative",
+      "path": "v1/documents/representative/oversized-input.txt",
+      "sha256": "2c0ff868c3a3d5d93b80baf03701ecedface729348f4a275000d01aff108964d",
+      "expected_parse": "reject_oversized",
+      "declared_input_limit_bytes": 512,
+      "minimum_fixture_bytes": 513
+    }
+  ],
+  "expectations": [
+    {
+      "kind": "semantics",
+      "path": "v1/expected/semantics.json",
+      "sha256": "702d3c98f640ad5ba17000e70385740b1a96e00a440471d995f15f7dd3e0c1dd"
+    },
+    {
+      "kind": "chunking",
+      "path": "v1/expected/chunking.json",
+      "sha256": "d037613c1e535266251659e0c0ac56f504d7ca377573c8eeba572113d89ab989"
+    },
+    {
+      "kind": "retrieval",
+      "path": "v1/expected/retrieval.json",
+      "sha256": "acb0e1e496a3defd3f9c92703a2aae9447f9851d709534719f14563cc64a182e"
+    }
+  ],
+  "revisions": [
+    {
+      "id": "revision.atlas.1.0.0",
+      "source_id": "source.atlas.revision",
+      "version": "1.0.0",
+      "path": "v1/revisions/atlas/1.0.0.md",
+      "sha256": "f1d71530653e1228225d5857a597234853707b708ca45ca39f4caa00776a42c7",
+      "predecessor": null,
+      "change": "created"
+    },
+    {
+      "id": "revision.atlas.1.0.1",
+      "source_id": "source.atlas.revision",
+      "version": "1.0.1",
+      "path": "v1/revisions/atlas/1.0.1-unchanged.md",
+      "sha256": "f1d71530653e1228225d5857a597234853707b708ca45ca39f4caa00776a42c7",
+      "predecessor": "revision.atlas.1.0.0",
+      "change": "unchanged"
+    },
+    {
+      "id": "revision.atlas.1.1.0",
+      "source_id": "source.atlas.revision",
+      "version": "1.1.0",
+      "path": "v1/revisions/atlas/1.1.0-changed.md",
+      "sha256": "383e53546ab684da84434f2ad9538cf439c9b3a0b78968e1a1f727b5047be31d",
+      "predecessor": "revision.atlas.1.0.1",
+      "change": "changed"
+    }
+  ],
+  "stress_recipe": {
+    "path": "v1/stress/recipe.json",
+    "sha256": "e5089fa8af3968bc5674a73a4f6fab398a0f4000f97e70db7f091cbefa8d6fd9"
+  },
+  "tiers": {
+    "micro": {
+      "selection": "required-pr",
+      "max_documents": 4,
+      "max_bytes": 4096,
+      "expected_chunks": {
+        "min": 4,
+        "max": 20
+      },
+      "expected_vectors": {
+        "min": 4,
+        "max": 20
+      },
+      "expected_graph_entities": {
+        "min": 3,
+        "max": 20
+      },
+      "queries": 2,
+      "prompts": 2,
+      "max_state_growth_bytes": 1048576
+    },
+    "representative": {
+      "selection": "scheduled-live",
+      "max_documents": 10,
+      "max_bytes": 16384,
+      "expected_chunks": {
+        "min": 9,
+        "max": 60
+      },
+      "expected_vectors": {
+        "min": 9,
+        "max": 60
+      },
+      "expected_graph_entities": {
+        "min": 3,
+        "max": 50
+      },
+      "queries": 2,
+      "prompts": 4,
+      "max_state_growth_bytes": 4194304
+    },
+    "stress": {
+      "selection": "explicit-capacity-only",
+      "max_documents": 10000,
+      "max_bytes": 2097152,
+      "expected_chunks": {
+        "min": 10000,
+        "max": 20000
+      },
+      "expected_vectors": {
+        "min": 10000,
+        "max": 20000
+      },
+      "expected_graph_entities": {
+        "min": 97,
+        "max": 10100
+      },
+      "queries": 100,
+      "prompts": 0,
+      "max_state_growth_bytes": 268435456
+    }
+  }
+}

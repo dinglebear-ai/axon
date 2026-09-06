@@ -121,20 +121,30 @@ pub async fn edges_for_node(
     node_id: &GraphNodeId,
 ) -> StoreResult<Vec<GraphEdge>> {
     let rows = sqlx::query(
-        "SELECT * FROM graph_edges WHERE from_node_id = ? OR to_node_id = ? ORDER BY edge_id",
+        "SELECT * FROM graph_edges WHERE from_node_id = ? OR to_node_id = ? ORDER BY edge_id LIMIT ?",
     )
     .bind(&node_id.0)
     .bind(&node_id.0)
+    .bind(i64::from(crate::store::MAX_GRAPH_EDGE_LIMIT) + 1)
     .fetch_all(pool)
     .await
     .map_err(|e| graph_storage_error(format!("failed to fetch edges: {e}")))?;
 
-    let mut edges = Vec::with_capacity(rows.len());
-    for row in &rows {
-        let mut edge = edge_from_row(row)?;
-        edge.evidence = super::query::evidence_for_edge(pool, &edge.edge_id.0).await?;
-        edges.push(edge);
+    if rows.len() > crate::store::MAX_GRAPH_EDGE_LIMIT as usize {
+        return Err(axon_api::source::ApiError::new(
+            "graph.edge_limit_exceeded",
+            axon_api::source::ErrorStage::Retrieving,
+            format!(
+                "node has more than {} incident edges",
+                crate::store::MAX_GRAPH_EDGE_LIMIT
+            ),
+        ));
     }
+    let mut edges = rows
+        .iter()
+        .map(edge_from_row)
+        .collect::<StoreResult<Vec<_>>>()?;
+    super::query::attach_evidence(pool, &mut edges).await?;
     Ok(edges)
 }
 
@@ -148,13 +158,20 @@ pub async fn edges_for_node(
 pub async fn nodes_for_source(
     pool: &SqlitePool,
     source_id: &SourceId,
+    limit: Option<usize>,
 ) -> StoreResult<Vec<GraphNode>> {
     let pattern = format!("%\"{}\"%", source_id.0);
-    let rows =
-        sqlx::query("SELECT * FROM graph_nodes WHERE source_ids_json LIKE ? ORDER BY node_id")
-            .bind(pattern)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| graph_storage_error(format!("failed to fetch nodes for source: {e}")))?;
+    let rows = sqlx::query(
+        "SELECT * FROM graph_nodes WHERE source_ids_json LIKE ? ORDER BY node_id LIMIT ?",
+    )
+    .bind(pattern)
+    .bind(
+        limit
+            .and_then(|value| i64::try_from(value).ok())
+            .unwrap_or(i64::MAX),
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| graph_storage_error(format!("failed to fetch nodes for source: {e}")))?;
     rows.iter().map(node_from_row).collect()
 }

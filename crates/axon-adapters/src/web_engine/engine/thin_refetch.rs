@@ -1,3 +1,4 @@
+use super::collector::sanitized_url_for_log;
 use super::{CrawlDiagnostic, CrawlSummary, canonicalize_url_for_dedupe};
 use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
@@ -5,13 +6,11 @@ use axon_core::content::{build_selector_config, bytes_to_markdown, url_to_stable
 use axon_core::http::axon_ua;
 use axon_core::logging::{log_info, log_warn};
 use futures_util::stream::{self, StreamExt};
-use sha2::{Digest, Sha256};
 use spider::page::Page;
 use spider::website::Website;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 
 /// Maximum number of concurrent Chrome fetches during thin-page re-fetch.
 pub(super) const THIN_REFETCH_CONCURRENCY: usize = 4;
@@ -91,7 +90,7 @@ async fn fetch_url_with_chrome(
                     "chrome_configuration_failed",
                     "shared Chrome configuration failed",
                 )
-                .with_url(url.to_string()),
+                .with_url(sanitized_url_for_log(url)),
             ),
         );
     };
@@ -113,7 +112,10 @@ async fn fetch_url_with_chrome(
     let page = match collect.await {
         Ok(Some(p)) => p,
         _ => {
-            log_warn(&format!("thin_refetch: no page received for {url}"));
+            log_warn(&format!(
+                "thin_refetch: no page received for {}",
+                sanitized_url_for_log(url)
+            ));
             return (
                 None,
                 Some(
@@ -122,7 +124,7 @@ async fn fetch_url_with_chrome(
                         "chrome_no_page",
                         "Chrome re-fetch completed without returning a page",
                     )
-                    .with_url(url.to_string()),
+                    .with_url(sanitized_url_for_log(url)),
                 ),
             );
         }
@@ -130,8 +132,9 @@ async fn fetch_url_with_chrome(
 
     if !page.status_code.is_success() {
         log_warn(&format!(
-            "thin_refetch: HTTP {} for {url}",
-            page.status_code.as_u16()
+            "thin_refetch: HTTP {} for {}",
+            page.status_code.as_u16(),
+            sanitized_url_for_log(url)
         ));
         return (
             None,
@@ -144,7 +147,7 @@ async fn fetch_url_with_chrome(
                         page.status_code.as_u16()
                     ),
                 )
-                .with_url(url.to_string())
+                .with_url(sanitized_url_for_log(url))
                 .with_http_status(page.status_code.as_u16()),
             ),
         );
@@ -162,7 +165,7 @@ async fn fetch_url_with_chrome(
                     "chrome_still_thin",
                     format!("Chrome re-fetch markdown below {min_chars} chars"),
                 )
-                .with_url(url.to_string()),
+                .with_url(sanitized_url_for_log(url)),
             ),
         );
     }
@@ -179,10 +182,10 @@ pub async fn chrome_refetch_thin_pages(
     cfg: &Config,
     http_summary: CrawlSummary,
     output_dir: &Path,
-) -> CrawlSummary {
+) -> Result<CrawlSummary, String> {
     let thin_urls: Vec<String> = http_summary.thin_urls.iter().cloned().collect();
     if thin_urls.is_empty() {
-        return http_summary;
+        return Ok(http_summary);
     }
 
     log_info(&format!(
@@ -219,141 +222,34 @@ pub async fn chrome_refetch_thin_pages(
 ///
 /// Used by both the post-crawl batch path and the collector's inline Chrome path.
 pub(super) async fn write_refetch_results(
-    mut summary: CrawlSummary,
+    summary: CrawlSummary,
     results: Vec<RefetchResult>,
     output_dir: &Path,
-) -> CrawlSummary {
-    let markdown_dir = output_dir.join("markdown");
-    let manifest_path = output_dir.join("manifest.jsonl");
-
-    let Ok(file) = tokio::fs::OpenOptions::new()
+) -> Result<CrawlSummary, String> {
+    // Preserve strict publication errors while using the crash-recoverable journal.
+    tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&manifest_path)
+        .open(output_dir.join("manifest.jsonl"))
         .await
-    else {
-        log_warn("thin_refetch: failed to open manifest for append; skipping disk writes");
-        return summary;
-    };
-    let mut manifest = tokio::io::BufWriter::new(file);
-
-    for result in results {
-        if let Some(diagnostic) = result.diagnostic {
-            summary.push_diagnostic(diagnostic);
-        }
-        let Some(markdown) = result.markdown else {
-            continue;
-        };
-        let Some(canonical) = canonicalize_url_for_dedupe(&result.url) else {
-            continue;
-        };
-
-        summary.thin_urls.remove(&canonical);
-        summary.thin_pages = summary.thin_pages.saturating_sub(1);
-
-        let filename = url_to_stable_filename(&canonical);
-        let path = markdown_dir.join(&filename);
-        // Write to a temp file then rename to avoid leaving a partial file if
-        // the process is interrupted mid-write when overwriting an existing thin page.
-        let tmp_path = path.with_extension("tmp");
-        let write_ok = tokio::fs::write(&tmp_path, markdown.as_bytes())
-            .await
-            .is_ok()
-            && tokio::fs::rename(&tmp_path, &path).await.is_ok();
-        if !write_ok {
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            log_warn(&format!(
-                "thin_refetch: failed to write {}: atomic rename failed",
-                path.display()
-            ));
-            // Undo the thin-page removals above since we didn't actually recover.
-            summary.thin_pages += 1;
-            summary.thin_urls.insert(canonical);
-            continue;
-        }
-
-        // Write succeeded — now it is safe to count this file.
-        summary.markdown_files += 1;
-
-        let mut hasher = Sha256::new();
-        hasher.update(markdown.as_bytes());
-        let content_hash = hex::encode(hasher.finalize());
-
-        let entry = ManifestEntry {
-            url: canonical.clone(),
-            relative_path: format!("markdown/{filename}"),
-            markdown_chars: markdown.len(),
-            content_hash: Some(content_hash),
-            changed: true,
-            // Thin-refetch Chrome re-render: raw HTML is not available here,
-            // so structured data is absent. HTML bytes would need to be
-            // threaded through RefetchResult to enable extraction.
-            structured: None,
-        };
-        match serde_json::to_string(&entry) {
-            Ok(mut line) => {
-                line.push('\n');
-                if let Err(e) = manifest.write_all(line.as_bytes()).await {
-                    log_warn(&format!(
-                        "thin_refetch: manifest write failed for {canonical}: {e}"
-                    ));
-                }
-            }
-            Err(e) => {
-                log_warn(&format!(
-                    "thin_refetch: manifest serialize failed for {canonical}: {e}"
-                ));
-            }
-        }
-
-        log_info(&format!("thin_refetch: recovered {canonical}"));
+        .map_err(|error| format!("thin_refetch: failed to open manifest for append: {error}"))?;
+    let expected = results
+        .iter()
+        .filter(|result| {
+            result.markdown.is_some() && canonicalize_url_for_dedupe(&result.url).is_some()
+        })
+        .count();
+    let previous_files = summary.markdown_files;
+    let summary = write_refetch_results_with_failure(summary, results, output_dir, None).await;
+    if summary.markdown_files.saturating_sub(previous_files) as usize != expected {
+        return Err("thin_refetch: failed to commit recovered page; retained journal requires reconciliation".to_string());
     }
-
-    if let Err(e) = manifest.flush().await {
-        log_warn(&format!("thin_refetch: manifest flush failed: {e}"));
-    }
-
-    summary
+    Ok(summary)
 }
+
+mod commit;
+use commit::*;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn single_page_chrome_refetch_uses_remote_policy_and_ssrf_blacklists() {
-        let mut cfg = Config {
-            chrome_remote_local_policy: true,
-            ..Config::default()
-        };
-        cfg.chrome_remote_url = Some("ws://127.0.0.1:9222/devtools/browser/test".to_string());
-
-        let website = build_single_page_website(&cfg, "https://example.com/thin");
-        let intercept = super::super::super::browser::chrome_intercept_config(&cfg);
-
-        assert!(intercept.enabled);
-        assert!(intercept.remote_local_policy);
-        assert_has_loopback_pattern(
-            intercept
-                .blacklist_patterns
-                .as_ref()
-                .expect("intercept blacklist"),
-        );
-        assert_has_loopback_pattern(
-            website
-                .configuration
-                .blacklist_url
-                .as_ref()
-                .expect("website blacklist"),
-        );
-    }
-
-    fn assert_has_loopback_pattern(patterns: &[impl ToString]) {
-        assert!(
-            patterns
-                .iter()
-                .any(|pattern| pattern.to_string().contains("127\\.")),
-            "expected loopback SSRF protection in patterns"
-        );
-    }
-}
+#[path = "thin_refetch_tests.rs"]
+mod tests;

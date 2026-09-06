@@ -346,6 +346,17 @@ async fn cooldown_until_is_cleared_by_mark_terminal_failure_path() {
         .await
         .expect("terminal stage errors must retain the ApiError contract");
     assert!(stages.iter().all(|stage| stage.error.is_some()));
+    let failure_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM job_events WHERE job_id = ? AND status = 'failed'",
+    )
+    .bind(job.job_id.0.to_string())
+    .fetch_one(store.pool_for_tests())
+    .await
+    .expect("failure event query");
+    assert_eq!(
+        failure_events, 1,
+        "terminal failure and its event are atomic"
+    );
     let full_error_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM job_stages \
          WHERE job_id = ? AND json_extract(error_json, '$.stage') IS NOT NULL",
@@ -365,6 +376,66 @@ async fn cooldown_until_is_cleared_by_mark_terminal_failure_path() {
     .await
     .expect("count malformed attempt errors");
     assert_eq!(malformed_attempt_error_count, 0);
+}
+
+#[tokio::test]
+async fn terminal_failure_rolls_back_when_its_public_event_cannot_persist() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    run_to_waiting(&store, job.job_id).await;
+    sqlx::query(
+        "CREATE TRIGGER reject_failure_event BEFORE INSERT ON job_events
+         BEGIN SELECT RAISE(ABORT, 'injected event failure'); END",
+    )
+    .execute(store.pool_for_tests())
+    .await
+    .expect("install event fault injection");
+
+    crate::workers::unified::mark_job_failed_for_tests(store.pool_for_tests(), job.job_id)
+        .await
+        .expect("fault is logged by the worker boundary");
+
+    let summary = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Waiting);
+    let failure_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM job_events WHERE job_id = ? AND status = 'failed'",
+    )
+    .bind(job.job_id.0.to_string())
+    .fetch_one(store.pool_for_tests())
+    .await
+    .expect("failure event query");
+    assert_eq!(failure_events, 0);
+}
+
+#[tokio::test]
+async fn deadline_expiry_atomically_terminalizes_job_attempt_and_stages() {
+    let store = store().await;
+    let mut request = create_request();
+    request.deadline_at = Some(Timestamp::from(
+        chrono::Utc::now() - chrono::Duration::seconds(1),
+    ));
+    let job = store.create(request).await.expect("create deadline job");
+    run_to_waiting(&store, job.job_id).await;
+
+    assert_eq!(store.expire_past_deadline_jobs().await.unwrap(), 1);
+    let summary = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Expired);
+    assert!(
+        store
+            .attempts(job.job_id)
+            .await
+            .unwrap()
+            .iter()
+            .all(|attempt| attempt.status == LifecycleStatus::Expired)
+    );
+    assert!(
+        store
+            .stages(job.job_id)
+            .await
+            .unwrap()
+            .iter()
+            .all(|stage| stage.status == LifecycleStatus::Expired)
+    );
 }
 
 #[tokio::test]

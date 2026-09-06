@@ -11,12 +11,16 @@
 //! - working memories excluded from context unless `include_working`
 
 use axon_api::source::*;
-use rusqlite::Connection;
+use std::collections::BTreeMap;
+
+use rusqlite::{Connection, named_params};
 
 use crate::record::age_days;
 use crate::sqlite::SqliteMemoryStore;
 use crate::sqlite::error::store_error;
 use crate::store::Result;
+
+const MAX_RECALL_CANDIDATES: i64 = 4_096;
 
 /// Keyword search with contract recall filtering + scoring.
 pub async fn search(
@@ -30,9 +34,12 @@ pub async fn search(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let conn = store.conn().lock().await;
-    let records = load_all(&conn)?;
-    drop(conn);
+    let filters = request.filters.clone();
+    let candidate_query = request.query.clone();
+    let candidate_limit = request.limit;
+    let records = store
+        .with_conn(move |conn| load_candidates(conn, &filters, &candidate_query, candidate_limit))
+        .await?;
 
     let query = request.query.to_lowercase();
     let query_terms: Vec<&str> = query.split_whitespace().collect();
@@ -89,9 +96,16 @@ pub async fn context(
     request: MemoryContextRequest,
 ) -> Result<MemoryContextResult> {
     let now_secs = store.clock().now_epoch_secs();
-    let conn = store.conn().lock().await;
-    let records = load_all(&conn)?;
-    drop(conn);
+    // Context ranking needs lower-scoring fallback candidates so it can report
+    // budget exclusions; the query affects scoring, not candidate eligibility.
+    let candidate_query = String::new();
+    let candidate_limit = request.token_budget.max(1);
+    let candidate_filters = request.filters.clone();
+    let records = store
+        .with_conn(move |conn| {
+            load_candidates(conn, &candidate_filters, &candidate_query, candidate_limit)
+        })
+        .await?;
 
     let query = request.query.clone().unwrap_or_default().to_lowercase();
     let query_terms: Vec<&str> = query.split_whitespace().collect();
@@ -171,8 +185,13 @@ pub async fn review(
     store: &SqliteMemoryStore,
     request: MemoryReviewRequest,
 ) -> Result<MemoryReviewResult> {
+    store
+        .with_conn(move |conn| review_blocking(conn, request))
+        .await
+}
+
+fn review_blocking(conn: &Connection, request: MemoryReviewRequest) -> Result<MemoryReviewResult> {
     let limit = request.limit.unwrap_or(50).max(1);
-    let conn = store.conn().lock().await;
     let mut stmt = conn
         .prepare(
             "SELECT DISTINCT memory_id FROM memory_reviews
@@ -187,7 +206,7 @@ pub async fn review(
 
     let mut memories = Vec::new();
     for id in ids {
-        if let Some(record) = SqliteMemoryStore::load_record(&conn, &id)? {
+        if let Some(record) = SqliteMemoryStore::load_record(conn, &id)? {
             if let Some(mt) = request.memory_type
                 && record.memory_type != mt
             {
@@ -203,20 +222,116 @@ pub async fn review(
     })
 }
 
-fn load_all(conn: &Connection) -> Result<Vec<MemoryRecord>> {
+fn load_candidates(
+    conn: &Connection,
+    filters: &MetadataMap,
+    query: &str,
+    requested_limit: u32,
+) -> Result<Vec<MemoryRecord>> {
+    let string_filter = |key: &str| filters.get(key).and_then(|value| value.as_str());
+    let project = string_filter("project");
+    let repo = string_filter("repo");
+    let file = string_filter("file");
+    let memory_type = string_filter("memory_type");
+    let status = string_filter("status");
+    let scope = string_filter("scope");
+    let terms_json = (!query.trim().is_empty())
+        .then(|| {
+            serde_json::to_string(&query.split_whitespace().collect::<Vec<_>>())
+                .map_err(|e| store_error(format!("encode memory search terms: {e}")))
+        })
+        .transpose()?;
+    let candidate_limit = i64::from(requested_limit.max(1))
+        .saturating_mul(8)
+        .min(MAX_RECALL_CANDIDATES);
     let mut stmt = conn
-        .prepare("SELECT memory_id FROM memory_records ORDER BY created_at, memory_id")
-        .map_err(|e| store_error(format!("prepare all: {e}")))?;
-    let ids: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| store_error(format!("query all: {e}")))?
-        .collect::<std::result::Result<_, _>>()
-        .map_err(|e| store_error(format!("all row: {e}")))?;
-    let mut records = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(record) = SqliteMemoryStore::load_record(conn, &id)? {
-            records.push(record);
-        }
+        .prepare(
+            "SELECT * FROM memory_records r
+             WHERE (:project IS NULL OR EXISTS (
+                       SELECT 1 FROM memory_links l WHERE l.memory_id = r.memory_id
+                         AND l.link_type = 'project' AND l.target = :project))
+               AND (:repo IS NULL OR EXISTS (
+                       SELECT 1 FROM memory_links l WHERE l.memory_id = r.memory_id
+                         AND l.link_type = 'repo' AND l.target = :repo))
+               AND (:file IS NULL OR EXISTS (
+                       SELECT 1 FROM memory_links l WHERE l.memory_id = r.memory_id
+                         AND l.link_type = 'file' AND l.target = :file))
+               AND (:memory_type IS NULL OR r.memory_type = :memory_type)
+               AND (:status IS NULL OR r.status = :status)
+               AND (:scope IS NULL OR r.scope_value = :scope)
+               AND (:terms_json IS NULL OR EXISTS (
+                       SELECT 1 FROM json_each(:terms_json) term
+                       WHERE lower(r.body) LIKE '%' || lower(term.value) || '%'
+                          OR lower(coalesce(r.title, '')) LIKE '%' || lower(term.value) || '%'))
+             ORDER BY r.updated_at DESC, r.memory_id
+             LIMIT :candidate_limit",
+        )
+        .map_err(|e| store_error(format!("prepare bounded memory recall: {e}")))?;
+    let mut rows = stmt
+        .query(named_params! {
+            ":project": project,
+            ":repo": repo,
+            ":file": file,
+            ":memory_type": memory_type,
+            ":status": status,
+            ":scope": scope,
+            ":terms_json": terms_json,
+            ":candidate_limit": candidate_limit,
+        })
+        .map_err(|e| store_error(format!("query bounded memory recall: {e}")))?;
+    let mut records = Vec::new();
+    while let Some(row) = rows
+        .next()
+        .map_err(|e| store_error(format!("bounded memory recall row: {e}")))?
+    {
+        records.push(crate::sqlite::rows::record_from_row(row, Vec::new())?);
+    }
+    drop(rows);
+    drop(stmt);
+    if records.is_empty() {
+        return Ok(records);
+    }
+    let ids_json = serde_json::to_string(
+        &records
+            .iter()
+            .map(|record| record.memory_id.0.as_str())
+            .collect::<Vec<_>>(),
+    )
+    .map_err(|e| store_error(format!("encode bounded memory ids: {e}")))?;
+    let mut links_stmt = conn
+        .prepare(
+            "SELECT memory_id, link_type, target, confidence, evidence_json
+             FROM memory_links
+             WHERE memory_id IN (SELECT value FROM json_each(?1))
+             ORDER BY memory_id, id",
+        )
+        .map_err(|e| store_error(format!("prepare bounded memory links: {e}")))?;
+    let mut links_by_id = BTreeMap::<String, Vec<MemoryLink>>::new();
+    let link_rows = links_stmt
+        .query_map([ids_json], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, f64>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })
+        .map_err(|e| store_error(format!("query bounded memory links: {e}")))?;
+    for row in link_rows {
+        let (memory_id, link_type, target, confidence, evidence_json) =
+            row.map_err(|e| store_error(format!("bounded memory link row: {e}")))?;
+        let evidence = serde_json::from_str(&evidence_json)
+            .map_err(|e| store_error(format!("decode bounded memory evidence: {e}")))?;
+        links_by_id.entry(memory_id).or_default().push(MemoryLink {
+            link_type,
+            target,
+            confidence: confidence as f32,
+            evidence,
+        });
+    }
+    for record in &mut records {
+        record.links = links_by_id.remove(&record.memory_id.0).unwrap_or_default();
     }
     Ok(records)
 }

@@ -8,8 +8,9 @@ pub(in crate::config) mod raw;
 
 /// TOML configuration — tuning knobs only, safe to commit to source control.
 ///
-/// Phase 1 scope (~15 fields across 4 sections). All fields are `Option<T>`
-/// so absent keys fall through to env var and hardcoded defaults.
+/// Flattened runtime projection of the current 20-section tuning contract.
+/// All fields are `Option<T>` so absent keys fall through to environment
+/// variables and hardcoded defaults.
 /// `#[serde(deny_unknown_fields)]` turns typos into parse errors rather than
 /// silent ignores.
 #[derive(Deserialize, Default)]
@@ -313,6 +314,7 @@ pub(super) struct TomlTeiSection {
 pub(super) struct TomlEmbedSection {
     pub tei_max_concurrent: Option<usize>,
     pub tei_max_in_flight_inputs: Option<usize>,
+    pub tei_max_batch_tokens: Option<usize>,
     pub tei_retry_backoff_ms: Option<u64>,
     pub tei_cooldown_after_failures: Option<usize>,
     pub tei_cooldown_secs: Option<u64>,
@@ -323,7 +325,12 @@ pub(super) struct TomlEmbedSection {
     pub cache_enabled: Option<bool>,
     pub cache_max_entries: Option<usize>,
     pub pool_max_inputs: Option<usize>,
+    pub scheduler_enabled: Option<bool>,
+    pub vector_upsert_overlap_enabled: Option<bool>,
+    pub prepared_byte_budget: Option<usize>,
     pub prep_concurrency: Option<usize>,
+    pub prep_max_in_flight_bytes: Option<usize>,
+    pub scheduler_flush_ms: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,
     pub max_source_chunks_per_doc: Option<usize>,
     pub dedupe_exact_chunks: Option<bool>,
@@ -357,7 +364,10 @@ pub(super) struct TomlQdrantSection {
     pub payload_index_profile: Option<String>,
     pub payload_index_parallelism: Option<usize>,
     pub hnsw_on_disk: Option<bool>,
+    pub quantization_enabled: Option<bool>,
     pub quantization_always_ram: Option<bool>,
+    pub async_writes: Option<bool>,
+    pub transport: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -643,6 +653,9 @@ fn parse_toml_config_str(contents: &str, path: Option<&Path>) -> Result<TomlConf
     }
     let raw = toml::from_str::<raw::RawTomlConfig>(contents)
         .map_err(|e| format!("axon: error: config file{where_clause} has a parse error: {e}"))?;
+    raw.validate_supported().map_err(|error| {
+        format!("axon: error: config file{where_clause} has an unsupported setting: {error}")
+    })?;
     Ok(convert::flatten(raw))
 }
 

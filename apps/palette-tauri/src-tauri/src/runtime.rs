@@ -66,6 +66,8 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|err| format!("failed to build HTTP client for Axon bridge: {err}"))?;
     let stream_client = StreamClient::new()
         .map_err(|err| format!("failed to build HTTP client for streaming: {err}"))?;
+    let backend_transport = BackendTransport::new()
+        .map_err(|err| format!("failed to build multi-backend transport: {err}"))?;
     let github_client = GitHubClient::new()
         .map_err(|err| format!("failed to build HTTP client for GitHub bridge: {err}"))?;
 
@@ -96,9 +98,15 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
             set_blur_dismiss,
             axon_bridge::axon_http_request,
             axon_bridge::axon_artifact_request,
+            backend_transport::backend_http_request,
+            backend_transport::backend_http_stream,
+            backend_transport::backend_cancel_request,
+            save_backend_credential,
+            delete_backend_credential,
             axon_http_stream_request,
             browser::browser_open,
             browser::browser_navigate,
+            browser::browser_set_bounds,
             browser::browser_back,
             browser::browser_forward,
             browser::browser_reload,
@@ -109,6 +117,7 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
             oauth::axon_oauth_status,
             files_bridge::files_list_dir,
             files_bridge::files_read_file,
+            files_bridge::files_read_preview,
             files_bridge::files_write_file,
             files_bridge::files_get_root,
             sftp_bridge::commands::sftp_connect,
@@ -122,6 +131,7 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .manage(BlurDismiss(AtomicBool::new(true)))
         .manage(bridge_client)
+        .manage(backend_transport)
         .manage(stream_client)
         .manage(github_client)
         .manage(oauth::OauthState::new())

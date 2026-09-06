@@ -7,7 +7,9 @@ end-to-end on the Gemini headless synthesis path.
 
 Prereqs:
 - `axon` binary built (`just build` or `cargo build --release --bin axon`)
-- Infra services up: `rtk just services-up` (qdrant, tei, chrome)
+- Infra services up: `rtk just services-up-local` (self-contained Qdrant, TEI,
+  Chrome), or `rtk just services-up-external-qdrant` when
+  `AXON_EXTERNAL_QDRANT_URL` names an already-running Qdrant
 - `jq`, `bash 4+`
 
 Run:

@@ -9,7 +9,7 @@
   },
   "homepage": "https://axon.dinglebear.ai",
   "repository": "https://github.com/dinglebear-ai/axon",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "keywords": [
     "rag",
     "crawl",
@@ -29,9 +29,9 @@
     "server_url": {
       "type": "string",
       "title": "Axon server URL",
-      "description": "Base URL of your running axon serve instance (e.g. http://localhost:8080)",
+      "description": "Base URL of your running axon serve instance (e.g. http://localhost:8001)",
       "required": true,
-      "default": "http://localhost:8080"
+      "default": "http://localhost:8001"
     },
     "api_token": {
       "type": "string",

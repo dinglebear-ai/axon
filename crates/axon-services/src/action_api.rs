@@ -24,28 +24,26 @@ pub fn collect_unique_urls(url: Option<String>, urls: Option<Vec<String>>) -> Ve
 use crate::context::ServiceContext;
 use crate::system;
 use crate::types::ClientActionError;
-use axon_api::mcp_schema::{
-    AxonRequest, JobsSubaction, MemorySubaction, SetupMode, WatchSubaction,
-};
+use axon_api::action::{ActionRequest, JobsSubaction, MemorySubaction, SetupMode, WatchSubaction};
 
 pub async fn dispatch_action(
     service_context: &ServiceContext,
-    action: AxonRequest,
+    action: ActionRequest,
 ) -> Result<serde_json::Value, ClientActionError> {
     match action {
-        AxonRequest::Status(_) => {
+        ActionRequest::Status(_) => {
             let result = system::full_status(service_context)
                 .await
                 .map_err(internal_error)?;
             Ok(result.payload)
         }
-        AxonRequest::Extract(req) => commands::dispatch_extract(service_context, req).await,
-        AxonRequest::Jobs(req) => commands::dispatch_jobs(service_context, req).await,
+        ActionRequest::Extract(req) => commands::dispatch_extract(service_context, req).await,
+        ActionRequest::Jobs(req) => commands::dispatch_jobs(service_context, req).await,
         // `/v1/actions` (this dispatcher's only caller) is removed from the
         // REST router (`v1_actions_removed`) — this arm has no live caller
         // and no auth context to derive scopes from, so it fails closed
         // rather than assuming admin.
-        AxonRequest::Memory(req) => {
+        ActionRequest::Memory(req) => {
             crate::memory::dispatch(
                 service_context,
                 req,
@@ -53,25 +51,25 @@ pub async fn dispatch_action(
             )
             .await
         }
-        AxonRequest::Endpoints(req) => commands::dispatch_endpoints(service_context, req).await,
-        AxonRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
-        AxonRequest::Screenshot(req) => commands::dispatch_screenshot(service_context, req).await,
-        AxonRequest::Diff(req) => commands::dispatch_diff(service_context, req).await,
-        AxonRequest::Brand(req) => commands::dispatch_brand(service_context, req).await,
+        ActionRequest::Endpoints(req) => commands::dispatch_endpoints(service_context, req).await,
+        ActionRequest::Summarize(req) => commands::dispatch_summarize(service_context, req).await,
+        ActionRequest::Screenshot(req) => commands::dispatch_screenshot(service_context, req).await,
+        ActionRequest::Diff(req) => commands::dispatch_diff(service_context, req).await,
+        ActionRequest::Brand(req) => commands::dispatch_brand(service_context, req).await,
         other => Err(unsupported_action(action_name(&other))),
     }
 }
 
-pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
+pub fn required_scope(action: &ActionRequest) -> Option<&'static str> {
     match action {
-        AxonRequest::Scrape(_)
-        | AxonRequest::Crawl(_)
-        | AxonRequest::Embed(_)
-        | AxonRequest::Ingest(_) => Some("axon:write"),
-        AxonRequest::CodeSearch(_) => Some("axon:read"),
-        AxonRequest::Status(_) => Some("axon:read"),
-        AxonRequest::Extract(_) => Some("axon:write"),
-        AxonRequest::Memory(req) => match req.subaction.unwrap_or(MemorySubaction::Remember) {
+        ActionRequest::Scrape(_)
+        | ActionRequest::Crawl(_)
+        | ActionRequest::Embed(_)
+        | ActionRequest::Ingest(_) => Some("axon:write"),
+        ActionRequest::CodeSearch(_) => Some("axon:read"),
+        ActionRequest::Status(_) => Some("axon:read"),
+        ActionRequest::Extract(_) => Some("axon:write"),
+        ActionRequest::Memory(req) => match req.subaction.unwrap_or(MemorySubaction::Remember) {
             MemorySubaction::Remember
             | MemorySubaction::Link
             | MemorySubaction::Supersede
@@ -89,7 +87,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             | MemorySubaction::Review
             | MemorySubaction::Export => Some("axon:read"),
         },
-        AxonRequest::Jobs(req) => match req.subaction.unwrap_or(JobsSubaction::List) {
+        ActionRequest::Jobs(req) => match req.subaction.unwrap_or(JobsSubaction::List) {
             JobsSubaction::List
             | JobsSubaction::Get
             | JobsSubaction::Status
@@ -101,35 +99,35 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             }
         },
         // Read-only ops: pure data reads, no external process, no side-effects.
-        AxonRequest::Query(_)
-        | AxonRequest::Retrieve(_)
-        | AxonRequest::Search(_)
-        | AxonRequest::Map(_)
-        | AxonRequest::Doctor(_)
-        | AxonRequest::Domains(_)
-        | AxonRequest::Sources(_)
-        | AxonRequest::Stats(_)
-        | AxonRequest::Help(_)
-        | AxonRequest::Chat(_) => Some("axon:read"),
+        ActionRequest::Query(_)
+        | ActionRequest::Retrieve(_)
+        | ActionRequest::Search(_)
+        | ActionRequest::Map(_)
+        | ActionRequest::Doctor(_)
+        | ActionRequest::Domains(_)
+        | ActionRequest::Sources(_)
+        | ActionRequest::Stats(_)
+        | ActionRequest::Help(_)
+        | ActionRequest::Chat(_) => Some("axon:read"),
         // These trigger Gemini headless completions (external process, API quota) — write scope.
         // Note: Debug runs LLM-assisted troubleshooting (Gemini) so it belongs here, not above.
-        AxonRequest::Ask(_)
-        | AxonRequest::Summarize(_)
-        | AxonRequest::Evaluate(_)
-        | AxonRequest::Suggest(_)
-        | AxonRequest::Research(_)
-        | AxonRequest::Debug(_) => Some("axon:write"),
+        ActionRequest::Ask(_)
+        | ActionRequest::Summarize(_)
+        | ActionRequest::Evaluate(_)
+        | ActionRequest::Suggest(_)
+        | ActionRequest::Research(_)
+        | ActionRequest::Debug(_) => Some("axon:write"),
         // Destructive / admin operations. INVARIANT: this must never return None here — the
         // authorize_action unconditional-auth guard for migrate depends on required_scope
         // returning Some(...) so the scope check runs after auth is confirmed.
-        AxonRequest::Migrate(_) => Some("axon:write"),
+        ActionRequest::Migrate(_) => Some("axon:write"),
         // Prune is admin-gated per the pruning contract: destructive prune
         // requires axon:admin, not just axon:write. The action-level scope
         // check here is the coarse "can call this action at all" gate;
         // axon_services::prune::prune's own PruneAuthz derivation is the
         // fine-grained "is this specific execution destructive" gate.
-        AxonRequest::Prune(_) => Some("axon:admin"),
-        AxonRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
+        ActionRequest::Prune(_) => Some("axon:admin"),
+        ActionRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
             WatchSubaction::List
             | WatchSubaction::Get
             | WatchSubaction::Status
@@ -141,26 +139,26 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             | WatchSubaction::Resume
             | WatchSubaction::Delete => Some("axon:write"),
         },
-        AxonRequest::Setup(req) => match req.mode.unwrap_or(SetupMode::Check) {
+        ActionRequest::Setup(req) => match req.mode.unwrap_or(SetupMode::Check) {
             SetupMode::Check => Some("axon:read"),
             SetupMode::FirstRun | SetupMode::Repair | SetupMode::MigrateEnv => Some("axon:write"),
         },
-        AxonRequest::Screenshot(_)
-        | AxonRequest::Endpoints(_)
-        | AxonRequest::Diff(_)
-        | AxonRequest::Brand(_) => Some("axon:write"),
-        AxonRequest::Source(_) => Some("axon:write"),
+        ActionRequest::Screenshot(_)
+        | ActionRequest::Endpoints(_)
+        | ActionRequest::Diff(_)
+        | ActionRequest::Brand(_) => Some("axon:write"),
+        ActionRequest::Source(_) => Some("axon:write"),
         // resolve/capabilities/providers (issue #298 WS-G): read-only
         // discovery surfaces, no side-effects.
-        AxonRequest::Resolve(_) | AxonRequest::Capabilities(_) | AxonRequest::Providers(_) => {
-            Some("axon:read")
-        }
+        ActionRequest::Resolve(_)
+        | ActionRequest::Capabilities(_)
+        | ActionRequest::Providers(_) => Some("axon:read"),
         // graph (issue #298 GQ): read-only SourceGraph query surface. Every
         // subaction (kinds/resolve/query/node/edge/source) is a pure read —
         // graph writes stay parser/source-job owned.
-        AxonRequest::Graph(_) => Some("axon:read"), // NOTE: no wildcard arm — the match must be exhaustive.
-        AxonRequest::Codex(_) => Some("axon:admin"),
-        // Adding a new AxonRequest variant without a required_scope arm is a compile error,
+        ActionRequest::Graph(_) => Some("axon:read"), // NOTE: no wildcard arm — the match must be exhaustive.
+        ActionRequest::Codex(_) => Some("axon:admin"),
+        // Adding a new ActionRequest variant without a required_scope arm is a compile error,
         // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
     }
 }
@@ -178,46 +176,46 @@ fn internal_error(err: Box<dyn Error>) -> ClientActionError {
     ClientActionError::new("internal", err.to_string(), true, None)
 }
 
-fn action_name(action: &AxonRequest) -> &'static str {
+fn action_name(action: &ActionRequest) -> &'static str {
     match action {
-        AxonRequest::Scrape(_) => "scrape",
-        AxonRequest::Crawl(_) => "crawl",
-        AxonRequest::Embed(_) => "embed",
-        AxonRequest::Ingest(_) => "ingest",
-        AxonRequest::CodeSearch(_) => "code_search",
-        AxonRequest::Status(_) => "status",
-        AxonRequest::Jobs(_) => "jobs",
-        AxonRequest::Extract(_) => "extract",
-        AxonRequest::Memory(_) => "memory",
-        AxonRequest::Query(_) => "query",
-        AxonRequest::Retrieve(_) => "retrieve",
-        AxonRequest::Search(_) => "search",
-        AxonRequest::Map(_) => "map",
-        AxonRequest::Endpoints(_) => "endpoints",
-        AxonRequest::Evaluate(_) => "evaluate",
-        AxonRequest::Suggest(_) => "suggest",
-        AxonRequest::Doctor(_) => "doctor",
-        AxonRequest::Domains(_) => "domains",
-        AxonRequest::Sources(_) => "sources",
-        AxonRequest::Stats(_) => "stats",
-        AxonRequest::Help(_) => "help",
-        AxonRequest::Research(_) => "research",
-        AxonRequest::Ask(_) => "ask",
-        AxonRequest::Summarize(_) => "summarize",
-        AxonRequest::Screenshot(_) => "screenshot",
-        AxonRequest::Brand(_) => "brand",
-        AxonRequest::Debug(_) => "debug",
-        AxonRequest::Diff(_) => "diff",
-        AxonRequest::Prune(_) => "prune",
-        AxonRequest::Migrate(_) => "migrate",
-        AxonRequest::Watch(_) => "watch",
-        AxonRequest::Setup(_) => "setup",
-        AxonRequest::Source(_) => "source",
-        AxonRequest::Resolve(_) => "resolve",
-        AxonRequest::Capabilities(_) => "capabilities",
-        AxonRequest::Providers(_) => "providers",
-        AxonRequest::Graph(_) => "graph",
-        AxonRequest::Chat(_) => "chat",
-        AxonRequest::Codex(_) => "codex",
+        ActionRequest::Scrape(_) => "scrape",
+        ActionRequest::Crawl(_) => "crawl",
+        ActionRequest::Embed(_) => "embed",
+        ActionRequest::Ingest(_) => "ingest",
+        ActionRequest::CodeSearch(_) => "code_search",
+        ActionRequest::Status(_) => "status",
+        ActionRequest::Jobs(_) => "jobs",
+        ActionRequest::Extract(_) => "extract",
+        ActionRequest::Memory(_) => "memory",
+        ActionRequest::Query(_) => "query",
+        ActionRequest::Retrieve(_) => "retrieve",
+        ActionRequest::Search(_) => "search",
+        ActionRequest::Map(_) => "map",
+        ActionRequest::Endpoints(_) => "endpoints",
+        ActionRequest::Evaluate(_) => "evaluate",
+        ActionRequest::Suggest(_) => "suggest",
+        ActionRequest::Doctor(_) => "doctor",
+        ActionRequest::Domains(_) => "domains",
+        ActionRequest::Sources(_) => "sources",
+        ActionRequest::Stats(_) => "stats",
+        ActionRequest::Help(_) => "help",
+        ActionRequest::Research(_) => "research",
+        ActionRequest::Ask(_) => "ask",
+        ActionRequest::Summarize(_) => "summarize",
+        ActionRequest::Screenshot(_) => "screenshot",
+        ActionRequest::Brand(_) => "brand",
+        ActionRequest::Debug(_) => "debug",
+        ActionRequest::Diff(_) => "diff",
+        ActionRequest::Prune(_) => "prune",
+        ActionRequest::Migrate(_) => "migrate",
+        ActionRequest::Watch(_) => "watch",
+        ActionRequest::Setup(_) => "setup",
+        ActionRequest::Source(_) => "source",
+        ActionRequest::Resolve(_) => "resolve",
+        ActionRequest::Capabilities(_) => "capabilities",
+        ActionRequest::Providers(_) => "providers",
+        ActionRequest::Graph(_) => "graph",
+        ActionRequest::Chat(_) => "chat",
+        ActionRequest::Codex(_) => "codex",
     }
 }

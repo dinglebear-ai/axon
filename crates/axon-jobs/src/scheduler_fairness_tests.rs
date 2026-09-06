@@ -58,22 +58,22 @@ async fn equal_priority_waiters_are_granted_fifo_by_enqueue_sequence() {
         .reserve(request(23, "second", JobPriority::Normal, 1))
         .await
         .expect("second");
-    assert!(held.granted && !first.granted && !second.granted);
+    assert!(held.is_granted() && !first.is_granted() && !second.is_granted());
 
     scheduler
-        .complete(&held.reservation_id, "held")
+        .complete(held.reservation_id(), "held")
         .await
         .expect("release held");
     assert!(
         scheduler
-            .try_grant_existing(&first.reservation_id)
+            .try_grant_existing(first.reservation_id())
             .await
             .expect("grant first")
-            .granted
+            .is_granted()
     );
     let second_status: String =
         sqlx::query_scalar("SELECT status FROM provider_reservations WHERE reservation_id = ?")
-            .bind(&second.reservation_id)
+            .bind(second.reservation_id())
             .fetch_one(&pool)
             .await
             .expect("second status");
@@ -96,37 +96,81 @@ async fn aged_maintenance_work_overtakes_newer_normal_work() {
         .reserve(request(33, "new-normal", JobPriority::Normal, 1))
         .await
         .expect("new");
-    assert!(held.granted && !old.granted && !new.granted);
+    assert!(held.is_granted() && !old.is_granted() && !new.is_granted());
 
     sqlx::query("UPDATE provider_reservations SET updated_at = datetime('now', '-121 seconds') WHERE reservation_id = ?")
-        .bind(&old.reservation_id).execute(&pool).await.expect("age waiter");
+        .bind(old.reservation_id()).execute(&pool).await.expect("age waiter");
     scheduler
-        .complete(&held.reservation_id, "held")
+        .complete(held.reservation_id(), "held")
         .await
         .expect("release held");
     assert!(
         scheduler
-            .try_grant_existing(&old.reservation_id)
+            .try_grant_existing(old.reservation_id())
             .await
             .expect("grant aged")
-            .granted
+            .is_granted()
     );
 
     let row: (String, String) = sqlx::query_as(
         "SELECT status, effective_priority FROM provider_reservations WHERE reservation_id = ?",
     )
-    .bind(&old.reservation_id)
+    .bind(old.reservation_id())
     .fetch_one(&pool)
     .await
     .expect("aged row");
     assert_eq!(row, ("granted".into(), "interactive".into()));
     let newer_status: String =
         sqlx::query_scalar("SELECT status FROM provider_reservations WHERE reservation_id = ?")
-            .bind(&new.reservation_id)
+            .bind(new.reservation_id())
             .fetch_one(&pool)
             .await
             .expect("newer status");
     assert_eq!(newer_status, "queued");
+}
+
+#[tokio::test]
+async fn corrupt_queued_reservation_timestamp_fails_priority_refresh_closed() {
+    let pool = fixture(&[34, 35, 36]).await;
+    let scheduler = scheduler(pool.clone(), 1, 0);
+    let held = scheduler
+        .reserve(request(34, "corrupt-aging-held", JobPriority::Normal, 1))
+        .await
+        .expect("held");
+    let corrupt = scheduler
+        .reserve(request(35, "corrupt-aging-waiter", JobPriority::Normal, 1))
+        .await
+        .expect("queued waiter");
+    assert!(held.is_granted() && !corrupt.is_granted());
+
+    sqlx::query(
+        "UPDATE provider_reservations SET updated_at = 'not-a-timestamp'
+         WHERE reservation_id = ?",
+    )
+    .bind(corrupt.reservation_id())
+    .execute(&pool)
+    .await
+    .expect("corrupt aging timestamp");
+
+    let error = scheduler
+        .reserve(request(36, "corrupt-aging-trigger", JobPriority::Normal, 1))
+        .await
+        .expect_err("priority refresh must reject corrupt aging state");
+    assert!(matches!(error, SchedulerError::DatabaseState(_)));
+
+    let (status, effective_priority): (String, String) = sqlx::query_as(
+        "SELECT status, effective_priority FROM provider_reservations
+         WHERE reservation_id = ?",
+    )
+    .bind(corrupt.reservation_id())
+    .fetch_one(&pool)
+    .await
+    .expect("corrupt waiter row");
+    assert_eq!(status, "queued");
+    assert_eq!(
+        effective_priority, "normal",
+        "corrupt state must not be silently demoted to maintenance"
+    );
 }
 
 #[tokio::test]
@@ -149,24 +193,161 @@ async fn interactive_waiter_cannot_be_bypassed_by_lower_priority_capacity() {
         .reserve(request(44, "background", JobPriority::Background, 1))
         .await
         .expect("background");
-    assert!(held_a.granted && held_b.granted && !interactive.granted && !background.granted);
+    assert!(
+        held_a.is_granted()
+            && held_b.is_granted()
+            && !interactive.is_granted()
+            && !background.is_granted()
+    );
 
     scheduler
-        .complete(&held_a.reservation_id, "held-a")
+        .complete(held_a.reservation_id(), "held-a")
         .await
         .expect("release one");
     let background_probe = scheduler
-        .try_grant_existing(&background.reservation_id)
+        .try_grant_existing(background.reservation_id())
         .await
         .expect("probe background");
-    assert!(!background_probe.granted);
+    assert!(!background_probe.is_granted());
     let interactive_status: String =
         sqlx::query_scalar("SELECT status FROM provider_reservations WHERE reservation_id = ?")
-            .bind(&interactive.reservation_id)
+            .bind(interactive.reservation_id())
             .fetch_one(&pool)
             .await
             .expect("interactive status");
     assert_eq!(interactive_status, "granted");
+}
+
+#[tokio::test]
+async fn later_fitting_waiter_uses_capacity_stranded_by_non_fitting_head() {
+    let pool = fixture(&[71, 72, 73]).await;
+    let scheduler = scheduler(pool.clone(), 3, 0);
+    let held = scheduler
+        .reserve(request(71, "held", JobPriority::Normal, 2))
+        .await
+        .expect("held");
+    let head = scheduler
+        .reserve(request(72, "large-head", JobPriority::Normal, 2))
+        .await
+        .expect("head");
+    let fitting = scheduler
+        .reserve(request(73, "fitting", JobPriority::Normal, 1))
+        .await
+        .expect("fitting");
+
+    assert!(held.is_granted());
+    assert!(
+        !head.is_granted(),
+        "the large head cannot fit the one remaining unit"
+    );
+    assert!(
+        fitting.is_granted(),
+        "a later fitting waiter must use residual capacity"
+    );
+
+    scheduler
+        .complete(held.reservation_id(), "held")
+        .await
+        .expect("release held");
+    assert!(
+        scheduler
+            .try_grant_existing(head.reservation_id())
+            .await
+            .expect("grant head after capacity release")
+            .is_granted(),
+        "the bypassed head must advance once it fits"
+    );
+}
+
+#[tokio::test]
+async fn non_fitting_head_allows_only_one_durable_bypass() {
+    let pool = fixture(&[81, 82, 83, 84]).await;
+    let scheduler = scheduler(pool.clone(), 3, 0);
+    let held = scheduler
+        .reserve(request(81, "held", JobPriority::Normal, 2))
+        .await
+        .expect("held");
+    let head = scheduler
+        .reserve(request(82, "large-head", JobPriority::Normal, 2))
+        .await
+        .expect("head");
+    let first = scheduler
+        .reserve(request(83, "first-bypass", JobPriority::Normal, 1))
+        .await
+        .expect("first bypass");
+    assert!(held.is_granted() && !head.is_granted() && first.is_granted());
+
+    scheduler
+        .complete(first.reservation_id(), "first-bypass")
+        .await
+        .expect("release first bypass");
+    let second = scheduler
+        .reserve(request(84, "second-bypass", JobPriority::Normal, 1))
+        .await
+        .expect("second waiter");
+    assert!(
+        !second.is_granted(),
+        "the durable acquired marker must bound bypasses of the same head"
+    );
+
+    scheduler
+        .complete(held.reservation_id(), "held")
+        .await
+        .expect("release held");
+    assert!(
+        scheduler
+            .try_grant_existing(head.reservation_id())
+            .await
+            .expect("grant protected head")
+            .is_granted(),
+        "the protected head must receive the next fitting opportunity"
+    );
+}
+
+#[tokio::test]
+async fn fitting_waiter_beyond_sixty_four_blocked_rows_uses_residual_capacity() {
+    let ids = (1_000_u128..1_067).collect::<Vec<_>>();
+    let pool = fixture(&ids).await;
+    let scheduler = ProviderScheduler::new(
+        pool,
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei-fairness".into(),
+            authority_id: "authority-fairness".into(),
+        },
+        SchedulerConfig {
+            capacity: 3,
+            interactive_reserve: 0,
+            max_entries: 128,
+            max_units: 256,
+        },
+    )
+    .expect("scheduler");
+    let held = scheduler
+        .reserve(request(1_000, "held", JobPriority::Normal, 2))
+        .await
+        .expect("held");
+    assert!(held.is_granted());
+    for id in 1_001_u128..1_066 {
+        let blocked = scheduler
+            .reserve(request(
+                id,
+                &format!("blocked-{id}"),
+                JobPriority::Normal,
+                2,
+            ))
+            .await
+            .expect("blocked waiter");
+        assert!(!blocked.is_granted());
+    }
+    let fitting = scheduler
+        .reserve(request(1_066, "fitting", JobPriority::Normal, 1))
+        .await
+        .expect("fitting waiter");
+    assert!(
+        fitting.is_granted(),
+        "the fitting waiter after row 64 must run"
+    );
 }
 
 #[tokio::test]
@@ -207,7 +388,7 @@ async fn embedding_saturation_does_not_consume_vector_capacity() {
         .reserve(request(61, "embedding-held", JobPriority::Normal, 1))
         .await
         .expect("embedding reservation");
-    assert!(embedding_grant.granted);
+    assert!(embedding_grant.is_granted());
 
     let vector_grant = vector
         .reserve(request(
@@ -219,7 +400,7 @@ async fn embedding_saturation_does_not_consume_vector_capacity() {
         .await
         .expect("vector reservation");
     assert!(
-        vector_grant.granted,
+        vector_grant.is_granted(),
         "embedding saturation must not starve the independent vector capacity domain"
     );
 }

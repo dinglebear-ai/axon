@@ -12,9 +12,13 @@ use axon_services::projections::{
 };
 use axum::{Extension, extract::State, http::StatusCode};
 use lab_auth::AuthContext;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 type WebState = (AppState, Arc<axon_core::config::Config>);
+type CodeSearchResponseFuture =
+    Pin<Box<dyn Future<Output = Result<Json<BatchResult<QueryResult>>, HttpError>> + Send>>;
 
 macro_rules! source_handler {
     ($name:ident, $path:literal, $request:ty, $operation:ident, $project:ident, $operation_id:literal) => {
@@ -95,9 +99,10 @@ async fn source_projection(
         for request in &requests {
             authorize_source_request(request, &auth).await?;
         }
+        let caller = caller_context_from_auth(&auth);
         Some(AuthSnapshot::from_caller(
-            &caller_context_from_auth(&auth),
-            Visibility::Internal,
+            &caller,
+            caller.visibility_ceiling,
             "runtime",
         ))
     } else {
@@ -148,42 +153,35 @@ fn source_projection_status(status: BatchStatus) -> StatusCode {
     ),
     tag = "projections"
 )]
-pub(crate) async fn code_search(
+pub(crate) fn code_search(
     State((state, cfg)): State<WebState>,
     auth: Option<Extension<AuthContext>>,
     Json(request): Json<CodeSearchRequest>,
+) -> CodeSearchResponseFuture {
+    Box::pin(code_search_owned(state, cfg, auth, request))
+}
+
+async fn code_search_owned(
+    state: AppState,
+    cfg: Arc<axon_core::config::Config>,
+    auth: Option<Extension<AuthContext>>,
+    request: CodeSearchRequest,
 ) -> Result<Json<BatchResult<QueryResult>>, HttpError> {
     let auth_snapshot = auth.map(|Extension(auth)| {
-        AuthSnapshot::from_caller(
-            &caller_context_from_auth(&auth),
-            Visibility::Internal,
-            "runtime",
-        )
+        let caller = caller_context_from_auth(&auth);
+        AuthSnapshot::from_caller(&caller, caller.visibility_ceiling, "runtime")
     });
     let plans = project_code_search(&request).map_err(unbox_api_error)?;
     let prepared = preflight_code_search_batch(plans, &cfg.projection_batch)
         .map_err(HttpError::from_api_error)?;
-    let ctx = Arc::clone(&state.service_context);
-    let handle = tokio::runtime::Handle::current();
-    let result = tokio::task::spawn_blocking(move || {
-        handle
-            .block_on(execute_code_search_projection_batch(
-                ctx.as_ref(),
-                prepared,
-                axon_api::CodeSearchCaller::Rest,
-                auth_snapshot.as_ref(),
-            ))
-            .map_err(Box::new)
-    })
+    let result = execute_code_search_projection_batch(
+        state.service_context.as_ref().clone(),
+        prepared,
+        axon_api::CodeSearchCaller::Rest,
+        auth_snapshot,
+    )
     .await
-    .map_err(|error| {
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            format!("code search task failed: {error}"),
-        )
-    })?
-    .map_err(|error| HttpError::from_api_error(*error))?;
+    .map_err(HttpError::from_api_error)?;
     Ok(Json(result))
 }
 

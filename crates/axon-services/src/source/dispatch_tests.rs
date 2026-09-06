@@ -28,6 +28,8 @@ use httpmock::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use crate::source::{job_tracking, result_map};
+
 use super::*;
 
 const RSS_TWO_ITEMS: &str = r#"<?xml version="1.0"?>
@@ -250,14 +252,14 @@ async fn published_session_survives_lease_release_failures_as_degraded() {
 }
 
 #[tokio::test]
-async fn published_session_survives_terminal_status_failure_as_degraded() {
+async fn published_session_defers_terminal_status_to_outer_orchestrator() {
     let home = tempfile::tempdir().unwrap();
     let dir = claude_fixture_dir(home.path());
     let roots = crate::sessions::SessionRoots::for_home(home.path());
     let ledger = Arc::new(FakeLedgerStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let jobs = Arc::new(FakeJobWatchStore::new().with_terminal_status_failure());
-    let runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs);
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs.clone());
 
     let selector = format!("session:claude:{}", dir.display());
     let route = route_for(&selector);
@@ -283,10 +285,77 @@ async fn published_session_survives_terminal_status_failure_as_degraded() {
         Some(counts.generation.clone())
     );
     assert!(
-        counts
-            .warnings
+        jobs.recorded_status_updates(counts.job_id)
+            .await
             .iter()
-            .any(|warning| { warning.code == "source.job.terminal_status_deferred" })
+            .all(|update| !matches!(
+                update.status,
+                LifecycleStatus::Completed
+                    | LifecycleStatus::CompletedDegraded
+                    | LifecycleStatus::Failed
+                    | LifecycleStatus::Canceled
+            )),
+        "the shared adapter pipeline must leave successful terminalization to graph/cleanup orchestration"
+    );
+    let summary = ledger
+        .get_source(counts.source_id.clone())
+        .await
+        .expect("source summary lookup")
+        .expect("source summary");
+    assert_eq!(summary.status, LifecycleStatus::Completed);
+    assert!(summary.last_refreshed_at.is_some());
+}
+
+#[tokio::test]
+async fn committed_generation_survives_graph_audit_append_failure_as_degraded() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = claude_fixture_dir(home.path());
+    let roots = crate::sessions::SessionRoots::for_home(home.path());
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors, ledger.clone());
+
+    let selector = format!("session:claude:{}", dir.display());
+    let route = route_for(&selector);
+    let execution = test_execution(&selector);
+    let mut counts = dispatch_session_with_roots(
+        &runtime,
+        &selector,
+        "axon-test",
+        "test-owner",
+        None,
+        false,
+        None,
+        None,
+        &route,
+        &roots,
+        &execution,
+    )
+    .await
+    .expect("generation publication succeeds before post-publish auditing");
+
+    let graph = axon_api::source::GraphWriteSummary {
+        nodes_upserted: 1,
+        edges_upserted: 0,
+        evidence_records: 1,
+        degraded: false,
+    };
+    let warning = job_tracking::track_graph_mutation(
+        Some(Arc::new(
+            FakeJobWatchStore::new().with_append_event_failure(),
+        )),
+        counts.job_id,
+        None,
+        &graph,
+    )
+    .await
+    .expect("append failure produces retryable degradation");
+    crate::source::record_post_publish_audit_warning(&runtime, &mut counts, Some(warning)).await;
+
+    assert_eq!(
+        ledger.committed_generation(&counts.source_id).await,
+        Some(counts.generation.clone()),
+        "an audit-only failure must not invalidate the current generation"
     );
     let summary = ledger
         .get_source(counts.source_id.clone())
@@ -294,7 +363,18 @@ async fn published_session_survives_terminal_status_failure_as_degraded() {
         .expect("source summary lookup")
         .expect("source summary");
     assert_eq!(summary.status, LifecycleStatus::CompletedDegraded);
-    assert!(summary.last_refreshed_at.is_some());
+    let result = result_map::to_source_result_with_counts(
+        route.source.source_kind,
+        route.adapter,
+        route.scope,
+        route.source.canonical_uri,
+        counts,
+        graph,
+        None,
+    );
+    assert_eq!(result.status, LifecycleStatus::CompletedDegraded);
+    assert_eq!(result.ledger.status, LifecycleStatus::CompletedDegraded);
+    assert!(result.warnings[0].retryable);
 }
 
 #[tokio::test]

@@ -6,6 +6,7 @@ use axon_api::source::*;
 use sqlx::Row;
 
 use crate::migration::sqlite_error;
+use crate::sqlite::manifest::reconstruct_manifest;
 use crate::sqlite::util::json_error;
 use crate::store::Result;
 
@@ -53,9 +54,10 @@ pub(super) async fn manifest_in_tx(
     .await
     .map_err(sqlite_error)?;
 
-    row.map(|row| {
-        let manifest_json: String = row.get("manifest_json");
-        serde_json::from_str(&manifest_json).map_err(json_error)
-    })
-    .transpose()
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let manifest_json: String = row.get("manifest_json");
+    let items = manifest_items_in_tx(tx, source_id, generation).await?;
+    Ok(Some(reconstruct_manifest(&manifest_json, items)?))
 }

@@ -1,5 +1,20 @@
 use super::*;
 
+fn assert_send<T: Send>(_: T) {}
+
+#[allow(dead_code)]
+fn code_search_projection_future_is_send(
+    ctx: &ServiceContext,
+    preflight: ProjectionPreflight<PreparedCodeSearchItem>,
+) {
+    assert_send(execute_code_search_projection_batch(
+        ctx.clone(),
+        preflight,
+        CodeSearchCaller::Rest,
+        None,
+    ));
+}
+
 #[test]
 fn projection_execute_fingerprint_is_stable_and_semantic() {
     let value = serde_json::json!({"operation":"crawl","source":"https://example.test"});
@@ -53,6 +68,91 @@ fn projection_fingerprint_uses_canonical_target_and_excludes_caller_key() {
         admission_item(ProjectionOperation::Ingest, &equivalent, "principal", None).unwrap();
     assert_eq!(first.fingerprint, second.fingerprint);
     assert_eq!(first.fingerprint.0.len(), 64);
+}
+
+#[test]
+fn panel_projection_preserves_authenticated_caller_attribution() {
+    let request = SourceRequest::new("https://example.test/docs");
+    let routed = crate::source::routing::resolve_source_route(&request).unwrap();
+    let prepared = PreparedSourceItem {
+        index: 0,
+        request,
+        kind: routed.kind,
+        route: routed.route,
+        required_scope: AuthScope::Write,
+    };
+    let mut auth = AuthSnapshot::default();
+    auth.caller_id = Some("user@example.test".into());
+    auth.granted_scopes = vec![AuthScope::Write];
+
+    let admitted = admission_item(
+        ProjectionOperation::Ingest,
+        &prepared,
+        "principal",
+        Some(&auth),
+    )
+    .unwrap();
+    assert_eq!(admitted.request.auth_snapshot.caller_id, auth.caller_id);
+    assert_eq!(
+        admitted.request.auth_snapshot.granted_scopes,
+        auth.granted_scopes
+    );
+}
+
+#[test]
+fn panel_projection_preserves_identity_but_strips_auth_secrets() {
+    let request = SourceRequest::new("https://example.test/docs");
+    let routed = crate::source::routing::resolve_source_route(&request).unwrap();
+    let prepared = PreparedSourceItem {
+        index: 0,
+        request,
+        kind: routed.kind,
+        route: routed.route,
+        required_scope: AuthScope::Write,
+    };
+    let mut auth = AuthSnapshot::default();
+    auth.caller_id = Some("auditable-user".into());
+    auth.token_id = Some("secret-token-id".into());
+    auth.display_name = Some("Sensitive Display Name".into());
+    auth.granted_scopes = vec![AuthScope::Write];
+
+    let admitted = admission_item(
+        ProjectionOperation::Ingest,
+        &prepared,
+        "principal",
+        Some(&auth),
+    )
+    .unwrap();
+    assert_eq!(
+        admitted.request.auth_snapshot.caller_id.as_deref(),
+        Some("auditable-user")
+    );
+    assert_eq!(admitted.request.auth_snapshot.token_id, None);
+    assert_eq!(admitted.request.auth_snapshot.display_name, None);
+}
+
+#[test]
+fn panel_projection_uses_trusted_system_only_without_a_caller_snapshot() {
+    let request = SourceRequest::new("https://example.test/docs");
+    let routed = crate::source::routing::resolve_source_route(&request).unwrap();
+    let prepared = PreparedSourceItem {
+        index: 0,
+        request,
+        kind: routed.kind,
+        route: routed.route,
+        required_scope: AuthScope::Write,
+    };
+
+    let admitted =
+        admission_item(ProjectionOperation::Ingest, &prepared, "principal", None).unwrap();
+    assert_eq!(
+        admitted.request.auth_snapshot.auth_mode,
+        AuthMode::TrustedLocal
+    );
+    assert_eq!(
+        admitted.request.auth_snapshot.caller_id.as_deref(),
+        Some("axon-system")
+    );
 }
 
 #[test]

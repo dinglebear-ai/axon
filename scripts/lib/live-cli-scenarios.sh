@@ -6,9 +6,9 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     echo "production-state live scenarios are forbidden; use the harness-owned isolated state" >&2
     exit 2
   fi
-  outdir_real="$(realpath -m "$OUTDIR")"
-  home_axon_real="$(realpath -m "${HOME:-/nonexistent}/.axon")"
-  requested_data_real="$(realpath -m "${AXON_LIVE_DATA_DIR:-$OUTDIR/data}")"
+  outdir_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$OUTDIR")"
+  home_axon_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${HOME:-/nonexistent}/.axon")"
+  requested_data_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "${AXON_LIVE_DATA_DIR:-$OUTDIR/data}")"
   case "$outdir_real" in
     "$home_axon_real"|"$home_axon_real"/*)
       echo "live test output must not overlap the production ~/.axon state: $outdir_real" >&2
@@ -98,7 +98,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
       >"$OUTDIR/logs/chrome.log" 2>"$OUTDIR/logs/chrome.stderr.log" &
     live_chrome_pid=$!
     live_chrome_pgid=""
-    for _identity_attempt in $(seq 1 20); do
+    for _identity_attempt in $(seq 1 100); do
       live_chrome_pgid="$(ps -o pgid= -p "$live_chrome_pid" 2>/dev/null | tr -d ' ')"
       [ "$live_chrome_pgid" = "$live_chrome_pid" ] && break
       kill -0 "$live_chrome_pid" 2>/dev/null || break
@@ -108,7 +108,11 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
       echo "harness-owned Chrome did not start in its own process group" >&2
       exit 2
     fi
-    live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+    if [ -r "/proc/$live_chrome_pid/stat" ]; then
+      live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+    else
+      live_chrome_start_time="$(ps -o lstart= -p "$live_chrome_pid" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    fi
     live_chrome_ready=0
     for _attempt in $(seq 1 60); do
       if [ "$live_chrome_port" = "0" ] && [ -s "$OUTDIR/chrome-profile/DevToolsActivePort" ]; then
@@ -159,7 +163,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   SETUP_HOME="$OUTDIR/setup-home"
   SETUP_HELPER_BIN="$OUTDIR/setup-helper-bin"
   mkdir -p "$SETUP_HOME" "$SETUP_HELPER_BIN"
-  install -m 0755 /bin/true "$SETUP_HELPER_BIN/axon-palette-tauri"
+  install -m 0755 /usr/bin/true "$SETUP_HELPER_BIN/axon-palette-tauri"
   env -u AXON_HOME -u AXON_ENV_FILE -u AXON_CONFIG_PATH \
     HOME="$SETUP_HOME" AXON_DATA_DIR="$SETUP_HOME/.axon" \
     QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:53333}" \

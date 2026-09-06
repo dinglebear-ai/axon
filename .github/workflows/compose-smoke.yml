@@ -15,7 +15,7 @@ concurrency:
 jobs:
   changes:
     name: changes
-    runs-on: ci-pool-ops
+    runs-on: ubuntu-24.04
     # Slowest observed green run: 1.9 min (changed-path classification only).
     timeout-minutes: 15
     outputs:
@@ -69,7 +69,7 @@ jobs:
 
   compose-config:
     name: compose-config
-    runs-on: ci-pool-system
+    runs-on: ubuntu-24.04
     # Slowest observed green run: 19s (compose config validation only).
     timeout-minutes: 20
     needs: [changes]
@@ -158,7 +158,7 @@ jobs:
 
   compose-smoke-gate:
     name: compose-smoke-gate
-    runs-on: ci-pool-ops
+    runs-on: ubuntu-24.04
     if: always()
     # Slowest observed green run: 44s (result aggregation only).
     timeout-minutes: 10

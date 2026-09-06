@@ -1,0 +1,1 @@
+{"contract_version":"1.0.0","product":"axon","server_id":"axon_0123456789abcdef","product_version":"7.2.2","api_version":{"major":2,"minor":0},"capabilities":[],"auth":{"modes":["static_bearer"],"issuer":null,"audience":null,"token_endpoint_origin":null,"principal_cache_scope":"token","credential_generation":"1"},"streams":{"transport":"none","resume":"none"}}

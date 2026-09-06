@@ -12,12 +12,14 @@
 //! `vector` ↔ `services` dependency cycle (inventory §8.1 Cycle 1). Route and
 //! request DTOs fold in as bead `axon_rust-23dw.2` continues.
 
+pub mod action;
+pub mod agent;
 pub mod diff;
 pub mod explain;
 pub mod job_dto;
 pub mod job_progress;
 pub mod job_status;
-pub mod mcp_schema;
+pub mod loadout;
 pub mod migration;
 pub mod reset;
 pub mod result;

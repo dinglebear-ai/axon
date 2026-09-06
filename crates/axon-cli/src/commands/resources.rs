@@ -44,6 +44,8 @@ pub async fn run_chat(cfg: &Config, context: &ServiceContext) -> Result<(), Box<
         .chat(axon_services::service_traits::ask_service::ChatRequest {
             session_id: None,
             message,
+            loadout: None,
+            agent: None,
         })
         .await?;
     if cfg.json_output {

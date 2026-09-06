@@ -9,14 +9,15 @@
 #   AXON_INSTALL_DRY_RUN     Set to 1 to print what would happen without doing it
 #   AXON_INSTALL_SKIP_SETUP  Set to 1 to skip running `axon setup` after install
 #
-# Usage:
-#   irm https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex
+# Usage: download install.ps1 from a reviewed, version-pinned release, inspect
+# it locally, then execute the pinned file:
+#   .\install.ps1
 #
 # Pinned version:
-#   $env:AXON_VERSION='v5.8.1'; irm .../install.ps1 | iex
+#   $env:AXON_VERSION='v5.8.1'; .\install.ps1
 #
 # Skip setup (install binary only):
-#   $env:AXON_INSTALL_SKIP_SETUP='1'; irm .../install.ps1 | iex
+#   $env:AXON_INSTALL_SKIP_SETUP='1'; .\install.ps1
 
 [CmdletBinding()]
 param()

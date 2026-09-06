@@ -50,6 +50,14 @@ pub async fn complete_text(
     result
 }
 
+/// Agent-runtime completion entrypoint. Tool execution remains outside this
+/// crate; this only obtains the next bounded Axon orchestration decision.
+pub async fn complete_agent_text(
+    req: CompletionRequest,
+) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
+    complete_text(req).await
+}
+
 /// Streaming counterpart of [`complete_text`] — same reservation/outcome
 /// wiring around the per-backend streaming dispatch.
 pub async fn complete_streaming<F>(

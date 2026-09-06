@@ -14,7 +14,9 @@
 //! derivation.
 
 use axon_api::source::{
-    AuthMode, CallerContext, MemoryExportRequest, MemoryImportRequest, TransportKind, Visibility,
+    AuthMode, CallerContext, MemoryContextResponse, MemoryEdgeResponse, MemoryExportRequest,
+    MemoryImportRequest, MemoryItemResponse, MemoryItemsResponse, MemorySupersedeResponse,
+    TransportKind, Visibility,
 };
 use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
@@ -89,14 +91,28 @@ async fn dispatch_subaction(
     .await
 }
 
+async fn dispatch_typed<T: serde::de::DeserializeOwned>(
+    state: &super::super::super::state::AppState,
+    req: RestMemoryRequest,
+    subaction: axon_services::client_contract::RestMemorySubaction,
+) -> Result<T, ClientActionError> {
+    let value = dispatch_subaction(state, req, subaction).await?;
+    serde_json::from_value(value).map_err(|error| ClientActionError {
+        kind: "internal".to_string(),
+        message: format!("memory response contract mismatch: {error}"),
+        hint: None,
+        retryable: false,
+    })
+}
+
 macro_rules! memory_route {
-    ($name:ident, $method:ident, $path:literal, $subaction:ident) => {
+    ($name:ident, $method:ident, $path:literal, $subaction:ident, $response:ident) => {
         #[utoipa::path(
             $method,
             path = $path,
             request_body = RestMemoryRequest,
             responses(
-                (status = 200, description = "Persistent memory result", body = serde_json::Value),
+                (status = 200, description = "Persistent memory result", body = $response),
                 (status = 400, description = "Invalid memory request", body = crate::server::error::ErrorBody),
                 (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
             ),
@@ -106,9 +122,9 @@ macro_rules! memory_route {
             State((state, _cfg)): State<WebState>,
             auth: Option<Extension<AuthContext>>,
             Json(req): Json<RestMemoryRequest>,
-        ) -> Result<Json<serde_json::Value>, HttpError> {
+        ) -> Result<Json<$response>, HttpError> {
             log_caller($path, auth.as_ref());
-            dispatch_subaction(
+            dispatch_typed(
                 &state,
                 req,
                 axon_services::client_contract::RestMemorySubaction::$subaction,
@@ -120,17 +136,78 @@ macro_rules! memory_route {
     };
 }
 
-memory_route!(remember_memory, post, "/v1/memories", Remember);
-memory_route!(search_memories, post, "/v1/memories/search", Search);
-memory_route!(memory_context, post, "/v1/memories/context", Context);
-memory_route!(review_memories, post, "/v1/memories/review", Review);
-memory_route!(compact_memories, post, "/v1/memories/compact", Compact);
+#[utoipa::path(
+    post,
+    path = "/v1/memories",
+    request_body = RestMemoryRequest,
+    responses((status = 200, body = MemoryItemResponse)),
+    tag = "memory"
+)]
+pub(crate) async fn remember_memory(
+    State((state, _cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
+    Json(req): Json<RestMemoryRequest>,
+) -> Result<Json<MemoryItemResponse>, HttpError> {
+    log_caller("/v1/memories", auth.as_ref());
+    dispatch_typed(
+        &state,
+        req,
+        axon_services::client_contract::RestMemorySubaction::Remember,
+    )
+    .await
+    .map(Json)
+    .map_err(memory_error)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/memories/search",
+    request_body = RestMemoryRequest,
+    responses((status = 200, body = MemoryItemsResponse)),
+    tag = "memory"
+)]
+pub(crate) async fn search_memories(
+    State((state, _cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
+    Json(req): Json<RestMemoryRequest>,
+) -> Result<Json<MemoryItemsResponse>, HttpError> {
+    log_caller("/v1/memories/search", auth.as_ref());
+    dispatch_typed(
+        &state,
+        req,
+        axon_services::client_contract::RestMemorySubaction::Search,
+    )
+    .await
+    .map(Json)
+    .map_err(memory_error)
+}
+memory_route!(
+    memory_context,
+    post,
+    "/v1/memories/context",
+    Context,
+    MemoryContextResponse
+);
+memory_route!(
+    review_memories,
+    post,
+    "/v1/memories/review",
+    Review,
+    MemoryItemsResponse
+);
+memory_route!(
+    compact_memories,
+    post,
+    "/v1/memories/compact",
+    Compact,
+    MemoryItemResponse
+);
 
 #[utoipa::path(
     get,
     path = "/v1/memories",
     responses(
-        (status = 200, description = "Persistent memories", body = serde_json::Value),
+        (status = 200, description = "Persistent memories", body = MemoryItemsResponse),
         (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "memory"
@@ -155,7 +232,7 @@ pub(crate) async fn list_memories(
     path = "/v1/memories/{memory_id}",
     params(("memory_id" = String, Path, description = "Memory id")),
     responses(
-        (status = 200, description = "Persistent memory result", body = serde_json::Value),
+        (status = 200, description = "Persistent memory result", body = MemoryItemResponse),
         (status = 400, description = "Invalid memory request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -182,14 +259,14 @@ pub(crate) async fn show_memory(
 }
 
 macro_rules! memory_id_route {
-    ($name:ident, $method:ident, $path:literal, $subaction:ident) => {
+    ($name:ident, $method:ident, $path:literal, $subaction:ident, $response:ident) => {
         #[utoipa::path(
             $method,
             path = $path,
             params(("memory_id" = String, Path, description = "Memory id")),
             request_body = RestMemoryRequest,
             responses(
-                (status = 200, description = "Persistent memory result", body = serde_json::Value),
+                (status = 200, description = "Persistent memory result", body = $response),
                 (status = 400, description = "Invalid memory request", body = crate::server::error::ErrorBody),
                 (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
             ),
@@ -200,10 +277,10 @@ macro_rules! memory_id_route {
             auth: Option<Extension<AuthContext>>,
             Path(memory_id): Path<String>,
             Json(mut req): Json<RestMemoryRequest>,
-        ) -> Result<Json<serde_json::Value>, HttpError> {
+        ) -> Result<Json<$response>, HttpError> {
             log_caller($path, auth.as_ref());
             req.id = Some(memory_id);
-            dispatch_subaction(
+            dispatch_typed(
                 &state,
                 req,
                 axon_services::client_contract::RestMemorySubaction::$subaction,
@@ -219,32 +296,43 @@ memory_id_route!(
     supersede_memory,
     post,
     "/v1/memories/{memory_id}/supersede",
-    Supersede
+    Supersede,
+    MemorySupersedeResponse
 );
 memory_id_route!(
     reinforce_memory,
     post,
     "/v1/memories/{memory_id}/reinforce",
-    Reinforce
+    Reinforce,
+    MemoryItemResponse
 );
 memory_id_route!(
     contradict_memory,
     post,
     "/v1/memories/{memory_id}/contradict",
-    Contradict
+    Contradict,
+    MemoryEdgeResponse
 );
-memory_id_route!(pin_memory, post, "/v1/memories/{memory_id}/pin", Pin);
+memory_id_route!(
+    pin_memory,
+    post,
+    "/v1/memories/{memory_id}/pin",
+    Pin,
+    MemoryItemResponse
+);
 memory_id_route!(
     archive_memory,
     post,
     "/v1/memories/{memory_id}/archive",
-    Archive
+    Archive,
+    MemoryItemResponse
 );
 memory_id_route!(
     compact_one_memory,
     post,
     "/v1/memories/{memory_id}/compact",
-    Compact
+    Compact,
+    MemoryItemResponse
 );
 
 /// `POST /v1/memories/{memory_id}/link` — `source_id` is filled from the path
@@ -255,7 +343,7 @@ memory_id_route!(
     params(("memory_id" = String, Path, description = "Source memory id")),
     request_body = RestMemoryRequest,
     responses(
-        (status = 200, description = "Persistent memory result", body = serde_json::Value),
+        (status = 200, description = "Persistent memory result", body = MemoryEdgeResponse),
         (status = 400, description = "Invalid memory request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -266,10 +354,10 @@ pub(crate) async fn link_memory(
     auth: Option<Extension<AuthContext>>,
     Path(memory_id): Path<String>,
     Json(mut req): Json<RestMemoryRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
+) -> Result<Json<MemoryEdgeResponse>, HttpError> {
     log_caller("/v1/memories/{memory_id}/link", auth.as_ref());
     req.source_id = Some(memory_id);
-    dispatch_subaction(
+    dispatch_typed(
         &state,
         req,
         axon_services::client_contract::RestMemorySubaction::Link,
@@ -286,7 +374,7 @@ pub(crate) async fn link_memory(
     path = "/v1/memories/{memory_id}",
     params(("memory_id" = String, Path, description = "Memory id")),
     responses(
-        (status = 200, description = "Persistent memory result", body = serde_json::Value),
+        (status = 200, description = "Persistent memory result", body = MemoryItemResponse),
         (status = 400, description = "Invalid memory request", body = crate::server::error::ErrorBody),
         (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -296,13 +384,13 @@ pub(crate) async fn forget_memory(
     State((state, _cfg)): State<WebState>,
     auth: Option<Extension<AuthContext>>,
     Path(memory_id): Path<String>,
-) -> Result<Json<serde_json::Value>, HttpError> {
+) -> Result<Json<MemoryItemResponse>, HttpError> {
     log_caller("/v1/memories/{memory_id}", auth.as_ref());
     let req = RestMemoryRequest {
         id: Some(memory_id),
         ..empty_rest_request()
     };
-    dispatch_subaction(
+    dispatch_typed(
         &state,
         req,
         axon_services::client_contract::RestMemorySubaction::Forget,

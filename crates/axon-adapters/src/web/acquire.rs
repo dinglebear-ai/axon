@@ -67,6 +67,14 @@ use super::options::{
 use super::render::{acquire_via_auto_switch, acquired_from_rendered, build_render_request};
 use super::vertical::{VerticalAcquire, VerticalOptions};
 
+pub(super) fn sanitize_provider_error(mut error: ApiError, raw_uri: &str) -> ApiError {
+    let report_uri = crate::web_engine::engine::url_utils::sanitize_url_for_reporting(raw_uri);
+    error.message = format!("provider request failed for {report_uri}: {}", error.code);
+    error.details.clear();
+    error.details.insert("uri".to_string(), report_uri);
+    error
+}
+
 /// Upper bound on in-flight `acquire_item` calls for [`acquire_concurrent`].
 /// Chosen as a sane fixed default (matching `extract::sync`'s per-URL
 /// concurrency) rather than wired to a perf profile — there is no existing
@@ -101,6 +109,17 @@ struct AcquireOptions {
 pub(super) struct AcquireOutcome {
     pub(super) items: Vec<AcquiredSourceItem>,
     pub(super) warnings: Vec<SourceWarning>,
+}
+
+pub(super) struct StreamedItemOutcome {
+    pub(super) ordinal: usize,
+    pub(super) item: Option<AcquiredSourceItem>,
+    pub(super) warnings: Vec<SourceWarning>,
+}
+
+#[async_trait::async_trait]
+pub(super) trait StreamingItemSink: Send + Sync {
+    async fn send(&self, outcome: StreamedItemOutcome) -> Result<()>;
 }
 
 /// One item's acquisition outcome. `item` is `None` for a conditional-fetch
@@ -249,6 +268,96 @@ pub(super) async fn acquire_changed_items(
     Ok(AcquireOutcome { items, warnings })
 }
 
+pub(super) async fn acquire_changed_items_streaming(
+    plan: &SourcePlan,
+    manifest_items: &[ManifestItem],
+    fetch: &dyn FetchProvider,
+    render: &dyn RenderProvider,
+    progress: Option<&dyn AcquisitionProgressSink>,
+    sink: &dyn StreamingItemSink,
+) -> Result<()> {
+    let opts = acquire_options(plan)?;
+    let opts = &opts;
+    let batch_started = Instant::now();
+    let concurrency = acquire_concurrency().min(manifest_items.len().max(1));
+    let mut pending = stream::iter(manifest_items.iter().cloned().enumerate())
+        .map(|(ordinal, item)| async move {
+            let started = Instant::now();
+            let outcome = acquire_item(fetch, render, &item, opts).await;
+            (ordinal, item, outcome, started.elapsed())
+        })
+        // `buffered` provides the bounded reorder window: work runs concurrently,
+        // while observations remain in stable manifest order.
+        .buffered(concurrency);
+    let mut timings = Vec::with_capacity(manifest_items.len());
+    let mut documents = 0usize;
+    while let Some((ordinal, manifest_item, outcome, elapsed)) = pending.next().await {
+        timings.push(ItemTiming {
+            elapsed,
+            completed_at: batch_started.elapsed(),
+        });
+        let mut warnings = Vec::new();
+        let item = resolve_item_outcome(
+            outcome,
+            manifest_item.source_item_key,
+            &manifest_item.canonical_uri,
+            &mut warnings,
+        );
+        documents += usize::from(item.is_some());
+        report_progress(progress, manifest_items.len(), ordinal + 1, documents).await;
+        sink.send(StreamedItemOutcome {
+            ordinal,
+            item,
+            warnings,
+        })
+        .await?;
+    }
+    log_acquisition_timings(
+        "streaming",
+        manifest_items.len(),
+        concurrency,
+        batch_started.elapsed(),
+        &timings,
+    );
+    Ok(())
+}
+
+fn acquire_options(plan: &SourcePlan) -> Result<AcquireOptions> {
+    let values = &plan.route.validated_options.values;
+    let opts = AcquireOptions {
+        job_id: plan.job_id,
+        mode: effective_render_mode(values),
+        min_markdown_chars: min_markdown_chars(values),
+        automation_script: automation_script_ref(values),
+        headers: headers(values),
+        cache_policy: cache_policy(values),
+        render_metadata: render_metadata(values),
+        vertical: VerticalOptions {
+            enabled: verticals_enabled(values),
+            auto_dispatch_skip: auto_dispatch_skip(values),
+            user_agent: user_agent(values),
+            cache_ttl_secs: values
+                .get("vertical_cache_ttl_secs")
+                .and_then(Value::as_object)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter_map(|(name, value)| value.as_u64().map(|ttl| (name.clone(), ttl)))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        },
+    };
+    if opts.cache_policy == CachePolicy::Offline {
+        return Err(ApiError::new(
+            "web.cache.offline_miss",
+            ErrorStage::Fetching,
+            "offline cache policy cannot acquire changed web items",
+        ));
+    }
+    Ok(opts)
+}
+
 /// One-at-a-time acquisition, used only when a WARC sink is configured (WARC
 /// archival is an ordered on-disk log, so records must be written in
 /// acquisition order). A failed item is logged and recorded as a
@@ -386,13 +495,16 @@ fn resolve_item_outcome(
             item
         }
         Err(err) => {
+            let report_uri =
+                crate::web_engine::engine::url_utils::sanitize_url_for_reporting(canonical_uri);
             log_warn(&format!(
-                "web acquire_item_failed uri={canonical_uri} err={err}"
+                "web acquire_item_failed uri={report_uri} code={}",
+                err.code
             ));
             warnings.push(SourceWarning {
                 code: err.code.to_string(),
                 severity: Severity::Warning,
-                message: format!("failed to acquire {canonical_uri}: {err}"),
+                message: format!("failed to acquire {report_uri}: {}", err.code),
                 source_item_key: Some(source_item_key),
                 retryable: err.retryable,
             });
@@ -408,13 +520,15 @@ async fn acquire_item(
     opts: &AcquireOptions,
 ) -> Result<AcquiredItem> {
     axon_core::http::validate_url(&item.canonical_uri).map_err(|err| {
+        let report_uri =
+            crate::web_engine::engine::url_utils::sanitize_url_for_reporting(&item.canonical_uri);
         ApiError::new(
             "web.acquire.invalid_uri",
             ErrorStage::Resolving,
             format!("web target rejected by SSRF policy: {err}"),
         )
         .with_source_id(item.source_id.0.clone())
-        .with_context("uri", item.canonical_uri.clone())
+        .with_context("uri", report_uri)
     })?;
     let mut warnings = Vec::new();
     match super::vertical::try_acquire(item, &opts.vertical, opts.job_id).await {

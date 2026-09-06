@@ -93,6 +93,16 @@ fn challenge_error_names_the_vendor() {
 }
 
 #[test]
+fn acquisition_errors_never_render_url_credentials() {
+    let secret = "credential-value";
+    let raw = format!("https://user:{secret}@example.gov/path?api_key={secret}#fragment");
+    let err = finish(String::new(), 404, raw.clone(), false, &raw).unwrap_err();
+    let rendered = err.to_string();
+    assert!(!rendered.contains(secret));
+    assert!(rendered.contains("https://example.gov/path"));
+}
+
+#[test]
 fn scan_budget_is_configurable_and_defaulted() {
     assert_eq!(
         FetchWebOptions::html()

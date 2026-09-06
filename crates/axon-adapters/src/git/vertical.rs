@@ -9,8 +9,6 @@
 //! in `axon-extract` and re-enters the shared document pipeline as one
 //! inline-markdown document — no clone, no checkout.
 
-use std::sync::Arc;
-
 use axon_api::source::*;
 use axon_core::config::Config;
 use axon_error::ErrorStage;
@@ -158,7 +156,27 @@ pub(super) async fn acquire(
 
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
     if let Some(item) = manifest_items.first() {
-        let ctx = VerticalContext::new(Arc::new(vertical_config()));
+        let cfg = vertical_config();
+        let ctx = VerticalContext::new(
+            cfg.user_agent,
+            cfg.auto_dispatch_skip,
+            axon_core::http::http_client()
+                .map_err(|error| {
+                    ApiError::new(
+                        "adapter.git.http_client_unavailable",
+                        ErrorStage::Fetching,
+                        "vertical HTTP provider is unavailable",
+                    )
+                    .with_context("cause", error.to_string())
+                })?
+                .clone(),
+        )
+        .with_credentials(axon_extract::VerticalCredentials {
+            github_token: std::env::var("GITHUB_TOKEN").ok(),
+            huggingface_token: std::env::var("HF_TOKEN").ok(),
+            reddit_client_id: std::env::var("REDDIT_CLIENT_ID").ok(),
+            reddit_client_secret: std::env::var("REDDIT_CLIENT_SECRET").ok(),
+        });
         let doc = crate::vertical_registry::dispatch_by_name(extractor, &url, &ctx)
             .await
             .map_err(|err| vertical_error(extractor, &url, &err.to_string()))?;

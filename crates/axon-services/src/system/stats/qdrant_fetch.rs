@@ -6,11 +6,7 @@
 //! count (`chunk_index == 0`, one marker point per indexed document) and the
 //! indexed-token-stats sample.
 //!
-//! `axon-vectors` does not yet expose a raw "collection info" read (status,
-//! `indexed_vectors_count`/`segments_count`, dense vector config, payload
-//! schema) or a *filtered* point count, so those two pieces still go through
-//! a direct Qdrant HTTP call — the same `GET`-against-Qdrant pattern already
-//! used by `system::collections` for `GET /collections`. This also means the
+//! Collection metadata uses the credential-aware vector transport. The
 //! docs count changes from legacy's single approximate (`exact=false`)
 //! server-side `points/count` call to an exact client-driven scroll walk over
 //! every `chunk_index == 0` point — correct, but O(docs) network round-trips
@@ -18,7 +14,6 @@
 //! worth knowing on collections with a very large document count.
 
 use axon_core::config::Config;
-use axon_core::http::internal_service_http_client;
 use axon_vectors::qdrant::QdrantVectorStore;
 use std::collections::HashMap;
 use std::error::Error;
@@ -48,17 +43,12 @@ pub(super) async fn fetch_qdrant_snapshots(
     cfg: &Config,
     store: &QdrantVectorStore,
 ) -> Result<(serde_json::Value, u64, u64), Box<dyn Error>> {
-    let client = internal_service_http_client()?;
-    let base = cfg.qdrant_url.trim_end_matches('/');
     let col = &cfg.collection;
-
-    let info = client
-        .get(format!("{base}/collections/{col}"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<serde_json::Value>()
-        .await?;
+    let info = store
+        .collection_info_json(col)
+        .await
+        .map_err(|error| -> Box<dyn Error> { error.to_string().into() })?
+        .ok_or_else(|| -> Box<dyn Error> { "qdrant collection not found".into() })?;
 
     let points_count = store
         .count_collection_points(col, axon_error::ErrorStage::Observing)

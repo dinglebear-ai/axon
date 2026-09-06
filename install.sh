@@ -10,6 +10,7 @@ BIN_DIR="$PREFIX/bin"
 BIN="$BIN_DIR/axon"
 DRY_RUN="${AXON_INSTALL_DRY_RUN:-0}"
 SKIP_SETUP="${AXON_INSTALL_SKIP_SETUP:-0}"
+MINISIGN_PUBKEY="${AXON_UPDATE_MINISIGN_PUBKEY:-}"
 # METHOD: pull (download GitHub release tarball) or build (cargo build --release).
 METHOD="${AXON_INSTALL_METHOD:-pull}"
 
@@ -53,6 +54,7 @@ check_prereqs() {
   need sha256sum
   need install
   need tar
+  need minisign
 }
 
 build_from_source() {
@@ -83,13 +85,20 @@ download_and_verify() {
   fi
   bin_url="${AXON_INSTALL_BIN_URL:-$(asset_base_url "$target")}"
   sha_url="${AXON_INSTALL_SHA256_URL:-$bin_url.sha256}"
+  signature_url="${AXON_INSTALL_MINISIG_URL:-$bin_url.minisig}"
   archive="$tmpdir/axon.tar.gz"
   checksum="$tmpdir/axon.tar.gz.sha256"
+  signature="$tmpdir/axon.tar.gz.minisig"
 
   say "Downloading $bin_url"
   curl -fsSL "$bin_url" -o "$archive"
   say "Downloading $sha_url"
   curl -fsSL "$sha_url" -o "$checksum"
+  [ -n "$MINISIGN_PUBKEY" ] || fail "AXON_UPDATE_MINISIGN_PUBKEY is required to authenticate release downloads"
+  say "Downloading $signature_url"
+  curl -fsSL "$signature_url" -o "$signature"
+  minisign -V -P "$MINISIGN_PUBKEY" -m "$archive" -x "$signature" >/dev/null 2>&1 \
+    || fail "minisign verification failed for downloaded axon archive"
 
   expected="$(awk '{print $1; exit}' "$checksum")"
   [ -n "$expected" ] || fail "checksum file is empty"

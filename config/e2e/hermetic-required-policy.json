@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "status": "promoted",
+  "required_check": "E2E Hermetic Required",
+  "coverage": {"minimum_behavioral_percent": 91, "critical_lifecycles": ["source", "jobs", "destructive"]},
+  "observation_window": {"minimum_trusted_main_runs": 5, "zero_quarantines_at_promotion": true},
+  "budgets": {
+    "p95_wall_seconds": 2400,
+    "cpu_seconds": 220,
+    "memory_mib": 4096,
+    "processes": 128,
+    "ports": 64,
+    "shards": 16,
+    "retries": 32,
+    "artifacts": 256,
+    "artifact_bytes": 10485760
+  },
+  "required_oracle_mutants": 8,
+  "evidence_retention_days": 7,
+  "history_retention_days": 30,
+  "bypass": {"actors": ["repository-administrator"], "requires_incident": true, "requires_post_merge_rerun": true},
+  "rollback": {"remove_required_context_only": true, "preserve_workflow": true}
+}

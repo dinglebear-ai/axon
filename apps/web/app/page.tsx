@@ -179,7 +179,7 @@ export default function Page() {
 
       {activePanelTab === 'watches' && <WatchesTab token={token} active={activePanelTab === 'watches'} />}
 
-      {activePanelTab === 'memory' && <MemoryTab />}
+      {activePanelTab === 'memory' && <MemoryTab token={token} />}
 
       {activePanelTab === 'configurator' && (
         <ConfiguratorTab

@@ -13,11 +13,13 @@ async fn test_pool() -> (tempfile::TempDir, SqlitePool) {
 #[tokio::test]
 async fn stores_and_reads_back_a_snapshot() {
     let (_dir, pool) = test_pool().await;
-    upsert_config_snapshot(&pool, "cfg_abc123", r#"{"collection":"axon"}"#)
+    let json = r#"{"collection":"axon"}"#;
+    let id = config_snapshot_id_from_json(json);
+    upsert_config_snapshot(&pool, &id, json)
         .await
         .expect("upsert should succeed");
 
-    let fetched = get_config_snapshot(&pool, "cfg_abc123")
+    let fetched = get_config_snapshot(&pool, &id)
         .await
         .expect("get should succeed");
     assert_eq!(fetched.as_deref(), Some(r#"{"collection":"axon"}"#));
@@ -33,21 +35,36 @@ async fn unknown_id_returns_none_not_an_error() {
 }
 
 #[tokio::test]
-async fn duplicate_upsert_of_the_same_id_is_a_no_op() {
+async fn duplicate_upsert_rejects_content_mismatch() {
     let (_dir, pool) = test_pool().await;
-    upsert_config_snapshot(&pool, "cfg_dup", r#"{"a":1}"#)
+    let first = r#"{"a":1}"#;
+    let id = config_snapshot_id_from_json(first);
+    upsert_config_snapshot(&pool, &id, first)
         .await
         .expect("first upsert");
-    // Same id, different body: INSERT OR IGNORE keeps the first-written
-    // content, matching the content-addressed contract documented on the
-    // migration (the id is a hash of the content, so a real mismatch would
-    // indicate caller error, not something this layer should silently fix).
-    upsert_config_snapshot(&pool, "cfg_dup", r#"{"a":2}"#)
+    let err = upsert_config_snapshot(&pool, &id, r#"{"a":2}"#)
         .await
-        .expect("second upsert with same id is a no-op, not an error");
+        .expect_err("same id with different content must be rejected");
 
-    let fetched = get_config_snapshot(&pool, "cfg_dup").await.unwrap();
-    assert_eq!(fetched.as_deref(), Some(r#"{"a":1}"#));
+    assert_eq!(err.code.to_string(), "config_snapshot.digest_mismatch");
+    let fetched = get_config_snapshot(&pool, &id).await.unwrap();
+    assert_eq!(fetched.as_deref(), Some(first));
+}
+
+#[tokio::test]
+async fn forged_content_id_is_rejected_before_insert() {
+    let (_dir, pool) = test_pool().await;
+    let err = upsert_config_snapshot(&pool, "cfg_000000000000", r#"{"a":1}"#)
+        .await
+        .expect_err("id must match the snapshot digest");
+
+    assert_eq!(err.code.to_string(), "config_snapshot.digest_mismatch");
+    assert!(
+        get_config_snapshot(&pool, "cfg_000000000000")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -62,19 +79,43 @@ async fn empty_id_is_rejected() {
 #[tokio::test]
 async fn distinct_ids_store_distinct_content() {
     let (_dir, pool) = test_pool().await;
-    upsert_config_snapshot(&pool, "cfg_one", r#"{"n":1}"#)
+    let first = r#"{"n":1}"#;
+    let second = r#"{"n":2}"#;
+    let first_id = config_snapshot_id_from_json(first);
+    let second_id = config_snapshot_id_from_json(second);
+    upsert_config_snapshot(&pool, &first_id, first)
         .await
         .unwrap();
-    upsert_config_snapshot(&pool, "cfg_two", r#"{"n":2}"#)
+    upsert_config_snapshot(&pool, &second_id, second)
         .await
         .unwrap();
 
     assert_eq!(
-        get_config_snapshot(&pool, "cfg_one").await.unwrap(),
+        get_config_snapshot(&pool, &first_id).await.unwrap(),
         Some(r#"{"n":1}"#.to_string())
     );
     assert_eq!(
-        get_config_snapshot(&pool, "cfg_two").await.unwrap(),
+        get_config_snapshot(&pool, &second_id).await.unwrap(),
         Some(r#"{"n":2}"#.to_string())
     );
+}
+
+#[tokio::test]
+async fn startup_scrub_removes_credentials_from_legacy_snapshots() {
+    let (_dir, pool) = test_pool().await;
+    let id = "cfg_legacy";
+    sqlx::query(
+        "INSERT INTO config_snapshots(config_snapshot_id, config_json, created_at) VALUES(?, ?, ?)",
+    )
+    .bind(id)
+    .bind(r#"{"custom_headers":["Authorization: Bearer legacy-secret","X-Safe: yes"]}"#)
+    .bind("2026-01-01T00:00:00Z")
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    scrub_legacy_snapshot_credentials(&pool).await.unwrap();
+    let stored = get_config_snapshot(&pool, id).await.unwrap().unwrap();
+    assert!(!stored.contains("legacy-secret"));
+    assert!(stored.contains("X-Safe: yes"));
 }

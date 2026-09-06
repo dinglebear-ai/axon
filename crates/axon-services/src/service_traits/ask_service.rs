@@ -21,8 +21,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use axon_api::mcp_schema::AskRequest;
-use axon_api::mcp_schema::SuggestRequest;
+use axon_api::action::AskRequest;
+use axon_api::action::SuggestRequest;
 use axon_api::result::{AskResult, AskTiming, EvaluateResult, EvaluateTiming, SuggestResult};
 
 use crate::context::ServiceContext;
@@ -32,6 +32,8 @@ use crate::transport::{AskTransportOverrides, apply_ask_overrides};
 pub struct ChatRequest {
     pub session_id: Option<String>,
     pub message: String,
+    pub loadout: Option<axon_api::loadout::LoadoutBinding>,
+    pub agent: Option<axon_api::agent::AgentTurnOptions>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -39,6 +41,8 @@ pub struct ChatResult {
     pub session_id: String,
     pub reply: String,
     pub model: Option<String>,
+    pub loadout: Option<axon_api::loadout::LoadoutResolution>,
+    pub agent: Option<axon_api::agent::AgentTurnResult>,
 }
 
 /// Error returned by a chat delta consumer.
@@ -75,7 +79,7 @@ pub trait AskService: Send + Sync {
     async fn chat_stream(
         &self,
         request: ChatRequest,
-        on_delta: ChatDeltaHandler,
+        mut on_delta: ChatDeltaHandler,
     ) -> anyhow::Result<ChatResult>;
     async fn evaluate(&self, request: EvaluationRequest) -> anyhow::Result<EvaluateResult>;
     async fn suggest(&self, request: SuggestRequest) -> anyhow::Result<SuggestResult>;
@@ -138,7 +142,45 @@ impl AskService for AskServiceImpl {
         if message.is_empty() {
             anyhow::bail!("chat message is required");
         }
-        let completion_request = chat_completion_request(self.ctx.cfg(), message, false);
+        if let Some(options) = request.agent.clone() {
+            let binding = request
+                .loadout
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("agent mode requires a revision-bound loadout"))?;
+            let resolved = crate::loadout_context::resolve(self.ctx.cfg(), binding).await?;
+            let prompt = format!("{}\n\n{}", resolved.prompt_context, message);
+            let agent = crate::agent_runtime::run(
+                self.ctx.cfg(),
+                &binding.loadout_id,
+                resolved.metadata.effective_revision,
+                &prompt,
+                options,
+                crate::agent_runtime::AgentTurnOwner {
+                    principal: "internal-service".into(),
+                    profile_id: binding.integration_id.clone(),
+                },
+                crate::agent_runtime::configured_completion(self.ctx.cfg().clone()),
+            )
+            .await?;
+            return Ok(ChatResult {
+                session_id: request
+                    .session_id
+                    .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
+                reply: agent.answer.clone().unwrap_or_default(),
+                model: axon_llm::configured_chat_model_from_config(self.ctx.cfg()),
+                loadout: Some(resolved.metadata),
+                agent: Some(agent),
+            });
+        }
+        let resolved = match request.loadout.as_ref() {
+            Some(binding) => Some(crate::loadout_context::resolve(self.ctx.cfg(), binding).await?),
+            None => None,
+        };
+        let prompt = resolved.as_ref().map_or_else(
+            || message.to_string(),
+            |context| format!("{}\n\n{}", context.prompt_context, message),
+        );
+        let completion_request = chat_completion_request(self.ctx.cfg(), &prompt, false);
         let model = completion_request.model.clone();
         let completion = axon_llm::complete_text(completion_request)
             .await
@@ -149,21 +191,36 @@ impl AskService for AskServiceImpl {
                 .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
             reply: completion.text,
             model,
+            loadout: resolved.map(|value| value.metadata),
+            agent: None,
         })
     }
 
     async fn chat_stream(
         &self,
         request: ChatRequest,
-        on_delta: ChatDeltaHandler,
+        mut on_delta: ChatDeltaHandler,
     ) -> anyhow::Result<ChatResult> {
         if request.message.trim().is_empty() {
             anyhow::bail!("chat message is required");
         }
+        if request.agent.is_some() {
+            let result = self.chat(request).await?;
+            on_delta(&result.reply).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            return Ok(result);
+        }
         // The streaming REST route historically validated with `trim()` but
         // passed the original message bytes to the provider. Preserve that
         // behavior at the service boundary.
-        let completion_request = chat_completion_request(self.ctx.cfg(), &request.message, true);
+        let resolved = match request.loadout.as_ref() {
+            Some(binding) => Some(crate::loadout_context::resolve(self.ctx.cfg(), binding).await?),
+            None => None,
+        };
+        let prompt = resolved.as_ref().map_or_else(
+            || request.message.clone(),
+            |context| format!("{}\n\n{}", context.prompt_context, request.message),
+        );
+        let completion_request = chat_completion_request(self.ctx.cfg(), &prompt, true);
         let model = completion_request.model.clone();
         let completion = axon_llm::complete_streaming(completion_request, on_delta)
             .await
@@ -174,6 +231,8 @@ impl AskService for AskServiceImpl {
                 .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
             reply: completion.text,
             model,
+            loadout: resolved.map(|value| value.metadata),
+            agent: None,
         })
     }
 
@@ -253,6 +312,8 @@ impl AskService for FakeAskService {
                 streamed: None,
                 normalize_ms: None,
             },
+            loadout: None,
+            agent: None,
         })
     }
 
@@ -263,6 +324,8 @@ impl AskService for FakeAskService {
                 .unwrap_or_else(|| "fake-session".to_string()),
             reply: format!("fake reply to: {}", request.message),
             model: Some("fake-chat-model".to_string()),
+            loadout: None,
+            agent: None,
         })
     }
 

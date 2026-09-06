@@ -34,11 +34,11 @@ run_with_coreutils() {
     exit "${rc}"
 }
 
-if command -v timeout >/dev/null 2>&1; then
+if [ "${AXON_TIMEOUT_FORCE_FALLBACK:-0}" != 1 ] && command -v timeout >/dev/null 2>&1; then
     run_with_coreutils timeout "$@"
 fi
 
-if command -v gtimeout >/dev/null 2>&1; then
+if [ "${AXON_TIMEOUT_FORCE_FALLBACK:-0}" != 1 ] && command -v gtimeout >/dev/null 2>&1; then
     run_with_coreutils gtimeout "$@"
 fi
 
@@ -47,16 +47,20 @@ fi
 # `sleep $secs` child reparented to init for the full budget. With a
 # poll loop we own the timing, so an early-finishing command exits
 # cleanly without leaking long-lived sleeps.
-"$@" &
+command -v perl >/dev/null 2>&1 || {
+    echo "with_timeout: perl is required when timeout/gtimeout are unavailable" >&2
+    exit 2
+}
+perl -MPOSIX -e 'POSIX::setsid() or die $!; exec @ARGV' "$@" &
 cmd_pid=$!
 
 deadline=$(( $(date +%s) + secs ))
 while kill -0 "${cmd_pid}" 2>/dev/null; do
     if [ "$(date +%s)" -ge "${deadline}" ]; then
         echo "with_timeout: '$*' exceeded ${secs}s budget — killed" >&2
-        kill -TERM "${cmd_pid}" 2>/dev/null || true
+        kill -TERM -- "-${cmd_pid}" 2>/dev/null || true
         sleep 1
-        kill -KILL "${cmd_pid}" 2>/dev/null || true
+        kill -KILL -- "-${cmd_pid}" 2>/dev/null || true
         wait "${cmd_pid}" 2>/dev/null || true
         exit 124
     fi

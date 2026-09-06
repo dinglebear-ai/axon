@@ -162,7 +162,7 @@ The Rust binary never reads most of them directly.
 
 | Key | Class | Placement | Notes | Source |
 |-----|-------|-----------|-------|--------|
-| `AXON_HTTP_PUBLISH` | compose-env | compose-interp | Port mapping `${AXON_HTTP_PUBLISH:-8001}:8001` | advanced.rs |
+| `AXON_HTTP_PUBLISH` | compose-env | compose-interp | Numeric host port in loopback-only mapping `127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001` | advanced.rs |
 | `AXON_IMAGE` | compose-env | compose-interp | Docker image tag override | advanced.rs |
 | `AXON_COMPOSE_PROJECT_NAME` | compose-env | compose-interp | Compose project identity for stack isolation | advanced.rs |
 | `AXON_CONTAINER_NAME` | compose-env | compose-interp | Axon service container-name override | advanced.rs |

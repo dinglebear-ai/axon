@@ -1,0 +1,66 @@
+name: E2E platform smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: e2e-platform-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  portable-smoke:
+    name: platform-smoke-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Configure persistent cleanup registry
+        shell: bash
+        run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
+      - name: Build the tested Axon binary
+        run: cargo build --locked --bin axon
+      - name: Run catalog-tagged portable smoke
+        run: python scripts/e2e/run-platform-smoke.py --binary target/debug/axon --report target/e2e/platform-smoke-${{ runner.os }}.json --tested-sha ${{ github.sha }}
+      - name: Outer ownership-checked teardown
+        if: always()
+        run: python scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --report target/e2e/outer-cleanup-${{ runner.os }}.json
+      - name: Restore trusted rolling history
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/e2e/restore-reliability-history.py --repository ${{ github.repository }} --workflow e2e-platform-smoke.yml --artifact e2e-reliability-history-${{ runner.os }} --evidence-artifact-template 'e2e-platform-smoke-${{ runner.os }}-{run_id}-{run_attempt}' --out target/e2e/prior-history.json --attestations-out target/e2e/prior-history-attestations.json
+      - name: Enforce attempt and quarantine governance
+        if: always()
+        run: python scripts/e2e/flake-governance.py --report target/e2e/platform-smoke-${{ runner.os }}.json --history target/e2e/prior-history.json --repository ${{ github.repository }} --workflow e2e-platform-smoke.yml --environment ci-${{ runner.os }} --reliability-out target/e2e/reliability-${{ runner.os }}.json --history-out target/e2e/history.json
+      - name: Retain release qualification input
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-platform-smoke-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/e2e/platform-smoke-${{ runner.os }}.json
+            target/e2e/reliability-${{ runner.os }}.json
+            target/e2e/outer-cleanup-${{ runner.os }}.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retain trusted rolling history
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: e2e-reliability-history-${{ runner.os }}
+          path: target/e2e/history.json
+          if-no-files-found: error
+          retention-days: 30

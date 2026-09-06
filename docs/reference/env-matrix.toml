@@ -11,6 +11,18 @@ compatibility = "canonical"
 reason = "Qdrant endpoint URL. URLs stay in env/CLI, not TOML."
 
 [[env]]
+key = "QDRANT_GRPC_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Qdrant gRPC endpoint URL. URLs stay in env/CLI, not TOML."
+
+[[env]]
 key = "AXON_QDRANT_URL"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"
@@ -380,7 +392,7 @@ url_or_path = false
 container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
-reason = "Docker Compose host publish address. Compose cannot read TOML."
+reason = "Numeric Docker Compose host port; the mapping is fixed to loopback. Compose cannot read TOML."
 
 [[env]]
 key = "AXON_IMAGE"
@@ -1487,6 +1499,78 @@ compatibility = "warn-env-override"
 reason = "Typed provider embedding preparation concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
+key = "AXON_PREP_MAX_IN_FLIGHT_BYTES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.prep-max-in-flight-bytes"
+compatibility = "warn-env-override"
+reason = "Typed preparation memory admission is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
+key = "AXON_EMBED_SCHEDULER_FLUSH_MS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.scheduler-flush-ms"
+compatibility = "warn-env-override"
+reason = "Typed embedding scheduler flush delay is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
+key = "AXON_EMBED_SCHEDULER_ENABLED"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.scheduler-enabled"
+compatibility = "warn-env-override"
+reason = "Typed bounded-scheduler selection is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
+key = "AXON_TEI_CLIENT_MAX_BATCH_TOKENS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.max-batch-tokens"
+compatibility = "warn-env-override"
+reason = "Typed TEI client batch-token capacity is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
+key = "AXON_VECTOR_UPSERT_EMBED_OVERLAP"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.vector-upsert-overlap-enabled"
+compatibility = "warn-env-override"
+reason = "Typed vector-upsert overlap selection is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
+key = "AXON_EMBED_PREPARED_BYTE_BUDGET"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "providers.embedding.prepared-byte-budget"
+compatibility = "warn-env-override"
+reason = "Typed prepared-generation memory admission budget is wired in config.toml; the env key remains accepted as a compatibility override."
+
+[[env]]
 key = "AXON_EMBED_MAX_CHUNKS_PER_DOC"
 classification = "move-toml"
 runtime_placement = "not-runtime"
@@ -2181,6 +2265,42 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_QDRANT_QUANTIZATION_ENABLED"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-example", "scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "qdrant.quantization-enabled"
+compatibility = "warn-env-override"
+reason = "Typed Qdrant quantization tuning belongs in config.toml; the environment remains a compatibility override."
+
+[[env]]
+key = "AXON_QDRANT_ASYNC_WRITES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-example", "scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "qdrant.async-writes"
+compatibility = "warn-env-override"
+reason = "Typed Qdrant write-wait policy belongs in config.toml; the environment remains a compatibility override."
+
+[[env]]
+key = "AXON_QDRANT_TRANSPORT"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-example", "scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "qdrant.transport"
+compatibility = "warn-env-override"
+reason = "Typed Qdrant transport selection belongs in config.toml; the environment remains a compatibility override."
 
 [[env]]
 key = "AXON_QDRANT_UPSERT_PARALLELISM"
@@ -3476,7 +3596,7 @@ url_or_path = false
 container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
-reason = "Optional minisign public key for the self-updater to verify release-archive signatures; inert (SHA256-only) when unset. Host-side CLI updater only."
+reason = "Mandatory release-authentication key embedded into published binaries and required by the installer; installation and self-update fail closed when absent. Host-side only."
 
 [[env]]
 key = "AXON_OPENAI_BASE_URL"
@@ -4257,3 +4377,86 @@ container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
 reason = "Compose-only Chrome service container-name override."
+[[env]]
+key = "QDRANT_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Qdrant bearer credential used by runtime and trusted live E2E providers."
+
+[[env]]
+key = "AXON_CHROME_BEARER_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Bearer credential for an authenticated remote Chrome management endpoint."
+
+[[env]]
+key = "AXON_TEI_BEARER_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Bearer credential for an authenticated remote TEI endpoint."
+
+[[env]]
+key = "AXON_GOOGLE_AUTHORIZE_ENDPOINT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OAuth authorization endpoint override."
+
+[[env]]
+key = "AXON_GOOGLE_TOKEN_ENDPOINT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OAuth token endpoint override."
+
+[[env]]
+key = "AXON_GOOGLE_JWKS_ENDPOINT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OIDC JWKS endpoint override."
+
+[[env]]
+key = "AXON_GOOGLE_ISSUER"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional Google-compatible OIDC issuer override."

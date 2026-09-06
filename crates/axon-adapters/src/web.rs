@@ -29,7 +29,8 @@ use axon_api::source::*;
 use uuid::Uuid;
 
 use crate::adapter::{
-    AcquisitionProgressSink, GeneratedArchive, Result, ReusePolicy, SourceAdapter,
+    AcquisitionProgressSink, AcquisitionStreamSink, GeneratedArchive, Result, ReusePolicy,
+    SourceAdapter, StreamedAcquisition,
 };
 use crate::boundary::{FetchProvider, RenderProvider};
 use crate::capability::AdapterCapability;
@@ -259,6 +260,90 @@ impl SourceAdapter for WebSourceAdapter {
         progress: Option<&dyn AcquisitionProgressSink>,
     ) -> Result<SourceAcquisition> {
         self.acquire_internal(plan, diff, progress).await
+    }
+
+    async fn acquire_streaming(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+        progress: Option<&dyn AcquisitionProgressSink>,
+        sink: &dyn AcquisitionStreamSink,
+    ) -> Result<()> {
+        validate_adapter(plan)?;
+        let manifest_items = diff
+            .added
+            .iter()
+            .chain(diff.modified.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        if plan.route.scope == SourceScope::Map
+            || plan
+                .route
+                .validated_options
+                .values
+                .contains_key("warc_path")
+            || manifest_items.is_empty()
+        {
+            let acquisition = self.acquire_with_progress(plan, diff, progress).await?;
+            return sink
+                .send(StreamedAcquisition {
+                    ordinal: 0,
+                    is_final: true,
+                    items_attempted: manifest_items.len() as u64,
+                    acquisition,
+                })
+                .await;
+        }
+        struct Sink<'a> {
+            plan: &'a SourcePlan,
+            diff: &'a SourceManifestDiff,
+            manifest_items: &'a [ManifestItem],
+            sink: &'a dyn AcquisitionStreamSink,
+        }
+        #[async_trait]
+        impl acquire::StreamingItemSink for Sink<'_> {
+            async fn send(&self, outcome: acquire::StreamedItemOutcome) -> Result<()> {
+                let mut header = stage_header(
+                    self.plan.job_id,
+                    "web_fetch",
+                    PipelinePhase::Fetching,
+                    usize::from(outcome.item.is_some()),
+                );
+                header.warnings = outcome.warnings;
+                let item = self.manifest_items[outcome.ordinal].clone();
+                self.sink
+                    .send(StreamedAcquisition {
+                        ordinal: outcome.ordinal,
+                        is_final: outcome.ordinal + 1 == self.manifest_items.len(),
+                        items_attempted: 1,
+                        acquisition: SourceAcquisition {
+                            header,
+                            source_id: self.plan.route.source.source_id.clone(),
+                            generation: self.diff.next_generation.clone(),
+                            adapter: self.plan.route.adapter.clone(),
+                            scope: self.plan.route.scope,
+                            manifest: diff_manifest(self.plan, self.diff, vec![item]),
+                            fetched_items: outcome.item.into_iter().collect(),
+                            artifacts: Vec::new(),
+                        },
+                    })
+                    .await
+            }
+        }
+        acquire::acquire_changed_items_streaming(
+            plan,
+            &manifest_items,
+            self.fetch.as_ref(),
+            self.render.as_ref(),
+            progress,
+            &Sink {
+                plan,
+                diff,
+                manifest_items: &manifest_items,
+                sink,
+            },
+        )
+        .await
     }
 
     fn supports_acquisition_prefetch(&self) -> bool {

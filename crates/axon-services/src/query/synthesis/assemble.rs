@@ -58,6 +58,8 @@ pub(crate) fn assemble_ask_result(
             total_elapsed_ms,
             timing,
         ),
+        loadout: None,
+        agent: None,
     }
 }
 
@@ -106,6 +108,8 @@ pub(crate) fn assemble_explain_result(
             streamed: None,
             normalize_ms: None,
         },
+        loadout: None,
+        agent: None,
     }
 }
 

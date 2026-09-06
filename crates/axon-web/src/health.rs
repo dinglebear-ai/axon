@@ -38,8 +38,7 @@ pub(super) async fn readyz(
     State(state): State<(AppState, Arc<axon_core::config::Config>)>,
 ) -> impl IntoResponse {
     let (_, cfg) = state;
-    let qdrant_ready =
-        probe_http_endpoint(&format!("{}/readyz", cfg.qdrant_url.trim_end_matches('/'))).await;
+    let qdrant_ready = axon_services::system::qdrant_ready(&cfg).await;
     let tei_ready = if cfg.tei_url.trim().is_empty() {
         false
     } else {

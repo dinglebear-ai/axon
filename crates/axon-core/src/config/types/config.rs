@@ -153,6 +153,13 @@ impl Default for ProjectionBatchConfig {
 
 #[derive(Clone)]
 pub struct Config {
+    /// Server-owned Labby integration used to resolve revision-bound ask/chat context.
+    pub labby_url: Option<String>,
+    pub labby_service_token: Option<String>,
+    pub labby_integration_id: Option<String>,
+    pub labby_runtime_identity: Option<String>,
+    pub labby_resolution_timeout_ms: u64,
+    pub labby_resolution_max_bytes: usize,
     /// The subcommand being executed (scrape, crawl, ask, etc.).
     pub command: CommandKind,
 
@@ -891,9 +898,40 @@ pub struct Config {
     /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.pool-max-inputs`. Clamped 64–65536. Default: 512.
     pub embed_pool_max_inputs: usize,
 
+    /// Source documents prepared per pipeline wave.
+    /// Env: `AXON_DOCUMENT_BATCH_SIZE`. Valid range: 1–1024. Default: 16.
+    pub document_batch_size: usize,
+
+    /// Document lifecycle statuses persisted per ledger write.
+    /// Env: `AXON_DOCUMENT_STATUS_BATCH_SIZE`. Valid range: 1–4096. Default: 64.
+    pub document_status_batch_size: usize,
+
+    /// Conservative maximum token budget for one TEI client batch.
+    /// Env: `AXON_TEI_CLIENT_MAX_BATCH_TOKENS`. TOML: `providers.embedding.max-batch-tokens`. Clamped 8192–1048576. Default: 65536.
+    pub embed_tei_max_batch_tokens: u32,
+
+    /// Use the bounded preparation/embedding scheduler.
+    /// Env: `AXON_EMBED_SCHEDULER_ENABLED`. TOML: `providers.embedding.scheduler-enabled`. Default: true.
+    pub embed_scheduler_enabled: bool,
+
+    /// Overlap the next embedding request with the current vector upsert.
+    /// Env: `AXON_VECTOR_UPSERT_EMBED_OVERLAP`. TOML: `providers.embedding.vector-upsert-overlap-enabled`. Default: true.
+    pub vector_upsert_embed_overlap: bool,
+
+    /// Maximum retained bytes admitted to the prepared-generation channel.
+    /// Env: `AXON_EMBED_PREPARED_BYTE_BUDGET`. TOML: `providers.embedding.prepared-byte-budget`. Clamped 1 MiB–4 GiB. Default: 128 MiB.
+    pub embed_prepared_byte_budget: usize,
     /// Concurrent source-document preparation tasks before embedding.
     /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `providers.embedding.prep-concurrency`. Clamped 1–64.
     pub embed_prep_concurrency: usize,
+
+    /// Maximum aggregate source-document bytes admitted to concurrent preparation.
+    /// Env: `AXON_PREP_MAX_IN_FLIGHT_BYTES`. TOML: `providers.embedding.prep-max-in-flight-bytes`. Clamped 1 MiB–u32::MAX. Default: 64 MiB.
+    pub embed_prep_max_in_flight_bytes: usize,
+
+    /// Maximum delay used to pool prepared chunks before an embedding request.
+    /// Env: `AXON_EMBED_SCHEDULER_FLUSH_MS`. TOML: `providers.embedding.scheduler-flush-ms`. Clamped 0–5000 ms. Default: 1500 ms.
+    pub embed_scheduler_flush_ms: u64,
 
     /// Maximum characters in a Markdown prose chunk. Intact fenced code
     /// blocks may exceed this limit rather than being cut.

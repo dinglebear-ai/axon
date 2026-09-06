@@ -56,6 +56,7 @@ struct FallbackConfig {
     has_fallback: bool,
 }
 
+#[derive(Debug)]
 struct PageCollectResult {
     results: Vec<serde_json::Value>,
     pages_visited: usize,
@@ -127,7 +128,7 @@ async fn collect_page_results(
     client: reqwest::Client,
     engine: Arc<DeterministicExtractionEngine>,
     cfg: FallbackConfig,
-) -> PageCollectResult {
+) -> Result<PageCollectResult, String> {
     let mut all_results: Vec<serde_json::Value> = vec![];
     let mut pages_visited = 0usize;
     let mut pages_with_data = 0usize;
@@ -140,10 +141,9 @@ async fn collect_page_results(
         let page = match rx.recv().await {
             Ok(page) => page,
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                log_warn(&format!(
-                    "broadcast receiver lagged, skipped {n} pages — consider increasing buffer"
+                return Err(format!(
+                    "incomplete extraction: broadcast receiver dropped {n} page(s)"
                 ));
-                continue;
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
         };
@@ -191,13 +191,13 @@ async fn collect_page_results(
     while let Some(joined) = fallback_tasks.join_next().await {
         drain_fallback_result(joined, &mut pages_with_data, &mut all_results, &mut metrics);
     }
-    PageCollectResult {
+    Ok(PageCollectResult {
         results: all_results,
         pages_visited,
         pages_with_data,
         metrics,
         parser_hits,
-    }
+    })
 }
 
 fn drain_fallback_result(
@@ -385,7 +385,8 @@ pub async fn run_extract_with_engine(
     let mut website = website.build().map_err(|_| "build website")?;
 
     let rx = website.subscribe(16);
-    let collect = tokio::spawn(collect_page_results(
+    let mut collectors = JoinSet::new();
+    collectors.spawn(collect_page_results(
         rx,
         http_client()?.clone(),
         Arc::clone(&engine),
@@ -401,7 +402,10 @@ pub async fn run_extract_with_engine(
         pages_with_data,
         metrics,
         parser_hits,
-    } = collect.await?;
+    } = collectors
+        .join_next()
+        .await
+        .expect("extraction collector task is present")??;
     if all_fallback_attempts_failed(&metrics, &results) {
         return Err("all LLM fallback extraction attempts failed".into());
     }

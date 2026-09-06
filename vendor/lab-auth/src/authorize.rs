@@ -1517,6 +1517,7 @@ pub mod tests {
                     "email".to_string(),
                     "profile".to_string(),
                 ],
+                ..GoogleConfig::default()
             },
             ..AuthConfig::default()
         }

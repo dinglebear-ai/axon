@@ -35,7 +35,7 @@ impl PaginationQuery {
     path = "/v1/sources",
     params(PaginationQuery),
     responses(
-        (status = 200, description = "Indexed sources", body = serde_json::Value),
+        (status = 200, description = "Indexed sources", body = axon_api::source::SourcesResponse),
         (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "discovery"
@@ -43,7 +43,7 @@ impl PaginationQuery {
 pub(crate) async fn sources(
     State((_state, cfg)): State<WebState>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<serde_json::Value>, HttpError> {
+) -> Result<Json<axon_api::source::SourcesResponse>, HttpError> {
     if let Some(domain) = query.domain.as_deref() {
         return services::system::sources_for_domain(
             &cfg,
@@ -52,16 +52,29 @@ pub(crate) async fn sources(
             query.cursor.as_deref(),
         )
         .await
-        .and_then(|result| {
-            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        .map(|result| {
+            axon_api::source::SourcesResponse::Domain(axon_api::source::DomainSourcesResponse {
+                domain: result.domain,
+                count: result.count,
+                limit: result.limit,
+                cursor: result.cursor,
+                next_cursor: result.next_cursor,
+                truncated: result.truncated,
+                urls: result.urls,
+            })
         })
         .map(Json)
         .map_err(HttpError::from_box);
     }
     services::system::sources(&cfg, query.pagination())
         .await
-        .and_then(|result| {
-            serde_json::to_value(result).map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+        .map(|result| {
+            axon_api::source::SourcesResponse::Indexed(axon_api::source::IndexedSourcesResponse {
+                count: result.count,
+                limit: result.limit,
+                offset: result.offset,
+                urls: result.urls,
+            })
         })
         .map(Json)
         .map_err(HttpError::from_box)

@@ -84,6 +84,119 @@ fn empty_range() -> SourceRange {
     }
 }
 
+fn source_document(index: usize) -> SourceDocument {
+    SourceDocument {
+        document_id: DocumentId::new(format!("source-doc-{index}")),
+        source_id: SourceId::new("source-batch-test"),
+        source_item_key: SourceItemKey::new(format!("item-{index}")),
+        canonical_uri: format!("memory://source-batch-test/{index}"),
+        content_kind: ContentKind::Markdown,
+        content: ContentRef::InlineText {
+            text: format!("document {index}"),
+        },
+        metadata: MetadataMap::new(),
+        title: None,
+        language: None,
+        path: None,
+        mime_type: Some("text/markdown".to_string()),
+        structured_payload: None,
+        artifact_id: None,
+        chunk_hints: Vec::new(),
+        parser_hints: Vec::new(),
+    }
+}
+
+#[test]
+fn generation_document_batches_obey_resolved_runtime_batch_size() {
+    let batches =
+        generation_document_batches((0..7).map(source_document).collect(), 3).collect::<Vec<_>>();
+
+    assert_eq!(batches.iter().map(Vec::len).collect::<Vec<_>>(), [3, 3, 1]);
+    assert_eq!(
+        batches
+            .into_iter()
+            .flatten()
+            .map(|document| document.document_id.0)
+            .collect::<Vec<_>>(),
+        (0..7)
+            .map(|index| format!("source-doc-{index}"))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn document_status_writes_are_bounded_ordered_and_complete() {
+    let ledger = axon_ledger::store::FakeLedgerStore::new();
+    let source_id = SourceId::new("status-batch-source");
+    ledger
+        .upsert_source(SourceSummary {
+            source_id: source_id.clone(),
+            canonical_uri: "memory://status-batch-source".to_string(),
+            display_name: "status batch source".to_string(),
+            source_kind: SourceKind::Memory,
+            adapter: AdapterRef {
+                name: "memory".to_string(),
+                version: "test".to_string(),
+            },
+            authority: AuthorityLevel::UserPinned,
+            status: LifecycleStatus::Running,
+            counts: SourceCounts {
+                items_total: 0,
+                items_changed: 0,
+                documents_total: 0,
+                chunks_total: 0,
+                vector_points_total: 0,
+                bytes_total: 0,
+            },
+            created_at: timestamp(),
+            updated_at: timestamp(),
+            tags: Vec::new(),
+            watch_id: None,
+            graph_node_ids: Vec::new(),
+            last_job_id: None,
+            last_refreshed_at: None,
+            user_label: None,
+        })
+        .await
+        .expect("seed source");
+    let statuses = (0..5)
+        .map(|index| DocumentStatus {
+            document_id: DocumentId::new(format!("status-doc-{index}")),
+            source_id: source_id.clone(),
+            source_item_key: SourceItemKey::new(format!("item-{index}")),
+            generation: Some(SourceGenerationId::new("1")),
+            status: DocumentLifecycleStatus::Vectorized,
+            updated_at: timestamp(),
+            chunk_count: 1,
+            vector_point_count: 1,
+            error: None,
+            cleanup_status: None,
+        })
+        .collect::<Vec<_>>();
+
+    write_document_statuses(&ledger, &statuses, 2)
+        .await
+        .expect("write bounded status batches");
+
+    let batches = ledger.document_status_update_batches().await;
+    assert_eq!(batches.iter().map(Vec::len).collect::<Vec<_>>(), [2, 2, 1]);
+    assert_eq!(
+        batches.into_iter().flatten().collect::<Vec<_>>(),
+        statuses
+            .iter()
+            .map(|status| status.document_id.clone())
+            .collect::<Vec<_>>(),
+        "every status must be written exactly once in input order"
+    );
+}
+
+#[test]
+fn only_the_last_vector_pool_of_the_final_source_batch_is_final() {
+    assert!(!is_final_vector_batch(false, 1, 2));
+    assert!(!is_final_vector_batch(true, 0, 2));
+    assert!(is_final_vector_batch(true, 1, 2));
+}
+
 #[test]
 fn oversized_document_is_split_into_bounded_chunk_windows() {
     let max_chunks = 512;
@@ -129,7 +242,7 @@ fn split_windows_merge_back_to_one_document_status_and_total_chunk_count() {
 #[test]
 fn redaction_failure_omits_only_the_forbidden_chunk() {
     let mut document = axon_vectors::testing::test_prepared_document();
-    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string();
+    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string(); // gitleaks:allow — synthetic redaction fixture
     let mut embeddings =
         axon_vectors::testing::test_embedding_result_for(&document, "text-embedding-test", 3);
 

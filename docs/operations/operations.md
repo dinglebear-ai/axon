@@ -167,12 +167,12 @@ Track progress:
 
 ```bash
 ./scripts/axon status
-./scripts/axon crawl list
-./scripts/axon crawl status <job-id>
-./scripts/axon crawl errors <job-id>
+./scripts/axon jobs list
+./scripts/axon jobs get <job-id>
+./scripts/axon jobs events <job-id>
 ```
 
-Same subcommand pattern for `extract`, `embed`, `ingest`.
+Every source projection uses this unified job lifecycle.
 
 ---
 
@@ -189,15 +189,11 @@ Stale reclaim runs when `SqliteJobBackend` starts and on the periodic worker
 watchdog tick. To force a reclaim immediately:
 
 ```bash
-./scripts/axon crawl recover
-./scripts/axon extract recover
-./scripts/axon embed recover
-./scripts/axon ingest recover
+./scripts/axon jobs recover
 ```
 
 This re-queues stale jobs as `pending`. Implemented in
-`src/cli/commands/crawl/subcommands.rs:60` and the equivalent
-ingest/extract/embed handlers via `services::jobs::recover_jobs`.
+`crates/axon-jobs` and exposed through the transport-neutral services facade.
 
 ### Process alive but job hung
 
@@ -209,7 +205,7 @@ required — see `src/jobs/CLAUDE.md` "Liveness Enforcement (Two Tiers)".
 ### Cancel a running job
 
 ```bash
-./scripts/axon crawl cancel <job-id>
+./scripts/axon jobs cancel <job-id>
 ```
 
 Cancellation flips status to `canceled` and signals the spider control
@@ -221,17 +217,17 @@ fetch will complete first.
 ## Clear and clean up jobs
 
 ```bash
-./scripts/axon crawl cleanup            # removes terminal jobs (completed/failed/canceled)
-./scripts/axon crawl clear              # DESTRUCTIVE: removes ALL crawl jobs (prompts unless --yes)
+./scripts/axon jobs cleanup             # removes terminal jobs (completed/failed/canceled)
+./scripts/axon jobs clear               # DESTRUCTIVE: removes all jobs (prompts unless --yes)
 ```
 
-Same pattern for `extract`, `embed`, `ingest`. `clear` requires confirmation
-unless `--yes` is set or stdout is not a TTY (see `src/core/ui.rs::confirm_destructive`).
+The unified lifecycle covers every source projection. `clear` requires
+confirmation unless `--yes` is set.
 
 For non-interactive automation:
 
 ```bash
-./scripts/axon crawl clear --yes
+./scripts/axon jobs clear --yes
 ```
 
 ---
@@ -511,7 +507,7 @@ For a clean shutdown that lets in-flight work finish:
 ```bash
 # 1. Stop accepting new submissions (don't run any new axon commands)
 # 2. Watch jobs drain
-watch -n 2 './scripts/axon status'
+watch -n 2 'AXON_NO_BUILD=1 ./scripts/axon status'
 # 3. Once all jobs are terminal:
 just stop
 just services-down
@@ -604,10 +600,10 @@ The script creates timestamped archives in `~/.axon/backups/` (override with `--
 **Restore:**
 
 ```bash
-# Qdrant — stop axon first, then:
-curl -X POST "${QDRANT_URL}/collections/axon/snapshots/recover" \
-  -H "Content-Type: application/json" \
-  -d "{\"location\": \"file:///path/to/axon-20260101-0200.tar.gz\"}"
+# Qdrant — stop axon first, then upload from the operator host. This works for
+# bundled and remote Qdrant deployments and uses QDRANT_API_KEY when set:
+./scripts/axon-backup.sh --collection axon \
+  --restore ~/.axon/backups/qdrant/axon-20260101-0200.snapshot --yes
 
 # SQLite — stop workers first, then:
 cp ~/.axon/backups/sqlite/jobs-20260101-0200.db ~/.axon/jobs.db
@@ -623,13 +619,10 @@ cp ~/.axon/backups/sqlite/jobs-20260101-0200.db ~/.axon/jobs.db
 | `Justfile` | `services-up`, `services-down`, `stop`, `dev` |
 | `scripts/axon` | Wrapper that auto-sources `~/.axon/.env` and runs `cargo run --bin axon` |
 | `scripts/dev-setup.sh` | First-run bootstrap |
-| `src/cli/commands/doctor.rs` | `axon doctor` entry point |
-| `src/core/health/doctor/sqlite.rs` | SQLite-runtime doctor probe |
-| `src/cli/commands/status.rs` | `axon status` entry point |
-| `src/cli/commands/crawl/subcommands.rs` | `crawl status/cancel/errors/list/cleanup/clear/recover` |
-| `src/cli/commands/migrate.rs` | `axon migrate` |
-| `src/jobs/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
-| `src/jobs/store.rs` | SQLite schema bootstrap + lifecycle SQL |
+| `crates/axon-cli/src/commands/doctor.rs` | `axon doctor` entry point |
+| `crates/axon-cli/src/commands/status.rs` | `axon status` entry point |
+| `crates/axon-jobs/src/` | Unified job schema, lifecycle, workers, and recovery |
+| `crates/axon-services/src/` | Transport-neutral operation facade |
 | `crates/axon-core/src/logging.rs` | `init_tracing`, `AXON_LOG_PATH`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
-| `src/core/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
+| `crates/axon-core/src/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
 | `src/core/paths.rs` | `axon_data_dir()`, `axon_data_base_dir()` |

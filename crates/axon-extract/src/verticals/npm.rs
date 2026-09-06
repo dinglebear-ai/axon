@@ -6,7 +6,6 @@
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "npm",
@@ -186,10 +185,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let encoded_name = pkg_name.replace('/', "%2F");
     let api_url = format!("https://registry.npmjs.org/{encoded_name}");
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let resp = client
         .get(&api_url)

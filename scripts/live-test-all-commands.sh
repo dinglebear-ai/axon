@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  # Bash 3.2 treats expansion of a declared-but-empty array as an unbound
+  # variable. Keep the harness usable on stock macOS Bash while retaining
+  # nounset enforcement on modern shells.
+  set +u
+fi
 
 # Registry-driven Axon CLI smoke harness.
 #
@@ -11,14 +17,28 @@ set -uo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MODE="live"
+CATALOG_SCENARIOS=()
+CATALOG_GROUP=""
+SHARD_INDEX=0
+SHARD_COUNT=1
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode)
       MODE="${2:-}"
       shift 2
       ;;
+    --scenario)
+      CATALOG_SCENARIOS+=("${2:-}")
+      shift 2
+      ;;
+    --scenario-group)
+      CATALOG_GROUP="${2:-}"
+      shift 2
+      ;;
+    --shard-index) SHARD_INDEX="${2:-}"; shift 2 ;;
+    --shard-count) SHARD_COUNT="${2:-}"; shift 2 ;;
     -h|--help)
-      echo "usage: $0 [--mode registry|scenarios|live]"
+      echo "usage: $0 [--mode registry|scenarios|live|catalog] [--scenario ID] [--scenario-group GROUP] [--shard-index N --shard-count N]"
       exit 0
       ;;
     *)
@@ -28,9 +48,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$MODE" in
-  registry|scenarios|live) ;;
+  registry|scenarios|live|catalog) ;;
   *)
-    echo "invalid mode '$MODE' (expected registry, scenarios, or live)" >&2
+    echo "invalid mode '$MODE' (expected registry, scenarios, live, or catalog)" >&2
     exit 2
     ;;
 esac
@@ -42,6 +62,9 @@ PARSER_JOBS="${AXON_LIVE_PARSER_JOBS:-4}"
 if ! [[ "$PARSER_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   echo "AXON_LIVE_PARSER_JOBS must be a positive integer" >&2
   exit 2
+fi
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  PARSER_JOBS=1
 fi
 TS="$(date +%Y%m%d-%H%M%S)"
 if [ -n "${AXON_LIVE_TEST_OUTDIR:-}" ]; then
@@ -55,7 +78,22 @@ else
     exit 2
   }
 fi
-LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
+if [ "$MODE" = "catalog" ]; then
+  command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 2; }
+  [ -x "$AXON_BIN" ] || { echo "Axon binary is not executable: $AXON_BIN" >&2; exit 2; }
+  adapter_args=(--axon-bin "$AXON_BIN" --outdir "$OUTDIR" --timeout-secs "$TIMEOUT_SECS" \
+    --shard-index "$SHARD_INDEX" --shard-count "$SHARD_COUNT")
+  [ -z "$CATALOG_GROUP" ] || adapter_args+=(--scenario-group "$CATALOG_GROUP")
+  for scenario_id in "${CATALOG_SCENARIOS[@]}"; do
+    adapter_args+=(--scenario "$scenario_id")
+  done
+  exec "$ROOT_DIR/scripts/e2e/adapters/cli.sh" "${adapter_args[@]}"
+fi
+outdir_identity="$(basename "$OUTDIR" | tr -c 'A-Za-z0-9_-' '_')"
+LIVE_RUN_ID="${TS//[^0-9]/}_${outdir_identity}_$$"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/live-cli-portability.sh"
+install_live_cli_portability_shims
 PORT_LEASE_ROOT="${TMPDIR:-/tmp}/axon-live-port-leases"
 mkdir -p "$PORT_LEASE_ROOT"
 port_seed="$(printf '%s' "$LIVE_RUN_ID" | cksum | awk '{print $1}')"
@@ -65,7 +103,7 @@ for port_attempt in $(seq 0 1999); do
   if mkdir "$PORT_LEASE_DIR" 2>/dev/null; then
     busy=0
     for port_offset in $(seq 0 9); do
-      if ss -H -ltn "sport = :$((LIVE_PORT_BASE + port_offset))" 2>/dev/null | grep -q .; then
+      if ! live_cli_port_is_available "$((LIVE_PORT_BASE + port_offset))"; then
         busy=1
         break
       fi
@@ -102,10 +140,6 @@ command -v jq >/dev/null 2>&1 || {
   echo "jq is required" >&2
   exit 2
 }
-command -v flock >/dev/null 2>&1 || {
-  echo "flock is required" >&2
-  exit 2
-}
 [ -x "$AXON_BIN" ] || {
   echo "Axon binary is not executable: $AXON_BIN" >&2
   exit 2
@@ -127,7 +161,6 @@ BEHAVIOR_GLOBAL_VALUE_OPTIONS="$OUTDIR/behavioral-global-value-options.txt"
 : >"$BEHAVIOR_SEMANTIC"
 LAST_BEHAVIOR_NAME=""
 LAST_BEHAVIOR_ARGS=()
-declare -A LIVE_LOG_COUNTS=()
 failures=0
 isolated_collection=""
 isolated_collections=()

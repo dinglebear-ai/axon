@@ -1,0 +1,17 @@
+{
+  // Operator-applied template. Deny-by-default: these are the only new grants.
+  "tagOwners": {
+    "tag:axon-ci-e2e": ["tag:axon-ci-issuer"],
+    "tag:axon-e2e-qdrant-gateway": ["group:axon-homelab-operators"],
+    "tag:axon-e2e-tei-gateway": ["group:axon-homelab-operators"],
+    "tag:axon-e2e-chrome-gateway": ["group:axon-homelab-operators"],
+    "tag:axon-e2e-llm-gateway": ["group:axon-homelab-operators"]
+  },
+  "grants": [
+    {"src": ["tag:axon-ci-e2e"], "dst": ["tag:axon-e2e-qdrant-gateway"], "ip": ["tcp:443"]},
+    {"src": ["tag:axon-ci-e2e"], "dst": ["tag:axon-e2e-tei-gateway"], "ip": ["tcp:443"]},
+    {"src": ["tag:axon-ci-e2e"], "dst": ["tag:axon-e2e-chrome-gateway"], "ip": ["tcp:443"]},
+    {"src": ["tag:axon-ci-e2e"], "dst": ["tag:axon-e2e-llm-gateway"], "ip": ["tcp:443"]}
+  ],
+  "ssh": []
+}

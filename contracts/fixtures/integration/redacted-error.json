@@ -1,0 +1,1 @@
+{"kind":"authentication_failed","retryable":false,"display_text":"Authentication failed. Reconnect this profile.","correlation_id":"corr_example","recovery":{"action":"reauthenticate"}}

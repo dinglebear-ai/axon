@@ -86,9 +86,11 @@ async fn sqlite_cleanup_debt_requires_existing_generation() {
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-missing-generation"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("src_sqlite"),
             generation: Some(SourceGenerationId::new("gen_missing")),
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Generation {
                 source_id: SourceId::new("src_sqlite"),
                 generation: SourceGenerationId::new("gen_missing"),
@@ -162,13 +164,59 @@ async fn sqlite_scalar_status_columns_use_schema_wire_values() {
             .expect("read document status");
     assert_eq!(document_status, "published");
 
+    let detail = store
+        .get_source_detail(SourceId::new("src_sqlite"))
+        .await
+        .expect("read public ledger detail")
+        .expect("source detail");
+    assert_eq!(detail.committed_generation, Some(gen1.generation.clone()));
+    let public_manifest = detail.manifest.expect("committed manifest");
+    assert_eq!(public_manifest.generation, gen1.generation);
+    assert_eq!(public_manifest.item_count, 1);
+    assert_eq!(public_manifest.items[0].source_item_key.0, "src/lib.rs");
+    assert_eq!(detail.documents.len(), 1);
+    assert_eq!(
+        detail.documents[0].status,
+        DocumentLifecycleStatus::Published
+    );
+    assert_eq!(detail.documents[0].chunk_count, 1);
+    assert_eq!(detail.documents[0].vector_point_count, 1);
+
+    let generation_less_status = serde_json::to_string(&DocumentStatus {
+        document_id: DocumentId::new("doc-sqlite"),
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: None,
+        status: DocumentLifecycleStatus::Discovered,
+        updated_at: ts(),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: None,
+        cleanup_status: None,
+    })
+    .expect("serialize legacy generation-less status");
+    sqlx::query("UPDATE document_status SET status_json = ?1 WHERE document_id = ?2")
+        .bind(generation_less_status)
+        .bind("doc-sqlite")
+        .execute(&store.pool)
+        .await
+        .expect("seed legacy generation-less status");
+    let detail = store
+        .get_source_detail(SourceId::new("src_sqlite"))
+        .await
+        .expect("generation-less document must not break source detail")
+        .expect("source detail");
+    assert!(detail.documents.is_empty());
+
     store
         .record_cleanup_debt(CleanupDebt {
             debt_id: CleanupDebtId::new("debt-sqlite"),
             job_id: JobId::new(Uuid::from_u128(1)),
+            origin_attempt: 1,
             source_id: SourceId::new("src_sqlite"),
             generation: Some(gen1.generation),
             kind: CleanupDebtKind::VectorDelete,
+            vector_collection: Some("axon".to_string()),
             selector: CleanupSelector::Document {
                 document_id: DocumentId::new("doc-sqlite"),
             },
@@ -266,6 +314,103 @@ async fn sqlite_reads_only_requested_manifest_items() {
         .map(|item| item.source_item_key.0.as_str())
         .collect::<Vec<_>>();
     assert_eq!(keys, vec!["README.md", "src/main.rs"]);
+}
+
+#[tokio::test]
+async fn sqlite_manifest_header_does_not_duplicate_normalized_items() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let expected = manifest_with_items(
+        &generation.generation.0,
+        vec![
+            manifest_item("README.md", &"a".repeat(256)),
+            manifest_item("src/lib.rs", &"b".repeat(256)),
+        ],
+    );
+
+    store
+        .put_manifest(expected.clone())
+        .await
+        .expect("put manifest");
+
+    let (manifest_json, item_json_bytes): (String, i64) = sqlx::query_as(
+        "SELECT manifest_json, (SELECT SUM(length(item_json)) FROM source_items \
+         WHERE source_id = source_manifests.source_id AND generation = source_manifests.generation) \
+         FROM source_manifests WHERE source_id = ?1 AND generation = ?2",
+    )
+    .bind(&expected.source_id.0)
+    .bind(&expected.generation.0)
+    .fetch_one(&store.pool)
+    .await
+    .expect("read stored representation");
+    let stored_header: serde_json::Value =
+        serde_json::from_str(&manifest_json).expect("manifest header json");
+    assert_eq!(stored_header["items"], serde_json::json!([]));
+    assert!(
+        manifest_json.len() < item_json_bytes as usize,
+        "aggregate row should remain a small header rather than duplicating item payloads"
+    );
+    let stored_hashes: Vec<String> = sqlx::query_scalar(
+        "SELECT content_hash FROM source_items WHERE source_id = ?1 AND generation = ?2 \
+         ORDER BY source_item_key",
+    )
+    .bind(&expected.source_id.0)
+    .bind(&expected.generation.0)
+    .fetch_all(&store.pool)
+    .await
+    .expect("read normalized hashes");
+    assert_eq!(stored_hashes, vec!["a".repeat(256), "b".repeat(256)]);
+
+    let actual = store
+        .get_manifest(expected.source_id.clone(), expected.generation.clone())
+        .await
+        .expect("read manifest")
+        .expect("manifest exists");
+    assert_eq!(actual, expected, "normalized rows reconstruct the manifest");
+}
+
+#[tokio::test]
+async fn sqlite_reads_legacy_full_manifest_rows() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let expected = manifest_with_items(
+        &generation.generation.0,
+        vec![manifest_item("legacy.rs", "legacy-hash")],
+    );
+    store
+        .put_manifest(expected.clone())
+        .await
+        .expect("seed normalized rows");
+    sqlx::query(
+        "UPDATE source_manifests SET manifest_json = ?1 WHERE source_id = ?2 AND generation = ?3",
+    )
+    .bind(serde_json::to_string(&expected).expect("legacy full manifest json"))
+    .bind(&expected.source_id.0)
+    .bind(&expected.generation.0)
+    .execute(&store.pool)
+    .await
+    .expect("write legacy aggregate row");
+    sqlx::query("DELETE FROM source_items WHERE source_id = ?1 AND generation = ?2")
+        .bind(&expected.source_id.0)
+        .bind(&expected.generation.0)
+        .execute(&store.pool)
+        .await
+        .expect("simulate a legacy aggregate-only database");
+
+    let actual = store
+        .get_manifest(expected.source_id.clone(), expected.generation.clone())
+        .await
+        .expect("read legacy manifest")
+        .expect("manifest exists");
+    assert_eq!(actual, expected);
 }
 
 #[tokio::test]

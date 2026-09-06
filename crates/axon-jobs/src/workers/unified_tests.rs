@@ -7,7 +7,7 @@ use axon_api::source::{
     LifecycleStatus, MetadataMap, Timestamp,
 };
 use tempfile::NamedTempFile;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, Semaphore};
 
 async fn test_pool() -> (SqlitePool, NamedTempFile) {
     let temp = NamedTempFile::new().unwrap();
@@ -133,6 +133,37 @@ async fn panicking_runner_marks_job_failed_not_stuck_running() {
     assert!(
         summary.last_error.is_some(),
         "a failed-by-panic job should carry an error explaining why"
+    );
+}
+
+#[tokio::test]
+async fn aborted_worker_task_is_observed_and_marks_job_failed() {
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Memory).await;
+    let claimed = claim_next_unified_job(&pool)
+        .await
+        .unwrap()
+        .expect("job should be claimable");
+    let mut tasks = tokio::task::JoinSet::new();
+    let handle = tasks.spawn(std::future::pending::<()>());
+    let mut claims = HashMap::from([(handle.id(), claimed)]);
+    tasks.abort_all();
+    let join = tasks
+        .join_next_with_id()
+        .await
+        .expect("aborted task completion");
+
+    observe_worker_join(&pool, &mut claims, join).await;
+
+    let summary = SqliteUnifiedJobStore::new(pool)
+        .get(job_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Failed);
+    assert_eq!(
+        summary.last_error.unwrap().code.to_string(),
+        "job_runner.task_terminated"
     );
 }
 
@@ -303,13 +334,13 @@ async fn running_cancel_reaches_runner_and_cannot_be_overwritten_by_completion()
     assert_eq!(summary.phase, PipelinePhase::Canceled);
 }
 
-/// Runner that tracks how many instances of itself are executing
-/// concurrently (peak observed), then sleeps briefly before completing —
-/// long enough that overlapping claims would show up as concurrency > 1 if
-/// the source-specific gate were not enforced.
+/// Runner that tracks how many instances are executing concurrently and then
+/// waits for an explicit test-owned completion permit.
 struct ConcurrencyTrackingRunner {
     current: Arc<std::sync::atomic::AtomicUsize>,
     peak: Arc<std::sync::atomic::AtomicUsize>,
+    started: Arc<Notify>,
+    release: Arc<Semaphore>,
 }
 
 #[async_trait::async_trait]
@@ -323,7 +354,12 @@ impl UnifiedJobRunner for ConcurrencyTrackingRunner {
         use std::sync::atomic::Ordering;
         let now = self.current.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(now, Ordering::SeqCst);
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        self.started.notify_one();
+        self.release
+            .acquire()
+            .await
+            .expect("test release semaphore remains open")
+            .forget();
         self.current.fetch_sub(1, Ordering::SeqCst);
         Ok(UnifiedJobOutcome::completed_without_counts())
     }
@@ -349,12 +385,16 @@ async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_genera
 
     let current = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Semaphore::new(0));
     let mut registry = JobRunnerRegistry::new();
     registry.register(
         UnifiedJobKind::Source,
         Arc::new(ConcurrencyTrackingRunner {
             current: Arc::clone(&current),
             peak: Arc::clone(&peak),
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
         }),
     );
     let registry = Arc::new(registry);
@@ -376,12 +416,23 @@ async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_genera
         1,
     ));
 
-    // Poll until every source job has reached a terminal state (bounded so a
-    // regression hangs the test instead of looping forever). Re-notify on
-    // every poll tick rather than relying on a single notify_one() racing the
-    // worker task's startup and first select! registration — the fallback
-    // POLL_INTERVAL is 5s, so a lost single notify would otherwise make this
-    // test flaky under load rather than a real regression.
+    // Admit and release one runner at a time. The next `started` notification
+    // is the deterministic proof that the preceding runner returned its
+    // source-lane permit; no elapsed-time overlap window is involved.
+    let completion = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        for _ in 0..SOURCE_JOBS {
+            notify.notify_one();
+            started.notified().await;
+            assert_eq!(
+                current.load(std::sync::atomic::Ordering::SeqCst),
+                1,
+                "the source-specific lane must admit exactly one runner"
+            );
+            release.add_permits(1);
+        }
+    });
+    completion.await.expect("all source runners should start");
+
     let store = SqliteUnifiedJobStore::new((*pool).clone());
     tokio::time::timeout(std::time::Duration::from_secs(20), async {
         loop {
@@ -405,7 +456,7 @@ async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_genera
             {
                 break;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
         }
     })
     .await
@@ -472,21 +523,9 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
         }
     }
 
-    struct ImmediateRunner;
-    #[async_trait::async_trait]
-    impl UnifiedJobRunner for ImmediateRunner {
-        async fn run(
-            &self,
-            _claimed: &UnifiedClaimedJob,
-            _store: &SqliteUnifiedJobStore,
-            _shutdown: &CancellationToken,
-        ) -> Result<UnifiedJobOutcome, ApiError> {
-            Ok(UnifiedJobOutcome::completed_without_counts())
-        }
-    }
-
     let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
+    let progressed_past_source_lane = Arc::new(Notify::new());
     let mut registry = JobRunnerRegistry::new();
     registry.register(
         UnifiedJobKind::Source,
@@ -495,7 +534,25 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
             release: Arc::clone(&release),
         }),
     );
-    registry.register(UnifiedJobKind::Prune, Arc::new(ImmediateRunner));
+    struct SignalingImmediateRunner(Arc<Notify>);
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for SignalingImmediateRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            _shutdown: &CancellationToken,
+        ) -> Result<UnifiedJobOutcome, ApiError> {
+            self.0.notify_one();
+            Ok(UnifiedJobOutcome::completed_without_counts())
+        }
+    }
+    registry.register(
+        UnifiedJobKind::Prune,
+        Arc::new(SignalingImmediateRunner(Arc::clone(
+            &progressed_past_source_lane,
+        ))),
+    );
     let registry = Arc::new(registry);
 
     let notify = Arc::new(Notify::new());
@@ -522,21 +579,24 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
         "a claimed runner must remain visible to process-level drain tracking"
     );
 
-    let store = SqliteUnifiedJobStore::new((*pool).clone());
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
-        loop {
-            notify.notify_one();
-            let summary = store.get(prune_job_id).await.unwrap().unwrap();
-            if summary.status == LifecycleStatus::Completed {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-    })
+    notify.notify_one();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        progressed_past_source_lane.notified(),
+    )
     .await
     .expect(
-        "the Prune job must complete without waiting for the Source jobs \
+        "the Prune runner must start without waiting for the Source jobs \
          (still deliberately parked on `release`) to drain",
+    );
+    let store = SqliteUnifiedJobStore::new((*pool).clone());
+    let prune_summary = store.get(prune_job_id).await.unwrap().unwrap();
+    assert!(
+        matches!(
+            prune_summary.status,
+            LifecycleStatus::Running | LifecycleStatus::Completed
+        ),
+        "the prune job must have been admitted while source jobs remained parked"
     );
 
     // Sanity: prove this test actually exercised the starvation scenario —
@@ -582,6 +642,7 @@ async fn job_parked_behind_full_source_lane_is_not_stale_recoverable() {
 
     let running_job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
     let parked_job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
+    enqueue_test_job(&pool, UnifiedJobKind::Prune).await;
 
     struct BlockingRunner {
         started: Arc<Notify>,
@@ -603,6 +664,7 @@ async fn job_parked_behind_full_source_lane_is_not_stale_recoverable() {
 
     let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
+    let progressed_past_source_lane = Arc::new(Notify::new());
     let mut registry = JobRunnerRegistry::new();
     registry.register(
         UnifiedJobKind::Source,
@@ -610,6 +672,23 @@ async fn job_parked_behind_full_source_lane_is_not_stale_recoverable() {
             started: Arc::clone(&started),
             release: Arc::clone(&release),
         }),
+    );
+    struct SentinelRunner(Arc<Notify>);
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for SentinelRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            _shutdown: &CancellationToken,
+        ) -> Result<UnifiedJobOutcome, ApiError> {
+            self.0.notify_one();
+            Ok(UnifiedJobOutcome::completed_without_counts())
+        }
+    }
+    registry.register(
+        UnifiedJobKind::Prune,
+        Arc::new(SentinelRunner(Arc::clone(&progressed_past_source_lane))),
     );
     let registry = Arc::new(registry);
 
@@ -630,9 +709,15 @@ async fn job_parked_behind_full_source_lane_is_not_stale_recoverable() {
         .expect("the first source job should start within 10s");
 
     let store = SqliteUnifiedJobStore::new((*pool).clone());
-    // Give the parked job every chance to have been (incorrectly) claimed if
-    // the fix regressed, without depending on a specific delay elsewhere.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // A sentinel behind the queued source job proves the claim loop made a
+    // complete pass while the source lane was occupied. At this observation
+    // point the parked source must still be queued.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        progressed_past_source_lane.notified(),
+    )
+    .await
+    .expect("claim loop should progress to the prune sentinel");
     let parked_summary = store.get(parked_job_id).await.unwrap().unwrap();
     assert_eq!(
         parked_summary.status,

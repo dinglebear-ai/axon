@@ -12,7 +12,7 @@ use crate::local_select::{LocalOptions, is_binary_path};
 use crate::manifest::item_identity;
 
 use super::LOCAL_DISCOVERY_HASH_MAX_THREADS;
-use super::local_io::{LocalRootHandle, content_fingerprint_from_file, fs_error};
+use super::local_io::{LocalRootHandle, content_fingerprint_and_spool_from_file, fs_error};
 use super::modified_at;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -106,6 +106,7 @@ pub(super) fn hash_file_candidates_parallel(
     options: &LocalOptions,
     base_uri: &str,
     candidates: &[LocalFileCandidate],
+    spool_dir: &Path,
 ) -> Result<Vec<ManifestItem>> {
     if candidates.is_empty() {
         return Ok(Vec::new());
@@ -114,9 +115,14 @@ pub(super) fn hash_file_candidates_parallel(
     if threads == 1 {
         let mut items = Vec::with_capacity(candidates.len());
         for candidate in candidates {
-            if let Some(item) =
-                manifest_item_from_candidate(plan, root_handle, options, base_uri, candidate)?
-            {
+            if let Some(item) = manifest_item_from_candidate(
+                plan,
+                root_handle,
+                options,
+                base_uri,
+                candidate,
+                spool_dir,
+            )? {
                 items.push(item);
             }
         }
@@ -136,6 +142,7 @@ pub(super) fn hash_file_candidates_parallel(
                         options,
                         base_uri,
                         candidate,
+                        spool_dir,
                     )? {
                         items.push(item);
                     }
@@ -165,6 +172,7 @@ pub(super) fn collect_manifest_items_parallel(
     base_uri: &str,
     root_for_keys: &Path,
     root: &Path,
+    spool_dir: &Path,
 ) -> Result<Vec<ManifestItem>> {
     let mut builder = local_walk_builder(root, options);
     builder.threads(local_hash_threads(usize::MAX));
@@ -200,6 +208,7 @@ pub(super) fn collect_manifest_items_parallel(
                 base_uri,
                 root_for_keys,
                 entry.into_path(),
+                spool_dir,
             ) {
                 Ok(Some(item)) => items
                     .lock()
@@ -275,12 +284,13 @@ pub(super) fn manifest_item_from_path(
     base_uri: &str,
     root_for_keys: &Path,
     path: PathBuf,
+    spool_dir: &Path,
 ) -> Result<Option<ManifestItem>> {
     let key = relative_key(root_for_keys, &path)?;
     if !options.should_include_file(plan.route.scope, &key, &path) {
         return Ok(None);
     }
-    manifest_item_from_open_path(plan, root_handle, options, base_uri, &key, &path)
+    manifest_item_from_open_path(plan, root_handle, options, base_uri, &key, &path, spool_dir)
 }
 
 fn manifest_item_from_candidate(
@@ -289,6 +299,7 @@ fn manifest_item_from_candidate(
     options: &LocalOptions,
     base_uri: &str,
     candidate: &LocalFileCandidate,
+    spool_dir: &Path,
 ) -> Result<Option<ManifestItem>> {
     manifest_item_from_open_path(
         plan,
@@ -297,6 +308,7 @@ fn manifest_item_from_candidate(
         base_uri,
         &candidate.key,
         &candidate.path,
+        spool_dir,
     )
 }
 
@@ -307,6 +319,7 @@ fn manifest_item_from_open_path(
     base_uri: &str,
     key: &str,
     path: &Path,
+    spool_dir: &Path,
 ) -> Result<Option<ManifestItem>> {
     let file = root_handle.open_file(key)?;
     let metadata = file
@@ -319,7 +332,8 @@ fn manifest_item_from_open_path(
     {
         return Ok(None);
     }
-    let content_hash = content_fingerprint_from_file(file, path)?;
+    let content_hash =
+        content_fingerprint_and_spool_from_file(file, path, &spool_path(spool_dir, key))?;
     let identity = item_identity(SourceKind::Local, base_uri, key)?;
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),
@@ -337,6 +351,11 @@ fn manifest_item_from_open_path(
         metadata: MetadataMap::new(),
         graph_hints: Vec::new(),
     }))
+}
+
+pub(super) fn spool_path(spool_dir: &Path, key: &str) -> PathBuf {
+    use sha2::{Digest, Sha256};
+    spool_dir.join(format!("{:x}.content", Sha256::digest(key.as_bytes())))
 }
 
 fn should_descend_entry(entry: &DirEntry) -> bool {

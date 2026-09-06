@@ -14,7 +14,6 @@
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "docs_rs",
@@ -45,6 +44,8 @@ const RESERVED_PATHS: &[&str] = &[
     "badge",
     "robots.txt",
 ];
+const MAX_RUSTDOC_COMPRESSED_BYTES: usize = 64 * 1024 * 1024;
+const MAX_RUSTDOC_DECOMPRESSED_BYTES: usize = 256 * 1024 * 1024;
 
 /// Returns `true` when the URL is a docs.rs page for a specific crate.
 /// Rejects known non-crate paths (releases, about, etc.) so they fall
@@ -82,10 +83,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         })?;
 
     let ua = ctx.api_ua();
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let api_docs = fetch_rustdoc_docs(client, &name, &version, ua)
         .await
@@ -178,7 +176,7 @@ async fn try_fetch_rustdoc_gz(
 ) -> Option<String> {
     const MAX_ATTEMPTS: u32 = 3;
     for attempt in 0..MAX_ATTEMPTS {
-        let resp = client.get(url).header("User-Agent", ua).send().await.ok()?;
+        let mut resp = client.get(url).header("User-Agent", ua).send().await.ok()?;
         let status = resp.status();
         if status.as_u16() == 429 {
             let wait_secs = resp
@@ -197,7 +195,19 @@ async fn try_fetch_rustdoc_gz(
         if !status.is_success() {
             return None;
         }
-        let bytes = resp.bytes().await.ok()?;
+        if resp
+            .content_length()
+            .is_some_and(|length| length > MAX_RUSTDOC_COMPRESSED_BYTES as u64)
+        {
+            return None;
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = resp.chunk().await.ok()? {
+            if bytes.len().saturating_add(chunk.len()) > MAX_RUSTDOC_COMPRESSED_BYTES {
+                return None;
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         let json = decompress_and_parse_gz(&bytes)?;
         return Some(rustdoc_to_markdown(&json, crate_name));
     }
@@ -205,11 +215,32 @@ async fn try_fetch_rustdoc_gz(
 }
 
 fn decompress_and_parse_gz(bytes: &[u8]) -> Option<serde_json::Value> {
+    decompress_and_parse_gz_with_limits(
+        bytes,
+        MAX_RUSTDOC_COMPRESSED_BYTES,
+        MAX_RUSTDOC_DECOMPRESSED_BYTES,
+    )
+}
+
+fn decompress_and_parse_gz_with_limits(
+    bytes: &[u8],
+    max_compressed_bytes: usize,
+    max_decompressed_bytes: usize,
+) -> Option<serde_json::Value> {
     use flate2::read::GzDecoder;
     use std::io::Read;
-    let mut decoder = GzDecoder::new(bytes);
+    if bytes.len() > max_compressed_bytes {
+        return None;
+    }
+    let decoder = GzDecoder::new(bytes);
     let mut buf = Vec::new();
-    decoder.read_to_end(&mut buf).ok()?;
+    decoder
+        .take(max_decompressed_bytes.saturating_add(1) as u64)
+        .read_to_end(&mut buf)
+        .ok()?;
+    if buf.len() > max_decompressed_bytes {
+        return None;
+    }
     serde_json::from_slice(&buf).ok()
 }
 

@@ -24,6 +24,9 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::OnceLock;
 
+mod git;
+use git::{should_skip_path, staged_content, staged_files};
+
 // ---------------------------------------------------------------------------
 // Pattern tables — organized by provider / category
 // ---------------------------------------------------------------------------
@@ -207,7 +210,7 @@ static SKIP_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "ico", "bmp", "webp", "tiff", "woff", "woff2", "ttf", "eot",
     "otf", "pdf", "zip", "tar", "gz", "bz2", "xz", "zst", "7z", "rar", "exe", "dll", "so", "dylib",
     "a", "o", "wasm", "bin", "mp3", "mp4", "avi", "mov", "mkv", "wav", "flac", "db", "sqlite",
-    "sqlite3",
+    "sqlite3", "jar", "icns",
 ];
 
 /// File name patterns to skip (test fixtures, example files).
@@ -215,13 +218,81 @@ static SKIP_NAME_PATTERNS: &[&str] = &[".env.example", "env.example", ".env.samp
 
 const MAX_FILE_BYTES: usize = 512 * 1024;
 
+/// Tracked files that intentionally contain synthetic credential canaries.
+/// The staged scanner still checks edits to these files; this allowlist only
+/// keeps the immutable whole-tree CI scan from rejecting committed fixtures.
+const TREE_FIXTURE_ALLOWLIST: &[&str] = &[
+    "apps/chrome-extension/test/redaction.test.js",
+    "crates/axon-codex/src/transport_tests.rs",
+    "crates/axon-core/src/redact/boundary_tests.rs",
+    "crates/axon-core/src/redact/detectors.rs",
+    "crates/axon-core/src/redact/detectors/spans.rs",
+    "crates/axon-core/src/redact/detectors_tests.rs",
+    "crates/axon-core/tests/fixtures/env/full.valid.env",
+    "crates/axon-parse/src/env_tests.rs",
+    "crates/axon-parse/src/tool_tests.rs",
+    "crates/axon-route/src/route_normalization_tests.rs",
+    "crates/axon-vectors/src/payload_tests.rs",
+    "crates/axon-vectors/src/point_tests.rs",
+    "docs/archive/pre-lite-mode/MIGRATIONS.md",
+    "docs/pipeline-unification/plans/2026-07-04-phase-7-parser-metadata-graph-gaps.md",
+    "tests/e2e/fixtures/security/google_oidc_provider.py",
+    "xtask/src/checks/secrets_tests.rs",
+];
+
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
 
 pub fn check(root: &Path) -> Result<()> {
     let staged = staged_files(root)?;
-    if staged.is_empty() {
+    scan_paths(&staged, |path| staged_content(root, path))
+}
+
+/// Scan every tracked file in the checked-out candidate tree.
+pub fn check_tree(root: &Path) -> Result<()> {
+    let output = Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(root)
+        .output()
+        .context("git ls-files for candidate-tree secret scan")?;
+    if !output.status.success() {
+        bail!("git ls-files failed during candidate-tree secret scan");
+    }
+    let paths = String::from_utf8(output.stdout)
+        .context("tracked paths are not valid UTF-8")?
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .filter(|path| !TREE_FIXTURE_ALLOWLIST.contains(path))
+        .filter(|path| {
+            root.join(path)
+                .metadata()
+                .map(|metadata| metadata.len() <= MAX_FILE_BYTES as u64)
+                .unwrap_or(true)
+        })
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    scan_paths(&paths, |path| {
+        let candidate = root.join(path);
+        let metadata = candidate
+            .symlink_metadata()
+            .with_context(|| format!("inspect tracked candidate file {path}"))?;
+        if metadata.file_type().is_symlink() {
+            return candidate
+                .read_link()
+                .map(|target| target.to_string_lossy().into_owned())
+                .with_context(|| format!("read tracked candidate symlink {path}"));
+        }
+        std::fs::read_to_string(candidate)
+            .with_context(|| format!("read tracked candidate file {path}"))
+    })
+}
+
+fn scan_paths<F>(paths: &[String], mut read: F) -> Result<()>
+where
+    F: FnMut(&str) -> Result<String>,
+{
+    if paths.is_empty() {
         return Ok(());
     }
 
@@ -230,14 +301,11 @@ pub fn check(root: &Path) -> Result<()> {
 
     let mut hits: Vec<String> = Vec::new();
 
-    for path in &staged {
+    for path in paths {
         if should_skip_path(path) {
             continue;
         }
-        let content = match staged_content(root, path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
+        let content = read(path)?;
         if content.len() > MAX_FILE_BYTES {
             continue;
         }
@@ -505,57 +573,6 @@ fn build_contextual_regex() -> Regex {
 // ---------------------------------------------------------------------------
 // Git helpers
 // ---------------------------------------------------------------------------
-
-fn staged_files(root: &Path) -> Result<Vec<String>> {
-    let out = Command::new("git")
-        .args(["diff", "--cached", "--name-only", "--diff-filter=AMR"])
-        .current_dir(root)
-        .output()
-        .context("failed to run git diff --cached")?;
-    if !out.status.success() {
-        bail!(
-            "git diff --cached failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
-    Ok(String::from_utf8(out.stdout)
-        .context("git diff output is not UTF-8")?
-        .lines()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect())
-}
-
-fn staged_content(root: &Path, path: &str) -> Result<String> {
-    let out = Command::new("git")
-        .args(["show", &format!(":{path}")])
-        .current_dir(root)
-        .output()
-        .context("failed to run git show")?;
-    if !out.status.success() {
-        bail!("git show :{path} failed");
-    }
-    // Binary files contain null bytes
-    if out.stdout.contains(&0u8) {
-        bail!("binary file");
-    }
-    String::from_utf8(out.stdout).context("file is not UTF-8")
-}
-
-fn should_skip_path(path: &str) -> bool {
-    let p = Path::new(path);
-    let ext = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_lowercase)
-        .unwrap_or_default();
-    if SKIP_EXTENSIONS.contains(&ext.as_str()) {
-        return true;
-    }
-    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    SKIP_NAME_PATTERNS.contains(&name)
-}
 
 #[cfg(test)]
 #[path = "secrets_tests.rs"]
