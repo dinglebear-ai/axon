@@ -64,7 +64,8 @@ class DestructiveGuardTests(unittest.TestCase):
     def test_admin_pack_has_real_composed_entry(self):
         text=Path(__file__).with_name("hermetic_entry.py").read_text()
         for contract in ("/v1/prune/plan", "/v1/prune/exec", '"reset"', '"migrate"',
-                         "guard.execute", "teardown.py", "spawn_owned_process"):
+                         "guard.execute", "teardown.py", "spawn_owned_process",
+                         '"chunk_text":"owned migration ownership marker"'):
             self.assertIn(contract,text)
 
 if __name__=="__main__": unittest.main()

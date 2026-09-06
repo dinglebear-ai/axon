@@ -339,7 +339,9 @@ def main():
   stdio=subprocess.run([descriptor["binary"],"mcp","--help"],env=env,capture_output=True,text=True,timeout=8)
   assert_clean_capture("MCP help stdout/stderr",stdio.stdout+stdio.stderr,[canary,*issued_tokens])
   if stdio.returncode or "transport" not in (stdio.stdout+stdio.stderr).casefold():raise RuntimeError("MCP stdio schema unavailable")
-  stdio_transport=taskwire.Stdio(Path(descriptor["binary"]),env,evidence/"mcp-stdio.stderr",str(manifest.path))
+  stdio_data=owned_root/"stdio-data";stdio_data.mkdir();manifest.register("temp_path",str(stdio_data))
+  stdio_env={**env,"AXON_DATA_DIR":str(stdio_data),"AXON_SQLITE_PATH":str(stdio_data/"jobs.db")}
+  stdio_transport=taskwire.Stdio(Path(descriptor["binary"]),stdio_env,evidence/"mcp-stdio.stderr",str(manifest.path))
   try:
    taskwire.initialize(stdio_transport)
    message,_=stdio_transport.request(taskwire.rpc(44,"tools/call",{"name":"axon","arguments":{"action":"capabilities"}}))
