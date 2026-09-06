@@ -81,6 +81,13 @@ def main():
   header,resources=manifest_api.load(manifest.path);adapter=providers.build(provider_config,header,manifest_api)["collection"]
   resource=next(item for item in resources if item.resource_type=="collection" and item.identity==collection)
   adapter.create_and_provision(resource)
+  if collection==migrate_source:
+   # The source collection's durable teardown marker is also returned by a
+   # real Qdrant scroll. Give that synthetic point valid migration text so the
+   # production migrator can process the complete owned collection.
+   marker_id=manifest_api.qdrant_ownership_point(header,resource)["id"]
+   qdrant(qbase,"POST",f"/collections/{collection}/points/payload",{"points":[marker_id],
+     "payload":{"chunk_text":"owned migration ownership marker"}})
   if named:
    indexes=json.loads(qstate.read_text())["collections"][run_id]["indexes"]
    for field,schema in indexes.items():qdrant(qbase,"PUT",f"/collections/{collection}/index/{field}",schema)
@@ -146,7 +153,7 @@ def main():
   _,again_result=cli_json(descriptor["binary"],["reset","--stores","artifacts","--json"],env)
   again=again_result.get("reset_plan",again_result)
   _,again_receipt=cli_json(descriptor["binary"],["reset","--stores","artifacts","--plan-id",again["plan_id"],"--yes","--json"],env)
-  # Migrate refuses a non-owned source collection and cannot change provider state.
+  # Migrate the owned source, then prove a foreign source is rejected.
   migrate=subprocess.run([descriptor["binary"],"migrate","--from",migrate_source,"--to",migrate_destination,"--json"],
     env=env,capture_output=True,text=True,timeout=10)
   if migrate.returncode!=0:raise RuntimeError(f"owned migrate failed: {migrate.stderr}")

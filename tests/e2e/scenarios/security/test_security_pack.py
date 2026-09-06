@@ -80,7 +80,8 @@ class SecurityPackTests(unittest.TestCase):
         self.assertTrue(entry.is_file())
         text=entry.read_text()
         for contract in ("http.run_probes", "mcp_auth.matrix", "post_source", "spawn_owned_process",
-                         "teardown.py", "http.inventory"):
+                         "teardown.py", "http.inventory", 'stdio_data=owned_root/"stdio-data"',
+                         '"AXON_SQLITE_PATH":str(stdio_data/"jobs.db")'):
             self.assertIn(contract,text)
 
 if __name__=="__main__": unittest.main()
