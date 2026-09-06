@@ -22,9 +22,9 @@ See the family contract for declared output paths.
 | `crates/axon-web/src/schema_registry/helpers.rs` | `sha256:2ba52309e46521a200a37950aea2edb5afc76ec1aa72417d9d0b777ed2b58856` |
 | `crates/axon-web/src/schema_registry/memory_routes.rs` | `sha256:0042da0f2f28c2e35a9e9aa620f1037c87b4634fa8ce04a411390c61b82d2c61` |
 | `docs/pipeline-unification/schemas/openapi-schema.md` | `sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7` |
-| `xtask/src/schemas/families.rs` | `sha256:18a853822432f4e514faad577fea407b9e7e944c74a21446637feb3795c02e1a` |
+| `xtask/src/schemas/families.rs` | `sha256:0aaf932d940307911b67c90b53dabdd226786c26effe7aabb323495e90795679` |
 | `xtask/src/schemas/families/bundles.rs` | `sha256:b2932485a582231afb5c91e581d418e5068a8d31edbd4764decb67c20d5ca250` |
-| `xtask/src/schemas/families/family_specs.rs` | `sha256:866a3b791e774f615ab31fe4cd568ed2f29085a3542e9a8fac4a2038ba0cfa37` |
+| `xtask/src/schemas/families/family_specs.rs` | `sha256:af9f8681886459c505adf11ddb4fedeec6076cf9f403c834c6029c2c614cd30b` |
 | `xtask/src/schemas/families/markdown.rs` | `sha256:f51e765aeb416c7c457d1d8535354b5e0b380169f257da9e4f0299b8fdc8b282` |
 | `xtask/src/schemas/schema_json.rs` | `sha256:09683a203e931d619a76fff0ab5abb04efbaac1ae9849bd763303d7f364759f8` |
 | `xtask/src/schemas/source_input.rs` | `sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da` |

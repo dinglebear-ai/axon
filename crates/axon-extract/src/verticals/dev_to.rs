@@ -6,7 +6,6 @@
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 #[cfg(test)]
 #[path = "dev_to_tests.rs"]
@@ -141,10 +140,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     // recency horizon.
     let api_url = article_by_path_api_url(username, slug);
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let data = get_json(client, &api_url, ctx).await?;
     tracing::debug!(

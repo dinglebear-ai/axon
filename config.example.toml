@@ -258,9 +258,26 @@
 # Max chunk inputs pooled into one native TEI embedding wave.
 # Env: AXON_EMBED_POOL_MAX_INPUTS
 # pool-max-inputs = 512
+# Env: AXON_TEI_CLIENT_MAX_BATCH_TOKENS
+# max-batch-tokens = 65536
+# Env: AXON_EMBED_SCHEDULER_ENABLED
+# scheduler-enabled = true
+# Env: AXON_VECTOR_UPSERT_EMBED_OVERLAP
+# vector-upsert-overlap-enabled = true
+# Maximum retained bytes admitted to the prepared-generation channel. Defaults
+# to 128 MiB and is clamped from 1 MiB through 4 GiB.
+# Env: AXON_EMBED_PREPARED_BYTE_BUDGET
+# prepared-byte-budget = 134217728
 # Concurrent source-document preparation tasks before embedding.
 # Env: AXON_EMBED_PREP_CONCURRENCY
 # prep-concurrency = 8
+# Maximum aggregate source-document bytes admitted to concurrent preparation.
+# Env: AXON_PREP_MAX_IN_FLIGHT_BYTES
+# prep-max-in-flight-bytes = 67108864
+# Maximum delay used to pool prepared chunks before an embedding request.
+# Set to 0 to flush each acquired wave immediately.
+# Env: AXON_EMBED_SCHEDULER_FLUSH_MS
+# scheduler-flush-ms = 1500
 # Optional circuit breakers after exact dedupe. `0` / unset disables the cap.
 # Env: AXON_EMBED_MAX_CHUNKS_PER_DOC, AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC
 # max-chunks-per-doc = 0
@@ -286,7 +303,7 @@
 # Env: AXON_QDRANT_UPSERT_BATCH_SIZE
 # upsert-batch-points = 1024
 # Env: AXON_QDRANT_UPSERT_PARALLELISM
-# write-concurrency = 1
+# write-concurrency = 2
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
 # Env: AXON_HYBRID_SEARCH
 # hybrid-enabled = true
@@ -316,8 +333,18 @@
 # Collection memory/latency tradeoffs for newly created collections.
 # Env: AXON_QDRANT_HNSW_ON_DISK
 # hnsw-on-disk = false
+# Enable scalar INT8 quantization for newly created collections.
+# Env: AXON_QDRANT_QUANTIZATION_ENABLED
+# quantization-enabled = false
 # Env: AXON_QDRANT_QUANTIZATION_ALWAYS_RAM
 # quantization-always-ram = true
+# Pipeline point batches with wait=false, then use an ordered wait=true write barrier.
+# Env: AXON_QDRANT_ASYNC_WRITES
+# async-writes = false
+# Point publication transport: "rest" or "grpc".
+# Env: AXON_QDRANT_TRANSPORT
+# transport = "rest"
+# Required when transport = "grpc": QDRANT_GRPC_URL (kept in ~/.axon/.env).
 
 [providers.llm]
 # Completion backend. AXON_LLM_BACKEND overrides this value.

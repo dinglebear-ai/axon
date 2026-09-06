@@ -1,0 +1,17 @@
+{
+  "component_content_checksums": {
+    "bytes": "3e682fc3206d098a35311640ed307c5ca88a4cdb9765c84fe5eb3210381604a0",
+    "chunking": "351882efc9115a33121a6c7acd9325fc293bdcf5d74ac065a7b0ffe1c63a02d3",
+    "retrieval": "347a3f239ccab35aad182f616eaee99fb186167a404e60d9b24ae9c339eae4ae",
+    "semantics": "8bf13074c176de43926c76b20769e93ca4d7e97f5be126f32aa453f6f3447e11"
+  },
+  "components": {
+    "bytes": "1.0.0",
+    "chunking": "1.0.0",
+    "retrieval": "1.0.0",
+    "semantics": "1.0.0"
+  },
+  "corpus_checksum": "45d98fca5480750912488ae81c88f510c9580b247d4f1f8ca4ec2776d76584e6",
+  "corpus_version": "1.0.0",
+  "schema_version": 1
+}

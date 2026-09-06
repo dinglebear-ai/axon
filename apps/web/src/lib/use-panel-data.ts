@@ -21,7 +21,9 @@ import { formatCommandResponse } from './command-format';
 import { collectDoctorServices, collectJobs, doctorCheckSummary, savedMessage } from '../features/jobs/job-helpers';
 import { mergeStatus, summarizeChecks, summarizeConfig } from './panel-components';
 import { AxonClient, type SourceRequest, type SourceResult } from '../api/axon-client';
-import { normalizeSourceEntries, sourceErrorMessage } from '../features/sources/source-helpers';
+import { normalizeSourceEntries, parseMaxPages, sourceErrorMessage } from '../features/sources/source-helpers';
+import { startCompletionDrivenPolling } from './panel-polling';
+import { requestPanelJson } from './panel-request';
 
 export function usePanelData() {
   const [token, setToken] = useState('');
@@ -50,7 +52,7 @@ export function usePanelData() {
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [message, setMessage] = useState('');
 
-  // Sources tab (GET/POST /v1/sources) — see source-helpers.ts / panel-types.ts
+  // Sources tab (GET/POST /api/panel/sources) — see source-helpers.ts / panel-types.ts
   // for why the list shape is defensively typed.
   const [sourcesResult, setSourcesResult] = useState<SourcesListResult | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(false);
@@ -64,7 +66,10 @@ export function usePanelData() {
   const [sourceSubmitResult, setSourceSubmitResult] = useState<SourceResult | null>(null);
   const [sourceSubmitError, setSourceSubmitError] = useState('');
 
-  const axonClient = useMemo(() => new AxonClient(), []);
+  const axonClient = useMemo(
+    () => new AxonClient({ pathPrefix: '/api/panel', headers: { 'x-axon-panel-token': token } }),
+    [token]
+  );
   const sourceEntries = useMemo(() => normalizeSourceEntries(sourcesResult), [sourcesResult]);
 
   const authedHeaders = useMemo(
@@ -141,16 +146,25 @@ export function usePanelData() {
       })
       .catch((error) => setMessage(String(error)));
 
-    void refreshAll();
+    void refreshAxonStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, authedHeaders]);
 
   useEffect(() => {
     if (!token) return;
-    const timer = window.setInterval(() => void refreshAll({ quiet: true }), 5000);
-    return () => window.clearInterval(timer);
+    return startCompletionDrivenPolling({
+      poll: () => refreshAxonStatus({ quiet: true }),
+      intervalMs: 5000,
+      isVisible: () => document.visibilityState === 'visible'
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, authedHeaders]);
+
+  useEffect(() => {
+    if (!token || activePanelTab !== 'dashboard') return;
+    void refreshDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activePanelTab]);
 
   useEffect(() => {
     if (!token) return;
@@ -245,7 +259,7 @@ export function usePanelData() {
     if (!options.quiet) setSourcesLoading(true);
     setSourcesMessage('');
     try {
-      const result = (await axonClient.sources({ limit: 50 })) as SourcesListResult;
+      const result = await axonClient.sources({ limit: 50 });
       setSourcesResult(result);
       setSourcesUpdatedAt(new Date().toLocaleTimeString());
     } catch (error) {
@@ -265,10 +279,12 @@ export function usePanelData() {
     try {
       const request: SourceRequest = { source, embed: sourceFormEmbed };
       if (sourceFormFamily !== 'auto') request.adapter = sourceFormFamily;
-      const maxPages = Number(sourceFormMaxPages.trim());
-      if (sourceFormMaxPages.trim() && Number.isFinite(maxPages) && maxPages >= 0) {
-        request.limits = { max_pages: maxPages };
+      const maxPages = parseMaxPages(sourceFormMaxPages);
+      if (!maxPages.ok) {
+        setSourceSubmitError(maxPages.message);
+        return;
       }
+      if (maxPages.value !== null) request.limits = { max_pages: maxPages.value };
       const result = await axonClient.submitSource(request);
       setSourceSubmitResult(result);
       await refreshSources({ quiet: true });
@@ -280,51 +296,48 @@ export function usePanelData() {
   }
 
   async function login() {
-    const res = await fetch('/api/panel/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
-    const body = await res.json();
-    if (!body.ok || !body.token) {
-      setMessage('Password rejected');
-      return;
+    try {
+      const body = await requestPanelJson<{ ok?: boolean; token?: string }>('/api/panel/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (!body.ok || !body.token) {
+        setMessage('Password rejected');
+        return;
+      }
+      window.sessionStorage.setItem(TOKEN_KEY, body.token);
+      setToken(body.token);
+      setPassword('');
+      setMessage('');
+    } catch (error) {
+      setMessage(`Login failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    window.sessionStorage.setItem(TOKEN_KEY, body.token);
-    setToken(body.token);
-    setPassword('');
-    setMessage('');
   }
 
   async function saveConfig() {
     if (activeConfigFile !== 'toml') return;
-    const res = await fetch('/api/panel/config', {
-      method: 'PUT',
-      headers: authedHeaders,
-      body: JSON.stringify({ raw_toml: config })
-    });
-    if (!res.ok) {
-      setMessage(await res.text());
-      return;
+    try {
+      const body = await requestPanelJson<SaveConfigResponse>('/api/panel/config', {
+        method: 'PUT',
+        headers: authedHeaders,
+        body: JSON.stringify({ raw_toml: config })
+      });
+      setMessage(body.message);
+      setLoadedConfig(config);
+    } catch (error) {
+      setMessage(`Config save failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const body = (await res.json()) as SaveConfigResponse;
-    setMessage(body.message);
-    setLoadedConfig(config);
   }
 
   async function saveEnvKey(key: string, value: string | null): Promise<boolean> {
     setEnvSaveBusy(key);
     try {
-      const res = await fetch('/api/panel/env', {
+      const body = await requestPanelJson<SaveConfigResponse>('/api/panel/env', {
         method: 'PUT',
         headers: authedHeaders,
         body: JSON.stringify({ key, value })
       });
-      if (!res.ok) {
-        setMessage(await res.text());
-        return false;
-      }
-      const body = (await res.json()) as SaveConfigResponse;
       setMessage(body.message);
       setEnvKeys((entries) =>
         entries.map((entry) =>
@@ -332,6 +345,9 @@ export function usePanelData() {
         )
       );
       return true;
+    } catch (error) {
+      setMessage(`Environment save failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
     } finally {
       setEnvSaveBusy(null);
     }

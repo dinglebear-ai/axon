@@ -33,10 +33,6 @@ fn selector_variants_round_trip() {
         PruneSelector::Collection {
             collection: "axon".into(),
         },
-        PruneSelector::JobRetention {
-            older_than_days: 30,
-        },
-        PruneSelector::Cache { older_than_days: 7 },
     ];
     for sel in selectors {
         let json = serde_json::to_string(&sel).unwrap();
@@ -64,7 +60,9 @@ fn plan_is_reviewable_as_json() {
 
 #[test]
 fn request_helpers_set_expected_flags() {
-    let sel = PruneSelector::Cache { older_than_days: 1 };
+    let sel = PruneSelector::Collection {
+        collection: "axon".to_string(),
+    };
     let dry = PruneRequest::dry_run(sel.clone(), "housekeeping");
     assert!(dry.dry_run);
     let exec = PruneRequest::execute(sel, "operator requested");

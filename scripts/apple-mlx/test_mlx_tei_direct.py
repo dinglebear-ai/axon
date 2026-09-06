@@ -33,8 +33,10 @@ class MlxTeiDirectTests(unittest.TestCase):
 
     def test_interval_union_and_idle_do_not_double_count_overlap(self):
         intervals = [(0, 10_000), (5_000, 20_000), (30_000, 40_000)]
+        self.assertEqual(SERVER.merge_intervals(intervals), [(0, 20_000), (30_000, 40_000)])
         self.assertEqual(SERVER.interval_union_us(intervals), 30)
         self.assertEqual(SERVER.interval_idle_us(intervals, 0, 50_000), 20)
+        self.assertEqual(SERVER.interval_window_metrics(intervals, 0, 50_000), (50, 30, 20))
 
     def test_non_loopback_requires_token(self):
         with self.assertRaisesRegex(ValueError, "requires MLX_TEI_AUTH_TOKEN"):

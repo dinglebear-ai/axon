@@ -171,6 +171,12 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/reset/plans/{plan_id}",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "POST",
         path: "/v1/reset/exec",
         auth: RestRouteAuth::Admin,
@@ -471,6 +477,12 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/prune/plans/{plan_id}",
+        auth: RestRouteAuth::Admin,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "POST",
         path: "/v1/prune/exec",
         auth: RestRouteAuth::Admin,
@@ -497,3 +509,7 @@ pub(super) use projection_routes::PROJECTION_ROUTES;
 #[path = "data/codex_routes.rs"]
 mod codex_routes;
 pub(super) use codex_routes::CODEX_ROUTES;
+
+#[path = "data/agent_turn_routes.rs"]
+mod agent_turn_routes;
+pub(super) use agent_turn_routes::AGENT_TURN_ROUTES;

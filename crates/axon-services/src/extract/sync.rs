@@ -22,9 +22,9 @@ use futures_util::StreamExt;
 use futures_util::stream;
 use std::collections::HashMap;
 use std::error::Error;
-use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncWrite, AsyncWriteExt, BufWriter};
 
 const MAX_INLINE_EXTRACT_ITEMS: usize = 25;
 
@@ -47,10 +47,11 @@ pub async fn extract_sync_with_progress(
     if let Some(parent) = items_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let mut items_file = std::fs::File::create(&items_path)?;
+    let mut items_file = BufWriter::new(tokio::fs::File::create(&items_path).await?);
 
     let agg =
         execute_extract_runs(cfg, urls, prompt, &mut items_file, progress_tx.as_ref()).await?;
+    items_file.flush().await?;
     let summary = build_extract_summary(cfg, urls, prompt, &agg)?;
     let summary_path = write_extract_summary(cfg, &summary).await?;
     let duration_ms = extract_start.elapsed().as_millis();
@@ -130,13 +131,16 @@ struct ExtractAggregation {
     sample_items: Vec<serde_json::Value>,
 }
 
-async fn execute_extract_runs(
+async fn execute_extract_runs<W>(
     cfg: &Config,
     urls: &[String],
     prompt: &str,
-    items_file: &mut std::fs::File,
+    items_file: &mut W,
     progress_tx: Option<&tokio::sync::watch::Sender<ExtractProgress>>,
-) -> Result<ExtractAggregation, Box<dyn Error>> {
+) -> Result<ExtractAggregation, Box<dyn Error>>
+where
+    W: AsyncWrite + Unpin,
+{
     let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
 
     let mut pending_runs = stream::iter(urls.iter().cloned())
@@ -152,7 +156,7 @@ async fn execute_extract_runs(
     let mut progress = ExtractProgress::new(urls.len());
     while let Some(run_result) = pending_runs.next().await {
         let (item_lines, completed_url, completed_items) = {
-            let run = run_result?;
+            let run = run_result.map_err(|error| std::io::Error::other(error.to_string()))?;
             let completed_url = run.start_url.clone();
             let completed_items = run.results.len();
             accumulate_run(&mut agg, &run);
@@ -183,31 +187,46 @@ async fn execute_extract_runs(
             (item_lines, completed_url, completed_items)
         };
 
-        for line in item_lines {
-            items_file.write_all(line.as_bytes())?;
-        }
+        write_item_lines(items_file, &item_lines).await?;
         progress = progress.completed_url(completed_url, completed_items);
         if let Some(progress_tx) = progress_tx {
             progress_tx.send_replace(progress.clone());
         }
     }
 
-    items_file.flush()?;
+    items_file.flush().await?;
     Ok(agg)
+}
+
+async fn write_item_lines<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    lines: &[String],
+) -> std::io::Result<()> {
+    for line in lines {
+        writer.write_all(line.as_bytes()).await?;
+    }
+    Ok(())
 }
 
 async fn run_single_extract(
     cfg: Config,
     wcfg: ExtractWebConfig,
     engine: Arc<DeterministicExtractionEngine>,
-) -> Result<ExtractRun, Box<dyn Error>> {
+) -> Result<ExtractRun, Box<dyn Error + Send + Sync>> {
     if should_try_vertical_extractor(&cfg, &wcfg) {
-        let ctx = VerticalContext::new(Arc::new(cfg));
-        match tokio::time::timeout(
-            vertical_extractor_timeout(&ctx.cfg),
-            dispatch_by_url(&wcfg.start_url, &ctx),
+        let extractor_timeout = vertical_extractor_timeout(&cfg);
+        let ctx = VerticalContext::new(
+            cfg.user_agent.clone(),
+            cfg.auto_dispatch_skip.clone(),
+            axon_core::http::http_client()?.clone(),
         )
-        .await
+        .with_credentials(axon_extract::VerticalCredentials {
+            github_token: cfg.github_token.clone(),
+            huggingface_token: std::env::var("HF_TOKEN").ok(),
+            reddit_client_id: cfg.reddit_client_id.clone(),
+            reddit_client_secret: cfg.reddit_client_secret.clone(),
+        });
+        match tokio::time::timeout(extractor_timeout, dispatch_by_url(&wcfg.start_url, &ctx)).await
         {
             Ok(Some(Ok(doc))) => return Ok(vertical_doc_to_extract_run(doc)),
             Ok(Some(Err(err))) => {
@@ -225,7 +244,9 @@ async fn run_single_extract(
             }
         }
     }
-    run_extract_with_engine(wcfg, engine).await
+    run_extract_with_engine(wcfg, engine)
+        .await
+        .map_err(|error| std::io::Error::other(error.to_string()).into())
 }
 
 fn should_try_vertical_extractor(cfg: &Config, wcfg: &ExtractWebConfig) -> bool {

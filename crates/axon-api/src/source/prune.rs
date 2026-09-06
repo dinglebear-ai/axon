@@ -79,24 +79,6 @@ pub enum PruneSelector {
     CleanupDebt { debt_id: CleanupDebtId },
     /// Prune a whole vector collection.
     Collection { collection: String },
-    /// Prune a single artifact by id (never by arbitrary path).
-    Artifact { artifact_id: ArtifactId },
-    /// Prune graph nodes/edges (orphan cleanup).
-    Graph {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        node_id: Option<GraphNodeId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        edge_id: Option<GraphEdgeId>,
-    },
-    /// Prune (forget) memory records.
-    Memory {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        memory_id: Option<MemoryId>,
-    },
-    /// Job-retention cleanup older than N days.
-    JobRetention { older_than_days: u32 },
-    /// Cache cleanup older than N days.
-    Cache { older_than_days: u32 },
 }
 
 /// A resolved, reviewable plan describing exactly what a prune would delete.
@@ -114,6 +96,19 @@ pub struct PrunePlan {
     pub estimated: PruneEstimate,
     pub steps: Vec<PruneStep>,
     pub warnings: Vec<SourceWarning>,
+}
+
+/// Durable, execution-bound prune plan as persisted by the service layer.
+///
+/// Transports expose this record so an operator can re-fetch the exact plan,
+/// checksum, and expiry immediately before destructive execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StoredPrunePlan {
+    pub plan: PrunePlan,
+    pub reason: String,
+    pub inventory_checksum: String,
+    pub expires_at_utc: String,
 }
 
 /// Estimated impact counts for a plan (what *would* be deleted).

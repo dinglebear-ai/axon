@@ -32,6 +32,43 @@ fn migrated_mcp_handlers_do_not_import_jobs_layers_directly() {
     }
 }
 
+#[test]
+fn mcp_transport_router_is_not_owned_by_axon_api() {
+    let api_schema = include_str!("../../../axon-api/src/action.rs");
+    assert!(!api_schema.contains("enum AxonRequest"));
+    assert!(!api_schema.contains("struct AxonToolResponse"));
+    assert!(!api_schema.contains("fn parse_axon_request"));
+    assert!(!include_str!("../../../axon-api/src/lib.rs").contains("pub mod mcp_schema"));
+}
+
+#[tokio::test]
+async fn concurrent_dashboard_reads_share_one_service_context() {
+    use axon_core::config::Config;
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let server = Arc::new(super::AxonMcpServer::new(Config {
+        sqlite_path: dir.path().join("jobs.db"),
+        ..Default::default()
+    }));
+    let mut reads = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let server = Arc::clone(&server);
+        reads.spawn(async move { server.base_service_context().await });
+    }
+
+    let first = reads
+        .join_next()
+        .await
+        .expect("one read")
+        .expect("task")
+        .expect("context");
+    while let Some(result) = reads.join_next().await {
+        let context = result.expect("task").expect("context");
+        assert!(Arc::ptr_eq(&first, &context));
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Handler dispatch tests (comment #17).
 //

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "seed": 731927,
+  "generator": "sha256-counter-v1",
+  "document_count": 10000,
+  "template": "Synthetic record {index}: token {token}; parent group-{group}.",
+  "group_modulus": 97,
+  "token_hex_chars": 24,
+  "selection_policy": "explicit-capacity-only"
+}

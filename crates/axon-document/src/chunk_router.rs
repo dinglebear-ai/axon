@@ -2,7 +2,6 @@
 
 use std::str::FromStr;
 
-#[cfg(test)]
 use axon_api::source::ChunkProfile;
 #[cfg(test)]
 use axon_api::source::ContentRef;
@@ -301,7 +300,15 @@ pub(crate) fn decision_for_profile(
 
 fn explicit_profile(doc: &SourceDocument) -> Result<Option<ChunkingProfile>, String> {
     if let Some(hint) = doc.chunk_hints.first() {
-        return Ok(Some(hint.profile.clone().into()));
+        // Local and git routes carry a broad code-symbol default before the
+        // adapter has classified each file. Do not let that default override
+        // the concrete content kind discovered for non-code files.
+        if hint.reason != "route default chunk profile"
+            || hint.profile != ChunkProfile::CodeSymbol
+            || doc.content_kind == ContentKind::Code
+        {
+            return Ok(Some(hint.profile.clone().into()));
+        }
     }
 
     for map in

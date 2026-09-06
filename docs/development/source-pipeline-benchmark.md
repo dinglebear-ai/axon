@@ -1,10 +1,105 @@
 ---
 title: "Source Pipeline Scheduler Benchmark"
 created: 2026-08-28
-updated: 2026-08-29
+updated: 2026-09-03
 ---
 
 # Source pipeline scheduler benchmark
+
+## Executable benchmark contracts
+
+The harness has two deliberately separate modes. `pinned-replay` consumes a
+versioned local replay fixture and supports deterministic pipeline comparisons;
+it does not establish live web performance. `live-cold-crawl` fetches the live
+site and supports cold-crawl qualification; network variance means it must be
+run in paired, back-to-back trials. The JSON records `benchmark_mode` and the
+corresponding `acceptance_claim` so results cannot silently cross those evidence
+boundaries.
+
+```bash
+# Deterministic replay
+AXON_BENCH_MODE=pinned-replay \
+AXON_BENCH_REPLAY_FIXTURE=/absolute/path/to/versioned-replay \
+AXON_BENCH_AXON_BIN=target/release/axon \
+bash scripts/bench-source-pipeline.sh
+
+# Live cold crawl
+AXON_BENCH_MODE=live-cold-crawl \
+AXON_BENCH_SOURCE=https://code.claude.com \
+AXON_BENCH_AXON_BIN=target/release/axon \
+bash scripts/bench-source-pipeline.sh
+```
+
+Both modes invoke the selected release binary directly with `--cache false`,
+`--scope site`, and no page or depth cap. By default the harness generates a
+globally unique `axon_bench_*` collection, proves it does not already exist,
+and treats it as owned. The collection is deleted on success, command failure,
+HUP, INT, and TERM. Temporary SQLite state is deleted on those same paths.
+Collection deletion failure fails an otherwise successful run. Set
+`AXON_BENCH_RETAIN_COLLECTION=1` only when residual inspection is intentional.
+`AXON_BENCH_RETAIN_WORK_DIR=1` preserves the isolated SQLite database and logs
+for a failed evidence gate; the default still removes all local benchmark state.
+An explicit `AXON_BENCH_COLLECTION` is accepted only with
+`AXON_BENCH_OWN_COLLECTION=1` and the reserved `axon_bench_` prefix; this keeps
+the cleanup boundary unambiguous.
+
+The result captures the provider's observed `/info` contract rather than model
+constants. It also captures the fully resolved `axon config list --json`
+throughput configuration with provenance and a SHA-256 hash. Keys that can hold
+credentials are replaced with `<redacted-secret>` and endpoints with
+`<redacted-endpoint>` before either the manifest or hash is emitted. Never put
+credentials in benchmark mode, source, collection, output, or comparison
+variables.
+
+`metal_busy_interval.seconds` is the union of provider-reported accelerator
+busy intervals within the single validated metrics epoch. It is not summed
+request duration. `wall_minus_metal_busy_seconds` is the wall-clock process
+interval less that union and is diagnostic timing, not sufficient evidence to rank paired runs. The timing
+object distinguishes:
+
+- `critical_path`: benchmark process wall time;
+- `stage_active`: persisted active stage durations;
+- `event_windows`: observational first/last event windows, never active time;
+- `stage_overlap_seconds`: intersections among active stage intervals;
+- `stage_union_seconds`: the union of active stage intervals; and
+- `unattributed_critical_path_seconds`: job critical-path time outside that union.
+
+The canonical job critical path is the interval from the earliest persisted
+start to the latest persisted completion for that job. Duplicate and
+overlapping stage rows contribute once to the union; their excess active sum is
+reported as overlap. Null/incomplete rows are excluded, and rows or events for
+other jobs are never considered. The result also emits top-level
+`critical_path_seconds`, `overlap_seconds`, `unattributed_seconds`,
+`unattributed_ratio`, and `attribution_ratio`. Attribution below 95% sets
+`attribution_gate`, `evidence_gate`, and `environment_comparable` false and adds
+`critical_path_attribution_below_95_percent` to the evidence reasons. A result
+with no completed timing interval fails attribution rather than passing
+vacuously.
+
+Queue wait, reservation wait, provider work, retries, publication, and
+checkpoint time are stage or telemetry intervals when the runtime emits them;
+they must not be inferred by adding overlapping event windows.
+
+The environment record includes machine/OS/CPU identity, machine load, the
+observed provider identity fingerprint, and provider load when `/info` exposes
+it. A control result's `environment.fingerprint_sha256` must be supplied as
+`AXON_BENCH_COMPARISON_ENV_SHA256` for the candidate. `environment_comparable`
+is true only when that stable fingerprint matches and one-minute load is at or
+below `AXON_BENCH_MAX_LOAD` (default 8). Missing baselines fail closed as false.
+Even matching environment and corpus hashes do not prove document, chunk, vector, and graph equivalence. Every run remains `single_arm_diagnostic`, with `ranking_eligible=false`, until authoritative paired equivalence is established separately.
+
+Record provider ownership and ensure no unrelated clients use the exclusive
+metrics epoch. Run multiple paired trials and report median and range; never
+rank results whose environment gate is false.
+
+Executable fake-tool coverage validates exact Axon argv, generated collection
+ownership, secret redaction, and cleanup after success, Axon failure, and TERM:
+
+```bash
+bash -n scripts/bench-source-pipeline.sh
+bash -n scripts/test-bench-source-pipeline.sh
+bash scripts/test-bench-source-pipeline.sh
+```
 
 The evidence phase uses a pinned local replay and aggregate MLX metric deltas.
 It is intentionally smaller than the final acceptance matrix: if the telemetry
@@ -13,22 +108,79 @@ idle time >=5%, scheduler implementation stops and optimization moves to the
 measured bottleneck.
 
 The harness creates a mode-0700 temporary state directory, uses a private
-SQLite database, never prints the source URL or subprocess output, rejects URL
-userinfo and command-substitution syntax, and sanitizes failures. MLX metrics
+SQLite database, never prints a raw source URL or unsanitized subprocess output,
+rejects URL userinfo and command-substitution syntax, and prints only sanitized
+stderr when the benchmark subprocess fails. MLX metrics
 must come from loopback and remain in one process epoch with an otherwise idle,
 freshly started service. Every request issued by the isolated crawl is validated
 as one uncontaminated aggregate delta.
 
-```bash
-AXON_BENCH_SOURCE=https://code.claude.com \
-AXON_BENCH_AXON_BIN=target/release/axon \
-bash scripts/bench-source-pipeline.sh
-```
+## Interpreting live crawl results
 
+Live `code.claude.com` acquisition is deliberately retained because it exposes
+pipeline starvation, but it is not deterministic. Cloudflare responses and
+network latency have moved the fetch phase by tens of seconds across otherwise
+equivalent runs. Use paired, interleaved arms and repeated medians; never rank a
+change from one absolute wall-clock sample.
+
+For tootie's RTX 4070 TEI deployment, use the manual cold-crawl control in
+`docs/perf/code-claude-cold-crawl-2026-08-12.md`. Record the exact TEI container
+image and command, GPU identity/activity, relevant TEI 429/restart counts, Axon
+configuration, collection name, state directory, and result counts. The MLX
+accelerator fields emitted by this harness are not interchangeable with NVIDIA
+telemetry.
+
+The 2026-09-03 RTX 4070 validation used 189 documents, 6,876 vector points,
+9,124 graph nodes, and 4,656 edges/evidence records. Raising TEI's input
+admission capacity from 128 to 1,024 eliminated `no permits available` 429s.
+Batching parser-produced graph node reads/writes reduced the comparable
+publishing-to-graph-tracking interval from 9.27 seconds to 2.47 seconds. A
+dynamic edge-batching experiment regressed that interval to 4.47 seconds and
+was rejected. These phase comparisons are diagnostic evidence, not a claim
+that unrelated live crawl wall times are directly comparable.
 The final scheduler comparison, if earned by this gate, separately measures a
 pinned fresh-corpus/warm-service run, cold-service startup, and a live full
 crawl. It adds corpus/vector equivalence, RSS, thermal state, SQLite admission,
 and Qdrant publication diagnostics.
+
+## Qdrant write-path sweep
+
+`scripts/qdrant-tune.py` replays the frozen `code.claude.com` Markdown corpus
+through isolated, benchmark-owned collections. A real sweep requires
+`--execute`; without it the script only prints the configuration matrix.
+
+```bash
+cargo build --release --bin axon
+python3 scripts/qdrant-tune.py --execute \
+  --binary target/release/axon \
+  --source ~/.axon/output/markdown \
+  --qdrant-url http://tootie:53333 \
+  --grpc-url http://tootie:53334 \
+  --tei-url http://tootie:52000 \
+  --repetitions 3 \
+  --output /tmp/axon-qdrant-sweep.json
+```
+
+The harness alternates forward and reverse variant order on successive
+repetitions, defaults to three samples per variant, and reports median, minimum,
+and maximum wall time. The report includes the frozen-corpus SHA-256, document
+count, credential-redacted endpoints, binary path, per-run Qdrant point/index
+state, source-command write receipt, a stable digest of every stored point,
+payload, and vector, and retrieval overlap. The digest excludes only the
+execution-specific `job_id` and `embedded_at` payload fields. Do not rank failed
+runs, unequal corpus hashes or counts, non-green
+collections, or variants with fewer than the requested samples. Collections
+are deleted on exit unless `--keep-collections` is supplied; deletion is
+restricted to names with the `axon_qdrant_bench_` prefix.
+
+The equivalence gate is deliberately strict: every successful arm must produce
+the same point count, have a matching source-command write receipt, produce the
+same full stored-data digest, reach a green collection, complete the requested
+repetition count, and retain exact top-10 result overlap for every fixed query.
+A lower overlap is diagnostic
+output, not a valid speed winner. Invalid evidence is still written for
+diagnosis, but the harness exits with status 2 and emits no timing summaries
+for arms without successful samples.
 
 ## 2026-08-28 evidence gate
 
@@ -42,7 +194,7 @@ This authorizes the scheduler implementation. These values are hypothesis
 evidence, not cutover evidence; the Task 10 pinned comparison must use the
 SQLite-derived committed-corpus hash and exact vector/ID parity checks.
 
-## 2026-08-28 Task 10 cutover decision: scheduler stays off
+## 2026-08-28 Task 10 decision: no throughput promotion; safety default retained
 
 The 2026-08-28 evidence gate above is superseded as cutover evidence. It was
 measured before the Apple MLX dispatch geometry was pinned to 16 rows / 8,192
@@ -81,9 +233,11 @@ still worse than not scheduling. Scheduler-off spends 55.3 s in vectorization
 against 53.4 s of Metal work, so 96.5% of that window is already accelerator
 compute; pool accumulation and the flush deadline only add latency.
 
-Task 10 requires at least a 5% median improvement to promote. No scheduler arm
-improves on scheduler-off in any thermal epoch, so `AXON_EMBED_SCHEDULER_ENABLED`
-remains `false` by default and the scheduler code stays dormant behind it.
+Task 10 requires at least a 5% median improvement to claim a throughput
+promotion, and no scheduler arm met that bar in any thermal epoch. The bounded
+scheduler is nevertheless the default for memory-admission and pipeline-safety
+reasons, not as a benchmark-backed speedup; set
+`AXON_EMBED_SCHEDULER_ENABLED=false` only as a rollback switch.
 
 ### The 2026-08-28 02:23-02:26 results are the best recorded, at about 50 s
 
@@ -95,8 +249,9 @@ against the launchd MLX service on port 8084. The persistent embedding cache was
 off (`providers.embedding.cache-enabled = false`, no env override, and no cache
 row written since 2026-08-27T13:45Z), so those runs embedded the corpus for real.
 
-Every number in the tables above is from 2026-08-28 07:00-11:45Z and lands at 69
-to 80 s. The cause is not configuration. It is the crawl:
+The scheduler-off and cross-pool-overlap arms in the 2026-08-28 07:00-11:45Z
+window land at 69 to 80 s. The observed spread tracks crawl duration rather
+than the tested configuration changes:
 
 | Run | Fetch phase | Wall |
 |---|---|---|

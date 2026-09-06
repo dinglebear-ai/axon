@@ -34,10 +34,16 @@ pub(super) async fn upsert_batches_rest(
         .iter()
         .map(|index| index.field_name.clone())
         .collect();
-    let url = http
-        .endpoint()
-        .collection_path(&batch.collection, "points?wait=true");
+    let wait = if store.async_writes { "false" } else { "true" };
+    let url = http.endpoint().collection_path(
+        &batch.collection,
+        &format!("points?wait={wait}&ordering=strong"),
+    );
 
+    let barrier_chunk = store
+        .async_writes
+        .then(|| completion_barrier_batch(&batch))
+        .flatten();
     let write_slots = store.write_slots();
     let provider_id = store.provider_id().0.clone();
     let mut pending = stream::iter(ChunkedUpsertBatches::new(batch, store.point_buffer()))
@@ -54,13 +60,40 @@ pub(super) async fn upsert_batches_rest(
                     )
                     .with_provider_id(provider_id)
                 })?;
-                upsert_chunk_rest(http, spec, &chunk, url, stage, MAX_UPSERT_REQUEST_BYTES).await
+                upsert_chunk_rest(
+                    http,
+                    spec,
+                    &chunk,
+                    url,
+                    stage,
+                    MAX_UPSERT_REQUEST_BYTES,
+                    store.async_writes,
+                )
+                .await
             }
         })
         .buffer_unordered(store.write_parallelism());
     let mut requests = 0u64;
     while let Some(result) = pending.next().await {
         requests = requests.saturating_add(result?);
+    }
+    drop(pending);
+    if let Some(barrier_chunk) = barrier_chunk {
+        let barrier_url = http
+            .endpoint()
+            .collection_path(&collection, "points?wait=true&ordering=strong");
+        requests = requests.saturating_add(
+            upsert_chunk_rest(
+                http,
+                spec,
+                &barrier_chunk,
+                &barrier_url,
+                stage,
+                MAX_UPSERT_REQUEST_BYTES,
+                false,
+            )
+            .await?,
+        );
     }
 
     Ok(VectorStoreWriteResult {
@@ -72,6 +105,28 @@ pub(super) async fn upsert_batches_rest(
         usage: request_usage(requests),
     })
 }
+
+fn completion_barrier_batch(batch: &VectorPointBatch) -> Option<VectorPointBatch> {
+    let point = batch.points.last()?.clone();
+    let sparse_vectors = batch.sparse_vectors.as_ref().map(|vectors| {
+        vectors
+            .iter()
+            .find(|vector| vector.chunk_id == point.chunk_id)
+            .cloned()
+            .into_iter()
+            .collect()
+    });
+    Some(VectorPointBatch {
+        batch_id: batch.batch_id,
+        collection: batch.collection.clone(),
+        points: vec![point],
+        model: batch.model.clone(),
+        dimensions: batch.dimensions,
+        sparse_vectors,
+        payload_indexes: Vec::new(),
+    })
+}
+
 async fn upsert_chunk_rest(
     http: &QdrantHttp,
     spec: &CollectionSpec,
@@ -79,6 +134,7 @@ async fn upsert_chunk_rest(
     url: &str,
     stage: ErrorStage,
     max_request_bytes: usize,
+    asynchronous: bool,
 ) -> Result<u64> {
     let batch_sparse = chunk
         .sparse_vectors
@@ -88,47 +144,83 @@ async fn upsert_chunk_rest(
         .map(|sparse| (sparse.chunk_id.0.as_str(), sparse))
         .collect::<HashMap<_, _>>();
     let max_request_bytes = max_request_bytes.max(1);
-    let mut ranges = Vec::with_capacity(1);
-    ranges.push(0..chunk.points.len());
+    let ranges = byte_bounded_ranges(chunk, spec, &batch_sparse, max_request_bytes, stage)?;
     let mut requests = 0u64;
 
-    while let Some(range) = ranges.pop() {
+    for range in ranges {
         let body = encode_upsert_body(
             &UpsertPointsBody::new(spec, &chunk.points[range.clone()], &batch_sparse),
             max_request_bytes,
             stage,
         )?;
 
-        let Some(body) = body else {
-            if range.len() == 1 {
-                let point = &chunk.points[range.start];
-                return Err(ApiError::new(
-                    "vector.qdrant.upsert_point_oversized",
-                    stage,
-                    "a single vector point exceeds the encoded qdrant request limit",
-                )
-                .with_context("chunk_id", point.chunk_id.0.clone())
-                .with_context(
-                    "encoded_bytes_min",
-                    max_request_bytes.saturating_add(1).to_string(),
-                )
-                .with_context("limit_bytes", max_request_bytes.to_string()));
-            }
+        let body = body.ok_or_else(|| {
+            ApiError::new(
+                "vector.qdrant.upsert_size_estimate_failed",
+                stage,
+                "qdrant upsert range exceeded its conservative byte estimate",
+            )
+        })?;
 
-            let midpoint = range.start + range.len() / 2;
-            // Push right first so the left half is sent first, preserving the
-            // deterministic input order while guaranteeing forward progress.
-            ranges.push(midpoint..range.end);
-            ranges.push(range.start..midpoint);
-            continue;
-        };
-
-        http.put_json_bytes(stage, url, body, "qdrant_upsert")
-            .await?;
+        if asynchronous {
+            http.put_json_bytes(stage, url, body, "qdrant_upsert_async")
+                .await?;
+        } else {
+            http.put_json_bytes(stage, url, body, "qdrant_upsert")
+                .await?;
+        }
         requests = requests.saturating_add(1);
     }
 
     Ok(requests)
+}
+
+fn byte_bounded_ranges(
+    chunk: &VectorPointBatch,
+    spec: &CollectionSpec,
+    sparse: &HashMap<&str, &SparseVector>,
+    limit: usize,
+    stage: ErrorStage,
+) -> Result<Vec<std::ops::Range<usize>>> {
+    let empty = serde_json::to_vec(&UpsertPointsBody::new(spec, &[], sparse))
+        .map_err(|error| ApiError::new("vector.qdrant.encode_failed", stage, error.to_string()))?
+        .len();
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    let mut estimated = empty;
+    for (index, point) in chunk.points.iter().enumerate() {
+        let encoded = serde_json::to_vec(&UpsertPointsBody::new(
+            spec,
+            std::slice::from_ref(point),
+            sparse,
+        ))
+        .map_err(|error| ApiError::new("vector.qdrant.encode_failed", stage, error.to_string()))?
+        .len();
+        if encoded > limit {
+            return Err(ApiError::new(
+                "vector.qdrant.upsert_point_oversized",
+                stage,
+                "a single vector point exceeds the encoded qdrant request limit",
+            )
+            .with_context("chunk_id", point.chunk_id.0.clone())
+            .with_context("encoded_bytes_min", encoded.to_string())
+            .with_context("limit_bytes", limit.to_string()));
+        }
+        // A singleton contains the fixed wrapper. Its delta from an empty
+        // body is the point payload; reserve punctuation for both dense and
+        // sparse arrays so the final range is encoded exactly once.
+        let contribution = encoded.saturating_sub(empty).saturating_add(4);
+        if index > start && estimated.saturating_add(contribution) > limit {
+            ranges.push(start..index);
+            start = index;
+            estimated = empty;
+        }
+        estimated = estimated.saturating_add(contribution);
+    }
+    if start < chunk.points.len() {
+        ranges.push(start..chunk.points.len());
+    }
+    Ok(ranges)
 }
 
 fn encode_upsert_body(

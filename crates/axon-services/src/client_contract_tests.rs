@@ -2,7 +2,7 @@ use super::client_contract::{
     ClientExtractMode, ClientExtractRequest, ClientRoutePreference, RestExtractRequest,
     RestMemoryRequest, rest_route_contracts,
 };
-use axon_api::mcp_schema::{MemoryRequest, MemorySubaction};
+use axon_api::action::{MemoryRequest, MemorySubaction};
 use axon_core::config::RenderMode;
 use std::collections::BTreeSet;
 

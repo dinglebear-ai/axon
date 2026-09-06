@@ -1,5 +1,7 @@
+import { Activity } from "lucide-react";
 import { memo } from "react";
 
+import { WorkspaceHeader, WorkspaceSurface } from "@/components/palette/WorkspaceSurface";
 import { Button } from "@/components/ui/aurora/button";
 import {
   arrField,
@@ -57,7 +59,7 @@ function JobRow({
         {url ?? (id ? shortId(id) : "—")}
       </span>
       <span className="status-job-meta">
-        {id ? <code>{shortId(id)}</code> : null}
+        {id ? <span>{shortId(id)}</span> : null}
         {attempts !== undefined ? <span>attempt {attempts}</span> : null}
       </span>
     </>
@@ -99,7 +101,17 @@ export const StatusView = memo(function StatusView({
   const totalJobs = families.reduce((sum, [, jobs]) => sum + jobs.length, 0);
 
   return (
-    <div className="output-body status-view aurora-scrollbar">
+    <WorkspaceSurface className="output-body status-view">
+      <WorkspaceHeader
+        icon={Activity}
+        eyebrow="Runtime Queue"
+        title={degraded ? "Runtime Degraded" : "Runtime Healthy"}
+        description="Active work, queue distribution, and provider-reported errors."
+        metrics={[
+          { label: "Active Jobs", value: totalJobs },
+          { label: "Errors", value: errors.length },
+        ]}
+      />
       <div className="status-summary">
         <span
           className={
@@ -156,6 +168,6 @@ export const StatusView = memo(function StatusView({
           </section>
         ))
       )}
-    </div>
+    </WorkspaceSurface>
   );
 });

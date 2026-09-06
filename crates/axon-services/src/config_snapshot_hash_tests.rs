@@ -44,3 +44,23 @@ fn from_json_is_deterministic() {
     assert_eq!(a, b);
     assert_ne!(a, config_snapshot_id_from_json(r#"{"collection":"other"}"#));
 }
+
+#[test]
+fn canonical_material_id_matches_jobs_persistence_boundary() {
+    let snapshot = snapshot("qwen3");
+    let material = snapshot.canonical_material();
+
+    assert_eq!(
+        config_snapshot_id(&snapshot).0,
+        axon_jobs::config_snapshot_store::config_snapshot_id_from_json(&material)
+    );
+}
+
+#[test]
+fn canonical_material_is_valid_json_for_jobs_persistence() {
+    let material = snapshot("qwen3").canonical_material();
+    let value: serde_json::Value = serde_json::from_str(&material).unwrap();
+
+    assert_eq!(value["source_kind"], "web");
+    assert_eq!(value["max_items"], serde_json::Value::Null);
+}

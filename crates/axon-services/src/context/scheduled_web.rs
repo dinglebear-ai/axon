@@ -142,11 +142,14 @@ fn map_reserved<T>(
 fn scheduler_error(error: SchedulerError, stage: ErrorStage, provider_id: &str) -> ApiError {
     let code = match error {
         SchedulerError::RequestTooLarge => "provider.scheduler.request_too_large",
+        SchedulerError::InvalidConfig(_) => "provider.scheduler.invalid_config",
         SchedulerError::QueueFull => "provider.scheduler.queue_full",
         SchedulerError::WaitTimeout => "provider.scheduler.wait_timeout",
         SchedulerError::StaleFence => "provider.scheduler.stale_fence",
         SchedulerError::Queued => "provider.scheduler.queued",
         SchedulerError::Database(_) => "provider.scheduler.database",
+        SchedulerError::DatabaseState(_) => "provider.scheduler.database_state",
+        SchedulerError::RollbackFailed { .. } => "provider.scheduler.rollback_failed",
     };
     ApiError::new(code, stage, error.to_string()).with_provider_id(provider_id)
 }

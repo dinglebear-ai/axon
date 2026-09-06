@@ -4,7 +4,6 @@
 //! - default prune is dry-run unless explicitly executing
 //! - destructive prune requires `axon:admin`
 //! - source/generation vector deletes are generation-fenced
-//! - artifact deletes are artifact-id based, never arbitrary path based
 //!
 //! See `docs/pipeline-unification/runtime/pruning-contract.md`.
 
@@ -22,7 +21,7 @@ pub enum PruneDenied {
     /// A destructive request lacked explicit confirmation.
     ConfirmationRequired,
     /// The selector names a boundary this build cannot execute a delete
-    /// against yet (only `Source`/`Generation` vector prunes are wired).
+    /// against in this facade (internal cleanup debt uses its own executor).
     /// Refused rather than silently reporting a no-op "success".
     Unsupported { selector: String, guidance: String },
     /// The generation-fence lookup itself failed before any delete was

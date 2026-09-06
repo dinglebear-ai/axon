@@ -9,6 +9,36 @@ pub(crate) use audit::record_resolver_denial;
 use spider::url::Url;
 use std::net::IpAddr;
 
+#[cfg(all(feature = "test-util", debug_assertions))]
+fn e2e_dns_override(host: &str) -> Option<Vec<IpAddr>> {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+    static CALLS: LazyLock<Mutex<HashMap<String, usize>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    let encoded = std::env::var("AXON_E2E_DNS_SEQUENCE").ok()?;
+    let (_, values) = encoded.split(';').find_map(|entry| {
+        let (name, values) = entry.split_once('=')?;
+        (name == host).then_some((name, values))
+    })?;
+    let sequence: Vec<IpAddr> = values
+        .split(',')
+        .filter_map(|value| value.parse().ok())
+        .collect();
+    if sequence.is_empty() {
+        return None;
+    }
+    let mut calls = CALLS.lock().ok()?;
+    let index = calls.entry(host.to_string()).or_default();
+    let value = sequence[(*index).min(sequence.len() - 1)];
+    *index += 1;
+    Some(vec![value])
+}
+
+#[cfg(not(all(feature = "test-util", debug_assertions)))]
+fn e2e_dns_override(_host: &str) -> Option<Vec<IpAddr>> {
+    None
+}
+
 use super::error::HttpError;
 use super::normalize::normalize_url;
 
@@ -160,6 +190,9 @@ pub async fn validate_url_with_dns(url: &str) -> Result<(), HttpError> {
     }
 
     let port = parsed.port_or_known_default().unwrap_or(80);
+    if let Some(ips) = e2e_dns_override(host) {
+        return validate_resolved_ips(host, ips);
+    }
     let addrs = tokio::net::lookup_host((host, port))
         .await
         .map_err(|error| HttpError::DnsResolution {
@@ -297,10 +330,16 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
         Box::pin(async move {
             type DnsError = Box<dyn std::error::Error + Send + Sync>;
 
-            let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host(format!("{host}:0"))
-                .await
-                .map_err(|e| Box::new(e) as DnsError)?
-                .collect();
+            let addrs: Vec<std::net::SocketAddr> = if let Some(ips) = e2e_dns_override(&host) {
+                ips.into_iter()
+                    .map(|ip| std::net::SocketAddr::new(ip, 0))
+                    .collect()
+            } else {
+                tokio::net::lookup_host(format!("{host}:0"))
+                    .await
+                    .map_err(|e| Box::new(e) as DnsError)?
+                    .collect()
+            };
 
             let (allowed, blocked): (Vec<_>, Vec<_>) = addrs
                 .into_iter()

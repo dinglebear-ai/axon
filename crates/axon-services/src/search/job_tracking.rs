@@ -16,10 +16,7 @@
 
 use std::future::Future;
 
-use axon_api::source::{
-    AuthSnapshot, JobDescriptor, JobExecutionMode, JobPriority, JobStatusUpdate, LifecycleStatus,
-    OperationKind, PipelinePhase, Severity, SourceError,
-};
+use axon_api::source::{AuthSnapshot, JobExecutionMode, JobPriority, OperationKind};
 
 use crate::context::ServiceContext;
 
@@ -49,92 +46,22 @@ where
     .ok()
     .flatten();
 
-    if let Some(descriptor) = &descriptor {
-        mark_running(ctx, descriptor).await;
+    if let Some(descriptor) = &descriptor
+        && let Err(error) = crate::jobs::start_operation_job(ctx, descriptor).await
+    {
+        tracing::warn!(job_id = %descriptor.job_id.0, %error, "research: failed to record running job status");
     }
 
     let result = op().await;
 
     if let Some(descriptor) = descriptor {
-        let outcome_message = result.as_ref().err().map(ToString::to_string);
-        mark_terminal(ctx, &descriptor, outcome_message).await;
+        let outcome = result.as_ref().map(|_| ()).map_err(ToString::to_string);
+        if let Err(error) = crate::jobs::complete_operation_job(ctx, &descriptor, outcome).await {
+            tracing::warn!(job_id = %descriptor.job_id.0, %error, "research: failed to record terminal job status");
+        }
     }
 
     result
-}
-
-/// Transition a just-created research job from `Queued` to `Running`.
-async fn mark_running(ctx: &ServiceContext, descriptor: &JobDescriptor) {
-    let Some(store) = ctx.job_store() else {
-        return;
-    };
-    if let Err(error) = store
-        .update_status(JobStatusUpdate {
-            job_id: descriptor.id,
-            source_id: None,
-            status: LifecycleStatus::Running,
-            phase: PipelinePhase::Preparing,
-            stage_id: None,
-            counts: None,
-            current: None,
-            message: None,
-            error: None,
-        })
-        .await
-    {
-        tracing::warn!(
-            job_id = %descriptor.id.0,
-            error = %error,
-            "research: failed to record running job status"
-        );
-    }
-}
-
-/// Transition a research job to its terminal status: `Completed` when
-/// `error_message` is `None`, `Failed` (carrying the message) otherwise.
-async fn mark_terminal(
-    ctx: &ServiceContext,
-    descriptor: &JobDescriptor,
-    error_message: Option<String>,
-) {
-    let Some(store) = ctx.job_store() else {
-        return;
-    };
-    let (status, error) = match error_message {
-        None => (LifecycleStatus::Completed, None),
-        Some(message) => (
-            LifecycleStatus::Failed,
-            Some(SourceError {
-                code: "job.operation_failed".to_string(),
-                severity: Severity::Failed,
-                message,
-                source_item_key: None,
-                retryable: false,
-                provider_id: None,
-                cause: None,
-            }),
-        ),
-    };
-    if let Err(error) = store
-        .update_status(JobStatusUpdate {
-            job_id: descriptor.id,
-            source_id: None,
-            status,
-            phase: PipelinePhase::Preparing,
-            stage_id: None,
-            counts: None,
-            current: None,
-            message: None,
-            error,
-        })
-        .await
-    {
-        tracing::warn!(
-            job_id = %descriptor.id.0,
-            error = %error,
-            "research: failed to record terminal job status"
-        );
-    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use crate::extract as extract_svc;
 use crate::screenshot as screenshot_svc;
 use crate::summarize as summarize_svc;
 use crate::types::ClientActionError;
-use axon_api::mcp_schema::{
+use axon_api::action::{
     EndpointsRequest, ExtractRequest, ExtractSubaction, ScreenshotRequest, SummarizeRequest,
 };
 use axon_core::config::{Config, ConfigOverrides};

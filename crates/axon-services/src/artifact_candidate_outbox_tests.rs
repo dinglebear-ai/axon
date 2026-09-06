@@ -1,4 +1,23 @@
 use super::*;
+
+#[tokio::test]
+async fn shutdown_aborts_and_joins_registered_drain() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let outbox = ArtifactCandidateOutbox::new(root.path());
+    assert!(outbox.begin_drain());
+    let task = tokio::spawn(std::future::pending::<()>());
+    outbox.register_drain_task(task);
+
+    tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        outbox.shutdown_drain(),
+    )
+    .await
+    .expect("supervised shutdown must be bounded");
+
+    assert!(!outbox.draining.load(Ordering::Acquire));
+    assert!(outbox.drain_cancelled());
+}
 use axon_api::source::{
     ARTIFACT_CANDIDATE_SCHEMA_VERSION, ArtifactCandidateId, MetadataMap, Timestamp,
 };
@@ -146,6 +165,28 @@ fn drain_request_is_not_lost_during_an_active_pass() {
     assert!(outbox.continue_or_finish_drain());
     outbox.start_drain_pass();
     assert!(!outbox.continue_or_finish_drain());
+}
+
+#[test]
+fn retry_exhaustion_releases_runner_without_consuming_queued_drain() {
+    let outbox = ArtifactCandidateOutbox::new("unused");
+    assert!(outbox.begin_drain());
+    outbox.start_drain_pass();
+
+    // A producer queues another supervised pass while the current pass is
+    // consuming its final retry attempt.
+    assert!(!outbox.begin_drain());
+    assert!(
+        outbox.finish_exhausted_drain(),
+        "the active runner must own the queued follow-up pass"
+    );
+
+    outbox.start_drain_pass();
+    assert!(!outbox.finish_exhausted_drain());
+    assert!(
+        outbox.begin_drain(),
+        "runner exit after the follow-up pass must release drain ownership"
+    );
 }
 
 #[cfg(unix)]

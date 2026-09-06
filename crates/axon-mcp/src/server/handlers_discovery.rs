@@ -45,6 +45,8 @@ impl AxonMcpServer {
             .chat(axon_services::service_traits::ask_service::ChatRequest {
                 session_id: req.session_id,
                 message: message.to_string(),
+                loadout: None,
+                agent: None,
             })
             .await
             .map_err(|error| logged_internal_error("chat.complete", error.as_ref()))?;
@@ -170,7 +172,7 @@ impl AxonMcpServer {
                 "name": "axon",
                 "version": env!("CARGO_PKG_VERSION"),
             },
-            "contract_version": axon_api::mcp_schema::MCP_CONTRACT_VERSION,
+            "contract_version": crate::schema::MCP_CONTRACT_VERSION,
             "actions": actions,
             "providers": providers,
         });

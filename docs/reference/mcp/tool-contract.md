@@ -10,7 +10,7 @@ result.
 > Live source of truth: [`tool-schema.md`](tool-schema.md) (160 lines) and
 > [`tool-schema.json`](tool-schema.json). Contract source:
 > [`docs/pipeline-unification/surfaces/tool-contract.md`](../../pipeline-unification/surfaces/tool-contract.md).
-> Implementation: `crates/axon-api/src/mcp_schema.rs`, `crates/axon-mcp/src/server.rs`.
+> Implementation: `crates/axon-mcp/src/schema.rs`, `crates/axon-mcp/src/server.rs`.
 
 ## Canonical envelope
 
@@ -117,5 +117,5 @@ Removed legacy actions (`vertical_scrape`, `purge`, `dedupe`, and
 before dispatch. Use `source` or a focused source projection for indexing and
 `prune` for cleanup.
 
-If the MCP surface changes, update `crates/axon-api/src/mcp_schema.rs` and
+If the MCP action router or response envelope changes, update `crates/axon-mcp/src/schema.rs` and
 re-run `python3 scripts/generate_mcp_schema_doc.py` in the same PR.

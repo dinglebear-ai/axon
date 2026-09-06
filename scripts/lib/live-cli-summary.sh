@@ -48,7 +48,9 @@ build_behavioral_coverage_report() {
   while IFS= read -r encoded; do
     name="$(printf '%s' "$encoded" | base64 --decode | jq -r '.name')"
     path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
-    mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
+    path=()
+    while IFS= read -r path_part; do path+=("$path_part"); done \
+      < <(printf '%s' "$path_json" | jq -r '.[]')
     help_log="$OUTDIR/logs/behavior-help-$(printf '%s' "$name" | tr ' /' '__').log"
     timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${path[@]}" --help >"$help_log" 2>&1
     printf '%s\t%s\n' "$name" "__command__" >>"$BEHAVIOR_EXPECTED"

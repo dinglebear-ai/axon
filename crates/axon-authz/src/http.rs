@@ -36,7 +36,12 @@ use crate::{
     AXON_ADMIN_SCOPE, AXON_EXECUTE_SCOPE, AXON_FULL_ACCESS_SCOPE, AXON_LOCAL_SCOPE,
     AXON_READ_SCOPE, AXON_WRITE_SCOPE,
 };
-use axum::{body::Body, http::Request, middleware::Next, response::Response};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
 use lab_auth::{AuthLayer, state::AuthState};
 
 const AXON_ISSUABLE_SCOPES: &[&str] = &[
@@ -299,69 +304,7 @@ pub async fn build_auth_policy(
     let static_token_active = static_token.is_some();
 
     if oauth_active {
-        // Build lab-auth AuthState from env vars. The AuthConfigBuilder reads
-        // from a Vec<(String,String)> source so we never call std::env::var
-        // inside lab-auth — all values come from our typed extraction here.
-        let public_url = std::env::var("AXON_PUBLIC_URL")
-            .ok()
-            .filter(|s| !s.trim().is_empty());
-        let google_client_id = std::env::var("AXON_GOOGLE_CLIENT_ID")
-            .ok()
-            .filter(|s| !s.trim().is_empty());
-        let google_client_secret = std::env::var("AXON_GOOGLE_CLIENT_SECRET")
-            .ok()
-            .filter(|s| !s.trim().is_empty());
-        let admin_email = std::env::var("AXON_AUTH_ADMIN_EMAIL")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_default();
-
-        // lab-auth's AuthConfigBuilder is configured below with
-        // .env_prefix("AXON_MCP"), so every key pushed here must carry that
-        // prefix (e.g. AXON_MCP_AUTH_MODE, AXON_MCP_PUBLIC_URL) even though
-        // the real, user-facing env vars we read from above are unprefixed
-        // (AXON_AUTH_MODE, AXON_PUBLIC_URL, per .env.example) — these two
-        // naming schemes are unrelated; this vars Vec is an internal,
-        // synthetic source for the builder, not the real environment.
-        let mut vars: Vec<(String, String)> = Vec::with_capacity(16);
-        push_var(&mut vars, "AXON_MCP_AUTH_MODE", "oauth");
-        if let Some(url) = public_url.as_deref() {
-            push_var(&mut vars, "AXON_MCP_PUBLIC_URL", url);
-        }
-        if let Some(id) = google_client_id.as_deref() {
-            push_var(&mut vars, "AXON_MCP_GOOGLE_CLIENT_ID", id);
-        }
-        if let Some(secret) = google_client_secret.as_deref() {
-            push_var(&mut vars, "AXON_MCP_GOOGLE_CLIENT_SECRET", secret);
-        }
-        if !admin_email.is_empty() {
-            push_var(&mut vars, "AXON_MCP_AUTH_ADMIN_EMAIL", &admin_email);
-        }
-        // Pass allowed redirect URIs; always include claude.ai as a default.
-        let allowed_uris = build_allowed_redirect_uris();
-        if !allowed_uris.is_empty() {
-            push_var(
-                &mut vars,
-                "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
-                &allowed_uris,
-            );
-        }
-
-        let auth_config = build_oauth_auth_config_from_sources(vars)?;
-
-        let auth_state = AuthState::new(auth_config)
-            .await
-            .map_err(|e| format!("failed to initialize lab-auth AuthState: {e}"))?;
-
-        tracing::info!(
-            oauth_active = true,
-            static_token_active,
-            "axon auth policy: Mounted (OAuth + lab-auth state initialized)"
-        );
-
-        return Ok(AuthPolicy::Mounted {
-            auth_state: Some(Arc::new(auth_state)),
-        });
+        return build_oauth_policy(static_token_active).await;
     }
 
     // Bearer-only mode.
@@ -400,6 +343,52 @@ pub async fn build_auth_policy(
          or bind AXON_HTTP_HOST to 127.0.0.1/localhost"
     )
     .into())
+}
+
+async fn build_oauth_policy(
+    static_token_active: bool,
+) -> Result<AuthPolicy, Box<dyn std::error::Error>> {
+    let mut vars: Vec<(String, String)> = Vec::with_capacity(16);
+    push_var(&mut vars, "AXON_MCP_AUTH_MODE", "oauth");
+    for (source, target) in [
+        ("AXON_PUBLIC_URL", "AXON_MCP_PUBLIC_URL"),
+        ("AXON_GOOGLE_CLIENT_ID", "AXON_MCP_GOOGLE_CLIENT_ID"),
+        ("AXON_GOOGLE_CLIENT_SECRET", "AXON_MCP_GOOGLE_CLIENT_SECRET"),
+        ("AXON_AUTH_ADMIN_EMAIL", "AXON_MCP_AUTH_ADMIN_EMAIL"),
+        (
+            "AXON_GOOGLE_AUTHORIZE_ENDPOINT",
+            "AXON_MCP_GOOGLE_AUTHORIZE_ENDPOINT",
+        ),
+        (
+            "AXON_GOOGLE_TOKEN_ENDPOINT",
+            "AXON_MCP_GOOGLE_TOKEN_ENDPOINT",
+        ),
+        ("AXON_GOOGLE_JWKS_ENDPOINT", "AXON_MCP_GOOGLE_JWKS_ENDPOINT"),
+        ("AXON_GOOGLE_ISSUER", "AXON_MCP_GOOGLE_ISSUER"),
+    ] {
+        if let Ok(value) = std::env::var(source)
+            && !value.trim().is_empty()
+        {
+            push_var(&mut vars, target, &value);
+        }
+    }
+    push_var(
+        &mut vars,
+        "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+        &build_allowed_redirect_uris(),
+    );
+    let auth_config = build_oauth_auth_config_from_sources(vars)?;
+    let auth_state = AuthState::new(auth_config)
+        .await
+        .map_err(|e| format!("failed to initialize lab-auth AuthState: {e}"))?;
+    tracing::info!(
+        oauth_active = true,
+        static_token_active,
+        "axon auth policy: Mounted (OAuth + lab-auth state initialized)"
+    );
+    Ok(AuthPolicy::Mounted {
+        auth_state: Some(Arc::new(auth_state)),
+    })
 }
 
 fn build_oauth_auth_config_from_sources(
@@ -461,6 +450,13 @@ pub fn configured_mcp_http_token() -> Option<String> {
 /// clients continue to work with `lab_auth::AuthLayer`, which reads bearer
 /// authorization only.
 pub async fn normalize_api_key_header(mut req: Request<Body>, next: Next) -> Response {
+    if req.headers().contains_key("authorization") && req.headers().contains_key("x-api-key") {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            r#"{"ok":false,"error":{"code":"auth.conflicting_credentials","message":"send exactly one authentication credential"}}"#,
+        ).into_response();
+    }
     if !req.headers().contains_key("authorization")
         && let Some(key_val) = req
             .headers()

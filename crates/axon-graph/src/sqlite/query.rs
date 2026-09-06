@@ -1,6 +1,6 @@
 //! Graph traversal query for the SQLite graph store.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::BTreeSet;
 
 use axon_api::source::{
     GraphDirection, GraphEdge, GraphEvidence, GraphNode, GraphNodeId, GraphQueryRequest,
@@ -8,7 +8,7 @@ use axon_api::source::{
 };
 use sqlx::SqlitePool;
 
-use super::row::{edge_from_row, evidence_from_row};
+use super::row::{edge_from_row, evidence_from_row, node_from_row};
 use crate::error::graph_storage_error;
 
 type StoreResult<T> = Result<T, axon_api::source::ApiError>;
@@ -17,15 +17,12 @@ type StoreResult<T> = Result<T, axon_api::source::ApiError>;
 /// following edges in `request.direction`, filtered by `request.edges`
 /// (edge-kind allowlist) and `request.limit` (max edges returned).
 pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult<GraphQueryResult> {
+    let (max_depth, limit) = crate::store::bounded_query(&request)?;
     let Some(start) = super::resolve::resolve_one(pool, &request.start).await? else {
         return Ok(empty_result());
     };
 
     let edge_filter: BTreeSet<String> = request.edges.iter().cloned().collect();
-    let limit = usize::try_from(request.limit)
-        .ok()
-        .filter(|l| *l > 0)
-        .unwrap_or(usize::MAX);
     let fetch_limit = limit.saturating_add(1);
     let mut cursor_seen = request.cursor.is_none();
 
@@ -33,21 +30,46 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
     let mut edges: Vec<GraphEdge> = Vec::new();
     let mut seen_nodes: BTreeSet<String> = BTreeSet::from([start.node_id.0.clone()]);
     let mut seen_edges: BTreeSet<String> = BTreeSet::new();
-    let mut frontier: VecDeque<(GraphNodeId, u32)> = VecDeque::from([(start.node_id, 0)]);
+    let mut edges_examined = 0usize;
+    let mut frontier = vec![start.node_id.clone()];
 
-    while let Some((node_id, depth)) = frontier.pop_front() {
-        if depth >= request.depth || edges.len() >= fetch_limit {
-            continue;
+    for _depth in 0..max_depth {
+        if frontier.is_empty() || edges.len() >= fetch_limit || edges_examined >= fetch_limit {
+            break;
         }
-        let incident = incident_edges(pool, &node_id, request.direction).await?;
-        for mut edge in incident {
+        let remaining = fetch_limit.saturating_sub(edges_examined);
+        let mut incident = Vec::new();
+        for node_batch in frontier.chunks(400) {
+            let batch_remaining = remaining.saturating_sub(incident.len());
+            if batch_remaining == 0 {
+                break;
+            }
+            incident.extend(
+                incident_edges(
+                    pool,
+                    node_batch,
+                    request.direction,
+                    &edge_filter,
+                    batch_remaining,
+                )
+                .await?,
+            );
+        }
+        incident.sort_by(|left, right| left.edge_id.0.cmp(&right.edge_id.0));
+        incident.dedup_by(|left, right| left.edge_id == right.edge_id);
+        let frontier_ids = frontier
+            .iter()
+            .map(|node_id| node_id.0.as_str())
+            .collect::<BTreeSet<_>>();
+        let mut next_frontier = Vec::new();
+        for edge in incident {
             if !edge_filter.is_empty() && !edge_filter.contains(&edge.kind) {
                 continue;
             }
-            let next = next_node(&edge, &node_id, request.direction);
+            let next = next_node(&edge, &frontier_ids, request.direction);
             if seen_edges.insert(edge.edge_id.0.clone()) {
+                edges_examined = edges_examined.saturating_add(1);
                 if cursor_seen {
-                    edge.evidence = evidence_for_edge(pool, &edge.edge_id.0).await?;
                     edges.push(edge);
                     if edges.len() >= fetch_limit {
                         break;
@@ -59,12 +81,10 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
             if let Some(next_id) = next
                 && seen_nodes.insert(next_id.0.clone())
             {
-                if let Some(node) = super::resolve::node_by_id(pool, &next_id).await? {
-                    nodes.push(node);
-                }
-                frontier.push_back((next_id, depth + 1));
+                next_frontier.push(next_id);
             }
         }
+        frontier = next_frontier;
     }
 
     if !cursor_seen {
@@ -76,6 +96,16 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
     }
     let has_more = edges.len() > limit;
     edges.truncate(limit);
+    nodes.extend(
+        load_nodes(
+            pool,
+            seen_nodes
+                .iter()
+                .filter(|id| id.as_str() != start.node_id.0.as_str()),
+        )
+        .await?,
+    );
+    attach_evidence(pool, &mut edges).await?;
     let next_cursor = has_more.then(|| {
         edges
             .last()
@@ -94,41 +124,138 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
     })
 }
 
+async fn load_nodes<'a>(
+    pool: &SqlitePool,
+    node_ids: impl Iterator<Item = &'a String>,
+) -> StoreResult<Vec<GraphNode>> {
+    let ids = node_ids.collect::<Vec<_>>();
+    let mut nodes = Vec::with_capacity(ids.len());
+    for batch in ids.chunks(900) {
+        let mut builder = sqlx::QueryBuilder::new("SELECT * FROM graph_nodes WHERE node_id IN (");
+        let mut separated = builder.separated(", ");
+        for node_id in batch {
+            separated.push_bind(*node_id);
+        }
+        separated.push_unseparated(") ORDER BY node_id");
+        let rows =
+            builder.build().fetch_all(pool).await.map_err(|e| {
+                graph_storage_error(format!("failed to fetch graph node batch: {e}"))
+            })?;
+        nodes.extend(
+            rows.iter()
+                .map(node_from_row)
+                .collect::<StoreResult<Vec<_>>>()?,
+        );
+    }
+    Ok(nodes)
+}
+
 /// Fetch edges incident to `node_id` in the requested direction.
 async fn incident_edges(
     pool: &SqlitePool,
-    node_id: &GraphNodeId,
+    node_ids: &[GraphNodeId],
     direction: GraphDirection,
+    edge_filter: &BTreeSet<String>,
+    limit: usize,
 ) -> StoreResult<Vec<GraphEdge>> {
-    let sql = match direction {
-        GraphDirection::Out => "SELECT * FROM graph_edges WHERE from_node_id = ? ORDER BY edge_id",
-        GraphDirection::In => "SELECT * FROM graph_edges WHERE to_node_id = ? ORDER BY edge_id",
-        GraphDirection::Both => {
-            "SELECT * FROM graph_edges WHERE from_node_id = ? OR to_node_id = ? ORDER BY edge_id"
+    let mut builder = sqlx::QueryBuilder::new("SELECT * FROM graph_edges WHERE ");
+    match direction {
+        GraphDirection::Out => {
+            builder.push("from_node_id IN (");
+            push_node_ids(&mut builder, node_ids);
+            builder.push(")");
         }
-    };
-    let mut q = sqlx::query(sql).bind(&node_id.0);
-    if matches!(direction, GraphDirection::Both) {
-        q = q.bind(&node_id.0);
+        GraphDirection::In => {
+            builder.push("to_node_id IN (");
+            push_node_ids(&mut builder, node_ids);
+            builder.push(")");
+        }
+        GraphDirection::Both => {
+            builder.push("(from_node_id IN (");
+            push_node_ids(&mut builder, node_ids);
+            builder.push(") OR to_node_id IN (");
+            push_node_ids(&mut builder, node_ids);
+            builder.push("))");
+        }
     }
-    let rows = q
+    if !edge_filter.is_empty() {
+        builder.push(" AND kind IN (");
+        let mut separated = builder.separated(", ");
+        for kind in edge_filter {
+            separated.push_bind(kind);
+        }
+        separated.push_unseparated(")");
+    }
+    builder
+        .push(" ORDER BY edge_id LIMIT ")
+        .push_bind(i64::try_from(limit).unwrap_or(i64::MAX));
+    let rows = builder
+        .build()
         .fetch_all(pool)
         .await
         .map_err(|e| graph_storage_error(format!("failed to fetch incident edges: {e}")))?;
     rows.iter().map(edge_from_row).collect()
 }
 
+fn push_node_ids<'a>(
+    builder: &mut sqlx::QueryBuilder<'a, sqlx::Sqlite>,
+    node_ids: &'a [GraphNodeId],
+) {
+    let mut separated = builder.separated(", ");
+    for node_id in node_ids {
+        separated.push_bind(&node_id.0);
+    }
+}
+
+pub(super) async fn attach_evidence(pool: &SqlitePool, edges: &mut [GraphEdge]) -> StoreResult<()> {
+    if edges.is_empty() {
+        return Ok(());
+    }
+    let mut by_edge = std::collections::BTreeMap::<String, Vec<GraphEvidence>>::new();
+    for edge_batch in edges.chunks(900) {
+        let mut builder =
+            sqlx::QueryBuilder::new("SELECT * FROM graph_evidence WHERE edge_id IN (");
+        let mut separated = builder.separated(", ");
+        for edge in edge_batch {
+            separated.push_bind(&edge.edge_id.0);
+        }
+        separated.push_unseparated(") ORDER BY edge_id, evidence_id");
+        let rows = builder.build().fetch_all(pool).await.map_err(|e| {
+            graph_storage_error(format!("failed to fetch graph evidence batch: {e}"))
+        })?;
+        for row in &rows {
+            let evidence = evidence_from_row(row)?;
+            let edge_id: String = sqlx::Row::try_get(row, "edge_id").map_err(|e| {
+                graph_storage_error(format!("failed to decode evidence edge id: {e}"))
+            })?;
+            by_edge.entry(edge_id).or_default().push(evidence);
+        }
+    }
+    for edge in edges {
+        edge.evidence = by_edge.remove(&edge.edge_id.0).unwrap_or_default();
+    }
+    Ok(())
+}
+
 /// The node on the far side of `edge` from `node_id`, per direction.
 fn next_node(
     edge: &GraphEdge,
-    node_id: &GraphNodeId,
+    frontier: &BTreeSet<&str>,
     direction: GraphDirection,
 ) -> Option<GraphNodeId> {
     match direction {
-        GraphDirection::Out if edge.from_node_id == *node_id => Some(edge.to_node_id.clone()),
-        GraphDirection::In if edge.to_node_id == *node_id => Some(edge.from_node_id.clone()),
-        GraphDirection::Both if edge.from_node_id == *node_id => Some(edge.to_node_id.clone()),
-        GraphDirection::Both if edge.to_node_id == *node_id => Some(edge.from_node_id.clone()),
+        GraphDirection::Out if frontier.contains(edge.from_node_id.0.as_str()) => {
+            Some(edge.to_node_id.clone())
+        }
+        GraphDirection::In if frontier.contains(edge.to_node_id.0.as_str()) => {
+            Some(edge.from_node_id.clone())
+        }
+        GraphDirection::Both if frontier.contains(edge.from_node_id.0.as_str()) => {
+            Some(edge.to_node_id.clone())
+        }
+        GraphDirection::Both if frontier.contains(edge.to_node_id.0.as_str()) => {
+            Some(edge.from_node_id.clone())
+        }
         _ => None,
     }
 }

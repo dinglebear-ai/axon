@@ -6,7 +6,9 @@ run_help_path() {
   name="$(printf '%s' "$encoded" | base64 --decode | jq -r '.name')"
   path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
   logfile="$OUTDIR/logs/help-$(printf '%s' "$name" | tr ' /' '__').log"
-  mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
+  path=()
+  while IFS= read -r path_part; do path+=("$path_part"); done \
+    < <(printf '%s' "$path_json" | jq -r '.[]')
 
   started_ms="$(now_millis)"
   timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${path[@]}" --help >"$logfile" 2>&1
@@ -35,7 +37,8 @@ run_root_help() {
 }
 
 option_value() {
-  local command_name="$1" option="$2" value_name="${3^^}"
+  local command_name="$1" option="$2" value_name
+  value_name="$(printf '%s' "$3" | tr '[:lower:]' '[:upper:]')"
   case "$option" in
     --wait|--cache|--include-subdomains|--normalize|--block-assets|--chrome-screenshot|--screenshot-full-page)
       echo "true"
@@ -173,7 +176,9 @@ probe_command_bundle() {
   run_help_path "$encoded"
   name="$(printf '%s' "$encoded" | base64 --decode | jq -r '.name')"
   path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
-  mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
+  path=()
+  while IFS= read -r path_part; do path+=("$path_part"); done \
+    < <(printf '%s' "$path_json" | jq -r '.[]')
   help_log="$OUTDIR/logs/help-$(printf '%s' "$name" | tr ' /' '__').log"
   probe_help_options "$name" "$help_log" "${path[@]}"
 }

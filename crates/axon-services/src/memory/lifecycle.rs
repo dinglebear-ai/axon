@@ -12,7 +12,7 @@ use super::store::memory_store;
 use super::sync::sync_memory_records;
 use super::{DEFAULT_LIMIT, MAX_LIMIT, store_err};
 use crate::context::ServiceContext;
-use axon_api::mcp_schema::MemoryRequest;
+use axon_api::action::MemoryRequest;
 use axon_api::source::{
     MemoryArchiveRequest, MemoryContradictRequest, MemoryForgetRequest, MemoryId, MemoryPinRequest,
     MemoryReinforcement, MemoryReviewRequest, MemoryScope,

@@ -98,9 +98,7 @@ impl<T: PruneTarget> PruneExecutor<T> {
         plan: &PrunePlan,
         authz: &PruneAuthz,
     ) -> Result<PruneResult, PruneDenied> {
-        if plan.requires_admin && !authz.is_admin {
-            return Err(PruneDenied::AdminRequired);
-        }
+        validate_plan(plan, authz)?;
 
         // Re-assert ordering defensively so a hand-built plan can't reorder
         // ledger before vector.
@@ -111,13 +109,7 @@ impl<T: PruneTarget> PruneExecutor<T> {
         let mut debt_remaining: u64 = 0;
 
         for step in ordered {
-            if step.target == PruneTargetKind::Ledger
-                && step_results.iter().any(|result| {
-                    result.status == LifecycleStatus::Failed
-                        && result.source_id == step.source_id
-                        && result.generation == step.generation
-                })
-            {
+            if ledger_blocked_by_prior_failure(step, &step_results) {
                 // Ledger identity is the recovery join for every preceding
                 // boundary. Keep it until vector/artifact/graph/memory cleanup
                 // has succeeded for this exact source generation.
@@ -136,47 +128,7 @@ impl<T: PruneTarget> PruneExecutor<T> {
                 continue;
             }
 
-            // Generation fencing has two selector-specific meanings:
-            // - a generation prune must never remove the current generation;
-            // - a source-wide prune stamps the reviewed current generation
-            //   onto its steps and requires it to remain unchanged.
-            if let Some(target_gen) = &step.generation {
-                let source_id = step.source_id.as_ref().map(|s| s.0.as_str());
-                match self.target.current_generation(source_id).await {
-                    Ok(Some(current)) => {
-                        if matches!(
-                            plan.selector,
-                            axon_api::source::prune::PruneSelector::Source { .. }
-                        ) {
-                            if &current != target_gen {
-                                return Err(PruneDenied::FenceCheckFailed {
-                                    reason: format!(
-                                        "source committed generation changed from {} to {} after planning",
-                                        target_gen.0, current.0
-                                    ),
-                                });
-                            }
-                        } else {
-                            fence_generation(target_gen, &current)?;
-                        }
-                    }
-                    Ok(None)
-                        if matches!(
-                            plan.selector,
-                            axon_api::source::prune::PruneSelector::Source { .. }
-                        ) =>
-                    {
-                        return Err(PruneDenied::FenceCheckFailed {
-                            reason: format!(
-                                "source committed generation {} disappeared after planning",
-                                target_gen.0
-                            ),
-                        });
-                    }
-                    Ok(None) => {}
-                    Err(reason) => return Err(PruneDenied::FenceCheckFailed { reason }),
-                }
-            }
+            self.fence_step(plan, step).await?;
 
             let result = match self.target.apply(step).await {
                 Ok(exec) => {
@@ -222,6 +174,68 @@ impl<T: PruneTarget> PruneExecutor<T> {
             cleanup_debt_remaining: debt_remaining,
         })
     }
+
+    /// Recheck a planned generation immediately before its destructive step.
+    async fn fence_step(&self, plan: &PrunePlan, step: &PruneStep) -> Result<(), PruneDenied> {
+        let Some(target_gen) = &step.generation else {
+            return Ok(());
+        };
+        let source_wide = matches!(
+            plan.selector,
+            axon_api::source::prune::PruneSelector::Source { .. }
+        );
+        let source_id = step.source_id.as_ref().map(|source| source.0.as_str());
+        match self.target.current_generation(source_id).await {
+            Ok(Some(current)) => {
+                if source_wide && &current != target_gen {
+                    Err(PruneDenied::FenceCheckFailed {
+                        reason: format!(
+                            "source committed generation changed from {} to {} after planning",
+                            target_gen.0, current.0
+                        ),
+                    })
+                } else if source_wide {
+                    Ok(())
+                } else {
+                    fence_generation(target_gen, &current)
+                }
+            }
+            Ok(None) if !source_wide => Ok(()),
+            Ok(None) => Err(PruneDenied::FenceCheckFailed {
+                reason: format!(
+                    "source committed generation {} disappeared after planning",
+                    target_gen.0
+                ),
+            }),
+            Err(reason) => Err(PruneDenied::FenceCheckFailed { reason }),
+        }
+    }
+}
+
+fn validate_plan(plan: &PrunePlan, authz: &PruneAuthz) -> Result<(), PruneDenied> {
+    if crate::safety::selector_requires_admin(&plan.selector) && !authz.is_admin {
+        return Err(PruneDenied::AdminRequired);
+    }
+    if matches!(
+        plan.selector,
+        axon_api::source::prune::PruneSelector::Source { .. }
+    ) && plan.steps.iter().any(|step| step.generation.is_none())
+    {
+        return Err(PruneDenied::FenceCheckFailed {
+            reason: "source-wide prune plan is missing its reviewed committed generation"
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn ledger_blocked_by_prior_failure(step: &PruneStep, results: &[PruneStepResult]) -> bool {
+    step.target == PruneTargetKind::Ledger
+        && results.iter().any(|result| {
+            result.status == LifecycleStatus::Failed
+                && result.source_id == step.source_id
+                && result.generation == step.generation
+        })
 }
 
 /// Roll per-step statuses into an overall lifecycle status.

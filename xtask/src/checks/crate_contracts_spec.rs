@@ -132,7 +132,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "job_dto",
             "job_progress",
             "job_status",
-            "mcp_schema",
+            "action",
             "migration",
             "reset",
             "result",

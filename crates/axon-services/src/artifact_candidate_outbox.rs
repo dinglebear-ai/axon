@@ -42,6 +42,8 @@ pub(crate) struct ArtifactCandidateOutbox {
     gate: Mutex<()>,
     draining: AtomicBool,
     drain_requested: AtomicBool,
+    drain_cancelled: AtomicBool,
+    drain_task: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     scan_cursor: std::sync::atomic::AtomicUsize,
 }
 
@@ -52,6 +54,8 @@ impl ArtifactCandidateOutbox {
             gate: Mutex::new(()),
             draining: AtomicBool::new(false),
             drain_requested: AtomicBool::new(false),
+            drain_cancelled: AtomicBool::new(false),
+            drain_task: std::sync::Mutex::new(None),
             scan_cursor: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -226,10 +230,34 @@ impl ArtifactCandidateOutbox {
     }
 
     pub(crate) fn begin_drain(&self) -> bool {
+        self.drain_cancelled.store(false, Ordering::Release);
         self.drain_requested.store(true, Ordering::Release);
         self.draining
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
+    }
+
+    pub(crate) fn register_drain_task(&self, task: tokio::task::JoinHandle<()>) {
+        *self.drain_task.lock().expect("outbox drain task lock") = Some(task);
+    }
+
+    pub(crate) fn drain_cancelled(&self) -> bool {
+        self.drain_cancelled.load(Ordering::Acquire)
+    }
+
+    pub(crate) async fn shutdown_drain(&self) {
+        self.drain_cancelled.store(true, Ordering::Release);
+        self.drain_requested.store(false, Ordering::Release);
+        let task = self
+            .drain_task
+            .lock()
+            .expect("outbox drain task lock")
+            .take();
+        if let Some(task) = task {
+            task.abort();
+            let _ = task.await;
+        }
+        self.draining.store(false, Ordering::Release);
     }
 
     pub(crate) fn start_drain_pass(&self) {
@@ -251,6 +279,13 @@ impl ArtifactCandidateOutbox {
             return true;
         }
         false
+    }
+
+    /// Finish an exhausted retry cycle while preserving a request queued during
+    /// its final pass. `true` keeps the current supervised runner responsible
+    /// for that request; `false` releases ownership before the task exits.
+    pub(crate) fn finish_exhausted_drain(&self) -> bool {
+        self.continue_or_finish_drain()
     }
 
     fn path(&self, delivery_key: &str) -> PathBuf {

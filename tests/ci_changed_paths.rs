@@ -58,13 +58,20 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
     // version_files rather than the broad docs category.
     assert_eq!(out["version_files"], "false");
     assert_eq!(out["rust"], "false");
-    assert_eq!(out["docs_contracts"], "false");
+    assert_eq!(out["docs_contracts"], "true");
     assert_eq!(out["aurora_inventory"], "false");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
     assert_eq!(out["docker"], "false");
     assert_eq!(out["release"], "false");
     assert_eq!(out["codeql_rust"], "false");
+}
+
+#[test]
+fn plugin_only_changes_route_lightweight_contract_validation() {
+    let out = classify("pull_request", &["plugins/axon/.claude-plugin/plugin.json"]);
+    assert_eq!(out["docs_contracts"], "true");
+    assert_eq!(out["rust"], "false");
 }
 
 #[test]
@@ -91,7 +98,6 @@ fn agent_skill_changes_skip_expensive_runtime_categories() {
         "ci_all",
         "codeql_all",
         "docs",
-        "docs_contracts",
         "aurora_inventory",
         "workflow",
         "rust",
@@ -112,8 +118,9 @@ fn agent_skill_changes_skip_expensive_runtime_categories() {
         "codeql_rust",
         "codeql_java_kotlin",
     ] {
-        assert_eq!(out[key], "false", ".agents changes should not enable {key}");
+        assert_eq!(out[key], "false", "plugin skills should not enable {key}");
     }
+    assert_eq!(out["docs_contracts"], "true");
 }
 
 #[test]
@@ -195,8 +202,8 @@ fn rag_paths_use_the_shared_classifier() {
 #[test]
 fn axon_api_mcp_schema_changes_enable_mcp_contract_checks() {
     for file in [
-        "crates/axon-api/src/mcp_schema.rs",
-        "crates/axon-api/src/mcp_schema/requests.rs",
+        "crates/axon-api/src/action.rs",
+        "crates/axon-api/src/action/requests.rs",
     ] {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true");
@@ -591,7 +598,7 @@ fn auto_tag_inputs_match_native_shipping_and_release_planner_paths() {
         ".github/workflows/auto-tag.yml",
         ".github/actions/setup-rust-kache/action.yml",
         "release/components.toml",
-        "xtask/src/checks/release_versions/gate.rs",
+        "xtask-release/src/gate.rs",
         "xtask/src/main.rs",
     ] {
         let out = classify("push", &[file]);

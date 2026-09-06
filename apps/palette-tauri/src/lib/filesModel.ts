@@ -31,6 +31,8 @@ export interface FileContents {
   path: string;
   content: string;
   size: number;
+  mediaType?: string;
+  dataUrl?: string;
 }
 
 /** Human-readable byte size, matching the mock's `fmtBytes` scale (B/KB/MB). */

@@ -1,6 +1,10 @@
+import { ChevronRight, Globe2, SearchX } from "lucide-react";
 import { memo, useMemo } from "react";
-import { ChevronRight } from "lucide-react";
-
+import {
+  WorkspaceEmpty,
+  WorkspaceHeader,
+  WorkspaceSurface,
+} from "@/components/palette/WorkspaceSurface";
 import { Button } from "@/components/ui/aurora/button";
 import { arrField, isRecord, numField, strField, unwrapPayload } from "@/lib/payload";
 
@@ -33,18 +37,24 @@ export const DomainsView = memo(function DomainsView({ payload, onDrillDomain }:
   const total = useMemo(() => rows.reduce((s, r) => s + r.vectors, 0), [rows]);
 
   return (
-    <div className="output-body domains-view aurora-scrollbar">
-      <div className="sources-summary">
-        <span>
-          <strong>{rows.length.toLocaleString()}</strong> domains
-        </span>
-        <span>
-          <strong>{total.toLocaleString()}</strong> vectors
-        </span>
-      </div>
+    <WorkspaceSurface className="output-body domains-view">
+      <WorkspaceHeader
+        icon={Globe2}
+        eyebrow="Collection Coverage"
+        title="Indexed Domains"
+        description="Compare vector coverage and drill into each source inventory."
+        metrics={[
+          { label: "Domains", value: rows.length.toLocaleString() },
+          { label: "Vectors", value: total.toLocaleString() },
+        ]}
+      />
 
       {rows.length === 0 ? (
-        <div className="status-empty">No indexed domains.</div>
+        <WorkspaceEmpty
+          icon={SearchX}
+          title="No indexed domains."
+          description="Index a website or local source to populate domain coverage."
+        />
       ) : (
         <div className="domains-list">
           {rows.map((row) => {
@@ -79,6 +89,6 @@ export const DomainsView = memo(function DomainsView({ payload, onDrillDomain }:
           })}
         </div>
       )}
-    </div>
+    </WorkspaceSurface>
   );
 });

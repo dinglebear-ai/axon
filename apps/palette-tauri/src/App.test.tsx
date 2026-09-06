@@ -82,6 +82,28 @@ describe("App local help", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
 
+  it("starts a fresh action search when typing over an existing result", async () => {
+    const input = await renderAndType("files");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByText("Files requires the desktop app.")).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "t" } });
+
+    expect(await screen.findByRole("listbox", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Terminal command" })).not.toBeInTheDocument();
+  });
+
+  it("starts a fresh search when typing over an argument-taking action result", async () => {
+    const input = await renderAndType("help scrape");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect((await screen.findAllByText("POST /v1/sources")).length).toBeGreaterThan(0);
+
+    fireEvent.change(input, { target: { value: "t" } });
+
+    expect(await screen.findByRole("listbox", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Terminal command" })).not.toBeInTheDocument();
+  });
+
   it("opens selected action help from the command bar and replays it from history as local help", async () => {
     vi.mocked(invoke).mockImplementation(async (command) => {
       if (command === "load_palette_config" || command === "load_palette_default_config")
@@ -175,27 +197,51 @@ describe("App command palette accessibility + keyboard nav", () => {
     expect(options.some((o) => o.id === active)).toBe(true);
   });
 
-  // T-H1 — Enter on a partial (non-invoked) match for an arg-taking action enters
-  // argument mode rather than submitting. "scr" matches scrape by fuzzy search but
-  // is not the exact invoked subcommand, so Enter routes to enterActionMode and the
-  // switcher disclosure (which only renders in mode) appears. No REST submit fires.
-  it("enters argument mode on Enter for an action that needs an argument", async () => {
+  // Enter executes the highlighted action directly. Tab owns the separate
+  // select/enter-mode interaction.
+  it("executes the highlighted action on Enter", async () => {
     const user = userEvent.setup();
     const input = await renderApp();
     await user.type(input, "scr");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByRole("button", { name: /Switch from/ })).toBeInTheDocument();
-    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("axon_http_request", expect.anything()),
+    );
   });
 
-  it("keeps Tab selecting the highlighted action when focus drifts to the footer", async () => {
+  it("runs a URL action with one Enter after selecting its mode", async () => {
+    const user = userEvent.setup();
+    const input = await renderApp();
+    await user.type(input, "screenshot");
+    await user.keyboard("{Tab}");
+    expect(input).toHaveAccessibleName("Screenshot URL argument");
+    await waitFor(() => expect(input).toHaveValue(""));
+
+    fireEvent.change(input, { target: { value: "code.claude.com" } });
+    expect(input).toHaveValue("code.claude.com");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith(
+        "axon_http_request",
+        expect.objectContaining({
+          request: expect.objectContaining({
+            path: "/v1/screenshot",
+            body: expect.objectContaining({ url: "https://code.claude.com" }),
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("keeps Tab selecting the highlighted action when focus drifts outside the input", async () => {
     const user = userEvent.setup();
     const input = await renderApp();
     fireEvent.change(input, { target: { value: "what is a skill?" } });
 
-    const footerSettings = screen.getByRole("button", { name: "Settings" });
-    footerSettings.focus();
+    const menuButton = screen.getByRole("button", { name: "Menu" });
+    menuButton.focus();
     await user.keyboard("{Tab}");
 
     const switcher = await screen.findByRole("button", { name: /Switch from Ask/ });
@@ -221,7 +267,7 @@ describe("App command palette accessibility + keyboard nav", () => {
     const user = userEvent.setup();
     const input = await renderApp();
     await user.type(input, "scr");
-    await user.keyboard("{Enter}");
+    await user.keyboard("{Tab}");
 
     await user.click(await screen.findByRole("button", { name: /Switch from/ }));
     await user.click(await screen.findByRole("button", { name: /Sources/ }));

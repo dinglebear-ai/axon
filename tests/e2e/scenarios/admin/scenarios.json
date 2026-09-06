@@ -1,0 +1,8 @@
+{"schema_version":1,"scenarios":[
+{"id":"admin.prune.plan_bound","operation":"prune","oracle":"destructive.plan_digest_bound","surfaces":["cli","http","mcp"]},
+{"id":"admin.reset.plan_bound","operation":"reset","oracle":"destructive.plan_digest_bound","surfaces":["cli","http","mcp"]},
+{"id":"admin.migrate.owned_only","operation":"migrate","oracle":"destructive.owned_targets_only","surfaces":["cli"]},
+{"id":"admin.cleanup.idempotent","operation":"cleanup","oracle":"destructive.revalidate_and_residual_zero","surfaces":["cli","http","mcp"]},
+{"id":"admin.config.operator_refused","operation":"config","oracle":"destructive.operator_state_refused","surfaces":["cli","http","mcp"]},
+{"id":"admin.setup.operator_refused","operation":"setup","oracle":"destructive.operator_state_refused","surfaces":["cli"]}
+]}

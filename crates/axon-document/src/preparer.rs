@@ -9,7 +9,7 @@ use axon_parse::vertical::take_metadata_artifacts;
 use crate::chunk::DocumentChunk;
 use crate::chunk_router::{ChunkRouter, decision_for_profile, source_adapter, source_scope};
 use crate::markdown::MarkdownChunkLimits;
-use crate::parse::{DocumentParse, parse_document};
+use crate::parse::{DocumentParse, parse_document_owned};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use crate::profile::ChunkingProfile;
 use crate::source_range::bounds_for_text;
@@ -22,6 +22,10 @@ pub(crate) use validation::validate_prepared_document;
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document_ranges_against_bounds;
 use validation::validate_prepared_document_with_bounds;
+
+/// Durable preparation-output schema. Bump only when redaction, parsing,
+/// routing, chunk construction, or emitted provenance semantics change.
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -93,7 +97,7 @@ impl DocumentPreparer {
         // content between parsing and validation would shift or alter lines
         // and fail preparation with "quote outside source range" (seen live
         // with fenced `Authorization: Bearer …` examples in docs).
-        let content = redact_pre_chunk(
+        let mut content = redact_pre_chunk(
             content_text(&request.document),
             &request.document.source_item_key,
         );
@@ -104,11 +108,21 @@ impl DocumentPreparer {
         // The self-parse sees the same post-redaction text that chunking and
         // range validation use.
         let parse = if request.parse_facts.is_empty() && metadata_parse.facts.is_empty() {
+            // Clone only lightweight identity/metadata. Move the redacted body
+            // through the synchronous parser and recover it afterward so no
+            // full source-body clone is live before parsing.
+            request.document.content = ContentRef::InlineText {
+                text: String::new(),
+            };
             let mut parse_doc = request.document.clone();
             parse_doc.content = ContentRef::InlineText {
-                text: content.text.clone(),
+                text: std::mem::take(&mut content.text),
             };
-            parse_document(&parse_doc)
+            let (parse, parsed_doc) = parse_document_owned(parse_doc);
+            if let ContentRef::InlineText { text } = parsed_doc.content {
+                content.text = text;
+            }
+            parse
         } else {
             DocumentParse::default()
         };
@@ -192,7 +206,7 @@ impl DocumentPreparer {
             source_item_key: request.document.source_item_key,
             generation: request.generation,
             canonical_uri: request.document.canonical_uri,
-            prepare_version: "axon-document-pr8".to_string(),
+            prepare_version: PREPARATION_SCHEMA_VERSION.to_string(),
             chunking_profile: effective_profile.as_str().to_string(),
             chunking_method: chunking_method.to_string(),
             chunks: prepared_chunks,

@@ -146,7 +146,7 @@ describe('WatchesTab', () => {
       await flush();
     });
 
-    expect(fetch).toHaveBeenCalledWith('/v1/watches?limit=50', expect.anything());
+    expect(fetch).toHaveBeenCalledWith('/api/panel/watches?limit=50', expect.anything());
     expect(host.textContent).toContain('src-1');
     expect(host.textContent).toContain('src-2');
     expect(host.textContent).toContain('2 shown of 2');
@@ -199,7 +199,7 @@ describe('WatchesTab', () => {
       await flush();
     });
 
-    expect(fetch).toHaveBeenCalledWith('/v1/watches/watch-1/pause', expect.objectContaining({ method: 'POST' }));
+    expect(fetch).toHaveBeenCalledWith('/api/panel/watches/watch-1/pause', expect.objectContaining({ method: 'POST' }));
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
@@ -219,7 +219,7 @@ describe('WatchesTab', () => {
       await flush();
     });
 
-    expect(fetch).toHaveBeenCalledWith('/v1/watches/watch-1/resume', expect.objectContaining({ method: 'POST' }));
+    expect(fetch).toHaveBeenCalledWith('/api/panel/watches/watch-1/resume', expect.objectContaining({ method: 'POST' }));
   });
 
   it('confirms before deleting and wires DELETE /v1/watches/{id}', async () => {
@@ -240,7 +240,7 @@ describe('WatchesTab', () => {
     });
 
     expect(window.confirm).toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledWith('/v1/watches/watch-1', expect.objectContaining({ method: 'DELETE' }));
+    expect(fetch).toHaveBeenCalledWith('/api/panel/watches/watch-1', expect.objectContaining({ method: 'DELETE' }));
   });
 
   it('skips the delete request when the confirmation is declined', async () => {

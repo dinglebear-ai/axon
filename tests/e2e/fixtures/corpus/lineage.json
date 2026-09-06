@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "canonical_manifest": "../../corpus/manifest.json",
+  "semantic_expectations": "../../corpus/v1/expected/semantics.json",
+  "retrieval_expectations": "../../corpus/v1/expected/retrieval.json",
+  "selection": {"hermetic": ["micro", "representative"], "live": ["micro", "representative"]},
+  "rule": "This file references the canonical corpus; scenario packs must not copy or mutate it."
+}

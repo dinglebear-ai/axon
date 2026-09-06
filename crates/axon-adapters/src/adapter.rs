@@ -25,6 +25,21 @@ pub trait AcquisitionProgressSink: Send + Sync {
     async fn report(&self, progress: AcquisitionProgress);
 }
 
+/// One deterministically ordered portion of an adapter acquisition.
+pub struct StreamedAcquisition {
+    pub ordinal: usize,
+    pub is_final: bool,
+    pub items_attempted: u64,
+    pub acquisition: SourceAcquisition,
+}
+
+/// Backpressured destination for adapters that can expose acquired items before
+/// the complete diff batch has settled.
+#[async_trait]
+pub trait AcquisitionStreamSink: Send + Sync {
+    async fn send(&self, acquisition: StreamedAcquisition) -> Result<()>;
+}
+
 /// Version of the stable source-adapter contract described by the family matrix.
 /// This is independent from the Axon crate release version.
 pub const SOURCE_ADAPTER_CONTRACT_VERSION: &str = "1";
@@ -79,6 +94,26 @@ pub trait SourceAdapter: Send + Sync {
         self.acquire(plan, diff).await
     }
 
+    /// Acquire into deterministic, bounded portions. The aggregate fallback is
+    /// deliberately safe for adapters that do not opt in to item streaming.
+    async fn acquire_streaming(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+        progress: Option<&dyn AcquisitionProgressSink>,
+        sink: &dyn AcquisitionStreamSink,
+    ) -> Result<()> {
+        let items_attempted = diff.added.len().saturating_add(diff.modified.len()) as u64;
+        let acquisition = self.acquire_with_progress(plan, diff, progress).await?;
+        sink.send(StreamedAcquisition {
+            ordinal: 0,
+            is_final: true,
+            items_attempted,
+            acquisition,
+        })
+        .await
+    }
+
     /// Whether the shared executor may acquire the next bounded diff batch
     /// while it normalizes and publishes the current batch.
     ///
@@ -112,7 +147,9 @@ pub trait SourceAdapter: Send + Sync {
     /// Release adapter-owned state retained for this job after the pipeline
     /// reaches a terminal outcome. The shared runner calls this on success
     /// and failure; stateless adapters use the default no-op.
-    fn release(&self, _plan: &SourcePlan) {}
+    fn release(&self, _request: &AdapterReleaseRequest) -> Result<()> {
+        Ok(())
+    }
 
     /// Adapter-owned materialization, run once before `discover`/`acquire`/
     /// `normalize`. Most families need this to validate/prepare acquisition

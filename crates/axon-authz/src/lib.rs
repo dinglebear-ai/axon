@@ -46,101 +46,28 @@ pub const AXON_FULL_ACCESS_SCOPE: &str = "axon:read axon:write";
 
 /// Returns whether `scopes` satisfies `required_scope`.
 ///
-/// The broad `axon:read` / `axon:write` pair remains interchangeable for the
-/// broad read/write route groups (OAuth dual-scope compatibility contract):
-/// either broad Axon scope satisfies a required broad Axon scope.
-///
-/// The fine-grained `axon:admin` / `axon:execute` / `axon:local` scopes are
-/// NOT satisfied by the broad read/write scopes — they require the caller to
-/// actually hold that exact scope (auth contract: "`axon:write` does not imply
-/// `axon:admin`, `axon:execute`, or `axon:local`"). A caller that holds one of
-/// the fine-grained scopes still satisfies broad read/write routes, because any
-/// Axon scope counts as authenticated Axon access for the broad groups.
-///
-/// Non-Axon scopes require an exact match.
+/// The implication matrix is deliberately narrow: the legacy `axon:read` and
+/// `axon:write` pair remain mutually compatible, while admin, execute, and
+/// local are independent capabilities and require an exact hold. Non-Axon
+/// scopes also require an exact match.
 pub fn scope_satisfies(scopes: &[String], required_scope: &str) -> bool {
-    if is_fine_grained_axon_scope(required_scope) {
-        // Fine-grained scopes require the caller to hold that exact scope.
-        return scopes
-            .iter()
-            .flat_map(|scope| scope.split_whitespace())
-            .any(|scope| scope == required_scope);
-    }
-    if is_broad_axon_scope(required_scope) {
-        return scopes.iter().any(|scope| is_axon_scope(scope));
-    }
-    scopes.iter().any(|scope| scope == required_scope)
-}
-
-/// True for any Axon scope string (broad or fine-grained). Used to decide
-/// whether a *held* scope counts as authenticated Axon access for broad routes.
-fn is_axon_scope(scope: &str) -> bool {
-    scope.split_whitespace().any(|scope| {
-        matches!(
-            scope,
-            AXON_READ_SCOPE
-                | AXON_WRITE_SCOPE
-                | AXON_ADMIN_SCOPE
-                | AXON_EXECUTE_SCOPE
-                | AXON_LOCAL_SCOPE
-        )
-    })
-}
-
-/// True only for the broad read/write scopes that are interchangeable.
-fn is_broad_axon_scope(scope: &str) -> bool {
-    scope
-        .split_whitespace()
-        .any(|scope| matches!(scope, AXON_READ_SCOPE | AXON_WRITE_SCOPE))
-}
-
-/// True only for the fine-grained admin/execute/local scopes that must be held
-/// explicitly and are never implied by broad read/write.
-fn is_fine_grained_axon_scope(scope: &str) -> bool {
-    matches!(
-        scope,
-        AXON_ADMIN_SCOPE | AXON_EXECUTE_SCOPE | AXON_LOCAL_SCOPE
-    )
+    scopes
+        .iter()
+        .flat_map(|scope| scope.split_whitespace())
+        .any(|held| {
+            held == required_scope
+                || (matches!(held, AXON_READ_SCOPE | AXON_WRITE_SCOPE)
+                    && matches!(required_scope, AXON_READ_SCOPE | AXON_WRITE_SCOPE))
+        })
 }
 
 /// Returns whether `scopes` holds `required_scope` **exactly**, with none of
-/// [`scope_satisfies`]'s broad `axon:read`/`axon:write` interchangeability.
+/// [`scope_satisfies`]'s legacy broad-scope compatibility implication.
 ///
 /// ## Why this exists — do not fold it back into `scope_satisfies`
 ///
-/// `scope_satisfies` treats `axon:read` and `axon:write` as interchangeable
-/// for the ordinary broad read/write route groups. That widening is a
-/// deliberate OAuth dual-scope compatibility affordance — newly issued
-/// tokens default to holding both scopes together
-/// (`AXON_FULL_ACCESS_SCOPE`), and existing tokens issued before some route's
-/// classification changed must keep working. See root `CLAUDE.md`'s "MCP
-/// Security Env" section and
-/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
-/// paragraph for the compatibility rationale, and
-/// `docs/pipeline-unification/runtime/auth-contract.md`'s "Scope Rules" for
-/// the documented exception.
-///
-/// A small number of call sites intentionally opt **out** of that widening:
-/// conditional scope *elevation* checks, where a route is nominally
-/// `axon:read` for schema/docs purposes but actually mutates state today
-/// (`require_mutates_if_write_scope` in `axon-web`'s
-/// `handlers/exploration.rs`, mirrored by `axon-mcp`'s
-/// `server::authz::mutates_if_upgrade`/`check_scope_explicit`). If those
-/// checks used `scope_satisfies`, the elevation would be a silent no-op:
-/// `is_broad_axon_scope(AXON_WRITE_SCOPE)` is true, so
-/// `scope_satisfies(["axon:read"], "axon:write")` already returns `true`
-/// before this function is ever consulted — a read-only caller would sail
-/// through a check that exists specifically to stop them (CWE-863,
-/// documented in
-/// `docs/pipeline-unification/runtime/auth-contract.md`'s "Scope Rules").
-/// `has_explicit_scope` closes that hole by requiring the caller to hold the
-/// exact scope string, with no broad-scope widening in either direction.
-///
-/// Use this function **only** for elevation/upgrade checks layered on top of
-/// a nominal scope class. Use `scope_satisfies` for every ordinary
-/// route/action scope check — replacing it here would break every existing
-/// deployed token that was issued before dual-scope compatibility, which is
-/// exactly the behavior `scope_satisfies` exists to preserve.
+/// Use this for operations that require the literal capability even when an
+/// implication is otherwise valid, such as lifecycle mutation elevation.
 pub fn has_explicit_scope(scopes: &[String], required_scope: &str) -> bool {
     scopes
         .iter()

@@ -75,6 +75,7 @@ interface PaletteShellProps {
   onAskSessionsOpenChange: (open: boolean) => void;
   onInputKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   onOpenJob: (family: string, jobId: string, label: string) => void;
+  onQueryChange: (value: string) => void;
   onReset: () => void;
   onResumeAskSession: (item: HistoryItem) => void;
   onRetry: () => void;
@@ -201,7 +202,7 @@ export function PaletteShell(props: PaletteShellProps) {
           onAskSessionsOpenChange={props.onAskSessionsOpenChange}
           onHelp={props.showHelpFor}
           onInputKeyDown={props.onInputKeyDown}
-          onQueryChange={props.setQuery}
+          onQueryChange={props.onQueryChange}
           onReset={props.onReset}
           onResumeAskSession={props.onResumeAskSession}
           onSubmit={props.onSubmitAction}
@@ -423,7 +424,7 @@ function OutputRegion(props: PaletteShellProps) {
 }
 
 function FooterRegion(props: PaletteShellProps) {
-  if (!props.showContent || props.settingsOpen) return null;
+  if (!props.showContent || props.settingsOpen || props.browserOpen) return null;
   return (
     <PaletteFooter
       config={props.config}

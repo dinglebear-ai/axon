@@ -229,6 +229,7 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.tei.max_client_batch_size = e.batch_size;
     flat.embed.tei_max_concurrent = e.max_concurrent_requests;
     flat.embed.tei_max_in_flight_inputs = e.max_in_flight_inputs;
+    flat.embed.tei_max_batch_tokens = e.max_batch_tokens;
     // Previously parsed (round-tripped) but never copied onto the flat runtime
     // shape, so nothing downstream ever read them — see config-contract.md's
     // "Providers: Embedding" section and axon_rust-ldozg.
@@ -242,7 +243,12 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.embed.cache_enabled = e.cache_enabled;
     flat.embed.cache_max_entries = e.cache_max_entries;
     flat.embed.pool_max_inputs = e.pool_max_inputs;
+    flat.embed.scheduler_enabled = e.scheduler_enabled;
+    flat.embed.vector_upsert_overlap_enabled = e.vector_upsert_overlap_enabled;
+    flat.embed.prepared_byte_budget = e.prepared_byte_budget;
     flat.embed.prep_concurrency = e.prep_concurrency;
+    flat.embed.prep_max_in_flight_bytes = e.prep_max_in_flight_bytes;
+    flat.embed.scheduler_flush_ms = e.scheduler_flush_ms;
     flat.embed.max_chunks_per_doc = e.max_chunks_per_doc;
     flat.embed.max_source_chunks_per_doc = e.max_source_chunks_per_doc;
     flat.embed.dedupe_exact_chunks = e.dedupe_exact_chunks;
@@ -263,10 +269,15 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.qdrant.indexing_threshold_kb = v.indexing_threshold_kb;
     flat.qdrant.hnsw_m = v.hnsw_m;
     flat.qdrant.hnsw_ef_construct = v.hnsw_ef_construct;
-    flat.qdrant.payload_index_profile = v.payload_index_profile.clone();
+    flat.qdrant.payload_index_profile = v
+        .payload_index_profile
+        .map(|profile| profile.as_str().to_string());
     flat.qdrant.payload_index_parallelism = v.payload_index_parallelism;
     flat.qdrant.hnsw_on_disk = v.hnsw_on_disk;
+    flat.qdrant.quantization_enabled = v.quantization_enabled;
     flat.qdrant.quantization_always_ram = v.quantization_always_ram;
+    flat.qdrant.async_writes = v.async_writes;
+    flat.qdrant.transport = v.transport.map(|transport| transport.as_str().to_string());
 
     let l = &raw.providers.llm;
     flat.llm.backend = l.backend.clone();

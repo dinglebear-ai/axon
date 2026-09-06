@@ -1,17 +1,18 @@
 ---
 title: "Crate Structure"
 created: 2026-07-15
-updated: 2026-08-28
+updated: 2026-09-03
 ---
 
 # Crate Structure
 
-Last Modified: 2026-08-28
+Last Modified: 2026-09-03
 
 Axon is a Cargo workspace: a thin root `axon` binary that delegates to
-`axon-cli`, plus 24 focused crates under `crates/`. All crates inherit the
-product version via `version.workspace = true` (currently 7.2.2, edition 2024,
-rust-version 1.94.0).
+`axon-cli`, plus the focused crates declared by the workspace `members` in
+[`Cargo.toml`](../../Cargo.toml). All crates inherit the product version,
+edition, and minimum Rust version from `[workspace.package]`; the manifest is
+authoritative so this architecture page cannot drift from release metadata.
 
 > The contract target for this layout lives at
 > [`docs/pipeline-unification/foundation/crate-structure.md`](../pipeline-unification/foundation/crate-structure.md).

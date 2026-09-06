@@ -7,8 +7,6 @@
 //! failures become visible warnings and the caller falls back to generic web
 //! fetch/render.
 
-use std::sync::Arc;
-
 use axon_api::source::*;
 use axon_core::config::Config;
 use axon_extract::{ScrapedDoc, VerticalContext};
@@ -44,20 +42,35 @@ pub(super) async fn try_acquire(
         return VerticalAcquire::Unsupported;
     }
 
-    let ctx = VerticalContext::new(Arc::new(vertical_config(opts)));
+    let cfg = vertical_config(opts);
+    let client = match axon_core::http::http_client() {
+        Ok(client) => client.clone(),
+        Err(_) => return VerticalAcquire::Degraded(degraded_warning(item)),
+    };
+    let ctx = VerticalContext::new(cfg.user_agent, cfg.auto_dispatch_skip, client)
+        .with_credentials(axon_extract::VerticalCredentials {
+            github_token: std::env::var("GITHUB_TOKEN").ok(),
+            huggingface_token: std::env::var("HF_TOKEN").ok(),
+            reddit_client_id: std::env::var("REDDIT_CLIENT_ID").ok(),
+            reddit_client_secret: std::env::var("REDDIT_CLIENT_SECRET").ok(),
+        });
     match crate::vertical_registry::dispatch_by_url(&item.canonical_uri, &ctx).await {
         None => VerticalAcquire::Unsupported,
         Some(Ok(doc)) => VerticalAcquire::Handled(acquired_from_doc(item, doc, job_id)),
-        Some(Err(err)) => VerticalAcquire::Degraded(SourceWarning {
-            code: "web.vertical.extractor_failed".to_string(),
-            severity: Severity::Warning,
-            message: format!(
-                "vertical extractor failed for {}; falling back to generic web acquisition: {err}",
-                item.canonical_uri
-            ),
-            source_item_key: Some(item.source_item_key.clone()),
-            retryable: true,
-        }),
+        Some(Err(_err)) => VerticalAcquire::Degraded(degraded_warning(item)),
+    }
+}
+
+pub(super) fn degraded_warning(item: &ManifestItem) -> SourceWarning {
+    SourceWarning {
+        code: "web.vertical.extractor_failed".to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "vertical extractor failed for {}; falling back to generic web acquisition",
+            crate::web_engine::engine::url_utils::sanitize_url_for_reporting(&item.canonical_uri)
+        ),
+        source_item_key: Some(item.source_item_key.clone()),
+        retryable: true,
     }
 }
 

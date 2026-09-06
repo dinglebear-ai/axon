@@ -85,6 +85,23 @@ if [ "$TEI_MODE" = "external" ]; then
   esac
   tei_unit_environment="Environment=TEI_URL=${AXON_EXTERNAL_TEI_URL}"
 fi
+if [ "$MODE" = "external-qdrant" ]; then
+  log "polling for external Qdrant ready at ${AXON_EXTERNAL_QDRANT_URL}"
+  qdrant_healthy=0
+  for _ in $(seq 1 36); do
+    if incus exec "$CONTAINER_NAME" -- sh -c '
+      set -a; . "$1"; set +a
+      set -- -fsS --max-time 4
+      [ -z "${QDRANT_API_KEY:-}" ] || set -- "$@" -H "api-key: ${QDRANT_API_KEY}"
+      curl "$@" "${QDRANT_URL%/}/readyz" >/dev/null
+    ' sh "$container_data_path/.env"; then
+      qdrant_healthy=1
+      break
+    fi
+    sleep 10
+  done
+  [ "$qdrant_healthy" = "1" ] || fatal "external Qdrant did not become ready within 360s: ${AXON_EXTERNAL_QDRANT_URL}"
+fi
 
 ### 1. Profile: create from the committed definition if missing. Never
 ### overwrite an existing profile — live edits during development are
@@ -437,15 +454,16 @@ cleanup_unit_tmp
 trap - EXIT
 incus exec "$CONTAINER_NAME" -- systemctl daemon-reload
 if [ "$RUN_INCUS_SERVER" = "true" ]; then
-  incus exec "$CONTAINER_NAME" -- systemctl enable axon-native.service >/dev/null 2>&1 || true
-  incus exec "$CONTAINER_NAME" -- systemctl restart axon-native.service
+  incus exec "$CONTAINER_NAME" -- systemctl enable --now axon-native.service
+  incus exec "$CONTAINER_NAME" -- systemctl is-enabled --quiet axon-native.service
+  incus exec "$CONTAINER_NAME" -- systemctl is-active --quiet axon-native.service
 
   ### 17. Health-check polling for the native axon service — same bounded
   ### pattern as step 14 (36 * 10s = 360s max).
   log "polling for axon-native healthy (bounded: up to 360s)"
   axon_healthy=0
   for _ in $(seq 1 36); do
-    if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 http://127.0.0.1:8001/healthz >/dev/null 2>&1; then
+    if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 http://127.0.0.1:8001/readyz >/dev/null 2>&1; then
       axon_healthy=1
       break
     fi

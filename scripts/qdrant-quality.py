@@ -4,8 +4,24 @@
 from __future__ import annotations
 
 import sys
+from datetime import UTC
 
+from qdrant_quality_analysis import (
+    canonicalize_url_for_dedupe,
+    parse_payload_timestamp,
+    path_prefix_excluded,
+)
 from qdrant_quality_impl import main
+from qdrant_quality_reporting import confirm_destructive_action
+
+__all__ = [
+    "canonicalize_url_for_dedupe",
+    "confirm_destructive_action",
+    "main",
+    "parse_payload_timestamp",
+    "path_prefix_excluded",
+    "UTC",
+]
 
 
 if __name__ == '__main__':

@@ -1,10 +1,4 @@
 import type { components, operations, paths } from './generated/axon-api';
-import type {
-  MemoryRememberResponse,
-  MemorySearchResponse,
-  MemoryShowResponse,
-  WatchUpdateRequest
-} from '../lib/panel-types';
 
 type FetchLike = typeof fetch;
 
@@ -19,6 +13,7 @@ export type JsonValue =
 
 export type AxonClientOptions = {
   baseUrl?: string;
+  pathPrefix?: string;
   token?: string;
   headers?: HeadersInit;
   fetch?: FetchLike;
@@ -42,6 +37,13 @@ type RestExtractRequestSchema = Schemas['RestExtractRequest'];
 type AcceptedJobSchema = Schemas['AcceptedJob'];
 type WatchCreateRequestSchema = Schemas['WatchRequest'];
 type RestMemoryRequestSchema = Schemas['RestMemoryRequest'];
+type SourcesResponseSchema = Schemas['SourcesResponse'];
+type WatchPageSchema = Schemas['Page_WatchSummary'];
+type WatchResultSchema = Schemas['WatchResult'];
+type WatchDeleteResponseSchema = Schemas['WatchDeleteResponse'];
+type WatchUpdateRequestSchema = Schemas['WatchUpdateRequest'];
+type MemoryItemsResponseSchema = Schemas['MemoryItemsResponse'];
+type MemoryItemResponseSchema = Schemas['MemoryItemResponse'];
 
 export interface ErrorBody extends ErrorBodySchema {}
 
@@ -85,18 +87,20 @@ export type JobKind = 'extract';
 
 export class AxonClient {
   private readonly baseUrl: string;
+  private readonly pathPrefix: string;
   private readonly token?: string;
   private readonly defaultHeaders?: HeadersInit;
   private readonly fetchImpl: FetchLike;
 
   constructor(options: AxonClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl ?? '');
+    this.pathPrefix = normalizeBaseUrl(options.pathPrefix ?? '');
     this.token = options.token;
     this.defaultHeaders = options.headers;
     this.fetchImpl = options.fetch ?? fetch;
   }
 
-  sources(params?: PaginationParams): Promise<unknown> {
+  sources(params?: PaginationParams): Promise<SourcesResponseSchema> {
     return this.get('/v1/sources', params);
   }
 
@@ -203,27 +207,27 @@ export class AxonClient {
   // the response shapes.
   // -------------------------------------------------------------------------
 
-  listWatches(params?: { enabled?: boolean; source_id?: string; adapter?: string; limit?: number; cursor?: string }): Promise<unknown> {
+  listWatches(params?: { enabled?: boolean; source_id?: string; adapter?: string; limit?: number; cursor?: string }): Promise<WatchPageSchema> {
     return this.get('/v1/watches', params);
   }
 
-  getWatch(watchId: string): Promise<unknown> {
+  getWatch(watchId: string): Promise<WatchResultSchema> {
     return this.get(`/v1/watches/${encodeURIComponent(watchId)}`);
   }
 
-  updateWatch(watchId: string, body: WatchUpdateRequest): Promise<unknown> {
+  updateWatch(watchId: string, body: WatchUpdateRequestSchema): Promise<WatchResultSchema> {
     return this.patch(`/v1/watches/${encodeURIComponent(watchId)}`, body);
   }
 
-  pauseWatch(watchId: string): Promise<unknown> {
+  pauseWatch(watchId: string): Promise<WatchResultSchema> {
     return this.post(`/v1/watches/${encodeURIComponent(watchId)}/pause`);
   }
 
-  resumeWatch(watchId: string): Promise<unknown> {
+  resumeWatch(watchId: string): Promise<WatchResultSchema> {
     return this.post(`/v1/watches/${encodeURIComponent(watchId)}/resume`);
   }
 
-  deleteWatch(watchId: string): Promise<unknown> {
+  deleteWatch(watchId: string): Promise<WatchDeleteResponseSchema> {
     return this.delete(`/v1/watches/${encodeURIComponent(watchId)}`);
   }
 
@@ -233,19 +237,19 @@ export class AxonClient {
   // listing surface (see panel-types.ts).
   // -------------------------------------------------------------------------
 
-  rememberMemory(body: MemoryRequestBody): Promise<MemoryRememberResponse> {
+  rememberMemory(body: MemoryRequestBody): Promise<MemoryItemResponseSchema> {
     return this.post('/v1/memories', body);
   }
 
-  searchMemories(body: MemoryRequestBody): Promise<MemorySearchResponse> {
+  searchMemories(body: MemoryRequestBody): Promise<MemoryItemsResponseSchema> {
     return this.post('/v1/memories/search', body);
   }
 
-  showMemory(memoryId: string): Promise<MemoryShowResponse> {
+  showMemory(memoryId: string): Promise<MemoryItemResponseSchema> {
     return this.get(`/v1/memories/${encodeURIComponent(memoryId)}`);
   }
 
-  deleteMemory(memoryId: string): Promise<MemoryShowResponse> {
+  deleteMemory(memoryId: string): Promise<MemoryItemResponseSchema> {
     return this.delete(`/v1/memories/${encodeURIComponent(memoryId)}`);
   }
 
@@ -298,7 +302,10 @@ export class AxonClient {
   }
 
   private url(path: string, query?: Record<string, string | number | boolean | undefined>): string {
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const routePath = this.pathPrefix && path.startsWith('/v1/')
+      ? `${this.pathPrefix}${path.slice(3)}`
+      : path;
+    const normalizedPath = routePath.startsWith('/') ? routePath : `/${routePath}`;
     const url = new URL(`${this.baseUrl}${normalizedPath}`, 'http://axon.local');
     for (const [key, value] of Object.entries(query ?? {})) {
       if (value !== undefined) {

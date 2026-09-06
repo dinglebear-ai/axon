@@ -68,6 +68,27 @@ afterEach(() => {
 });
 
 describe("SettingsPanel", () => {
+  it("saves, removes, and deletes profile credentials without leaving the active handle", async () => {
+    const user = userEvent.setup();
+    const invoke = vi.spyOn(await import("@/lib/invoke"), "invoke").mockResolvedValue(undefined);
+    const profile = { id: "labby-prod", label: "Labby", product: "labby" as const, origin: "https://labby.test", credentialHandle: null, pinnedServerId: "server-1", acceptedApiMajor: 1 as const };
+    const { onChange } = renderPanel({ draftConfig: { ...baseConfig, backendProfiles: [profile], activeBackendProfiles: { labby: profile.id } } });
+    await user.type(screen.getAllByPlaceholderText("unset - secret")[1], "secret-one");
+    await user.click(screen.getByRole("button", { name: "Save credential" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("save_backend_credential", expect.objectContaining({ credential: expect.objectContaining({ profileId: profile.id, token: "secret-one" }) })));
+    const saved = onChange.mock.calls.at(-1)?.[0] as PaletteConfig;
+    expect(saved.backendProfiles?.[0].credentialHandle).toBe("labby:labby-prod");
+
+    cleanup();
+    renderPanel({ draftConfig: { ...saved, activeBackendProfiles: { labby: profile.id } }, onChange });
+    await user.click(screen.getByRole("button", { name: "Remove credential" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("delete_backend_credential", { profileId: profile.id }));
+    await user.click(screen.getByRole("button", { name: "Delete profile" }));
+    const deleted = onChange.mock.calls.at(-1)?.[0] as PaletteConfig;
+    expect(deleted.backendProfiles).toEqual([]);
+    expect(deleted.activeBackendProfiles?.labby).toBeUndefined();
+  });
+
   it("renders the connection settings with the server URL field", () => {
     renderPanel();
     expect(screen.getByText("Server URL")).toBeInTheDocument();

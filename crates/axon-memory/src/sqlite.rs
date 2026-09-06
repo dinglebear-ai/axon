@@ -120,8 +120,22 @@ impl SqliteMemoryStore {
         MemoryId::new(format!("mem_{}", uuid::Uuid::new_v4().simple()))
     }
 
+    #[cfg(test)]
     pub(crate) fn conn(&self) -> &Arc<Mutex<Connection>> {
         &self.conn
+    }
+
+    /// Run synchronous rusqlite work on Tokio's bounded blocking pool while
+    /// retaining this store's single-connection serialization.
+    pub(crate) async fn with_conn<T, F>(&self, operation: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T> + Send + 'static,
+    {
+        let mut conn = Arc::clone(&self.conn).lock_owned().await;
+        tokio::task::spawn_blocking(move || operation(&mut conn))
+            .await
+            .map_err(|error| store_error(format!("memory SQLite task failed: {error}")))?
     }
 
     pub(crate) fn clock(&self) -> &Arc<dyn Clock> {
@@ -232,12 +246,18 @@ impl MemoryStore for SqliteMemoryStore {
             contradicts: None,
         };
 
-        let conn = self.conn.lock().await;
-        insert_record(&conn, &record, &now)?;
-        for link in &request.links {
-            lifecycle::insert_link(&conn, &memory_id.0, link, &now)?;
-        }
-        drop(conn);
+        let write_record = record.clone();
+        let write_links = request.links.clone();
+        let write_id = memory_id.0.clone();
+        let write_now = now.clone();
+        self.with_conn(move |conn| {
+            insert_record(conn, &write_record, &write_now)?;
+            for link in &write_links {
+                lifecycle::insert_link(conn, &write_id, link, &write_now)?;
+            }
+            Ok(())
+        })
+        .await?;
         let age = 0.0;
         let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
         crate::observe::emit(
@@ -255,16 +275,18 @@ impl MemoryStore for SqliteMemoryStore {
     }
 
     async fn get(&self, memory_id: MemoryId) -> Result<Option<MemoryRecord>> {
-        let conn = self.conn.lock().await;
-        Self::load_record(&conn, &memory_id.0)
+        self.with_conn(move |conn| Self::load_record(conn, &memory_id.0))
+            .await
     }
 
     async fn load_many(&self, memory_ids: Vec<MemoryId>) -> Result<Vec<Option<MemoryRecord>>> {
-        let conn = self.conn.lock().await;
-        memory_ids
-            .into_iter()
-            .map(|memory_id| Self::load_record(&conn, &memory_id.0))
-            .collect()
+        self.with_conn(move |conn| {
+            memory_ids
+                .into_iter()
+                .map(|memory_id| Self::load_record(conn, &memory_id.0))
+                .collect()
+        })
+        .await
     }
 
     async fn search(&self, request: MemorySearchRequest) -> Result<MemorySearchResult> {
@@ -277,18 +299,22 @@ impl MemoryStore for SqliteMemoryStore {
 
     async fn link(&self, request: MemoryLinkRequest) -> Result<MemoryResult> {
         let now = self.clock.now_rfc3339();
-        let conn = self.conn.lock().await;
-        let mut record = Self::load_record(&conn, &request.memory_id.0)?
-            .ok_or_else(|| not_found(&request.memory_id.0))?;
-        lifecycle::insert_link(&conn, &request.memory_id.0, &request.link, &now)?;
-        record.links.push(request.link);
-        record.history.push(MemoryHistoryEvent {
-            status: record.status,
-            message: "linked".to_string(),
-            timestamp: Timestamp(now.clone()),
-        });
-        update_history(&conn, &record, &now)?;
-        drop(conn);
+        let write_now = now.clone();
+        let record = self
+            .with_conn(move |conn| {
+                let mut record = Self::load_record(conn, &request.memory_id.0)?
+                    .ok_or_else(|| not_found(&request.memory_id.0))?;
+                lifecycle::insert_link(conn, &request.memory_id.0, &request.link, &write_now)?;
+                record.links.push(request.link);
+                record.history.push(MemoryHistoryEvent {
+                    status: record.status,
+                    message: "linked".to_string(),
+                    timestamp: Timestamp(write_now.clone()),
+                });
+                update_history(conn, &record, &write_now)?;
+                Ok(record)
+            })
+            .await?;
         let (age, created, updated) = age_and_bounds(&record, self.clock.now_epoch_secs());
         let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
         crate::observe::emit(
@@ -376,13 +402,15 @@ impl MemoryStore for SqliteMemoryStore {
     }
 
     async fn reset(&self) -> Result<()> {
-        let conn = self.conn.lock().await;
-        conn.execute_batch(
-            "DELETE FROM memory_reviews; DELETE FROM memory_reinforcement; \
-             DELETE FROM memory_links; DELETE FROM memory_records;",
-        )
-        .map_err(|e| store_error(format!("reset: {e}")))?;
-        Ok(())
+        self.with_conn(|conn| {
+            conn.execute_batch(
+                "DELETE FROM memory_reviews; DELETE FROM memory_reinforcement; \
+                 DELETE FROM memory_links; DELETE FROM memory_records;",
+            )
+            .map_err(|e| store_error(format!("reset: {e}")))?;
+            Ok(())
+        })
+        .await
     }
 
     async fn capabilities(&self) -> Result<MemoryStoreCapability> {

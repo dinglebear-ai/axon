@@ -207,8 +207,7 @@ pub fn recover_corrupted_database(path: &Path, reason: &str) -> Result<(), sqlx:
 
     let _recovery_lock = acquire_recovery_lock(path)?;
     tracing::error!(path = %path.display(), reason, "sqlite: database corrupt; recovering");
-    rename_corrupted(path);
-    Ok(())
+    preserve_corrupted_database(path)
 }
 
 pub fn record_runtime_error(error: impl Display) {
@@ -404,25 +403,13 @@ pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
         // snapshots from job payloads — are not group/world-readable
         // on multi-user hosts.
         //
-        // Failure policy: if the parent is under ~/.axon/, hard-fail —
-        // SQLite would otherwise create the dir at default umask
-        // and silently expose secrets. For paths the operator chose
-        // explicitly (AXON_SQLITE_PATH=/var/lib/axon/...), warn-and-
-        // continue so non-secret operator-managed locations still work.
         if let Err(e) = crate::paths::ensure_private_dir_async(parent.to_path_buf()).await {
-            let parent_under_axon_home =
-                crate::paths::axon_home_dir().is_some_and(|home| parent.starts_with(&home));
-            if parent_under_axon_home {
-                return Err(sqlx::Error::Configuration(
-                    format!(
-                        "sqlite: refusing to open SQLite at {} because parent dir {} could not be created at 0o700: {e}",
-                        path,
-                        parent.display()
-                    )
-                    .into(),
-                ));
-            }
-            tracing::warn!(path = %parent.display(), error = %e, "sqlite: failed to create SQLite parent dir at 0o700");
+            return Err(sqlx::Error::Configuration(
+                format!(
+                    "sqlite: refusing to open database because its parent directory could not be secured: {e}"
+                )
+                .into(),
+            ));
         }
     }
 
@@ -437,17 +424,45 @@ pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
     // SQLite opens the existing file rather than creating a new one when the path exists.
     #[cfg(unix)]
     if path != ":memory:" {
-        use std::os::unix::fs::OpenOptionsExt;
-        if let Err(e) = OpenOptions::new()
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let db_file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .mode(0o600)
             .custom_flags(libc::O_NOFOLLOW)
             .open(path)
-        {
-            tracing::warn!(path = %path, error = %e, "sqlite: failed to pre-create SQLite file at 0o600; DB may be world-readable until chmod runs");
+            .map_err(|e| {
+                sqlx::Error::Configuration(
+                    format!(
+                        "sqlite: refusing to open database because it could not be secured: {e}"
+                    )
+                    .into(),
+                )
+            })?;
+        let metadata = db_file.metadata().map_err(|e| {
+            sqlx::Error::Configuration(
+                format!(
+                    "sqlite: refusing to open database because metadata verification failed: {e}"
+                )
+                .into(),
+            )
+        })?;
+        if !metadata.is_file() {
+            return Err(sqlx::Error::Configuration(
+                "sqlite: refusing to open a non-regular database target".into(),
+            ));
         }
+        db_file
+            .set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| {
+                sqlx::Error::Configuration(
+                    format!(
+                        "sqlite: refusing to open database because mode 0600 could not be enforced: {e}"
+                    )
+                    .into(),
+                )
+            })?;
     }
 
     let opts: SqliteConnectOptions = connect_str.parse()?;
@@ -478,21 +493,62 @@ pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
         .await
 }
 
-fn rename_corrupted(path: &Path) {
+fn preserve_corrupted_database(path: &Path) -> Result<(), sqlx::Error> {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let dest = PathBuf::from(format!("{}.corrupted.{ts}", path.display()));
-    if let Err(e) = std::fs::rename(path, &dest) {
-        tracing::warn!(src = %path.display(), dst = %dest.display(), error = %e, "sqlite: could not rename corrupted db");
-    } else {
-        tracing::info!(src = %path.display(), dst = %dest.display(), "sqlite: renamed corrupted db");
+    let sources = [
+        path.to_path_buf(),
+        PathBuf::from(format!("{}-wal", path.display())),
+        PathBuf::from(format!("{}-shm", path.display())),
+    ];
+    let existing = sources
+        .iter()
+        .filter(|source| source.exists())
+        .collect::<Vec<_>>();
+    let mut preserved = Vec::with_capacity(existing.len());
+    for source in &existing {
+        if !source.is_file() {
+            return Err(sqlite_config_error(format!(
+                "sqlite: refusing recovery because corrupt state could not be preserved: {} is not a regular file",
+                source.display()
+            )));
+        }
+        let suffix = if source.as_path() == path {
+            ""
+        } else if source.to_string_lossy().ends_with("-wal") {
+            "-wal"
+        } else {
+            "-shm"
+        };
+        let destination = PathBuf::from(format!("{}.corrupted.{ts}{suffix}", path.display()));
+        std::fs::copy(source, &destination).map_err(|error| {
+            sqlite_config_error(format!(
+                "sqlite: refusing recovery because corrupt state could not be preserved: {error}"
+            ))
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o600))
+                .map_err(|error| {
+                    sqlite_config_error(format!(
+                        "sqlite: refusing recovery because preserved state could not be secured: {error}"
+                    ))
+                })?;
+        }
+        preserved.push(destination);
     }
-    for suffix in ["-wal", "-shm"] {
-        let sidecar = PathBuf::from(format!("{}{suffix}", path.display()));
-        let _ = std::fs::remove_file(&sidecar);
+    for source in existing {
+        std::fs::remove_file(source).map_err(|error| {
+            sqlite_config_error(format!(
+                "sqlite: corrupt state was preserved but active files could not be removed: {error}"
+            ))
+        })?;
     }
+    tracing::info!(path = %path.display(), files = preserved.len(), "sqlite: preserved corrupt database state");
+    Ok(())
 }
 
 fn now_ms() -> i64 {

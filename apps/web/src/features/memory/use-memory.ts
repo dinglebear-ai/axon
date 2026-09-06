@@ -1,20 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AxonClient } from '../../api/axon-client';
 import type { MemoryItem, MemoryNodeType } from '../../lib/panel-types';
 import { memoryErrorMessage, parseConfidence } from './memory-helpers';
 
 /**
- * Standalone hook for the Memory tab (POST /v1/memories, POST
- * /v1/memories/search, GET/DELETE /v1/memories/{id}). Kept separate from
+ * Standalone hook for the panel-authenticated Memory proxy
+ * (/api/panel/memories). Kept separate from
  * usePanelData()/use-panel-data.ts — that file is already at the monolith
  * line-count limit from the Sources tab (a sibling workstream) — so memory
  * state and actions are self-contained here and consumed only by
  * memory-tab.tsx, mirroring use-watches.ts.
  */
-export function useMemoryPanel() {
-  const axonClient = useMemo(() => new AxonClient(), []);
+export function useMemoryPanel(token: string) {
+  const axonClient = useMemo(
+    () => new AxonClient({ pathPrefix: '/api/panel', headers: { 'x-axon-panel-token': token } }),
+    [token]
+  );
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,6 +31,11 @@ export function useMemoryPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailMessage, setDetailMessage] = useState('');
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+  const detailGeneration = useRef(0);
+
+  useEffect(() => () => {
+    detailGeneration.current += 1;
+  }, []);
 
   // Remember form
   const [rememberType, setRememberType] = useState<MemoryNodeType>('fact');
@@ -56,28 +64,37 @@ export function useMemoryPanel() {
   }
 
   async function viewMemory(memoryId: string) {
+    const generation = detailGeneration.current + 1;
+    detailGeneration.current = generation;
     setSelectedMemoryId(memoryId);
     setSelectedMemory(null);
     setDetailLoading(true);
     setDetailMessage('');
     try {
       const result = await axonClient.showMemory(memoryId);
+      if (detailGeneration.current !== generation) return;
       setSelectedMemory(result.memory ?? null);
       if (!result.memory) setDetailMessage('Memory not found.');
     } catch (error) {
+      if (detailGeneration.current !== generation) return;
       setDetailMessage(memoryErrorMessage(error));
     } finally {
-      setDetailLoading(false);
+      if (detailGeneration.current === generation) setDetailLoading(false);
     }
   }
 
   function closeMemoryDetail() {
+    detailGeneration.current += 1;
     setSelectedMemoryId(null);
     setSelectedMemory(null);
     setDetailMessage('');
   }
 
   async function deleteMemory(memoryId: string) {
+    if (selectedMemoryId && selectedMemoryId !== memoryId) {
+      setDetailMessage('Selected memory changed; delete cancelled.');
+      return;
+    }
     if (typeof window !== 'undefined' && !window.confirm(`Delete memory ${memoryId}? This cannot be undone.`)) {
       return;
     }

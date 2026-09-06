@@ -6,7 +6,6 @@
 use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 #[cfg(test)]
 #[path = "shopify_tests.rs"]
@@ -146,10 +145,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
 
     let api_url = format!("https://{host}/products/{handle}.json");
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let resp = client
         .get(&api_url)

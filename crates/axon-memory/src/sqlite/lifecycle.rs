@@ -69,33 +69,41 @@ pub async fn reinforce(
     signal: MemoryReinforcement,
 ) -> Result<MemoryResult> {
     let now_secs = store.clock().now_epoch_secs();
-    let conn = store.conn().lock().await;
-    let mut record = SqliteMemoryStore::load_record(&conn, &memory_id.0)?
-        .ok_or_else(|| not_found(&memory_id.0))?;
+    let memory_id_value = memory_id.0.clone();
+    let signal_for_write = signal.clone();
+    let record = store
+        .with_conn(move |conn| {
+            let mut record = SqliteMemoryStore::load_record(conn, &memory_id_value)?
+                .ok_or_else(|| not_found(&memory_id_value))?;
 
-    record.salience = (record.salience + signal.amount).clamp(0.0, 1.0);
-    let mut decay = record.decay.take().unwrap_or(MemoryDecayPolicy {
-        profile: crate::sqlite::decay_profile_str(record.memory_type.default_decay_profile())
-            .to_string(),
-        half_life_days: None,
-        last_reinforced_at: None,
-        reinforcement_count: 0,
-        review_after: None,
-        expires_at: None,
-        pinned: false,
-    });
-    decay.reinforcement_count = decay.reinforcement_count.saturating_add(1);
-    decay.last_reinforced_at = Some(signal.timestamp.clone());
-    record.decay = Some(decay);
-    record.history.push(MemoryHistoryEvent {
-        status: record.status,
-        message: signal.reason,
-        timestamp: signal.timestamp.clone(),
-    });
+            record.salience = (record.salience + signal_for_write.amount).clamp(0.0, 1.0);
+            let mut decay = record.decay.take().unwrap_or(MemoryDecayPolicy {
+                profile: crate::sqlite::decay_profile_str(
+                    record.memory_type.default_decay_profile(),
+                )
+                .to_string(),
+                half_life_days: None,
+                last_reinforced_at: None,
+                reinforcement_count: 0,
+                review_after: None,
+                expires_at: None,
+                pinned: false,
+            });
+            decay.reinforcement_count = decay.reinforcement_count.saturating_add(1);
+            decay.last_reinforced_at = Some(signal_for_write.timestamp.clone());
+            record.decay = Some(decay);
+            record.history.push(MemoryHistoryEvent {
+                status: record.status,
+                message: signal_for_write.reason,
+                timestamp: signal_for_write.timestamp.clone(),
+            });
 
+            let now = signal_for_write.timestamp.0.clone();
+            update_record(conn, &record, &now)?;
+            Ok(record)
+        })
+        .await?;
     let now = signal.timestamp.0.clone();
-    update_record(&conn, &record, &now)?;
-    drop(conn);
 
     // Age is measured from last_reinforced_at, so a fresh reinforcement gives
     // age 0 -> full decay multiplier.
@@ -129,26 +137,31 @@ pub async fn supersede(
     }
     let now_secs = store.clock().now_epoch_secs();
     let now = request.timestamp.0.clone();
-    let conn = store.conn().lock().await;
+    let now_for_write = now.clone();
+    let request_for_write = request.clone();
+    let record = store
+        .with_conn(move |conn| {
+            if SqliteMemoryStore::load_record(conn, &request_for_write.replacement_id.0)?.is_none()
+            {
+                return Err(not_found(&request_for_write.replacement_id.0));
+            }
+            let mut record = SqliteMemoryStore::load_record(conn, &request_for_write.memory_id.0)?
+                .ok_or_else(|| not_found(&request_for_write.memory_id.0))?;
 
-    // Replacement must exist.
-    if SqliteMemoryStore::load_record(&conn, &request.replacement_id.0)?.is_none() {
-        return Err(not_found(&request.replacement_id.0));
-    }
-    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
-        .ok_or_else(|| not_found(&request.memory_id.0))?;
-
-    record.status = MemoryStatus::Superseded;
-    record.superseded_by = Some(request.replacement_id.clone());
-    let reason = request
-        .reason
-        .unwrap_or_else(|| format!("superseded by {}", request.replacement_id.0));
-    record.history.push(MemoryHistoryEvent {
-        status: MemoryStatus::Superseded,
-        message: reason,
-        timestamp: request.timestamp,
-    });
-    update_record(&conn, &record, &now)?;
+            record.status = MemoryStatus::Superseded;
+            record.superseded_by = Some(request_for_write.replacement_id.clone());
+            let reason = request_for_write
+                .reason
+                .unwrap_or_else(|| format!("superseded by {}", request_for_write.replacement_id.0));
+            record.history.push(MemoryHistoryEvent {
+                status: MemoryStatus::Superseded,
+                message: reason,
+                timestamp: request_for_write.timestamp,
+            });
+            update_record(conn, &record, &now_for_write)?;
+            Ok(record)
+        })
+        .await?;
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
@@ -167,33 +180,38 @@ pub async fn contradict(
     }
     let now_secs = store.clock().now_epoch_secs();
     let now = request.timestamp.0.clone();
-    let conn = store.conn().lock().await;
+    let request_for_write = request.clone();
+    let now_for_write = now.clone();
+    let (record, other, reason) = store
+        .with_conn(move |conn| {
+            let mut other =
+                SqliteMemoryStore::load_record(conn, &request_for_write.conflicting_id.0)?
+                    .ok_or_else(|| not_found(&request_for_write.conflicting_id.0))?;
+            let mut record = SqliteMemoryStore::load_record(conn, &request_for_write.memory_id.0)?
+                .ok_or_else(|| not_found(&request_for_write.memory_id.0))?;
 
-    let mut other = SqliteMemoryStore::load_record(&conn, &request.conflicting_id.0)?
-        .ok_or_else(|| not_found(&request.conflicting_id.0))?;
-    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
-        .ok_or_else(|| not_found(&request.memory_id.0))?;
+            let reason = request_for_write
+                .reason
+                .clone()
+                .unwrap_or_else(|| "contradiction detected".to_string());
 
-    let reason = request
-        .reason
-        .clone()
-        .unwrap_or_else(|| "contradiction detected".to_string());
-
-    for (rec, other_id) in [
-        (&mut record, request.conflicting_id.clone()),
-        (&mut other, request.memory_id.clone()),
-    ] {
-        rec.status = MemoryStatus::Contradicted;
-        rec.contradicts = Some(other_id);
-        rec.history.push(MemoryHistoryEvent {
-            status: MemoryStatus::Contradicted,
-            message: reason.clone(),
-            timestamp: request.timestamp.clone(),
-        });
-        update_record(&conn, rec, &now)?;
-        enqueue_review(&conn, &rec.memory_id.0, Some(&reason), &now)?;
-    }
-    drop(conn);
+            for (rec, other_id) in [
+                (&mut record, request_for_write.conflicting_id.clone()),
+                (&mut other, request_for_write.memory_id.clone()),
+            ] {
+                rec.status = MemoryStatus::Contradicted;
+                rec.contradicts = Some(other_id);
+                rec.history.push(MemoryHistoryEvent {
+                    status: MemoryStatus::Contradicted,
+                    message: reason.clone(),
+                    timestamp: request_for_write.timestamp.clone(),
+                });
+                update_record(conn, rec, &now_for_write)?;
+                enqueue_review(conn, &rec.memory_id.0, Some(&reason), &now_for_write)?;
+            }
+            Ok((record, other, reason))
+        })
+        .await?;
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
@@ -229,24 +247,34 @@ pub async fn set_status(
 ) -> Result<MemoryResult> {
     let now_secs = store.clock().now_epoch_secs();
     let now = request.timestamp.0.clone();
-    let conn = store.conn().lock().await;
-    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
-        .ok_or_else(|| not_found(&request.memory_id.0))?;
+    let request_for_write = request.clone();
+    let now_for_write = now.clone();
+    let record = store
+        .with_conn(move |conn| {
+            let mut record = SqliteMemoryStore::load_record(conn, &request_for_write.memory_id.0)?
+                .ok_or_else(|| not_found(&request_for_write.memory_id.0))?;
 
-    record.status = request.status;
-    if request.status == MemoryStatus::Review {
-        enqueue_review(&conn, &request.memory_id.0, request.reason.as_deref(), &now)?;
-    }
-    let message = request
-        .reason
-        .unwrap_or_else(|| format!("status -> {:?}", request.status));
-    record.history.push(MemoryHistoryEvent {
-        status: request.status,
-        message,
-        timestamp: request.timestamp,
-    });
-    update_record(&conn, &record, &now)?;
-    drop(conn);
+            record.status = request_for_write.status;
+            if request_for_write.status == MemoryStatus::Review {
+                enqueue_review(
+                    conn,
+                    &request_for_write.memory_id.0,
+                    request_for_write.reason.as_deref(),
+                    &now_for_write,
+                )?;
+            }
+            let message = request_for_write
+                .reason
+                .unwrap_or_else(|| format!("status -> {:?}", request_for_write.status));
+            record.history.push(MemoryHistoryEvent {
+                status: request_for_write.status,
+                message,
+                timestamp: request_for_write.timestamp,
+            });
+            update_record(conn, &record, &now_for_write)?;
+            Ok(record)
+        })
+        .await?;
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
@@ -279,63 +307,71 @@ pub async fn update(
 ) -> Result<MemoryResult> {
     let now_secs = store.clock().now_epoch_secs();
     let now = request.timestamp.0.clone();
-    let conn = store.conn().lock().await;
-    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
-        .ok_or_else(|| not_found(&request.memory_id.0))?;
+    let request_for_write = request.clone();
+    let now_for_write = now.clone();
+    let record = store
+        .with_conn(move |conn| {
+            let mut record = SqliteMemoryStore::load_record(conn, &request_for_write.memory_id.0)?
+                .ok_or_else(|| not_found(&request_for_write.memory_id.0))?;
 
-    // Fail-closed redaction boundary: an updated body/title is durable and
-    // recalled back through CLI/MCP/REST in later sessions — same rule as
-    // `remember`. Oversized input blocks the write rather than persisting
-    // unscrubbed content (see `redact_text_checked`'s doc comment).
-    let redactor = axon_core::redact::DefaultRedactor::new();
-    let redaction_context = axon_core::redact::RedactionContext::memory_record();
-    if let Some(body) = request.body {
-        record.body = axon_core::redact::redact_text_checked(&redactor, &body, &redaction_context)
-            .map_err(|_| {
-                redaction_failed(format!(
-                    "memory body exceeds {} bytes; redaction cannot be safely verified",
-                    axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
-                ))
-            })?;
-    }
-    if let Some(title) = request.title {
-        record.title = Some(
-            axon_core::redact::redact_text_checked(&redactor, &title, &redaction_context).map_err(
-                |_| {
-                    redaction_failed(format!(
-                        "memory title exceeds {} bytes; redaction cannot be safely verified",
-                        axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
-                    ))
-                },
-            )?,
-        );
-    }
-    if let Some(memory_type) = request.memory_type {
-        record.memory_type = memory_type;
-    }
-    if let Some(confidence) = request.confidence {
-        if confidence.is_nan() {
-            return Err(invalid("confidence must be a number"));
-        }
-        record.confidence = confidence;
-    }
-    if let Some(salience) = request.salience {
-        if salience.is_nan() {
-            return Err(invalid("salience must be a number"));
-        }
-        record.salience = salience;
-    }
-    if let Some(scope) = request.scope {
-        record.scope = scope;
-    }
+            // Fail-closed redaction boundary: an updated body/title is durable and
+            // recalled back through CLI/MCP/REST in later sessions — same rule as
+            // `remember`. Oversized input blocks the write rather than persisting
+            // unscrubbed content (see `redact_text_checked`'s doc comment).
+            let redactor = axon_core::redact::DefaultRedactor::new();
+            let redaction_context = axon_core::redact::RedactionContext::memory_record();
+            if let Some(body) = request_for_write.body {
+                record.body =
+                    axon_core::redact::redact_text_checked(&redactor, &body, &redaction_context)
+                        .map_err(|_| {
+                            redaction_failed(format!(
+                                "memory body exceeds {} bytes; redaction cannot be safely verified",
+                                axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
+                            ))
+                        })?;
+            }
+            if let Some(title) = request_for_write.title {
+                record.title = Some(
+                    axon_core::redact::redact_text_checked(&redactor, &title, &redaction_context)
+                        .map_err(|_| {
+                        redaction_failed(format!(
+                            "memory title exceeds {} bytes; redaction cannot be safely verified",
+                            axon_core::redact::MAX_REDACTABLE_TEXT_BYTES
+                        ))
+                    })?,
+                );
+            }
+            if let Some(memory_type) = request_for_write.memory_type {
+                record.memory_type = memory_type;
+            }
+            if let Some(confidence) = request_for_write.confidence {
+                if confidence.is_nan() {
+                    return Err(invalid("confidence must be a number"));
+                }
+                record.confidence = confidence;
+            }
+            if let Some(salience) = request_for_write.salience {
+                if salience.is_nan() {
+                    return Err(invalid("salience must be a number"));
+                }
+                record.salience = salience;
+            }
+            if let Some(scope) = request_for_write.scope {
+                record.scope = scope;
+            }
 
-    let message = request.reason.unwrap_or_else(|| "updated".to_string());
-    record.history.push(MemoryHistoryEvent {
-        status: record.status,
-        message,
-        timestamp: request.timestamp,
-    });
-    update_record(&conn, &record, &now)?;
+            let message = request_for_write
+                .reason
+                .unwrap_or_else(|| "updated".to_string());
+            record.history.push(MemoryHistoryEvent {
+                status: record.status,
+                message,
+                timestamp: request_for_write.timestamp,
+            });
+            update_record(conn, &record, &now_for_write)?;
+            Ok(record)
+        })
+        .await?;
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);
@@ -349,38 +385,44 @@ pub async fn update(
 pub async fn pin(store: &SqliteMemoryStore, request: MemoryPinRequest) -> Result<MemoryResult> {
     let now_secs = store.clock().now_epoch_secs();
     let now = request.timestamp.0.clone();
-    let conn = store.conn().lock().await;
-    let mut record = SqliteMemoryStore::load_record(&conn, &request.memory_id.0)?
-        .ok_or_else(|| not_found(&request.memory_id.0))?;
+    let request_for_write = request.clone();
+    let now_for_write = now.clone();
+    let record = store
+        .with_conn(move |conn| {
+            let mut record = SqliteMemoryStore::load_record(conn, &request_for_write.memory_id.0)?
+                .ok_or_else(|| not_found(&request_for_write.memory_id.0))?;
 
-    let mut decay = record.decay.clone().unwrap_or_else(|| {
-        let profile = record.memory_type.default_decay_profile();
-        MemoryDecayPolicy {
-            profile: crate::sqlite::decay_profile_str(profile).to_string(),
-            half_life_days: profile.half_life_days().map(|d| d as u32),
-            last_reinforced_at: None,
-            reinforcement_count: 0,
-            review_after: None,
-            expires_at: None,
-            pinned: false,
-        }
-    });
-    decay.pinned = request.pinned;
-    record.decay = Some(decay);
+            let mut decay = record.decay.clone().unwrap_or_else(|| {
+                let profile = record.memory_type.default_decay_profile();
+                MemoryDecayPolicy {
+                    profile: crate::sqlite::decay_profile_str(profile).to_string(),
+                    half_life_days: profile.half_life_days().map(|d| d as u32),
+                    last_reinforced_at: None,
+                    reinforcement_count: 0,
+                    review_after: None,
+                    expires_at: None,
+                    pinned: false,
+                }
+            });
+            decay.pinned = request_for_write.pinned;
+            record.decay = Some(decay);
 
-    let message = request.reason.unwrap_or_else(|| {
-        if request.pinned {
-            "pinned".to_string()
-        } else {
-            "unpinned".to_string()
-        }
-    });
-    record.history.push(MemoryHistoryEvent {
-        status: record.status,
-        message,
-        timestamp: request.timestamp,
-    });
-    update_record(&conn, &record, &now)?;
+            let message = request_for_write.reason.unwrap_or_else(|| {
+                if request_for_write.pinned {
+                    "pinned".to_string()
+                } else {
+                    "unpinned".to_string()
+                }
+            });
+            record.history.push(MemoryHistoryEvent {
+                status: record.status,
+                message,
+                timestamp: request_for_write.timestamp,
+            });
+            update_record(conn, &record, &now_for_write)?;
+            Ok(record)
+        })
+        .await?;
 
     let age = age_days(&record, now_secs);
     let score = crate::decay::score_record(&record, age, 0.0, 1.0, false);

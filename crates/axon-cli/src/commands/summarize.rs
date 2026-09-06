@@ -6,7 +6,6 @@ use axon_services::events::ServiceEvent;
 use axon_services::summarize as summarize_svc;
 use axon_services::types::SummarizeResult;
 use std::error::Error;
-use std::io::Write;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -41,25 +40,30 @@ pub async fn run_summarize(cfg: &Config) -> Result<(), Box<dyn Error>> {
                     if !started {
                         started = true;
                     }
-                    let _ = stdout.write_all(text.as_bytes());
-                    let _ = stdout.flush();
+                    if !super::stream_output::write_chunk(&mut stdout, &text)? {
+                        return Ok::<(), std::io::Error>(());
+                    }
                 }
             }
             if started {
-                let _ = writeln!(stdout);
+                super::stream_output::finish_line(&mut stdout)?;
             }
+            Ok::<(), std::io::Error>(())
         })
     });
 
     let result = summarize_svc::summarize(cfg, &urls, event_tx).await?;
 
-    if let Some(ref mut task) = consumer
-        && tokio::time::timeout(SUMMARIZE_CONSUMER_DRAIN_TIMEOUT, &mut *task)
-            .await
-            .is_err()
-    {
-        task.abort();
-        log_warn("summarize synthesis consumer timed out");
+    if let Some(mut task) = consumer.take() {
+        match tokio::time::timeout(SUMMARIZE_CONSUMER_DRAIN_TIMEOUT, &mut task).await {
+            Ok(joined) => joined.map_err(|error| {
+                anyhow::anyhow!("summarize synthesis consumer failed: {error}")
+            })??,
+            Err(_) => {
+                task.abort();
+                log_warn("summarize synthesis consumer timed out");
+            }
+        }
     }
 
     emit_summarize_result(cfg, &result)?;

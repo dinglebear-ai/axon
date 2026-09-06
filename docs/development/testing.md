@@ -9,6 +9,10 @@ Last Modified: 2026-06-01
 
 This document defines how to run tests locally and in CI for `axon`.
 
+For catalog-driven end-to-end operation, trust boundaries, live WIF/gateway
+setup, evidence, teardown/recovery, and release qualification, use
+[Axon end-to-end test operations](../guides/e2e-operations.md).
+
 ## Goals
 - Keep the default local loop fast.
 - Keep infra-backed tests explicit and reproducible.
@@ -290,3 +294,11 @@ just coverage-branch
 - Ran `just test` after code changes.
 - Ran `just services-up && just test` when changing Qdrant/TEI/Chrome-backed integration behavior.
 - Ran `just verify` before opening/updating PR.
+## Required hermetic E2E gate
+
+`just e2e-hermetic` reproduces the repository-owned required workflow locally.
+The stable check context is `E2E Hermetic Required`. Its promotion preflight is
+fail-closed over catalog coverage, critical lifecycles, semantic parity,
+canonical reporting, fixed mutation sensitivity, zero-quarantine reliability,
+redaction, and signed cleanup evidence. See `docs/guides/e2e-hermetic-ci.md` for
+the administrator-only bypass and reversible branch-protection rollback policy.

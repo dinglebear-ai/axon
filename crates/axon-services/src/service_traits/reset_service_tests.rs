@@ -24,6 +24,22 @@ async fn fake_reset_service_plan_then_execute() {
 }
 
 #[tokio::test]
+async fn fake_reset_service_get_plan_returns_exact_dry_run_record() {
+    let fake: Arc<dyn ResetService> = Arc::new(FakeResetService::new());
+    let plan = fake.plan().await.expect("plan should succeed");
+    let stored = fake
+        .get_plan(&plan.plan_id)
+        .await
+        .expect("get should succeed");
+    assert!(stored.dry_run);
+    assert_eq!(stored.reset_plan, plan);
+    assert_eq!(
+        stored.inventory_checksum,
+        stored.reset_plan.inventory_checksum
+    );
+}
+
+#[tokio::test]
 async fn fake_reset_service_requires_confirmation_and_admin() {
     let fake: Arc<dyn ResetService> = Arc::new(FakeResetService::new());
     let plan = fake.plan().await.expect("plan should succeed");

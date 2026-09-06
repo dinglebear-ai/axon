@@ -57,6 +57,18 @@ const CLIENT_CONSTRUCTORS: &[&str] = &[
 /// not one.
 const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
     (
+        "crates/axon-adapters/src/git/vertical.rs",
+        "Vertical extractors consume structured provider APIs through a credential-aware \
+         VerticalContext; they are not arbitrary-page acquisition and cannot use fetch_web's \
+         response-only browser fallback without discarding extractor request semantics.",
+    ),
+    (
+        "crates/axon-adapters/src/web/vertical.rs",
+        "Vertical extractors consume structured provider APIs through a credential-aware \
+         VerticalContext; failures explicitly degrade to the canonical generic web ladder, \
+         while the structured API request itself cannot be represented by fetch_web.",
+    ),
+    (
         "crates/axon-adapters/src/artifact_candidates/depot.rs",
         "Authenticated Depot write API client on one configured provider origin. \
          It posts typed candidate JSON with bearer auth, disables redirects, and \

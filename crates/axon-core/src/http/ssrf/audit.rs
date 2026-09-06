@@ -154,8 +154,8 @@ fn build_ssrf_audit(
         Err(err) => redact_ssrf_reason(err),
     };
     let detail = SsrfAuditDetail {
-        requested_url: requested_url.to_string(),
-        canonical_url: canonical_url.to_string(),
+        requested_url: audit_safe_url(requested_url),
+        canonical_url: audit_safe_url(canonical_url),
         resolved_ip_class,
         redirect_chain_index,
         policy_decision,
@@ -169,6 +169,17 @@ fn build_ssrf_audit(
         Err(err) => Err(clone_http_error(err)),
     };
     (cloned_result, event)
+}
+
+fn audit_safe_url(raw: &str) -> String {
+    let Ok(mut url) = url::Url::parse(raw) else {
+        return "[invalid-url]".to_string();
+    };
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    url.to_string()
 }
 
 /// `HttpError` does not implement `Clone` (it wraps `reqwest::Error` via

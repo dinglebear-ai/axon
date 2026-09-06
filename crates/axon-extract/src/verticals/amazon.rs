@@ -10,7 +10,6 @@ use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::types::{ExtractorInfo, ScrapedDoc};
 use axon_core::error::ServiceTaxonomyError;
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "amazon",
@@ -80,10 +79,7 @@ async fn fetch_page_body(url: &str, ctx: &VerticalContext) -> Result<String, Ver
 }
 
 async fn fetch_via_reqwest(url: &str, ctx: &VerticalContext) -> Result<String, VerticalError> {
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let resp = client
         .get(url)

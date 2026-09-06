@@ -1,4 +1,4 @@
-use super::CollectorConfig;
+use super::{CollectorConfig, sanitized_url_for_log};
 use crate::web_engine::engine::{CrawlDiagnostic, CrawlSummary};
 
 pub(super) fn track_waf_block(
@@ -12,14 +12,14 @@ pub(super) fn track_waf_block(
         return;
     }
     summary.waf_blocked_pages += 1;
-    summary.waf_blocked_urls.insert(url.to_string());
+    summary.waf_blocked_urls.insert(sanitized_url_for_log(url));
     summary.push_diagnostic(
         CrawlDiagnostic::new(
             "http_fetch",
             "waf_blocked",
             "page reported WAF or anti-bot block",
         )
-        .with_url(url.to_string()),
+        .with_url(sanitized_url_for_log(url)),
     );
 }
 

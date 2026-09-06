@@ -79,6 +79,20 @@ DOC_CI_HELPER_SCRIPTS = {
     "scripts/check_aurora_primitive_inventory.py",
 }
 
+OPERATIONAL_TEST_ENTRYPOINTS = {
+    "scripts/test-axon-env.sh",
+    "scripts/test-bench-source-pipeline.sh",
+    "scripts/test-chrome-extension-agent-os.sh",
+    "scripts/test-evaluate-retrieval.sh",
+    "scripts/test-install-behavior.sh",
+    "scripts/test-mcp-tasks-wire.py",
+    "scripts/test-mlx-metrics.py",
+    "scripts/test_mcp_doc_renderer.py",
+    "scripts/test_qdrant_quality.py",
+    "scripts/test_qdrant_tune.py",
+    "scripts/test_tei_tune.py",
+}
+
 CI_CONTRACT_PATHS = {
     "scripts/ci/changed_paths.py",
     "tests/ci_changed_paths.rs",
@@ -191,7 +205,9 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     )
     docs_contracts = any_match(
         paths,
-        lambda p: starts(p, "docs/reference/")
+        lambda p: starts(p, "docs/", "openwiki/", "plugins/")
+        or p in {"README.md", "CHANGELOG.md", "CLAUDE.md"}
+        or p in OPERATIONAL_TEST_ENTRYPOINTS
         or p in DOC_CI_HELPER_SCRIPTS,
     )
     aurora_inventory = any_match(
@@ -227,10 +243,11 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
             p,
             "src/mcp/",
             "crates/axon-mcp/",
-            "crates/axon-api/src/mcp_schema/",
+            "crates/axon-api/src/action/",
             "docs/reference/mcp/",
         )
-        or p == "crates/axon-api/src/mcp_schema.rs"
+        or p == "crates/axon-api/src/action.rs"
+        or p == "crates/axon-mcp/src/schema.rs"
         or p in MCP_CI_HELPER_SCRIPTS
     )
     rag = any_match(
@@ -271,6 +288,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
                 "src/",
                 "crates/",
                 "xtask/",
+                "xtask-release/",
                 "benches/",
                 "tests/",
                 "migrations/",

@@ -10,7 +10,6 @@ use axon_services::types::{
     ResearchExtraction, ResearchPayload, SearchOptions as ServiceSearchOptions, SummarySource,
 };
 use std::error::Error;
-use std::io::Write;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -80,8 +79,9 @@ pub async fn run_research(
             match event {
                 ServiceEvent::Log { message, .. } => {
                     if in_synthesis {
-                        let _ = writeln!(stdout);
-                        let _ = stdout.flush();
+                        if !super::stream_output::finish_line(&mut stdout)? {
+                            return Ok::<(), std::io::Error>(());
+                        }
                         in_synthesis = false;
                     }
                     if message == "phase:searching" {
@@ -94,16 +94,17 @@ pub async fn run_research(
                     if !in_synthesis {
                         in_synthesis = true;
                     }
-                    let _ = stdout.write_all(text.as_bytes());
-                    let _ = stdout.flush();
+                    if !super::stream_output::write_chunk(&mut stdout, &text)? {
+                        return Ok::<(), std::io::Error>(());
+                    }
                 }
                 _ => {}
             }
         }
         if in_synthesis {
-            let _ = writeln!(stdout);
-            let _ = stdout.flush();
+            super::stream_output::finish_line(&mut stdout)?;
         }
+        Ok::<(), std::io::Error>(())
     });
 
     // `--research-depth` reinterprets `--limit` for the research command:
@@ -129,15 +130,16 @@ pub async fn run_research(
     // naturally exits on the next `recv()` returning None. If something
     // pathological is holding the consumer (e.g. a slow stderr writer),
     // we warn and abort so it cannot keep writing after the command exits.
-    if tokio::time::timeout(RESEARCH_CONSUMER_DRAIN_TIMEOUT, &mut consumer)
-        .await
-        .is_err()
-    {
-        consumer.abort();
-        log_warn(&format!(
-            "research synthesis consumer timed out after {}s draining stderr",
-            RESEARCH_CONSUMER_DRAIN_TIMEOUT.as_secs()
-        ));
+    match tokio::time::timeout(RESEARCH_CONSUMER_DRAIN_TIMEOUT, &mut consumer).await {
+        Ok(joined) => joined
+            .map_err(|error| anyhow::anyhow!("research synthesis consumer failed: {error}"))??,
+        Err(_) => {
+            consumer.abort();
+            log_warn(&format!(
+                "research synthesis consumer timed out after {}s draining stdout",
+                RESEARCH_CONSUMER_DRAIN_TIMEOUT.as_secs()
+            ));
+        }
     }
 
     let payload = result

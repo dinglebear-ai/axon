@@ -6,11 +6,13 @@ use axon_api::source::*;
 use futures_util::{StreamExt, stream};
 
 use super::QdrantVectorStore;
+use super::QdrantWriteTransport;
 use super::convert::{
-    canonical_uri_filter_json, collection_create_json, eq_filter_json, eq2_filter_json,
-    payload_index_json,
+    canonical_uri_filter_json, collection_create_json_with_settings, eq_filter_json,
+    eq2_filter_json, payload_index_json,
 };
-use super::http::QdrantHttp;
+use super::grpc::upsert_batches_grpc;
+use super::http::{PutCreateOutcome, QdrantHttp};
 use super::search::qdrant_search;
 use super::upsert::upsert_batches_rest;
 use crate::collection::{
@@ -22,7 +24,11 @@ use crate::store::Result;
 use crate::store_helpers::delete_result;
 
 impl QdrantVectorStore {
+    /// Count the exact points matched by a delete selector without mutating
+    /// the collection. This is the authoritative dry-run primitive used by
+    /// prune planning.
     pub(super) async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
+        self.recover_bulk_load_transitions().await?;
         let stage = ErrorStage::Upserting;
         let http = self.http()?;
         let spec = normalize_collection_spec(spec);
@@ -42,13 +48,27 @@ impl QdrantVectorStore {
         let url = http.endpoint().collection_path(&spec.collection, "");
         {
             let _permit = self.write_permit(stage).await?;
-            http.put_json(
-                stage,
-                &url,
-                &collection_create_json(&spec),
-                "qdrant_create_collection",
-            )
-            .await?;
+            let outcome = http
+                .put_json_idempotent_create(
+                    stage,
+                    &url,
+                    &collection_create_json_with_settings(&spec, self.collection_settings()),
+                    "qdrant_create_collection",
+                )
+                .await?;
+            if outcome == PutCreateOutcome::AlreadyExists {
+                let existing = self
+                    .fetch_collection_spec(&http, &spec.collection, stage)
+                    .await?
+                    .ok_or_else(|| {
+                        ApiError::new(
+                            "vector.collection_create_conflict_unverified",
+                            stage,
+                            "Qdrant reported a collection create conflict but the existing collection could not be verified",
+                        )
+                    })?;
+                check_collection_drift(&existing, &spec)?;
+            }
         }
         self.ensure_payload_indexes(&http, &spec, stage).await?;
         self.cache_collection_spec(spec).await;
@@ -64,7 +84,12 @@ impl QdrantVectorStore {
         let spec = self
             .require_collection_spec(&http, &batch.collection, stage)
             .await?;
-        upsert_batches_rest(self, &http, &spec, batch, stage).await
+        match self.write_transport() {
+            QdrantWriteTransport::Rest => {
+                upsert_batches_rest(self, &http, &spec, batch, stage).await
+            }
+            QdrantWriteTransport::Grpc => upsert_batches_grpc(self, &spec, batch).await,
+        }
     }
 
     pub(super) async fn delete_inner(
@@ -150,13 +175,58 @@ impl QdrantVectorStore {
                         )
                         .with_provider_id(provider_id)
                     })?;
-                    http.put_json(stage, &url, &body, "qdrant_payload_index")
-                        .await
+                    let outcome = http
+                        .put_json_idempotent_create(stage, &url, &body, "qdrant_payload_index")
+                        .await?;
+                    Ok::<_, ApiError>((index, outcome))
                 }
             })
             .buffer_unordered(self.payload_index_parallelism());
+        let mut conflicting_indexes = Vec::new();
         while let Some(result) = pending.next().await {
-            result?;
+            let (index, outcome) = result?;
+            if outcome == PutCreateOutcome::AlreadyExists {
+                conflicting_indexes.push(index);
+            }
+        }
+        if !conflicting_indexes.is_empty() {
+            let existing = self
+                .fetch_collection_spec(http, &spec.collection, stage)
+                .await?
+                .ok_or_else(|| {
+                    ApiError::new(
+                        "vector.payload_index_conflict_unverified",
+                        stage,
+                        "Qdrant reported a payload-index conflict but the collection could not be verified",
+                    )
+                })?;
+            check_collection_drift(&existing, spec)?;
+            for conflicting in conflicting_indexes {
+                let actual = existing
+                    .payload_indexes
+                    .iter()
+                    .find(|index| index.field_name == conflicting.field_name)
+                    .ok_or_else(|| {
+                        ApiError::new(
+                            "vector.payload_index_conflict_unverified",
+                            stage,
+                            format!(
+                                "Qdrant reported a payload-index conflict for {} but the existing index was not visible",
+                                conflicting.field_name
+                            ),
+                        )
+                    })?;
+                if actual.field_schema != conflicting.field_schema {
+                    return Err(ApiError::new(
+                        "vector.collection_drift",
+                        stage,
+                        format!(
+                            "collection {} payload index {} has a different field schema",
+                            spec.collection, conflicting.field_name
+                        ),
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -195,13 +265,7 @@ struct RetrieveResponse {
 }
 
 /// Count the exact points targeted by a Qdrant delete before issuing it.
-///
-/// Qdrant's synchronous delete acknowledgement does not contain a deletion
-/// count. Filtered selectors use `/points/count` and explicit point-id
-/// selectors use `/points` retrieval against the same request body. The count
-/// is exact at observation time, but it is not transactionally coupled to the
-/// subsequent delete; the receipt therefore marks it as an estimate.
-async fn count_delete_matches(
+pub(super) async fn count_delete_matches(
     http: &QdrantHttp,
     collection: &str,
     delete_body: &serde_json::Value,
@@ -233,7 +297,11 @@ async fn count_delete_matches(
 }
 
 /// Count every point in `collection`, no filter (exact server-side count).
-async fn count_all_points(http: &QdrantHttp, collection: &str, stage: ErrorStage) -> Result<u64> {
+pub(super) async fn count_all_points(
+    http: &QdrantHttp,
+    collection: &str,
+    stage: ErrorStage,
+) -> Result<u64> {
     let url = http.endpoint().collection_path(collection, "points/count");
     let body = serde_json::json!({ "exact": true });
     let response: CountResponse = http
@@ -247,10 +315,7 @@ const COLLECTION_DELETE_BATCH_SIZE: usize = 1000;
 
 /// Delete every point in `collection`, keeping the collection itself.
 ///
-/// Normal prune/delete must not recreate a collection; destructive collection
-/// recreation belongs to reset receipts only. Qdrant does not expose a stable
-/// match-all filter contract, so collection prune pages point ids and deletes
-/// those ids in bounded batches.
+/// Pages point IDs and deletes them in bounded batches without recreation.
 async fn delete_collection_points_by_scroll(
     store: &QdrantVectorStore,
     http: &QdrantHttp,
@@ -349,7 +414,7 @@ fn generation_delete_filter(
     ))
 }
 
-fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
+pub(super) fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
     match selector {
         VectorDeleteSelector::Points { point_ids, .. } => Ok(serde_json::json!({
             "points": point_ids.iter().map(|id| id.0.clone()).collect::<Vec<_>>()
@@ -426,98 +491,6 @@ fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
                 .unwrap_or_default();
             Ok(serde_json::json!({ "filter": { "must": must } }))
         }
-    }
-}
-
-/// Interpret a Qdrant collection GET body into a [`CollectionSpec`].
-///
-/// Returns `None` when the body lacks a usable dense-vector config (e.g. an
-/// error envelope), so callers treat it as "collection absent".
-pub(super) fn detect_collection_spec(
-    collection: &str,
-    body: &serde_json::Value,
-) -> Option<CollectionSpec> {
-    let params = body.pointer("/result/config/params")?;
-    let vectors = params.get("vectors")?;
-
-    // Named-mode: {"vectors": {"<name>": {"size": N, "distance": "Cosine"}}}
-    let (dense_name, dense_cfg) = if vectors.get("size").is_some() {
-        ("dense".to_string(), vectors.clone())
-    } else {
-        let object = vectors.as_object()?;
-        let (name, cfg) = object.iter().next()?;
-        (name.clone(), cfg.clone())
-    };
-    let dimensions = dense_cfg.get("size").and_then(|v| v.as_u64())? as u32;
-    let distance = dense_cfg
-        .get("distance")
-        .and_then(|v| v.as_str())
-        .and_then(parse_distance)
-        .unwrap_or(VectorDistance::Cosine);
-
-    let sparse = params
-        .get("sparse_vectors")
-        .and_then(|v| v.as_object())
-        .and_then(|map| map.iter().next())
-        .map(|(name, cfg)| SparseVectorConfig {
-            name: name.clone(),
-            modifier: match cfg.get("modifier").and_then(|v| v.as_str()) {
-                Some("idf") => SparseVectorModifier::Idf,
-                _ => SparseVectorModifier::None,
-            },
-        });
-
-    let payload_indexes = body
-        .pointer("/result/payload_schema")
-        .and_then(|schema| schema.as_object())
-        .map(|schema| {
-            schema
-                .iter()
-                .filter_map(|(field, cfg)| {
-                    let data_type = cfg.get("data_type").and_then(|v| v.as_str())?;
-                    Some(PayloadIndexSpec {
-                        field_name: field.clone(),
-                        field_schema: parse_field_schema(data_type),
-                        required_for_filters: true,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Some(CollectionSpec {
-        collection: collection.to_string(),
-        dense: VectorConfig {
-            name: dense_name,
-            dimensions,
-            distance,
-        },
-        payload_indexes,
-        sparse,
-        aliases: Vec::new(),
-        distance: None,
-        metadata: MetadataMap::new(),
-    })
-}
-
-fn parse_field_schema(data_type: &str) -> PayloadFieldSchema {
-    match data_type {
-        "integer" => PayloadFieldSchema::Integer,
-        "float" => PayloadFieldSchema::Float,
-        "bool" => PayloadFieldSchema::Boolean,
-        "datetime" => PayloadFieldSchema::Datetime,
-        "text" => PayloadFieldSchema::Text,
-        _ => PayloadFieldSchema::Keyword,
-    }
-}
-
-fn parse_distance(value: &str) -> Option<VectorDistance> {
-    match value {
-        "Cosine" => Some(VectorDistance::Cosine),
-        "Dot" => Some(VectorDistance::Dot),
-        "Euclid" => Some(VectorDistance::Euclid),
-        "Manhattan" => Some(VectorDistance::Manhattan),
-        _ => None,
     }
 }
 

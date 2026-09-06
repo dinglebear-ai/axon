@@ -15,6 +15,38 @@ pub(crate) struct LeasedSourceWatch {
 }
 
 impl SqliteWatchStore {
+    /// Acquire the same durable per-watch execution lease used by the due
+    /// scheduler for an explicit `watch exec` request.
+    ///
+    /// The conditional UPDATE is the authority: concurrent callers cannot
+    /// both pass it, even when they are served by different Axon processes.
+    pub async fn acquire_exec_lease(&self, watch_id: &WatchId, lease_ttl_ms: i64) -> Result<bool> {
+        let now = now_ms();
+        retry_watch_write("watch acquire exec lease", || async {
+            let updated = sqlx::query(
+                "UPDATE axon_source_watches SET lease_expires_at = ?, updated_at = ? \
+                 WHERE watch_id = ? \
+                   AND (lease_expires_at IS NULL OR lease_expires_at < ?) \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM axon_source_watch_runs r \
+                       JOIN jobs j ON j.job_id = r.job_id \
+                       WHERE r.watch_id = ? \
+                         AND j.status NOT IN ('completed', 'completed_degraded', 'failed', 'canceled', 'expired', 'skipped') \
+                   )",
+            )
+            .bind(now + lease_ttl_ms)
+            .bind(now)
+            .bind(&watch_id.0)
+            .bind(now)
+            .bind(&watch_id.0)
+            .execute(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
+            Ok(updated.rows_affected() == 1)
+        })
+        .await
+    }
+
     /// Atomically lease enabled source watches whose schedule is due.
     ///
     /// This is the canonical recurring scheduler path. It reads only
@@ -114,7 +146,7 @@ impl SqliteWatchStore {
     /// could be recorded. `next_run_at` has already moved forward at lease
     /// time, so this avoids a tight retry loop while still allowing the next
     /// scheduled interval to run.
-    pub(crate) async fn release_lease(&self, watch_id: &WatchId) -> Result<()> {
+    pub async fn release_lease(&self, watch_id: &WatchId) -> Result<()> {
         retry_watch_write("watch release lease", || self.release_lease_once(watch_id)).await
     }
 

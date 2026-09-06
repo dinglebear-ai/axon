@@ -186,7 +186,9 @@ pub(super) async fn run_single_url_extract_chrome(
         pages_with_data,
         metrics,
         parser_hits,
-    } = collect_page_results(replay_rx, http, Arc::clone(&engine), fallback_cfg).await;
+    } = collect_page_results(replay_rx, http, Arc::clone(&engine), fallback_cfg)
+        .await
+        .map_err(|error| -> Box<dyn Error> { error.into() })?;
 
     if all_fallback_attempts_failed(&metrics, &results) {
         return Err("all LLM fallback extraction attempts failed".into());

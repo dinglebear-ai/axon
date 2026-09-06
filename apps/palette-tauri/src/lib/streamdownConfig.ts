@@ -1,12 +1,13 @@
 import { defaultRehypePlugins, type ThemeInput } from "streamdown";
 
 import { limitedCode } from "@/lib/limitedStreamdownCode";
+import { mermaidPlugin } from "@/lib/mermaidPlugin";
 
 // The plugin element type, derived from streamdown's own default map so we don't
 // take a direct dependency on `unified`'s `Pluggable` type.
 type RehypePlugin = (typeof defaultRehypePlugins)[string];
 
-export const STREAMDOWN_PLUGINS = { code: limitedCode };
+export const STREAMDOWN_PLUGINS = { code: limitedCode, mermaid: mermaidPlugin };
 export const STREAMDOWN_CODE_THEMES: [ThemeInput, ThemeInput] = ["one-dark-pro", "one-dark-pro"];
 
 // Hardened rehype pipeline for every <Streamdown> call site (S-M1/S-M2/S-L1).

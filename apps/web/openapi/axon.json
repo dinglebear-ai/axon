@@ -64,6 +64,309 @@
         }
       }
     },
+    "/v1/agent/turns/{id}": {
+      "get": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/agent/turns/{id}/cancel": {
+      "post": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/agent/turns/{id}/events": {
+      "get": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered durable agent events"
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/agent/turns/{id}/resume": {
+      "post": {
+        "tags": [
+          "rag"
+        ],
+        "operationId": "v1_agent_resume",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/artifacts": {
       "get": {
         "tags": [
@@ -3327,7 +3630,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page"
+                  "$ref": "#/components/schemas/Page_JobSummary"
                 }
               }
             }
@@ -4128,7 +4431,9 @@
             "description": "Persistent memories",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemsResponse"
+                }
               }
             }
           },
@@ -4196,19 +4501,11 @@
         },
         "responses": {
           "200": {
-            "description": "Persistent memory result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid memory request",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
+                  "$ref": "#/components/schemas/MemoryItemResponse"
                 }
               }
             }
@@ -4225,16 +4522,6 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector or embedding service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4282,7 +4569,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -4365,7 +4654,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryContextResponse"
+                }
               }
             }
           },
@@ -4640,7 +4931,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemsResponse"
+                }
               }
             }
           },
@@ -4720,19 +5013,11 @@
         },
         "responses": {
           "200": {
-            "description": "Persistent memory result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid memory request",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
+                  "$ref": "#/components/schemas/MemoryItemsResponse"
                 }
               }
             }
@@ -4749,16 +5034,6 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector or embedding service unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -4807,7 +5082,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -4890,7 +5167,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -4984,7 +5263,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5078,7 +5359,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5172,7 +5455,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEdgeResponse"
+                }
               }
             }
           },
@@ -5267,7 +5552,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEdgeResponse"
+                }
               }
             }
           },
@@ -5361,7 +5648,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5455,7 +5744,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItemResponse"
+                }
               }
             }
           },
@@ -5549,7 +5840,9 @@
             "description": "Persistent memory result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySupersedeResponse"
+                }
               }
             }
           },
@@ -6231,6 +6524,77 @@
         ]
       }
     },
+    "/v1/prune/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "prune_get_plan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "description": "Persisted prune plan id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact persisted prune plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredPrunePlan"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/query": {
       "post": {
         "tags": [
@@ -6603,6 +6967,77 @@
           },
           "403": {
             "description": "Caller lacks axon:admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/reset/plans/{plan_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "reset_get_plan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "description": "Persisted reset plan id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact persisted reset plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -7136,7 +7571,9 @@
             "description": "Indexed sources",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesResponse"
+                }
               }
             }
           },
@@ -8293,7 +8730,9 @@
             "description": "Paged watch summaries",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WatchSummary"
+                }
               }
             }
           },
@@ -8364,7 +8803,9 @@
             "description": "Created watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -8438,7 +8879,9 @@
             "description": "Watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -8520,7 +8963,9 @@
             "description": "Deletion result",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchDeleteResponse"
+                }
               }
             }
           },
@@ -8612,7 +9057,9 @@
             "description": "Updated watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -8706,7 +9153,9 @@
             "description": "Watch execution job descriptor",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/JobDescriptor"
+                }
               }
             }
           },
@@ -8829,7 +9278,9 @@
             "description": "Watch execution history",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchHistoryResult"
+                }
               }
             }
           },
@@ -8913,7 +9364,9 @@
             "description": "Updated watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -8997,7 +9450,9 @@
             "description": "Updated watch detail",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchResult"
+                }
               }
             }
           },
@@ -9081,7 +9536,9 @@
             "description": "Watch status with latest source job summary",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WatchStatusResponse"
+                }
               }
             }
           },
@@ -9192,6 +9649,363 @@
           }
         },
         "additionalProperties": false
+      },
+      "AgentApprovalToken": {
+        "type": "object",
+        "required": [
+          "toolCallId",
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "toolCallId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentCorrelation": {
+        "type": "object",
+        "required": [
+          "turnId",
+          "executionContextId",
+          "loadoutId",
+          "loadoutRevision",
+          "actor",
+          "service",
+          "toolCallCount"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string"
+          },
+          "auditIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "executionContextId": {
+            "type": "string"
+          },
+          "loadoutId": {
+            "type": "string"
+          },
+          "loadoutRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "receiptIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requestIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "service": {
+            "type": "string"
+          },
+          "toolCallCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "turnId": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "status",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "state"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "status": {
+                "$ref": "#/components/schemas/AgentTurnStatus"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "proposal",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "model_proposal"
+                ]
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/AgentToolProposal"
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "decision",
+              "kind"
+            ],
+            "properties": {
+              "decision": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "axon_decision"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "request_id",
+              "receipt_id",
+              "audit_id",
+              "status",
+              "kind"
+            ],
+            "properties": {
+              "audit_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "labby_execution"
+                ]
+              },
+              "receipt_id": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "tool_call_id",
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tool_result"
+                ]
+              },
+              "result": {},
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "tool_call_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "answer",
+              "kind"
+            ],
+            "properties": {
+              "answer": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "final"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "AgentResumeRequest": {
+        "type": "object",
+        "properties": {
+          "approvalTokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentApprovalToken"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentToolProposal": {
+        "type": "object",
+        "required": [
+          "toolCallId",
+          "toolId",
+          "contractHash",
+          "arguments"
+        ],
+        "properties": {
+          "arguments": {},
+          "contractHash": {
+            "type": "string"
+          },
+          "destructive": {
+            "type": "boolean"
+          },
+          "toolCallId": {
+            "type": "string"
+          },
+          "toolId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentTurnOptions": {
+        "type": "object",
+        "required": [
+          "delegationToken"
+        ],
+        "properties": {
+          "approvalTokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentApprovalToken"
+            }
+          },
+          "delegationToken": {
+            "type": "string"
+          },
+          "maxToolCalls": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "turnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentTurnResult": {
+        "type": "object",
+        "required": [
+          "turnId",
+          "status",
+          "correlation"
+        ],
+        "properties": {
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "correlation": {
+            "$ref": "#/components/schemas/AgentCorrelation"
+          },
+          "pendingApproval": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentToolProposal"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentTurnStatus"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentTurnStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "proposing",
+          "awaiting_approval",
+          "executing",
+          "continuing",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "timed_out",
+          "interrupted",
+          "cancel_unconfirmed"
+        ]
       },
       "ApiError": {
         "type": "object",
@@ -10738,6 +11552,51 @@
       "DocumentId": {
         "type": "string"
       },
+      "DomainSourcesResponse": {
+        "type": "object",
+        "required": [
+          "domain",
+          "count",
+          "limit",
+          "truncated",
+          "urls"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "EmbedOptions": {
         "type": "object",
         "properties": {
@@ -11875,6 +12734,46 @@
         },
         "additionalProperties": false
       },
+      "IndexedSourcesResponse": {
+        "type": "object",
+        "required": [
+          "count",
+          "limit",
+          "offset",
+          "urls"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "IngestOptions": {
         "type": "object",
         "properties": {
@@ -12780,6 +13679,95 @@
           }
         }
       },
+      "LoadoutBinding": {
+        "type": "object",
+        "required": [
+          "integrationId",
+          "loadoutId",
+          "expectedRevision"
+        ],
+        "properties": {
+          "conversationBinding": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "integrationId": {
+            "type": "string"
+          },
+          "loadoutId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoadoutResolution": {
+        "type": "object",
+        "required": [
+          "integrationId",
+          "loadoutId",
+          "requestedRevision",
+          "effectiveRevision",
+          "catalogGeneration",
+          "executionContextId",
+          "correlationId",
+          "status",
+          "effectiveCapabilityCount",
+          "unavailableCapabilityCount"
+        ],
+        "properties": {
+          "catalogGeneration": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "effectiveCapabilityCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effectiveRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "executionContextId": {
+            "type": "string"
+          },
+          "integrationId": {
+            "type": "string"
+          },
+          "loadoutId": {
+            "type": "string"
+          },
+          "requestedRevision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/LoadoutResolutionStatus"
+          },
+          "unavailableCapabilityCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoadoutResolutionStatus": {
+        "type": "string",
+        "enum": [
+          "effective",
+          "narrowed"
+        ]
+      },
       "LogoVariant": {
         "type": "object",
         "required": [
@@ -12847,6 +13835,49 @@
           "blocked"
         ]
       },
+      "MemoryContext": {
+        "type": "object",
+        "required": [
+          "context",
+          "memories",
+          "token_budget",
+          "token_estimate",
+          "truncated"
+        ],
+        "properties": {
+          "context": {
+            "type": "string"
+          },
+          "memories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            }
+          },
+          "token_budget": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "token_estimate": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MemoryContextResponse": {
+        "type": "object",
+        "required": [
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/MemoryContext"
+          }
+        }
+      },
       "MemoryDecayPolicy": {
         "type": "object",
         "description": "Explicit, inspectable decay configuration.\n\nContract: \"Decay Contract\" required fields.",
@@ -12905,6 +13936,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "MemoryEdgeItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "source_id",
+          "target_id",
+          "edge_type",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "edge_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "MemoryEdgeResponse": {
+        "type": "object",
+        "required": [
+          "edge"
+        ],
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/MemoryEdgeItem"
+          }
+        }
       },
       "MemoryExportRequest": {
         "type": "object",
@@ -13061,6 +14136,144 @@
           }
         },
         "additionalProperties": false
+      },
+      "MemoryItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "memory_type",
+          "title",
+          "confidence",
+          "status",
+          "created_at",
+          "updated_at",
+          "last_seen_at",
+          "access_count"
+        ],
+        "properties": {
+          "access_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "format": "double"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_commit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_dirty": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memory_type": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MemoryItemResponse": {
+        "type": "object",
+        "properties": {
+          "memory": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemoryItem"
+              }
+            ]
+          }
+        }
+      },
+      "MemoryItemsResponse": {
+        "type": "object",
+        "required": [
+          "memories"
+        ],
+        "properties": {
+          "memories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            }
+          }
+        }
       },
       "MemoryLink": {
         "type": "object",
@@ -13220,6 +14433,25 @@
           "forgotten",
           "working"
         ]
+      },
+      "MemorySupersedeResponse": {
+        "type": "object",
+        "required": [
+          "edge",
+          "superseded_id",
+          "replacement_id"
+        ],
+        "properties": {
+          "edge": {
+            "$ref": "#/components/schemas/MemoryEdgeItem"
+          },
+          "replacement_id": {
+            "type": "string"
+          },
+          "superseded_id": {
+            "type": "string"
+          }
+        }
       },
       "MemoryType": {
         "type": "string",
@@ -13524,41 +14756,6 @@
         },
         "additionalProperties": false
       },
-      "Page": {
-        "type": "object",
-        "required": [
-          "items",
-          "limit"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/JobSummary"
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
       "PageInfo": {
         "type": "object",
         "required": [
@@ -13676,6 +14873,110 @@
         },
         "additionalProperties": false
       },
+      "Page_JobSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "job_id",
+                "kind",
+                "status",
+                "phase",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "counts": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StageCounts"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "job_id": {
+                  "$ref": "#/components/schemas/JobId"
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/JobKind"
+                },
+                "last_error": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SourceError"
+                    }
+                  ]
+                },
+                "phase": {
+                  "$ref": "#/components/schemas/PipelinePhase"
+                },
+                "source_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SourceId"
+                    }
+                  ]
+                },
+                "status": {
+                  "$ref": "#/components/schemas/LifecycleStatus"
+                },
+                "updated_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "watch_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WatchId"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "Page_UploadStatus": {
         "type": "object",
         "required": [
@@ -13761,6 +15062,86 @@
                 },
                 "upload_id": {
                   "$ref": "#/components/schemas/UploadId"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "Page_WatchSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "watch_id",
+                "source_id",
+                "enabled",
+                "schedule",
+                "next_run_at"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "last_job_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/JobId"
+                    }
+                  ]
+                },
+                "last_status": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LifecycleStatus"
+                    }
+                  ]
+                },
+                "next_run_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "schedule": {
+                  "$ref": "#/components/schemas/WatchSchedule"
+                },
+                "source_id": {
+                  "$ref": "#/components/schemas/SourceId"
+                },
+                "watch_id": {
+                  "$ref": "#/components/schemas/WatchId"
                 }
               },
               "additionalProperties": false
@@ -14248,127 +15629,6 @@
                 "enum": [
                   "collection"
                 ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Prune a single artifact by id (never by arbitrary path).",
-            "required": [
-              "artifact_id",
-              "kind"
-            ],
-            "properties": {
-              "artifact_id": {
-                "$ref": "#/components/schemas/ArtifactId"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "artifact"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Prune graph nodes/edges (orphan cleanup).",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "edge_id": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GraphEdgeId"
-                  }
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "graph"
-                ]
-              },
-              "node_id": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GraphNodeId"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Prune (forget) memory records.",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "memory"
-                ]
-              },
-              "memory_id": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/MemoryId"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Job-retention cleanup older than N days.",
-            "required": [
-              "older_than_days",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "job_retention"
-                ]
-              },
-              "older_than_days": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Cache cleanup older than N days.",
-            "required": [
-              "older_than_days",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "cache"
-                ]
-              },
-              "older_than_days": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
               }
             }
           }
@@ -15302,6 +16562,16 @@
           "query"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentTurnOptions"
+              }
+            ]
+          },
           "ask_authoritative_boost": {
             "type": [
               "number",
@@ -15418,6 +16688,16 @@
               "null"
             ]
           },
+          "loadout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoadoutBinding"
+              }
+            ]
+          },
           "query": {
             "type": "string"
           },
@@ -15448,8 +16728,34 @@
           "message"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentTurnOptions"
+              }
+            ]
+          },
+          "loadout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoadoutBinding"
+              }
+            ]
+          },
           "message": {
             "type": "string"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "additionalProperties": false
@@ -15461,8 +16767,28 @@
           "answer"
         ],
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentTurnResult"
+              }
+            ]
+          },
           "answer": {
             "type": "string"
+          },
+          "loadout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoadoutResolution"
+              }
+            ]
           },
           "message": {
             "type": "string"
@@ -17221,6 +18547,16 @@
           "enabled"
         ]
       },
+      "SourcesResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/IndexedSourcesResponse"
+          },
+          {
+            "$ref": "#/components/schemas/DomainSourcesResponse"
+          }
+        ]
+      },
       "StageCounts": {
         "type": "object",
         "required": [
@@ -17288,6 +18624,31 @@
       "StageId": {
         "type": "string",
         "format": "uuid"
+      },
+      "StoredPrunePlan": {
+        "type": "object",
+        "description": "Durable, execution-bound prune plan as persisted by the service layer.\n\nTransports expose this record so an operator can re-fetch the exact plan,\nchecksum, and expiry immediately before destructive execution.",
+        "required": [
+          "plan",
+          "reason",
+          "inventory_checksum",
+          "expires_at_utc"
+        ],
+        "properties": {
+          "expires_at_utc": {
+            "type": "string"
+          },
+          "inventory_checksum": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PrunePlan"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "StreamEvent": {
         "type": "object",
@@ -18133,6 +19494,22 @@
           "derived"
         ]
       },
+      "WatchDeleteResponse": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "watch_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "WatchExecRequest": {
         "type": "object",
         "properties": {
@@ -18157,6 +19534,31 @@
               "boolean",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchHistoryResult": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobDescriptor"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "watch_id": {
+            "$ref": "#/components/schemas/WatchId"
           }
         },
         "additionalProperties": false
@@ -18300,6 +19702,76 @@
               "string",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchStatusResponse": {
+        "type": "object",
+        "required": [
+          "watch"
+        ],
+        "properties": {
+          "latest_job_summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobSummary"
+              }
+            ]
+          },
+          "watch": {
+            "$ref": "#/components/schemas/WatchResult"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WatchSummary": {
+        "type": "object",
+        "required": [
+          "watch_id",
+          "source_id",
+          "enabled",
+          "schedule",
+          "next_run_at"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "last_job_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobId"
+              }
+            ]
+          },
+          "last_status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
+          },
+          "next_run_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/WatchSchedule"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "watch_id": {
+            "$ref": "#/components/schemas/WatchId"
           }
         },
         "additionalProperties": false

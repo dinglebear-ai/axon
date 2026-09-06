@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://axon.dinglebear.ai/schemas/e2e/catalog-v1.json",
+  "title": "Axon E2E catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "coverage_policy", "operations", "scenarios"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "coverage_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["behavioral_percent", "critical_lifecycles"],
+      "properties": {
+        "behavioral_percent": { "type": "integer", "minimum": 80, "maximum": 100 },
+        "critical_lifecycles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]+$" } }
+      }
+    },
+    "operations": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "inventory", "classification", "reason"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^(cli|cross|surface):[a-z0-9_ -]+$" },
+          "inventory": { "enum": ["cli", "cross_surface", "api_parity"] },
+          "classification": { "enum": ["behavioral_e2e", "contract_only", "unsupported", "out_of_scope"] },
+          "reason": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "capability", "lifecycle", "polarity", "execution_mode", "setup_dependencies", "surfaces", "tier", "workload_tier", "fixture", "requests", "semantic_oracles", "envelope_oracles", "mutable", "resource_classes", "resource_ownership", "cleanup_contract", "timeout_class", "estimated_seconds", "weights", "provider", "setup_sharing_group", "isolation", "shard_eligible", "retry_class", "retry", "evidence_kib", "redaction_class", "failure_taxonomy", "tags"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" },
+          "capability": { "type": "string", "minLength": 1 },
+          "lifecycle": { "type": "string", "pattern": "^[a-z][a-z0-9_-]+$" },
+          "polarity": { "enum": ["happy", "negative"] },
+          "execution_mode": { "enum": ["inline", "detached", "streamed", "destructive_plan", "provider_backed"] },
+          "setup_dependencies": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/oracle" } },
+          "surfaces": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["cli", "mcp", "mcp_task_wire", "http"] } },
+          "tier": { "enum": ["hermetic", "live"] },
+          "workload_tier": { "enum": ["micro", "representative", "stress"] },
+          "fixture": { "$ref": "#/$defs/safePath" },
+          "requests": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/safePath" } },
+          "semantic_oracles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/oracle" } },
+          "envelope_oracles": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/oracle" } } },
+          "mutable": { "type": "boolean" },
+          "resource_classes": { "type": "array", "uniqueItems": true, "items": { "enum": ["data_dir", "sqlite", "collection", "upload", "artifact", "watch", "port", "process", "compose_project", "network", "log"] } },
+          "resource_ownership": { "type": "object", "additionalProperties": false, "required": ["strategy", "namespace_prefix", "lease_required"], "properties": { "strategy": { "enum": ["none", "run_manifest"] }, "namespace_prefix": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*_$" }, "lease_required": { "type": "boolean" } } },
+          "cleanup_contract": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_.-]+$" },
+          "timeout_class": { "enum": ["fast", "provider", "lifecycle", "stress"] },
+          "estimated_seconds": { "type": "integer", "minimum": 1 },
+          "weights": { "type": "object", "additionalProperties": false, "required": ["cpu", "memory_mib", "disk_mib", "processes", "ports"], "properties": { "cpu": { "type": "integer", "minimum": 0 }, "memory_mib": { "type": "integer", "minimum": 0 }, "disk_mib": { "type": "integer", "minimum": 0 }, "processes": { "type": "integer", "minimum": 0 }, "ports": { "type": "integer", "minimum": 0 } } },
+          "provider": { "type": "object", "additionalProperties": false, "required": ["class", "concurrency_ceiling"], "properties": { "class": { "enum": ["none", "fake", "qdrant", "tei", "chrome", "llm"] }, "concurrency_ceiling": { "type": "integer", "minimum": 1 } } },
+          "setup_sharing_group": { "type": ["string", "null"] },
+          "isolation": { "enum": ["scenario", "run", "serialized_provider"] },
+          "shard_eligible": { "type": "boolean" },
+          "retry_class": { "enum": ["never", "diagnostic", "provider_transient"] },
+          "retry": { "type": "object", "additionalProperties": false, "required": ["eligible", "cost"], "properties": { "eligible": { "type": "boolean" }, "cost": { "enum": ["none", "low", "high"] } } },
+          "evidence_kib": { "type": "integer", "minimum": 0 },
+          "redaction_class": { "enum": ["public", "sensitive", "secret_bearing"] },
+          "failure_taxonomy": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["product", "fixture", "provider", "auth_network", "cleanup", "harness"] } }
+          ,"tags": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]+$" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "safePath": { "type": "string", "pattern": "^(tests/e2e|tests/fixtures)/[A-Za-z0-9_./-]+\\.json$" },
+    "oracle": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$" }
+  }
+}

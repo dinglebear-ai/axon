@@ -2,6 +2,23 @@
 
 use std::path::{Component, Path, PathBuf};
 
+pub(crate) fn is_lexically_local_path(raw: &str) -> bool {
+    raw.starts_with('/')
+        || raw.starts_with("./")
+        || raw.starts_with("../")
+        || raw.starts_with('~')
+        || is_windows_absolute_path(raw)
+}
+
+fn is_windows_absolute_path(raw: &str) -> bool {
+    let bytes = raw.as_bytes();
+    (bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\'))
+        || raw.starts_with("\\\\")
+}
+
 pub fn normalize_local_path(raw: &str) -> String {
     normalize_path_components(&expand_home(raw.trim()))
 }

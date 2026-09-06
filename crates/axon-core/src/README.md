@@ -27,14 +27,16 @@ Each `<name>.rs` below is a module **root** with a sibling `<name>/` subdirector
 - `ui.rs`: spinner / colored output / `confirm_destructive`.
 
 ## Integration Points
-- `lib.rs` command dispatch consumes config produced here.
-- `src/cli` command handlers depend on `Config` and utility helpers.
+- The thin root binary and `axon-cli` consume config produced here.
+- `axon-cli` owns command handlers and transport adaptation.
 - Source adapters and vector providers use the shared HTTP/content layers.
-- `src/jobs` workers use config, health, and logging utilities.
+- `axon-jobs` workers use config, health, and logging utilities.
 
 ## Notes
 - Config changes should be coordinated with command handlers and test config builders that construct `Config` literals.
-- Keep environment and flag precedence rules centralized in `config/parse.rs`.
+- Keep precedence synchronized across `config/parse/build_config.rs`,
+  `config/parse/tuning.rs`, `config/parse/provider_overlay.rs`, TOML conversion,
+  defaults, `config.example.toml`, and the generated config registries.
 
 ## Related Docs
 - [Repository README](../../../README.md)

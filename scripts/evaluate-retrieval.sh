@@ -56,7 +56,7 @@ while IFS= read -r row; do
        | select(.selected_context_rank != null)
        | .url];
     def url_host:
-      capture("^https?://(?<host>[^/:?#]+)")?.host | ascii_downcase;
+      try (capture("^https?://(?<host>[^/:?#]+)").host | ascii_downcase) catch "";
     def domain_match($domain):
       ascii_downcase as $host
       | ($domain | ascii_downcase) as $expected

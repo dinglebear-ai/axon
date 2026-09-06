@@ -23,6 +23,17 @@ CONTAINER_BUILD_LOG="${TMPDIR:-/tmp}/axon-container-build.log"
 CONTAINER_BUILD_LOCK="$AXON_TARGET_DIR/.container-build.lock"
 CONTAINER_SYNC_LOG="${TMPDIR:-/tmp}/axon-container-sync.log"
 
+# Read-only monitoring can bypass Cargo and container freshness work when a
+# previously built binary exists. This is opt-in so development commands retain
+# the normal rebuild-on-change behavior.
+if [ "${AXON_NO_BUILD:-0}" = 1 ]; then
+    [ -x "$AXON_BIN" ] || {
+        echo "axon: AXON_NO_BUILD=1 requires an existing binary at $AXON_BIN" >&2
+        exit 1
+    }
+    exec "$AXON_BIN" "$@"
+fi
+
 compose_cmd() {
     _compose=(docker compose)
     if [ -f "$AXON_ENV_FILE_RESOLVED" ]; then

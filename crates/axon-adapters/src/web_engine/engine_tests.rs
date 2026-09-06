@@ -249,6 +249,23 @@ fn crawl_memory_guard_threshold_is_inclusive() {
     // holds a `NonZeroU64`, so the guard can never be constructed with it.
 }
 
+#[test]
+fn crawl_memory_guard_fails_closed_after_bounded_telemetry_failures() {
+    assert!(!memory_guard::should_fail_closed_for_telemetry_failures(1));
+    assert!(!memory_guard::should_fail_closed_for_telemetry_failures(2));
+    assert!(memory_guard::should_fail_closed_for_telemetry_failures(3));
+    assert!(memory_guard::should_fail_closed_for_telemetry_failures(4));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn crawl_memory_guard_reads_macos_process_and_host_memory() {
+    let snapshot = memory_guard::platform_memory_snapshot()
+        .expect("macOS telemetry must be available or guarded crawls fail closed");
+    assert!(snapshot.rss_bytes > 0);
+    assert!(snapshot.total_bytes.get() >= snapshot.rss_bytes);
+}
+
 #[tokio::test]
 async fn crawl_memory_guard_disabled_never_trips() {
     // `None` abort_percent is the single "disabled" encoding: no reason is ever

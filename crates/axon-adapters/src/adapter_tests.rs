@@ -15,8 +15,9 @@ use crate::sessions::SessionSourceAdapter;
 use crate::web::WebSourceAdapter;
 use crate::youtube::YoutubeSourceAdapter;
 use crate::{
-    AcquisitionProgress, AcquisitionProgressSink, AdapterCapability, FakeSourceAdapter,
-    FakeSourceAdapterMode, SourceAdapter, SourceAdapterRegistry,
+    AcquisitionProgress, AcquisitionProgressSink, AcquisitionStreamSink, AdapterCapability,
+    FakeSourceAdapter, FakeSourceAdapterMode, SourceAdapter, SourceAdapterRegistry,
+    StreamedAcquisition,
 };
 
 fn web_adapter() -> WebSourceAdapter {
@@ -25,7 +26,57 @@ fn web_adapter() -> WebSourceAdapter {
 }
 
 #[derive(Default)]
+struct RecordingStream(tokio::sync::Mutex<Vec<StreamedAcquisition>>);
+
+#[async_trait::async_trait]
+impl AcquisitionStreamSink for RecordingStream {
+    async fn send(&self, acquisition: StreamedAcquisition) -> crate::adapter::Result<()> {
+        self.0.lock().await.push(acquisition);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn default_streaming_contract_emits_one_complete_aggregate() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone()).with_item(
+        "README.md",
+        ContentKind::Markdown,
+        "# Axon",
+    );
+    let plan = source_plan(route);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items);
+    let sink = RecordingStream::default();
+
+    adapter
+        .acquire_streaming(&plan, &diff, None, &sink)
+        .await
+        .unwrap();
+
+    let acquisitions = sink.0.lock().await;
+    assert_eq!(acquisitions.len(), 1);
+    assert_eq!(acquisitions[0].ordinal, 0);
+    assert!(acquisitions[0].is_final);
+    assert_eq!(acquisitions[0].items_attempted, 1);
+    assert_eq!(acquisitions[0].acquisition.fetched_items.len(), 1);
+}
+
+#[derive(Default)]
 struct RecordingProgress(Mutex<Vec<AcquisitionProgress>>);
+
+#[test]
+fn stateless_adapter_release_is_an_explicit_success_result() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone());
+    let plan = source_plan(route);
+    let result: crate::adapter::Result<()> = adapter.release(&AdapterReleaseRequest {
+        job_id: plan.job_id,
+        source_id: plan.route.source.source_id.clone(),
+        source_kind: plan.route.source.source_kind,
+    });
+    result.expect("default release should succeed explicitly");
+}
 
 #[async_trait::async_trait]
 impl AcquisitionProgressSink for RecordingProgress {

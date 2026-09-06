@@ -78,32 +78,59 @@ Deployment (Incus or systemd) is a separate step above.
 
 ### Linux
 
-Prerequisites: Linux x86_64, `curl`, `sha256sum`, `install`, and (for GPU
+Prerequisites: Linux x86_64, `curl`, `sha256sum`, `minisign`, `install`, and (for GPU
 synthesis or a configured OpenAI-compatible endpoint) the relevant credentials.
 
-One-line installer:
+Release installation is fail-closed and is not yet available to the public:
+releases through `v7.2.23` do not include signatures, and no public release
+signing key has been provisioned. Build from reviewed source until a future
+release publishes the key fingerprint in `SECURITY.md` and the key itself at
+`security/axon-release.minisign.pub`. Do not substitute a key downloaded beside
+the release artifacts.
+
+After those two trust-anchor files exist, the authenticated flow will be:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh
+curl -fLO https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.sh
+curl -fLO https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.sh.sha256
+curl -fLO https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.sh.minisig
+sha256sum --check install.sh.sha256
+export AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>'
+minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" -m install.sh -x install.sh.minisig
+AXON_VERSION=vX.Y.Z ./install.sh
 ```
 
-The installer verifies the release checksum and installs `axon` to
-`~/.local/bin/axon`. Useful controls:
+The installer requires `AXON_UPDATE_MINISIGN_PUBKEY`, verifies the
+release's detached minisign signature and checksum, and installs `axon` to
+`~/.local/bin/axon`. Fetch a version-pinned installer from the reviewed release
+source instead of piping the mutable `main` branch directly to a shell.
 
 ```bash
-AXON_INSTALL_DRY_RUN=1 ./install.sh
-AXON_INSTALL_PREFIX=/opt/axon ./install.sh
-AXON_VERSION=vX.Y.Z ./install.sh          # pin a release; defaults to latest
-AXON_INSTALL_SKIP_SETUP=1 ./install.sh    # skip the axon setup handoff
-AXON_INSTALL_METHOD=build ./install.sh    # cargo build --release instead of pulling
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_INSTALL_DRY_RUN=1 ./install.sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_INSTALL_PREFIX=/opt/axon ./install.sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_VERSION=vX.Y.Z ./install.sh
+AXON_UPDATE_MINISIGN_PUBKEY='<trusted release public key>' AXON_INSTALL_SKIP_SETUP=1 ./install.sh
+AXON_INSTALL_METHOD=build ./install.sh    # local cargo build; no release download
 ```
 
 ### Windows
 
-Prerequisites: Windows x86_64 (PowerShell 5.1+ or PowerShell Core).
+Prerequisites: Windows x86_64, PowerShell 5.1+ or PowerShell Core, `minisign`,
+and the provisioned key described above. Until that key is published, build
+from reviewed source instead of using the release installer.
+
+Download the installer and integrity metadata from the versioned release,
+validate the checksum, inspect it locally, and then execute that pinned file:
 
 ```powershell
-irm https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex
+Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1' -OutFile install.ps1
+Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1.sha256' -OutFile install.ps1.sha256
+Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1.minisig' -OutFile install.ps1.minisig
+if ((Get-FileHash .\install.ps1 -Algorithm SHA256).Hash.ToLowerInvariant() -ne ((Get-Content .\install.ps1.sha256).Split()[0]).ToLowerInvariant()) { throw 'installer checksum mismatch' }
+$env:AXON_UPDATE_MINISIGN_PUBKEY = Get-Content .\axon-release.minisign.pub -Raw
+minisign -V -P $env:AXON_UPDATE_MINISIGN_PUBKEY -m install.ps1 -x install.ps1.minisig
+Get-Content .\install.ps1
+.\install.ps1
 ```
 
 Installs `axon.exe` to `%USERPROFILE%\.local\bin` and adds it to the user PATH.
@@ -116,12 +143,10 @@ Controls: `AXON_INSTALL_DRY_RUN`, `AXON_INSTALL_PREFIX`, `AXON_VERSION`,
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin ships no binary — install `axon` first. Its `SessionStart` hook runs
-`scripts/plugin-setup.sh`, which syncs `CLAUDE_PLUGIN_OPTION_*` settings into
-process env and delegates to `axon setup plugin-hook`. That subcommand is
-**probe-only and never deploys**: it checks `/readyz` and exits silently when the
-stack is up, or prints a one-line `run /axon-deploy` advisory when it is down.
-Provisioning is the `/axon-deploy` slash command (or `axon setup`).
+The plugin ships no binary and registers no automatic hooks. Install `axon`
+first, then invoke `axon setup plugin-hook` explicitly for a probe-only
+`/readyz` check. Provisioning is the `/axon-deploy` slash command (or
+`axon setup`).
 
 ## Deploy
 
@@ -366,8 +391,8 @@ axon memory context               # recall relevant memories for a query
 Memory lives in its own Qdrant collection (`axon_memory`, or
 `AXON_MEMORY_COLLECTION`) with a decay model: `base_score` blended from
 semantic/confidence/salience/scope/reinforcement, multiplied by a
-half-life decay unless pinned. The Claude plugin's `SessionStart` hook calls
-`axon memory context` for session recall (gated by `AXON_SESSION_MEMORY_*`).
+half-life decay unless pinned. Run `axon memory context` explicitly for session
+recall; the Claude plugin does not register a `SessionStart` hook.
 
 ## CLI
 
@@ -383,7 +408,7 @@ axon memory / sources / domains / stats / status
 axon serve / mcp / doctor / preflight / smoke / config
 ```
 
-For the authoritative, always-current full registry — 110 commands across 49
+For the authoritative, always-current full registry — 113 commands across 49
 groups with summaries and async/mutates markers — see the generated
 [`docs/reference/cli/commands.md`](docs/reference/cli/commands.md) and the
 machine-readable [`docs/reference/cli/commands.json`](docs/reference/cli/commands.json).
@@ -478,11 +503,22 @@ cargo test --workspace --features test-helpers
 `just fix` (fmt + clippy --fix), `just precommit` (full pre-PR gate),
 `just watch-check` (check + test-lib on save).
 
-Local dev infra (Qdrant/TEI/Chrome): `just services-up` / `just services-down`,
-or directly `docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d`.
+Local dev infra is explicit about Qdrant ownership. `just services-up` (an alias
+for `just services-up-local`) starts a self-contained Qdrant/TEI/Chrome stack;
+`just services-up-external-qdrant` requires `AXON_EXTERNAL_QDRANT_URL` and starts
+only TEI/Chrome. `just services-down` removes the local infrastructure services.
+Published Qdrant and TEI ports bind to host loopback only; remote access must go
+through a separately secured network path rather than an unauthenticated LAN
+listener. Production startup also creates the configured external Docker network
+idempotently before Compose starts, and production images are pinned by digest.
 The dev compose file runs the locally built debug binary from `target/debug`
 inside the `axon:dev-runtime` image — this is a dev convenience, not the axon
 deployment path.
+
+`axon setup init` accepts only non-secret bootstrap values on its command line.
+Set tokens, API keys, and OAuth client secrets through the protected process
+environment or the mode-0600 `~/.axon/.env`; Axon never places those values in
+process arguments.
 
 **Module layout:** Rust 2018+ file-per-module — no `mod.rs`. Module roots live
 in `foo.rs`; submodules in `foo/bar.rs`. Tests live in sibling `foo_tests.rs`

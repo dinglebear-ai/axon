@@ -20,14 +20,58 @@ pub(crate) fn plain_text_windows_with_limits(
     // byte cap could never make progress.
     let max_bytes = max_bytes.max(4);
     let max_chars = max_chars.max(1);
+    let positions = SourcePositions::new(text);
     paragraphs(text)
         .into_iter()
         .flat_map(|(start, end)| bounded_windows(text, start, end, max_bytes, max_chars))
         .map(|(start, end)| {
-            DocumentChunk::new(text[start..end].to_string(), source_range(text, start, end))
+            DocumentChunk::new(
+                text[start..end].to_string(),
+                positions.source_range(start, end),
+            )
         })
         .filter(|chunk| !chunk.content.is_empty())
         .collect()
+}
+
+struct SourcePositions {
+    chars: Vec<u64>,
+    lines: Vec<u32>,
+}
+
+impl SourcePositions {
+    fn new(text: &str) -> Self {
+        let mut chars = vec![0; text.len() + 1];
+        let mut lines = vec![1; text.len() + 1];
+        let mut char_count = 0_u64;
+        let mut line = 1_u32;
+        for (start, character) in text.char_indices() {
+            let end = start + character.len_utf8();
+            for offset in start..end {
+                chars[offset] = char_count;
+                lines[offset] = line;
+            }
+            char_count += 1;
+            if character == '\n' {
+                line += 1;
+            }
+            chars[end] = char_count;
+            lines[end] = line;
+        }
+        Self { chars, lines }
+    }
+
+    fn source_range(&self, start: usize, end: usize) -> SourceRange {
+        let line_end_offset = end.saturating_sub(1).min(self.lines.len() - 1);
+        source_range_from_positions(
+            start,
+            end,
+            self.lines[start],
+            self.lines[line_end_offset],
+            self.chars[start],
+            self.chars[end],
+        )
+    }
 }
 
 pub(crate) fn atomic_text(text: &str) -> Vec<DocumentChunk> {
@@ -175,41 +219,5 @@ fn trim_span(text: &str, start: usize, end: usize) -> (usize, usize) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{MAX_PLAIN_TEXT_CHUNK_BYTES, MAX_PLAIN_TEXT_CHUNK_CHARS, plain_text_windows};
-
-    #[test]
-    fn plain_text_windows_splits_single_long_paragraph_into_bounded_chunks() {
-        let text = "a".repeat(MAX_PLAIN_TEXT_CHUNK_BYTES * 2 + 17);
-
-        let chunks = plain_text_windows(&text);
-
-        assert!(chunks.len() > 2);
-        assert_eq!(
-            chunks
-                .iter()
-                .map(|chunk| chunk.content.as_str())
-                .collect::<String>(),
-            text
-        );
-        for chunk in chunks {
-            assert!(chunk.content.len() <= MAX_PLAIN_TEXT_CHUNK_BYTES);
-            assert!(chunk.content.chars().count() <= MAX_PLAIN_TEXT_CHUNK_CHARS);
-        }
-    }
-
-    #[test]
-    fn plain_text_windows_preserves_original_crlf_ranges() {
-        let text = " alpha\r\n\r\nbeta ";
-
-        let chunks = plain_text_windows(text);
-
-        assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0].content, "alpha");
-        assert_eq!(chunks[0].range.byte_start, Some(1));
-        assert_eq!(chunks[0].range.byte_end, Some(6));
-        assert_eq!(chunks[1].content, "beta");
-        assert_eq!(chunks[1].range.byte_start, Some(10));
-        assert_eq!(chunks[1].range.byte_end, Some(14));
-    }
-}
+#[path = "text_tests.rs"]
+mod tests;

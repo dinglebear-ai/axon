@@ -1,35 +1,34 @@
-use super::error::HttpError;
 use super::handlers;
 use super::state::AppState;
-use super::types::{ASK_BODY_LIMIT, MEMORY_IMPORT_EXPORT_BODY_LIMIT};
-use axon_authz::http::{
-    AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
-    oauth_resource_url,
-};
-use axon_authz::scope_satisfies;
+use super::types::MEMORY_IMPORT_EXPORT_BODY_LIMIT;
+use axon_authz::http::AuthPolicy;
 use axon_core::config::Config;
 use axon_services::context::ServiceContext;
 use axon_services::types::ServerInfo;
 use axum::{
-    Extension, Json, Router,
-    body::Body,
+    Json, Router,
     extract::DefaultBodyLimit,
-    http::{HeaderValue, Request, StatusCode, header},
     middleware,
-    response::{IntoResponse, Response},
+    response::Response,
     routing::{delete, get, post, put},
 };
-use lab_auth::AuthContext;
 use std::sync::Arc;
+
+#[path = "routing_security.rs"]
+pub(crate) mod security;
+pub(super) use security::{ScopeRequirement, protect_routes};
+use security::{authenticate_panel_request, security_headers};
 
 #[path = "routing_loopback_guard.rs"]
 mod loopback_guard;
-use loopback_guard::block_loopback_destructive_request;
 
+#[path = "routing_ask.rs"]
+mod ask;
 #[path = "routing_codex.rs"]
 mod codex_routes;
 #[path = "routing_resource_tier.rs"]
 mod resource_tier;
+pub(crate) use ask::ask_router;
 
 /// The state type every `/v1` REST subrouter is built over.
 type ServeState = (AppState, Arc<Config>);
@@ -81,7 +80,7 @@ pub(super) fn router(
         // exposed route is a plain 404 from `api_aware_not_found`, not a
         // dedicated remap-guidance handler.
         .merge(super::openapi::docs_router())
-        .merge(panel_routes())
+        .merge(panel_routes(Arc::clone(&state.panel)))
         .merge(rest_routes)
         // Unknown paths: API prefixes get the contract `ErrorEnvelope` 404;
         // everything else falls through to the SPA static-asset server.
@@ -303,8 +302,16 @@ fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
             handlers::jobs::unified_jobs_admin_router(Arc::clone(service_context)),
         )
         .route("/v1/prune/plan", post(handlers::admin::prune_plan))
+        .route(
+            "/v1/prune/plans/{plan_id}",
+            get(handlers::admin::prune_get_plan),
+        )
         .route("/v1/prune/exec", post(handlers::admin::prune_exec))
         .route("/v1/reset/plan", post(handlers::admin::reset_plan))
+        .route(
+            "/v1/reset/plans/{plan_id}",
+            get(handlers::admin::reset_get_plan),
+        )
         .route("/v1/reset/exec", post(handlers::admin::reset_exec))
 }
 
@@ -343,7 +350,7 @@ fn memory_bulk_routes() -> Router<ServeState> {
 }
 
 /// Panel-scoped routes — all protected by the panel password session cookie.
-fn panel_routes() -> Router<ServeState> {
+fn panel_routes(panel: Arc<crate::server::state::PanelRuntimeState>) -> Router<ServeState> {
     Router::new()
         .route("/api/panel/state", get(handlers::panel_state))
         .route("/api/panel/login", post(handlers::login))
@@ -377,6 +384,94 @@ fn panel_routes() -> Router<ServeState> {
             "/api/panel/artifacts/{artifact_id}/content",
             get(handlers::panel_artifact),
         )
+        .merge(
+            panel_resource_routes().route_layer(middleware::from_fn_with_state(
+                panel,
+                authenticate_panel_request,
+            )),
+        )
+}
+
+fn panel_resource_routes() -> Router<ServeState> {
+    Router::new()
+        .route(
+            "/api/panel/sources",
+            get(handlers::discovery::sources).post(handlers::sources::index_source),
+        )
+        .route(
+            "/api/panel/watches",
+            get(handlers::source_watch::list_watches).post(handlers::source_watch::create_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}",
+            get(handlers::source_watch::get_watch)
+                .patch(handlers::source_watch::update_watch)
+                .delete(handlers::source_watch::delete_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/status",
+            get(handlers::source_watch::status_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/history",
+            get(handlers::source_watch::history_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/exec",
+            post(handlers::source_watch::exec_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/pause",
+            post(handlers::source_watch::pause_watch),
+        )
+        .route(
+            "/api/panel/watches/{watch_id}/resume",
+            post(handlers::source_watch::resume_watch),
+        )
+        .route(
+            "/api/panel/memories",
+            get(handlers::memory::list_memories).post(handlers::memory::remember_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}",
+            get(handlers::memory::show_memory).delete(handlers::memory::forget_memory),
+        )
+        .route(
+            "/api/panel/memories/search",
+            post(handlers::memory::search_memories),
+        )
+        .route(
+            "/api/panel/memories/context",
+            post(handlers::memory::memory_context),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/link",
+            post(handlers::memory::link_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/supersede",
+            post(handlers::memory::supersede_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/reinforce",
+            post(handlers::memory::reinforce_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/contradict",
+            post(handlers::memory::contradict_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/pin",
+            post(handlers::memory::pin_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/archive",
+            post(handlers::memory::archive_memory),
+        )
+        .route(
+            "/api/panel/memories/{memory_id}/compact",
+            post(handlers::memory::compact_one_memory),
+        )
 }
 
 #[utoipa::path(
@@ -393,175 +488,10 @@ pub(super) async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::rest_capabilities())
 }
 
-/// Router fallback for unrouted paths.
-///
-/// API surfaces (`/v1/*`, `/api/*`) return the contract `ErrorEnvelope` 404 so
-/// clients never receive the SPA `index.html` for a mistyped API route. All
-/// other paths fall through to the static-asset SPA server (which itself serves
-/// `index.html` for client-side routing).
 async fn api_aware_not_found(uri: axum::http::Uri) -> Response {
     let path = uri.path();
     if path.starts_with("/v1/") || path.starts_with("/api/") {
         return super::json::not_found_fallback().await;
     }
     super::super::static_assets::serve_static(uri).await
-}
-
-pub(crate) fn ask_router<S>(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    Router::<S>::new()
-        .route("/v1/ask", post(handlers::v1_ask))
-        .route("/v1/ask/stream", post(handlers::v1_ask_stream))
-        .route("/v1/chat", post(handlers::v1_chat))
-        .route("/v1/chat/stream", post(handlers::v1_chat_stream))
-        .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
-        // RAG and direct-chat handlers share the same service context.
-        .layer(Extension(service_context))
-        .layer(Extension(cfg))
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum ScopeRequirement {
-    Read,
-    Write,
-    Admin,
-}
-
-pub(super) fn protect_routes<S>(
-    router: Router<S>,
-    auth_policy: &AuthPolicy,
-    scope: ScopeRequirement,
-) -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    let Some(layer) = build_auth_layer(
-        auth_policy,
-        configured_mcp_http_token().map(Arc::from),
-        oauth_resource_url(auth_policy),
-    ) else {
-        return match (auth_policy, scope) {
-            (AuthPolicy::LoopbackDev, ScopeRequirement::Write) => {
-                router.route_layer(middleware::from_fn(block_loopback_destructive_request))
-            }
-            (AuthPolicy::LoopbackDev, ScopeRequirement::Admin) => {
-                router.route_layer(middleware::from_fn(block_loopback_destructive_request))
-            }
-            _ => router,
-        };
-    };
-    let router = match scope {
-        ScopeRequirement::Read => router.route_layer(middleware::from_fn(require_read_scope)),
-        ScopeRequirement::Write => router.route_layer(middleware::from_fn(require_write_scope)),
-        ScopeRequirement::Admin => router.route_layer(middleware::from_fn(require_admin_scope)),
-    };
-    router
-        .route_layer(layer)
-        .route_layer(middleware::from_fn(normalize_api_key_header))
-        .route_layer(middleware::from_fn(jsonize_auth_error))
-}
-
-async fn jsonize_auth_error(request: Request<Body>, next: middleware::Next) -> Response {
-    let mut response = next.run(request).await;
-    let status = response.status();
-    if status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN {
-        return response;
-    }
-    // A response our own error boundary already built (handler `HttpError`,
-    // per-source `auth.forbidden`, scope-guard) carries the envelope marker and
-    // must NOT be flattened into a generic `{unauthorized|forbidden}` — that
-    // would drop richer detail like `required_scope`. Only bare auth-layer
-    // 401/403s (which lack the marker) get normalized here.
-    if response
-        .headers_mut()
-        .remove(super::api_error::ERROR_ENVELOPE_MARKER)
-        .is_some()
-    {
-        return response;
-    }
-    let kind = if status == StatusCode::UNAUTHORIZED {
-        "unauthorized"
-    } else {
-        "forbidden"
-    };
-    HttpError::new(status, kind, kind).into_response()
-}
-
-async fn require_read_scope(
-    auth: Option<Extension<AuthContext>>,
-    request: Request<Body>,
-    next: middleware::Next,
-) -> Response {
-    require_scope(auth, "axon:read", request, next).await
-}
-
-async fn require_write_scope(
-    auth: Option<Extension<AuthContext>>,
-    request: Request<Body>,
-    next: middleware::Next,
-) -> Response {
-    require_scope(auth, "axon:write", request, next).await
-}
-
-async fn require_admin_scope(
-    auth: Option<Extension<AuthContext>>,
-    request: Request<Body>,
-    next: middleware::Next,
-) -> Response {
-    require_scope(auth, "axon:admin", request, next).await
-}
-
-async fn require_scope(
-    auth: Option<Extension<AuthContext>>,
-    required_scope: &'static str,
-    request: Request<Body>,
-    next: middleware::Next,
-) -> Response {
-    let Some(Extension(auth)) = auth else {
-        return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
-            .into_response();
-    };
-    let allowed = scope_satisfies(&auth.scopes, required_scope);
-    if !allowed {
-        return HttpError::new(
-            StatusCode::FORBIDDEN,
-            "forbidden",
-            format!("requires scope: {required_scope}"),
-        )
-        .into_response();
-    }
-    next.run(request).await
-}
-
-async fn security_headers(request: Request<Body>, next: middleware::Next) -> Response {
-    let mut response = next.run(request).await;
-    // Strip the internal error-envelope marker so it never reaches clients.
-    // `jsonize_auth_error` already removes it on the auth paths it touches; this
-    // is the catch-all for every other enveloped error response.
-    response
-        .headers_mut()
-        .remove(super::api_error::ERROR_ENVELOPE_MARKER);
-    let headers = response.headers_mut();
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'",
-        ),
-    );
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("no-referrer"),
-    );
-    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-    headers.insert(
-        header::HeaderName::from_static("permissions-policy"),
-        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
-    );
-    response
 }

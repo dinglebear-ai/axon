@@ -19,30 +19,73 @@ pub(super) struct ReadExecution {
 }
 
 impl ReadExecution {
+    pub(super) async fn begin_owned(
+        ctx: ServiceContext,
+        cfg: Config,
+        operation: OperationKind,
+        request: serde_json::Value,
+        auth_snapshot: Option<AuthSnapshot>,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let runtime = if let Some(runtime) = ctx.target_local_source_runtime() {
+            Arc::new(runtime.clone())
+        } else {
+            let store = ctx
+                .job_store()
+                .ok_or_else(|| -> Box<dyn Error + Send + Sync> {
+                    "unified job store is unavailable for scheduled read execution".into()
+                })?;
+            let pool = ctx
+                .sqlite_pool()
+                .ok_or_else(|| -> Box<dyn Error + Send + Sync> {
+                    "SQLite scheduler pool is unavailable for scheduled read execution".into()
+                })?;
+            Arc::new(
+                TargetLocalSourceRuntime::from_config_owned(cfg, store, (*pool).clone())
+                    .await
+                    .map_err(|error| -> Box<dyn Error + Send + Sync> { error })?,
+            )
+        };
+        let descriptor = begin_read_descriptor(ctx, operation, request, auth_snapshot).await?;
+        let job_id = descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.job_id)
+            .unwrap_or_else(|| JobId::new(uuid::Uuid::new_v4()));
+        Ok(Self {
+            runtime,
+            descriptor,
+            job_id,
+        })
+    }
+
     pub(super) async fn begin(
         ctx: &ServiceContext,
         cfg: &Config,
         operation: OperationKind,
         request: serde_json::Value,
         auth_snapshot: Option<AuthSnapshot>,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let runtime = if let Some(runtime) = ctx.target_local_source_runtime() {
             Arc::new(runtime.clone())
         } else {
-            let store = ctx.job_store().ok_or_else(|| -> Box<dyn Error> {
-                "unified job store is unavailable for scheduled read execution".into()
-            })?;
-            let pool = ctx.sqlite_pool().ok_or_else(|| -> Box<dyn Error> {
-                "SQLite scheduler pool is unavailable for scheduled read execution".into()
-            })?;
+            let store = ctx
+                .job_store()
+                .ok_or_else(|| -> Box<dyn Error + Send + Sync> {
+                    "unified job store is unavailable for scheduled read execution".into()
+                })?;
+            let pool = ctx
+                .sqlite_pool()
+                .ok_or_else(|| -> Box<dyn Error + Send + Sync> {
+                    "SQLite scheduler pool is unavailable for scheduled read execution".into()
+                })?;
             Arc::new(
-                TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone())
+                TargetLocalSourceRuntime::from_config_owned(cfg.clone(), store, (*pool).clone())
                     .await
-                    .map_err(|error| -> Box<dyn Error> { error })?,
+                    .map_err(|error| -> Box<dyn Error + Send + Sync> { error })?,
             )
         };
 
-        let descriptor = begin_read_descriptor(ctx, operation, request, auth_snapshot).await?;
+        let descriptor =
+            begin_read_descriptor(ctx.clone(), operation, request, auth_snapshot).await?;
         let job_id = descriptor
             .as_ref()
             .map(|descriptor| descriptor.job_id)
@@ -109,19 +152,34 @@ impl ReadExecution {
             tracing::warn!(job_id = %descriptor.job_id.0, %error, "failed to mark interactive read job terminal");
         }
     }
+
+    pub(super) async fn finish_owned<T, E>(&self, ctx: ServiceContext, result: &Result<T, E>)
+    where
+        E: std::fmt::Display,
+    {
+        let Some(descriptor) = &self.descriptor else {
+            return;
+        };
+        let outcome = result.as_ref().map(|_| ()).map_err(ToString::to_string);
+        if let Err(error) =
+            crate::jobs::complete_operation_job_owned(ctx, descriptor.clone(), outcome).await
+        {
+            tracing::warn!(job_id = %descriptor.job_id.0, %error, "failed to mark interactive read job terminal");
+        }
+    }
 }
 
 async fn begin_read_descriptor(
-    ctx: &ServiceContext,
+    ctx: ServiceContext,
     operation: OperationKind,
     request: serde_json::Value,
     auth_snapshot: Option<AuthSnapshot>,
-) -> Result<Option<JobDescriptor>, Box<dyn Error>> {
+) -> Result<Option<JobDescriptor>, Box<dyn Error + Send + Sync>> {
     if ctx.job_store().is_none() {
         return Ok(None);
     }
-    let descriptor = crate::jobs::enqueue_operation_with_context(
-        ctx,
+    let descriptor = crate::jobs::enqueue_operation_with_owned_context(
+        ctx.clone(),
         operation,
         JobExecutionMode::Foreground,
         request,
@@ -130,7 +188,7 @@ async fn begin_read_descriptor(
     )
     .await?;
     if let Some(descriptor) = &descriptor
-        && let Err(error) = crate::jobs::start_operation_job(ctx, descriptor).await
+        && let Err(error) = crate::jobs::start_operation_job_owned(ctx, descriptor.clone()).await
     {
         tracing::warn!(job_id = %descriptor.job_id.0, %error, "failed to mark interactive read job running");
     }
@@ -271,7 +329,7 @@ mod tests {
         let snapshot = AuthSnapshot::panel("panel-policy-v1");
 
         let descriptor = begin_read_descriptor(
-            &ctx,
+            ctx.clone(),
             OperationKind::Query,
             serde_json::json!({ "query": "snapshot proof" }),
             Some(snapshot.clone()),
@@ -310,7 +368,7 @@ mod tests {
             .expect("enqueue-only service context");
 
         let descriptor = begin_read_descriptor(
-            &ctx,
+            ctx.clone(),
             OperationKind::Retrieve,
             serde_json::json!({ "url": "https://example.test/" }),
             None,

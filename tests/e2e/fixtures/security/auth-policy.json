@@ -1,0 +1,1 @@
+{"schema_version":1,"required_surfaces":["cli_local","mcp_stdio","mcp_http","mcp_tasks","mcp_sse","rest","uploads","artifacts","destructive","oauth"],"oauth":{"requirements":["state","pkce_s256","redirect_allowlist","claims","read_scope","write_scope"]},"cors":{"reject_null_origin":true,"reject_unlisted_origin":true,"credentials_require_exact_origin":true}}

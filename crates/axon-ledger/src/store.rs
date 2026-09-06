@@ -13,6 +13,7 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 pub trait LedgerStore: Send + Sync {
     async fn upsert_source(&self, source: SourceSummary) -> Result<()>;
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>>;
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>>;
     /// Bulk-list registered sources (id, canonical URI, kind/adapter, status,
     /// counts, …), filtered and paginated per `request`. The `list_sources`
     /// entry in `docs/pipeline-unification/runtime/ledger-contract.md`'s
@@ -86,11 +87,9 @@ pub trait LedgerStore: Send + Sync {
             .collect())
     }
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff>;
-    /// Diff a manifest by reference so production backends can avoid a full
-    /// pre-diff deep clone of every item.
-    async fn diff_manifest_ref(&self, manifest: &SourceManifest) -> Result<SourceManifestDiff> {
-        self.diff_manifest(manifest.clone()).await
-    }
+    /// Diff a manifest by reference without cloning its complete item set.
+    /// Every backend must implement this borrowed hot path explicitly.
+    async fn diff_manifest_ref(&self, manifest: &SourceManifest) -> Result<SourceManifestDiff>;
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration>;
     async fn committed_generation(&self, source_id: SourceId)
     -> Result<Option<SourceGenerationId>>;
@@ -104,12 +103,7 @@ pub trait LedgerStore: Send + Sync {
     /// Persist status transitions in bounded atomic batches. Implementations
     /// must roll back the current batch when any status is invalid, rather than
     /// leaving a prefix of a pipeline stage visible.
-    async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
-        for status in statuses {
-            self.update_document_status(status).await?;
-        }
-        Ok(())
-    }
+    async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()>;
     /// Mark every durable document status for one source generation published
     /// without materializing the generation's status rows in the caller.
     async fn publish_document_statuses(
@@ -124,6 +118,15 @@ pub trait LedgerStore: Send + Sync {
     /// new generation is committed. A debt is "pending" while its `completed_at`
     /// timestamp is unset (status alone is advisory).
     async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>>;
+    /// Page unresolved cleanup debt across every source in stable debt-id order.
+    /// Runtime-owned maintenance uses this boundary to recover debt even when
+    /// the owning source is never published again.
+    async fn list_pending_cleanup_debt_after(
+        &self,
+        after: Option<CleanupDebtId>,
+        limit: usize,
+    ) -> Result<Vec<CleanupDebt>>;
+    async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>>;
     /// Mark one cleanup-debt entry resolved: set its status to `Completed` and
     /// stamp `completed_at`. Idempotent — resolving an already-resolved or
     /// unknown debt id is a no-op.

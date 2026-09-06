@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
@@ -30,6 +30,7 @@ use self::db_limited_ledger::DbLimitedLedgerStore;
 use crate::artifact_candidate_outbox::SharedArtifactCandidateOutbox;
 
 mod db_limited_ledger;
+mod queue_summary;
 mod scheduled_web;
 mod target_runtime;
 
@@ -54,6 +55,44 @@ pub struct ServiceContext {
     /// `ServiceContext` clone drops (i.e. at server shutdown). Never read.
     #[allow(dead_code)]
     drain_lock: Option<Arc<crate::runtime::WorkerDrainLock>>,
+    #[allow(dead_code)]
+    queue_summary: Option<Arc<QueueSummaryTask>>,
+    cleanup_debt: Option<Arc<QueueSummaryTask>>,
+}
+
+pub(crate) struct QueueSummaryTask {
+    stop: std::sync::mpsc::Sender<()>,
+    thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+
+impl QueueSummaryTask {
+    pub(crate) fn new(
+        stop: std::sync::mpsc::Sender<()>,
+        thread: std::thread::JoinHandle<()>,
+    ) -> Self {
+        Self {
+            stop,
+            thread: Mutex::new(Some(thread)),
+        }
+    }
+
+    async fn shutdown(&self) {
+        let _ = self.stop.send(());
+        if let Some(thread) = self.thread.lock().expect("queue summary task lock").take() {
+            if let Err(error) = tokio::task::spawn_blocking(move || thread.join()).await {
+                tracing::warn!(%error, "background worker join task failed");
+            }
+        }
+    }
+}
+
+impl Drop for QueueSummaryTask {
+    fn drop(&mut self) {
+        // Drop may run on a single-thread Tokio executor. Signal cancellation,
+        // but never synchronously join here; explicit service shutdown owns the
+        // observable join path and dropping a JoinHandle safely detaches it.
+        let _ = self.stop.send(());
+    }
 }
 
 #[derive(Clone)]
@@ -66,9 +105,18 @@ pub struct TargetLocalSourceRuntime {
     pub vector_provider_id: ProviderId,
     pub embedding_model: String,
     pub embedding_dimensions: u32,
+    pub(crate) verified_embedding:
+        tokio::sync::watch::Receiver<Option<Arc<target_runtime::VerifiedEmbeddingPlane>>>,
     pub document_preparer: DocumentPreparer,
     pub document_prepare_concurrency: usize,
+    pub document_prepare_max_in_flight_bytes: usize,
     pub embed_pool_max_inputs: usize,
+    pub document_batch_size: usize,
+    pub document_status_batch_size: usize,
+    pub embed_scheduler_enabled: bool,
+    pub embed_scheduler_flush_delay: std::time::Duration,
+    pub vector_upsert_embed_overlap: bool,
+    pub embed_prepared_byte_budget: usize,
     pub(crate) db_stage_slots: Arc<Semaphore>,
     pub embedding_scheduler: Option<Arc<ProviderScheduler>>,
     pub vector_scheduler: Option<Arc<ProviderScheduler>>,
@@ -101,6 +149,20 @@ pub struct TargetLocalSourceRuntime {
 }
 
 impl TargetLocalSourceRuntime {
+    pub(crate) async fn verified_embedding_plane(
+        &self,
+    ) -> anyhow::Result<Arc<target_runtime::VerifiedEmbeddingPlane>> {
+        let mut receiver = self.verified_embedding.clone();
+        loop {
+            if let Some(plane) = receiver.borrow().clone() {
+                return Ok(plane);
+            }
+            receiver
+                .changed()
+                .await
+                .map_err(|_| anyhow::anyhow!("embedding identity verification task stopped"))?;
+        }
+    }
     pub fn with_artifact_candidate_sink(mut self, sink: Arc<dyn ArtifactCandidateSink>) -> Self {
         self.artifact_candidate_sink = sink;
         self
@@ -136,6 +198,16 @@ impl TargetLocalSourceRuntime {
             Arc::clone(&render_provider),
         ));
         let db_stage_slots = Arc::new(Semaphore::new(1));
+        let (verified_sender, verified_embedding) = tokio::sync::watch::channel(None);
+        let plane = Arc::new(target_runtime::VerifiedEmbeddingPlane {
+            provider: Arc::clone(&embedding_provider),
+            identity: target_runtime::EmbeddingIdentity {
+                model: embedding_model.into(),
+                dimensions: embedding_dimensions,
+                verified: true,
+            },
+        });
+        verified_sender.send_replace(Some(plane.clone()));
         Self {
             jobs,
             ledger: Arc::new(DbLimitedLedgerStore::new(
@@ -153,11 +225,19 @@ impl TargetLocalSourceRuntime {
             sqlite_write_gate: SqliteWriteGate::default(),
             embedding_cache_store: None,
             embedding_provider_id,
-            embedding_model: embedding_model.into(),
+            embedding_model: plane.identity.model.clone(),
             embedding_dimensions,
+            verified_embedding,
             document_preparer: DocumentPreparer::default(),
             document_prepare_concurrency: 1,
+            document_prepare_max_in_flight_bytes: 64 * 1024 * 1024,
             embed_pool_max_inputs: 512,
+            document_batch_size: 16,
+            document_status_batch_size: 64,
+            embed_scheduler_enabled: true,
+            embed_scheduler_flush_delay: std::time::Duration::from_millis(1_500),
+            vector_upsert_embed_overlap: true,
+            embed_prepared_byte_budget: 128 * 1024 * 1024,
             db_stage_slots,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
@@ -176,59 +256,65 @@ impl ServiceContext {
     async fn build(
         cfg: Arc<Config>,
         spawn_workers: bool,
-        hold_drain_lock: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if spawn_workers {
             axon_core::health::assert_workers_allowed_by_cutover(&cfg)
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
         }
-        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
-        let target_local_source =
-            Self::build_target_local_source(&cfg, &jobs, spawn_workers).await?;
-        // A long-lived schedulers context (serve / HTTP mcp) owns the queue for
-        // its whole lifetime, so it holds the drain lock to advertise that —
-        // otherwise every detached CLI enqueue would auto-spawn a redundant
-        // worker (axon_rust-x4gxr.2). Short-lived `--wait` worker contexts must
-        // NOT hold it. Best-effort: if another worker already holds it, we start
-        // anyway (claiming is transactional).
-        let drain_lock = if hold_drain_lock {
-            Self::acquire_drain_lock(&cfg).await
+        // Provider cooling is process-local, so exactly one worker-bearing
+        // process may own a queue. Take the cross-process queue lock before
+        // constructing anything capable of claiming work.
+        let drain_lock = if spawn_workers {
+            Some(Self::acquire_drain_lock(&cfg).await?)
         } else {
             None
         };
-        let context = Self {
+        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
+        let target_local_source =
+            Self::build_target_local_source(&cfg, &jobs, spawn_workers).await?;
+        let mut context = Self {
             cfg: Arc::clone(&cfg),
             jobs: Arc::clone(&jobs),
             target_local_source,
             drain_lock,
+            queue_summary: if spawn_workers {
+                match spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs) {
+                    Ok(task) => task,
+                    Err(error) => {
+                        tracing::warn!(%error, "queue summary monitor failed to start; continuing without it");
+                        None
+                    }
+                }
+            } else {
+                None
+            },
+            cleanup_debt: None,
         };
-        if spawn_workers {
-            spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
+        if spawn_workers && let Some(runtime) = context.target_local_source.as_deref() {
+            let registry = runtime.source_adapter_registry(&context).await?.clone();
+            context.cleanup_debt = Some(
+                crate::reserved_call::spawn_cleanup_debt_worker(&context, runtime, registry)
+                    .await?,
+            );
         }
         Ok(context)
     }
 
-    /// Best-effort acquire the worker drain lock for a long-lived schedulers
-    /// context. Returns `None` (and logs) when another worker process already
-    /// holds it or the lock DB can't be opened — the server still runs, it just
-    /// doesn't advertise liveness, so a detached enqueue may auto-spawn one
-    /// extra worker (correct, only mildly wasteful).
-    async fn acquire_drain_lock(cfg: &Config) -> Option<Arc<crate::runtime::WorkerDrainLock>> {
+    /// Acquire the exclusive cross-process worker lock or fail startup.
+    async fn acquire_drain_lock(
+        cfg: &Config,
+    ) -> Result<Arc<crate::runtime::WorkerDrainLock>, Box<dyn std::error::Error + Send + Sync>>
+    {
         let lock_path = crate::runtime::drain_lock_path(&cfg.sqlite_path);
         match crate::runtime::WorkerDrainLock::try_hold(&lock_path).await {
-            Ok(Some(lock)) => Some(Arc::new(lock)),
-            Ok(None) => {
-                tracing::info!(
-                    "worker drain lock already held by another process; \
-                     server runs without advertising liveness"
-                );
-                None
-            }
-            Err(error) => {
-                tracing::warn!(%error, "failed to acquire worker drain lock; continuing");
-                None
-            }
+            Ok(Some(lock)) => Ok(Arc::new(lock)),
+            Ok(None) => Err(
+                "jobs.worker_already_active: another worker process owns this queue"
+                    .to_string()
+                    .into(),
+            ),
+            Err(error) => Err(format!("jobs.worker_lock_failed: {error}").into()),
         }
     }
 
@@ -278,18 +364,17 @@ impl ServiceContext {
     /// This is the safe default for CLI commands that enqueue and exit.
     /// Use `new_with_workers()` for long-lived processes that should process jobs.
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, false, false).await
+        Self::build(cfg, false).await
     }
 
     /// Create a ServiceContext with in-process workers (SQLite runtime only).
     ///
-    /// Use for foreground CLI `--wait true` and the standalone `axon jobs
-    /// worker` (which owns the drain lock itself). Does NOT hold the drain lock:
-    /// a short-lived `--wait` context must not suppress auto-spawn.
+    /// Use for foreground CLI `--wait true` and the standalone worker. The
+    /// context holds the exclusive queue-worker lock for its lifetime.
     pub async fn new_with_workers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true, false).await
+        Self::build(cfg, true).await
     }
 
     /// Create a long-lived ServiceContext with in-process workers that holds the
@@ -301,7 +386,7 @@ impl ServiceContext {
     pub async fn new_with_workers_and_schedulers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true, true).await
+        Self::build(cfg, true).await
     }
 
     /// Factory for test helpers — inject a mock `ServiceJobRuntime`.
@@ -311,6 +396,8 @@ impl ServiceContext {
             jobs,
             target_local_source: None,
             drain_lock: None,
+            queue_summary: None,
+            cleanup_debt: None,
         }
     }
 
@@ -366,56 +453,74 @@ impl ServiceContext {
     pub fn cfg(&self) -> &Config {
         &self.cfg
     }
+
+    /// Cancel and join background tasks owned by this context.
+    pub async fn shutdown_background_tasks(&self) {
+        if let Some(outbox) = self
+            .target_local_source
+            .as_ref()
+            .and_then(|runtime| runtime.artifact_candidate_outbox.as_ref())
+        {
+            outbox.shutdown_drain().await;
+        }
+        if let Some(task) = &self.queue_summary {
+            task.shutdown().await;
+        }
+        if let Some(task) = &self.cleanup_debt {
+            task.shutdown().await;
+        }
+    }
+}
+
+#[cfg(test)]
+fn spawn_adapter_cleanup_worker_with_runtime(
+    ledger: Arc<dyn LedgerStore>,
+    registry: SourceAdapterRegistry,
+    runtime: std::io::Result<tokio::runtime::Runtime>,
+    thread_name: &str,
+) -> std::io::Result<Arc<QueueSummaryTask>> {
+    let runtime = runtime?;
+    if thread_name.as_bytes().contains(&0) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "background worker thread name contains a null byte",
+        ));
+    }
+    let (stop, stopped) = std::sync::mpsc::channel();
+    let thread = std::thread::Builder::new()
+        .name(thread_name.into())
+        .spawn(move || {
+            let mut delay = Duration::from_millis(100);
+            loop {
+                match stopped.recv_timeout(delay) {
+                    Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                }
+                let next = runtime.block_on(crate::source::prune::drain_due_adapter_releases(
+                    ledger.as_ref(),
+                    &registry,
+                    256,
+                ));
+                delay = next
+                    .and_then(|next| chrono::DateTime::parse_from_rfc3339(&next.0).ok())
+                    .map(|next| {
+                        (next.with_timezone(&chrono::Utc) - chrono::Utc::now())
+                            .to_std()
+                            .unwrap_or(Duration::from_millis(100))
+                    })
+                    .unwrap_or(Duration::from_secs(30))
+                    .max(Duration::from_millis(100));
+            }
+        })?;
+    Ok(Arc::new(QueueSummaryTask::new(stop, thread)))
 }
 
 /// Periodic queue-depth summary logger for log-based monitoring.
 ///
 /// Spawned only by worker-bearing contexts. Interval is `AXON_QUEUE_SUMMARY_SECS`
 /// (default 30s).
-fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
-    if secs == 0 {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(secs));
-        // Skip the initial fire so the first log is one period in, not at startup.
-        interval.tick().await;
-        loop {
-            interval.tick().await;
-            let Some(source) = queue_depth(&jobs, JobKind::Source).await else {
-                continue;
-            };
-            let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
-                continue;
-            };
-            let Some(watch) = queue_depth(&jobs, JobKind::Watch).await else {
-                continue;
-            };
-            let Some(prune) = queue_depth(&jobs, JobKind::Prune).await else {
-                continue;
-            };
-            tracing::info!(
-                source,
-                extract,
-                watch,
-                prune,
-                interval_secs = secs,
-                "job queue summary"
-            );
-        }
-    });
-}
+use queue_summary::{spawn_queue_summary_logger, spawn_queue_summary_logger_with_runtime};
 
-async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option<i64> {
-    match jobs.count_jobs(kind).await {
-        Ok(count) => Some(count),
-        Err(err) => {
-            tracing::warn!(
-                ?kind,
-                error = %err,
-                "failed to read job queue depth"
-            );
-            None
-        }
-    }
-}
+#[cfg(test)]
+#[path = "context_tests.rs"]
+mod tests;

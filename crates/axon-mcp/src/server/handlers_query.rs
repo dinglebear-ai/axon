@@ -254,20 +254,9 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| internal_error(format!("service context: {e}")))?;
-        let query_for_task = query.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
-            runtime.block_on(async { query_svc::evaluate(&ctx, &cfg, &query_for_task).await })
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("join evaluate task: {e}");
-            internal_error(format!("evaluate '{query}' failed"))
-        })?
-        .map_err(|e| logged_internal_error(&format!("evaluate '{query}'"), e.as_ref()))?;
+        let result = query_svc::evaluate(&ctx, &cfg, &query)
+            .await
+            .map_err(|e| logged_internal_error(&format!("evaluate '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "evaluate",

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "source_id": "source.boundary",
+      "must_preserve_markers": ["BOUNDARY-BEGIN", "BOUNDARY-END", "quartz lantern"],
+      "min_chunks": 1,
+      "max_chunks": 8,
+      "exact_offsets": null,
+      "note": "Offsets are intentionally unpinned outside chunker-specific tests."
+    }
+  ]
+}

@@ -52,6 +52,64 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.as_deref().unwrap_or("plan");
 
+        if subaction == "get" {
+            let plan_id = req
+                .plan_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| invalid_params("prune get requires plan_id"))?;
+            let ctx = self
+                .base_service_context()
+                .await
+                .map_err(|e| logged_internal_error("prune.context", e.as_ref()))?;
+            let stored = prune::prune_get_saved_plan(&ctx, plan_id)
+                .await
+                .map_err(|e| invalid_params(e.to_string()))?;
+            return respond_with_mode(
+                "prune",
+                "get",
+                req.response_mode,
+                "prune-plan",
+                serde_json::to_value(stored).unwrap_or(Value::Null),
+                InlineHint::Default,
+            )
+            .await;
+        }
+
+        if subaction == "exec" {
+            if !req.confirm.unwrap_or(false) {
+                return Err(invalid_params(
+                    "prune exec requires confirm=true to run destructively",
+                ));
+            }
+            let plan_id = req
+                .plan_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| invalid_params("prune exec requires plan_id"))?;
+            let ctx = self
+                .base_service_context()
+                .await
+                .map_err(|e| logged_internal_error("prune.context", e.as_ref()))?;
+            let authz = CURRENT_PRUNE_AUTHZ
+                .try_with(Clone::clone)
+                .unwrap_or_default();
+            let (plan, result, receipt) = prune::prune_execute_saved(&ctx, plan_id, true, &authz)
+                .await
+                .map_err(|e| invalid_params(e.to_string()))?;
+            return respond_with_mode(
+                "prune",
+                "exec",
+                req.response_mode,
+                "prune",
+                serde_json::json!({"subaction": "exec", "plan": plan, "result": result, "receipt": receipt}),
+                InlineHint::Default,
+            )
+            .await;
+        }
+
         let selector = prune_selector_from_request(&req)?;
 
         // `prune` executes against the shared, cached `ServiceContext` (see
@@ -68,17 +126,9 @@ impl AxonMcpServer {
 
         let api_request = match subaction {
             "plan" => ApiPruneRequest::dry_run(selector, "mcp prune plan"),
-            "exec" => {
-                if !req.confirm.unwrap_or(false) {
-                    return Err(invalid_params(
-                        "prune exec requires confirm=true to run destructively",
-                    ));
-                }
-                ApiPruneRequest::execute(selector, "mcp prune exec")
-            }
             other => {
                 return Err(invalid_params(format!(
-                    "unknown prune subaction '{other}' (expected plan|exec)"
+                    "unknown prune subaction '{other}' (expected plan|get|exec)"
                 )));
             }
         };
@@ -145,6 +195,15 @@ impl AxonMcpServer {
                 cfg.reset_dry_run = true;
                 axon_services::reset::reset(&cfg).await
             }
+            ResetSubaction::Get => {
+                let plan_id = req
+                    .plan_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| invalid_params("reset get requires plan_id"))?;
+                axon_services::reset::reset_get_saved_plan(&cfg, plan_id).await
+            }
             ResetSubaction::Exec => {
                 if !req.confirm.unwrap_or(false) {
                     return Err(invalid_params("reset exec requires confirm=true"));
@@ -167,6 +226,7 @@ impl AxonMcpServer {
         .map_err(|e| invalid_params(e.to_string()))?;
         let label = match subaction {
             ResetSubaction::Plan => "plan",
+            ResetSubaction::Get => "get",
             ResetSubaction::Exec => "exec",
         };
         respond_with_mode(

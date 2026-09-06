@@ -26,15 +26,23 @@ export function firstUrlFromText(value: string): string | null {
 }
 
 export function newRequestId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 export function normalizeSubmitArgument(action: PaletteAction, argument: string): string {
-  const trimmed = argument.trim();
+  const trimmed = repairLinkSubstitution(argument.trim());
   if (coercesArgumentToUrl(action) && trimmed && !/^https?:\/\//i.test(trimmed)) {
     return `https://${trimmed}`;
   }
   return trimmed;
+}
+
+export function repairLinkSubstitution(value: string): string {
+  const match = value.match(/^\[([^\]]+)\]\(([^)]+)\)(\S*)$/);
+  if (!match || match[1] !== match[2] || !/^https?:\/\//i.test(match[1])) return value;
+  return `${match[1]}${match[3]}`;
 }
 
 export function crawlSeedUrl(argument: string): string {
@@ -46,7 +54,10 @@ export function crawlSeedUrl(argument: string): string {
 export function extractEmbedJobId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as Record<string, unknown>;
-  const job = (typeof root.job === "object" && root.job ? root.job : root) as Record<string, unknown>;
+  const job = (typeof root.job === "object" && root.job ? root.job : root) as Record<
+    string,
+    unknown
+  >;
   const result = job.result_json;
   if (result && typeof result === "object") {
     const id = (result as Record<string, unknown>).embed_job_id;

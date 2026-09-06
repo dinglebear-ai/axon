@@ -161,9 +161,9 @@ pub struct DocumentStatus {
     pub generation: Option<SourceGenerationId>,
     pub status: DocumentLifecycleStatus,
     pub updated_at: Timestamp,
-    #[serde(skip)]
+    #[serde(default)]
     pub chunk_count: u32,
-    #[serde(skip)]
+    #[serde(default)]
     pub vector_point_count: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<SourceError>,

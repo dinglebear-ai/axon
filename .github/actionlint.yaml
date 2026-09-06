@@ -11,4 +11,5 @@ self-hosted-runner:
     - ci-pool-typescript
     - ci-pool-ops
     - ci-pool-system
+    - axon-performance
     - unraid

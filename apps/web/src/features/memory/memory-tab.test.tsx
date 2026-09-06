@@ -76,7 +76,7 @@ describe('MemoryTab', () => {
 
   it('does not search until the user submits a query', async () => {
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -90,7 +90,7 @@ describe('MemoryTab', () => {
     );
 
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -104,8 +104,11 @@ describe('MemoryTab', () => {
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      '/v1/memories/search',
-      expect.objectContaining({ method: 'POST' })
+      '/api/panel/memories/search',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({})
+      })
     );
     expect(host.textContent).toContain('Qdrant runs on tootie');
     expect(host.textContent).toContain('Second memory');
@@ -116,7 +119,7 @@ describe('MemoryTab', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ memories: [] }));
 
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -132,7 +135,7 @@ describe('MemoryTab', () => {
     vi.mocked(fetch).mockResolvedValue(new Response('boom', { status: 500 }));
 
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -148,7 +151,7 @@ describe('MemoryTab', () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ memory: memoryItem({ id: 'mem-new', title: 'New memory' }) }));
 
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -167,7 +170,7 @@ describe('MemoryTab', () => {
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      '/v1/memories',
+      '/api/panel/memories',
       expect.objectContaining({
         method: 'POST',
         body: expect.stringContaining('Remember this fact.')
@@ -179,7 +182,7 @@ describe('MemoryTab', () => {
 
   it('rejects an empty body without calling the API', async () => {
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -199,7 +202,7 @@ describe('MemoryTab', () => {
       .mockResolvedValueOnce(jsonResponse({ memory: memoryItem() }));
 
     await act(async () => {
-      root.render(<MemoryTab />);
+      root.render(<MemoryTab token="panel-token" />);
       await flush();
     });
 
@@ -213,7 +216,7 @@ describe('MemoryTab', () => {
       await flush();
     });
 
-    expect(fetch).toHaveBeenCalledWith('/v1/memories/mem-1', expect.anything());
+    expect(fetch).toHaveBeenCalledWith('/api/panel/memories/mem-1', expect.anything());
     expect(host.textContent).toContain('The vector store lives on the NAS.');
 
     await act(async () => {
@@ -222,6 +225,81 @@ describe('MemoryTab', () => {
     });
 
     expect(window.confirm).toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledWith('/v1/memories/mem-1', expect.objectContaining({ method: 'DELETE' }));
+    expect(fetch).toHaveBeenCalledWith('/api/panel/memories/mem-1', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('ignores stale reordered detail responses and deletes the currently selected memory', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    let resolveFirst!: (response: Response) => void;
+    let resolveSecond!: (response: Response) => void;
+    const firstDetail = new Promise<Response>((resolve) => { resolveFirst = resolve; });
+    const secondDetail = new Promise<Response>((resolve) => { resolveSecond = resolve; });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ memories: [
+        memoryItem({ id: 'mem-a', title: 'Memory A', body: 'body A' }),
+        memoryItem({ id: 'mem-b', title: 'Memory B', body: 'body B' })
+      ] }))
+      .mockImplementationOnce(() => firstDetail)
+      .mockImplementationOnce(() => secondDetail)
+      .mockResolvedValueOnce(jsonResponse({ memory: memoryItem({ id: 'mem-b' }) }));
+
+    await act(async () => {
+      root.render(<MemoryTab token="panel-token" />);
+      await flush();
+    });
+    await act(async () => {
+      (host.querySelector('button') as HTMLButtonElement).click();
+      await flush();
+    });
+
+    const viewButtons = host.querySelectorAll<HTMLButtonElement>('[title="View memory"]');
+    await act(async () => {
+      viewButtons[0].click();
+      viewButtons[1].click();
+      resolveSecond(jsonResponse({ memory: memoryItem({ id: 'mem-b', title: 'Memory B', body: 'body B' }) }));
+      await flush();
+    });
+    await act(async () => {
+      resolveFirst(jsonResponse({ memory: memoryItem({ id: 'mem-a', title: 'Memory A', body: 'body A' }) }));
+      await flush();
+    });
+
+    expect(host.textContent).toContain('body B');
+    expect(host.textContent).not.toContain('body A');
+    const detailDelete = Array.from(host.querySelectorAll<HTMLButtonElement>('[title="Delete memory"]')).at(-1)!;
+    await act(async () => {
+      detailDelete.click();
+      await flush();
+    });
+    expect(fetch).toHaveBeenCalledWith('/api/panel/memories/mem-b', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('does not publish a detail response after the detail is closed', async () => {
+    let resolveDetail!: (response: Response) => void;
+    const detail = new Promise<Response>((resolve) => { resolveDetail = resolve; });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ memories: [memoryItem()] }))
+      .mockImplementationOnce(() => detail);
+
+    await act(async () => {
+      root.render(<MemoryTab token="panel-token" />);
+      await flush();
+    });
+    await act(async () => {
+      (host.querySelector('button') as HTMLButtonElement).click();
+      await flush();
+    });
+    await act(async () => {
+      (host.querySelector('[title="View memory"]') as HTMLButtonElement).click();
+      await flush();
+    });
+    await act(async () => {
+      (host.querySelector('[title="Close detail"]') as HTMLButtonElement).click();
+      resolveDetail(jsonResponse({ memory: memoryItem({ body: 'late body' }) }));
+      await flush();
+    });
+
+    expect(host.textContent).not.toContain('late body');
+    expect(host.querySelector('[title="Close detail"]')).toBeNull();
   });
 });

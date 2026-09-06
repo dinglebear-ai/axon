@@ -64,7 +64,7 @@ pub(crate) struct WatchHistoryQuery {
     operation_id = "watches_create",
     request_body = WatchRequest,
     responses(
-        (status = 200, description = "Created watch detail", body = serde_json::Value),
+        (status = 200, description = "Created watch detail", body = axon_api::source::WatchResult),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "watch"
@@ -90,7 +90,7 @@ pub(crate) async fn create_watch(
     operation_id = "watches_list",
     params(WatchListQuery),
     responses(
-        (status = 200, description = "Paged watch summaries", body = serde_json::Value),
+        (status = 200, description = "Paged watch summaries", body = axon_api::source::Page<axon_api::source::WatchSummary>),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
     tag = "watch"
@@ -119,7 +119,7 @@ pub(crate) async fn list_watches(
     operation_id = "watches_get",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
-        (status = 200, description = "Watch detail", body = serde_json::Value),
+        (status = 200, description = "Watch detail", body = axon_api::source::WatchResult),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -149,7 +149,7 @@ pub(crate) async fn get_watch(
     operation_id = "watches_status",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
-        (status = 200, description = "Watch status with latest source job summary", body = serde_json::Value),
+        (status = 200, description = "Watch status with latest source job summary", body = axon_api::source::WatchStatusResponse),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch status unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -190,7 +190,7 @@ pub(crate) async fn status_watch(
     params(("watch_id" = String, Path, description = "Watch ID")),
     request_body = WatchExecRequest,
     responses(
-        (status = 200, description = "Watch execution job descriptor", body = serde_json::Value),
+        (status = 200, description = "Watch execution job descriptor", body = axon_api::source::JobDescriptor),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch execution failed", body = crate::server::error::ErrorBody)
     ),
@@ -240,7 +240,7 @@ pub(crate) async fn exec_watch(
     operation_id = "watches_history",
     params(("watch_id" = String, Path, description = "Watch ID"), WatchHistoryQuery),
     responses(
-        (status = 200, description = "Watch execution history", body = serde_json::Value),
+        (status = 200, description = "Watch execution history", body = axon_api::source::WatchHistoryResult),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch history lookup failed", body = crate::server::error::ErrorBody)
     ),
@@ -286,6 +286,9 @@ fn watch_history_request(watch_id: WatchId, query: WatchHistoryQuery) -> WatchHi
 }
 
 fn auth_snapshot_from_context(auth: &AuthContext) -> AuthSnapshot {
+    if auth.issuer == super::super::routing::security::PANEL_AUTH_ISSUER {
+        return AuthSnapshot::panel("runtime");
+    }
     AuthSnapshot::from_caller(
         &caller_context_from_auth(auth),
         Visibility::Internal,
@@ -320,7 +323,7 @@ fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
     params(("watch_id" = String, Path, description = "Watch ID")),
     request_body = WatchUpdateRequest,
     responses(
-        (status = 200, description = "Updated watch detail", body = serde_json::Value),
+        (status = 200, description = "Updated watch detail", body = axon_api::source::WatchResult),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -344,7 +347,7 @@ pub(crate) async fn update_watch(
     operation_id = "watches_pause",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
-        (status = 200, description = "Updated watch detail", body = serde_json::Value),
+        (status = 200, description = "Updated watch detail", body = axon_api::source::WatchResult),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -377,7 +380,7 @@ pub(crate) async fn pause_watch(
     operation_id = "watches_resume",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
-        (status = 200, description = "Updated watch detail", body = serde_json::Value),
+        (status = 200, description = "Updated watch detail", body = axon_api::source::WatchResult),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),
@@ -410,7 +413,7 @@ pub(crate) async fn resume_watch(
     operation_id = "watches_delete",
     params(("watch_id" = String, Path, description = "Watch ID")),
     responses(
-        (status = 200, description = "Deletion result", body = serde_json::Value),
+        (status = 200, description = "Deletion result", body = axon_api::source::WatchDeleteResponse),
         (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
         (status = 502, description = "Watch storage unavailable", body = crate::server::error::ErrorBody)
     ),

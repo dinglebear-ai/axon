@@ -1,5 +1,5 @@
-use axon_api::mcp_schema::ResponseMode;
-use axon_api::mcp_schema::WatchSubaction;
+use axon_api::action::ResponseMode;
+use axon_api::action::WatchSubaction;
 use axon_api::source::{
     ArtifactKind, ContentRef, LifecycleStatus, MetadataMap, UploadPurpose, UploadStatusKind,
 };
@@ -33,6 +33,7 @@ pub(super) struct ResetMcpRequest {
 pub(super) enum ResetSubaction {
     #[default]
     Plan,
+    Get,
     Exec,
 }
 

@@ -5,23 +5,8 @@ use super::{
     scope_satisfies,
 };
 
-/// Pins the deliberate `axon:read`/`axon:write` compatibility widening in
-/// `scope_satisfies` (see that function's doc comment and
-/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
-/// paragraph plus `docs/pipeline-unification/runtime/auth-contract.md`'s
-/// "Scope Rules" for the two contracts that document it). This is NOT an
-/// oversight or a bug: it exists so existing OAuth tokens keep working across
-/// route-classification changes.
-///
-/// Because this widening is deliberate, it is exactly why
-/// [`has_explicit_scope`] exists as a separate, stricter primitive — any
-/// caller that needs "does this caller actually hold `axon:write`, no broad
-/// widening" (elevation/upgrade checks, not ordinary route gating) must use
-/// `has_explicit_scope`, not this function. See
-/// `explicit_scope_check_rejects_broad_widening` below, which pins the two
-/// functions as deliberately different for the exact same input.
 #[test]
-fn axon_read_scope_satisfies_write_routes_by_design_compatibility_widening() {
+fn axon_read_scope_satisfies_legacy_write_routes() {
     let scopes = vec![AXON_READ_SCOPE.to_string()];
     assert!(scope_satisfies(&scopes, AXON_WRITE_SCOPE));
 }
@@ -116,12 +101,10 @@ fn fine_grained_scope_requires_exact_hold() {
 }
 
 #[test]
-fn fine_grained_scope_holder_still_satisfies_broad_groups() {
-    // A caller holding only a fine-grained scope counts as authenticated Axon
-    // access for the broad read/write route groups.
+fn fine_grained_scope_holder_does_not_gain_broad_access() {
     let scopes = vec![AXON_LOCAL_SCOPE.to_string()];
-    assert!(scope_satisfies(&scopes, AXON_READ_SCOPE));
-    assert!(scope_satisfies(&scopes, AXON_WRITE_SCOPE));
+    assert!(!scope_satisfies(&scopes, AXON_READ_SCOPE));
+    assert!(!scope_satisfies(&scopes, AXON_WRITE_SCOPE));
 }
 
 #[test]
@@ -130,4 +113,27 @@ fn space_separated_fine_grained_scope_is_recognized() {
     assert!(scope_satisfies(&scopes, AXON_LOCAL_SCOPE));
     assert!(scope_satisfies(&scopes, AXON_READ_SCOPE));
     assert!(!scope_satisfies(&scopes, AXON_EXECUTE_SCOPE));
+}
+
+#[test]
+fn oauth_scope_implication_matrix_is_exhaustive() {
+    let scopes = [
+        AXON_READ_SCOPE,
+        AXON_WRITE_SCOPE,
+        AXON_ADMIN_SCOPE,
+        AXON_EXECUTE_SCOPE,
+        AXON_LOCAL_SCOPE,
+    ];
+    for held in scopes {
+        for required in scopes {
+            let expected = held == required
+                || (matches!(held, AXON_READ_SCOPE | AXON_WRITE_SCOPE)
+                    && matches!(required, AXON_READ_SCOPE | AXON_WRITE_SCOPE));
+            assert_eq!(
+                scope_satisfies(&[held.to_string()], required),
+                expected,
+                "unexpected implication {held} -> {required}",
+            );
+        }
+    }
 }

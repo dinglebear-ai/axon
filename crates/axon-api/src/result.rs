@@ -154,14 +154,14 @@ impl PagedDocument {
     /// Window a full document into a paged slice based on a token budget and cursor.
     pub fn from_full_content(
         full_content: &str,
-        cursor: Option<&str>,
+        start_offset: usize,
         token_budget: Option<usize>,
         backend: DocumentBackend,
     ) -> Self {
         let budget = token_budget.unwrap_or(Self::DEFAULT_TOKEN_BUDGET).max(1);
         let char_budget = budget.saturating_mul(Self::CHARS_PER_TOKEN);
 
-        let mut start_offset = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
+        let mut start_offset = start_offset;
 
         if start_offset >= full_content.len() {
             return Self {
@@ -364,6 +364,10 @@ pub struct AskResult {
     #[serde(default)]
     pub explain: Option<AskExplainTrace>,
     pub timing_ms: AskTiming,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loadout: Option<crate::loadout::LoadoutResolution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::agent::AgentTurnResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

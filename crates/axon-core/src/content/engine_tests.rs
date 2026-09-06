@@ -21,6 +21,37 @@ fn noop_completer() -> Arc<dyn TextCompleter> {
     Arc::new(NoopCompleter)
 }
 
+#[tokio::test]
+async fn collector_reports_broadcast_lag_as_incomplete() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start();
+    server.mock(|when, then| {
+        when.method(GET).path("/");
+        then.status(200).body("<html>ok</html>");
+    });
+    let client = http_client().unwrap().clone();
+    let page_client = Website::new(&server.base_url()).configure_http_client();
+    let page = spider::page::Page::new_page(&server.base_url(), &page_client).await;
+    let (tx, rx) = tokio::sync::broadcast::channel(1);
+    tx.send(page.clone()).unwrap();
+    tx.send(page).unwrap();
+    drop(tx);
+    let error = collect_page_results(
+        rx,
+        client,
+        Arc::new(DeterministicExtractionEngine::default()),
+        FallbackConfig {
+            completer: noop_completer(),
+            llm_backend: crate::llm::LlmBackendConfig::default(),
+            prompt_text: String::new(),
+            has_fallback: false,
+        },
+    )
+    .await
+    .expect_err("lagged extraction cannot report complete success");
+    assert!(error.contains("dropped 1 page"));
+}
+
 /// When Chrome mode is requested but no chrome_remote_url is configured,
 /// the extract engine must fall back to the HTTP path gracefully rather
 /// than panicking or returning an error about a missing CDP connection.

@@ -8,58 +8,14 @@
 
 use anyhow::{Result, bail};
 use axon_adapters::sessions::redact_session_text;
-use serde::{Deserialize, Serialize};
-
-use axon_api::mcp_schema::{MemoryEdgeType, MemoryNodeType, MemoryRequest};
+use axon_api::action::{MemoryEdgeType, MemoryNodeType, MemoryRequest};
+pub use axon_api::source::{MemoryContext, MemoryEdgeItem, MemoryItem};
 use axon_api::source::{MemoryLink, MemoryRecord, MemoryScope, MemoryStatus, MemoryType};
 
 /// Link types used to persist the CLI project/repo/file scope facets.
 pub(super) const LINK_PROJECT: &str = "memory_project";
 pub(super) const LINK_REPO: &str = "memory_repo";
 pub(super) const LINK_FILE: &str = "memory_file";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MemoryItem {
-    pub id: String,
-    pub memory_type: String,
-    pub title: String,
-    pub body: Option<String>,
-    pub project: Option<String>,
-    pub repo: Option<String>,
-    pub file: Option<String>,
-    pub workspace: Option<String>,
-    pub git_branch: Option<String>,
-    pub git_commit: Option<String>,
-    pub git_dirty: Option<bool>,
-    pub cwd: Option<String>,
-    pub confidence: f64,
-    pub status: String,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub last_seen_at: i64,
-    pub access_count: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub score: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MemoryEdgeItem {
-    pub id: String,
-    pub source_id: String,
-    pub target_id: String,
-    pub edge_type: String,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct MemoryContext {
-    pub context: String,
-    pub memories: Vec<MemoryItem>,
-    pub token_budget: usize,
-    pub token_estimate: usize,
-    pub truncated: bool,
-}
 
 /// Normalized `remember` inputs after validation/redaction/runtime autofill.
 #[derive(Debug, Clone)]

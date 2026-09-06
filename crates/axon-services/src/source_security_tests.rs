@@ -75,12 +75,12 @@ fn local_source_allowed_roots_accept_exact_and_nested_paths() {
     assert_eq!(
         enforce_local_source_allowed_roots(allowed.path(), &[allowed.path().to_path_buf()])
             .expect("exact root"),
-        allowed.path()
+        std::fs::canonicalize(allowed.path()).expect("canonical allowed root")
     );
     assert_eq!(
         enforce_local_source_allowed_roots(&nested, &[allowed.path().to_path_buf()])
             .expect("nested root"),
-        nested
+        std::fs::canonicalize(&nested).expect("canonical nested source")
     );
 }
 

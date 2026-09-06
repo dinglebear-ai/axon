@@ -150,14 +150,8 @@ pub fn map_research_payload(payload: crate::types::ResearchPayload) -> ResearchR
 /// `axon_api::source::job_policy_for_operation`), so a real job record is
 /// still created and driven through `Queued -> Running ->
 /// Completed`/`Failed` around the call. See `job_tracking::track_research_job`
-/// for the lifecycle wrapper. It drives the transitions directly against the
-/// unified `JobStore` (via `crate::jobs::enqueue_operation` plus its own
-/// `update_status` calls) rather than delegating to generic
-/// `start_operation_job`/`complete_operation_job` helpers, because those are
-/// not present in `crate::jobs` in this checkout yet — if/when they land,
-/// `job_tracking::track_research_job`'s body can be swapped to call them
-/// directly, mirroring how other job-backed operations (e.g. memory
-/// compaction) use them.
+/// for the lifecycle wrapper, which delegates every state transition to the
+/// same generic operation-job helpers used by other foreground operations.
 #[must_use = "research_with_context_tracked returns a Result that should be handled"]
 pub async fn research_with_context_tracked(
     cfg: &Config,

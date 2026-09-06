@@ -72,7 +72,8 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         }),
         auth_snapshot,
     )
-    .await?;
+    .await
+    .map_err(|error| -> Box<dyn Error> { error })?;
     let store = execution.scheduled_vectors();
     let provider = execution.scheduled_embedding();
     let provider_id = execution.embedding_provider_id();

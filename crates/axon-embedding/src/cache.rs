@@ -8,17 +8,16 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::batch::validate_batch;
+use crate::provider::EmbeddingProvider;
 use async_trait::async_trait;
 use axon_api::source::{
     ApiError, EmbeddingBatch, EmbeddingResult, EmbeddingVector, InstructionSupport,
     ProviderCapability, ProviderId, ProviderUsage,
 };
-use sha2::{Digest, Sha256};
 
-use crate::batch::validate_batch;
-use crate::provider::EmbeddingProvider;
-
-const CACHE_KEY_VERSION: &str = "embedding-vector-cache-v1";
+mod key;
+use key::cache_key;
 // Cache persistence is optional and local. It must never add an unbounded wait
 // to a provider request when SQLite is busy or its pool is saturated.
 //
@@ -29,48 +28,10 @@ const CACHE_KEY_VERSION: &str = "embedding-vector-cache-v1";
 const OPTIONAL_CACHE_OPERATION_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_OUTSTANDING_CACHE_MUTATIONS: usize = 2;
 
-pub type CacheStoreError = Box<dyn std::error::Error + Send + Sync>;
-
-#[derive(Debug, Clone)]
-pub struct CachedEmbedding {
-    pub cache_key: String,
-    pub provider_id: ProviderId,
-    pub model: String,
-    pub dimensions: u32,
-    pub values: Vec<f32>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CorruptCacheEntry {
-    pub cache_key: String,
-    pub created_at: i64,
-}
-
-#[derive(Debug, Default)]
-pub struct EmbeddingCacheLookup {
-    pub hits: HashMap<String, CachedEmbedding>,
-    pub observed_created_at: HashMap<String, i64>,
-    pub corrupt_entries: Vec<CorruptCacheEntry>,
-}
-
-#[async_trait]
-pub trait EmbeddingVectorCacheStore: Send + Sync {
-    async fn get_many(
-        &self,
-        keys: &[String],
-        expected_dimensions: u32,
-    ) -> Result<EmbeddingCacheLookup, CacheStoreError>;
-
-    async fn touch_many(&self, keys: &[String]) -> Result<(), CacheStoreError>;
-
-    async fn put_many(
-        &self,
-        entries: &[CachedEmbedding],
-        max_entries: usize,
-    ) -> Result<(), CacheStoreError>;
-
-    async fn retire_many(&self, entries: &[CorruptCacheEntry]) -> Result<(), CacheStoreError>;
-}
+pub use axon_api::source::{
+    CacheStoreError, CachedEmbedding, CorruptCacheEntry, EmbeddingCacheLookup,
+    EmbeddingVectorCacheStore,
+};
 
 #[derive(Clone)]
 pub struct CachedEmbeddingProvider {
@@ -505,42 +466,6 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
     async fn capabilities(&self) -> Result<ProviderCapability, ApiError> {
         self.inner.capabilities().await
     }
-}
-
-fn cache_key(
-    authority: &str,
-    provider_id: &ProviderId,
-    model: &str,
-    dimensions: u32,
-    instruction_support: InstructionSupport,
-    batch: &EmbeddingBatch,
-    input: &axon_api::source::EmbeddingInput,
-) -> String {
-    let effective_instruction = match batch.instruction.as_deref() {
-        Some(instruction)
-            if !instruction.is_empty() && instruction_support != InstructionSupport::None =>
-        {
-            instruction
-        }
-        _ => "",
-    };
-    let mut hasher = Sha256::new();
-    for part in [
-        CACHE_KEY_VERSION.as_bytes(),
-        authority.as_bytes(),
-        provider_id.0.as_bytes(),
-        model.as_bytes(),
-        &dimensions.to_le_bytes(),
-        effective_instruction.as_bytes(),
-        serde_json::to_string(&input.content_kind)
-            .expect("content kind serializes")
-            .as_bytes(),
-        input.text.as_bytes(),
-    ] {
-        hasher.update((part.len() as u64).to_le_bytes());
-        hasher.update(part);
-    }
-    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]

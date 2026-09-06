@@ -9,7 +9,7 @@ use util::{emit_progress, summary_with_adaptive, track_waf_block};
 
 pub(super) use page::{CollectorConfig, PageOutcome, canonicalize_and_track_page, process_page};
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use tokio::io::AsyncWriteExt;
@@ -22,6 +22,12 @@ use super::{
     is_junk_discovered_url, normalize_map_candidate_url,
 };
 use axon_core::logging::log_warn;
+
+const PAGE_TRANSFORM_CONCURRENCY: usize = 4;
+
+pub(super) fn sanitized_url_for_log(raw: &str) -> String {
+    super::url_utils::sanitize_url_for_reporting(raw)
+}
 
 /// Extract the host of a URL for the rate-limit banner; empty string on parse failure.
 fn host_of(url: &str) -> String {
@@ -114,9 +120,10 @@ async fn apply_page_outcome(
         }
         PageOutcome::Empty => return Ok(true),
         PageOutcome::Challenged { ref vendor } => {
+            let log_url = sanitized_url_for_log(url);
             tracing::warn!(
                 vendor = %vendor,
-                url = %url,
+                url = %log_url,
                 "antibot.skipped: challenge page not embedded"
             );
             summary.push_diagnostic(
@@ -125,7 +132,7 @@ async fn apply_page_outcome(
                     "challenge_detected",
                     format!("challenge from {vendor}"),
                 )
-                .with_url(url.to_string()),
+                .with_url(sanitized_url_for_log(url)),
             );
             return Ok(true);
         }
@@ -205,59 +212,98 @@ pub(super) async fn collect_crawl_pages(
     let mut chrome_results: Vec<RefetchResult> = Vec::new();
     let chrome_semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(THIN_REFETCH_CONCURRENCY));
     let mut last_progress = std::time::Instant::now();
+    let mut transforms = JoinSet::new();
+    let mut ready = BTreeMap::new();
+    let mut next_sequence = 0_usize;
+    let mut next_commit = 0_usize;
+    let mut receiver_closed = false;
 
-    loop {
+    while !receiver_closed || !transforms.is_empty() {
         while let Some(r) = chrome_tasks.try_join_next() {
             match r {
                 Ok(res) => chrome_results.push(res),
-                Err(e) => log_warn(&format!("thin_refetch: Chrome task panicked: {e}")),
+                Err(e) => return Err(format!("thin_refetch: Chrome render task failed: {e}")),
             }
         }
 
-        let page = match rx.recv().await {
-            Ok(p) => p,
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                if let Some(adaptive) = col.adaptive.as_ref() {
-                    adaptive.record_broadcast_lag(n);
+        if !receiver_closed && transforms.len() < PAGE_TRANSFORM_CONCURRENCY {
+            let page = match rx.recv().await {
+                Ok(page) => page,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    if let Some(adaptive) = col.adaptive.as_ref() {
+                        adaptive.record_broadcast_lag(n);
+                    }
+                    log_warn(&format!(
+                        "crawl broadcast lagged: {n} pages dropped — increase subscribe buffer or reduce concurrency"
+                    ));
+                    summary.push_diagnostic(
+                        CrawlDiagnostic::new(
+                            "collector",
+                            "broadcast_lag",
+                            format!("crawl broadcast lagged: {n} pages dropped"),
+                        )
+                        .with_dropped(n),
+                    );
+                    return Err(format!(
+                        "crawl incomplete: collector dropped {n} pages after broadcast lag"
+                    ));
                 }
-                log_warn(&format!(
-                    "crawl broadcast lagged: {n} pages dropped — increase subscribe buffer or reduce concurrency"
-                ));
-                summary.push_diagnostic(
-                    CrawlDiagnostic::new(
-                        "collector",
-                        "broadcast_lag",
-                        format!("crawl broadcast lagged: {n} pages dropped"),
-                    )
-                    .with_dropped(n),
-                );
-                continue;
-            }
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    receiver_closed = true;
+                    continue;
+                }
+            };
+            let sequence = next_sequence;
+            next_sequence += 1;
+            let transform_config = col.clone();
+            transforms.spawn(async move {
+                tokio::task::spawn_blocking(move || {
+                    let url = canonicalize_url_for_dedupe(page.get_url())
+                        .unwrap_or_else(|| page.get_url().to_string());
+                    let html_bytes = page.get_html_bytes_u8().to_vec();
+                    let outcome = process_page(&html_bytes, &url, &transform_config);
+                    (sequence, page, html_bytes, outcome)
+                })
+                .await
+            });
+            continue;
+        }
+
+        let Some(joined) = transforms.join_next().await else {
+            continue;
         };
-        process_received_page(
-            page,
-            &col,
-            &mut summary,
-            &mut urls,
-            &mut seen_canonical,
-            &mut manifest,
-            &mut chrome_tasks,
-            chrome_semaphore.clone(),
-            &mut last_progress,
-            crawl_started,
-            &mut discovered,
-        )
-        .await?;
+        let transformed = joined
+            .map_err(|error| format!("page transform task failed: {error}"))?
+            .map_err(|error| format!("page transform worker failed: {error}"))?;
+        ready.insert(transformed.0, transformed);
+        while let Some((_, page, html_bytes, outcome)) = ready.remove(&next_commit) {
+            commit_received_page(
+                page,
+                html_bytes,
+                outcome,
+                &col,
+                &mut summary,
+                &mut urls,
+                &mut seen_canonical,
+                &mut manifest,
+                &mut chrome_tasks,
+                chrome_semaphore.clone(),
+                &mut last_progress,
+                crawl_started,
+                &mut discovered,
+            )
+            .await?;
+            next_commit += 1;
+        }
     }
 
-    drain_chrome_tasks(&mut chrome_tasks, &mut chrome_results).await;
+    drain_chrome_tasks(&mut chrome_tasks, &mut chrome_results).await?;
     manifest
         .flush()
         .await
         .map_err(|e| format!("manifest flush failed: {e}"))?;
     if !chrome_results.is_empty() {
-        summary = write_refetch_results(summary, chrome_results, &col.output_dir).await;
+        summary = write_refetch_results(summary, chrome_results, &col.output_dir).await?;
     }
     if let Some(tx) = col.progress_tx.as_ref() {
         tx.send(summary_with_adaptive(&col, &summary)).await.ok();
@@ -269,8 +315,10 @@ pub(super) async fn collect_crawl_pages(
     clippy::too_many_arguments,
     reason = "Collector step threads mutable crawl state and async task handles; kept explicit for clarity"
 )]
-async fn process_received_page(
+async fn commit_received_page(
     page: spider::page::Page,
+    html_bytes: Vec<u8>,
+    outcome: PageOutcome,
     col: &CollectorConfig,
     summary: &mut CrawlSummary,
     urls: &mut HashSet<String>,
@@ -306,7 +354,7 @@ async fn process_received_page(
     let status = page.status_code.as_u16();
     summary.push_event(PageEvent {
         t: crawl_started.elapsed().as_millis() as u64,
-        url: url.clone(),
+        url: sanitized_url_for_log(&url),
         status,
         links: link_count,
     });
@@ -319,7 +367,7 @@ async fn process_received_page(
         }
         axon_core::logging::log_info(&format!(
             "skip: {} (HTTP {})",
-            url,
+            sanitized_url_for_log(&url),
             page.status_code.as_u16()
         ));
         summary.error_pages += 1;
@@ -329,7 +377,7 @@ async fn process_received_page(
                 "http_status",
                 format!("skipped page with HTTP {}", page.status_code.as_u16()),
             )
-            .with_url(url.clone())
+            .with_url(sanitized_url_for_log(&url))
             .with_http_status(page.status_code.as_u16()),
         );
         emit_progress(col, summary, last_progress).await;
@@ -344,8 +392,6 @@ async fn process_received_page(
         summary,
     );
 
-    let html_bytes: Vec<u8> = page.get_html_bytes_u8().to_vec();
-    let outcome = process_page(&html_bytes, &url, col);
     record_adaptive_content_outcome(col, &outcome, waf_blocked);
     let _skip = apply_page_outcome(
         outcome,
@@ -360,6 +406,43 @@ async fn process_received_page(
     .await?;
     emit_progress(col, summary, last_progress).await;
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+async fn process_received_page(
+    page: spider::page::Page,
+    col: &CollectorConfig,
+    summary: &mut CrawlSummary,
+    urls: &mut HashSet<String>,
+    seen_canonical: &mut HashSet<String>,
+    manifest: &mut tokio::io::BufWriter<tokio::fs::File>,
+    chrome_tasks: &mut JoinSet<RefetchResult>,
+    chrome_semaphore: Arc<Semaphore>,
+    last_progress: &mut std::time::Instant,
+    crawl_started: std::time::Instant,
+    discovered: &mut HashSet<String>,
+) -> Result<(), String> {
+    let url =
+        canonicalize_url_for_dedupe(page.get_url()).unwrap_or_else(|| page.get_url().to_string());
+    let html_bytes = page.get_html_bytes_u8().to_vec();
+    let outcome = process_page(&html_bytes, &url, col);
+    commit_received_page(
+        page,
+        html_bytes,
+        outcome,
+        col,
+        summary,
+        urls,
+        seen_canonical,
+        manifest,
+        chrome_tasks,
+        chrome_semaphore,
+        last_progress,
+        crawl_started,
+        discovered,
+    )
+    .await
 }
 
 #[cfg(test)]

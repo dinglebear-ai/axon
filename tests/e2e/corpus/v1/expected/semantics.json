@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "facts": [
+    {"id": "fact.atlas.beacon", "source_id": "source.atlas", "value": "amber", "citation": "cite:atlas-v1:beacon"},
+    {"id": "fact.atlas.berth", "source_id": "source.atlas", "value": "17"},
+    {"id": "fact.unicode.city", "source_id": "source.unicode", "value": "東京"},
+    {"id": "fact.dotfile.code", "source_id": "source.dotfile", "value": "violet-echo"}
+  ],
+  "distractors": [
+    {"query_fact_id": "fact.atlas.beacon", "text": "cobalt paint", "must_not_answer": "cobalt"}
+  ],
+  "contradictions": [
+    {"id": "conflict.kepler.wheels", "source_id": "source.contradiction", "values": ["three", "four"], "expected_state": "unresolved"}
+  ],
+  "citations": [
+    {"id": "cite:atlas-v1:beacon", "source_id": "source.atlas", "contains": "Atlas beacon emits an amber signal"}
+  ],
+  "graph": {
+    "nodes": ["station:atlas", "moon:pelagos", "vessel:lumen"],
+    "edges": [
+      {"from": "station:atlas", "kind": "orbits", "to": "moon:pelagos"},
+      {"from": "vessel:lumen", "kind": "docks_at", "to": "station:atlas"}
+    ]
+  },
+  "memory": [
+    {"identity": "memory.atlas.crew", "revision": "1.0.0", "value": "twelve", "state": "superseded"},
+    {"identity": "memory.atlas.crew", "revision": "1.1.0", "value": "fourteen", "state": "current"}
+  ]
+}

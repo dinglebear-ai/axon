@@ -6,13 +6,38 @@ export interface AskSource {
   label: string;
   url?: string;
   title?: string;
+  snippet?: string;
+  score?: number;
 }
 
 export interface AskActivity {
   id: string;
   label: string;
   detail?: string;
-  kind?: "thinking" | "tool" | "done";
+  kind?: "thinking" | "tool" | "done" | "approval" | "warning";
+}
+
+export interface AskLoadoutProvenance {
+  integrationId: string;
+  loadoutId: string;
+  requestedRevision: number;
+  effectiveRevision: number;
+  status: "effective" | "narrowed";
+  catalogGeneration?: string;
+  executionContextId?: string;
+  correlationId?: string;
+}
+
+export interface AskAgentTurn {
+  turnId: string;
+  status: string;
+  pendingApproval?: {
+    toolCallId: string;
+    toolId: string;
+    destructive: boolean;
+    contractHash: string;
+    arguments: unknown;
+  };
 }
 
 export interface ChatSuggestion {
@@ -30,6 +55,8 @@ export interface AskTurn {
   pending?: boolean;
   sources?: AskSource[];
   activities?: AskActivity[];
+  loadout?: AskLoadoutProvenance;
+  agent?: AskAgentTurn;
 }
 
 export type RunState =

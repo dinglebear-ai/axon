@@ -13,6 +13,7 @@ const MAX_HELD_LOCAL_ROOTS: usize = 64;
 #[derive(Debug, Clone, Default)]
 pub struct LocalSourceAdapter {
     held_roots: Arc<Mutex<HashMap<JobId, Arc<LocalRootHandle>>>>,
+    discovery_spools: Arc<Mutex<HashMap<JobId, Arc<tempfile::TempDir>>>>,
     contained_root: Option<(String, SourceScope, Arc<LocalRootHandle>)>,
 }
 
@@ -28,6 +29,7 @@ impl LocalSourceAdapter {
     ) -> Result<Self> {
         Ok(Self {
             held_roots: Arc::default(),
+            discovery_spools: Arc::default(),
             contained_root: Some((
                 source_root.to_string_lossy().into_owned(),
                 scope,
@@ -57,6 +59,7 @@ impl LocalSourceAdapter {
         &self,
         job_id: JobId,
         handle: Arc<LocalRootHandle>,
+        spool: Arc<tempfile::TempDir>,
     ) -> Result<()> {
         let mut held = self.held_roots.lock().map_err(poisoned_root_state)?;
         if !held.contains_key(&job_id) && held.len() >= MAX_HELD_LOCAL_ROOTS {
@@ -67,7 +70,20 @@ impl LocalSourceAdapter {
             ));
         }
         held.insert(job_id, handle);
+        self.discovery_spools
+            .lock()
+            .map_err(poisoned_root_state)?
+            .insert(job_id, spool);
         Ok(())
+    }
+
+    pub(super) fn discovery_spool(&self, job_id: JobId) -> Result<Arc<tempfile::TempDir>> {
+        self.discovery_spools
+            .lock()
+            .map_err(poisoned_root_state)?
+            .get(&job_id)
+            .cloned()
+            .ok_or_else(root_state_error)
     }
 
     pub(super) fn held_root_for_acquisition(
@@ -96,11 +112,22 @@ impl LocalSourceAdapter {
         if let Ok(mut held) = self.held_roots.lock() {
             held.remove(&job_id);
         }
+        if let Ok(mut spools) = self.discovery_spools.lock() {
+            spools.remove(&job_id);
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn held_root_count(&self) -> usize {
         self.held_roots.lock().map(|held| held.len()).unwrap_or(0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn discovery_spool_count(&self) -> usize {
+        self.discovery_spools
+            .lock()
+            .map(|spools| spools.len())
+            .unwrap_or(0)
     }
 }
 

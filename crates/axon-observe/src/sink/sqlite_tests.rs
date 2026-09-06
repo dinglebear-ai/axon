@@ -15,7 +15,7 @@ async fn sink() -> SqliteObservabilitySink {
 }
 
 fn event(job_id: JobId, phase: PipelinePhase) -> SourceProgressEvent {
-    crate::event::stage_started(job_id, None, phase, "stage".to_string())
+    crate::event::stage_started(job_id, 1, None, phase, "stage".to_string())
 }
 
 #[tokio::test]
@@ -160,11 +160,64 @@ async fn heartbeat_upserts_and_stamps_last_sequence() {
 }
 
 #[tokio::test]
+async fn stale_attempt_heartbeat_cannot_overwrite_newer_attempt() {
+    let sink = sink().await;
+    let job = JobId(uuid::Uuid::new_v4());
+    let newer = heartbeat(job, 2, PipelinePhase::Embedding, LifecycleStatus::Running);
+    sink.heartbeat(newer).await.unwrap();
+
+    let stale = heartbeat(job, 1, PipelinePhase::Fetching, LifecycleStatus::Running);
+    sink.heartbeat(stale).await.unwrap();
+
+    let stored = sink.heartbeat_for(job).await.unwrap().unwrap();
+    assert_eq!(stored.attempt, 2);
+    assert_eq!(stored.phase, PipelinePhase::Embedding);
+}
+
+#[tokio::test]
+async fn older_same_sequence_heartbeat_cannot_overwrite_newer_state() {
+    let sink = sink().await;
+    let job = JobId(uuid::Uuid::new_v4());
+    let mut newer = heartbeat(job, 2, PipelinePhase::Embedding, LifecycleStatus::Running);
+    newer.last_event_sequence = Some(7);
+    newer.heartbeat_at = Timestamp("2026-09-03T12:00:01Z".into());
+    sink.heartbeat(newer).await.unwrap();
+
+    let mut stale = heartbeat(job, 2, PipelinePhase::Fetching, LifecycleStatus::Running);
+    stale.last_event_sequence = Some(7);
+    stale.heartbeat_at = Timestamp("2026-09-03T12:00:00Z".into());
+    sink.heartbeat(stale).await.unwrap();
+
+    let stored = sink.heartbeat_for(job).await.unwrap().unwrap();
+    assert_eq!(stored.phase, PipelinePhase::Embedding);
+    assert_eq!(stored.heartbeat_at.0, "2026-09-03T12:00:01.000000000Z");
+}
+
+#[tokio::test]
+async fn equal_sequence_heartbeat_compares_mixed_offsets_by_instant() {
+    let sink = sink().await;
+    let job = JobId(uuid::Uuid::new_v4());
+    let mut newer = heartbeat(job, 2, PipelinePhase::Embedding, LifecycleStatus::Running);
+    newer.last_event_sequence = Some(7);
+    newer.heartbeat_at = Timestamp("2026-09-03T12:00:00Z".into());
+    sink.heartbeat(newer).await.unwrap();
+    let mut older = heartbeat(job, 2, PipelinePhase::Fetching, LifecycleStatus::Running);
+    older.last_event_sequence = Some(7);
+    older.heartbeat_at = Timestamp("2026-09-03T13:00:00+02:00".into());
+    sink.heartbeat(older).await.unwrap();
+    assert_eq!(
+        sink.heartbeat_for(job).await.unwrap().unwrap().phase,
+        PipelinePhase::Embedding
+    );
+}
+
+#[tokio::test]
 async fn flush_succeeds_after_terminal_event() {
     let sink = sink().await;
     let job = JobId(uuid::Uuid::new_v4());
     sink.emit(crate::event::stage_completed(
         job,
+        1,
         None,
         PipelinePhase::Complete,
         axon_api::source::StageCounts {
@@ -249,6 +302,34 @@ async fn provider_health_upserts() {
     let ready = sink.provider_health_for(&provider).await.unwrap().unwrap();
     assert_eq!(ready.status, "ready");
     assert_eq!(ready.cooldown_until, None);
+}
+
+#[tokio::test]
+async fn invalid_persisted_provider_kind_returns_integrity_error() {
+    let sink = sink().await;
+    let provider = ProviderId::new("corrupt-provider");
+    sink.record_provider_health(ProviderHealthRecord {
+        provider_id: provider.clone(),
+        provider_kind: ProviderKind::Embedding,
+        status: "ready".to_string(),
+        cooldown_until: None,
+        last_error_code: None,
+    })
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE axon_observe_provider_health SET provider_kind = 'future_unknown' WHERE provider_id = ?",
+    )
+    .bind(&provider.0)
+    .execute(&sink.pool)
+    .await
+    .unwrap();
+
+    let error = sink
+        .provider_health_for(&provider)
+        .await
+        .expect_err("unknown provider kind must fail closed");
+    assert_eq!(error.code.0, "observe.corrupt_provider_kind");
 }
 
 #[tokio::test]

@@ -9,9 +9,13 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
+use reqwest::header::{HeaderValue, RETRY_AFTER};
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+mod endpoint;
+pub(crate) use endpoint::QdrantEndpoint;
 
 /// Opaque endpoint context marker attached to errors.
 ///
@@ -44,88 +48,65 @@ pub(crate) fn shared_client_build_count() -> usize {
     CLIENT_BUILDS.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-/// A Qdrant REST endpoint with credentials split away from the base URL.
-#[derive(Debug, Clone)]
-pub struct QdrantEndpoint {
-    /// `scheme://host[:port]` with no path, query, or userinfo.
-    base: String,
-    /// Optional API key extracted from userinfo password or `api_key` query.
-    api_key: Option<String>,
-}
-
-impl QdrantEndpoint {
-    /// Parse the configured URL into a redaction-safe base + optional API key.
-    ///
-    /// Best-effort: if the URL cannot be parsed the trimmed input is used as the
-    /// base and no key is extracted. Path and query segments are discarded so a
-    /// value like `http://host:6333/collections?api_key=…` cannot leak.
-    pub fn parse(url: &str) -> Self {
-        let trimmed = url.trim();
-        match url::Url::parse(trimmed) {
-            Ok(parsed) => {
-                let mut api_key = None;
-                if !parsed.password().unwrap_or_default().is_empty() {
-                    api_key = parsed.password().map(ToString::to_string);
-                } else if !parsed.username().is_empty() {
-                    // A bare `token@host` form carries the key as the username.
-                    api_key = Some(parsed.username().to_string());
-                }
-                if api_key.is_none() {
-                    api_key = parsed
-                        .query_pairs()
-                        .find(|(key, _)| key == "api_key")
-                        .map(|(_, value)| value.into_owned());
-                }
-                let scheme = parsed.scheme();
-                let base = match (parsed.host_str(), parsed.port()) {
-                    (Some(host), Some(port)) => format!("{scheme}://{host}:{port}"),
-                    (Some(host), None) => format!("{scheme}://{host}"),
-                    _ => trimmed.to_string(),
-                };
-                Self { base, api_key }
-            }
-            Err(_) => Self {
-                base: trimmed.trim_end_matches('/').to_string(),
-                api_key: None,
-            },
-        }
-    }
-
-    /// Build a full request URL for a collection sub-path (e.g. `points/query`).
-    pub fn collection_path(&self, collection: &str, suffix: &str) -> String {
-        let suffix = suffix.trim_start_matches('/');
-        if suffix.is_empty() {
-            format!("{}/collections/{}", self.base, collection)
-        } else {
-            format!("{}/collections/{}/{}", self.base, collection, suffix)
-        }
-    }
-
-    /// The bare `scheme://host[:port]` root, used for liveness probes.
-    pub fn root(&self) -> &str {
-        &self.base
-    }
-
-    fn api_key(&self) -> Option<&str> {
-        self.api_key.as_deref()
-    }
-}
-
 /// Reqwest client wrapper carrying a parsed, redaction-safe endpoint.
 #[derive(Debug, Clone)]
 pub struct QdrantHttp {
     client: Client,
     endpoint: QdrantEndpoint,
+    api_key_header: Option<HeaderValue>,
     provider_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PutCreateOutcome {
+    Created,
+    AlreadyExists,
 }
 
 impl QdrantHttp {
     /// Construct a transport for the configured Qdrant URL, attributing every
     /// surfaced error to `provider_id`.
     pub fn new(url: &str, provider_id: &str) -> Result<Self, ApiError> {
+        let endpoint = QdrantEndpoint::parse(url);
+        if !endpoint.valid {
+            return Err(ApiError::new(
+                "vector.qdrant.invalid_endpoint",
+                axon_error::ErrorStage::Authorizing,
+                "Qdrant endpoint must be an absolute HTTP or HTTPS URL",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(provider_id));
+        }
+        if !endpoint.credentials_use_safe_transport() {
+            return Err(ApiError::new(
+                "vector.qdrant.insecure_credentials",
+                axon_error::ErrorStage::Authorizing,
+                "Qdrant credentials require HTTPS for non-loopback endpoints",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(provider_id));
+        }
+        let api_key_header = endpoint
+            .api_key()
+            .map(HeaderValue::from_str)
+            .transpose()
+            .map_err(|_| {
+                ApiError::new(
+                    "vector.qdrant.invalid_credentials",
+                    axon_error::ErrorStage::Authorizing,
+                    "Qdrant API key is not a valid HTTP header value",
+                )
+                .with_context("endpoint", ENDPOINT_MARKER)
+                .with_provider_id(provider_id)
+            })?
+            .map(|mut value| {
+                value.set_sensitive(true);
+                value
+            });
         Ok(Self {
             client: SHARED_CLIENT.clone(),
-            endpoint: QdrantEndpoint::parse(url),
+            endpoint,
+            api_key_header,
             provider_id: provider_id.to_string(),
         })
     }
@@ -163,7 +144,8 @@ impl QdrantHttp {
         Ok(Some(body))
     }
 
-    /// PUT a JSON body, tolerating 409 (collection already exists).
+    /// PUT a JSON body. Conflict is an error for data mutations; callers that
+    /// create idempotent resources must opt into conflict acceptance.
     pub async fn put_json<B: Serialize + ?Sized>(
         &self,
         stage: axon_error::ErrorStage,
@@ -171,21 +153,69 @@ impl QdrantHttp {
         body: &B,
         context: &str,
     ) -> Result<(), ApiError> {
+        let request = self.request(Method::PUT).put(url).json(body);
+        self.send_put(request, stage, context).await
+    }
+
+    pub async fn patch_json<B: Serialize + ?Sized>(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        body: &B,
+        context: &str,
+    ) -> Result<(), ApiError> {
         let resp = self
-            .request(Method::PUT)
-            .put(url)
+            .request(Method::PATCH)
+            .patch(url)
             .json(body)
             .send()
             .await
             .map_err(|err| self.transport(stage, context, &err))?;
-        let status = resp.status();
-        if status == StatusCode::CONFLICT || status.is_success() {
+        if resp.status().is_success() {
             return Ok(());
         }
-        Err(self.status_error(stage, context, status))
+        Err(self.status_error(stage, context, resp.status()))
     }
 
-    /// PUT an already encoded JSON body, tolerating 409. This is used by the
+    pub async fn delete(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        context: &str,
+    ) -> Result<bool, ApiError> {
+        let response = self
+            .request(Method::DELETE)
+            .delete(url)
+            .send()
+            .await
+            .map_err(|error| self.transport(stage, context, &error))?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if response.status().is_success() {
+            return Ok(true);
+        }
+        Err(self.status_error(stage, context, response.status()))
+    }
+
+    /// PUT an idempotently-created resource, accepting a conflict that means
+    /// another caller already created the same collection or payload index.
+    pub async fn put_json_idempotent_create<B: Serialize + ?Sized>(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        body: &B,
+        context: &str,
+    ) -> Result<PutCreateOutcome, ApiError> {
+        let request = self.request(Method::PUT).put(url).json(body);
+        match self.send_put_status(request, stage, context).await? {
+            status if status.is_success() => Ok(PutCreateOutcome::Created),
+            StatusCode::CONFLICT => Ok(PutCreateOutcome::AlreadyExists),
+            status => Err(self.status_error(stage, context, status)),
+        }
+    }
+
+    /// PUT an already encoded JSON body. This is used by the
     /// vector hot path after enforcing the exact encoded-byte ceiling, avoiding
     /// a second serialization pass inside reqwest.
     pub async fn put_json_bytes(
@@ -195,19 +225,64 @@ impl QdrantHttp {
         body: Vec<u8>,
         context: &str,
     ) -> Result<(), ApiError> {
-        let resp = self
+        let request = self
             .request(Method::PUT)
             .put(url)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(body)
-            .send()
-            .await
-            .map_err(|err| self.transport(stage, context, &err))?;
-        let status = resp.status();
-        if status == StatusCode::CONFLICT || status.is_success() {
+            .body(body);
+        self.send_put(request, stage, context).await
+    }
+
+    async fn send_put(
+        &self,
+        request: reqwest::RequestBuilder,
+        stage: axon_error::ErrorStage,
+        context: &str,
+    ) -> Result<(), ApiError> {
+        let status = self.send_put_status(request, stage, context).await?;
+        if status.is_success() {
             return Ok(());
         }
         Err(self.status_error(stage, context, status))
+    }
+
+    async fn send_put_status(
+        &self,
+        request: reqwest::RequestBuilder,
+        stage: axon_error::ErrorStage,
+        context: &str,
+    ) -> Result<StatusCode, ApiError> {
+        let started = Instant::now();
+        for attempt in 1..=MAX_ATTEMPTS {
+            let mut server_delay = None;
+            let replay = request.try_clone().ok_or_else(|| {
+                ApiError::new(
+                    "vector.qdrant.non_replayable_request",
+                    stage,
+                    "Qdrant JSON request cannot be replayed",
+                )
+            })?;
+            match replay.send().await {
+                Ok(response) => {
+                    let status = response.status();
+                    server_delay = response
+                        .headers()
+                        .get(RETRY_AFTER)
+                        .and_then(parse_retry_after);
+                    if attempt == MAX_ATTEMPTS
+                        || !(status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error())
+                    {
+                        return Ok(status);
+                    }
+                }
+                Err(error) if attempt == MAX_ATTEMPTS => {
+                    return Err(self.transport(stage, context, &error));
+                }
+                Err(_) => {}
+            }
+            tokio::time::sleep(server_delay.unwrap_or_else(|| retry_delay(attempt, started))).await;
+        }
+        unreachable!("the final attempt always returns")
     }
 
     /// POST a JSON body and parse the response, retrying on 429/5xx.
@@ -231,8 +306,13 @@ impl QdrantHttp {
                     let retryable =
                         status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
                     if retryable && attempt < MAX_ATTEMPTS {
+                        let server_delay =
+                            resp.headers().get(RETRY_AFTER).and_then(parse_retry_after);
                         last = Some(self.status_error(stage, context, status));
-                        tokio::time::sleep(retry_delay(attempt, started)).await;
+                        tokio::time::sleep(
+                            server_delay.unwrap_or_else(|| retry_delay(attempt, started)),
+                        )
+                        .await;
                         continue;
                     }
                     if !status.is_success() {
@@ -264,7 +344,7 @@ impl QdrantHttp {
     fn request(&self, _method: Method) -> AuthedBuilder<'_> {
         AuthedBuilder {
             client: &self.client,
-            api_key: self.endpoint.api_key(),
+            api_key_header: self.api_key_header.as_ref(),
         }
     }
 
@@ -305,15 +385,29 @@ impl QdrantHttp {
     }
 }
 
+fn parse_retry_after(value: &HeaderValue) -> Option<Duration> {
+    value
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(Duration::from_secs)
+}
+
 /// Small builder that injects the `api-key` header when configured.
 struct AuthedBuilder<'a> {
     client: &'a Client,
-    api_key: Option<&'a str>,
+    api_key_header: Option<&'a HeaderValue>,
 }
 
 impl<'a> AuthedBuilder<'a> {
     fn get(self, url: &str) -> reqwest::RequestBuilder {
         self.apply(self.client.get(url))
+    }
+
+    fn delete(self, url: &str) -> reqwest::RequestBuilder {
+        self.apply(self.client.delete(url))
     }
 
     fn put(self, url: &str) -> reqwest::RequestBuilder {
@@ -324,9 +418,13 @@ impl<'a> AuthedBuilder<'a> {
         self.apply(self.client.post(url))
     }
 
+    fn patch(self, url: &str) -> reqwest::RequestBuilder {
+        self.apply(self.client.patch(url))
+    }
+
     fn apply(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        match self.api_key {
-            Some(key) => builder.header("api-key", key),
+        match self.api_key_header {
+            Some(value) => builder.header("api-key", value.clone()),
             None => builder,
         }
     }

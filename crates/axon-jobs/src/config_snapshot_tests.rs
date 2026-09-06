@@ -19,7 +19,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.fetch_retries = 7;
     submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
     submitted.tei_url = "http://submitted-tei:80".to_string();
-    submitted.llm_backend = axon_llm::LlmBackendKind::OpenAiCompat;
+    submitted.llm_backend = axon_core::llm::LlmBackendKind::OpenAiCompat;
     submitted.openai_base_url = "http://submitted-openai:8080/v1".to_string();
     submitted.openai_api_key = "submitted-openai-secret".to_string();
     submitted.openai_model = "submitted-gemma".to_string();
@@ -29,13 +29,54 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.llm_completion_concurrency = 2;
     submitted.llm_completion_timeout_secs = 17;
     submitted.chrome_proxy = Some("http://submitted-proxy:8080".to_string());
-    submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
+    submitted.custom_headers = vec![
+        "Authorization: Bearer submitted".to_string(),
+        "X-Crawl-Variant: submitted".to_string(),
+    ];
     submitted.discover_llms_txt = false;
     submitted.max_llms_txt_urls = 77;
     submitted.adaptive_concurrency.enabled = true;
     submitted.adaptive_concurrency.min = 2;
     submitted.adaptive_concurrency.max = Some(32);
     submitted.chrome_remote_local_policy = true;
+    submitted.tei_max_retries = 11;
+    submitted.tei_request_timeout_ms = 45_678;
+    submitted.tei_max_client_batch_size = 73;
+    submitted.embed_tei_max_concurrent = 13;
+    submitted.embed_tei_max_in_flight_inputs = 777;
+    submitted.embed_tei_retry_backoff_ms = 321;
+    submitted.embed_tei_cooldown_after_failures = 7;
+    submitted.embed_tei_cooldown_secs = 91;
+    submitted.embed_tei_interactive_reserved_requests = 3;
+    submitted.embed_tei_background_max_concurrent_requests = 5;
+    submitted.embed_tei_maintenance_max_concurrent_requests = 2;
+    submitted.embed_tei_query_instruction_enabled = false;
+    submitted.embed_cache_enabled = true;
+    submitted.embed_cache_max_entries = 54_321;
+    submitted.embed_pool_max_inputs = 1_234;
+    submitted.document_batch_size = 23;
+    submitted.document_status_batch_size = 321;
+    submitted.embed_tei_max_batch_tokens = 77_777;
+    submitted.embed_scheduler_enabled = false;
+    submitted.vector_upsert_embed_overlap = false;
+    submitted.embed_prepared_byte_budget = 33_554_432;
+    submitted.embed_prep_concurrency = 7;
+    submitted.embed_prep_max_in_flight_bytes = 22_020_096;
+    submitted.embed_scheduler_flush_ms = 987;
+    submitted.chunking_markdown_max_chars = 3_333;
+    submitted.chunking_markdown_min_chars = 777;
+    submitted.chunking_overlap_chars = 123;
+    submitted.embed_max_chunks_per_doc = Some(37);
+    submitted.embed_max_source_chunks_per_doc = Some(41);
+    submitted.embed_dedupe_exact_chunks = false;
+    submitted.openai_embed_model = "submitted-embed".into();
+    submitted.openai_embed_max_client_batch_size = 17;
+    submitted.openai_embed_max_concurrent = 9;
+    submitted.openai_embed_max_in_flight_inputs = 99;
+    submitted.openai_embed_pool_max_inputs = 333;
+    submitted.unified_worker_concurrency = 11;
+    submitted.source_job_concurrency_limit = 6;
+    submitted.embed_doc_timeout_secs = 444;
 
     let mut worker = Config::test_default();
     worker.collection = "worker_collection".to_string();
@@ -49,7 +90,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.fetch_retries = 1;
     worker.qdrant_url = "http://worker-qdrant:6333".to_string();
     worker.tei_url = "http://worker-tei:80".to_string();
-    worker.llm_backend = axon_llm::LlmBackendKind::GeminiHeadless;
+    worker.llm_backend = axon_core::llm::LlmBackendKind::GeminiHeadless;
     worker.openai_base_url = "http://worker-openai:8080/v1".to_string();
     worker.openai_api_key = "worker-openai-secret".to_string();
     worker.openai_model = "worker-gemma".to_string();
@@ -89,7 +130,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     assert_eq!(effective.tei_url, "http://submitted-tei:80");
     assert_eq!(
         effective.llm_backend,
-        axon_llm::LlmBackendKind::OpenAiCompat
+        axon_core::llm::LlmBackendKind::OpenAiCompat
     );
     assert_eq!(effective.openai_base_url, "http://submitted-openai:8080/v1");
     assert_eq!(effective.openai_api_key, "worker-openai-secret");
@@ -108,7 +149,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     );
     assert_eq!(
         effective.custom_headers,
-        vec!["Authorization: Bearer submitted".to_string()]
+        vec![
+            "Authorization: Bearer worker".to_string(),
+            "X-Crawl-Variant: submitted".to_string(),
+        ]
     );
     // llms.txt overrides must survive the enqueue→worker snapshot round-trip,
     // matching the sitemap-discovery parity (async crawl is the common override path).
@@ -118,6 +162,146 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     assert_eq!(effective.adaptive_concurrency.min, 2);
     assert_eq!(effective.adaptive_concurrency.max, Some(32));
     assert!(effective.chrome_remote_local_policy);
+    assert_eq!(effective.tei_max_retries, submitted.tei_max_retries);
+    assert_eq!(
+        effective.tei_request_timeout_ms,
+        submitted.tei_request_timeout_ms
+    );
+    assert_eq!(
+        effective.tei_max_client_batch_size,
+        submitted.tei_max_client_batch_size
+    );
+    assert_eq!(
+        effective.embed_tei_max_concurrent,
+        submitted.embed_tei_max_concurrent
+    );
+    assert_eq!(
+        effective.embed_tei_max_in_flight_inputs,
+        submitted.embed_tei_max_in_flight_inputs
+    );
+    assert_eq!(
+        effective.embed_tei_retry_backoff_ms,
+        submitted.embed_tei_retry_backoff_ms
+    );
+    assert_eq!(
+        effective.embed_tei_cooldown_after_failures,
+        submitted.embed_tei_cooldown_after_failures
+    );
+    assert_eq!(
+        effective.embed_tei_cooldown_secs,
+        submitted.embed_tei_cooldown_secs
+    );
+    assert_eq!(
+        effective.embed_tei_interactive_reserved_requests,
+        submitted.embed_tei_interactive_reserved_requests
+    );
+    assert_eq!(
+        effective.embed_tei_background_max_concurrent_requests,
+        submitted.embed_tei_background_max_concurrent_requests
+    );
+    assert_eq!(
+        effective.embed_tei_maintenance_max_concurrent_requests,
+        submitted.embed_tei_maintenance_max_concurrent_requests
+    );
+    assert_eq!(
+        effective.embed_tei_query_instruction_enabled,
+        submitted.embed_tei_query_instruction_enabled
+    );
+    assert_eq!(effective.embed_cache_enabled, submitted.embed_cache_enabled);
+    assert_eq!(
+        effective.embed_cache_max_entries,
+        submitted.embed_cache_max_entries
+    );
+    assert_eq!(
+        effective.embed_pool_max_inputs,
+        submitted.embed_pool_max_inputs
+    );
+    assert_eq!(effective.document_batch_size, submitted.document_batch_size);
+    assert_eq!(
+        effective.document_status_batch_size,
+        submitted.document_status_batch_size
+    );
+    assert_eq!(
+        effective.embed_tei_max_batch_tokens,
+        submitted.embed_tei_max_batch_tokens
+    );
+    assert_eq!(
+        effective.embed_scheduler_enabled,
+        submitted.embed_scheduler_enabled
+    );
+    assert_eq!(
+        effective.vector_upsert_embed_overlap,
+        submitted.vector_upsert_embed_overlap
+    );
+    assert_eq!(
+        effective.embed_prepared_byte_budget,
+        submitted.embed_prepared_byte_budget
+    );
+    assert_eq!(
+        effective.embed_prep_concurrency,
+        submitted.embed_prep_concurrency
+    );
+    assert_eq!(
+        effective.embed_prep_max_in_flight_bytes,
+        submitted.embed_prep_max_in_flight_bytes
+    );
+    assert_eq!(
+        effective.embed_scheduler_flush_ms,
+        submitted.embed_scheduler_flush_ms
+    );
+    assert_eq!(
+        effective.chunking_markdown_max_chars,
+        submitted.chunking_markdown_max_chars
+    );
+    assert_eq!(
+        effective.chunking_markdown_min_chars,
+        submitted.chunking_markdown_min_chars
+    );
+    assert_eq!(
+        effective.chunking_overlap_chars,
+        submitted.chunking_overlap_chars
+    );
+    assert_eq!(
+        effective.embed_max_chunks_per_doc,
+        submitted.embed_max_chunks_per_doc
+    );
+    assert_eq!(
+        effective.embed_max_source_chunks_per_doc,
+        submitted.embed_max_source_chunks_per_doc
+    );
+    assert_eq!(
+        effective.embed_dedupe_exact_chunks,
+        submitted.embed_dedupe_exact_chunks
+    );
+    assert_eq!(effective.openai_embed_model, submitted.openai_embed_model);
+    assert_eq!(
+        effective.openai_embed_max_client_batch_size,
+        submitted.openai_embed_max_client_batch_size
+    );
+    assert_eq!(
+        effective.openai_embed_max_concurrent,
+        submitted.openai_embed_max_concurrent
+    );
+    assert_eq!(
+        effective.openai_embed_max_in_flight_inputs,
+        submitted.openai_embed_max_in_flight_inputs
+    );
+    assert_eq!(
+        effective.openai_embed_pool_max_inputs,
+        submitted.openai_embed_pool_max_inputs
+    );
+    assert_eq!(
+        effective.unified_worker_concurrency,
+        submitted.unified_worker_concurrency
+    );
+    assert_eq!(
+        effective.source_job_concurrency_limit,
+        submitted.source_job_concurrency_limit
+    );
+    assert_eq!(
+        effective.embed_doc_timeout_secs,
+        submitted.embed_doc_timeout_secs
+    );
 }
 
 #[test]
@@ -149,6 +333,22 @@ fn config_snapshot_omits_secrets() {
 }
 
 #[test]
+fn config_snapshot_omits_mixed_case_credential_headers() {
+    let mut cfg = Config::test_default();
+    cfg.custom_headers = vec![
+        "aUtHoRiZaTiOn: Bearer secret-a".into(),
+        "X-API-Key: secret-b".into(),
+        "Cookie: session=secret-c".into(),
+        "X-Safe-Metadata: retained".into(),
+    ];
+    let snapshot = config_snapshot_json(&cfg).unwrap();
+    assert!(!snapshot.contains("secret-a"));
+    assert!(!snapshot.contains("secret-b"));
+    assert!(!snapshot.contains("secret-c"));
+    assert!(snapshot.contains("X-Safe-Metadata"));
+}
+
+#[test]
 fn config_snapshot_preserves_codex_llm_backend_fields() {
     let worker = Config {
         codex_cmd: "/usr/local/bin/codex".to_string(),
@@ -156,7 +356,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
         ..Config::default()
     };
     let cfg = Config {
-        llm_backend: axon_llm::LlmBackendKind::CodexAppServer,
+        llm_backend: axon_core::llm::LlmBackendKind::CodexAppServer,
         codex_cmd: "/opt/codex/bin/codex".to_string(),
         codex_home: Some(PathBuf::from("/home/example/.codex")),
         codex_model: "gpt-5.5".to_string(),
@@ -178,7 +378,7 @@ fn config_snapshot_preserves_codex_llm_backend_fields() {
 
     assert_eq!(
         restored.llm_backend,
-        axon_llm::LlmBackendKind::CodexAppServer
+        axon_core::llm::LlmBackendKind::CodexAppServer
     );
     assert_eq!(restored.codex_cmd, "/usr/local/bin/codex");
     assert_eq!(

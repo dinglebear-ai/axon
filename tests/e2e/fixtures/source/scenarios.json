@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "local_file": "../../corpus/v1/revisions/atlas/1.0.0.md",
+    "local_directory": "../../corpus/v1/documents/micro",
+    "page": "http://127.0.0.1:{port}/page.html",
+    "site": "http://127.0.0.1:{port}/"
+  },
+  "revisions": {
+    "initial": "../../corpus/v1/revisions/atlas/1.0.0.md",
+    "unchanged": "../../corpus/v1/revisions/atlas/1.0.1-unchanged.md",
+    "changed": "../../corpus/v1/revisions/atlas/1.1.0-changed.md"
+  },
+  "invalid_sources": [
+    "",
+    "http://169.254.169.254/latest/meta-data",
+    "ftp://127.0.0.1/private"
+  ],
+  "retry": {"max_attempts": 3, "transient_failures": 2}
+}

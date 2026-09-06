@@ -307,11 +307,11 @@ fn mcp_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let mut raw_defs: Vec<(&str, Value)> = mcp_action_registry::build::def_pairs();
     raw_defs.push((
         "ResponseMode",
-        schemars::schema_for!(axon_api::mcp_schema::ResponseMode).into(),
+        schemars::schema_for!(axon_api::action::ResponseMode).into(),
     ));
     raw_defs.push((
         "AxonToolResponse",
-        schemars::schema_for!(axon_api::mcp_schema::AxonToolResponse).into(),
+        schemars::schema_for!(axon_mcp::schema::AxonToolResponse).into(),
     ));
     let mut defs = schema_defs(&raw_defs, None)
         .as_object()

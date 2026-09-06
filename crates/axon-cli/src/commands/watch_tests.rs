@@ -34,9 +34,17 @@ fn parse_watch_runtime_args_rejects_removed_artifacts_subcommand() {
 #[tokio::test]
 async fn handle_watch_create_requires_every_seconds() {
     let cfg = Config::test_default();
-    let err = handle_watch_create(&cfg, None, "https://example.com/demo".to_string(), 0, None)
-        .await
-        .expect_err("out-of-bounds interval should error");
+    let context = test_service_context(&cfg).await;
+    let service = WatchServiceImpl::new(Arc::new(context));
+    let err = handle_watch_create(
+        &cfg,
+        &service,
+        "https://example.com/demo".to_string(),
+        0,
+        None,
+    )
+    .await
+    .expect_err("out-of-bounds interval should error");
     // CLI now shares validate_every_seconds with the HTTP create paths, so the
     // message is the centralized bounds text rather than a CLI-flag-specific one.
     assert!(err.to_string().contains("every_seconds must be between"));
@@ -57,10 +65,12 @@ async fn handle_watch_create_writes_only_source_watch_store() -> Result<(), Box<
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
+    let context = test_service_context(&cfg).await;
+    let service = WatchServiceImpl::new(Arc::new(context));
 
     handle_watch_create(
         &cfg,
-        None,
+        &service,
         "https://example.com/canonical-create".to_string(),
         3600,
         Some("cli-watch-tests".to_string()),
@@ -212,10 +222,11 @@ async fn handle_watch_get_finds_and_reports_missing_source_watches() -> Result<(
 
     let store = watch_svc::open_source_watch_store(&cfg, None).await?;
     let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
+    let service = WatchServiceImpl::new(Arc::new(test_service_context(&cfg).await));
 
-    handle_watch_get(&cfg, None, &created.watch_id.0).await?;
+    handle_watch_get(&cfg, &service, &created.watch_id.0).await?;
 
-    let err = handle_watch_get(&cfg, None, "watch_missing")
+    let err = handle_watch_get(&cfg, &service, "watch_missing")
         .await
         .expect_err("missing watch should error");
     assert!(err.to_string().contains("not found"));
@@ -231,10 +242,11 @@ async fn handle_watch_update_pause_resume_and_delete_round_trip() -> Result<(), 
     let store = watch_svc::open_source_watch_store(&cfg, None).await?;
     let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
     let id = created.watch_id.0.clone();
+    let service = WatchServiceImpl::new(Arc::new(test_service_context(&cfg).await));
 
     handle_watch_update(
         &cfg,
-        None,
+        &service,
         &id,
         watch_svc::WatchUpdateRequest {
             enabled: Some(false),
@@ -256,7 +268,7 @@ async fn handle_watch_update_pause_resume_and_delete_round_trip() -> Result<(), 
 
     handle_watch_update(
         &cfg,
-        None,
+        &service,
         &id,
         watch_svc::WatchUpdateRequest {
             enabled: Some(true),
@@ -275,8 +287,8 @@ async fn handle_watch_update_pause_resume_and_delete_round_trip() -> Result<(), 
         .expect("watch present after resume");
     assert!(resumed.enabled);
 
-    handle_watch_delete(&cfg, None, &id).await?;
-    let err = handle_watch_delete(&cfg, None, &id)
+    handle_watch_delete(&cfg, &service, &id).await?;
+    let err = handle_watch_delete(&cfg, &service, &id)
         .await
         .expect_err("deleting an already-deleted watch should error");
     assert!(err.to_string().contains("not found"));
@@ -294,8 +306,9 @@ async fn handle_watch_exec_records_canonical_history() -> Result<(), Box<dyn Err
     let store = watch_svc::open_source_watch_store(&cfg, None).await?;
     let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
     let id = created.watch_id.0.clone();
+    let service = WatchServiceImpl::new(Arc::new(service_context.clone()));
 
-    handle_watch_exec(&cfg, &service_context, None, "https://example.com/docs").await?;
+    handle_watch_exec(&cfg, &service, "https://example.com/docs").await?;
 
     let history = watch_svc::history_source_watch(
         &cfg,
@@ -312,8 +325,8 @@ async fn handle_watch_exec_records_canonical_history() -> Result<(), Box<dyn Err
     assert_eq!(history.jobs.len(), 1);
     assert_eq!(history.jobs[0].kind, axon_api::source::JobKind::Source);
 
-    handle_watch_status(&cfg, &service_context, None, "https://example.com/docs").await?;
-    handle_watch_history(&cfg, None, "https://example.com/docs", 10).await?;
+    handle_watch_status(&cfg, &service_context, &service, "https://example.com/docs").await?;
+    handle_watch_history(&cfg, &service, "https://example.com/docs", 10).await?;
     Ok(())
 }
 

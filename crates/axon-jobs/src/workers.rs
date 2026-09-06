@@ -54,7 +54,6 @@ pub struct WorkerHandles {
     pub(crate) unified: Arc<Notify>,
     activity: Arc<WorkerActivity>,
     shutdown: CancellationToken,
-    #[allow(dead_code)]
     pub(crate) worker_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
@@ -72,7 +71,27 @@ impl WorkerHandles {
     pub fn in_flight_jobs(&self) -> usize {
         self.activity.in_flight()
     }
+
+    /// Cancel worker admission and wait for every worker task to finish.
+    /// Non-cooperative tasks are explicitly aborted once the shared deadline
+    /// expires, so dropping a join handle can never silently detach work.
+    pub async fn shutdown_and_join(mut self, grace: Duration) {
+        self.shutdown.cancel();
+        self.unified.notify_waiters();
+        let deadline = tokio::time::Instant::now() + grace;
+        for mut handle in std::mem::take(&mut self.worker_handles) {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if tokio::time::timeout(remaining, &mut handle).await.is_err() {
+                handle.abort();
+                let _ = handle.await;
+            }
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "workers_tests.rs"]
+mod tests;
 
 impl Drop for WorkerHandles {
     fn drop(&mut self) {

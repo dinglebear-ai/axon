@@ -18,10 +18,27 @@ export const SOURCE_FAMILY_OPTIONS = [
   { value: 'session', label: 'AI session' }
 ] as const;
 
+export type MaxPagesParseResult =
+  | { ok: true; value: number | null }
+  | { ok: false; message: string };
+
+export function parseMaxPages(value: string): MaxPagesParseResult {
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: true, value: null };
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return { ok: false, message: 'Max pages must be a non-negative safe integer.' };
+  }
+  return { ok: true, value: parsed };
+}
+
 export function normalizeSourceEntries(result: SourcesListResult | null): SourceListEntry[] {
   if (!result) return [];
-  if (Array.isArray(result.items) && result.items.length > 0) return result.items;
-  return result.urls ?? [];
+  return result.urls.flatMap((entry): SourceListEntry[] => {
+    if (typeof entry === 'string') return [{ url: entry }];
+    const [url, chunks] = entry;
+    return typeof url === 'string' && typeof chunks === 'number' ? [{ url, chunks }] : [];
+  });
 }
 
 export function sourceEntryKey(entry: SourceListEntry, index: number): string {
@@ -48,8 +65,7 @@ export function sourceEntryChunkCount(entry: SourceListEntry): number {
 export function sourcesSummaryLabel(result: SourcesListResult | null): string {
   if (!result) return 'No data loaded';
   const entries = normalizeSourceEntries(result);
-  const total = result.total ?? result.count ?? entries.length;
-  return `${entries.length} shown of ${total}`;
+  return `${entries.length} shown of ${result.count}`;
 }
 
 export function sourceErrorMessage(error: unknown): string {

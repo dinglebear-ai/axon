@@ -1011,7 +1011,7 @@ Do not add Phase 1 tests that fail on legitimate API properties such as `url` in
 In `docs/pipeline-unification/delivery/current-implementation-sweep.md`, add this exact bullet under the Phase 1 or schema/current-state section:
 
 ```markdown
-- Phase 1 removed-surface checks apply to generated API DTO schemas and API reference docs. Transitional legacy Rust request structs such as `axon_api::mcp_schema::requests::{CrawlRequest, EmbedRequest, IngestRequest}` may remain until the later surface-cutover deletion phase, but they must not appear in generated Phase 1 API DTO schemas. Legacy destructive purge fields such as `target` and `prefix` are rejected by property-path checks rather than broad string-token bans.
+- Phase 1 removed-surface checks apply to generated API DTO schemas and API reference docs. Transitional legacy Rust request structs such as `axon_api::action::requests::{CrawlRequest, EmbedRequest, IngestRequest}` may remain until the later surface-cutover deletion phase, but they must not appear in generated Phase 1 API DTO schemas. Legacy destructive purge fields such as `target` and `prefix` are rejected by property-path checks rather than broad string-token bans.
 ```
 
 - [ ] **Step 4: Run removed-surface tests**
@@ -1058,7 +1058,7 @@ Phase 1 is now aligned to the current contract packet:
 
 - `ResolvedSource` now uses the `api-contract.md` public shape: `source`, `canonical_uri`, `source_kind`, `adapter`, `default_scope`, `available_scopes`, `authority`, `confidence`, `reason`, optional graph/warnings metadata, plus explicit `source_id` for ledger identity.
 - The generated API schema includes the Phase 1 `$defs` that are contract-exact today. Required names that still need closed enums, auth/scope policy, content bounds, or later surface cutover are explicitly listed in `PHASE_1_DEFERRED_API_DEFS` with owner plans.
-- Removed legacy API request names and legacy purge fields are rejected from generated API DTO schemas through schema-aware `$defs`/property checks. Transitional legacy Rust structs under `axon_api::mcp_schema::requests` remain tracked for later surface-cutover deletion and are not part of the Phase 1 public DTO catalog.
+- Removed legacy API request names and legacy purge fields are rejected from generated API DTO schemas through schema-aware `$defs`/property checks. Transitional legacy Rust structs under `axon_api::action::requests` remain tracked for later surface-cutover deletion and are not part of the Phase 1 public DTO catalog.
 - Phase 1 proof:
   - `cargo test -p axon-api source`
   - `cargo test -p xtask api_schema_contains_phase_1_required_defs`

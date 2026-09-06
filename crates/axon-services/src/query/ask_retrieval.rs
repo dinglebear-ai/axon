@@ -189,7 +189,8 @@ async fn retrieval_ask_context_with_hits(
         }),
         auth_snapshot,
     )
-    .await?;
+    .await
+    .map_err(|error| -> Box<dyn Error> { error })?;
     let store = execution.scheduled_vectors();
     let provider = execution.scheduled_embedding();
     let provider_id = execution.embedding_provider_id();

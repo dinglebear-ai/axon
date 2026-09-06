@@ -579,3 +579,72 @@ pub struct MemoryExportResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<ArtifactRef>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryItem {
+    pub id: String,
+    pub memory_type: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub project: Option<String>,
+    pub repo: Option<String>,
+    pub file: Option<String>,
+    pub workspace: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_commit: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub cwd: Option<String>,
+    pub confidence: f64,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_seen_at: i64,
+    pub access_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryEdgeItem {
+    pub id: String,
+    pub source_id: String,
+    pub target_id: String,
+    pub edge_type: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryContext {
+    pub context: String,
+    pub memories: Vec<MemoryItem>,
+    pub token_budget: usize,
+    pub token_estimate: usize,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryItemsResponse {
+    pub memories: Vec<MemoryItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryItemResponse {
+    pub memory: Option<MemoryItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryContextResponse {
+    pub context: MemoryContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemoryEdgeResponse {
+    pub edge: MemoryEdgeItem,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, utoipa::ToSchema)]
+pub struct MemorySupersedeResponse {
+    pub edge: MemoryEdgeItem,
+    pub superseded_id: String,
+    pub replacement_id: String,
+}

@@ -7,11 +7,8 @@
 //! - the CLI auto-spawns it (detached) after `axon <source>` enqueues a
 //!   detached job and no worker process currently holds the drain lock.
 //!
-//! **Lock before context.** This entry acquires [`WorkerDrainLock`] *before*
-//! constructing the worker-bearing `ServiceContext` (which opens + integrity-
-//! checks the jobs DB and starts the claim loop). A losing invocation therefore
-//! exits in milliseconds having claimed nothing — no duplicate-spawn storm and
-//! no jobs claimed-then-orphaned by a short-lived loser (`axon_rust-x4gxr.3`).
+//! `ServiceContext` acquires the exclusive queue-worker lock before opening the
+//! worker runtime. A losing invocation exits having claimed nothing.
 //! `axon serve` / HTTP `axon mcp` hold the same lock for their lifetime
 //! (`axon_rust-x4gxr.2`), so a worker started while a server is running also
 //! exits immediately. Job-claiming correctness never depends on the lock — the
@@ -25,20 +22,10 @@ use axon_core::config::Config;
 use axon_core::ui::{accent, muted, primary};
 use axon_services::context::ServiceContext;
 use axon_services::jobs::worker_loop::{WorkerLoopOptions, run_worker_until_idle};
-use axon_services::runtime::{WorkerDrainLock, drain_lock_path};
 
 /// Standalone `axon jobs worker` entrypoint. Owns its own `ServiceContext` so
 /// the drain lock is taken before any job-claiming runtime exists.
 pub(crate) async fn run_worker_process(cfg: Arc<Config>) -> Result<(), Box<dyn Error>> {
-    let lock_path = drain_lock_path(&cfg.sqlite_path);
-    let Some(lock) = WorkerDrainLock::try_hold(&lock_path)
-        .await
-        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?
-    else {
-        emit_not_acquired(&cfg);
-        return Err("jobs.worker_already_active: another worker process owns this queue".into());
-    };
-
     let idle_exit_secs = resolve_idle_exit_secs(
         super::parse_u64_flag(&cfg, "--idle-exit-secs")?,
         cfg.jobs_worker_idle_exit_secs,
@@ -59,7 +46,6 @@ pub(crate) async fn run_worker_process(cfg: Arc<Config>) -> Result<(), Box<dyn E
     // an enqueue landing here re-probes an unheld lock and spawns its own worker
     // rather than being stranded (`axon_rust-x4gxr.5`).
     drop(service_context);
-    drop(lock);
 
     emit_report(&cfg, idle_exit_secs, report);
     Ok(())
@@ -71,22 +57,6 @@ pub(crate) async fn run_worker_process(cfg: Arc<Config>) -> Result<(), Box<dyn E
 /// stopped) survives the clamp.
 fn resolve_idle_exit_secs(flag: Option<u64>, default: u64) -> u64 {
     flag.unwrap_or(default).min(86_400)
-}
-
-fn emit_not_acquired(cfg: &Config) {
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({
-                "worker": { "acquired_lock": false, "reason": "another worker process is active" }
-            })
-        );
-    } else {
-        println!(
-            "  {}",
-            muted("Another worker process is already active for this queue; exiting.")
-        );
-    }
 }
 
 fn emit_start(cfg: &Config, idle_exit_secs: u64) {

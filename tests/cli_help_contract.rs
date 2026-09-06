@@ -267,15 +267,10 @@ fn setup_split_help_surfaces_are_focused() {
         "--mcp-host",
         "--mcp-port",
         "--auth-mode",
-        "--mcp-token",
         "--oauth-public-url",
         "--google-client-id",
-        "--google-client-secret",
         "--auth-admin-email",
-        "--tavily-api-key",
-        "--github-token",
         "--reddit-client-id",
-        "--reddit-client-secret",
     ] {
         assert!(
             setup_init.contains(expected),
@@ -286,6 +281,18 @@ fn setup_split_help_surfaces_are_focused() {
         !setup_init.contains("--no-repair"),
         "setup init help must not advertise removed repair flag:\n{setup_init}"
     );
+    for secret_flag in [
+        "--mcp-token",
+        "--google-client-secret",
+        "--tavily-api-key",
+        "--github-token",
+        "--reddit-client-secret",
+    ] {
+        assert!(
+            !setup_init.contains(secret_flag),
+            "setup init must take secrets from protected environment/config input, not argv"
+        );
+    }
     for unexpected in [
         "--max-depth",
         "--render-mode",

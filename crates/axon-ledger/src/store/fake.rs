@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -17,10 +18,23 @@ use cleanup::{
     record_removed_item_cleanup_debt,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FakeLedgerStore {
     state: Arc<Mutex<FakeLedgerState>>,
     mode: FakeLedgerMode,
+    injected_failure_enabled: Arc<AtomicBool>,
+    cleanup_debt_successes_before_failure: Arc<AtomicI64>,
+}
+
+impl Default for FakeLedgerStore {
+    fn default() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(FakeLedgerState::default())),
+            mode: FakeLedgerMode::Success,
+            injected_failure_enabled: Arc::new(AtomicBool::new(true)),
+            cleanup_debt_successes_before_failure: Arc::new(AtomicI64::new(-1)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -30,6 +44,8 @@ enum FakeLedgerMode {
     PublishFailure,
     HeartbeatLost,
     ReleaseFailure,
+    CommittedGenerationFailure,
+    CleanupDebtWriteFailure,
 }
 
 #[derive(Debug, Default)]
@@ -39,6 +55,7 @@ struct FakeLedgerState {
     manifests: BTreeMap<(SourceId, SourceGenerationId), SourceManifest>,
     committed: BTreeMap<SourceId, SourceGenerationId>,
     document_statuses: BTreeMap<DocumentId, DocumentStatus>,
+    document_status_update_batches: Vec<Vec<DocumentId>>,
     cleanup_debt: BTreeMap<CleanupDebtId, CleanupDebt>,
     leases: BTreeMap<LeaseId, LeaseGuard>,
     lease_ids_by_key: BTreeMap<String, LeaseId>,
@@ -65,6 +82,27 @@ impl FakeLedgerStore {
         self
     }
 
+    pub fn with_committed_generation_failure(mut self) -> Self {
+        self.mode = FakeLedgerMode::CommittedGenerationFailure;
+        self
+    }
+
+    pub fn with_cleanup_debt_write_failure(mut self) -> Self {
+        self.mode = FakeLedgerMode::CleanupDebtWriteFailure;
+        self
+    }
+
+    pub fn clear_injected_failure(&self) {
+        self.injected_failure_enabled
+            .store(false, Ordering::Release);
+    }
+
+    pub fn with_cleanup_debt_failure_after(self, successes: usize) -> Self {
+        self.cleanup_debt_successes_before_failure
+            .store(successes as i64, Ordering::Release);
+        self
+    }
+
     pub async fn committed_generation(&self, source_id: &SourceId) -> Option<SourceGenerationId> {
         self.state.lock().await.committed.get(source_id).cloned()
     }
@@ -76,6 +114,14 @@ impl FakeLedgerStore {
             .document_statuses
             .get(document_id)
             .cloned()
+    }
+
+    pub async fn document_status_update_batches(&self) -> Vec<Vec<DocumentId>> {
+        self.state
+            .lock()
+            .await
+            .document_status_update_batches
+            .clone()
     }
 
     pub async fn cleanup_debt(&self, debt_id: &CleanupDebtId) -> Option<CleanupDebt> {
@@ -121,6 +167,55 @@ impl LedgerStore for FakeLedgerStore {
 
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>> {
         Ok(self.state.lock().await.sources.get(&source_id).cloned())
+    }
+
+    async fn get_source_detail(&self, source_id: SourceId) -> Result<Option<LedgerSourceDetail>> {
+        let state = self.state.lock().await;
+        let Some(summary) = state.sources.get(&source_id).cloned() else {
+            return Ok(None);
+        };
+        let committed_generation = state.committed.get(&source_id).cloned();
+        let manifest = committed_generation.as_ref().and_then(|generation| {
+            state
+                .manifests
+                .get(&(source_id.clone(), generation.clone()))
+                .map(|value| LedgerManifestState {
+                    generation: generation.clone(),
+                    status: summary.status,
+                    item_count: value.items.len() as u64,
+                    items: value
+                        .items
+                        .iter()
+                        .map(|item| LedgerItemState {
+                            source_item_key: item.source_item_key.clone(),
+                            canonical_uri: item.canonical_uri.clone(),
+                            content_hash: item.content_hash.clone(),
+                        })
+                        .collect(),
+                })
+        });
+        let documents = state
+            .document_statuses
+            .values()
+            .filter(|value| value.source_id == source_id)
+            .filter_map(|value| {
+                Some(LedgerDocumentState {
+                    document_id: value.document_id.clone(),
+                    source_item_key: value.source_item_key.clone(),
+                    generation: value.generation.clone()?,
+                    status: value.status,
+                    chunk_count: value.chunk_count,
+                    vector_point_count: value.vector_point_count,
+                    updated_at: value.updated_at.clone(),
+                })
+            })
+            .collect();
+        Ok(Some(LedgerSourceDetail {
+            summary,
+            committed_generation,
+            manifest,
+            documents,
+        }))
     }
 
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>> {
@@ -189,50 +284,53 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
+        self.diff_manifest_ref(&manifest).await
+    }
+
+    async fn diff_manifest_ref(&self, manifest: &SourceManifest) -> Result<SourceManifestDiff> {
         let state = self.state.lock().await;
         let previous_generation = state.committed.get(&manifest.source_id).cloned();
-        let previous = previous_generation
-            .as_ref()
-            .and_then(|generation| {
-                state
-                    .manifests
-                    .get(&(manifest.source_id.clone(), generation.clone()))
-            })
-            .cloned();
-        drop(state);
+        let previous = previous_generation.as_ref().and_then(|generation| {
+            state
+                .manifests
+                .get(&(manifest.source_id.clone(), generation.clone()))
+        });
         let previous_items = previous
-            .map(|old| keyed_manifest_items(old.items))
+            .map(|old| {
+                old.items
+                    .iter()
+                    .map(|item| (item.source_item_key.clone(), item))
+                    .collect::<BTreeMap<_, _>>()
+            })
             .unwrap_or_default();
-        let SourceManifest {
-            source_id,
-            generation,
-            items,
-            ..
-        } = manifest;
-        let next_items = keyed_manifest_items(items);
+        let next_items = manifest
+            .items
+            .iter()
+            .map(|item| (item.source_item_key.clone(), item))
+            .collect::<BTreeMap<_, _>>();
 
         let mut added = Vec::new();
         let mut modified = Vec::new();
         let mut unchanged = Vec::new();
         for (key, item) in &next_items {
             match previous_items.get(key) {
-                None => added.push(item.clone()),
-                Some(old) if manifest_item_changed(old, item) => modified.push(item.clone()),
-                Some(_) => unchanged.push(item.clone()),
+                None => added.push((**item).clone()),
+                Some(old) if manifest_item_changed(old, item) => modified.push((**item).clone()),
+                Some(_) => unchanged.push((**item).clone()),
             }
         }
 
         let next_keys = next_items.keys().cloned().collect::<BTreeSet<_>>();
         let removed = previous_items
             .into_iter()
-            .filter_map(|(key, item)| (!next_keys.contains(&key)).then_some(item))
+            .filter_map(|(key, item)| (!next_keys.contains(&key)).then_some(item.clone()))
             .collect::<Vec<_>>();
 
         Ok(SourceManifestDiff {
             header: stage_header(PipelinePhase::Diffing),
-            source_id,
+            source_id: manifest.source_id.clone(),
             previous_generation,
-            next_generation: generation,
+            next_generation: manifest.generation.clone(),
             counts: DiffCounts {
                 added: added.len() as u64,
                 modified: modified.len() as u64,
@@ -258,6 +356,15 @@ impl LedgerStore for FakeLedgerStore {
         &self,
         source_id: SourceId,
     ) -> Result<Option<SourceGenerationId>> {
+        if self.mode == FakeLedgerMode::CommittedGenerationFailure
+            && self.injected_failure_enabled.load(Ordering::Acquire)
+        {
+            return Err(ApiError::new(
+                "ledger.committed_generation_failed",
+                ErrorStage::Cleaning,
+                "injected committed generation failure",
+            ));
+        }
         generation::committed_generation(&self.state, source_id).await
     }
 
@@ -301,6 +408,12 @@ impl LedgerStore for FakeLedgerStore {
                 return Err(source_missing_error(&status.source_id));
             }
         }
+        state.document_status_update_batches.push(
+            statuses
+                .iter()
+                .map(|status| status.document_id.clone())
+                .collect(),
+        );
         for status in statuses {
             if state
                 .document_statuses
@@ -337,6 +450,31 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
+        let remaining = self
+            .cleanup_debt_successes_before_failure
+            .load(Ordering::Acquire);
+        if remaining == 0 {
+            self.cleanup_debt_successes_before_failure
+                .store(-1, Ordering::Release);
+            return Err(ApiError::new(
+                "ledger.cleanup_debt_write_failed",
+                ErrorStage::Cleaning,
+                "injected cleanup debt write failure",
+            ));
+        }
+        if remaining > 0 {
+            self.cleanup_debt_successes_before_failure
+                .fetch_sub(1, Ordering::AcqRel);
+        }
+        if self.mode == FakeLedgerMode::CleanupDebtWriteFailure
+            && self.injected_failure_enabled.load(Ordering::Acquire)
+        {
+            return Err(ApiError::new(
+                "ledger.cleanup_debt_write_failed",
+                ErrorStage::Cleaning,
+                "injected cleanup debt write failure",
+            ));
+        }
         validate_cleanup_debt(&debt)?;
         let mut state = self.state.lock().await;
         if !state.sources.contains_key(&debt.source_id) {
@@ -364,6 +502,18 @@ impl LedgerStore for FakeLedgerStore {
 
     async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>> {
         cleanup::list_pending_cleanup_debt(&self.state, &source_id).await
+    }
+
+    async fn list_pending_cleanup_debt_after(
+        &self,
+        after: Option<CleanupDebtId>,
+        limit: usize,
+    ) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_pending_cleanup_debt_after(&self.state, after.as_ref(), limit).await
+    }
+
+    async fn list_adapter_release_debt(&self, limit: usize) -> Result<Vec<CleanupDebt>> {
+        cleanup::list_adapter_release_debt(&self.state, limit).await
     }
 
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()> {

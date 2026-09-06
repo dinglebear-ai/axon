@@ -9,7 +9,6 @@ use crate::context::VerticalContext;
 use crate::error::VerticalError;
 use crate::git_payload::{ContentKind, GitPayload, build_git_payload};
 use crate::types::{ExtractorInfo, ScrapedDoc};
-use axon_core::http::http_client;
 
 pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "github_repo",
@@ -62,23 +61,21 @@ pub fn matches(url: &str) -> bool {
 }
 
 /// Fetch the GitHub token from env (per-request, never global).
-fn github_auth_header() -> Option<String> {
-    let token = std::env::var("GITHUB_TOKEN")
-        .ok()
-        .filter(|s| !s.is_empty())?;
+fn github_auth_header(ctx: &VerticalContext) -> Option<String> {
+    let token = ctx.github_token().filter(|s| !s.is_empty())?;
     Some(format!("Bearer {token}"))
 }
 
 /// Fetch and decode the README for a repo. Non-fatal — returns None on any error.
-async fn fetch_readme(owner: &str, repo: &str) -> Option<String> {
-    let client = http_client().ok()?;
+async fn fetch_readme(owner: &str, repo: &str, ctx: &VerticalContext) -> Option<String> {
+    let client = ctx.http_client();
     let readme_url = format!("https://api.github.com/repos/{owner}/{repo}/readme");
     let mut req = client
         .get(&readme_url)
         .header("User-Agent", axon_core::http::axon_api_ua())
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(auth) = github_auth_header() {
+    if let Some(auth) = github_auth_header(ctx) {
         req = req.header("Authorization", auth);
     }
     let resp = req.send().await.ok()?;
@@ -213,10 +210,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     let (owner, repo) = (segs[0], segs[1]);
     let api_url = format!("https://api.github.com/repos/{owner}/{repo}");
 
-    let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let client = ctx.http_client();
 
     let mut repo_req = client
         .get(&api_url)
@@ -224,12 +218,12 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
 
-    if let Some(auth) = github_auth_header() {
+    if let Some(auth) = github_auth_header(ctx) {
         repo_req = repo_req.header("Authorization", auth);
     }
 
     // Fetch metadata and README in parallel
-    let (repo_resp, readme) = tokio::join!(repo_req.send(), fetch_readme(owner, repo));
+    let (repo_resp, readme) = tokio::join!(repo_req.send(), fetch_readme(owner, repo, ctx));
 
     let resp = repo_resp.map_err(|_| VerticalError::VerticalTargetUnavailable {
         vertical: INFO.name,

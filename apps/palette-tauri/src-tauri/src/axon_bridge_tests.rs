@@ -68,6 +68,34 @@ fn allows_known_palette_routes() {
 }
 
 #[test]
+fn allows_only_bounded_agent_turn_control_routes() {
+    assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/agent/turns/turn_abc-123")).is_ok());
+    assert!(
+        validate_axon_route(&request(
+            HttpMethod::Get,
+            "/v1/agent/turns/turn_abc-123/events"
+        ))
+        .is_ok()
+    );
+    assert!(
+        validate_axon_route(&request(
+            HttpMethod::Post,
+            "/v1/agent/turns/turn_abc-123/cancel"
+        ))
+        .is_ok()
+    );
+    assert!(
+        validate_axon_route(&request(
+            HttpMethod::Post,
+            "/v1/agent/turns/turn_abc-123/events"
+        ))
+        .is_err()
+    );
+    assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/agent/turns/../events")).is_err());
+    assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/agent/turns/%2F/events")).is_err());
+}
+
+#[test]
 fn rejects_routes_outside_the_palette_allowlist() {
     for path in ["/v1/not-allowed", "/v1/admin", "/v1/jobs/not-a-uuid"] {
         assert!(

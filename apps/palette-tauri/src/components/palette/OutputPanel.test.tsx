@@ -69,7 +69,14 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
       prompt: "hi",
     };
     rerender(
-      <OutputPanel active={action("ask")} copied={false} outputKind="markdown" run={success} pinned={false} {...handlers} />,
+      <OutputPanel
+        active={action("ask")}
+        copied={false}
+        outputKind="markdown"
+        run={success}
+        pinned={false}
+        {...handlers}
+      />,
     );
     expect(document.querySelector('[aria-live="polite"]')?.textContent ?? "").toMatch(/complete/i);
   });
@@ -88,7 +95,14 @@ describe("OutputPanel run-state transitions (T-H2)", () => {
     const { rerender } = renderPanel({ ...base, text: "a" });
     for (const text of ["a", "ab", "abc see https://example.com/page more"]) {
       rerender(
-        <OutputPanel active={action("ask")} copied={false} outputKind="markdown" run={{ ...base, text }} pinned={false} {...handlers} />,
+        <OutputPanel
+          active={action("ask")}
+          copied={false}
+          outputKind="markdown"
+          run={{ ...base, text }}
+          pinned={false}
+          {...handlers}
+        />,
       );
     }
     // Streaming ask renders through the conversation thread.
@@ -179,13 +193,26 @@ describe("OutputPanel copy affordance (T-L1)", () => {
     // Model the App-owned 1200ms flash: parent sets copied=true on copy, clears it
     // after the timeout. We drive `copied` via a controlled re-render and advance the
     // fake clock to prove the affordance reverts only after the flash window elapses.
-    const { rerender } = renderPanel(success, { active: summarize, outputKind: "code", copied: false, onCopy });
+    const { rerender } = renderPanel(success, {
+      active: summarize,
+      outputKind: "code",
+      copied: false,
+      onCopy,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Copy output" }));
     expect(onCopy).toHaveBeenCalledWith("Plain body text");
 
     rerender(
-      <OutputPanel active={summarize} copied={true} outputKind="code" run={success} pinned={false} {...handlers} onCopy={onCopy} />,
+      <OutputPanel
+        active={summarize}
+        copied={true}
+        outputKind="code"
+        run={success}
+        pinned={false}
+        {...handlers}
+        onCopy={onCopy}
+      />,
     );
     expect(screen.getByRole("button", { name: "Copied output" })).toBeInTheDocument();
 
@@ -196,8 +223,38 @@ describe("OutputPanel copy affordance (T-L1)", () => {
     // After the 1200ms flash window the parent clears the flag.
     vi.advanceTimersByTime(1);
     rerender(
-      <OutputPanel active={summarize} copied={false} outputKind="code" run={success} pinned={false} {...handlers} onCopy={onCopy} />,
+      <OutputPanel
+        active={summarize}
+        copied={false}
+        outputKind="code"
+        run={success}
+        pinned={false}
+        {...handlers}
+        onCopy={onCopy}
+      />,
     );
     expect(screen.getByRole("button", { name: "Copy output" })).toBeInTheDocument();
+  });
+});
+
+describe("OutputPanel consolidated result chrome", () => {
+  it("keeps result identity accessible without repeating it visually", () => {
+    const search = action("search");
+    const success: RunState = {
+      kind: "success",
+      title: "Search the web completed",
+      subtitle: "POST /v1/search | HTTP 200",
+      text: "result",
+      outputKind: "code",
+      result: { ok: true, status: 200, method: "POST", path: "/v1/search", payload: {} },
+    };
+
+    const { container } = renderPanel(success, { active: search, outputKind: "code" });
+
+    expect(container.querySelector(".output-header-consolidated")).not.toBeNull();
+    expect(container.querySelector(".output-meta-info")).toHaveClass("sr-only");
+    expect(container.querySelector(".output-op-tile")).toBeNull();
+    expect(screen.getByText("complete")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy output" })).toBeVisible();
   });
 });

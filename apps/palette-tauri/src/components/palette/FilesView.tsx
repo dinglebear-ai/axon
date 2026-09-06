@@ -10,6 +10,7 @@ import {
   type FileContents,
   type FileEntry,
   type FilesPane,
+  fileKind,
   joinSegments,
   type PaneId,
   sortEntries,
@@ -77,9 +78,24 @@ export function FilesView({ client, config }: FilesViewProps) {
   // persistent UI mode — the reducer models durable view state (panes,
   // selection, checked set), not ephemeral in-flight operation feedback.
   const [bulkIndexState, setBulkIndexState] = useState<BulkIndexState>({ kind: "idle" });
+  const [indexedPaths, setIndexedPaths] = useState<ReadonlySet<string>>(() =>
+    new Set(JSON.parse(localStorage.getItem("axon.files.indexedPaths") ?? "[]") as string[]),
+  );
   const bulkIndexCancelRef = useRef(false);
   const sftpTreeRef = useRef<SftpTreeSectionHandle>(null);
   const splitOpen = state.panes.length === 2;
+
+  useEffect(() => {
+    const savedWidth = Number.parseInt(localStorage.getItem("axon.files.treeWidth") ?? "", 10);
+    if (Number.isFinite(savedWidth)) dispatch({ type: "treeWidth/set", width: savedWidth });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("axon.files.treeWidth", String(state.treeWidth));
+  }, [state.treeWidth]);
+  useEffect(() => {
+    localStorage.setItem("axon.files.indexedPaths", JSON.stringify(Array.from(indexedPaths)));
+  }, [indexedPaths]);
 
   const loadDir = useCallback((id: PaneId, path: string) => {
     dispatch({ type: "pane/listingLoading", pane: id });
@@ -94,7 +110,8 @@ export function FilesView({ client, config }: FilesViewProps) {
     const gen = loadGenRef.current[id] + 1;
     loadGenRef.current[id] = gen;
     dispatch({ type: "pane/fileLoading", pane: id, loadGen: gen });
-    invoke<FileContents>("files_read_file", { path })
+    const command = fileKind(path) === "binary" ? "files_read_preview" : "files_read_file";
+    invoke<FileContents>(command, { path })
       .then((value) => dispatch({ type: "pane/fileLoaded", pane: id, loadGen: gen, file: value }))
       .catch((err) =>
         dispatch({ type: "pane/fileError", pane: id, loadGen: gen, message: errorMessage(err) }),
@@ -219,6 +236,7 @@ export function FilesView({ client, config }: FilesViewProps) {
     setIndexResult(id, { kind: "running" });
     const result = await executeAction(client, embedAction, absolutePath, config);
     if (result.ok) {
+      setIndexedPaths((paths) => new Set(paths).add(pane.selected?.path ?? ""));
       setIndexResult(id, { kind: "done", ok: true, message: "Queued for indexing." });
     } else {
       const payload = unwrapPayload(result.payload);
@@ -228,6 +246,20 @@ export function FilesView({ client, config }: FilesViewProps) {
         `Indexing failed (HTTP ${result.status}).`;
       setIndexResult(id, { kind: "done", ok: false, message });
     }
+  }
+
+  async function indexEntry(id: PaneId, entry: FileEntry) {
+    if (!client || !config) return;
+    const embedAction = resolveEmbedAction();
+    const listing = state.listings[id];
+    if (!embedAction || listing.kind !== "loaded") return;
+    const absolutePath = `${listing.value.root.replace(/\/+$/, "")}/${entry.path}`;
+    setIndexResult(id, { kind: "running" });
+    const result = await executeAction(client, embedAction, absolutePath, config);
+    setIndexResult(id, result.ok
+      ? { kind: "done", ok: true, message: entry.isDir ? "Folder queued for indexing." : "Queued for indexing." }
+      : { kind: "done", ok: false, message: `Indexing failed (HTTP ${result.status}).` });
+    if (result.ok && !entry.isDir) setIndexedPaths((paths) => new Set(paths).add(entry.path));
   }
 
   async function bulkIndex() {
@@ -271,6 +303,7 @@ export function FilesView({ client, config }: FilesViewProps) {
       const result = await executeAction(client, embedAction, absolutePath, config);
       if (result.ok) {
         succeeded += 1;
+        setIndexedPaths((current) => new Set(current).add(path));
       } else {
         failed += 1;
         failedPaths.push(path);
@@ -368,6 +401,7 @@ export function FilesView({ client, config }: FilesViewProps) {
         splitOpen={splitOpen}
         treeWidth={state.treeWidth}
         checked={state.checked}
+        indexedPaths={indexedPaths}
         client={client}
         config={config}
         activeSftpConnectionId={state.sftp.activeConnectionId}
@@ -396,6 +430,7 @@ export function FilesView({ client, config }: FilesViewProps) {
         onDraftChange={(value) => dispatch({ type: "pane/setDraft", pane: pane.id, draft: value })}
         onSave={() => void saveFile(pane.id)}
         onIndex={() => void indexSelected(pane.id)}
+        onIndexEntry={(entry) => void indexEntry(pane.id, entry)}
         onSparkleToggle={() =>
           dispatch(
             pane.sparkleOpen
@@ -432,6 +467,7 @@ export function FilesView({ client, config }: FilesViewProps) {
         {/* biome-ignore lint/a11y/useSemanticElements: see comment above. */}
         <div
           className="files-tree-resize"
+          style={{ left: state.treeWidth }}
           role="separator"
           tabIndex={0}
           aria-label="Resize file tree"

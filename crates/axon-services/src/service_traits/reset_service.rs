@@ -15,6 +15,7 @@ use crate::reset::ResetAuthz;
 #[async_trait]
 pub trait ResetService: Send + Sync {
     async fn plan(&self) -> anyhow::Result<ResetPlan>;
+    async fn get_plan(&self, plan_id: &str) -> anyhow::Result<ResetResult>;
     async fn execute(
         &self,
         plan_id: &str,
@@ -42,6 +43,12 @@ impl ResetService for ResetServiceImpl {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(result.reset_plan)
+    }
+
+    async fn get_plan(&self, plan_id: &str) -> anyhow::Result<ResetResult> {
+        crate::reset::reset_get_saved_plan(self.ctx.cfg(), plan_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     async fn execute(
@@ -86,9 +93,17 @@ impl ResetService for FakeResetService {
             auth_snapshot_id: "fake-auth-snapshot".to_string(),
             confirmation_text: "RESET".to_string(),
             receipt_path: None,
-            expires_at_utc: chrono::Utc::now().to_rfc3339(),
+            expires_at_utc: "2099-01-01T00:00:00Z".to_string(),
             blockers: Vec::new(),
         })
+    }
+
+    async fn get_plan(&self, plan_id: &str) -> anyhow::Result<ResetResult> {
+        let plan = self.plan().await?;
+        if plan.plan_id != plan_id {
+            anyhow::bail!("reset.plan_not_found");
+        }
+        Ok(fake_reset_result(plan, true))
     }
 
     async fn execute(
@@ -104,28 +119,32 @@ impl ResetService for FakeResetService {
         if plan.plan_id != plan_id {
             anyhow::bail!("reset.plan_not_found");
         }
-        Ok(ResetResult {
-            plan_id: plan.plan_id.clone(),
-            reset_id: plan.reset_id.clone(),
-            stores: plan.stores.clone(),
-            dry_run: false,
-            plan: Vec::new(),
-            estimates: axon_api::reset::ResetEstimate::default(),
-            execution_state: axon_api::reset::ResetExecutionState::Completed,
-            inventory_checksum: plan.inventory_checksum.clone(),
-            config_snapshot_id: plan.config_snapshot_id.clone(),
-            auth_snapshot_id: plan.auth_snapshot_id.clone(),
-            confirmation_text: plan.confirmation_text.clone(),
-            plan_expires_at_utc: plan.expires_at_utc.clone(),
-            blockers: plan.blockers.clone(),
-            chunks: Vec::new(),
-            audit_events: Vec::new(),
-            deleted: axon_api::reset::ResetDeleted::default(),
-            created: axon_api::reset::ResetCreated::default(),
-            receipt_path: None,
-            warnings: Vec::new(),
-            reset_plan: plan,
-        })
+        Ok(fake_reset_result(plan, false))
+    }
+}
+
+fn fake_reset_result(plan: ResetPlan, dry_run: bool) -> ResetResult {
+    ResetResult {
+        plan_id: plan.plan_id.clone(),
+        reset_id: plan.reset_id.clone(),
+        stores: plan.stores.clone(),
+        dry_run,
+        plan: Vec::new(),
+        estimates: axon_api::reset::ResetEstimate::default(),
+        execution_state: axon_api::reset::ResetExecutionState::Completed,
+        inventory_checksum: plan.inventory_checksum.clone(),
+        config_snapshot_id: plan.config_snapshot_id.clone(),
+        auth_snapshot_id: plan.auth_snapshot_id.clone(),
+        confirmation_text: plan.confirmation_text.clone(),
+        plan_expires_at_utc: plan.expires_at_utc.clone(),
+        blockers: plan.blockers.clone(),
+        chunks: Vec::new(),
+        audit_events: Vec::new(),
+        deleted: axon_api::reset::ResetDeleted::default(),
+        created: axon_api::reset::ResetCreated::default(),
+        receipt_path: None,
+        warnings: Vec::new(),
+        reset_plan: plan,
     }
 }
 

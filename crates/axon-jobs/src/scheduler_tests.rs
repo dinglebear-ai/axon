@@ -3,31 +3,165 @@ use crate::store::open_sqlite_pool;
 use std::future::{Future, poll_fn};
 use std::task::Poll;
 
+async fn wait_for_reservation_status(pool: &SqlitePool, fence: &str, status: &str) {
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = ?",
+            )
+            .bind(fence)
+            .bind(status)
+            .fetch_one(pool)
+            .await
+            .expect("reservation status count");
+            if count == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("fence {fence} never reached status {status}"));
+}
+
 #[test]
 fn priority_serialization_matches_scheduler_lane_order() {
     assert_eq!(enum_name(JobPriority::Interactive).unwrap(), "interactive");
     assert_eq!(enum_name(JobPriority::Maintenance).unwrap(), "maintenance");
 }
 
+#[test]
+fn shared_dispatch_signal_elects_only_one_recovery_dispatcher() {
+    let signal = Arc::new(DispatchSignal::default());
+    let first = signal.try_claim_recovery().expect("first waiter is leader");
+    assert!(
+        signal.try_claim_recovery().is_none(),
+        "a second waiter must not start another recovery poll"
+    );
+    drop(first);
+    assert!(signal.try_claim_recovery().is_some());
+}
+
+#[test]
+fn shared_dispatch_signal_spans_authorities_in_one_capacity_domain() {
+    let first = shared_dispatch_signal("authority-a", "vector", "shared-qdrant");
+    let second = shared_dispatch_signal("authority-b", "vector", "shared-qdrant");
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "authorities sharing provider capacity must wake the same waiters"
+    );
+}
+
 #[tokio::test]
 async fn invalid_scheduler_capacity_is_rejected() {
-    let pool = SqlitePool::connect_lazy("sqlite::memory:").unwrap();
-    let error = ProviderScheduler::new(
-        pool,
-        ProviderCapacityDomain {
-            kind: ProviderKind::Embedding,
-            instance_id: "tei".into(),
-            authority_id: "authority-a".into(),
-        },
-        SchedulerConfig {
-            capacity: 1,
-            interactive_reserve: 2,
-            max_entries: 10,
-            max_units: 10,
-        },
-    )
-    .expect_err("reserve larger than capacity must be rejected");
-    assert!(matches!(error, SchedulerError::RequestTooLarge));
+    let error = SchedulerConfig::new(1, 2, 10, 10)
+        .expect_err("interactive reserve larger than capacity must be rejected");
+    assert!(matches!(error, SchedulerError::InvalidConfig(_)));
+}
+
+#[test]
+fn scheduler_config_rejects_each_invalid_invariant() {
+    assert!(matches!(
+        SchedulerConfig::new(0, 0, 1, 1),
+        Err(SchedulerError::InvalidConfig(_))
+    ));
+    assert!(matches!(
+        SchedulerConfig::new(1, 0, 0, 1),
+        Err(SchedulerError::InvalidConfig(_))
+    ));
+    assert!(matches!(
+        SchedulerConfig::new(2, 0, 1, 1),
+        Err(SchedulerError::InvalidConfig(_))
+    ));
+}
+
+#[tokio::test]
+async fn reservation_grant_rejects_inconsistent_database_units() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    seed_jobs(&pool, "grant-invariant-source", &[0x99]).await;
+    let scheduler = test_scheduler(&pool, "grant-invariant");
+    let grant = scheduler
+        .reserve(request(0x99, "grant-invariant-fence", JobPriority::Normal))
+        .await
+        .expect("initial grant");
+    assert!(grant.is_granted());
+    sqlx::query("UPDATE provider_reservations SET granted_units = 0 WHERE reservation_id = ?")
+        .bind(grant.reservation_id())
+        .execute(&pool)
+        .await
+        .expect("corrupt grant accounting");
+    assert!(matches!(
+        scheduler.try_grant_existing(grant.reservation_id()).await,
+        Err(SchedulerError::DatabaseState(_))
+    ));
+}
+
+#[tokio::test]
+async fn reservation_grant_distinguishes_terminal_and_corrupt_statuses() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    seed_jobs(&pool, "grant-status-source", &[0x98]).await;
+    let scheduler = test_scheduler(&pool, "grant-status");
+    let grant = scheduler
+        .reserve(request(0x98, "grant-status-fence", JobPriority::Normal))
+        .await
+        .expect("initial grant");
+    let reservation_id = grant.reservation_id();
+
+    sqlx::query("UPDATE provider_reservations SET status = 'released' WHERE reservation_id = ?")
+        .bind(reservation_id)
+        .execute(&pool)
+        .await
+        .expect("set known terminal status");
+    assert!(matches!(
+        scheduler.try_grant_existing(reservation_id).await,
+        Err(SchedulerError::StaleFence)
+    ));
+
+    sqlx::query("UPDATE provider_reservations SET status = 'failed' WHERE reservation_id = ?")
+        .bind(reservation_id)
+        .execute(&pool)
+        .await
+        .expect("set known failed status");
+    assert!(matches!(
+        scheduler.try_grant_existing(reservation_id).await,
+        Err(SchedulerError::StaleFence)
+    ));
+
+    let mut fixture_connection = pool.acquire().await.expect("fixture connection");
+    sqlx::query("PRAGMA ignore_check_constraints = ON")
+        .execute(&mut *fixture_connection)
+        .await
+        .expect("permit corrupt-state fixture");
+    sqlx::query("UPDATE provider_reservations SET status = 'corrupt' WHERE reservation_id = ?")
+        .bind(reservation_id)
+        .execute(&mut *fixture_connection)
+        .await
+        .expect("set corrupt status");
+    sqlx::query("PRAGMA ignore_check_constraints = OFF")
+        .execute(&mut *fixture_connection)
+        .await
+        .expect("restore check constraints");
+    drop(fixture_connection);
+    assert!(matches!(
+        scheduler.try_grant_existing(reservation_id).await,
+        Err(SchedulerError::DatabaseState(_))
+    ));
+}
+
+#[tokio::test]
+async fn rollback_failure_is_combined_and_connection_is_evicted() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    let mut connection = pool.acquire().await.expect("connection");
+    let error = rollback_after_error(&mut connection, SchedulerError::QueueFull).await;
+    assert!(matches!(error, SchedulerError::RollbackFailed { .. }));
+    drop(connection);
+
+    // The pool must replace, rather than reuse, the connection whose
+    // transaction state could not be established.
+    sqlx::query("SELECT 1")
+        .execute(&pool)
+        .await
+        .expect("replacement connection remains usable");
 }
 
 #[tokio::test]
@@ -140,14 +274,14 @@ async fn sqlite_scheduler_grants_and_fences_a_reservation() {
         })
         .await
         .expect("grant");
-    assert!(grant.granted);
-    assert_eq!(grant.units, 1);
+    assert!(grant.is_granted());
+    assert_eq!(grant.units(), 1);
     scheduler
-        .complete(&grant.reservation_id, "fence-1")
+        .complete(grant.reservation_id(), "fence-1")
         .await
         .expect("completion");
     assert!(matches!(
-        scheduler.complete(&grant.reservation_id, "fence-1").await,
+        scheduler.complete(grant.reservation_id(), "fence-1").await,
         Err(SchedulerError::StaleFence)
     ));
 }
@@ -289,7 +423,7 @@ async fn reconcile_cancels_expired_grants_and_quarantines_uncertain_calls() {
     // shared capacity. Grant deadlines are authority-independent because a
     // grant has not activated provider work yet.
     sqlx::query("UPDATE provider_reservations SET grant_deadline = datetime('now', '-1 second'), authority_id = 'replaced-authority' WHERE reservation_id = ?")
-        .bind(&grant.reservation_id)
+        .bind(grant.reservation_id())
         .execute(&pool)
         .await
         .expect("expire grant");
@@ -331,7 +465,7 @@ async fn reconcile_cancels_expired_grants_and_quarantines_uncertain_calls() {
          WHERE reservation_id IN (?, ?) ORDER BY reservation_id",
     )
     .bind(active_id)
-    .bind(&grant.reservation_id)
+    .bind(grant.reservation_id())
     .fetch_all(&pool)
     .await
     .expect("reconciled rows");
@@ -404,7 +538,7 @@ async fn waiter_on_second_pool_observes_release_without_shared_notification() {
         })
         .await
         .expect("held grant");
-    assert!(held.granted);
+    assert!(held.is_granted());
 
     let waiter = tokio::spawn(async move {
         call_reserved::<(), _, &'static str, _, _>(
@@ -421,10 +555,10 @@ async fn waiter_on_second_pool_observes_release_without_shared_notification() {
         )
         .await
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_reservation_status(&first_pool, "waiter-fence", "queued").await;
     assert!(!waiter.is_finished(), "waiter should remain durably queued");
     first
-        .complete(&held.reservation_id, "held-fence")
+        .complete(held.reservation_id(), "held-fence")
         .await
         .expect("release held capacity");
     let result = tokio::time::timeout(Duration::from_secs(3), waiter)
@@ -439,6 +573,281 @@ async fn waiter_on_second_pool_observes_release_without_shared_notification() {
             .await
             .expect("queued count");
     assert_eq!(queued, 0);
+}
+
+#[tokio::test]
+async fn cross_process_recovery_is_independent_for_domains_sharing_an_authority() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("scheduler-domains.db");
+    let pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("scheduler pool");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('domain-source', '{}', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("source");
+    for suffix in [31_u128, 32_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'domain-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let embedding = ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei".into(),
+            authority_id: "shared-authority".into(),
+        },
+        config,
+    )
+    .expect("embedding scheduler");
+    let vector = ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Vector,
+            instance_id: "qdrant".into(),
+            authority_id: "shared-authority".into(),
+        },
+        config,
+    )
+    .expect("vector scheduler");
+    let held = vector
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(31)),
+            stage_id: None,
+            attempt: 1,
+            fence: "vector-held".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("held vector grant");
+
+    // Model another provider domain whose recovery pass is stalled. This must
+    // not prevent the vector domain from electing its own recovery dispatcher.
+    let unrelated_recovery = embedding
+        .dispatch_signal
+        .try_claim_recovery()
+        .expect("embedding recovery leader");
+    let waiter = tokio::spawn(async move {
+        call_reserved::<(), _, &'static str, _, _>(
+            &vector,
+            ReservationRequest {
+                job_id: JobId::new(Uuid::from_u128(32)),
+                stage_id: None,
+                attempt: 1,
+                fence: "vector-waiter".into(),
+                priority: JobPriority::Normal,
+                units: 1,
+            },
+            |_lease| async { Ok("vector-ran") },
+        )
+        .await
+    });
+    wait_for_reservation_status(&pool, "domain-a-waiter", "queued").await;
+    sqlx::query(
+        "UPDATE provider_reservations SET status = 'released', granted_units = 0
+         WHERE reservation_id = ?",
+    )
+    .bind(held.reservation_id())
+    .execute(&pool)
+    .await
+    .expect("external release");
+
+    let result = tokio::time::timeout(Duration::from_secs(7), waiter)
+        .await
+        .expect("vector domain recovered independently")
+        .expect("waiter task")
+        .expect("reserved call");
+    assert_eq!(result, "vector-ran");
+    drop(unrelated_recovery);
+}
+
+#[tokio::test]
+async fn cross_process_dispatch_preserves_the_waiters_authority() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("scheduler-authorities.db");
+    let owner_pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("owner pool");
+    let dispatcher_pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("dispatcher pool");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('authority-source', '{}', '', '')",
+    )
+    .execute(&owner_pool)
+    .await
+    .expect("source");
+    for suffix in [41_u128, 42_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'authority-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&owner_pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let dispatcher = ProviderScheduler::new(
+        dispatcher_pool,
+        ProviderCapacityDomain {
+            kind: ProviderKind::Vector,
+            instance_id: "shared-qdrant".into(),
+            authority_id: "dispatcher-authority".into(),
+        },
+        config,
+    )
+    .expect("dispatcher scheduler");
+    let owner = ProviderScheduler::new(
+        owner_pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Vector,
+            instance_id: "shared-qdrant".into(),
+            authority_id: "waiter-authority".into(),
+        },
+        config,
+    )
+    .expect("owner scheduler");
+    let held = dispatcher
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(41)),
+            stage_id: None,
+            attempt: 1,
+            fence: "dispatcher-held".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("held grant");
+    let queued = owner
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(42)),
+            stage_id: None,
+            attempt: 1,
+            fence: "owner-fence".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("queued reservation");
+    assert!(!queued.is_granted());
+
+    dispatcher
+        .complete(held.reservation_id(), "dispatcher-held")
+        .await
+        .expect("release capacity");
+    dispatcher
+        .dispatch_queued()
+        .await
+        .expect("cross-process dispatch");
+
+    let grant = owner
+        .reservation_grant(queued.reservation_id())
+        .await
+        .expect("original authority still owns grant");
+    assert!(grant.is_granted());
+    owner
+        .activate(queued.reservation_id(), "owner-fence")
+        .await
+        .expect("original authority activates grant");
+    owner
+        .complete(queued.reservation_id(), "owner-fence")
+        .await
+        .expect("original authority releases capacity");
+    let active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_reservations
+         WHERE status IN ('granted', 'active') AND granted_units > 0",
+    )
+    .fetch_one(&owner_pool)
+    .await
+    .expect("active capacity count");
+    assert_eq!(active, 0);
+}
+
+#[tokio::test]
+async fn capacity_release_wakes_a_waiter_owned_by_another_authority() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES ('cross-authority-source', '{}', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("source");
+    for suffix in [81_u128, 82_u128] {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', 'cross-authority-source', '', '')",
+        )
+        .bind(Uuid::from_u128(suffix).to_string())
+        .execute(&pool)
+        .await
+        .expect("job");
+    }
+    let config = SchedulerConfig {
+        capacity: 1,
+        interactive_reserve: 0,
+        max_entries: 8,
+        max_units: 8,
+    };
+    let make = |authority: &str| {
+        ProviderScheduler::new(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: ProviderKind::Vector,
+                instance_id: "cross-authority-qdrant".into(),
+                authority_id: authority.into(),
+            },
+            config,
+        )
+        .expect("scheduler")
+    };
+    let owner = make("owner-authority");
+    let waiter_scheduler = make("waiter-authority");
+    let held = owner
+        .reserve(request(81, "owner-held", JobPriority::Normal))
+        .await
+        .expect("held");
+    assert!(held.is_granted());
+
+    let waiter = tokio::spawn(async move {
+        waiter_scheduler
+            .reserve_wait(request(82, "other-waiter", JobPriority::Normal))
+            .await
+    });
+    wait_for_reservation_status(&pool, "other-waiter", "queued").await;
+    owner
+        .complete(held.reservation_id(), "owner-held")
+        .await
+        .expect("release");
+    let grant = tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .expect("cross-authority waiter should wake without recovery poll")
+        .expect("waiter task")
+        .expect("grant");
+    assert!(grant.is_granted());
 }
 
 #[tokio::test]
@@ -487,7 +896,7 @@ async fn dropping_a_waiter_cancels_its_durable_queue_row() {
         })
         .await
         .expect("held grant");
-    assert!(held.granted);
+    assert!(held.is_granted());
 
     let waiting_scheduler = scheduler.clone();
     let waiter = tokio::spawn(async move {
@@ -502,7 +911,7 @@ async fn dropping_a_waiter_cancels_its_durable_queue_row() {
             })
             .await
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_reservation_status(&pool, "dropped-waiter-fence", "queued").await;
     waiter.abort();
     let _ = waiter.await;
 
@@ -518,14 +927,14 @@ async fn dropping_a_waiter_cancels_its_durable_queue_row() {
             if row == Some(("canceled".into(), "waiter_dropped".into())) {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(20)).await;
+            tokio::task::yield_now().await;
         }
     })
     .await
     .expect("dropped waiter was canceled");
 
     scheduler
-        .complete(&held.reservation_id, "held-drop-fence")
+        .complete(held.reservation_id(), "held-drop-fence")
         .await
         .expect("release held grant");
 }
@@ -563,6 +972,10 @@ async fn reserved_call_renews_long_running_active_lease() {
     )
     .expect("scheduler");
     let task_scheduler = scheduler.clone();
+    let operation_started = Arc::new(Notify::new());
+    let finish_operation = Arc::new(Notify::new());
+    let task_operation_started = Arc::clone(&operation_started);
+    let task_finish_operation = Arc::clone(&finish_operation);
     let task = tokio::spawn(async move {
         call_reserved::<(), _, &'static str, _, _>(
             &task_scheduler,
@@ -575,30 +988,17 @@ async fn reserved_call_renews_long_running_active_lease() {
                 units: 1,
             },
             |_lease| async move {
-                tokio::time::sleep(Duration::from_millis(180)).await;
+                task_operation_started.notify_one();
+                task_finish_operation.notified().await;
                 Ok("done")
             },
         )
         .await
     });
 
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let active: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = 'active'",
-            )
-            .bind("renew-fence")
-            .fetch_one(&pool)
-            .await
-            .expect("active count");
-            if active == 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .expect("reservation activated");
+    tokio::time::timeout(Duration::from_secs(2), operation_started.notified())
+        .await
+        .expect("reservation activated");
 
     sqlx::query(
         "UPDATE provider_reservations SET renewed_at = datetime('now', '-61 seconds'),
@@ -608,10 +1008,28 @@ async fn reserved_call_renews_long_running_active_lease() {
     .execute(&pool)
     .await
     .expect("age active lease");
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let renewed: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? \
+                 AND status = 'active' AND renewed_at > datetime('now', '-5 seconds')",
+            )
+            .bind("renew-fence")
+            .fetch_one(&pool)
+            .await
+            .expect("renewed lease count");
+            if renewed == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("active lease should renew after being aged");
     let reconciliation = scheduler.reconcile().await.expect("reconcile");
     assert_eq!(reconciliation.quarantined_active, 0);
 
+    finish_operation.notify_one();
     let result = task.await.expect("task join").expect("reserved call");
     assert_eq!(result, "done");
     let row: (String, i64) =
@@ -674,25 +1092,18 @@ fn request(suffix: u128, fence: &str, priority: JobPriority) -> ReservationReque
     }
 }
 
-async fn wait_for_status(pool: &SqlitePool, fence: &str, status: &str) {
-    tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = ?",
-            )
-            .bind(fence)
-            .bind(status)
-            .fetch_one(pool)
-            .await
-            .expect("status count");
-            if count == 1 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("fence {fence} never reached status {status}"));
+#[test]
+fn background_queue_wait_uses_liveness_instead_of_foreground_deadline() {
+    assert_eq!(
+        queue_wait_timeout(JobPriority::Normal),
+        Some(Duration::from_secs(30))
+    );
+    assert_eq!(
+        queue_wait_timeout(JobPriority::Interactive),
+        Some(Duration::from_secs(30))
+    );
+    assert_eq!(queue_wait_timeout(JobPriority::Background), None);
+    assert_eq!(queue_wait_timeout(JobPriority::Maintenance), None);
 }
 
 #[tokio::test]
@@ -706,16 +1117,16 @@ async fn dropping_active_reserved_call_releases_capacity() {
             &task_scheduler,
             request(41, "dropped-active-fence", JobPriority::Normal),
             |_lease| async move {
-                tokio::time::sleep(Duration::from_secs(300)).await;
+                std::future::pending::<()>().await;
                 Ok("never")
             },
         )
         .await
     });
-    wait_for_status(&pool, "dropped-active-fence", "active").await;
+    wait_for_reservation_status(&pool, "dropped-active-fence", "active").await;
     task.abort();
     let _ = task.await;
-    wait_for_status(&pool, "dropped-active-fence", "released").await;
+    wait_for_reservation_status(&pool, "dropped-active-fence", "released").await;
     let reason: String = sqlx::query_scalar(
         "SELECT terminal_reason FROM provider_reservations WHERE fence = 'dropped-active-fence'",
     )
@@ -728,7 +1139,7 @@ async fn dropping_active_reserved_call_releases_capacity() {
         .await
         .expect("subsequent reserve");
     assert!(
-        next.granted,
+        next.is_granted(),
         "dropped call must free capacity for the next reserve"
     );
 }
@@ -744,13 +1155,13 @@ async fn renew_failure_releases_capacity_without_wedging_domain() {
             &task_scheduler,
             request(51, "renew-fail-fence", JobPriority::Normal),
             |_lease| async move {
-                tokio::time::sleep(Duration::from_secs(300)).await;
+                std::future::pending::<()>().await;
                 Ok("never")
             },
         )
         .await
     });
-    wait_for_status(&pool, "renew-fail-fence", "active").await;
+    wait_for_reservation_status(&pool, "renew-fail-fence", "active").await;
     // Revoke the fence out from under the running call; the next renewal tick
     // must fail, drop the operation, and leave no active row behind.
     let reservation_id: String = sqlx::query_scalar(
@@ -782,7 +1193,7 @@ async fn renew_failure_releases_capacity_without_wedging_domain() {
         .reserve(request(52, "next-after-renew-fail", JobPriority::Normal))
         .await
         .expect("subsequent reserve");
-    assert!(next.granted, "renew failure must not wedge the domain");
+    assert!(next.is_granted(), "renew failure must not wedge the domain");
 }
 
 #[tokio::test]
@@ -821,7 +1232,10 @@ async fn reconcile_terminalizes_stale_quarantined_active_rows() {
         .reserve(request(62, "after-stale-recovery", JobPriority::Normal))
         .await
         .expect("subsequent reserve");
-    assert!(next.granted, "recovered capacity must be grantable again");
+    assert!(
+        next.is_granted(),
+        "recovered capacity must be grantable again"
+    );
 }
 
 #[tokio::test]
@@ -833,12 +1247,12 @@ async fn live_polling_waiter_is_not_expired_and_ages_up() {
         .reserve(request(71, "aging-holder-fence", JobPriority::Normal))
         .await
         .expect("holder grant");
-    assert!(held.granted);
+    assert!(held.is_granted());
     let waiter = scheduler
         .reserve(request(72, "aging-waiter-fence", JobPriority::Normal))
         .await
         .expect("waiter enqueue");
-    assert!(!waiter.granted);
+    assert!(!waiter.is_granted());
     // Simulate a waiter that has been queued (and polling) past WAIT_TIMEOUT:
     // insertion age 40s, last poll long ago.
     sqlx::query(
@@ -847,27 +1261,27 @@ async fn live_polling_waiter_is_not_expired_and_ages_up() {
              renewed_at = datetime('now', '-40 seconds')
          WHERE reservation_id = ?",
     )
-    .bind(&waiter.reservation_id)
+    .bind(waiter.reservation_id())
     .execute(&pool)
     .await
     .expect("age waiter row");
     // One grant poll refreshes the liveness heartbeat without touching the
     // aging clock.
     let polled = scheduler
-        .try_grant_existing(&waiter.reservation_id)
+        .try_grant_existing(waiter.reservation_id())
         .await
         .expect("poll");
-    assert!(!polled.granted);
+    assert!(!polled.is_granted());
     // A third party's reserve() runs abandonment expiry and priority aging.
     let third = scheduler
         .reserve(request(73, "aging-third-fence", JobPriority::Normal))
         .await
         .expect("third-party reserve");
-    assert!(!third.granted);
+    assert!(!third.is_granted());
     let (status, effective_priority): (String, String) = sqlx::query_as(
         "SELECT status, effective_priority FROM provider_reservations WHERE reservation_id = ?",
     )
-    .bind(&waiter.reservation_id)
+    .bind(waiter.reservation_id())
     .fetch_one(&pool)
     .await
     .expect("waiter row");
@@ -880,7 +1294,7 @@ async fn live_polling_waiter_is_not_expired_and_ages_up() {
         "a 40s-old normal-priority waiter must age up one level"
     );
     scheduler
-        .complete(&held.reservation_id, "aging-holder-fence")
+        .complete(held.reservation_id(), "aging-holder-fence")
         .await
         .expect("release holder");
 }
@@ -992,9 +1406,12 @@ async fn every_provider_kind_passes_the_reservation_check_constraint() {
             .unwrap_or_else(|error| {
                 panic!("reserve must pass the provider_kind CHECK for {kind:?}: {error:?}")
             });
-        assert!(grant.granted, "reservation for {kind:?} must be granted");
+        assert!(
+            grant.is_granted(),
+            "reservation for {kind:?} must be granted"
+        );
         scheduler
-            .complete(&grant.reservation_id, &format!("fence-registry-{index}"))
+            .complete(grant.reservation_id(), &format!("fence-registry-{index}"))
             .await
             .expect("completion");
     }

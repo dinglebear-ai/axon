@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "allowed_spdx": ["CC0-1.0"],
+  "prohibited_markers": [
+    "all rights reserved",
+    "licensed for internal use only",
+    "do not redistribute"
+  ]
+}

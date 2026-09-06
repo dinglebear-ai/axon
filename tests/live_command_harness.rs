@@ -107,15 +107,15 @@ fn worktree_fingerprint_batches_hashing_and_detects_mutations() {
         fs::canonicalize("scripts/lib/live-cli-reporting.sh").expect("canonical reporting helper");
     let helper = fs::read_to_string(&helper_path).expect("read reporting helper");
     assert!(
-        helper.contains("xargs -0 -r sha256sum -z --"),
-        "regular files must be hashed in batches"
+        helper.contains("for block in iter(lambda: stream.read(1024 * 1024)"),
+        "regular files must be hashed in bounded batches"
     );
     assert!(
         !helper.contains("sha256sum -- \"$path\""),
         "the fingerprint must not spawn one sha256sum process per file"
     );
     assert!(
-        helper.contains("git ls-files -co --exclude-standard -z -- \"${pathspec[@]}\""),
+        helper.contains("git ls-files -co --exclude-standard -z -- \"$@\""),
         "the fingerprint must support a scoped pathspec for concurrent harness runs"
     );
 
@@ -294,6 +294,7 @@ fi
         !calls.contains(&poison.display().to_string()) && !calls.contains("poison.invalid"),
         "poisoned caller state leaked into isolated commands:\n{calls}"
     );
+    let results = fs::canonicalize(&results).expect("canonical results path");
     let command_workdir = format!("cwd={}/command-workdir", results.display());
     assert!(
         calls.lines().all(|line| line.contains(&command_workdir)),
@@ -372,7 +373,7 @@ fn scenario_mode_rejects_explicit_data_dir_outside_harness_tree() {
     let output = Command::new("bash")
         .arg("scripts/live-test-all-commands.sh")
         .args(["--mode", "scenarios"])
-        .env("AXON_BIN", "/bin/true")
+        .env("AXON_BIN", "/usr/bin/true")
         .env("AXON_COMMAND_REGISTRY", &registry)
         .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
         .env("AXON_LIVE_DATA_DIR", temp.path().join("production-state"))
@@ -551,15 +552,8 @@ exit 7
         bin_dir.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let output = Command::new("timeout")
-        .args([
-            "--kill-after=2",
-            "30",
-            "bash",
-            "scripts/live-test-all-commands.sh",
-            "--mode",
-            "scenarios",
-        ])
+    let output = Command::new("bash")
+        .args(["scripts/live-test-all-commands.sh", "--mode", "scenarios"])
         .env("PATH", path)
         .env("AXON_BIN", &fake_axon)
         .env("AXON_COMMAND_REGISTRY", &registry)
@@ -864,11 +858,13 @@ artifact_fixture_id=""
 artifact_fixture_second_id=""
 artifact_fixture_error="artifact fixture was not prepared"
 source scripts/lib/live-cli-scenarios-resources.sh
+source scripts/lib/live-cli-portability.sh
+install_live_cli_portability_shims
 if ensure_artifact_fixture; then exit 9; fi
 printf '%s\n' "$artifact_fixture_error"
 "#;
-    let output = Command::new("timeout")
-        .args(["5", "bash", "-c", shell])
+    let output = Command::new("bash")
+        .args(["-c", shell])
         .env("AXON_BIN", &fake_axon)
         .env("OUTDIR", &outdir)
         .env("TIMEOUT_SECS", "1")

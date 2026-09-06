@@ -65,9 +65,15 @@ impl ProgressUpdate {
 
     /// Materialize this update into a `status=running`, `severity=info`
     /// `SourceProgressEvent` for `job_id`/`phase`.
-    pub fn into_event(self, job_id: JobId, phase: PipelinePhase) -> SourceProgressEvent {
+    pub fn into_event(
+        self,
+        job_id: JobId,
+        attempt: u32,
+        phase: PipelinePhase,
+    ) -> SourceProgressEvent {
         let mut event = crate::event::base_event(
             job_id,
+            attempt,
             phase,
             LifecycleStatus::Running,
             Severity::Info,
@@ -86,6 +92,7 @@ impl ProgressUpdate {
 /// for the common "counts only" progress tick.
 pub fn counts_update(
     job_id: JobId,
+    attempt: u32,
     phase: PipelinePhase,
     stage_id: Option<StageId>,
     counts: StageCounts,
@@ -93,7 +100,7 @@ pub fn counts_update(
 ) -> SourceProgressEvent {
     let mut update = ProgressUpdate::new(message).with_counts(counts);
     update.stage_id = stage_id;
-    update.into_event(job_id, phase)
+    update.into_event(job_id, attempt, phase)
 }
 
 #[cfg(test)]

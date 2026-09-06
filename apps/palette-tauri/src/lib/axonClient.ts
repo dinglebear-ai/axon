@@ -18,6 +18,8 @@ import { invoke } from "./invoke";
 export interface PaletteConfig {
   serverUrl: string;
   token?: string | null;
+  backendProfiles?: import("./backendProfiles/model").BackendProfile[];
+  activeBackendProfiles?: Partial<Record<import("./backendProfiles/model").BackendProduct, string>>;
   shortcut: string;
   collection: string;
   resultLimit: number;

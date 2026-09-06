@@ -6,8 +6,7 @@
 //! [`Config`] so long-lived processes (`serve`, `mcp`) carry a working target
 //! local-source runtime.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axon_adapters::boundary::{FetchProvider, RenderProvider};
@@ -30,16 +29,23 @@ use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
 use axon_jobs::embedding_cache_store::SqliteEmbeddingVectorCacheStore;
-use axon_jobs::scheduler::SqliteWriteGate;
+use axon_jobs::scheduler::{ProviderScheduler, SqliteWriteGate};
 use axon_ledger::sqlite::SqliteLedgerStore;
-use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
 use tokio::sync::{Semaphore, watch};
 
+mod embedding_identity_cache;
 mod read_stores;
 mod schedulers;
 
+#[cfg(test)]
+pub(crate) use embedding_identity_cache::abort_embedding_identity_probe;
+pub use embedding_identity_cache::invalidate_embedding_identity_cache;
+pub(crate) use embedding_identity_cache::{
+    resolve_embedding_identity, resolve_embedding_identity_with_pool,
+};
+use read_stores::build_qdrant_store;
 pub use read_stores::{TargetReadStores, build_read_stores_from_config};
 #[cfg(test)]
 use schedulers::scheduler_authority_id;
@@ -66,7 +72,7 @@ fn build_tei_provider(cfg: &Config, identity: &EmbeddingIdentity) -> TeiEmbeddin
         max_concurrent_requests: cfg.embed_tei_max_concurrent,
         max_in_flight_inputs: cfg.embed_tei_max_in_flight_inputs,
         max_input_tokens: MAX_INPUT_TOKENS,
-        max_batch_tokens: tei_client_max_batch_tokens(),
+        max_batch_tokens: cfg.embed_tei_max_batch_tokens,
         instruction_support: query_instruction_support(cfg),
         retry_backoff_ms: cfg.embed_tei_retry_backoff_ms,
         max_attempts: tei_max_attempts(cfg),
@@ -96,198 +102,64 @@ fn query_instruction_support(cfg: &Config) -> InstructionSupport {
 /// Resolved embedding model + dimensions used to size the collection, seed the
 /// provider, and stamp vector payloads.
 #[derive(Debug, Clone)]
-struct EmbeddingIdentity {
-    model: String,
-    dimensions: u32,
-    verified: bool,
+pub(crate) struct EmbeddingIdentity {
+    pub(crate) model: String,
+    pub(crate) dimensions: u32,
+    pub(crate) verified: bool,
 }
 
-#[derive(Debug, Clone)]
-struct CachedEmbeddingIdentity {
-    identity: EmbeddingIdentity,
-    expires_at: Instant,
+pub(crate) struct VerifiedEmbeddingPlane {
+    pub(crate) provider: Arc<dyn EmbeddingProvider>,
+    pub(crate) identity: EmbeddingIdentity,
 }
 
-#[derive(Default)]
-struct EmbeddingIdentityCache {
-    entries: HashMap<String, CachedEmbeddingIdentity>,
-    in_flight: HashMap<String, watch::Sender<Option<EmbeddingIdentity>>>,
+struct DeferredEmbeddingProvider {
+    receiver: watch::Receiver<Option<Arc<VerifiedEmbeddingPlane>>>,
 }
 
-static EMBEDDING_IDENTITY_CACHE: OnceLock<Mutex<EmbeddingIdentityCache>> = OnceLock::new();
+#[async_trait::async_trait]
+impl EmbeddingProvider for DeferredEmbeddingProvider {
+    async fn embed(
+        &self,
+        batch: axon_api::source::EmbeddingBatch,
+    ) -> Result<axon_api::source::EmbeddingResult, axon_api::source::ApiError> {
+        wait_for_verified_plane(self.receiver.clone())
+            .await?
+            .provider
+            .embed(batch)
+            .await
+    }
+
+    async fn capabilities(
+        &self,
+    ) -> Result<axon_api::source::ProviderCapability, axon_api::source::ApiError> {
+        wait_for_verified_plane(self.receiver.clone())
+            .await?
+            .provider
+            .capabilities()
+            .await
+    }
+}
+
+async fn wait_for_verified_plane(
+    mut receiver: watch::Receiver<Option<Arc<VerifiedEmbeddingPlane>>>,
+) -> Result<Arc<VerifiedEmbeddingPlane>, axon_api::source::ApiError> {
+    loop {
+        if let Some(plane) = receiver.borrow().clone() {
+            return Ok(plane);
+        }
+        receiver.changed().await.map_err(|_| {
+            axon_api::source::ApiError::new(
+                "embedding.identity_unavailable",
+                axon_error::ErrorStage::Embedding,
+                "embedding identity verification task stopped",
+            )
+        })?;
+    }
+}
+
 const EMBEDDING_IDENTITY_CACHE_TTL: Duration = Duration::from_secs(30);
 const EMBEDDING_IDENTITY_FALLBACK_TTL: Duration = Duration::from_secs(5);
-const EMBEDDING_IDENTITY_DURABLE_TTL: Duration = Duration::from_secs(30 * 60);
-
-/// Resolve the embedding model + dimensions from the live TEI endpoint (`/info`
-/// for `model_id`, a probe embed for dimensions). Builds a probe provider seeded
-/// with the fallback identity purely to issue the derivation requests. Falls
-/// back to the configured defaults when the provider is unreachable, so a
-/// fire-and-forget CLI enqueue or an offline TEI never blocks store construction.
-async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
-    let cache_key = embedding_identity_cache_key(cfg);
-    let receiver = match claim_embedding_identity_resolution(&cache_key, cfg.clone()) {
-        IdentityResolutionClaim::Cached(identity) => return identity,
-        IdentityResolutionClaim::Wait(receiver) => receiver,
-    };
-    wait_for_embedding_identity(receiver).await
-}
-
-/// Resolve TEI identity with a process-independent SQLite cache. Short-lived
-/// CLI reads therefore pay the `/info` + probe-embed cost only when the cache
-/// is cold, while long-lived processes retain the faster in-memory singleflight
-/// above. Fallback identities are deliberately never persisted.
-async fn resolve_embedding_identity_with_pool(
-    cfg: &Config,
-    pool: &SqlitePool,
-) -> EmbeddingIdentity {
-    let cache_key = embedding_identity_cache_key(cfg);
-    if let Some(identity) = load_durable_embedding_identity(pool, &cache_key).await {
-        return identity;
-    }
-
-    let identity = resolve_embedding_identity(cfg).await;
-    if identity.verified
-        && let Err(error) = persist_durable_embedding_identity(pool, &cache_key, &identity).await
-    {
-        tracing::warn!(%error, "failed to persist verified embedding identity cache");
-    }
-    identity
-}
-
-async fn load_durable_embedding_identity(
-    pool: &SqlitePool,
-    cache_key: &str,
-) -> Option<EmbeddingIdentity> {
-    let ttl_ms = i64::try_from(EMBEDDING_IDENTITY_DURABLE_TTL.as_millis()).unwrap_or(i64::MAX);
-    let cutoff = chrono::Utc::now().timestamp_millis().saturating_sub(ttl_ms);
-    let row = sqlx::query_as::<_, (String, i64)>(
-        "SELECT model, dimensions FROM provider_identity_cache \
-         WHERE cache_key = ? AND provider_kind = 'embedding' AND updated_at >= ?",
-    )
-    .bind(cache_key)
-    .bind(cutoff)
-    .fetch_optional(pool)
-    .await;
-
-    match row {
-        Ok(Some((model, dimensions))) => {
-            let dimensions = u32::try_from(dimensions).ok()?;
-            (!model.trim().is_empty() && dimensions > 0).then_some(EmbeddingIdentity {
-                model,
-                dimensions,
-                verified: true,
-            })
-        }
-        Ok(None) => None,
-        Err(error) => {
-            tracing::warn!(%error, "failed to read durable embedding identity cache");
-            None
-        }
-    }
-}
-
-async fn persist_durable_embedding_identity(
-    pool: &SqlitePool,
-    cache_key: &str,
-    identity: &EmbeddingIdentity,
-) -> Result<(), sqlx::Error> {
-    debug_assert!(identity.verified);
-    sqlx::query(
-        "INSERT INTO provider_identity_cache \
-         (cache_key, provider_kind, provider_id, model, dimensions, updated_at) \
-         VALUES (?, 'embedding', ?, ?, ?, ?) \
-         ON CONFLICT(cache_key) DO UPDATE SET \
-           provider_kind = excluded.provider_kind, \
-           provider_id = excluded.provider_id, \
-           model = excluded.model, \
-           dimensions = excluded.dimensions, \
-           updated_at = excluded.updated_at",
-    )
-    .bind(cache_key)
-    .bind(EMBEDDING_PROVIDER_ID)
-    .bind(&identity.model)
-    .bind(i64::from(identity.dimensions))
-    .bind(chrono::Utc::now().timestamp_millis())
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
-/// Invalidate the cached identity and any negative result for this exact TEI
-/// configuration. Configuration reload callers can use this after changing a
-/// model or endpoint instead of waiting for the bounded TTL to elapse.
-pub fn invalidate_embedding_identity_cache(cfg: &Config) {
-    let key = embedding_identity_cache_key(cfg);
-    if let Ok(mut cache) = embedding_identity_cache().lock() {
-        cache.entries.remove(&key);
-    }
-}
-
-enum IdentityResolutionClaim {
-    Cached(EmbeddingIdentity),
-    Wait(watch::Receiver<Option<EmbeddingIdentity>>),
-}
-
-/// Atomically return a cached identity or join/create the one probe currently
-/// allowed for a configuration key. The actual probe is detached from callers:
-/// cancelling one query cannot strand the other callers behind its request.
-fn claim_embedding_identity_resolution(key: &str, cfg: Config) -> IdentityResolutionClaim {
-    let mut cache = embedding_identity_cache()
-        .lock()
-        .expect("embedding identity cache mutex poisoned");
-    if let Some(entry) = cache.entries.get(key) {
-        if entry.expires_at > Instant::now() {
-            return IdentityResolutionClaim::Cached(entry.identity.clone());
-        }
-    }
-    cache.entries.remove(key);
-    if let Some(sender) = cache.in_flight.get(key) {
-        return IdentityResolutionClaim::Wait(sender.subscribe());
-    }
-
-    let (sender, receiver) = watch::channel(None);
-    cache.in_flight.insert(key.to_string(), sender);
-    spawn_embedding_identity_probe(key.to_string(), cfg);
-    IdentityResolutionClaim::Wait(receiver)
-}
-
-fn spawn_embedding_identity_probe(cache_key: String, cfg: Config) {
-    tokio::spawn(async move {
-        let (identity, ttl) = derive_embedding_identity(&cfg).await;
-        let sender = {
-            let mut cache = embedding_identity_cache()
-                .lock()
-                .expect("embedding identity cache mutex poisoned");
-            cache.entries.insert(
-                cache_key.clone(),
-                CachedEmbeddingIdentity {
-                    identity: identity.clone(),
-                    expires_at: Instant::now() + ttl,
-                },
-            );
-            cache.in_flight.remove(&cache_key)
-        };
-        if let Some(sender) = sender {
-            sender.send_replace(Some(identity));
-        }
-    });
-}
-
-async fn wait_for_embedding_identity(
-    mut receiver: watch::Receiver<Option<EmbeddingIdentity>>,
-) -> EmbeddingIdentity {
-    loop {
-        if let Some(identity) = receiver.borrow().clone() {
-            return identity;
-        }
-        receiver
-            .changed()
-            .await
-            .expect("embedding identity probe sender dropped before publishing a result");
-    }
-}
-
 async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration) {
     let probe = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
         endpoint: cfg.tei_url.clone(),
@@ -298,7 +170,7 @@ async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration
         max_concurrent_requests: cfg.embed_tei_max_concurrent,
         max_in_flight_inputs: cfg.embed_tei_max_in_flight_inputs,
         max_input_tokens: MAX_INPUT_TOKENS,
-        max_batch_tokens: tei_client_max_batch_tokens(),
+        max_batch_tokens: cfg.embed_tei_max_batch_tokens,
         instruction_support: query_instruction_support(cfg),
         retry_backoff_ms: cfg.embed_tei_retry_backoff_ms,
         max_attempts: tei_max_attempts(cfg),
@@ -348,10 +220,6 @@ fn embedding_identity_cache_key(cfg: &Config) -> String {
     )
 }
 
-fn embedding_identity_cache() -> &'static Mutex<EmbeddingIdentityCache> {
-    EMBEDDING_IDENTITY_CACHE.get_or_init(|| Mutex::new(EmbeddingIdentityCache::default()))
-}
-
 /// Provider id for the target local-source embedding provider.
 const EMBEDDING_PROVIDER_ID: &str = "target-local-embed";
 /// Provider identity returned by the TEI adapter and persisted in cache rows.
@@ -366,34 +234,15 @@ const EMBEDDING_MODEL_FALLBACK: &str = "Qwen3-Embedding-0.6B";
 const EMBEDDING_DIMENSIONS_FALLBACK: u32 = 1024;
 /// Max input tokens per embedding request (mirrors the provider capability).
 const MAX_INPUT_TOKENS: u32 = 8192;
-/// Max tokens pooled into one TEI embed batch.
-const MAX_BATCH_TOKENS: u32 = 65_536;
-
-fn tei_client_max_batch_tokens() -> u32 {
-    let configured = std::env::var("AXON_TEI_CLIENT_MAX_BATCH_TOKENS").ok();
-    tei_client_max_batch_tokens_from_value(configured.as_deref())
-}
-
-fn tei_client_max_batch_tokens_from_value(value: Option<&str>) -> u32 {
-    value
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(MAX_BATCH_TOKENS)
-        .clamp(MAX_INPUT_TOKENS, 1_048_576)
-}
-
 struct EmbeddingComposition {
     provider: Arc<dyn EmbeddingProvider>,
-    #[cfg(test)]
-    cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
-    write_gate: SqliteWriteGate,
 }
 
 fn build_embedding_composition(
     cfg: &Config,
-    pool: &SqlitePool,
     identity: &EmbeddingIdentity,
+    cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
 ) -> EmbeddingComposition {
-    let write_gate = SqliteWriteGate::default();
     let raw_provider: Arc<dyn EmbeddingProvider> = Arc::new(build_tei_provider(cfg, identity));
     // The cache key and per-hit identity re-validation are only as good as the
     // resolved identity. An unverified (fallback or stale) identity could label
@@ -407,13 +256,7 @@ fn build_embedding_composition(
              against the TEI provider; using the raw provider without cache decoration"
         );
     }
-    let cache_store = (cfg.embed_cache_enabled && identity.verified).then(|| {
-        Arc::new(SqliteEmbeddingVectorCacheStore::new(
-            pool.clone(),
-            write_gate.clone(),
-            cfg.embed_cache_max_entries,
-        ))
-    });
+    let cache_store = identity.verified.then_some(cache_store).flatten();
     let provider: Arc<dyn EmbeddingProvider> = match &cache_store {
         Some(store) => Arc::new(CachedEmbeddingProvider::new(
             raw_provider,
@@ -427,12 +270,166 @@ fn build_embedding_composition(
         )),
         None => raw_provider,
     };
-    EmbeddingComposition {
-        provider,
+    EmbeddingComposition { provider }
+}
+
+async fn build_target_runtime(
+    cfg: Config,
+    jobs: Arc<dyn JobStore>,
+    pool: SqlitePool,
+) -> Result<TargetLocalSourceRuntime, Box<dyn std::error::Error + Send + Sync>> {
+    // The composed migrations prepare ledger tables in this shared job-runtime pool.
+    let db_stage_slots = Arc::new(Semaphore::new(source_db_stage_capacity(&pool)));
+    let ledger: Arc<dyn axon_ledger::store::LedgerStore> = Arc::new(DbLimitedLedgerStore::new(
+        Arc::new(SqliteLedgerStore::from_pool(pool.clone())),
+        Arc::clone(&db_stage_slots),
+    ));
+
+    let sqlite_write_gate = SqliteWriteGate::default();
+    let embedding_cache_store = cfg.embed_cache_enabled.then(|| {
+        Arc::new(SqliteEmbeddingVectorCacheStore::new(
+            pool.clone(),
+            sqlite_write_gate.clone(),
+            cfg.embed_cache_max_entries,
+        ))
+    });
+    let (verified_sender, verified_embedding) = watch::channel(None);
+    let identity_cfg = cfg.clone();
+    let identity_pool = pool.clone();
+    let identity_cache_store = embedding_cache_store.clone();
+    tokio::spawn(async move {
+        let identity = resolve_embedding_identity_with_pool(&identity_cfg, &identity_pool).await;
+        let composition =
+            build_embedding_composition(&identity_cfg, &identity, identity_cache_store);
+        verified_sender.send_replace(Some(Arc::new(VerifiedEmbeddingPlane {
+            provider: composition.provider,
+            identity,
+        })));
+    });
+    let embedding_provider: Arc<dyn EmbeddingProvider> = Arc::new(DeferredEmbeddingProvider {
+        receiver: verified_embedding.clone(),
+    });
+
+    let vector_store = build_qdrant_store(&cfg)?;
+
+    let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
+    let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
+    let RuntimeSchedulers {
+        embedding: embedding_scheduler,
+        vector: vector_scheduler,
+        fetch: fetch_scheduler,
+        render: render_scheduler,
+        parse: parse_scheduler,
+        graph: graph_scheduler,
+        artifact: artifact_scheduler,
+    } = build_runtime_schedulers(
+        &cfg,
+        &pool,
+        &embedding_provider_id,
+        &vector_provider_id,
+        sqlite_write_gate.clone(),
+    )
+    .await?;
+
+    let (fetch_provider, render_provider, web_source_adapter) =
+        build_scheduled_web_boundaries(&cfg, fetch_scheduler, render_scheduler);
+    let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
+    let document_cache = crate::source::document_cache::InProcessDocumentCache::new();
+    let artifact_candidate_sink = artifact_candidate_sink_from_env()?;
+    let artifact_candidate_outbox = Arc::new(
+        crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(
+            cfg.output_dir.join("artifact-candidate-outbox"),
+        ),
+    );
+
+    let runtime = TargetLocalSourceRuntime {
+        jobs,
+        ledger,
+        embedding_provider,
+        vector_store: Arc::new(vector_store),
+        embedding_scheduler: Some(Arc::new(embedding_scheduler)),
+        vector_scheduler: Some(Arc::new(vector_scheduler)),
+        parse_scheduler: Some(Arc::new(parse_scheduler)),
+        graph_scheduler: Some(Arc::new(graph_scheduler)),
+        artifact_scheduler: Some(Arc::new(artifact_scheduler)),
         #[cfg(test)]
-        cache_store,
-        write_gate,
-    }
+        sqlite_write_gate,
+        #[cfg(test)]
+        embedding_cache_store,
+        embedding_provider_id,
+        vector_provider_id,
+        embedding_model: EMBEDDING_MODEL_FALLBACK.to_string(),
+        embedding_dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
+        verified_embedding,
+        document_preparer: DocumentPreparer::new(DocumentPreparerConfig {
+            markdown_max_chars: cfg.chunking_markdown_max_chars,
+            markdown_min_chars: cfg.chunking_markdown_min_chars,
+            markdown_overlap_chars: cfg.chunking_overlap_chars,
+        }),
+        document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
+        document_prepare_max_in_flight_bytes: cfg.embed_prep_max_in_flight_bytes,
+        embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
+        embed_prepared_byte_budget: cfg.embed_prepared_byte_budget.max(1),
+        document_batch_size: cfg.document_batch_size,
+        document_status_batch_size: cfg.document_status_batch_size,
+        embed_scheduler_enabled: cfg.embed_scheduler_enabled,
+        embed_scheduler_flush_delay: Duration::from_millis(cfg.embed_scheduler_flush_ms),
+        vector_upsert_embed_overlap: cfg.vector_upsert_embed_overlap,
+        db_stage_slots,
+        fetch_provider,
+        render_provider,
+        web_source_adapter,
+        artifact_store: Arc::new(artifact_store),
+        document_cache: Arc::new(document_cache),
+        artifact_candidate_sink,
+        artifact_candidate_outbox: Some(artifact_candidate_outbox),
+        source_adapters: Arc::new(tokio::sync::OnceCell::new()),
+        enricher: Arc::new(NoopSourceEnricher::new()),
+    };
+    crate::reserved_call::replay_artifact_cleanup_journals(&runtime).await;
+    Ok(runtime)
+}
+
+fn build_scheduled_web_boundaries(
+    cfg: &Config,
+    fetch_scheduler: ProviderScheduler,
+    render_scheduler: ProviderScheduler,
+) -> (
+    Arc<dyn FetchProvider>,
+    Arc<dyn RenderProvider>,
+    Arc<dyn SourceAdapter>,
+) {
+    let raw_fetch_provider: Arc<dyn FetchProvider> =
+        Arc::new(HttpFetchProvider::new(HttpFetchConfig {
+            timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
+            max_bytes: cfg.max_page_bytes,
+            // General-purpose HTTP fetch boundary — use the general `user_agent`,
+            // not the Chrome-specific `chrome_user_agent` (which itself falls
+            // back to `user_agent`, not the other way around; see doc comments
+            // on both fields in `axon-core/src/config/types/config.rs`).
+            user_agent: cfg.user_agent.clone(),
+        }));
+    let raw_render_provider: Arc<dyn RenderProvider> =
+        Arc::new(ChromeRenderProvider::new(ChromeRenderConfig {
+            max_concurrent_pages: Some(cfg.render_provider_concurrency),
+            chrome_remote_url: cfg.chrome_remote_url.clone(),
+            default_timeout_ms: cfg.request_timeout_ms,
+        }));
+    let fetch_provider: Arc<dyn FetchProvider> = Arc::new(ScheduledFetchProvider::new(
+        raw_fetch_provider,
+        Arc::new(fetch_scheduler),
+        HTTP_FETCH_PROVIDER_ID,
+    ));
+    let render_provider: Arc<dyn RenderProvider> = Arc::new(ScheduledRenderProvider::new(
+        raw_render_provider,
+        Arc::new(render_scheduler),
+        CHROME_RENDER_PROVIDER_ID,
+    ));
+    let web_source_adapter: Arc<dyn SourceAdapter> = Arc::new(WebSourceAdapter::new(
+        Arc::clone(&fetch_provider),
+        Arc::clone(&render_provider),
+    ));
+    (fetch_provider, render_provider, web_source_adapter)
 }
 
 impl TargetLocalSourceRuntime {
@@ -452,130 +449,15 @@ impl TargetLocalSourceRuntime {
         jobs: Arc<dyn JobStore>,
         pool: SqlitePool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // The ledger binds to the SAME pool as the JobStore (one runtime DB), so
-        // `jobs.source_id` FKs to `sources(source_id)`. The contract tables are
-        // created by the composed cross-crate migration runner
-        // (`axon_jobs::migrations::apply_all_migrations`), which applies
-        // axon-ledger's own migration set FIRST against this pool; no separate
-        // migration here.
-        let db_stage_slots = Arc::new(Semaphore::new(source_db_stage_capacity(&pool)));
-        let ledger: Arc<dyn axon_ledger::store::LedgerStore> = Arc::new(DbLimitedLedgerStore::new(
-            Arc::new(SqliteLedgerStore::from_pool(pool.clone())),
-            Arc::clone(&db_stage_slots),
-        ));
+        build_target_runtime(cfg.clone(), jobs, pool).await
+    }
 
-        let identity = resolve_embedding_identity_with_pool(cfg, &pool).await;
-        let EmbeddingComposition {
-            provider: embedding_provider,
-            #[cfg(test)]
-                cache_store: embedding_cache_store,
-            write_gate: sqlite_write_gate,
-        } = build_embedding_composition(cfg, &pool, &identity);
-
-        let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
-        axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
-        axon_vectors::qdrant::configure_parallelism(
-            &mut vector_store,
-            axon_core::config::parse::tuning::qdrant_upsert_parallelism(),
-            axon_core::config::parse::tuning::qdrant_payload_index_parallelism(),
-        );
-
-        let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
-        let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
-        let RuntimeSchedulers {
-            embedding: embedding_scheduler,
-            vector: vector_scheduler,
-            fetch: fetch_scheduler,
-            render: render_scheduler,
-            parse: parse_scheduler,
-            graph: graph_scheduler,
-            artifact: artifact_scheduler,
-        } = build_runtime_schedulers(
-            cfg,
-            &pool,
-            &embedding_provider_id,
-            &vector_provider_id,
-            sqlite_write_gate.clone(),
-        )
-        .await?;
-
-        let raw_fetch_provider: Arc<dyn FetchProvider> =
-            Arc::new(HttpFetchProvider::new(HttpFetchConfig {
-                timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
-                max_bytes: cfg.max_page_bytes,
-                // General-purpose HTTP fetch boundary — use the general `user_agent`,
-                // not the Chrome-specific `chrome_user_agent` (which itself falls
-                // back to `user_agent`, not the other way around; see doc comments
-                // on both fields in `axon-core/src/config/types/config.rs`).
-                user_agent: cfg.user_agent.clone(),
-            }));
-        let raw_render_provider: Arc<dyn RenderProvider> =
-            Arc::new(ChromeRenderProvider::new(ChromeRenderConfig {
-                max_concurrent_pages: Some(cfg.render_provider_concurrency),
-                chrome_remote_url: cfg.chrome_remote_url.clone(),
-                default_timeout_ms: cfg.request_timeout_ms,
-            }));
-        let fetch_provider: Arc<dyn FetchProvider> = Arc::new(ScheduledFetchProvider::new(
-            raw_fetch_provider,
-            Arc::new(fetch_scheduler),
-            HTTP_FETCH_PROVIDER_ID,
-        ));
-        let render_provider: Arc<dyn RenderProvider> = Arc::new(ScheduledRenderProvider::new(
-            raw_render_provider,
-            Arc::new(render_scheduler),
-            CHROME_RENDER_PROVIDER_ID,
-        ));
-        let web_fetch_provider = Arc::clone(&fetch_provider);
-        let web_render_provider = Arc::clone(&render_provider);
-        let web_source_adapter: Arc<dyn SourceAdapter> = Arc::new(WebSourceAdapter::new(
-            web_fetch_provider,
-            web_render_provider,
-        ));
-        let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
-        let document_cache = crate::source::document_cache::InProcessDocumentCache::new();
-        let artifact_candidate_sink = artifact_candidate_sink_from_env()?;
-        let artifact_candidate_outbox = Arc::new(
-            crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(
-                cfg.output_dir.join("artifact-candidate-outbox"),
-            ),
-        );
-
-        Ok(Self {
-            jobs,
-            ledger,
-            embedding_provider,
-            vector_store: Arc::new(vector_store),
-            embedding_scheduler: Some(Arc::new(embedding_scheduler)),
-            vector_scheduler: Some(Arc::new(vector_scheduler)),
-            parse_scheduler: Some(Arc::new(parse_scheduler)),
-            graph_scheduler: Some(Arc::new(graph_scheduler)),
-            artifact_scheduler: Some(Arc::new(artifact_scheduler)),
-            #[cfg(test)]
-            sqlite_write_gate,
-            #[cfg(test)]
-            embedding_cache_store,
-            embedding_provider_id,
-            vector_provider_id,
-            embedding_model: identity.model,
-            embedding_dimensions: identity.dimensions,
-            document_preparer: DocumentPreparer::new(DocumentPreparerConfig {
-                markdown_max_chars: cfg.chunking_markdown_max_chars,
-                markdown_min_chars: cfg.chunking_markdown_min_chars,
-                markdown_overlap_chars: cfg.chunking_overlap_chars,
-            }),
-            document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
-            embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
-            db_stage_slots,
-            fetch_provider,
-            render_provider,
-            web_source_adapter,
-            artifact_store: Arc::new(artifact_store),
-            document_cache: Arc::new(document_cache),
-            artifact_candidate_sink,
-            artifact_candidate_outbox: Some(artifact_candidate_outbox),
-            source_adapters: Arc::new(tokio::sync::OnceCell::new()),
-            enricher: Arc::new(NoopSourceEnricher::new()),
-        })
+    pub(crate) async fn from_config_owned(
+        cfg: Config,
+        jobs: Arc<dyn JobStore>,
+        pool: SqlitePool,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        build_target_runtime(cfg, jobs, pool).await
     }
 }
 

@@ -4,7 +4,7 @@
 use axon_api::reset::TARGET_PAYLOAD_CONTRACT_VERSION;
 use axon_core::config::Config;
 use axon_core::http::http_client;
-use reqwest::StatusCode;
+use axon_vectors::qdrant::QdrantVectorStore;
 use serde_json::Value;
 use std::error::Error;
 
@@ -12,10 +12,6 @@ use std::error::Error;
 /// trimmed). Inlined here rather than pulled from the legacy `axon-vector`
 /// crate — `axon-vectors` has no equivalent free function, and this is a
 /// one-line derivation, not worth wrapping a whole `QdrantVectorStore` for.
-fn qdrant_base(cfg: &Config) -> &str {
-    cfg.qdrant_url.trim_end_matches('/')
-}
-
 /// Inventory of the configured Qdrant collection.
 #[derive(Debug, Clone, Default)]
 pub struct QdrantInventory {
@@ -51,50 +47,29 @@ impl QdrantInventory {
 /// Best-effort — an unreachable Qdrant yields `unreachable = true` with zeroed
 /// counts rather than an error, so planning/doctor degrade gracefully.
 pub async fn inventory(cfg: &Config) -> QdrantInventory {
-    let client = match http_client() {
-        Ok(c) => c,
-        Err(_) => {
-            return QdrantInventory {
-                unreachable: true,
-                ..Default::default()
-            };
-        }
-    };
-    let base = qdrant_base(cfg);
+    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant-reset");
     let collection = &cfg.collection;
-
-    let info_url = format!("{base}/collections/{collection}");
-    let resp = match client.get(&info_url).send().await {
-        Ok(r) => r,
+    let collection_info = match store.collection_info_json(collection).await {
+        Ok(Some(info)) => info,
+        Ok(None) => {
+            return QdrantInventory {
+                exists: false,
+                ..Default::default()
+            };
+        }
         Err(_) => {
             return QdrantInventory {
                 unreachable: true,
                 ..Default::default()
             };
         }
-    };
-    if resp.status() == StatusCode::NOT_FOUND {
-        return QdrantInventory {
-            exists: false,
-            ..Default::default()
-        };
-    }
-    if !resp.status().is_success() {
-        return QdrantInventory {
-            unreachable: true,
-            ..Default::default()
-        };
-    }
-    let Ok(collection_info) = resp.json::<Value>().await else {
-        return QdrantInventory {
-            exists: true,
-            unreachable: true,
-            ..Default::default()
-        };
     };
     let dense_dimension = collection_dense_dimension(&collection_info);
 
-    let Some(points) = collection_point_count(client, base, collection).await else {
+    let Ok(points) = store
+        .count_collection_points(collection, axon_error::ErrorStage::Planning)
+        .await
+    else {
         return QdrantInventory {
             exists: true,
             unreachable: true,
@@ -102,7 +77,7 @@ pub async fn inventory(cfg: &Config) -> QdrantInventory {
         };
     };
     let (payload_contract_versions, schema_incompatible) = if points > 0 {
-        match payload_contract_versions(client, base, collection).await {
+        match payload_contract_versions(&store, collection).await {
             Some(inventory) => inventory,
             None => {
                 return QdrantInventory {
@@ -138,32 +113,13 @@ fn collection_dense_dimension(info: &Value) -> Option<u64> {
     })
 }
 
-async fn collection_point_count(
-    client: &reqwest::Client,
-    base: &str,
-    collection: &str,
-) -> Option<u64> {
-    let url = format!("{base}/collections/{collection}/points/count");
-    let body = serde_json::json!({ "exact": true });
-    match client.post(&url).json(&body).send().await {
-        Ok(resp) if resp.status().is_success() => resp
-            .json::<Value>()
-            .await
-            .ok()
-            .and_then(|v| v.pointer("/result/count").and_then(Value::as_u64)),
-        _ => None,
-    }
-}
-
 /// Scroll every point and read its `payload_contract_version`. Compatibility
 /// is a collection-wide cutover invariant: sampling the first page can approve
 /// a collection that still contains legacy points later in the id order.
 async fn payload_contract_versions(
-    client: &reqwest::Client,
-    base: &str,
+    store: &QdrantVectorStore,
     collection: &str,
 ) -> Option<(Vec<String>, bool)> {
-    let url = format!("{base}/collections/{collection}/points/scroll");
     let mut scan = PayloadContractScan::default();
     let mut offset = None;
     let mut seen_offsets = std::collections::BTreeSet::new();
@@ -176,11 +132,15 @@ async fn payload_contract_versions(
         if let Some(current) = offset.take() {
             body["offset"] = current;
         }
-        let response = client.post(&url).json(&body).send().await.ok()?;
-        if !response.status().is_success() {
-            return None;
-        }
-        let page: Value = response.json().await.ok()?;
+        let page = store
+            .post_collection_json(
+                collection,
+                "points/scroll",
+                &body,
+                axon_error::ErrorStage::Planning,
+            )
+            .await
+            .ok()?;
         let points = page.pointer("/result/points")?.as_array()?;
         scan.observe(points);
         if points.is_empty() {
@@ -263,37 +223,25 @@ pub async fn probe_tei_dim(cfg: &Config) -> Option<u64> {
 /// Drop the configured collection (idempotent — a missing collection is a
 /// success). Returns true when a collection was actually deleted.
 pub async fn drop_collection(cfg: &Config) -> Result<bool, Box<dyn Error>> {
-    let client = http_client()?;
-    let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
-    let resp = client.delete(&url).send().await?;
-    if resp.status() == StatusCode::NOT_FOUND {
-        return Ok(false);
-    }
-    if !resp.status().is_success() {
-        return Err(format!(
-            "qdrant delete collection '{}' failed: {}",
-            cfg.collection,
-            resp.status()
-        )
-        .into());
-    }
-    Ok(true)
+    Ok(
+        QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant-reset")
+            .drop_collection(&cfg.collection)
+            .await?,
+    )
 }
 
 /// Create a fresh named-mode collection (dense + bm42 sparse) at `dim`. Mirrors
 /// the schema `axon migrate` writes so hybrid RRF search works immediately.
 pub async fn create_named_collection(cfg: &Config, dim: u64) -> Result<(), Box<dyn Error>> {
-    let client = http_client()?;
-    let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
-    client
-        .put(&url)
-        .json(&serde_json::json!({
-            "vectors": { "dense": { "size": dim, "distance": "Cosine" } },
-            "sparse_vectors": { "bm42": { "modifier": "idf" } }
-        }))
-        .send()
-        .await?
-        .error_for_status()?;
+    QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant-reset")
+        .create_collection_json(
+            &cfg.collection,
+            &serde_json::json!({
+                "vectors": { "dense": { "size": dim, "distance": "Cosine" } },
+                "sparse_vectors": { "bm42": { "modifier": "idf" } }
+            }),
+        )
+        .await?;
     Ok(())
 }
 

@@ -13,15 +13,12 @@
 //!
 //! ## Module layout
 //! ```text
-//! src/extract.rs         — this file (public API)
-//! src/extract/
-//!   context.rs           — VerticalContext (narrowed ServiceContext view)
-//!   error.rs             — VerticalError (re-export from a9l6 taxonomy)
-//!   types.rs             — ScrapedDoc, ExtractorInfo
-//!   verticals.rs         — declares all vertical sub-modules
-//!   verticals/
-//!     github_repo.rs     — reference extractor (di8j)
-//!     (more added by di8j / 25cu / jj43 / urk2 beads)
+//! src/lib.rs             — public API
+//! src/context.rs         — narrow extractor context
+//! src/error.rs           — vertical error taxonomy
+//! src/types.rs           — output and descriptor types
+//! src/verticals.rs       — vertical module declarations
+//! src/verticals/*.rs     — provider-specific implementations
 //! ```
 
 mod context;
@@ -30,6 +27,6 @@ mod git_payload;
 mod types;
 pub mod verticals;
 
-pub use context::VerticalContext;
+pub use context::{VerticalContext, VerticalCredentials};
 pub use error::VerticalError;
 pub use types::{ExtractorInfo, ScrapedDoc};

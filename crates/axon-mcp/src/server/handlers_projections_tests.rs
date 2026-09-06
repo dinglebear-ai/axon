@@ -38,24 +38,28 @@ async fn every_projection_handler_rejects_an_empty_batch_consistently() {
     let server = AxonMcpServer::new(axon_core::config::Config::default());
     let source_errors = [
         server
+            .clone()
             .handle_scrape_projection(ScrapeRequest {
                 inputs: vec![],
                 options: ScrapeOptions::default(),
             })
             .await,
         server
+            .clone()
             .handle_crawl_projection(CrawlRequest {
                 inputs: vec![],
                 options: CrawlOptions::default(),
             })
             .await,
         server
+            .clone()
             .handle_embed_projection(EmbedRequest {
                 inputs: vec![],
                 options: EmbedOptions::default(),
             })
             .await,
         server
+            .clone()
             .handle_ingest_projection(IngestRequest {
                 inputs: vec![],
                 options: IngestOptions::default(),
