@@ -974,18 +974,6 @@ export type components = {
             "json": boolean;
             "response_mode": components['schemas']['ResponseMode'];
         };
-        "Page_JobSummary": {
-            "items": components['schemas']['JobSummary'][];
-            "limit": number;
-            "next_cursor"?: string | null;
-            "total"?: number | null;
-        };
-        "Page_WatchSummary": {
-            "items": components['schemas']['WatchSummary'][];
-            "limit": number;
-            "next_cursor"?: string | null;
-            "total"?: number | null;
-        };
         "PageInfo": {
             "limit": number;
             "next_cursor"?: string | null;
@@ -1006,6 +994,23 @@ export type components = {
             "next_cursor"?: string | null;
             "total"?: number | null;
         };
+        "Page_JobSummary": {
+            "items": {
+            "counts"?: null | components['schemas']['StageCounts'];
+            "created_at": components['schemas']['Timestamp'];
+            "job_id": components['schemas']['JobId'];
+            "kind": components['schemas']['JobKind'];
+            "last_error"?: null | components['schemas']['SourceError'];
+            "phase": components['schemas']['PipelinePhase'];
+            "source_id"?: null | components['schemas']['SourceId'];
+            "status": components['schemas']['LifecycleStatus'];
+            "updated_at": components['schemas']['Timestamp'];
+            "watch_id"?: null | components['schemas']['WatchId'];
+        }[];
+            "limit": number;
+            "next_cursor"?: string | null;
+            "total"?: number | null;
+        };
         "Page_UploadStatus": {
             "items": {
             "artifact_id"?: null | components['schemas']['ArtifactId'];
@@ -1021,6 +1026,20 @@ export type components = {
             "source_ref"?: string | null;
             "status": components['schemas']['UploadStatusKind'];
             "upload_id": components['schemas']['UploadId'];
+        }[];
+            "limit": number;
+            "next_cursor"?: string | null;
+            "total"?: number | null;
+        };
+        "Page_WatchSummary": {
+            "items": {
+            "enabled": boolean;
+            "last_job_id"?: null | components['schemas']['JobId'];
+            "last_status"?: null | components['schemas']['LifecycleStatus'];
+            "next_run_at": components['schemas']['Timestamp'];
+            "schedule": components['schemas']['WatchSchedule'];
+            "source_id": components['schemas']['SourceId'];
+            "watch_id": components['schemas']['WatchId'];
         }[];
             "limit": number;
             "next_cursor"?: string | null;
@@ -1109,22 +1128,6 @@ export type components = {
         } | {
             "collection": string;
             "kind": "collection";
-        } | {
-            "artifact_id": components['schemas']['ArtifactId'];
-            "kind": "artifact";
-        } | {
-            "edge_id"?: null | components['schemas']['GraphEdgeId'];
-            "kind": "graph";
-            "node_id"?: null | components['schemas']['GraphNodeId'];
-        } | {
-            "kind": "memory";
-            "memory_id"?: null | components['schemas']['MemoryId'];
-        } | {
-            "kind": "job_retention";
-            "older_than_days": number;
-        } | {
-            "kind": "cache";
-            "older_than_days": number;
         };
         "PruneStep": {
             "description": string;

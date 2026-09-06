@@ -130,6 +130,11 @@
     "requiresAuth": true
   },
   {
+    "method": "GET",
+    "path": "/v1/reset/plans/{plan_id}",
+    "requiresAuth": true
+  },
+  {
     "method": "POST",
     "path": "/v1/reset/exec",
     "requiresAuth": true
@@ -377,6 +382,11 @@
   {
     "method": "POST",
     "path": "/v1/prune/plan",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/prune/plans/{plan_id}",
     "requiresAuth": true
   },
   {

@@ -2984,22 +2984,6 @@ export interface components {
             json: boolean;
             response_mode: components["schemas"]["ResponseMode"];
         };
-        Page_JobSummary: {
-            items: components["schemas"]["JobSummary"][];
-            /** Format: int32 */
-            limit: number;
-            next_cursor?: string | null;
-            /** Format: int64 */
-            total?: number | null;
-        };
-        Page_WatchSummary: {
-            items: components["schemas"]["WatchSummary"][];
-            /** Format: int32 */
-            limit: number;
-            next_cursor?: string | null;
-            /** Format: int64 */
-            total?: number | null;
-        };
         PageInfo: {
             /** Format: int32 */
             limit: number;
@@ -3025,6 +3009,25 @@ export interface components {
             /** Format: int64 */
             total?: number | null;
         };
+        Page_JobSummary: {
+            items: {
+                counts?: null | components["schemas"]["StageCounts"];
+                created_at: components["schemas"]["Timestamp"];
+                job_id: components["schemas"]["JobId"];
+                kind: components["schemas"]["JobKind"];
+                last_error?: null | components["schemas"]["SourceError"];
+                phase: components["schemas"]["PipelinePhase"];
+                source_id?: null | components["schemas"]["SourceId"];
+                status: components["schemas"]["LifecycleStatus"];
+                updated_at: components["schemas"]["Timestamp"];
+                watch_id?: null | components["schemas"]["WatchId"];
+            }[];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
         Page_UploadStatus: {
             items: {
                 artifact_id?: null | components["schemas"]["ArtifactId"];
@@ -3042,6 +3045,22 @@ export interface components {
                 source_ref?: string | null;
                 status: components["schemas"]["UploadStatusKind"];
                 upload_id: components["schemas"]["UploadId"];
+            }[];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
+        Page_WatchSummary: {
+            items: {
+                enabled: boolean;
+                last_job_id?: null | components["schemas"]["JobId"];
+                last_status?: null | components["schemas"]["LifecycleStatus"];
+                next_run_at: components["schemas"]["Timestamp"];
+                schedule: components["schemas"]["WatchSchedule"];
+                source_id: components["schemas"]["SourceId"];
+                watch_id: components["schemas"]["WatchId"];
             }[];
             /** Format: int32 */
             limit: number;
@@ -3182,29 +3201,6 @@ export interface components {
             collection: string;
             /** @enum {string} */
             kind: "collection";
-        } | {
-            artifact_id: components["schemas"]["ArtifactId"];
-            /** @enum {string} */
-            kind: "artifact";
-        } | {
-            edge_id?: null | components["schemas"]["GraphEdgeId"];
-            /** @enum {string} */
-            kind: "graph";
-            node_id?: null | components["schemas"]["GraphNodeId"];
-        } | {
-            /** @enum {string} */
-            kind: "memory";
-            memory_id?: null | components["schemas"]["MemoryId"];
-        } | {
-            /** @enum {string} */
-            kind: "job_retention";
-            /** Format: int32 */
-            older_than_days: number;
-        } | {
-            /** @enum {string} */
-            kind: "cache";
-            /** Format: int32 */
-            older_than_days: number;
         };
         /**
          * @description One ordered step in a prune plan. Steps follow the cleanup-debt execution

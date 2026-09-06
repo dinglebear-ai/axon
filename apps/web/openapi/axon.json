@@ -6552,16 +6552,6 @@
               }
             }
           },
-          "404": {
-            "description": "Plan not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or invalid authentication",
             "content": {
@@ -6574,6 +6564,16 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -7016,16 +7016,6 @@
               }
             }
           },
-          "404": {
-            "description": "Plan not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Missing or invalid authentication",
             "content": {
@@ -7038,6 +7028,16 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -14756,76 +14756,6 @@
         },
         "additionalProperties": false
       },
-      "Page_JobSummary": {
-        "type": "object",
-        "required": [
-          "items",
-          "limit"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/JobSummary"
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
-      "Page_WatchSummary": {
-        "type": "object",
-        "required": [
-          "items",
-          "limit"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WatchSummary"
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "total": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
       "PageInfo": {
         "type": "object",
         "required": [
@@ -14943,6 +14873,110 @@
         },
         "additionalProperties": false
       },
+      "Page_JobSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "job_id",
+                "kind",
+                "status",
+                "phase",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "counts": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StageCounts"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "job_id": {
+                  "$ref": "#/components/schemas/JobId"
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/JobKind"
+                },
+                "last_error": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SourceError"
+                    }
+                  ]
+                },
+                "phase": {
+                  "$ref": "#/components/schemas/PipelinePhase"
+                },
+                "source_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SourceId"
+                    }
+                  ]
+                },
+                "status": {
+                  "$ref": "#/components/schemas/LifecycleStatus"
+                },
+                "updated_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "watch_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WatchId"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "Page_UploadStatus": {
         "type": "object",
         "required": [
@@ -15028,6 +15062,86 @@
                 },
                 "upload_id": {
                   "$ref": "#/components/schemas/UploadId"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "Page_WatchSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "watch_id",
+                "source_id",
+                "enabled",
+                "schedule",
+                "next_run_at"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "last_job_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/JobId"
+                    }
+                  ]
+                },
+                "last_status": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LifecycleStatus"
+                    }
+                  ]
+                },
+                "next_run_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "schedule": {
+                  "$ref": "#/components/schemas/WatchSchedule"
+                },
+                "source_id": {
+                  "$ref": "#/components/schemas/SourceId"
+                },
+                "watch_id": {
+                  "$ref": "#/components/schemas/WatchId"
                 }
               },
               "additionalProperties": false
@@ -15515,127 +15629,6 @@
                 "enum": [
                   "collection"
                 ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Prune a single artifact by id (never by arbitrary path).",
-            "required": [
-              "artifact_id",
-              "kind"
-            ],
-            "properties": {
-              "artifact_id": {
-                "$ref": "#/components/schemas/ArtifactId"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "artifact"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Prune graph nodes/edges (orphan cleanup).",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "edge_id": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GraphEdgeId"
-                  }
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "graph"
-                ]
-              },
-              "node_id": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/GraphNodeId"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Prune (forget) memory records.",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "memory"
-                ]
-              },
-              "memory_id": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/MemoryId"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Job-retention cleanup older than N days.",
-            "required": [
-              "older_than_days",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "job_retention"
-                ]
-              },
-              "older_than_days": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Cache cleanup older than N days.",
-            "required": [
-              "older_than_days",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "cache"
-                ]
-              },
-              "older_than_days": {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
               }
             }
           }
