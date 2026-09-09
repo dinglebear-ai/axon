@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,66 @@ SPEC.loader.exec_module(adapter)
 
 
 class McpAdapterTests(unittest.TestCase):
+    def run_adapter(self, command, *envelopes):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for index, envelope in enumerate(envelopes):
+                path = Path(directory) / f"{index}.json"
+                path.write_text(json.dumps(envelope), encoding="utf-8")
+                paths.append(str(path))
+            return subprocess.run(
+                ["python3", str(ROOT / "scripts/e2e/adapters/mcp.py"), command, *paths],
+                capture_output=True, text=True, check=False,
+            )
+
+    def test_job_id_extraction_uses_source_envelope_not_artifact_id(self):
+        job_id = "49a32677-4005-4bd8-83b8-a41bfc093e72"
+        result = self.run_adapter("job-id", {
+            "ok": True, "action": "source", "job": {"id": job_id},
+            "data": {"response_mode": "path", "artifact": {"id": "not-a-job"}},
+        })
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(job_id, result.stdout.strip())
+
+    def test_job_id_extraction_rejects_missing_job_instead_of_artifact(self):
+        result = self.run_adapter("job-id", {
+            "ok": True, "action": "source", "artifacts": [{"id": "not-a-job"}],
+        })
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("", result.stdout)
+
+    def test_prune_verification_binds_saved_checksum_to_original_plan(self):
+        plan = {"job_id": "f0662dd7-ee80-4f72-8eff-5480b5b43c04",
+                "selector": {"kind": "collection", "collection": "axon_e2e_test"},
+                "estimated": {"vector_points": 0}, "steps": []}
+        original = {"ok": True, "action": "prune", "subaction": "plan",
+                    "data": {"response_mode": "auto-inline", "data": {"plan": plan, "result": None}}}
+        saved = {"ok": True, "action": "prune", "subaction": "get",
+                 "data": {"response_mode": "auto-inline", "data": {
+                     "plan": plan, "inventory_checksum": "a" * 64,
+                     "expires_at_utc": "2099-01-01T00:00:00Z"}}}
+        result = self.run_adapter("verify-plan", original, saved)
+        self.assertEqual(0, result.returncode, result.stderr)
+        scenario = next(item for item in adapter.scenarios() if item["id"] == "prune.plan.happy")
+        evidence = adapter.normalize(scenario, "http", json.loads(result.stdout))
+        self.assertEqual([], adapter.evaluate(scenario, evidence))
+        for invalid in (
+            saved | {"ok": False},
+            saved | {"data": {"data": {"plan": plan, "inventory_checksum": ""}}},
+            saved | {"data": {"data": {"plan": plan | {"steps": ["different"]}, "inventory_checksum": "a" * 64}}},
+        ):
+            with self.subTest(invalid=invalid):
+                rejected = self.run_adapter("verify-plan", original, invalid)
+                self.assertNotEqual(0, rejected.returncode)
+                self.assertEqual("", rejected.stdout)
+
+    def test_plan_id_alone_cannot_satisfy_digest_oracle(self):
+        scenario = next(item for item in adapter.scenarios() if item["id"] == "prune.plan.happy")
+        evidence = adapter.normalize(scenario, "http", {
+            "ok": True, "action": "prune", "data": {"plan_id": "some-id"},
+        })
+        self.assertIn("semantic oracle failed: prune.plan_digest_bound", adapter.evaluate(scenario, evidence))
+
     def test_source_projection_drops_cli_wait_and_preserves_inline_completion(self):
         item = next(value for value in adapter.scenarios() if value["id"] == "source.inline.happy")
         args = adapter.tool_arguments(item)

@@ -234,7 +234,7 @@ run_catalog_scenarios() {
   local catalog_job_id=""
   local scenario_id
   while IFS= read -r scenario_id; do
-    local projection arguments logfile evidence evaluation
+    local projection arguments logfile evidence evaluation normalized_envelope
     projection="$(python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" project "$scenario_id" --selector "$SELECTOR")"
     arguments="$(jq -c '.arguments' <<<"$projection")"
     arguments="$(jq -c --arg scenario "$scenario_id" --arg source "$REAL_PAGE_URL" --arg job_id "$catalog_job_id" \
@@ -251,7 +251,24 @@ run_catalog_scenarios() {
       record_fail "${mode}_catalog_${scenario_id}" "$logfile"
       continue
     fi
-    python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" normalize "$scenario_id" "$transport" "$logfile.envelope.json" >"$evidence"
+    normalized_envelope="$logfile.envelope.json"
+    if [[ "$scenario_id" == "prune.plan.happy" ]]; then
+      local plan_id get_arguments
+      if ! plan_id="$(jq -er '.data.data.plan.job_id | select(type == "string" and length > 0)' "$logfile.envelope.json")"; then
+        record_fail "${mode}_catalog_${scenario_id}" "$logfile.envelope.json"
+        continue
+      fi
+      get_arguments="$(jq -nc --arg plan_id "$plan_id" '{action:"prune",subaction:"get",plan_id:$plan_id}')"
+      call_tool_json "$get_arguments" >"$logfile.get.log" 2>&1 || true
+      if ! json_payload "$logfile.get.log" >"$logfile.get.envelope.json" || \
+         ! python3 "$MCP_ADAPTER" verify-plan "$logfile.envelope.json" "$logfile.get.envelope.json" \
+           >"$logfile.verified.json" 2>"$logfile.verification.log"; then
+        record_fail "${mode}_catalog_${scenario_id}" "$logfile.get.log"
+        continue
+      fi
+      normalized_envelope="$logfile.verified.json"
+    fi
+    python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" normalize "$scenario_id" "$transport" "$normalized_envelope" >"$evidence"
     evaluation="$logfile.evaluation.json"
     if python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" evaluate "$scenario_id" "$evidence" >"$evaluation"; then
       record_pass "${mode}_catalog_${scenario_id}"
@@ -259,7 +276,9 @@ run_catalog_scenarios() {
       record_fail "${mode}_catalog_${scenario_id}" "$evaluation"
     fi
     if [[ "$scenario_id" == "source.inline.happy" ]]; then
-      catalog_job_id="$(jq -r '.data.inline.job.id // .data.inline.job_id // .data.data.job.job_id // empty' "$logfile.envelope.json")"
+      if ! catalog_job_id="$(python3 "$MCP_ADAPTER" job-id "$logfile.envelope.json")"; then
+        record_fail "${mode}_catalog_source_job_id" "$logfile.envelope.json"
+      fi
     fi
     if [[ -n "${AXON_E2E_MANIFEST:-}" ]]; then
       python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" register-evidence "$scenario_id" \
