@@ -331,7 +331,7 @@ describe("App command palette accessibility + keyboard nav", () => {
     const user = userEvent.setup();
     const input = await renderApp();
     await user.type(input, "scr");
-    await user.keyboard("{Enter}");
+    await user.keyboard("{Tab}");
     expect(await screen.findByRole("button", { name: /Switch from/ })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
