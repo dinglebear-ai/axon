@@ -105,7 +105,12 @@ def tool_arguments(item: dict[str, Any]) -> dict[str, Any]:
     if capability == "jobs":
         subaction = "stream" if item["polarity"] == "happy" else "cancel"
         job_id = "00000000-0000-0000-0000-000000000000" if item["polarity"] == "negative" else "${E2E_JOB_ID}"
-        return {"action": "jobs", "subaction": subaction, "job_id": job_id}
+        arguments = {"action": "jobs", "subaction": subaction, "job_id": job_id}
+        if subaction == "stream":
+            # Auto mode summarizes larger event pages as artifact shapes, which
+            # omit the event job IDs and lifecycle states our oracles inspect.
+            arguments["response_mode"] = "inline"
+        return arguments
     if capability == "prune":
         subaction = "plan" if item["polarity"] == "happy" else "exec"
         target = "collection:${E2E_FOREIGN_COLLECTION}" if item["polarity"] == "negative" else "collection:${E2E_OWNED_COLLECTION}"

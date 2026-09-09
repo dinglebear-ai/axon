@@ -129,6 +129,20 @@ class McpAdapterTests(unittest.TestCase):
         self.assertEqual("${E2E_JOB_ID}", arguments["job_id"])
         self.assertNotIn("catalog_fixture", arguments)
 
+    def test_jobs_stream_requests_events_inline_for_semantic_evaluation(self):
+        item = next(value for value in adapter.scenarios() if value["id"] == "jobs.stream.happy")
+        arguments = adapter.tool_arguments(item)
+        self.assertEqual("inline", arguments.get("response_mode"))
+        evidence = adapter.normalize(item, "http", {
+            "ok": True, "action": "jobs", "subaction": "stream",
+            "data": {"response_mode": "inline", "inline": {
+                "events": [{"job_id": "49a32677-4005-4bd8-83b8-a41bfc093e72",
+                            "status": "completed", "sequence": 18}],
+                "last_sequence": 18, "next_cursor": None,
+            }},
+        })
+        self.assertEqual([], adapter.evaluate(item, evidence))
+
     def test_oracle_evaluation_rejects_false_success(self):
         item = adapter.scenarios()[0]
         evidence = adapter.normalize(item, "stdio", {"ok": False, "error": "failed"})
