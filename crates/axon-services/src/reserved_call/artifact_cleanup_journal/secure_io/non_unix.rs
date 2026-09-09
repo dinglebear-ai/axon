@@ -96,7 +96,20 @@ impl SecureJournalDir {
             .root
             .join(format!(".journal-{}.tmp", uuid::Uuid::new_v4()));
         let result = (|| {
-            std::fs::write(&temporary, serde_json::to_vec(record)?)?;
+            use std::io::Write as _;
+            #[cfg(test)]
+            fail_if_injected(&token.0, JournalFault::Create)?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(&serde_json::to_vec(record)?)?;
+            #[cfg(test)]
+            fail_if_injected(&token.0, JournalFault::FileSync)?;
+            file.sync_all()?;
+            drop(file);
+            #[cfg(test)]
+            fail_if_injected(&token.0, JournalFault::Rename)?;
             replace_file(&temporary, &token.0)?;
             Ok(())
         })();
@@ -177,7 +190,7 @@ impl SecureJournalDir {
             #[cfg(test)]
             fail_if_injected(claimed, JournalFault::OwnerSync)?;
             std::fs::OpenOptions::new()
-                .read(true)
+                .write(true)
                 .open(&temporary)?
                 .sync_all()?;
             #[cfg(test)]

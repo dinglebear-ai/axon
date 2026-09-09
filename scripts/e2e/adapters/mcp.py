@@ -70,6 +70,7 @@ def tool_arguments(item: dict[str, Any]) -> dict[str, Any]:
     request = dict(item["request"])
     capability = item["capability"]
     if capability == "source":
+        request.pop("wait", None)  # CLI completion is represented by detached=False in MCP.
         if item["polarity"] == "negative":
             return {"action": "source", "source": "", "scope": "page", "detached": True}
         return {"action": "source", **request, "detached": False}
@@ -80,7 +81,7 @@ def tool_arguments(item: dict[str, Any]) -> dict[str, Any]:
     if capability == "prune":
         subaction = "plan" if item["polarity"] == "happy" else "exec"
         target = "collection:${E2E_FOREIGN_COLLECTION}" if item["polarity"] == "negative" else "collection:${E2E_OWNED_COLLECTION}"
-        return {"action": "prune", "subaction": subaction, "target": target, "dry_run": bool(request.get("dry_run", True))}
+        return {"action": "prune", "subaction": subaction, "target": target}
     raise McpAdapterError(f"{item['id']}: unsupported MCP capability {capability!r}")
 
 

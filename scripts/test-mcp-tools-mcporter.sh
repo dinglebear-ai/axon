@@ -326,11 +326,12 @@ run_suite() {
   run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
   run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and (.error | contains("screenshot requires Chrome")))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
-  run_error_case "${prefix}_removed_crawl" "\`crawl\`" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_scrape" "\`scrape\`" call_tool action:scrape url:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_embed" "\`embed\`" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
-  run_error_case "${prefix}_removed_ingest" "\`ingest\`" call_tool action:ingest target:"$REPO_ROOT"
-  run_error_case "${prefix}_removed_code_search" "\`code_search\`" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
+  # Focused projections are supported, but reject the retired argument shapes.
+  run_error_case "${prefix}_crawl_rejects_legacy_arguments" "unknown field" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_scrape_rejects_legacy_arguments" "unknown field" call_tool action:scrape url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_embed_rejects_legacy_arguments" "unknown field" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
+  run_error_case "${prefix}_ingest_rejects_legacy_arguments" "unknown field" call_tool action:ingest target:"$REPO_ROOT"
+  run_error_case "${prefix}_code_search_rejects_legacy_arguments" "unknown field" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
   run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
   run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
   run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe

@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parents[2]
 spec=importlib.util.spec_from_file_location("axon_wif_attest_validator",ROOT/"scripts/e2e/validate-wif-claims.py");validator=importlib.util.module_from_spec(spec);spec.loader.exec_module(validator)
 def main():
  p=argparse.ArgumentParser();p.add_argument("--audience",required=True);p.add_argument("--out",type=Path,required=True);a=p.parse_args()
+ if not a.audience.strip():raise SystemExit("TS_WIF_AUDIENCE must be configured before live E2E authentication")
  request_url=os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL");request_token=os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
  if not request_url or not request_token:raise SystemExit("GitHub OIDC request capability unavailable")
  separator="&" if "?" in request_url else "?";request=urllib.request.Request(request_url+separator+urllib.parse.urlencode({"audience":a.audience}),headers={"Authorization":f"Bearer {request_token}"})

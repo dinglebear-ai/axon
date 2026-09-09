@@ -12,6 +12,18 @@ SPEC.loader.exec_module(adapter)
 
 
 class McpAdapterTests(unittest.TestCase):
+    def test_source_projection_drops_cli_wait_and_preserves_inline_completion(self):
+        item = next(value for value in adapter.scenarios() if value["id"] == "source.inline.happy")
+        args = adapter.tool_arguments(item)
+        self.assertNotIn("wait", args)
+        self.assertFalse(args["detached"])
+
+    def test_prune_plan_uses_plan_subaction_without_cli_dry_run(self):
+        item = next(value for value in adapter.scenarios() if value["id"] == "prune.plan.happy")
+        args = adapter.tool_arguments(item)
+        self.assertNotIn("dry_run", args)
+        self.assertEqual("plan", args["subaction"])
+
     def test_projects_all_catalog_mcp_scenarios_as_structured_argv(self):
         selected = adapter.scenarios()
         self.assertEqual(6, len(selected))
