@@ -147,7 +147,7 @@ impl SecureJournalDir {
             .create(true)
             .open(self.root.join(lease_name(claimed)?))?;
         if let Err(error) = lease.try_lock_exclusive() {
-            if error.kind() == std::io::ErrorKind::WouldBlock {
+            if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() {
                 return Ok(None);
             }
             return Err(error.into());
@@ -164,6 +164,8 @@ impl SecureJournalDir {
         path: &Path,
     ) -> anyhow::Result<Vec<u8>> {
         self.verify_path()?;
+        #[cfg(test)]
+        fail_if_injected(path, JournalFault::Read)?;
         Ok(std::fs::read(path)?)
     }
     pub(in crate::reserved_call::artifact_cleanup_journal) fn quarantine(
