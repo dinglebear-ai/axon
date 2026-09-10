@@ -236,7 +236,11 @@ pub(crate) async fn direct_fetch_requested_page(
                 validate_url_with_dns(&final_url)
                     .await
                     .map_err(|e| format!("redirect target blocked for {requested_url}: {e}"))?;
-                let html = resp.text().await?;
+                let html = axon_core::http::read_response_text_bounded(
+                    resp,
+                    axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+                )
+                .await?;
                 return Ok(ScrapedPage {
                     url: final_url,
                     html,

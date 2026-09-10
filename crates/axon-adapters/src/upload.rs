@@ -173,9 +173,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         }
         let metadata = fs::metadata(&file)
             .map_err(|err| fs_error("adapter.upload.stat_failed", &file, err))?;
-        if let Some(max_file_bytes) = options.max_file_bytes
-            && metadata.len() > max_file_bytes
-        {
+        if metadata.len() > options.max_file_bytes {
             continue;
         }
         if !metadata.is_file() {

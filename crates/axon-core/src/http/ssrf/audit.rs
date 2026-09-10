@@ -204,6 +204,9 @@ fn clone_http_error(err: &HttpError) -> HttpError {
         // (neither performs a network request), but cover the variant so this
         // stays exhaustive if that ever changes.
         HttpError::Network(_) => HttpError::InvalidUrl(String::new()),
+        HttpError::ResponseTooLarge { max_bytes } => HttpError::ResponseTooLarge {
+            max_bytes: *max_bytes,
+        },
         // Same reasoning as Network: the impersonating client performs requests,
         // not validation, so this variant never reaches an audit builder.
         HttpError::ImpersonationInit(_) | HttpError::ImpersonationRequest(_) => {
@@ -227,6 +230,9 @@ fn redact_ssrf_reason(err: &HttpError) -> String {
         }
         HttpError::DnsResolution { host, .. } => format!("dns resolution failed for '{host}'"),
         HttpError::Network(_) => "network error during ssrf validation".to_string(),
+        HttpError::ResponseTooLarge { max_bytes } => {
+            format!("response body exceeded {max_bytes} byte limit")
+        }
         // Redacted deliberately: the wreq error text can embed the request URL.
         HttpError::ImpersonationInit(_) => "impersonating client initialization error".to_string(),
         HttpError::ImpersonationRequest(_) => "impersonated request error".to_string(),

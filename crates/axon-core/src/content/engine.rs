@@ -264,7 +264,12 @@ async fn run_single_url_extract(
     if let Some(ua) = user_agent {
         req = req.header(reqwest::header::USER_AGENT, ua);
     }
-    let html = req.send().await?.error_for_status()?.text().await?;
+    let response = req.send().await?.error_for_status()?;
+    let html = crate::http::read_response_text_bounded(
+        response,
+        crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await?;
 
     let mut metrics = ExtractionMetrics::default();
     let mut pages_with_data = 0usize;

@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use utoipa::ToSchema;
 
+const READINESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
 #[utoipa::path(
     get,
     path = "/healthz",
@@ -38,12 +40,19 @@ pub(super) async fn readyz(
     State(state): State<(AppState, Arc<axon_core::config::Config>)>,
 ) -> impl IntoResponse {
     let (_, cfg) = state;
-    let qdrant_ready = axon_services::system::qdrant_ready(&cfg).await;
-    let tei_ready = if cfg.tei_url.trim().is_empty() {
-        false
-    } else {
-        probe_http_endpoint(&format!("{}/health", cfg.tei_url.trim_end_matches('/'))).await
+    let qdrant_probe = tokio::time::timeout(
+        READINESS_PROBE_TIMEOUT,
+        axon_services::system::qdrant_ready(&cfg),
+    );
+    let tei_probe = async {
+        if cfg.tei_url.trim().is_empty() {
+            false
+        } else {
+            probe_http_endpoint(&format!("{}/health", cfg.tei_url.trim_end_matches('/'))).await
+        }
     };
+    let (qdrant_result, tei_ready) = tokio::join!(qdrant_probe, tei_probe);
+    let qdrant_ready = qdrant_result.unwrap_or(false);
     let sqlite = axon_core::sqlite::readiness(&cfg.sqlite_path);
     let sqlite_ready = sqlite
         .get("ok")
@@ -74,42 +83,16 @@ fn readiness_response(
 }
 
 async fn probe_http_endpoint(url: &str) -> bool {
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
+    let client = match axon_core::http::internal_service_no_redirect_http_client() {
         Ok(client) => client,
         Err(_) => return false,
     };
-    client
-        .get(url)
-        .send()
-        .await
-        .map(|response| response.status().is_success())
-        .unwrap_or(false)
+    match tokio::time::timeout(READINESS_PROBE_TIMEOUT, client.get(url).send()).await {
+        Ok(Ok(response)) => response.status().is_success(),
+        Ok(Err(_)) | Err(_) => false,
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn readyz_response_includes_sqlite_dependency() {
-        let (status, body) = readiness_response(false, true, true);
-
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert!(!body.ok);
-        assert_eq!(body.sqlite, "not_ready");
-        assert_eq!(body.qdrant, "ready");
-        assert_eq!(body.tei, "ready");
-    }
-
-    #[test]
-    fn readyz_response_is_ok_only_when_all_dependencies_are_ready() {
-        let (status, body) = readiness_response(true, true, true);
-
-        assert_eq!(status, StatusCode::OK);
-        assert!(body.ok);
-        assert_eq!(body.sqlite, "ready");
-    }
-}
+#[path = "health_tests.rs"]
+mod tests;

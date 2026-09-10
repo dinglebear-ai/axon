@@ -10,7 +10,6 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use base64::Engine as _;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -281,8 +280,7 @@ fn acquire_sync(
             .metadata()
             .map_err(|error| local_io::fs_error("adapter.local.stat_failed", &path, error))?
             .len();
-        let content_ref = read_content_ref_from_file(file, &path, &options)?;
-        let acquired_hash = content_ref_fingerprint(&content_ref)?;
+        let (content_ref, acquired_hash) = read_content_ref_from_file(file, &path, &options)?;
         if item.size_bytes != Some(acquired_size)
             || item.content_hash.as_deref() != Some(&acquired_hash)
         {
@@ -338,30 +336,6 @@ fn acquire_sync(
         fetched_items,
         artifacts: Vec::new(),
     })
-}
-
-fn content_ref_fingerprint(content: &ContentRef) -> Result<String> {
-    let bytes = match content {
-        ContentRef::InlineText { text } => text.as_bytes().to_vec(),
-        ContentRef::InlineBytes { bytes_base64, .. } => base64::engine::general_purpose::STANDARD
-            .decode(bytes_base64)
-            .map_err(|error| {
-                ApiError::new(
-                    "adapter.local.content_decode_failed",
-                    ErrorStage::Fetching,
-                    "local binary content could not be verified",
-                )
-                .with_context("cause", error.to_string())
-            })?,
-        ContentRef::Artifact { .. } | ContentRef::External { .. } => {
-            return Err(ApiError::new(
-                "adapter.local.content_verification_unsupported",
-                ErrorStage::Fetching,
-                "local acquired content is not inline and cannot be verified",
-            ));
-        }
-    };
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
 
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {

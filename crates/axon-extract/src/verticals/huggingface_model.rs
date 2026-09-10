@@ -69,7 +69,9 @@ async fn fetch_model_card(model_id: &str, ctx: &VerticalContext) -> Option<Strin
     if !resp.status().is_success() {
         return None;
     }
-    let text = resp.text().await.ok()?;
+    let text = axon_core::http::read_response_text_bounded(resp, 8 * 1024 * 1024)
+        .await
+        .ok()?;
     // Truncate to 30_000 chars
     let truncated: String = text.chars().take(30_000).collect();
     Some(truncated)

@@ -274,7 +274,10 @@ async fn fetch_readme(
     if !resp.status().is_success() {
         return None;
     }
-    Some(strip_html(&resp.text().await.ok()?))
+    let body = axon_core::http::read_response_text_bounded(resp, 8 * 1024 * 1024)
+        .await
+        .ok()?;
+    Some(strip_html(&body))
 }
 
 /// Strip HTML tags and collapse whitespace — keeps README readable as plain text.

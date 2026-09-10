@@ -226,30 +226,25 @@ fn containment_flags() -> ResolveFlags {
 
 pub(crate) fn read_content_ref(path: &Path, options: &LocalOptions) -> Result<ContentRef> {
     let file = File::open(path).map_err(|err| fs_error("adapter.local.read_failed", path, err))?;
-    read_content_ref_from_file(file, path, options)
+    read_content_ref_from_file(file, path, options).map(|(content, _)| content)
 }
 
 pub(crate) fn read_content_ref_from_file(
     file: File,
     path_hint: &Path,
     options: &LocalOptions,
-) -> Result<ContentRef> {
+) -> Result<(ContentRef, String)> {
     enforce_read_size_from_file(&file, path_hint, options)?;
-    let bytes = match options.max_file_bytes {
-        Some(max_file_bytes) => read_bounded(file, path_hint, max_file_bytes)?,
-        None => {
-            let mut file = file;
-            let mut bytes = Vec::new();
-            file.read_to_end(&mut bytes)
-                .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
-            bytes
-        }
-    };
+    let bytes = read_bounded(file, path_hint, options.max_file_bytes)?;
+    let fingerprint = format!("sha256:{:x}", Sha256::digest(&bytes));
     if options.includes_binary_body(path_hint) {
-        return Ok(ContentRef::InlineBytes {
-            bytes_base64: BASE64_STANDARD.encode(bytes),
-            mime_type: "application/octet-stream".to_string(),
-        });
+        return Ok((
+            ContentRef::InlineBytes {
+                bytes_base64: BASE64_STANDARD.encode(&bytes),
+                mime_type: "application/octet-stream".to_string(),
+            },
+            fingerprint,
+        ));
     }
     let text = String::from_utf8(bytes).map_err(|err| {
         fs_error(
@@ -258,7 +253,7 @@ pub(crate) fn read_content_ref_from_file(
             std::io::Error::new(std::io::ErrorKind::InvalidData, err),
         )
     })?;
-    Ok(ContentRef::InlineText { text })
+    Ok((ContentRef::InlineText { text }, fingerprint))
 }
 
 fn read_bounded(reader: impl Read, path_hint: &Path, max_file_bytes: u64) -> Result<Vec<u8>> {
@@ -352,9 +347,7 @@ fn enforce_read_size_from_file(
     path_hint: &Path,
     options: &LocalOptions,
 ) -> Result<()> {
-    let Some(max_file_bytes) = options.max_file_bytes else {
-        return Ok(());
-    };
+    let max_file_bytes = options.max_file_bytes;
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", path_hint, err))?;

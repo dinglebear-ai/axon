@@ -28,6 +28,9 @@ pub enum HttpError {
     /// Network-level error from reqwest.
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
+    /// A response exceeded the caller's in-memory body budget.
+    #[error("response body exceeds {max_bytes} byte limit")]
+    ResponseTooLarge { max_bytes: usize },
     /// The browser-impersonating (wreq/BoringSSL) client could not initialize.
     #[error("impersonating client initialization failed: {0}")]
     ImpersonationInit(String),

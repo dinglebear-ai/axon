@@ -2,7 +2,6 @@ use axon_api::agent::AgentToolProposal;
 use axon_core::config::Config;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::time::Duration;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +35,8 @@ pub struct LabbyExecutionReceipt {
     pub error_kind: Option<String>,
 }
 
+const MAX_LABBY_AGENT_RESPONSE_BYTES: usize = 1024 * 1024;
+
 pub struct LabbyAgentClient {
     base: reqwest::Url,
     token: String,
@@ -57,10 +58,7 @@ impl LabbyAgentClient {
         if url.scheme() != "https" && !matches!(url.host_str(), Some("127.0.0.1" | "localhost")) {
             anyhow::bail!("loadout_backend_invalid");
         }
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(30))
-            .build()?;
+        let client = axon_core::http::internal_service_no_redirect_http_client()?.clone();
         Ok(Self {
             base: url,
             token,
@@ -79,10 +77,10 @@ impl LabbyAgentClient {
         if !response.status().is_success() {
             anyhow::bail!("labby_agent_failed:{}", response.status().as_u16());
         }
-        let bytes = response.bytes().await?;
-        if bytes.len() > 1024 * 1024 {
-            anyhow::bail!("labby_agent_payload_too_large");
-        }
+        let bytes =
+            axon_core::http::read_response_bytes_bounded(response, MAX_LABBY_AGENT_RESPONSE_BYTES)
+                .await
+                .map_err(labby_agent_body_error)?;
         serde_json::from_slice(&bytes).map_err(|_| anyhow::anyhow!("labby_agent_contract_invalid"))
     }
 
@@ -150,6 +148,19 @@ impl LabbyAgentClient {
         self.decode(response).await
     }
 }
+
+fn labby_agent_body_error(error: axon_core::http::HttpError) -> anyhow::Error {
+    match error {
+        axon_core::http::HttpError::ResponseTooLarge { .. } => {
+            anyhow::anyhow!("labby_agent_payload_too_large")
+        }
+        _ => anyhow::anyhow!("labby_agent_response_read_failed"),
+    }
+}
+
+#[cfg(test)]
+#[path = "client_tests.rs"]
+mod tests;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

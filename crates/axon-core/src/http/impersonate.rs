@@ -328,16 +328,47 @@ pub async fn fetch_html_impersonated(url: &str) -> Result<ImpersonatedResponse, 
     // a redirect target to the original request URL — which, on a path that can
     // be redirected, destroys the provenance needed to notice an SSRF.
     let final_url = response.uri().to_string();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| HttpError::ImpersonationRequest(e.to_string()))?;
+    let body =
+        read_impersonated_text_bounded(response, super::client::DEFAULT_MAX_RESPONSE_BODY_BYTES)
+            .await?;
 
     Ok(ImpersonatedResponse {
         body,
         status,
         final_url,
     })
+}
+
+async fn read_impersonated_text_bounded(
+    mut response: wreq::Response,
+    max_bytes: usize,
+) -> Result<String, HttpError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(HttpError::ResponseTooLarge { max_bytes });
+    }
+    let content_type = response
+        .headers()
+        .get(wreq::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| HttpError::ImpersonationRequest(error.to_string()))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(HttpError::ResponseTooLarge { max_bytes });
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(super::client::decode_response_text(
+        &bytes,
+        content_type.as_deref(),
+    ))
 }
 
 #[cfg(test)]

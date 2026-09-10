@@ -1,5 +1,19 @@
 use super::*;
 
+const LABBY_STATUS_POLL_INITIAL: Duration = Duration::from_millis(100);
+const LABBY_STATUS_POLL_SECOND: Duration = Duration::from_millis(250);
+const LABBY_STATUS_POLL_THIRD: Duration = Duration::from_millis(500);
+const LABBY_STATUS_POLL_MAX: Duration = Duration::from_secs(1);
+
+fn labby_status_poll_delay(completed_polls: u32) -> Duration {
+    match completed_polls {
+        0 => LABBY_STATUS_POLL_INITIAL,
+        1 => LABBY_STATUS_POLL_SECOND,
+        2 => LABBY_STATUS_POLL_THIRD,
+        _ => LABBY_STATUS_POLL_MAX,
+    }
+}
+
 pub(super) async fn run_loop(
     store: &AgentTurnStore,
     client: &LabbyAgentClient,
@@ -276,14 +290,12 @@ pub(super) async fn execute_proposal(
             _ => Ok(()),
         };
     }
+    let mut completed_polls = 0_u32;
     while receipt.status == "running" && now_ms() < turn.deadline_at_ms {
-        await_with_renewal(
-            store,
-            &turn.id,
-            lease_version,
-            tokio::time::sleep(Duration::from_millis(100)),
-        )
-        .await;
+        let remaining =
+            Duration::from_millis(turn.deadline_at_ms.saturating_sub(now_ms()).max(1) as u64);
+        let delay = labby_status_poll_delay(completed_polls).min(remaining);
+        await_with_renewal(store, &turn.id, lease_version, tokio::time::sleep(delay)).await;
         let poll_id = turn.id.clone();
         if persist(store, move |store| {
             Ok(store
@@ -302,6 +314,7 @@ pub(super) async fn execute_proposal(
             client.status(&receipt.request_id),
         )
         .await?;
+        completed_polls = completed_polls.saturating_add(1);
     }
     let final_turn_id = turn.id.clone();
     persist(store, move |store| {
@@ -400,3 +413,7 @@ async fn begin_execution(
     anyhow::ensure!(reconciled, "labby_request_reconciliation_failed");
     Ok(receipt)
 }
+
+#[cfg(test)]
+#[path = "execution_tests.rs"]
+mod tests;

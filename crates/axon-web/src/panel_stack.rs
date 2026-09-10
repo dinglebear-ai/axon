@@ -292,64 +292,74 @@ fn compose_file_check(path: &std::path::Path) -> StackCheck {
 }
 
 async fn http_check(label: &'static str, url: &str) -> StackCheck {
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
-        .build()
-    {
+    let client = match axon_core::http::internal_service_no_redirect_http_client() {
         Ok(client) => client,
         Err(err) => return check(label, "error", err.to_string()),
     };
-    match client.get(url).send().await {
-        Ok(response) if response.status().is_success() => {
+    match tokio::time::timeout(Duration::from_secs(3), client.get(url).send()).await {
+        Ok(Ok(response)) if response.status().is_success() => {
             check(label, "ok", format!("{url} returned {}", response.status()))
         }
-        Ok(response) => check(
+        Ok(Ok(response)) => check(
             label,
             "error",
             format!("{url} returned {}", response.status()),
         ),
-        Err(err) => check(label, "error", err.to_string()),
+        Ok(Err(err)) => check(label, "error", err.to_string()),
+        Err(_) => check(label, "error", format!("{url} probe timed out")),
     }
 }
 
 async fn tei_check(base_url: &str) -> StackCheck {
     let health_url = format!("{}/health", base_url.trim_end_matches('/'));
     let info_url = format!("{}/info", base_url.trim_end_matches('/'));
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
-        .build()
-    {
+    let client = match axon_core::http::internal_service_no_redirect_http_client() {
         Ok(client) => client,
         Err(err) => return check("TEI / Qwen3", "error", err.to_string()),
     };
-    match client.get(&health_url).send().await {
-        Ok(response) if response.status().is_success() => {
-            match client.get(&info_url).send().await {
-                Ok(info) if info.status().is_success() => match info.text().await {
-                    Ok(body) if qwen3_model_reported(&body) => {
-                        check("TEI / Qwen3", "ok", "healthy; Qwen3 model reported")
+    let health = tokio::time::timeout(Duration::from_secs(3), client.get(&health_url).send()).await;
+    match health {
+        Ok(Ok(response)) if response.status().is_success() => {
+            let info =
+                tokio::time::timeout(Duration::from_secs(3), client.get(&info_url).send()).await;
+            match info {
+                Ok(Ok(info)) if info.status().is_success() => {
+                    match axon_core::http::read_response_text_bounded(info, 1024 * 1024).await {
+                        Ok(body) if qwen3_model_reported(&body) => {
+                            check("TEI / Qwen3", "ok", "healthy; Qwen3 model reported")
+                        }
+                        Ok(_) => check(
+                            "TEI / Qwen3",
+                            "warn",
+                            format!("{info_url} did not report a Qwen3 model"),
+                        ),
+                        Err(err) => check("TEI / Qwen3", "error", format!("{info_url}: {err}")),
                     }
-                    Ok(_) => check(
-                        "TEI / Qwen3",
-                        "warn",
-                        format!("{info_url} did not report a Qwen3 model"),
-                    ),
-                    Err(err) => check("TEI / Qwen3", "error", format!("{info_url}: {err}")),
-                },
-                Ok(info) => check(
+                }
+                Ok(Ok(info)) => check(
                     "TEI / Qwen3",
                     "error",
                     format!("{info_url} returned {}", info.status()),
                 ),
-                Err(err) => check("TEI / Qwen3", "error", format!("{info_url}: {err}")),
+                Ok(Err(err)) => check("TEI / Qwen3", "error", format!("{info_url}: {err}")),
+                Err(_) => check(
+                    "TEI / Qwen3",
+                    "error",
+                    format!("{info_url} probe timed out"),
+                ),
             }
         }
-        Ok(response) => check(
+        Ok(Ok(response)) => check(
             "TEI / Qwen3",
             "error",
             format!("{health_url} returned {}", response.status()),
         ),
-        Err(err) => check("TEI / Qwen3", "error", err.to_string()),
+        Ok(Err(err)) => check("TEI / Qwen3", "error", err.to_string()),
+        Err(_) => check(
+            "TEI / Qwen3",
+            "error",
+            format!("{health_url} probe timed out"),
+        ),
     }
 }
 

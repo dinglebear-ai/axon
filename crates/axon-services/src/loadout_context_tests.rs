@@ -50,3 +50,9 @@ fn execution_context_id_is_revision_and_generation_bound() {
         context_id("labby", &preview, 2)
     );
 }
+
+#[test]
+fn oversized_loadout_body_keeps_stable_error_code() {
+    let error = loadout_body_error(axon_core::http::HttpError::ResponseTooLarge { max_bytes: 1 });
+    assert!(error.to_string().starts_with("loadout_payload_too_large:"));
+}

@@ -69,34 +69,30 @@ pub async fn resolve(
     ));
     url.set_query(None);
     let correlation_id = uuid::Uuid::new_v4().to_string();
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_millis(cfg.labby_resolution_timeout_ms))
-        .build()?;
-    let response = client
-        .post(url)
-        .bearer_auth(token)
-        .header("x-request-id", &correlation_id)
-        .json(&serde_json::json!({ "runtimeIdentity": runtime_identity }))
-        .send()
-        .await
-        .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution failed"))?;
+    let client = axon_core::http::internal_service_no_redirect_http_client()
+        .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby client initialization failed"))?;
+    let response = tokio::time::timeout(
+        Duration::from_millis(cfg.labby_resolution_timeout_ms),
+        client
+            .post(url)
+            .bearer_auth(token)
+            .header("x-request-id", &correlation_id)
+            .json(&serde_json::json!({ "runtimeIdentity": runtime_identity }))
+            .send(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution timed out"))?
+    .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution failed"))?;
     if !response.status().is_success() {
         anyhow::bail!(
             "loadout_resolution_failed: Labby returned {}",
             response.status().as_u16()
         );
     }
-    if response
-        .content_length()
-        .is_some_and(|len| len > cfg.labby_resolution_max_bytes as u64)
-    {
-        anyhow::bail!("loadout_payload_too_large: Labby response exceeded configured limit");
-    }
-    let bytes = response.bytes().await?;
-    if bytes.len() > cfg.labby_resolution_max_bytes {
-        anyhow::bail!("loadout_payload_too_large: Labby response exceeded configured limit");
-    }
+    let bytes =
+        axon_core::http::read_response_bytes_bounded(response, cfg.labby_resolution_max_bytes)
+            .await
+            .map_err(loadout_body_error)?;
     let preview: Preview = serde_json::from_slice(&bytes)
         .map_err(|_| anyhow::anyhow!("loadout_contract_invalid: invalid Labby preview"))?;
     if preview.loadout_id != binding.loadout_id || preview.runtime_identity != runtime_identity {
@@ -135,6 +131,15 @@ pub async fn resolve(
         },
         prompt_context,
     })
+}
+
+fn loadout_body_error(error: axon_core::http::HttpError) -> anyhow::Error {
+    match error {
+        axon_core::http::HttpError::ResponseTooLarge { .. } => {
+            anyhow::anyhow!("loadout_payload_too_large: Labby response exceeded configured limit")
+        }
+        _ => anyhow::anyhow!("loadout_unavailable: Labby response read failed"),
+    }
 }
 
 fn validate_binding(binding: &LoadoutBinding) -> anyhow::Result<()> {
