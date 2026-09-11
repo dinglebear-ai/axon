@@ -1,6 +1,20 @@
 use super::AxonMcpServer;
 use super::server_authz;
 
+#[test]
+fn lifted_unconstrained_params_use_an_object_schema_for_mcp_clients() {
+    let schema = axon_input_schema();
+    let params = &schema["properties"]["params"];
+    assert!(
+        params.is_object(),
+        "MCP clients reject boolean property schemas: {params}"
+    );
+    assert!(
+        params.get("type").is_none(),
+        "unconstrained JSON must stay unconstrained"
+    );
+}
+
 fn axon_input_schema() -> serde_json::Value {
     let tools = AxonMcpServer::tool_router().list_all();
     let axon = tools

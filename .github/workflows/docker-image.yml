@@ -31,7 +31,9 @@ permissions:
 jobs:
   changes:
     name: changes
-    runs-on: ci-pool-ops
+    # The classifier needs only Git and Python; do not block publication on
+    # a self-hosted pool that is not available to this repository.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.full_ci == 'true' }}

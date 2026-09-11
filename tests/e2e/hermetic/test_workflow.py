@@ -27,6 +27,25 @@ def diagnostic_wire_exception_fixture():
         "data":{"authorization":"SecretWireDiagnosticCanary"}}},"stdio capabilities")
 
 class HermeticWorkflowTests(unittest.TestCase):
+    def test_plain_scenario_failure_retains_safe_traceback_without_opt_in(self):
+        runner=load_runner()
+        program="from tests.e2e.hermetic.test_workflow import diagnostic_root_exception_fixture; diagnostic_root_exception_fixture()"
+        commands=[("scenario-retrieval",[os.sys.executable,"-c",program],5),
+                  ("teardown",[os.sys.executable,"-c","pass"],1),
+                  ("isolation",[os.sys.executable,"-c","pass"],1)]
+        with mock.patch.dict(os.environ,runner.REQUIRED_ENV), tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(runner,"commands",return_value=commands), \
+             mock.patch.object(runner,"verify_native_isolation"), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            report=Path(directory)/"report.json"
+            self.assertEqual(1,runner.run(report,10))
+            text=report.read_text();stage=json.loads(text)["stages"][0]
+            self.assertTrue(stage.get("diagnostics"),"plain subprocess failures must retain safe evidence")
+            diagnostic=stage["diagnostics"][0]
+            self.assertEqual("RuntimeError",diagnostic["error_type"])
+            self.assertEqual("tests/e2e/hermetic/test_workflow.py",diagnostic["traceback_file"])
+            self.assertNotIn("SecretRootDiagnosticCanary",text+output.getvalue())
+
     def test_wire_metadata_rejects_untrusted_fields_and_values(self):
         diagnostics=load_runner().diagnostics
         valid={"domain":"security","error_type":"WireError","wire_context":"initialize","rpc_code":-32603}
