@@ -96,7 +96,20 @@ impl SecureJournalDir {
             .root
             .join(format!(".journal-{}.tmp", uuid::Uuid::new_v4()));
         let result = (|| {
-            std::fs::write(&temporary, serde_json::to_vec(record)?)?;
+            use std::io::Write as _;
+            #[cfg(test)]
+            fail_if_injected(&token.0, JournalFault::Create)?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)?;
+            file.write_all(&serde_json::to_vec(record)?)?;
+            #[cfg(test)]
+            fail_if_injected(&token.0, JournalFault::FileSync)?;
+            file.sync_all()?;
+            drop(file);
+            #[cfg(test)]
+            fail_if_injected(&token.0, JournalFault::Rename)?;
             replace_file(&temporary, &token.0)?;
             Ok(())
         })();
@@ -134,7 +147,7 @@ impl SecureJournalDir {
             .create(true)
             .open(self.root.join(lease_name(claimed)?))?;
         if let Err(error) = lease.try_lock_exclusive() {
-            if error.kind() == std::io::ErrorKind::WouldBlock {
+            if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() {
                 return Ok(None);
             }
             return Err(error.into());
@@ -151,6 +164,8 @@ impl SecureJournalDir {
         path: &Path,
     ) -> anyhow::Result<Vec<u8>> {
         self.verify_path()?;
+        #[cfg(test)]
+        fail_if_injected(path, JournalFault::Read)?;
         Ok(std::fs::read(path)?)
     }
     pub(in crate::reserved_call::artifact_cleanup_journal) fn quarantine(
@@ -177,7 +192,7 @@ impl SecureJournalDir {
             #[cfg(test)]
             fail_if_injected(claimed, JournalFault::OwnerSync)?;
             std::fs::OpenOptions::new()
-                .read(true)
+                .write(true)
                 .open(&temporary)?
                 .sync_all()?;
             #[cfg(test)]

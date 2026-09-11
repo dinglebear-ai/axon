@@ -234,7 +234,7 @@ run_catalog_scenarios() {
   local catalog_job_id=""
   local scenario_id
   while IFS= read -r scenario_id; do
-    local projection arguments logfile evidence evaluation
+    local projection arguments logfile evidence evaluation normalized_envelope
     projection="$(python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" project "$scenario_id" --selector "$SELECTOR")"
     arguments="$(jq -c '.arguments' <<<"$projection")"
     arguments="$(jq -c --arg scenario "$scenario_id" --arg source "$REAL_PAGE_URL" --arg job_id "$catalog_job_id" \
@@ -251,7 +251,24 @@ run_catalog_scenarios() {
       record_fail "${mode}_catalog_${scenario_id}" "$logfile"
       continue
     fi
-    python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" normalize "$scenario_id" "$transport" "$logfile.envelope.json" >"$evidence"
+    normalized_envelope="$logfile.envelope.json"
+    if [[ "$scenario_id" == "prune.plan.happy" ]]; then
+      local plan_id get_arguments
+      if ! plan_id="$(jq -er '.data.data.plan.job_id | select(type == "string" and length > 0)' "$logfile.envelope.json")"; then
+        record_fail "${mode}_catalog_${scenario_id}" "$logfile.envelope.json"
+        continue
+      fi
+      get_arguments="$(jq -nc --arg plan_id "$plan_id" '{action:"prune",subaction:"get",plan_id:$plan_id}')"
+      call_tool_json "$get_arguments" >"$logfile.get.log" 2>&1 || true
+      if ! json_payload "$logfile.get.log" >"$logfile.get.envelope.json" || \
+         ! python3 "$MCP_ADAPTER" verify-plan "$logfile.envelope.json" "$logfile.get.envelope.json" \
+           >"$logfile.verified.json" 2>"$logfile.verification.log"; then
+        record_fail "${mode}_catalog_${scenario_id}" "$logfile.get.log"
+        continue
+      fi
+      normalized_envelope="$logfile.verified.json"
+    fi
+    python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" normalize "$scenario_id" "$transport" "$normalized_envelope" >"$evidence"
     evaluation="$logfile.evaluation.json"
     if python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" evaluate "$scenario_id" "$evidence" >"$evaluation"; then
       record_pass "${mode}_catalog_${scenario_id}"
@@ -259,7 +276,9 @@ run_catalog_scenarios() {
       record_fail "${mode}_catalog_${scenario_id}" "$evaluation"
     fi
     if [[ "$scenario_id" == "source.inline.happy" ]]; then
-      catalog_job_id="$(jq -r '.data.inline.job.id // .data.inline.job_id // .data.data.job.job_id // empty' "$logfile.envelope.json")"
+      if ! catalog_job_id="$(python3 "$MCP_ADAPTER" job-id "$logfile.envelope.json")"; then
+        record_fail "${mode}_catalog_source_job_id" "$logfile.envelope.json"
+      fi
     fi
     if [[ -n "${AXON_E2E_MANIFEST:-}" ]]; then
       python3 "$MCP_ADAPTER" --catalog "$CATALOG_PATH" register-evidence "$scenario_id" \
@@ -326,11 +345,12 @@ run_suite() {
   run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
   run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and (.error | contains("screenshot requires Chrome")))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
-  run_error_case "${prefix}_removed_crawl" "\`crawl\`" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_scrape" "\`scrape\`" call_tool action:scrape url:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_embed" "\`embed\`" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
-  run_error_case "${prefix}_removed_ingest" "\`ingest\`" call_tool action:ingest target:"$REPO_ROOT"
-  run_error_case "${prefix}_removed_code_search" "\`code_search\`" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
+  # Focused projections are supported, but reject the retired argument shapes.
+  run_error_case "${prefix}_crawl_rejects_legacy_arguments" "unknown field" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_scrape_rejects_legacy_arguments" "unknown field" call_tool action:scrape url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_embed_rejects_legacy_arguments" "unknown field" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
+  run_error_case "${prefix}_ingest_rejects_legacy_arguments" "unknown field" call_tool action:ingest target:"$REPO_ROOT"
+  run_error_case "${prefix}_code_search_rejects_legacy_arguments" "unknown field" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
   run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
   run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
   run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe

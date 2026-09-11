@@ -13,6 +13,7 @@ import importlib.util
 import json
 import re
 import secrets
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,33 @@ SECRET_VALUE = re.compile(r"(?i)(bearer\s+|(?:api[_-]?key|token|secret|password)
 
 class McpAdapterError(ValueError):
     pass
+
+
+def source_job_id(envelope: dict[str, Any]) -> str:
+    """Use the transport's job descriptor, never an arbitrary nested artifact id."""
+    if envelope.get("ok") is not True or envelope.get("action") != "source":
+        raise McpAdapterError("source response did not succeed")
+    value = envelope.get("job", {}).get("id")
+    try:
+        return str(uuid.UUID(value))
+    except (ValueError, TypeError, AttributeError) as error:
+        raise McpAdapterError("source response is missing a valid job.id") from error
+
+
+def verify_saved_plan(original: dict[str, Any], saved: dict[str, Any]) -> dict[str, Any]:
+    """Require prune get to return the exact plan we reviewed, with its checksum."""
+    for envelope, subaction in ((original, "plan"), (saved, "get")):
+        if (envelope.get("ok") is not True or envelope.get("action") != "prune"
+                or envelope.get("subaction") != subaction):
+            raise McpAdapterError(f"prune {subaction} response did not succeed")
+    planned = original.get("data", {}).get("data", {}).get("plan")
+    stored = saved.get("data", {}).get("data", {})
+    checksum = stored.get("inventory_checksum", "")
+    if not isinstance(planned, dict) or not planned.get("job_id") or stored.get("plan") != planned:
+        raise McpAdapterError("saved prune plan differs from the reviewed plan")
+    if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum):
+        raise McpAdapterError("saved prune plan is missing its inventory checksum")
+    return original | {"verified_plan_digest": checksum}
 
 
 def load_catalog(path: Path = DEFAULT_CATALOG) -> dict[str, Any]:
@@ -70,17 +98,23 @@ def tool_arguments(item: dict[str, Any]) -> dict[str, Any]:
     request = dict(item["request"])
     capability = item["capability"]
     if capability == "source":
+        request.pop("wait", None)  # CLI completion is represented by detached=False in MCP.
         if item["polarity"] == "negative":
             return {"action": "source", "source": "", "scope": "page", "detached": True}
         return {"action": "source", **request, "detached": False}
     if capability == "jobs":
         subaction = "stream" if item["polarity"] == "happy" else "cancel"
         job_id = "00000000-0000-0000-0000-000000000000" if item["polarity"] == "negative" else "${E2E_JOB_ID}"
-        return {"action": "jobs", "subaction": subaction, "job_id": job_id}
+        arguments = {"action": "jobs", "subaction": subaction, "job_id": job_id}
+        if subaction == "stream":
+            # Auto mode summarizes larger event pages as artifact shapes, which
+            # omit the event job IDs and lifecycle states our oracles inspect.
+            arguments["response_mode"] = "inline"
+        return arguments
     if capability == "prune":
         subaction = "plan" if item["polarity"] == "happy" else "exec"
         target = "collection:${E2E_FOREIGN_COLLECTION}" if item["polarity"] == "negative" else "collection:${E2E_OWNED_COLLECTION}"
-        return {"action": "prune", "subaction": subaction, "target": target, "dry_run": bool(request.get("dry_run", True))}
+        return {"action": "prune", "subaction": subaction, "target": target}
     raise McpAdapterError(f"{item['id']}: unsupported MCP capability {capability!r}")
 
 
@@ -153,7 +187,7 @@ def facts(envelope: dict[str, Any]) -> dict[str, Any]:
         "collections": [value for value in _values(envelope, {"collection", "collection_name"}) if isinstance(value, str)],
         "statuses": statuses,
         "terminal_success": any(value in {"completed", "success", "succeeded"} for value in statuses),
-        "plan_digests": [value for value in _values(envelope, {"digest", "plan_digest", "plan_id"}) if isinstance(value, str) and value],
+        "plan_digests": [value for value in _values(envelope, {"digest", "plan_digest", "verified_plan_digest"}) if isinstance(value, str) and value],
         "ownership_markers": _values(envelope, {"owned", "ownership_checked", "owner_run_id"}),
     }
 
@@ -229,6 +263,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
     sub = parser.add_subparsers(dest="command", required=True)
+    job_id = sub.add_parser("job-id")
+    job_id.add_argument("envelope", type=Path)
+    verifier = sub.add_parser("verify-plan")
+    verifier.add_argument("envelope", type=Path)
+    verifier.add_argument("saved", type=Path)
     listing = sub.add_parser("list")
     listing.add_argument("--tier")
     project = sub.add_parser("project")
@@ -248,6 +287,15 @@ def main() -> int:
     registrar.add_argument("envelope", type=Path)
     registrar.add_argument("--owned-collection")
     args = parser.parse_args()
+    if args.command == "job-id":
+        print(source_job_id(json.loads(args.envelope.read_text(encoding="utf-8"))))
+        return 0
+    if args.command == "verify-plan":
+        print(json.dumps(verify_saved_plan(
+            json.loads(args.envelope.read_text(encoding="utf-8")),
+            json.loads(args.saved.read_text(encoding="utf-8")),
+        ), sort_keys=True))
+        return 0
     items = scenarios(args.catalog, tier=getattr(args, "tier", None))
     if args.command == "list":
         print(json.dumps(items, sort_keys=True))

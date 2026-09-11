@@ -183,6 +183,11 @@ fn insert_lifted_fields(
             Ok([only]) => only,
             Err(variants) => json!({ "anyOf": variants }),
         };
+        // The empty object preserves an unconstrained JSON schema while
+        // supporting MCP clients that require object-shaped property schemas.
+        if prop == Value::Bool(true) {
+            prop = json!({});
+        }
         if let Some(object) = prop.as_object_mut() {
             let actions: Vec<&str> = field.actions.iter().map(String::as_str).collect();
             let prefix = format!("Applies to action(s): {}.", actions.join(", "));
