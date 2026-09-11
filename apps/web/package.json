@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "lucide-react": "^1.16.0",
-    "next": "^16.2.12",
+    "next": "^16.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -11,7 +11,7 @@
     "@types/react-dom": "^19.2.3",
     "jsdom": "^29.1.1",
     "typescript": "^5.8.0",
-    "vitest": "^4.1.9"
+    "vitest": "^5.0.0"
   },
   "name": "@axon/admin-panel",
   "description": "Web administration panel for the Axon RAG engine.",
@@ -24,7 +24,7 @@
   },
   "overrides": {
     "postcss": "^8.5.25",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   },
   "private": true,
   "scripts": {
