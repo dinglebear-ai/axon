@@ -25,7 +25,7 @@ def main():
  if not isinstance(runs,list):raise SystemExit("trusted history lookup returned invalid provenance")
  with tempfile.TemporaryDirectory() as directory:
   payload=empty
-  missing=("not found","no valid artifacts","artifact not found")
+  missing=("not found","no valid artifacts","artifact not found","no artifact matches any of the names or patterns provided")
   for run in runs:
    if (not isinstance(run,dict) or set(run)!={"databaseId","attempt","conclusion","headBranch","headSha","event"} or not isinstance(run.get("databaseId"),int)
        or not isinstance(run.get("attempt"),int) or run["attempt"]<1 or run.get("headBranch")!=branch or not isinstance(run.get("headSha"),str) or len(run["headSha"])!=40 or not run.get("conclusion")):raise SystemExit("trusted history run provenance is malformed")
