@@ -14,6 +14,25 @@ fn labby_status_poll_delay(completed_polls: u32) -> Duration {
     }
 }
 
+async fn await_with_turn_deadline<F: Future>(
+    store: &AgentTurnStore,
+    turn_id: &str,
+    lease_version: u64,
+    deadline_at_ms: i64,
+    future: F,
+) -> Option<F::Output> {
+    let remaining_ms = deadline_at_ms.saturating_sub(now_ms());
+    if remaining_ms <= 0 {
+        return None;
+    }
+    tokio::time::timeout(
+        Duration::from_millis(remaining_ms as u64),
+        await_with_renewal(store, turn_id, lease_version, future),
+    )
+    .await
+    .ok()
+}
+
 pub(super) async fn run_loop(
     store: &AgentTurnStore,
     client: &LabbyAgentClient,
@@ -307,13 +326,18 @@ pub(super) async fn execute_proposal(
             receipt = client.cancel(&receipt.request_id).await?;
             break;
         }
-        receipt = await_with_renewal(
+        let Some(status_result) = await_with_turn_deadline(
             store,
             &turn.id,
             lease_version,
+            turn.deadline_at_ms,
             client.status(&receipt.request_id),
         )
-        .await?;
+        .await
+        else {
+            break;
+        };
+        receipt = status_result?;
         completed_polls = completed_polls.saturating_add(1);
     }
     let final_turn_id = turn.id.clone();

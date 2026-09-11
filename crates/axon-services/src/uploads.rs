@@ -7,9 +7,9 @@
 use crate::context::ServiceContext;
 use axon_api::source::{
     ApiError, ArtifactHandle, ArtifactId, ArtifactKind, ArtifactReadResult, ErrorStage,
-    MetadataMap, Page, SourceWarning, Timestamp, UploadAbortRequest, UploadAbortResult,
-    UploadCompleteRequest, UploadCompleteResult, UploadCreateRequest, UploadCreateResult, UploadId,
-    UploadListRequest, UploadPurpose, UploadStatus, UploadStatusKind,
+    MAX_UPLOAD_BYTES, MetadataMap, Page, SourceWarning, Timestamp, UploadAbortRequest,
+    UploadAbortResult, UploadCompleteRequest, UploadCompleteResult, UploadCreateRequest,
+    UploadCreateResult, UploadId, UploadListRequest, UploadPurpose, UploadStatus, UploadStatusKind,
 };
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use chrono::{Duration, Utc};
@@ -26,7 +26,6 @@ use cleanup::expire_retained_artifact_if_needed;
 mod validation;
 use validation::*;
 
-const MAX_UPLOAD_BYTES: u64 = 96 * 1024 * 1024;
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 200;
 const STAGING_TTL_HOURS: i64 = 24;

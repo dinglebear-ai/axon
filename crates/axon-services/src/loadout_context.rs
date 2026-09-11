@@ -71,28 +71,17 @@ pub async fn resolve(
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let client = axon_core::http::internal_service_no_redirect_http_client()
         .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby client initialization failed"))?;
-    let response = tokio::time::timeout(
+    let request = client
+        .post(url)
+        .bearer_auth(token)
+        .header("x-request-id", &correlation_id)
+        .json(&serde_json::json!({ "runtimeIdentity": runtime_identity }));
+    let bytes = read_loadout_response(
+        request,
         Duration::from_millis(cfg.labby_resolution_timeout_ms),
-        client
-            .post(url)
-            .bearer_auth(token)
-            .header("x-request-id", &correlation_id)
-            .json(&serde_json::json!({ "runtimeIdentity": runtime_identity }))
-            .send(),
+        cfg.labby_resolution_max_bytes,
     )
-    .await
-    .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution timed out"))?
-    .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution failed"))?;
-    if !response.status().is_success() {
-        anyhow::bail!(
-            "loadout_resolution_failed: Labby returned {}",
-            response.status().as_u16()
-        );
-    }
-    let bytes =
-        axon_core::http::read_response_bytes_bounded(response, cfg.labby_resolution_max_bytes)
-            .await
-            .map_err(loadout_body_error)?;
+    .await?;
     let preview: Preview = serde_json::from_slice(&bytes)
         .map_err(|_| anyhow::anyhow!("loadout_contract_invalid: invalid Labby preview"))?;
     if preview.loadout_id != binding.loadout_id || preview.runtime_identity != runtime_identity {
@@ -131,6 +120,30 @@ pub async fn resolve(
         },
         prompt_context,
     })
+}
+
+async fn read_loadout_response(
+    request: reqwest::RequestBuilder,
+    timeout: Duration,
+    max_bytes: usize,
+) -> anyhow::Result<Vec<u8>> {
+    tokio::time::timeout(timeout, async move {
+        let response = request
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution failed"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "loadout_resolution_failed: Labby returned {}",
+                response.status().as_u16()
+            );
+        }
+        axon_core::http::read_response_bytes_bounded(response, max_bytes)
+            .await
+            .map_err(loadout_body_error)
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("loadout_unavailable: Labby resolution timed out"))?
 }
 
 fn loadout_body_error(error: axon_core::http::HttpError) -> anyhow::Error {

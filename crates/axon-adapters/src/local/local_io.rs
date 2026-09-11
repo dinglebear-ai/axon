@@ -320,6 +320,7 @@ pub(crate) fn content_fingerprint_and_spool_from_file(
     mut file: File,
     path_hint: &Path,
     spool_path: &Path,
+    max_file_bytes: u64,
 ) -> Result<String> {
     file.rewind()
         .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
@@ -327,12 +328,25 @@ pub(crate) fn content_fingerprint_and_spool_from_file(
         .map_err(|err| fs_error("adapter.local.spool_write_failed", path_hint, err))?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
+    let mut total = 0_u64;
     loop {
         let read = file
             .read(&mut buffer)
             .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
         if read == 0 {
             break;
+        }
+        total = total.saturating_add(read as u64);
+        if total > max_file_bytes {
+            drop(spool);
+            let _ = fs::remove_file(spool_path);
+            return Err(ApiError::new(
+                "adapter.local.file_too_large",
+                axon_error::ErrorStage::Fetching,
+                "local source item exceeds max_file_bytes while spooling",
+            )
+            .with_context("path_hint", public_path_hint(path_hint))
+            .with_context("max_file_bytes", max_file_bytes.to_string()));
         }
         hasher.update(&buffer[..read]);
         spool

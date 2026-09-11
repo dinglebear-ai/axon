@@ -261,7 +261,8 @@ impl AdapterRegistry {
                 )
                 .with_options(SKILLS_SH_OPTION_KEYS),
             AdapterDefinition::new("upload", "1", SourceKind::Upload, SourceScope::File)
-                .with_safety_class(SafetyClass::AuthenticatedNetwork),
+                .with_safety_class(SafetyClass::AuthenticatedNetwork)
+                .with_options(&["max_file_bytes"]),
             AdapterDefinition::new("web", "1", SourceKind::Web, SourceScope::Site)
                 .with_scope(SourceScope::Page)
                 .with_scope(SourceScope::Docs)

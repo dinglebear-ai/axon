@@ -137,10 +137,12 @@ impl QdrantHttp {
         if !status.is_success() {
             return Err(self.status_error(stage, context, status));
         }
-        let body = resp
-            .json::<serde_json::Value>()
-            .await
-            .map_err(|err| self.transport(stage, context, &err))?;
+        let body = axon_core::http::read_response_json_bounded::<serde_json::Value>(
+            resp,
+            axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+        )
+        .await
+        .map_err(|_| self.response_error(stage, context))?;
         Ok(Some(body))
     }
 
@@ -320,10 +322,12 @@ impl QdrantHttp {
                     if !status.is_success() {
                         return Err(self.status_error(stage, context, status));
                     }
-                    return resp
-                        .json::<T>()
-                        .await
-                        .map_err(|err| self.transport(stage, context, &err));
+                    return axon_core::http::read_response_json_bounded::<T>(
+                        resp,
+                        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+                    )
+                    .await
+                    .map_err(|_| self.response_error(stage, context));
                 }
                 Err(err) => {
                     last = Some(self.transport(stage, context, &err));
@@ -365,6 +369,16 @@ impl QdrantHttp {
                 "{context}: qdrant transport error ({})",
                 error_category(err)
             ),
+        )
+        .with_context("endpoint", ENDPOINT_MARKER)
+        .with_provider_id(&self.provider_id)
+    }
+
+    fn response_error(&self, stage: axon_error::ErrorStage, context: &str) -> ApiError {
+        ApiError::new(
+            "vector.qdrant.transport",
+            stage,
+            format!("{context}: qdrant response read/decode error"),
         )
         .with_context("endpoint", ENDPOINT_MARKER)
         .with_provider_id(&self.provider_id)

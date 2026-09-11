@@ -82,7 +82,12 @@ async fn fetch_readme(owner: &str, repo: &str, ctx: &VerticalContext) -> Option<
     if !resp.status().is_success() {
         return None;
     }
-    let json: serde_json::Value = resp.json().await.ok()?;
+    let json: serde_json::Value = axon_core::http::read_response_json_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .ok()?;
     let encoded = json["content"].as_str()?;
     // GitHub includes newlines in base64 — strip before decoding
     let cleaned: String = encoded
@@ -253,13 +258,15 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         }
     }
 
-    let data: serde_json::Value =
-        resp.json()
-            .await
-            .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                vertical: INFO.name,
-                status,
-            })?;
+    let data: serde_json::Value = axon_core::http::read_response_json_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status,
+    })?;
 
     let title = data["full_name"].as_str().map(str::to_string);
     let description = data["description"].as_str().unwrap_or("").to_string();

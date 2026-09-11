@@ -324,12 +324,16 @@ async fn qdrant_point_count(client: &reqwest::Client, base: &str, collection: &s
     )
     .await
     {
-        Ok(Ok(resp)) if resp.status().is_success() => resp
-            .json::<Value>()
+        Ok(Ok(resp)) if resp.status().is_success() => {
+            crate::http::read_response_json_bounded::<Value>(
+                resp,
+                crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+            )
             .await
             .ok()
             .and_then(|v| v.pointer("/result/count").and_then(Value::as_u64))
-            .unwrap_or(0),
+            .unwrap_or(0)
+        }
         _ => 0,
     }
 }
@@ -354,10 +358,17 @@ async fn qdrant_contract_versions(
         match tokio::time::timeout(CUTOVER_QDRANT_TIMEOUT, client.post(&url).json(&body).send())
             .await
         {
-            Ok(Ok(resp)) if resp.status().is_success() => match resp.json().await {
-                Ok(v) => v,
-                Err(_) => return (Vec::new(), false),
-            },
+            Ok(Ok(resp)) if resp.status().is_success() => {
+                match crate::http::read_response_json_bounded(
+                    resp,
+                    crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+                )
+                .await
+                {
+                    Ok(v) => v,
+                    Err(_) => return (Vec::new(), false),
+                }
+            }
             _ => return (Vec::new(), false),
         };
     let points = match page.pointer("/result/points").and_then(Value::as_array) {

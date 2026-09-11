@@ -35,7 +35,7 @@ pub use client::build_client_no_redirect;
 pub use client::build_ssrf_guarded_client_builder;
 pub use client::{
     DEFAULT_MAX_RESPONSE_BODY_BYTES, build_client, fetch_html, http_client,
-    read_response_bytes_bounded, read_response_text_bounded,
+    read_response_bytes_bounded, read_response_json_bounded, read_response_text_bounded,
 };
 pub use client::{internal_service_http_client, internal_service_no_redirect_http_client};
 pub use conditional::{Probe, conditional_probe};

@@ -142,13 +142,15 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         });
     }
 
-    let item: HnItem = resp
-        .json()
-        .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        })?;
+    let item: HnItem = axon_core::http::read_response_json_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status,
+    })?;
 
     build_scraped_doc(url, item_id, &item)
 }

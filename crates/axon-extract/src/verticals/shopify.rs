@@ -181,13 +181,15 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         }
     }
 
-    let data: serde_json::Value =
-        resp.json()
-            .await
-            .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                vertical: INFO.name,
-                status,
-            })?;
+    let data: serde_json::Value = axon_core::http::read_response_json_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status,
+    })?;
 
     let product = &data["product"];
     let title_str = product["title"].as_str().unwrap_or(&handle);

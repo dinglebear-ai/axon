@@ -13,3 +13,9 @@ fn explicit_local_file_size_limit_overrides_default() {
     let options = validate_options(&AdapterOptions { values }).expect("options");
     assert_eq!(options.max_file_bytes, 4096);
 }
+
+#[test]
+fn upload_options_use_the_shared_staged_upload_limit() {
+    let options = validate_upload_options(&AdapterOptions::default()).expect("options");
+    assert_eq!(options.max_file_bytes, MAX_UPLOAD_BYTES);
+}

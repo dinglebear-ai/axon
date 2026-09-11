@@ -324,8 +324,12 @@ fn manifest_item_from_open_path(
     if !metadata.is_file() || metadata.len() > options.max_file_bytes {
         return Ok(None);
     }
-    let content_hash =
-        content_fingerprint_and_spool_from_file(file, path, &spool_path(spool_dir, key))?;
+    let content_hash = content_fingerprint_and_spool_from_file(
+        file,
+        path,
+        &spool_path(spool_dir, key),
+        options.max_file_bytes,
+    )?;
     let identity = item_identity(SourceKind::Local, base_uri, key)?;
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),

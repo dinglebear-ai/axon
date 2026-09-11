@@ -44,7 +44,12 @@ async fn resolve_chrome_url(remote_url: &str) -> String {
         return remote_url.to_string();
     };
 
-    let Ok(body) = resp.json::<serde_json::Value>().await else {
+    let Ok(body) = crate::http::read_response_json_bounded::<serde_json::Value>(
+        resp,
+        crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    else {
         return remote_url.to_string();
     };
 

@@ -227,6 +227,17 @@ pub(super) fn decode_response_text(bytes: &[u8], content_type: Option<&str>) -> 
     text.into_owned()
 }
 
+pub async fn read_response_json_bounded<T>(
+    response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<T, anyhow::Error>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let bytes = read_response_bytes_bounded(response, max_bytes).await?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
 pub async fn fetch_html(client: &reqwest::Client, url: &str) -> Result<String, anyhow::Error> {
     let normalized = normalize_url(url);
     validate_url(&normalized)?;

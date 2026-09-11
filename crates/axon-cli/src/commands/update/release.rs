@@ -6,6 +6,8 @@ use std::error::Error;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 
+const MAX_UPDATE_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
 pub(super) async fn download_release_assets(
     client: &reqwest::Client,
     release: &GithubRelease,
@@ -15,13 +17,9 @@ pub(super) async fn download_release_assets(
     let archive_url = find_asset_url(release, names.archive)?;
     let checksum_url = find_asset_url(release, names.checksum)?;
     download_to_file(client, archive_url, archive_path).await?;
-    let checksum = client
-        .get(checksum_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
+    let checksum_response = client.get(checksum_url).send().await?.error_for_status()?;
+    let checksum =
+        axon_core::http::read_response_text_bounded(checksum_response, 1024 * 1024).await?;
 
     Ok((release.tag_name.clone(), checksum))
 }
@@ -33,29 +31,35 @@ pub(super) async fn fetch_compatible_release(
     names: &ReleaseAssetNames,
 ) -> Result<GithubRelease, Box<dyn Error>> {
     if let Some(tag) = version {
-        let release: GithubRelease = client
+        let response = client
             .get(format!(
                 "https://api.github.com/repos/{repo}/releases/tags/{tag}"
             ))
             .send()
             .await?
-            .error_for_status()?
-            .json()
-            .await?;
+            .error_for_status()?;
+        let release: GithubRelease = axon_core::http::read_response_json_bounded(
+            response,
+            axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+        )
+        .await?;
         find_asset_url(&release, names.archive)?;
         find_asset_url(&release, names.checksum)?;
         return Ok(release);
     }
 
-    let releases: Vec<GithubRelease> = client
+    let response = client
         .get(format!(
             "https://api.github.com/repos/{repo}/releases?per_page=100"
         ))
         .send()
         .await?
-        .error_for_status()?
-        .json()
-        .await?;
+        .error_for_status()?;
+    let releases: Vec<GithubRelease> = axon_core::http::read_response_json_bounded(
+        response,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await?;
     select_latest_compatible_release(&releases, names).cloned()
 }
 
@@ -97,11 +101,38 @@ pub(super) async fn download_to_file(
     url: &str,
     dest: &Path,
 ) -> Result<(), Box<dyn Error>> {
+    download_to_file_bounded(client, url, dest, MAX_UPDATE_DOWNLOAD_BYTES).await
+}
+
+async fn download_to_file_bounded(
+    client: &reqwest::Client,
+    url: &str,
+    dest: &Path,
+    max_bytes: u64,
+) -> Result<(), Box<dyn Error>> {
     let response = client.get(url).send().await?.error_for_status()?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes)
+    {
+        return Err(err(format!(
+            "update download exceeds {max_bytes} byte limit"
+        )));
+    }
     let mut file = tokio::fs::File::create(dest).await?;
     let mut stream = response.bytes_stream();
+    let mut total = 0_u64;
     while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
+        let chunk = chunk?;
+        total = total.saturating_add(chunk.len() as u64);
+        if total > max_bytes {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(err(format!(
+                "update download exceeds {max_bytes} byte limit"
+            )));
+        }
+        file.write_all(&chunk).await?;
     }
     file.flush().await?;
     Ok(())
@@ -139,3 +170,7 @@ pub(super) fn release_asset_names(
         ))),
     }
 }
+
+#[cfg(test)]
+#[path = "release_tests.rs"]
+mod tests;

@@ -50,7 +50,11 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     {
         request = request.bearer_auth(token);
     }
-    let body: serde_json::Value = request.send().await.ok()?.json().await.ok()?;
+    let response = request.send().await.ok()?;
+    let body: serde_json::Value =
+        axon_core::http::read_response_json_bounded(response, 1024 * 1024)
+            .await
+            .ok()?;
 
     let ws_url = body.get("webSocketDebuggerUrl")?.as_str()?;
 

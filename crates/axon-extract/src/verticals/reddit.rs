@@ -104,7 +104,12 @@ async fn get_oauth_token(ctx: &VerticalContext) -> Option<String> {
         return None;
     }
 
-    let body: Value = resp.json().await.ok()?;
+    let body: Value = axon_core::http::read_response_json_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .ok()?;
     let token = body["access_token"].as_str()?.to_string();
     let expires_in = body["expires_in"].as_u64().unwrap_or(86400);
     let expires_at = Instant::now() + Duration::from_secs(expires_in);
@@ -251,13 +256,15 @@ async fn fetch_with_retry(
         let status = resp.status().as_u16();
         match status {
             200 => {
-                return resp
-                    .json()
-                    .await
-                    .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                        vertical: INFO.name,
-                        status,
-                    });
+                return axon_core::http::read_response_json_bounded(
+                    resp,
+                    axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+                )
+                .await
+                .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                    vertical: INFO.name,
+                    status,
+                });
             }
             429 => {
                 if attempt == MAX_RETRIES {

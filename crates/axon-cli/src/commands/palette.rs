@@ -140,13 +140,16 @@ async fn pull_or_build_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 async fn pull_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let client = http_client()?;
-    let releases = client
+    let response = client
         .get(PALETTE_RELEASES_API)
         .send()
         .await?
-        .error_for_status()?
-        .json::<Vec<PaletteRelease>>()
-        .await?;
+        .error_for_status()?;
+    let releases = axon_core::http::read_response_json_bounded::<Vec<PaletteRelease>>(
+        response,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await?;
     let (archive_url, sha_url) = select_palette_assets(&releases).ok_or_else(|| {
         let (archive, checksum) = palette_asset_names();
         format!("no GitHub release contains both palette assets `{archive}` and `{checksum}`")
@@ -235,26 +238,20 @@ fn report_installed(cfg: &Config, dest: &Path, method: &str) -> Result<(), Box<d
 async fn download_verified(archive_url: &str, sha_url: &str) -> Result<Vec<u8>, Box<dyn Error>> {
     let client = reqwest::Client::new();
 
-    let sha_text = client
-        .get(sha_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
+    let sha_response = client.get(sha_url).send().await?.error_for_status()?;
+    let sha_text = axon_core::http::read_response_text_bounded(sha_response, 1024 * 1024).await?;
     let expected = sha_text
         .split_whitespace()
         .next()
         .ok_or("sha256 file is empty")?
         .to_lowercase();
 
-    let archive_bytes = client
-        .get(archive_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let archive_response = client.get(archive_url).send().await?.error_for_status()?;
+    let archive_bytes = axon_core::http::read_response_bytes_bounded(
+        archive_response,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await?;
 
     let mut hasher = sha2::Sha256::new();
     hasher.update(&archive_bytes);
@@ -264,7 +261,7 @@ async fn download_verified(archive_url: &str, sha_url: &str) -> Result<Vec<u8>, 
         return Err(format!("checksum mismatch — expected {expected}, got {actual}").into());
     }
 
-    Ok(archive_bytes.to_vec())
+    Ok(archive_bytes)
 }
 
 // ── Extraction ────────────────────────────────────────────────────────────────

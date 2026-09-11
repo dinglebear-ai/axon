@@ -107,12 +107,15 @@ async fn fetch_via_reqwest(url: &str, ctx: &VerticalContext) -> Result<String, V
         }
     }
 
-    resp.text()
-        .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        })
+    axon_core::http::read_response_text_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status,
+    })
 }
 
 fn extract_item_id(url: &str) -> Option<String> {

@@ -70,6 +70,9 @@ pub struct ArtifactResult {
     pub warnings: Vec<SourceWarning>,
 }
 
+/// Maximum staged upload size accepted by the public upload contract.
+pub const MAX_UPLOAD_BYTES: u64 = 96 * 1024 * 1024;
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
