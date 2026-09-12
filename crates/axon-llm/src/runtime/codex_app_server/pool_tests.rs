@@ -40,7 +40,15 @@ async fn idle_expiry_reclaims_child_without_another_checkout() {
     let slot = pool.checkout(Duration::from_secs(5)).await.unwrap();
     let home = slot._home_guard.as_ref().unwrap().path().to_path_buf();
     pool.checkin(slot).await;
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    // Reaping runs in a separate task and includes asynchronous process cleanup.
+    // Observe both effects rather than assuming the task ran within 250ms on CI.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pool.metrics().await.idle != 0 || home.exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("idle reaper must reclaim the child and its home without another checkout");
     assert_eq!(
         pool.metrics().await.idle,
         0,
