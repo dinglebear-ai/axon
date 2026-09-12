@@ -143,13 +143,15 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         });
     }
 
-    let xml = resp
-        .text()
-        .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        })?;
+    let xml = axon_core::http::read_response_text_bounded(
+        resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status,
+    })?;
 
     // Scope extraction to the <entry> block to skip the feed-level <title>/<summary>
     let entry_xml = extract_entry_block(&xml).ok_or(VerticalError::VerticalTargetNotFound {

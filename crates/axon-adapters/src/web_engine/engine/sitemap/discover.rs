@@ -9,6 +9,7 @@ use axon_api::source::MetadataMap;
 use axon_core::config::Config;
 use axon_core::content::{extract_loc_values, extract_loc_with_lastmod, extract_robots_sitemaps};
 use axon_core::logging::{log_info, log_warn};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use spider::url::Url;
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
@@ -141,97 +142,85 @@ fn sitemap_seed_queue(parsed: &Url) -> VecDeque<String> {
     .collect()
 }
 
-async fn process_sitemap_batch(
-    cfg: &Config,
+async fn fetch_sitemap_document(
     fetch: Arc<dyn FetchProvider>,
-    batch: Vec<String>,
+    sitemap_url: String,
+    metadata: MetadataMap,
+) -> Option<(String, String)> {
+    fetch_text_with_metadata(
+        fetch.as_ref(),
+        &sitemap_url,
+        Some(SITEMAP_MAX_BODY_BYTES),
+        &metadata,
+    )
+    .await
+    .map(|xml| (sitemap_url, xml))
+}
+
+fn process_sitemap_result(
+    cfg: &Config,
+    result: Option<(String, String)>,
     scope: &SitemapScope<'_>,
     output: &mut SitemapBatchOutput<'_>,
-    metadata: &MetadataMap,
 ) -> usize {
-    let fetched = futures_util::future::join_all(batch.into_iter().map(|sitemap_url| {
-        let fetch = fetch.clone();
-        let metadata = metadata.clone();
-        async move {
-            fetch_text_with_metadata(
-                fetch.as_ref(),
-                &sitemap_url,
-                Some(SITEMAP_MAX_BODY_BYTES),
-                &metadata,
-            )
-            .await
-            .map(|xml| (sitemap_url, xml))
+    let Some((sitemap_url, xml)) = result else {
+        output.failed_fetches += 1;
+        return 0;
+    };
+    // HTTP 200 is not proof of a sitemap: plenty of sites serve an HTML
+    // soft-404 at /sitemap.xml. Classify by root element and skip unrelated bodies.
+    let is_index = match classify_sitemap_document(&xml) {
+        SitemapDocKind::Index => true,
+        SitemapDocKind::UrlSet => false,
+        SitemapDocKind::NotSitemap => {
+            log_warn(&format!(
+                "command=sitemap ignored non-sitemap body url={sitemap_url}"
+            ));
+            return 0;
         }
-    }))
-    .await;
-
-    let mut parsed = 0usize;
-    for result in fetched {
-        let Some((sitemap_url, xml)) = result else {
-            output.failed_fetches += 1;
-            continue;
-        };
-        // HTTP 200 is not proof of a sitemap: plenty of sites serve an HTML
-        // soft-404 at /sitemap.xml (www.charlestoncounty.gov does). Counting
-        // one as a parsed document makes discovery report success with zero
-        // URLs, which suppresses the caller's fallback. Classify by root
-        // element and skip anything that is not a sitemap.
-        let is_index = match classify_sitemap_document(&xml) {
-            SitemapDocKind::Index => true,
-            SitemapDocKind::UrlSet => false,
-            SitemapDocKind::NotSitemap => {
-                log_warn(&format!(
-                    "command=sitemap ignored non-sitemap body url={sitemap_url}"
-                ));
+    };
+    let since_days = cfg.sitemap_since_days;
+    if !is_index && since_days > 0 {
+        for (loc, lastmod) in extract_loc_with_lastmod(&xml) {
+            if let Some(ref lm) = lastmod
+                && !lastmod_is_recent(lm, since_days)
+            {
                 continue;
             }
-        };
-        parsed += 1;
-        let since_days = cfg.sitemap_since_days;
-        if !is_index && since_days > 0 {
-            // Date-filtered path: use block-level parsing to get <lastmod> per URL.
-            for (loc, lastmod) in extract_loc_with_lastmod(&xml) {
-                if let Some(ref lm) = lastmod
-                    && !lastmod_is_recent(lm, since_days)
+            if let Some(canonical_loc) = loc_in_scope(
+                cfg,
+                &loc,
+                scope.start_host,
+                scope.start_path,
+                scope.scoped_to_root,
+            ) && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
+            {
+                break;
+            }
+        }
+    } else {
+        for loc in extract_loc_values(&xml) {
+            if let Some(canonical_loc) = loc_in_scope(
+                cfg,
+                &loc,
+                scope.start_host,
+                scope.start_path,
+                scope.scoped_to_root,
+            ) {
+                if is_index
+                    && !output.seen_sitemaps.contains(&canonical_loc)
+                    && output.seen_sitemaps.len() + output.queue.len() < output.sitemap_fetch_limit
                 {
-                    continue;
-                }
-                if let Some(canonical_loc) = loc_in_scope(
-                    cfg,
-                    &loc,
-                    scope.start_host,
-                    scope.start_path,
-                    scope.scoped_to_root,
-                ) && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
+                    output.queue.push_back(canonical_loc);
+                } else if !is_index
+                    && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
                 {
                     break;
                 }
             }
-        } else {
-            for loc in extract_loc_values(&xml) {
-                if let Some(canonical_loc) = loc_in_scope(
-                    cfg,
-                    &loc,
-                    scope.start_host,
-                    scope.start_path,
-                    scope.scoped_to_root,
-                ) {
-                    if is_index
-                        && !output.seen_sitemaps.contains(&canonical_loc)
-                        && output.seen_sitemaps.len() + output.queue.len()
-                            < output.sitemap_fetch_limit
-                    {
-                        output.queue.push_back(canonical_loc);
-                    } else if !is_index
-                        && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
-                    {
-                        break;
-                    }
-                }
-            }
         }
     }
-    parsed
+    1
 }
 
 /// Fetch `robots.txt` for `scheme://host/robots.txt` and enqueue any `Sitemap:` directives
@@ -330,22 +319,21 @@ pub async fn discover_sitemap_urls_with_metadata(
     let mut parsed_sitemaps = 0usize;
     let mut failed_fetches = 0usize;
 
-    while !queue.is_empty() && sitemap_fetches < sitemap_fetch_limit && out.len() < url_limit {
-        let mut batch = Vec::new();
-        while batch.len() < worker_limit && sitemap_fetches + batch.len() < sitemap_fetch_limit {
+    let mut in_flight = FuturesUnordered::new();
+    while (!queue.is_empty() || !in_flight.is_empty()) && out.len() < url_limit {
+        while in_flight.len() < worker_limit && sitemap_fetches < sitemap_fetch_limit {
             let Some(url) = queue.pop_front() else {
                 break;
             };
             if seen_sitemaps.insert(url.clone()) {
-                batch.push(url);
+                // Count attempts before I/O so failed sitemap requests consume budget too.
+                sitemap_fetches += 1;
+                in_flight.push(fetch_sitemap_document(fetch.clone(), url, metadata.clone()));
             }
         }
-        if batch.is_empty() {
+        let Some(result) = in_flight.next().await else {
             break;
-        }
-        // Count attempts before I/O so failed sitemap requests consume budget too.
-        sitemap_fetches += batch.len();
-
+        };
         let mut output = SitemapBatchOutput {
             seen_sitemaps: &seen_sitemaps,
             queue: &mut queue,
@@ -354,10 +342,10 @@ pub async fn discover_sitemap_urls_with_metadata(
             url_limit,
             failed_fetches: 0,
         };
-        parsed_sitemaps +=
-            process_sitemap_batch(cfg, fetch.clone(), batch, &scope, &mut output, metadata).await;
+        let newly_parsed = process_sitemap_result(cfg, result, &scope, &mut output);
+        parsed_sitemaps += newly_parsed;
         failed_fetches += output.failed_fetches;
-        if parsed_sitemaps.is_multiple_of(64) {
+        if newly_parsed > 0 && parsed_sitemaps.is_multiple_of(64) {
             log_info(&format!(
                 "command=sitemap parsed={} discovered_urls={} queue={}",
                 parsed_sitemaps,

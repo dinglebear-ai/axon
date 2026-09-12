@@ -2,16 +2,17 @@
 //! missed, convert to markdown, and append to the crawl manifest.
 
 use super::discover::discover_sitemap_urls;
-use super::fetch_text;
 use super::filter::is_already_markdown;
+use super::{BACKFILL_MAX_BODY_BYTES, fetch_text};
 use crate::boundary::FetchProvider;
 use crate::web_engine::engine::CrawlSummary;
 use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
 use axon_core::content::{build_selector_config, to_markdown, url_to_stable_filename};
 use axon_core::logging::log_info;
+use futures_util::{StreamExt, stream};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::path::Path;
 use std::sync::Arc;
@@ -41,9 +42,7 @@ async fn fetch_and_convert_backfill_url(
     drop_thin: bool,
     selector_config: Option<spider_transformations::transformation::content::SelectorConfiguration>,
 ) -> (String, Option<(String, usize, bool, bool)>) {
-    // HTML page backfill: pass `None` to preserve `main`'s uncapped, charset-aware decode.
-    // Real HTML pages can exceed the discovery cap and may not be strict UTF-8.
-    let Some(html) = fetch_text(fetch.as_ref(), &url, None).await else {
+    let Some(html) = fetch_text(fetch.as_ref(), &url, Some(BACKFILL_MAX_BODY_BYTES)).await else {
         return (url, None);
     };
     let trimmed = if is_already_markdown(&url) {
@@ -84,14 +83,16 @@ async fn filter_seen_candidates(
         .collect())
 }
 
-/// Write a single backfill page to disk and append its entry to the manifest.
-async fn write_backfill_entry(
-    manifest: &mut BufWriter<tokio::fs::File>,
+/// Write a single backfill page and return its manifest line.
+///
+/// Network completion is intentionally unordered, but manifest lines are
+/// committed later in candidate order so durable output remains deterministic.
+async fn write_backfill_page(
     markdown_dir: &Path,
     url: &str,
     trimmed: &str,
     markdown_chars: usize,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<String, Box<dyn Error>> {
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
     let content_hash = hex::encode(hasher.finalize());
@@ -106,14 +107,11 @@ async fn write_backfill_entry(
         markdown_chars,
         content_hash: Some(content_hash),
         changed: true,
-        // Sitemap backfill fetches plain HTTP responses — raw HTML is not
-        // available at manifest-write time, so structured data is absent.
         structured: None,
     };
     let mut line = serde_json::to_string(&entry)?;
     line.push('\n');
-    manifest.write_all(line.as_bytes()).await?;
-    Ok(())
+    Ok(line)
 }
 
 pub async fn append_candidate_backfill(
@@ -166,44 +164,57 @@ pub async fn append_candidate_backfill(
         .unwrap_or(cfg.batch_concurrency)
         .clamp(1, 512);
 
-    // Compute the selector config once — it does not change between URLs.
+    // Keep the network window full as each URL completes rather than waiting
+    // for the slowest member of a fixed batch before admitting more work.
     let shared_selector_config = build_selector_config(cfg);
-    for chunk in candidates.chunks(backfill_concurrency) {
-        let fetched = futures_util::future::join_all(chunk.iter().cloned().map(|url| {
-            let fetch = fetch.clone();
-            let selector_config = shared_selector_config.clone();
-            async move {
-                fetch_and_convert_backfill_url(
-                    fetch,
-                    url,
-                    cfg.min_markdown_chars,
-                    cfg.drop_thin_markdown,
-                    selector_config,
-                )
-                .await
-            }
-        }))
-        .await;
+    let min_markdown_chars = cfg.min_markdown_chars;
+    let drop_thin_markdown = cfg.drop_thin_markdown;
+    let fetched = stream::iter(candidates.into_iter().enumerate().map(|(sequence, url)| {
+        let fetch = fetch.clone();
+        let selector_config = shared_selector_config.clone();
+        async move {
+            let (url, result) = fetch_and_convert_backfill_url(
+                fetch,
+                url,
+                min_markdown_chars,
+                drop_thin_markdown,
+                selector_config,
+            )
+            .await;
+            (sequence, url, result)
+        }
+    }))
+    .buffer_unordered(backfill_concurrency);
+    tokio::pin!(fetched);
 
-        for (url, result) in fetched {
-            let Some((trimmed, markdown_chars, is_thin, dropped)) = result else {
-                stats.failed += 1;
-                continue;
-            };
+    let mut pending_manifest = BTreeMap::new();
+    let mut next_sequence = 0usize;
+    while let Some((sequence, url, result)) = fetched.next().await {
+        let manifest_line = if let Some((trimmed, markdown_chars, is_thin, dropped)) = result {
             stats.fetched_ok += 1;
             summary.pages_seen += 1;
             if is_thin {
                 summary.thin_pages += 1;
             }
             if dropped {
-                continue;
+                None
+            } else {
+                Some(write_backfill_page(&markdown_dir, &url, &trimmed, markdown_chars).await?)
             }
+        } else {
+            stats.failed += 1;
+            None
+        };
+        pending_manifest.insert(sequence, (url, manifest_line));
 
-            write_backfill_entry(&mut manifest, &markdown_dir, &url, &trimmed, markdown_chars)
-                .await?;
-            summary.markdown_files += 1;
-            stats.written += 1;
-            added_urls.push(url);
+        while let Some((url, line)) = pending_manifest.remove(&next_sequence) {
+            if let Some(line) = line {
+                manifest.write_all(line.as_bytes()).await?;
+                summary.markdown_files += 1;
+                stats.written += 1;
+                added_urls.push(url);
+            }
+            next_sequence += 1;
         }
     }
     manifest.flush().await?;
@@ -247,3 +258,7 @@ pub async fn append_sitemap_backfill(
     ));
     Ok(stats)
 }
+
+#[cfg(test)]
+#[path = "backfill_tests.rs"]
+mod tests;

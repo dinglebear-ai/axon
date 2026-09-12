@@ -35,3 +35,15 @@ fn local_adapter_definition_exposes_target_scopes_and_options() {
         );
     }
 }
+
+#[test]
+fn upload_adapter_definition_exposes_max_file_bytes_override() {
+    let registry = AdapterRegistry::target_defaults();
+    let upload = registry.find("upload").expect("upload adapter exists");
+    assert!(
+        upload
+            .allowed_option_keys
+            .contains(&"max_file_bytes".to_string()),
+        "upload callers must be able to lower the shared staged-upload byte ceiling"
+    );
+}

@@ -7,6 +7,8 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::adapter::Result;
 
+pub(crate) const DEFAULT_LOCAL_MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
 const ALLOWED_OPTIONS: &[&str] = &[
     "include_globs",
     "exclude_globs",
@@ -28,7 +30,7 @@ pub(crate) enum BinaryPolicy {
 #[derive(Debug, Clone)]
 pub(crate) struct LocalOptions {
     pub(crate) follow_symlinks: bool,
-    pub(crate) max_file_bytes: Option<u64>,
+    pub(crate) max_file_bytes: u64,
     pub(crate) respect_gitignore: bool,
     pub(crate) binary_policy: BinaryPolicy,
     include_set: Option<GlobSet>,
@@ -91,6 +93,17 @@ impl LocalOptions {
 }
 
 pub(crate) fn validate_options(options: &AdapterOptions) -> Result<LocalOptions> {
+    validate_options_with_max_file_default(options, DEFAULT_LOCAL_MAX_FILE_BYTES)
+}
+
+pub(crate) fn validate_upload_options(options: &AdapterOptions) -> Result<LocalOptions> {
+    validate_options_with_max_file_default(options, MAX_UPLOAD_BYTES)
+}
+
+fn validate_options_with_max_file_default(
+    options: &AdapterOptions,
+    default_max_file_bytes: u64,
+) -> Result<LocalOptions> {
     for key in options.values.keys() {
         if !ALLOWED_OPTIONS.contains(&key.as_str()) {
             return Err(ApiError::new(
@@ -106,7 +119,7 @@ pub(crate) fn validate_options(options: &AdapterOptions) -> Result<LocalOptions>
     require_string_array(options, "exclude_paths")?;
     require_bool(options, "respect_gitignore")?;
     let follow_symlinks = optional_bool(options, "follow_symlinks")?.unwrap_or(false);
-    let max_file_bytes = optional_u64(options, "max_file_bytes")?;
+    let max_file_bytes = optional_u64(options, "max_file_bytes")?.unwrap_or(default_max_file_bytes);
     let binary_policy = optional_binary_policy(options)?.unwrap_or(BinaryPolicy::Skip);
     require_enum(options, "watch_policy", &["manual", "auto", "disabled"])?;
     let include_globs = string_array(options, "include_globs");
@@ -361,3 +374,7 @@ fn file_name(path: &Path) -> &str {
         .and_then(|name| name.to_str())
         .unwrap_or("")
 }
+
+#[cfg(test)]
+#[path = "local_select_tests.rs"]
+mod tests;

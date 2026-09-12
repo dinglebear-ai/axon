@@ -167,10 +167,10 @@ async fn get_access_token(
         .await
         .map_err(|_| anyhow::anyhow!("reddit oauth request failed"))?;
     let status = resp.status();
-    let value: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|_| anyhow::anyhow!("reddit oauth returned an unparseable response"))?;
+    let value: serde_json::Value =
+        axon_core::http::read_response_json_bounded(resp, MAX_RESPONSE_BYTES)
+            .await
+            .map_err(|_| anyhow::anyhow!("reddit oauth returned an unparseable response"))?;
     value["access_token"]
         .as_str()
         .map(str::to_string)

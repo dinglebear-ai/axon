@@ -208,7 +208,12 @@ pub async fn probe_tei_dim(cfg: &Config) -> Option<u64> {
         if !resp.status().is_success() {
             continue;
         }
-        let Ok(info) = resp.json::<Value>().await else {
+        let Ok(info) = axon_core::http::read_response_json_bounded::<Value>(
+            resp,
+            axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+        )
+        .await
+        else {
             continue;
         };
         for key in ["embedding_dim", "dim", "hidden_size", "output_dim"] {

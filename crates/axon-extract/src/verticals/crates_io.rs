@@ -183,13 +183,15 @@ async fn fetch_crate_json(
         let status = resp.status().as_u16();
         match status {
             200 => {
-                let payload =
-                    resp.json()
-                        .await
-                        .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                            vertical: INFO.name,
-                            status,
-                        })?;
+                let payload = axon_core::http::read_response_json_bounded(
+                    resp,
+                    axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+                )
+                .await
+                .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                    vertical: INFO.name,
+                    status,
+                })?;
                 validate_crate_payload(&payload)?;
                 return Ok(payload);
             }
@@ -274,7 +276,10 @@ async fn fetch_readme(
     if !resp.status().is_success() {
         return None;
     }
-    Some(strip_html(&resp.text().await.ok()?))
+    let body = axon_core::http::read_response_text_bounded(resp, 8 * 1024 * 1024)
+        .await
+        .ok()?;
+    Some(strip_html(&body))
 }
 
 /// Strip HTML tags and collapse whitespace — keeps README readable as plain text.

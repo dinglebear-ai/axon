@@ -69,7 +69,9 @@ async fn fetch_model_card(model_id: &str, ctx: &VerticalContext) -> Option<Strin
     if !resp.status().is_success() {
         return None;
     }
-    let text = resp.text().await.ok()?;
+    let text = axon_core::http::read_response_text_bounded(resp, 8 * 1024 * 1024)
+        .await
+        .ok()?;
     // Truncate to 30_000 chars
     let truncated: String = text.chars().take(30_000).collect();
     Some(truncated)
@@ -201,14 +203,15 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         }
     }
 
-    let data: serde_json::Value =
-        api_resp
-            .json()
-            .await
-            .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                vertical: INFO.name,
-                status,
-            })?;
+    let data: serde_json::Value = axon_core::http::read_response_json_bounded(
+        api_resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status,
+    })?;
 
     let id = data["id"].as_str().unwrap_or(&model_id);
     let downloads = data["downloads"].as_u64().unwrap_or(0);

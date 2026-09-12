@@ -118,18 +118,24 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         });
     }
 
-    let q_data: serde_json::Value =
-        q_resp
-            .json()
-            .await
-            .map_err(|_| VerticalError::VerticalTargetUnavailable {
-                vertical: INFO.name,
-                status: q_status,
-            })?;
+    let q_data: serde_json::Value = axon_core::http::read_response_json_bounded(
+        q_resp,
+        axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    .map_err(|_| VerticalError::VerticalTargetUnavailable {
+        vertical: INFO.name,
+        status: q_status,
+    })?;
 
     // Parse answers (non-fatal if API call failed)
     let a_data: Option<serde_json::Value> = if let Ok(ar) = a_resp {
-        ar.json().await.ok()
+        axon_core::http::read_response_json_bounded(
+            ar,
+            axon_core::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+        )
+        .await
+        .ok()
     } else {
         None
     };

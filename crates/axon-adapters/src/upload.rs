@@ -28,7 +28,7 @@ use uuid::Uuid;
 use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::local::local_io::{content_fingerprint, fs_error, read_content_ref, safe_item_path};
-use crate::local_select::{LocalOptions, is_binary_path, validate_options};
+use crate::local_select::{LocalOptions, is_binary_path, validate_upload_options};
 use crate::manifest::item_identity;
 
 pub const MODULE_NAME: &str = "upload";
@@ -145,7 +145,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     upload_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
         .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
-    let options = validate_options(&plan.route.validated_options)?;
+    let options = validate_upload_options(&plan.route.validated_options)?;
 
     let root = PathBuf::from(&plan.request.source);
     let files = match plan.route.scope {
@@ -173,9 +173,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         }
         let metadata = fs::metadata(&file)
             .map_err(|err| fs_error("adapter.upload.stat_failed", &file, err))?;
-        if let Some(max_file_bytes) = options.max_file_bytes
-            && metadata.len() > max_file_bytes
-        {
+        if metadata.len() > options.max_file_bytes {
             continue;
         }
         if !metadata.is_file() {
@@ -230,7 +228,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
 
     let root = PathBuf::from(&plan.request.source);
     let root_for_keys = root_for_item_keys(&root, plan.route.scope);
-    let options = validate_options(&plan.route.validated_options)?;
+    let options = validate_upload_options(&plan.route.validated_options)?;
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
     for item in &manifest_items {
         let path = safe_item_path(root_for_keys, &item.source_item_key.0)?;

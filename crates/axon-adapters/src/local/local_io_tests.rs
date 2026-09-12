@@ -47,3 +47,18 @@ fn bounded_reader_rejects_bytes_arriving_past_the_metadata_size_check() {
         .expect_err("bytes beyond the admitted limit must be rejected while reading");
     assert_eq!(error.code.to_string(), "adapter.local.file_too_large");
 }
+
+#[test]
+fn discovery_spool_rejects_content_past_the_file_budget_and_removes_partial_spool() {
+    let input = tempfile::NamedTempFile::new().expect("input");
+    fs::write(input.path(), b"0123456789").expect("write input");
+    let spool_dir = tempfile::tempdir().expect("spool dir");
+    let spool = spool_dir.path().join("growing.content");
+    let file = File::open(input.path()).expect("open input");
+
+    let error = content_fingerprint_and_spool_from_file(file, Path::new("growing.txt"), &spool, 5)
+        .expect_err("spooling must enforce the byte budget");
+
+    assert_eq!(error.code.to_string(), "adapter.local.file_too_large");
+    assert!(!spool.exists(), "partial spool must be removed on overflow");
+}

@@ -1,8 +1,12 @@
 //! HTTP client construction and shared singleton.
 
+use encoding_rs::{Encoding, UTF_8};
+use mime::Mime;
 #[cfg(not(test))]
 use std::sync::LazyLock;
 use std::time::Duration;
+
+pub const DEFAULT_MAX_RESPONSE_BODY_BYTES: usize = 64 * 1024 * 1024;
 
 use super::error::HttpError;
 use super::normalize::normalize_url;
@@ -15,9 +19,17 @@ pub(crate) static HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> =
 #[cfg(not(test))]
 pub(crate) static INTERNAL_SERVICE_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> =
     LazyLock::new(|| {
-        build_client_without_ssrf_resolver(30, Some(super::ua::axon_ua()))
+        build_client_with_options(30, Some(super::ua::axon_ua()), false, true, true)
             .map_err(|e| e.to_string())
     });
+
+#[cfg(not(test))]
+pub(crate) static INTERNAL_SERVICE_NO_REDIRECT_HTTP_CLIENT: LazyLock<
+    Result<reqwest::Client, String>,
+> = LazyLock::new(|| {
+    build_client_with_options(30, Some(super::ua::axon_ua()), false, false, true)
+        .map_err(|e| e.to_string())
+});
 
 #[cfg(not(test))]
 pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
@@ -49,7 +61,31 @@ pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
 
 #[cfg(test)]
 pub fn internal_service_http_client() -> anyhow::Result<&'static reqwest::Client> {
-    http_client()
+    let client = build_client_with_options(30, None, false, true, true).map_err(|err| {
+        anyhow::Error::msg(format!("failed to initialize internal HTTP client: {err}"))
+    })?;
+    Ok(Box::leak(Box::new(client)))
+}
+
+#[cfg(not(test))]
+pub fn internal_service_no_redirect_http_client() -> anyhow::Result<&'static reqwest::Client> {
+    INTERNAL_SERVICE_NO_REDIRECT_HTTP_CLIENT
+        .as_ref()
+        .map_err(|err| {
+            anyhow::Error::msg(format!(
+                "failed to initialize internal no-redirect HTTP client: {err}"
+            ))
+        })
+}
+
+#[cfg(test)]
+pub fn internal_service_no_redirect_http_client() -> anyhow::Result<&'static reqwest::Client> {
+    let client = build_client_with_options(30, None, false, false, true).map_err(|err| {
+        anyhow::Error::msg(format!(
+            "failed to initialize internal no-redirect HTTP client: {err}"
+        ))
+    })?;
+    Ok(Box::leak(Box::new(client)))
 }
 
 pub fn build_client(
@@ -68,14 +104,6 @@ pub fn build_client_no_redirect(
 
 pub fn build_ssrf_guarded_client_builder(timeout: Option<Duration>) -> reqwest::ClientBuilder {
     base_client_builder(timeout, true)
-}
-
-#[cfg(not(test))]
-pub(crate) fn build_client_without_ssrf_resolver(
-    timeout_secs: u64,
-    user_agent: Option<&str>,
-) -> Result<reqwest::Client, HttpError> {
-    build_client_with_options(timeout_secs, user_agent, false, true, true)
 }
 
 /// Maximum redirect hops followed by the shared clients.
@@ -150,15 +178,77 @@ fn base_client_builder(timeout: Option<Duration>, ssrf_dns_guard: bool) -> reqwe
     builder
 }
 
+pub async fn read_response_bytes_bounded(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, HttpError> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(HttpError::ResponseTooLarge { max_bytes });
+    }
+    let initial_capacity = response
+        .content_length()
+        .unwrap_or_default()
+        .min(max_bytes as u64)
+        .min(1024 * 1024) as usize;
+    let mut bytes = Vec::with_capacity(initial_capacity);
+    while let Some(chunk) = response.chunk().await? {
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(HttpError::ResponseTooLarge { max_bytes });
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+pub async fn read_response_text_bounded(
+    response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<String, HttpError> {
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let bytes = read_response_bytes_bounded(response, max_bytes).await?;
+    Ok(decode_response_text(&bytes, content_type.as_deref()))
+}
+
+pub(super) fn decode_response_text(bytes: &[u8], content_type: Option<&str>) -> String {
+    let content_type = content_type.and_then(|value| value.parse::<Mime>().ok());
+    let encoding_name = content_type
+        .as_ref()
+        .and_then(|mime| mime.get_param("charset").map(|charset| charset.as_str()))
+        .unwrap_or("utf-8");
+    let encoding = Encoding::for_label(encoding_name.as_bytes()).unwrap_or(UTF_8);
+    let (text, _, _) = encoding.decode(bytes);
+    text.into_owned()
+}
+
+pub async fn read_response_json_bounded<T>(
+    response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<T, anyhow::Error>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let bytes = read_response_bytes_bounded(response, max_bytes).await?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
 pub async fn fetch_html(client: &reqwest::Client, url: &str) -> Result<String, anyhow::Error> {
     let normalized = normalize_url(url);
     validate_url(&normalized)?;
-    let body = client
+    let response = client
         .get(normalized.as_ref())
         .send()
         .await?
-        .error_for_status()?
-        .text()
-        .await?;
-    Ok(body)
+        .error_for_status()?;
+    Ok(read_response_text_bounded(response, DEFAULT_MAX_RESPONSE_BODY_BYTES).await?)
 }
+
+#[cfg(test)]
+#[path = "client_tests.rs"]
+mod tests;

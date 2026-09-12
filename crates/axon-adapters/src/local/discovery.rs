@@ -267,11 +267,7 @@ fn local_file_candidate(
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", &path, err))?;
-    if !metadata.is_file()
-        || options
-            .max_file_bytes
-            .is_some_and(|max_bytes| metadata.len() > max_bytes)
-    {
+    if !metadata.is_file() || metadata.len() > options.max_file_bytes {
         return Ok(None);
     }
     Ok(Some(LocalFileCandidate { key, path }))
@@ -325,15 +321,15 @@ fn manifest_item_from_open_path(
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", path, err))?;
-    if !metadata.is_file()
-        || options
-            .max_file_bytes
-            .is_some_and(|max_bytes| metadata.len() > max_bytes)
-    {
+    if !metadata.is_file() || metadata.len() > options.max_file_bytes {
         return Ok(None);
     }
-    let content_hash =
-        content_fingerprint_and_spool_from_file(file, path, &spool_path(spool_dir, key))?;
+    let content_hash = content_fingerprint_and_spool_from_file(
+        file,
+        path,
+        &spool_path(spool_dir, key),
+        options.max_file_bytes,
+    )?;
     let identity = item_identity(SourceKind::Local, base_uri, key)?;
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),

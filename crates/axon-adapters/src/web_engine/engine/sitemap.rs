@@ -38,6 +38,10 @@ pub(crate) const DISCOVERY_MAX_BODY_BYTES: u64 = 512 * 1024;
 /// cap must be generous enough not to drop large-but-valid sitemaps.
 pub(crate) const SITEMAP_MAX_BODY_BYTES: u64 = 50 * 1024 * 1024;
 
+/// General HTML cap for sitemap/llms candidate backfill. Keep this aligned with
+/// the HTTP fetch provider's process-wide maximum response budget.
+pub(crate) const BACKFILL_MAX_BODY_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Join `path` onto the origin of `parsed`, producing a correctly-formatted absolute URL.
 ///
 /// `Url::join` with a leading-slash path replaces the path while preserving scheme, host,

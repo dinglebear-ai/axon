@@ -111,3 +111,61 @@ fn default_seed_paths_include_the_three_added_fallbacks() {
         );
     }
 }
+
+#[derive(Clone, Default)]
+struct ReplenishmentFetch {
+    slow_done: Arc<std::sync::atomic::AtomicBool>,
+    third_started_before_slow_done: Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl FetchProvider for ReplenishmentFetch {
+    async fn fetch(
+        &self,
+        request: axon_api::source::FetchRequest,
+    ) -> crate::boundary::Result<axon_api::source::FetchedResource> {
+        use std::sync::atomic::Ordering;
+        if request.uri.ends_with("/sitemap.xml") {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            self.slow_done.store(true, Ordering::Release);
+        } else if request.uri.ends_with("/sitemap_index.xml") {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        } else if request.uri.ends_with("/sitemap-index.xml") {
+            self.third_started_before_slow_done
+                .store(!self.slow_done.load(Ordering::Acquire), Ordering::Release);
+        }
+        FetchProvider::fetch(
+            &crate::boundary::FakeAdapterProviders::new()
+                .with_fetch_text("<html>not a sitemap</html>"),
+            request,
+        )
+        .await
+    }
+
+    async fn capabilities(&self) -> crate::boundary::Result<axon_api::source::ProviderCapability> {
+        FetchProvider::capabilities(&crate::boundary::FakeAdapterProviders::new()).await
+    }
+}
+
+#[tokio::test]
+async fn sitemap_discovery_replenishes_capacity_before_slowest_fetch_finishes() {
+    use std::sync::atomic::Ordering;
+    let fetch = ReplenishmentFetch::default();
+    let observation = fetch.third_started_before_slow_done.clone();
+    let cfg = Config {
+        backfill_concurrency_limit: Some(2),
+        batch_concurrency: 2,
+        max_sitemaps: 3,
+        max_pages: 10,
+        ..Config::default()
+    };
+
+    discover_sitemap_urls(&cfg, "https://example.com/", Arc::new(fetch))
+        .await
+        .expect("discovery");
+
+    assert!(
+        observation.load(Ordering::Acquire),
+        "the third sitemap should start when the fast sibling completes, not after the slow sibling"
+    );
+}

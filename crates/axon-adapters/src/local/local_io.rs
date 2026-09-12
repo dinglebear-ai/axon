@@ -226,30 +226,25 @@ fn containment_flags() -> ResolveFlags {
 
 pub(crate) fn read_content_ref(path: &Path, options: &LocalOptions) -> Result<ContentRef> {
     let file = File::open(path).map_err(|err| fs_error("adapter.local.read_failed", path, err))?;
-    read_content_ref_from_file(file, path, options)
+    read_content_ref_from_file(file, path, options).map(|(content, _)| content)
 }
 
 pub(crate) fn read_content_ref_from_file(
     file: File,
     path_hint: &Path,
     options: &LocalOptions,
-) -> Result<ContentRef> {
+) -> Result<(ContentRef, String)> {
     enforce_read_size_from_file(&file, path_hint, options)?;
-    let bytes = match options.max_file_bytes {
-        Some(max_file_bytes) => read_bounded(file, path_hint, max_file_bytes)?,
-        None => {
-            let mut file = file;
-            let mut bytes = Vec::new();
-            file.read_to_end(&mut bytes)
-                .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
-            bytes
-        }
-    };
+    let bytes = read_bounded(file, path_hint, options.max_file_bytes)?;
+    let fingerprint = format!("sha256:{:x}", Sha256::digest(&bytes));
     if options.includes_binary_body(path_hint) {
-        return Ok(ContentRef::InlineBytes {
-            bytes_base64: BASE64_STANDARD.encode(bytes),
-            mime_type: "application/octet-stream".to_string(),
-        });
+        return Ok((
+            ContentRef::InlineBytes {
+                bytes_base64: BASE64_STANDARD.encode(&bytes),
+                mime_type: "application/octet-stream".to_string(),
+            },
+            fingerprint,
+        ));
     }
     let text = String::from_utf8(bytes).map_err(|err| {
         fs_error(
@@ -258,7 +253,7 @@ pub(crate) fn read_content_ref_from_file(
             std::io::Error::new(std::io::ErrorKind::InvalidData, err),
         )
     })?;
-    Ok(ContentRef::InlineText { text })
+    Ok((ContentRef::InlineText { text }, fingerprint))
 }
 
 fn read_bounded(reader: impl Read, path_hint: &Path, max_file_bytes: u64) -> Result<Vec<u8>> {
@@ -325,6 +320,7 @@ pub(crate) fn content_fingerprint_and_spool_from_file(
     mut file: File,
     path_hint: &Path,
     spool_path: &Path,
+    max_file_bytes: u64,
 ) -> Result<String> {
     file.rewind()
         .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
@@ -332,12 +328,25 @@ pub(crate) fn content_fingerprint_and_spool_from_file(
         .map_err(|err| fs_error("adapter.local.spool_write_failed", path_hint, err))?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
+    let mut total = 0_u64;
     loop {
         let read = file
             .read(&mut buffer)
             .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
         if read == 0 {
             break;
+        }
+        total = total.saturating_add(read as u64);
+        if total > max_file_bytes {
+            drop(spool);
+            let _ = fs::remove_file(spool_path);
+            return Err(ApiError::new(
+                "adapter.local.file_too_large",
+                axon_error::ErrorStage::Fetching,
+                "local source item exceeds max_file_bytes while spooling",
+            )
+            .with_context("path_hint", public_path_hint(path_hint))
+            .with_context("max_file_bytes", max_file_bytes.to_string()));
         }
         hasher.update(&buffer[..read]);
         spool
@@ -352,9 +361,7 @@ fn enforce_read_size_from_file(
     path_hint: &Path,
     options: &LocalOptions,
 ) -> Result<()> {
-    let Some(max_file_bytes) = options.max_file_bytes else {
-        return Ok(());
-    };
+    let max_file_bytes = options.max_file_bytes;
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", path_hint, err))?;

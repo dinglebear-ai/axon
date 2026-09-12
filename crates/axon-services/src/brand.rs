@@ -101,7 +101,7 @@ pub async fn brand(
         )
         .into());
     }
-    let html = response.text().await?;
+    let html = axon_core::http::read_response_text_bounded(response, 16 * 1024 * 1024).await?;
     let linked_css = fetch_linked_stylesheets(
         client,
         &html,
@@ -217,7 +217,9 @@ async fn fetch_stylesheet(
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
     }
-    response.text().await.map_err(|e| e.to_string())
+    axon_core::http::read_response_text_bounded(response, 2 * 1024 * 1024)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn linked_stylesheet_urls(doc: &Html, base_url: Option<&Url>) -> Vec<String> {

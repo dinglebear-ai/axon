@@ -169,7 +169,11 @@ pub async fn fetch_web(url: &str, opts: &FetchWebOptions) -> Result<WebDocument,
         .map_err(HttpError::from)?;
     let status = response.status().as_u16();
     let final_url = response.url().to_string();
-    let body = response.text().await.map_err(HttpError::from)?;
+    let body = super::client::read_response_text_bounded(
+        response,
+        super::client::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await?;
 
     let detection = classify(&body, opts);
     let walled = is_block_like_status(status) || detection.is_some();

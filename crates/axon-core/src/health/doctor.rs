@@ -32,7 +32,12 @@ pub(super) async fn probe_tei_info(
         match client.get(endpoint).send().await {
             Ok(resp) if resp.status().is_success() => {
                 let status = resp.status();
-                match resp.json::<Value>().await {
+                match crate::http::read_response_json_bounded::<Value>(
+                    resp,
+                    crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+                )
+                .await
+                {
                     Ok(json) => return (Some(json), Some(format!("{path} {status}"))),
                     Err(err) => last_error = Some(format!("{path} invalid json: {err}")),
                 }

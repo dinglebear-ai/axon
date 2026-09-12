@@ -527,7 +527,12 @@ async fn probe_collection_info(
     if !resp.status().is_success() {
         return (None, None);
     }
-    let body: Value = match resp.json().await {
+    let body: Value = match crate::http::read_response_json_bounded(
+        resp,
+        crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    )
+    .await
+    {
         Ok(v) => v,
         Err(_) => return (None, None),
     };
