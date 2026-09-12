@@ -11,10 +11,16 @@
 // Other lanes' tests assume these are registered — do NOT re-stub them locally.
 
 import "@testing-library/jest-dom/vitest";
-import { expect } from "vitest";
 import { toHaveNoViolations } from "jest-axe";
+import { expect } from "vitest";
 
 expect.extend(toHaveNoViolations);
+
+declare module "vitest" {
+  interface Matchers<R extends void | Promise<void> = void | Promise<void>, T = unknown> {
+    toHaveNoViolations(): R;
+  }
+}
 
 // --- DOM polyfills not provided by jsdom -----------------------------------
 
@@ -35,10 +41,7 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   });
 }
 
-if (
-  typeof Element !== "undefined" &&
-  typeof Element.prototype.scrollIntoView !== "function"
-) {
+if (typeof Element !== "undefined" && typeof Element.prototype.scrollIntoView !== "function") {
   Element.prototype.scrollIntoView = () => {};
 }
 
@@ -48,6 +51,5 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     unobserve(): void {}
     disconnect(): void {}
   }
-  globalThis.ResizeObserver =
-    ResizeObserverPolyfill as unknown as typeof ResizeObserver;
+  globalThis.ResizeObserver = ResizeObserverPolyfill as unknown as typeof ResizeObserver;
 }

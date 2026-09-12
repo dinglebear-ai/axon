@@ -215,6 +215,12 @@ def run(report_path: Path, total_budget: int) -> int:
                     observation=value.get("provider_observation",{}) if isinstance(value,dict) else {}
                     if isinstance(observation.get("retries"),int):measured["retries"]+=observation["retries"]
                 status = "passed" if returncode == 0 else "failed"; failed |= returncode != 0
+                if returncode != 0 and not retained_diagnostics:
+                    domain=name.removeprefix("scenario-")
+                    if diagnostics.validate(ROOT,{"domain":domain,"error_type":"unknown"}) is None:
+                        domain="launcher"
+                    retained_diagnostics.append(diagnostics.child_failure(
+                        ROOT,domain,subprocess.CompletedProcess(argv,returncode,stdout,stderr)))
                 stages.append({"name": name, "status": status, "budget_seconds": budget,
                                "duration_ms": int((time.monotonic()-stage_started)*1000),
                                "returncode": returncode,"stdout_sha256":hashlib.sha256(stdout.encode()).hexdigest(),

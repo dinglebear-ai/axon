@@ -9,10 +9,22 @@ ask
 brand
 capabilities
 chat:chat
+code_search
+codex:approve
+codex:events
+codex:execute
+codex:operations
+codex:prepare
+codex:reconcile
+codex:resource
+codex:respond
+codex:snapshot
 collections:get
 collections:list
+crawl
 diff
 doctor
+embed
 endpoints
 evaluate
 extract:start
@@ -23,6 +35,7 @@ graph:query
 graph:resolve
 graph:source
 help
+ingest
 jobs:cancel
 jobs:cleanup
 jobs:clear
@@ -60,6 +73,7 @@ reset:exec
 reset:plan
 resolve
 retrieve
+scrape
 screenshot
 search
 source
@@ -85,7 +99,7 @@ watch:update
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","brand","capabilities","diff","doctor","endpoints","evaluate","help","map","query","research","resolve","retrieve","screenshot","search","source","status","suggest","summarize"]'
+DIRECT_ACTIONS_JSON='["ask","brand","capabilities","code_search","crawl","diff","doctor","embed","endpoints","evaluate","help","ingest","map","query","research","resolve","retrieve","scrape","screenshot","search","source","status","suggest","summarize"]'
 
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
 artifacts
@@ -93,14 +107,19 @@ ask
 brand
 capabilities
 chat
+code_search
+codex
 collections
+crawl
 diff
 doctor
+embed
 endpoints
 evaluate
 extract
 graph
 help
+ingest
 jobs
 map
 memory
@@ -111,6 +130,7 @@ research
 reset
 resolve
 retrieve
+scrape
 screenshot
 search
 source

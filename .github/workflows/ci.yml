@@ -771,7 +771,9 @@ jobs:
     # binary on native Windows here so auto-tag cannot publish an immutable
     # release whose Windows artifact fails later in release.yml.
     runs-on: windows-latest
-    timeout-minutes: 45
+    # Cold release compilation plus both journal suites exceeded 45 minutes
+    # on hosted Windows; retain all gates with a bounded full-build budget.
+    timeout-minutes: 90
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.changes.outputs.run_windows_build == 'true' && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped') }}
     steps:
