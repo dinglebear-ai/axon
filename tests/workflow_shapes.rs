@@ -137,6 +137,79 @@ fn windows_build_runs_secure_artifact_cleanup_journal_tests() {
 }
 
 #[test]
+fn workspace_nextest_is_the_single_owner_of_cli_and_git_test_coverage() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let test_job = active_workflow_content(workflow_job_block(workflow, "test"));
+
+    assert!(test_job.contains("cargo nextest run --workspace --locked --features test-helpers"));
+    for retired in [
+        "cargo test ignored cli infra tests",
+        "cargo test github integration (clone + cleanup regression)",
+        "cargo test --locked cli_",
+        "github_integration_ --ignored",
+    ] {
+        assert!(
+            !test_job.contains(retired),
+            "retired zero-test selector must not masquerade as coverage: {retired}"
+        );
+    }
+
+    let git_tests = include_str!("../crates/axon-adapters/src/git/acquire_tests.rs");
+    assert!(
+        !git_tests.contains("#[ignore"),
+        "canonical Git tests must run in the workspace nextest lane"
+    );
+    for canonical in [
+        "clone_argv_is_shallow_no_prompt_terminated",
+        "clone_argv_terminates_flag_shaped_urls",
+        "clone_argv_pins_validated_dns_and_disables_redirects",
+        "clone_git_repo_rejects_ssrf_target",
+        "clone_success_returns_owned_checkout_and_drop_removes_it",
+        "clone_failure_removes_partial_checkout",
+        "clone_cancellation_kills_process_group_and_removes_partial_checkout",
+        "clone_timeout_reaps_process_group_before_removing_partial_checkout",
+    ] {
+        assert!(
+            git_tests.contains(canonical),
+            "workspace nextest must retain canonical Git coverage {canonical}"
+        );
+    }
+
+    let cli_matrix = include_str!("cross_surface_operation_matrix.rs");
+    let cli_harness = include_str!("live_command_harness.rs");
+    assert!(!cli_matrix.contains("#[ignore"));
+    assert!(!cli_harness.contains("#[ignore"));
+    assert!(cli_matrix.contains("fn cli_rest_mcp_presence_matches_fixture_for_every_operation"));
+    assert!(cli_matrix.contains("fn fixture_cli_command_presence_matches_cli_flag"));
+    assert!(cli_harness.contains("fn registry_mode_exercises_every_advertised_command_and_option"));
+    assert!(
+        cli_harness
+            .contains("fn canonical_binary_rejects_invalid_values_and_conflicts_without_help")
+    );
+}
+
+#[test]
+fn focused_watch_recipe_cannot_silently_select_zero_tests() {
+    let justfile = include_str!("../Justfile");
+    assert!(justfile.contains(
+        "cargo nextest run --locked -p axon-jobs -p axon-services -p axon-cli -p axon-web --no-tests=fail -E 'test(/watch/)'"
+    ));
+    for retired in [
+        "jobs::watch",
+        "cli::commands::watch",
+        "parse_watch",
+        "web::server::handlers::rest::tests::watch_",
+        "test-infra:\n",
+        "worker_e2e",
+    ] {
+        assert!(
+            !justfile.contains(retired),
+            "retired or phantom focused-test selector remains: {retired}"
+        );
+    }
+}
+
+#[test]
 fn native_release_embeds_the_required_signature_verification_key() {
     let workflow = include_str!("../.github/workflows/release.yml");
     let integrity = include_str!("../crates/axon-cli/src/commands/update/integrity.rs");

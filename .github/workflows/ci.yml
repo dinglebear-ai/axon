@@ -905,12 +905,6 @@ jobs:
       - name: cargo nextest
         run: cargo nextest run --workspace --locked --features test-helpers
 
-      - name: cargo test ignored cli infra tests
-        run: cargo test --locked cli_ --features test-helpers -- --ignored --quiet
-
-      - name: cargo test github integration (clone + cleanup regression)
-        run: cargo test --locked --features test-helpers -- github_integration_ --ignored --quiet
-
       - name: ask quality regression fixtures
         run: ./scripts/test-ask-quality-regressions.sh --verify-only
 
