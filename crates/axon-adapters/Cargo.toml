@@ -22,6 +22,7 @@ axon-parse = { path = "../axon-parse" }
 axon-observe = { path = "../axon-observe" }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
+command-group = { version = "5.0.1", features = ["with-tokio"] }
 feed-rs = "2"
 futures-util = "0.3"
 globset = "0.4"

@@ -17,7 +17,7 @@
 #   HOSTNAME_OVERRIDE — rewrites the hostname in /json/version WebSocket URLs;
 #                       set to the container name so other containers can connect
 
-ARG CHROME_VERSION=134.0.6998.23
+ARG CHROME_VERSION=153.0.8010.36
 
 # ── Stage 1: build headless_browser ──────────────────────────────────────────
 FROM rust:1.83-slim-bookworm AS builder

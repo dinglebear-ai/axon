@@ -219,6 +219,7 @@ jobs:
 
           local_target=""
           if git show-ref --verify --quiet "refs/tags/$tag"; then
+            [[ "$(git cat-file -t "refs/tags/$tag")" == tag ]] || { echo "::error::existing local release tag must be annotated" >&2; exit 1; }
             local_target="$(git rev-parse --verify "$tag^{commit}")"
             if [ "$local_target" != "$expected_sha" ]; then
               echo "::error::local tag $tag resolves to $local_target, expected $expected_sha" >&2
@@ -238,6 +239,7 @@ jobs:
           fi
 
           if [ -n "$remote_target" ]; then
+            awk '$2 ~ /\^\{\}$/ { found=1 } END { exit !found }' <<<"$remote_refs" || { echo "::error::existing remote release tag must be annotated" >&2; exit 1; }
             echo "Remote tag $tag already resolves to $expected_sha."
           else
             remote_main="$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 { print $1 }')"
@@ -254,7 +256,7 @@ jobs:
               git push origin "refs/tags/$tag"
               echo "Pushed existing local tag $tag at $expected_sha."
             else
-              git tag "$tag" "$expected_sha"
+              git tag -a "$tag" "$expected_sha" -m "Release $tag"
               git push origin "refs/tags/$tag"
               echo "Created and pushed tag $tag at $expected_sha."
             fi

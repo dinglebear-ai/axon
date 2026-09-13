@@ -199,15 +199,22 @@ fn header_options(headers: &[String]) -> serde_json::Map<String, serde_json::Val
 }
 
 /// Merge caller-provided web adapter options into trusted config-derived
-/// options. Most options are ordinary crawl knobs, but `automation_script`
-/// points at a local JSON program that Chrome may execute; remote callers need
-/// explicit local+execute scope for that key.
+/// options. Filesystem destinations remain owned by trusted configuration;
+/// remote source requests may not replace them.
 pub(crate) fn merge_caller_web_options(
     options: &mut MetadataMap,
     caller_options: &MetadataMap,
     auth_snapshot: Option<&AuthSnapshot>,
 ) -> Result<(), ApiError> {
     for (key, value) in caller_options.0.iter() {
+        if key == "output_dir" {
+            return Err(ApiError::new(
+                "source.web.output_dir_forbidden",
+                ErrorStage::Authorizing,
+                "web option output_dir is controlled by trusted server configuration",
+            )
+            .with_context("option", "output_dir"));
+        }
         if key == "automation_script" && !caller_can_set_automation_script(auth_snapshot) {
             return Err(ApiError::new(
                 "auth.scope_required",

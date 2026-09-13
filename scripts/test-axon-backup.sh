@@ -36,7 +36,13 @@ if ! CALLS="$work/calls" PATH="$work/bin:/usr/bin:/bin" HOME="$work/home" \
 fi
 
 grep -q 'SQLite: not included' "$work/stdout"
-! grep -q 'secret api key' "$work/stdout" "$work/stderr"
+if grep -q 'secret api key' "$work/stdout" "$work/stderr"; then
+  echo "backup leaked a credential" >&2
+  exit 1
+else
+  status=$?
+  [ "$status" -eq 1 ] || exit "$status"
+fi
 [ "$(stat -c '%a' "$work/out" 2>/dev/null || stat -f '%Lp' "$work/out")" = 700 ]
 snapshot="$(find "$work/out/qdrant" -type f -name '*.snapshot' -print -quit)"
 [ "$(stat -c '%a' "$snapshot" 2>/dev/null || stat -f '%Lp' "$snapshot")" = 600 ]

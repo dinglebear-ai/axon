@@ -200,7 +200,7 @@ Source: `src/web/auth.rs`, `src/web/server.rs`.
 
 `apps/web` (`@axon/admin-panel`) is an admin-only setup/config UI mounted by `axon serve`. It is **not** a public-facing application.
 
-- On first start, `init_panel_password()` (`auth.rs:33`) generates a 32-byte URL-safe password, writes it to `~/.axon/panel-password` with mode `0600` and `O_NOFOLLOW`, and prints it once to stderr. Existing files are reused.
+- On first start, `init_panel_password()` (`auth.rs:33`) generates a 32-byte URL-safe password and writes it to `~/.axon/panel-password` with mode `0600` and `O_NOFOLLOW`. The startup notice prints only that protected file's path, never the credential. Existing files are reused.
 - `/api/panel/login` accepts the password and returns it back to the caller as a session token. `/api/panel/state` is unauthenticated (returns only `setup_required` + the config path).
 - All other `/api/panel/*` routes require `Authorization: Bearer <token>` or `x-axon-panel-token: <token>`, verified in constant time via `PanelPassword::verify` (`auth.rs:21-26`).
 - Routes exposed (see `src/web/server/routing.rs` and `src/web/CLAUDE.md`): `state` (GET), `login` (POST), `config` (GET/PUT), `env` (GET/PUT), `status` (GET), `doctor` (GET), `command` (POST), `ops` (GET), `stack` (GET), `first-run/crawl` (POST), `first-run/ask` (POST), `setup/targets` (GET).

@@ -376,6 +376,13 @@ fn validate_request(request: &BackendRequest) -> Result<(), String> {
     {
         return Err("backend path must be an allowed product route".into());
     }
+    let route_path = request.path.split('?').next().unwrap_or(&request.path);
+    if request.product == BackendProduct::Labby
+        && route_path == "/v1/skills"
+        && request.method != BackendMethod::Post
+    {
+        return Err("Labby skills actions require POST /v1/skills".into());
+    }
     upstream_path(request.product, &request.path).map(|_| ())
 }
 
@@ -387,6 +394,7 @@ fn upstream_path(product: BackendProduct, path_and_query: &str) -> Result<&str, 
             path == "/v1/integration/identity"
                 || path == "/v1/gateway"
                 || path.starts_with("/v1/palette/")
+                || path == "/v1/skills"
         }
         BackendProduct::Cortex => path == "/v1/integration/identity" || path.starts_with("/api/"),
     };

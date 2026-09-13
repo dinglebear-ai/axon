@@ -38,6 +38,19 @@ class MlxTeiDirectTests(unittest.TestCase):
         self.assertEqual(SERVER.interval_idle_us(intervals, 0, 50_000), 20)
         self.assertEqual(SERVER.interval_window_metrics(intervals, 0, 50_000), (50, 30, 20))
 
+    def test_dispatcher_metrics_out_of_order_requests_and_constant_storage(self):
+        metrics = SERVER.DispatcherMetrics()
+        for start, end in [(0, 10_000), (5_000, 20_000), (30_000, 40_000)]:
+            metrics.observe_dispatch(start, end)
+        metrics.observe_window(30_000, 50_000)
+        metrics.observe_window(0, 25_000)  # older request reports last
+        self.assertEqual(metrics.snapshot(), (50, 30, 20))
+        for i in range(1, 100_001):
+            metrics.observe_dispatch(50_000 + i * 2_000, 51_000 + i * 2_000)
+        self.assertEqual(metrics.busy_ns, 100_030_000)
+        self.assertEqual(len(vars(metrics)), 5)
+        self.assertTrue(all(value is None or isinstance(value, int) for value in vars(metrics).values()))
+
     def test_non_loopback_requires_token(self):
         with self.assertRaisesRegex(ValueError, "requires MLX_TEI_AUTH_TOKEN"):
             SERVER.validate_bind("0.0.0.0", "")

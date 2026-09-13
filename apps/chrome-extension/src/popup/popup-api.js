@@ -306,7 +306,7 @@ function friendlyError(error) {
     return "Axon is unreachable from Chrome. Check the server URL, Tailscale route, and whether Axon is listening.";
   }
 
-  return message.replace(/<!--[\s\S]*?-->/g, "").trim();
+  return message.trim();
 }
 
 function isLoopbackServer(server) {

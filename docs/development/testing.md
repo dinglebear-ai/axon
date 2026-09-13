@@ -40,16 +40,15 @@ just test-fast
 
 Use while iterating on library logic; scoped to `--lib` tests only.
 
-### Infra lane (no-op placeholder)
+### Watch lifecycle lane
 
 ```bash
-just test-infra
+just test-watch
 ```
 
-`worker_e2e` matches zero tests in this workspace — the recipe is currently a
-no-op that prints a notice and exits. It is kept as a stable command name for
-when an ignored infra-backed suite is reintroduced; there is nothing to run
-today.
+Runs the canonical watch tests from `axon-jobs`, `axon-services`, `axon-cli`,
+and `axon-web`. The nextest filter fails when it selects zero tests, so this
+focused lane cannot silently degrade into a no-op.
 
 ### REST/MCP smoke lane
 
@@ -216,7 +215,7 @@ just verify
 
 ## CI Mapping
 
-- `test` job: `cargo nextest run --workspace --locked --features test-helpers`, plus ignored `cli_*` infra tests, ignored `github_integration_*` tests, and the ask-quality regression fixture check. There is no separate `test-infra` job — `worker_e2e` matches zero tests, so `just test-infra` (see above) is a no-op and CI does not schedule it.
+- `test` job: `cargo nextest run --workspace --locked --features test-helpers`, followed by the ask-quality regression fixture check. The workspace run includes the canonical CLI contract and Git adapter tests; CI does not schedule separate selector-based duplicates or a retired infrastructure-test alias.
 - `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
 - `mcp-smoke` job: builds the release binary, starts `docker-compose.prod.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.

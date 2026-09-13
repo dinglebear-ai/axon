@@ -40,12 +40,12 @@ import com.axon.app.ui.fab.FabLauncher
 import com.axon.app.ui.common.CommandConsoleBackground
 import com.axon.app.ui.common.CommandConsoleHeader
 import com.axon.app.ui.common.MetricPill
+import com.axon.app.ui.common.AppNoticeBanner
+import com.axon.app.ui.common.NoticeTone
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
 import com.axon.app.ui.theme.AxonTheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import tv.tootie.aurora.components.AuroraThinking
 
 @Composable
@@ -59,6 +59,7 @@ fun AskScreen(
     val chatItems by vm.chatItems.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     val historyReady by vm.historyReady.collectAsStateWithLifecycle()
+    val sessionSaveError by vm.sessionSaveError.collectAsStateWithLifecycle()
     val mode by vm.mode.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     var attachments by remember { mutableStateOf<List<PromptAttachment>>(emptyList()) }
@@ -69,20 +70,13 @@ fun AskScreen(
     ) { uris ->
         if (uris.isNotEmpty()) {
             scope.launch {
-                val results = uris.map { uri -> withContext(Dispatchers.IO) { readPromptAttachment(context, uri) } }
-                val ok = results.mapNotNull { it.getOrNull() }
-                val failed = results.size - ok.size
-                val before = attachments.size
-                if (ok.isNotEmpty()) {
-                    attachments = (attachments + ok).distinctBy { it.name }.take(MAX_ATTACHMENTS)
-                }
-                // Files successfully read but dropped by dedupe (same display name)
-                // or the MAX_ATTACHMENTS cap — not counted in `failed`.
-                val accepted = (attachments.size - before).coerceAtLeast(0)
-                val skipped = ok.size - accepted
+                val admission = admitPromptAttachments(context, uris, attachments)
+                attachments = attachments + admission.accepted
+                val failed = admission.failed.size
+                val skipped = admission.skipped
 
                 // Build one combined Toast so the user isn't spammed with two.
-                val readFailure = results.firstOrNull { it.isFailure }?.exceptionOrNull()?.message
+                val readFailure = admission.failed.firstOrNull()?.message
                 val failMsg = when {
                     failed == 1 -> readFailure ?: "1 file couldn't be attached"
                     failed > 1 -> buildString {
@@ -289,6 +283,17 @@ fun AskScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                sessionSaveError?.let { message ->
+                    AppNoticeBanner(
+                        message = "Chat changes could not be saved: $message",
+                        tone = NoticeTone.Error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 460.dp)
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 8.dp),
+                    )
+                }
                 ModeExplanationPill(
                     mode = mode,
                     modifier = Modifier
@@ -397,9 +402,6 @@ private fun ChatItemContent(
 
 /** 0 = user side, 1 = assistant side (answers, tool activity, op results). */
 internal fun chatSenderSide(item: ChatItem): Int = if (item is ChatItem.UserMsg) 0 else 1
-
-/** Max files attachable to a single prompt. */
-private const val MAX_ATTACHMENTS = 6
 
 /** Concatenate attached files into one labeled block inlined into the question (null when none). */
 internal fun combinedAttachmentText(attachments: List<PromptAttachment>): String? =

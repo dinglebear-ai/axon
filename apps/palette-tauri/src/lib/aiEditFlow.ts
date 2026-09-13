@@ -56,21 +56,39 @@ export function createAiEditFlow({
 }) {
   async function submitSparkleQuery(id: PaneId) {
     const pane = panes.find((p) => p.id === id);
-    if (!pane?.sparkleQuery.trim() || pane.file.kind !== "loaded" || !pane.selected) return;
+    if (
+      !pane?.sparkleQuery.trim() ||
+      pane.file.kind !== "loaded" ||
+      !pane.selected
+    )
+      return;
     if (!client || !config) {
       dispatch({
         type: "pane/proposalError",
         pane: id,
+        path: pane.selected.path,
+        loadGen: pane.loadGen,
         message: "Connect to an Axon server to use AI-assisted edits.",
       });
       return;
     }
     const chatAction = resolveChatAction();
     if (!chatAction) {
-      dispatch({ type: "pane/proposalError", pane: id, message: "Chat action is unavailable." });
+      dispatch({
+        type: "pane/proposalError",
+        pane: id,
+        message: "Chat action is unavailable.",
+      });
       return;
     }
-    dispatch({ type: "pane/proposalPending", pane: id });
+    const proposalPath = pane.selected.path;
+    const proposalLoadGen = pane.loadGen;
+    dispatch({
+      type: "pane/proposalPending",
+      pane: id,
+      path: proposalPath,
+      loadGen: proposalLoadGen,
+    });
     const prompt = buildEditPrompt(pane.file.value.content, pane.sparkleQuery);
     const result = await executeAction(client, chatAction, prompt, config);
     if (!result.ok) {
@@ -79,7 +97,13 @@ export function createAiEditFlow({
         strField(payload, "message") ??
         strField(payload, "error") ??
         `Edit generation failed (HTTP ${result.status}).`;
-      dispatch({ type: "pane/proposalError", pane: id, message });
+      dispatch({
+        type: "pane/proposalError",
+        pane: id,
+        message,
+        path: proposalPath,
+        loadGen: proposalLoadGen,
+      });
       return;
     }
     const payload = unwrapPayload(result.payload);
@@ -89,14 +113,17 @@ export function createAiEditFlow({
         type: "pane/proposalError",
         pane: id,
         message: "The model did not return a rewritten file body.",
+        path: proposalPath,
+        loadGen: proposalLoadGen,
       });
       return;
     }
     dispatch({
       type: "pane/proposalReady",
       pane: id,
+      loadGen: proposalLoadGen,
       proposal: {
-        forPath: pane.selected.path,
+        forPath: proposalPath,
         proposedContent,
         diff: computeLineDiff(pane.file.value.content, proposedContent),
         capturedModifiedUnix: pane.selected.modifiedUnix ?? null,
@@ -107,6 +134,19 @@ export function createAiEditFlow({
   async function approveProposal(id: PaneId) {
     const pane = panes.find((p) => p.id === id);
     if (!pane?.proposal || !pane.selected) return;
+    if (pane.proposal.forPath !== pane.selected.path) {
+      dispatch({
+        type: "pane/proposalApproveError",
+        pane: id,
+        path: pane.selected.path,
+        loadGen: pane.loadGen,
+        message:
+          "This edit belongs to a different file. Generate a new proposal for the selected file.",
+      });
+      return;
+    }
+    const targetPath = pane.proposal.forPath;
+    const targetLoadGen = pane.loadGen;
     dispatch({ type: "pane/proposalApproveStart", pane: id });
     try {
       // Disk-staleness guard: re-read the file immediately before writing and
@@ -114,25 +154,40 @@ export function createAiEditFlow({
       // atomic-write semantics make this a cheap extra round-trip; skipping it
       // would let Approve silently clobber an out-of-band edit made while the
       // proposal was open for review.
-      const fresh = await invoke<FileContents>("files_read_file", { path: pane.selected.path });
-      if (pane.file.kind === "loaded" && fresh.content !== pane.file.value.content) {
+      const fresh = await invoke<FileContents>("files_read_file", {
+        path: targetPath,
+      });
+      if (
+        pane.file.kind === "loaded" &&
+        fresh.content !== pane.file.value.content
+      ) {
         dispatch({
           type: "pane/proposalApproveError",
           pane: id,
+          path: targetPath,
+          loadGen: targetLoadGen,
           message:
             "The file changed on disk since this edit was proposed. Re-open it and try again.",
         });
         return;
       }
       const saved = await invoke<FileContents>("files_write_file", {
-        path: pane.selected.path,
+        path: targetPath,
         content: pane.proposal.proposedContent,
       });
-      dispatch({ type: "pane/proposalApproved", pane: id, file: saved });
+      dispatch({
+        type: "pane/proposalApproved",
+        pane: id,
+        file: saved,
+        path: targetPath,
+        loadGen: targetLoadGen,
+      });
     } catch (err) {
       dispatch({
         type: "pane/proposalApproveError",
         pane: id,
+        path: targetPath,
+        loadGen: targetLoadGen,
         message: err instanceof Error ? err.message : String(err),
       });
     }

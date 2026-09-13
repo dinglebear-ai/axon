@@ -246,6 +246,109 @@ fn create_request() -> JobCreateRequest {
     }
 }
 
+#[tokio::test]
+async fn retry_compare_and_swap_rejects_a_job_claimed_after_retry_read() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    let original = store.get(job.job_id).await.unwrap().unwrap();
+    sqlx::query("UPDATE jobs SET status = 'running' WHERE job_id = ?")
+        .bind(job.job_id.0.to_string())
+        .execute(&store.pool)
+        .await
+        .expect("simulate concurrent claim");
+    let mut tx = axon_core::sqlite::ImmediateTx::begin(&store.pool)
+        .await
+        .expect("retry transaction");
+    let error = super::control_helpers::reset_job_for_retry(
+        &mut tx,
+        job.job_id,
+        original.status,
+        original.attempt,
+        original.attempt + 1,
+        None,
+        Some("{}"),
+        &MetadataMap::new(),
+        &[JobStagePlan::required(PipelinePhase::Embedding)],
+    )
+    .await
+    .expect_err("stale retry must not reset a claimed job");
+    assert_eq!(error.code.0, "job_retry.concurrent_change");
+    tx.rollback().await;
+    let stored = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(stored.status, LifecycleStatus::Running);
+    assert_eq!(stored.attempt, original.attempt);
+}
+
+#[tokio::test]
+async fn recovery_compare_and_swap_rechecks_heartbeat_freshness_in_transaction() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    sqlx::query("UPDATE jobs SET status = 'running', updated_at = ? WHERE job_id = ?")
+        .bind("2026-07-01T12:10:00Z")
+        .bind(job.job_id.0.to_string())
+        .execute(&store.pool)
+        .await
+        .expect("simulate fresh worker heartbeat");
+    let mut tx = axon_core::sqlite::ImmediateTx::begin(&store.pool)
+        .await
+        .expect("recovery transaction");
+    let reset = super::control_helpers::reset_stale_job_for_recovery(
+        &mut tx,
+        job.job_id,
+        1,
+        2,
+        Some("{}"),
+        &MetadataMap::new(),
+        &[JobStagePlan::required(PipelinePhase::Embedding)],
+        Some(&Timestamp("2026-07-01T12:05:00Z".to_string())),
+    )
+    .await
+    .expect("freshness check");
+    assert!(
+        !reset,
+        "fresh heartbeat must defeat stale recovery selection"
+    );
+    tx.rollback().await;
+}
+
+#[tokio::test]
+async fn immediate_force_cancel_signals_the_registered_running_attempt() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Fetching,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("start job");
+    let parent = CancellationToken::new();
+    let attempt_token = crate::workers::cancel_registry::register(job.job_id, 1, &parent);
+
+    let result = store
+        .cancel(
+            job.job_id,
+            JobCancelRequest {
+                reason: Some("force".to_string()),
+                force_after_ms: Some(0),
+                actor: None,
+            },
+        )
+        .await
+        .expect("force cancel");
+
+    assert_eq!(result.status, LifecycleStatus::Canceled);
+    assert!(attempt_token.is_cancelled());
+    crate::workers::cancel_registry::unregister(job.job_id, 1);
+}
+
 /// A source job created with no `source_id` can be stamped with one via a
 /// status update ONLY after that source row exists. `jobs.source_id` FKs to
 /// `sources(source_id)` with `PRAGMA foreign_keys = ON`, so stamping an
@@ -1355,6 +1458,79 @@ async fn recovery_honors_staleness_cutoff() {
         store.get(job.job_id).await.unwrap().unwrap().status,
         LifecycleStatus::Running
     );
+}
+
+#[tokio::test]
+async fn recovery_does_not_cancel_attempt_when_precommit_rollback_is_injected() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    sqlx::query("UPDATE jobs SET status = 'running', updated_at = ? WHERE job_id = ?")
+        .bind("2026-07-01T12:00:00Z")
+        .bind(job.job_id.0.to_string())
+        .execute(store.pool_for_tests())
+        .await
+        .expect("make stale");
+    let parent = CancellationToken::new();
+    let attempt_token = crate::workers::cancel_registry::register(job.job_id, 1, &parent);
+    super::recovery::recovery_test_hook::install_precommit_failure(job.job_id);
+
+    let error = store
+        .recover_jobs_with_attempt_limit_once(
+            JobRecoveryRequest {
+                kind: None,
+                stale_before: Some(Timestamp("2026-07-01T12:05:00Z".to_string())),
+                limit: None,
+                older_than_seconds: None,
+                dry_run: false,
+                allow_without_cutoff: false,
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code.to_string(), "job_recovery.precommit_failed");
+    assert!(!attempt_token.is_cancelled());
+    let summary = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Running);
+    assert_eq!(summary.attempt, 1);
+    crate::workers::cancel_registry::unregister(job.job_id, 1);
+}
+
+#[tokio::test]
+async fn recovery_cancels_attempt_after_successful_commit() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    sqlx::query("UPDATE jobs SET status = 'running', updated_at = ? WHERE job_id = ?")
+        .bind("2026-07-01T12:00:00Z")
+        .bind(job.job_id.0.to_string())
+        .execute(store.pool_for_tests())
+        .await
+        .expect("make stale");
+    let parent = CancellationToken::new();
+    let attempt_token = crate::workers::cancel_registry::register(job.job_id, 1, &parent);
+
+    let result = store
+        .recover_jobs_with_attempt_limit_once(
+            JobRecoveryRequest {
+                kind: None,
+                stale_before: Some(Timestamp("2026-07-01T12:05:00Z".to_string())),
+                limit: None,
+                older_than_seconds: None,
+                dry_run: false,
+                allow_without_cutoff: false,
+            },
+            None,
+        )
+        .await
+        .expect("recover");
+
+    assert_eq!(result.jobs_requeued, 1);
+    assert!(attempt_token.is_cancelled());
+    let summary = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Queued);
+    assert_eq!(summary.attempt, 2);
+    crate::workers::cancel_registry::unregister(job.job_id, 1);
 }
 
 #[tokio::test]

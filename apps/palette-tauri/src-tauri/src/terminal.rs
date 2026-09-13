@@ -15,10 +15,123 @@
 //! than the Tauri `invoke` call the frontend makes for its own textbox).
 
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Mutex;
 
+use command_group::AsyncCommandGroup as _;
 use serde::Serialize;
 use tokio::process::Command;
+
+const TERMINAL_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
+const TERMINAL_EXECUTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(
+    reader: R,
+) -> Result<(String, bool), String> {
+    use tokio::io::AsyncReadExt as _;
+    let mut reader = reader;
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    let mut truncated = false;
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .await
+            .map_err(|err| err.to_string())?;
+        if count == 0 {
+            break;
+        }
+        let remaining = TERMINAL_OUTPUT_LIMIT_BYTES.saturating_sub(bytes.len());
+        bytes.extend_from_slice(&buffer[..count.min(remaining)]);
+        truncated |= count > remaining;
+    }
+    Ok((String::from_utf8_lossy(&bytes).into_owned(), truncated))
+}
+
+async fn run_shell_bounded(
+    shell: &str,
+    command: &str,
+    cwd: &str,
+) -> Result<TerminalRunResult, String> {
+    run_shell_with_timeout(shell, command, cwd, TERMINAL_EXECUTION_TIMEOUT).await
+}
+
+async fn run_shell_with_timeout(
+    shell: &str,
+    command: &str,
+    cwd: &str,
+    timeout: std::time::Duration,
+) -> Result<TerminalRunResult, String> {
+    let mut command_process = Command::new(shell);
+    command_process
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // A POSIX process group or Windows Job Object makes the deadline apply to
+    // the whole command tree, including descendants that inherit our pipes.
+    let mut child = command_process
+        .group()
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|err| format!("failed to spawn {shell}: {err}"))?;
+    let stdout = child
+        .inner()
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to capture stdout".to_string())?;
+    let stderr = child
+        .inner()
+        .stderr
+        .take()
+        .ok_or_else(|| "failed to capture stderr".to_string())?;
+    let result = tokio::time::timeout(timeout, async {
+        let (stdout, stderr, status) = tokio::join!(
+            read_bounded(stdout),
+            read_bounded(stderr),
+            wait_for_group(&mut child)
+        );
+        Ok::<_, String>((stdout?, stderr?, status.map_err(|err| err.to_string())?))
+    })
+    .await;
+    match result {
+        Ok(Ok(((mut stdout, stdout_truncated), (mut stderr, stderr_truncated), status))) => {
+            if stdout_truncated {
+                stdout.push_str("\n[stdout truncated at 1 MiB]");
+            }
+            if stderr_truncated {
+                stderr.push_str("\n[stderr truncated at 1 MiB]");
+            }
+            Ok(TerminalRunResult {
+                stdout,
+                stderr,
+                exit_code: status.code(),
+                cwd: cwd.to_string(),
+            })
+        }
+        Ok(Err(err)) => Err(err),
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            Err(format!(
+                "command timed out after {} seconds and was terminated",
+                timeout.as_secs_f64()
+            ))
+        }
+    }
+}
+
+async fn wait_for_group(
+    child: &mut command_group::AsyncGroupChild,
+) -> std::io::Result<std::process::ExitStatus> {
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
 
 /// Session-scoped working directory, shared across `terminal_run` invocations
 /// for the life of the app. A spawned shell can't mutate the parent process's
@@ -180,21 +293,7 @@ pub(crate) async fn terminal_run(
 
     let cwd = current_cwd(&state);
     let shell = login_shell();
-    let output = Command::new(&shell)
-        .arg("-c")
-        .arg(&command)
-        .current_dir(&cwd)
-        .kill_on_drop(true)
-        .output()
-        .await
-        .map_err(|err| format!("failed to spawn {shell}: {err}"))?;
-
-    Ok(TerminalRunResult {
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        exit_code: output.status.code(),
-        cwd,
-    })
+    run_shell_bounded(&shell, &command, &cwd).await
 }
 
 fn current_cwd(state: &TerminalState) -> String {

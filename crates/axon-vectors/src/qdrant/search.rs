@@ -164,7 +164,7 @@ fn named_dense_body(
 fn dense_params() -> serde_json::Value {
     serde_json::json!({
         "hnsw_ef": HNSW_EF_SEARCH,
-        "exact": true,
+        "exact": false,
     })
 }
 
@@ -194,3 +194,7 @@ fn point_id_string(id: &serde_json::Value) -> String {
 fn payload_str(payload: &MetadataMap, field: &str) -> Option<String> {
     payload.get(field)?.as_str().map(ToString::to_string)
 }
+
+#[cfg(test)]
+#[path = "search_tests.rs"]
+mod tests;

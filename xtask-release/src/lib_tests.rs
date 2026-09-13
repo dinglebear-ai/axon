@@ -36,6 +36,8 @@ fn reads_component_manifest() {
                     "Cargo.toml".to_owned(),
                     "Cargo.lock".to_owned(),
                     "build.rs".to_owned(),
+                    "install.sh".to_owned(),
+                    "install.ps1".to_owned(),
                     "apps/web".to_owned(),
                     "rust-toolchain.toml".to_owned(),
                     "vendor".to_owned(),
@@ -423,6 +425,21 @@ fn changed_shipping_path_requires_new_tag() {
     let error = check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
         .expect_err("unchanged version should fail");
     assert!(error.to_string().contains("release version check failed"));
+}
+
+#[test]
+fn installer_changes_require_cli_release() {
+    for installer in ["install.sh", "install.ps1"] {
+        let fixture = Fixture::new();
+        fixture.init_repo();
+        fixture.git(&["tag", "v1.0.0"]);
+        fs::write(fixture.path(installer), "changed installer\n").unwrap();
+        fixture.git(&["add", installer]);
+        fixture.git(&["commit", "-m", "fix installer"]);
+        let error = check(fixture.root(), Some("v1.0.0"), "HEAD", GateMode::Pr, false)
+            .expect_err("installer change must require a new CLI release");
+        assert!(error.to_string().contains("release version check failed"));
+    }
 }
 
 #[test]
@@ -2002,6 +2019,8 @@ impl Fixture {
     }
 
     fn write_minimal_tree(&self) {
+        write(&self.path("install.sh"), "#!/bin/sh\n");
+        write(&self.path("install.ps1"), "# Windows installer fixture\n");
         let manifest = fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../release/components.toml"),
         )

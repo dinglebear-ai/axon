@@ -91,18 +91,7 @@ e2e-qualification index evidence_root out="target/e2e/qualification.json" summar
     python3 scripts/e2e/build-qualification-manifest.py --index {{index}} --evidence-root {{evidence_root}} --out {{out}} --summary {{summary}} --checksums {{checksums}}
 
 test-watch:
-    {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo test -q --lib --locked jobs::watch
-    {{rust_dev_env}}; cargo test -q --lib --locked cli::commands::watch
-    {{rust_dev_env}}; cargo test -q --lib --locked parse_watch
-    {{rust_dev_env}}; cargo test -q --lib --locked web::server::handlers::rest::tests::watch_
-
-# No `worker_e2e`-named tests currently exist in the workspace (the ignored
-# SQLite/in-process worker E2E suite this recipe used to run was removed).
-# Kept as a documented no-op so `just test-infra` doesn't hard-fail for
-# anyone following existing docs/session notes; replace this body if/when a
-# real ignored infra-integration suite is reintroduced.
-test-infra:
-    @echo "no worker_e2e tests exist in this workspace; test-infra is currently a no-op"
+    {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo nextest run --locked -p axon-jobs -p axon-services -p axon-cli -p axon-web --no-tests=fail -E 'test(/watch/)'
 
 mcp-smoke:
     ./scripts/test-mcp-tools-mcporter.sh
@@ -364,6 +353,8 @@ validate-plugin:
 # test-catalog: scripts/test-evaluate-retrieval.sh hermetic-required
 # test-catalog: scripts/test-install-behavior.sh platform-required:linux
 # test-catalog: scripts/test-incus-bootstrap.sh hermetic-required
+# test-catalog: scripts/test-review-remediation.py hermetic-required
+# test-catalog: scripts/test-install-windows.ps1 platform-required:windows
 # test-catalog: scripts/test-live-cli-portability.sh hermetic-required
 # test-catalog: scripts/test-mcp-tasks-wire.py live-optional
 # test-catalog: scripts/test-mlx-metrics.py hermetic-required
@@ -382,6 +373,7 @@ operational-test-contracts:
     scripts/test-evaluate-retrieval.sh
     if [ "$(uname -s)" = "Linux" ]; then scripts/test-install-behavior.sh; else echo "SKIP test-install-behavior.sh (Linux platform required)"; fi
     scripts/test-incus-bootstrap.sh
+    python3 scripts/test-review-remediation.py
     scripts/test-live-cli-portability.sh
     python3 scripts/test-mlx-metrics.py
     python3 scripts/test_mcp_doc_renderer.py

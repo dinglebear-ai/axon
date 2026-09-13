@@ -31,7 +31,7 @@ impl SqliteUnifiedJobStore {
         .await
     }
 
-    async fn recover_jobs_with_attempt_limit_once(
+    pub(super) async fn recover_jobs_with_attempt_limit_once(
         &self,
         request: JobRecoveryRequest,
         max_attempts: Option<u32>,
@@ -72,6 +72,7 @@ impl SqliteUnifiedJobStore {
         let mut requeued = 0_u64;
         let mut failed = 0_u64;
         if !request.dry_run && scanned > 0 {
+            let mut attempts_to_cancel = Vec::new();
             let mut tx = ImmediateTx::begin_with_gate(&self.pool, &self.write_gate)
                 .await
                 .map_err(sql_error)?;
@@ -84,10 +85,11 @@ impl SqliteUnifiedJobStore {
                         job_id,
                         attempt,
                         max_attempts.expect("checked above"),
+                        cutoff.as_ref(),
                     )
                     .await?
                     {
-                        crate::workers::cancel_attempt(job_id, attempt);
+                        attempts_to_cancel.push((job_id, attempt));
                         failed += 1;
                     }
                     continue;
@@ -104,18 +106,20 @@ impl SqliteUnifiedJobStore {
                     request_json.as_deref(),
                     &metadata,
                     &stage_plan,
+                    cutoff.as_ref(),
                 )
                 .await?
                 {
-                    // The queued successor remains invisible until this
-                    // transaction commits, so cancel the old in-process owner
-                    // after the compare-and-swap succeeds but before attempt
-                    // N+1 can be claimed.
-                    crate::workers::cancel_attempt(job_id, attempt);
+                    attempts_to_cancel.push((job_id, attempt));
                     requeued += 1;
                 }
             }
+            #[cfg(test)]
+            recovery_test_hook::fail_before_commit(&attempts_to_cancel)?;
             tx.commit().await.map_err(sql_error)?;
+            for (job_id, attempt) in attempts_to_cancel {
+                crate::workers::cancel_attempt(job_id, attempt);
+            }
         }
         Ok(JobRecoveryResult {
             recovered: requeued,
@@ -127,3 +131,7 @@ impl SqliteUnifiedJobStore {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "recovery_test_hook_tests.rs"]
+pub(super) mod recovery_test_hook;

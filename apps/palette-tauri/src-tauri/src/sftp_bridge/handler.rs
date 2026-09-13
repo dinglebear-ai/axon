@@ -6,7 +6,7 @@
 //! that module's regression test is a hard merge-blocker. `check_server_key`
 //! below must never return `Ok(true)` for anything other than an already
 //! `TrustedMatch`ed key or a new host the frontend just had the user confirm
-//! (`trust_new_host`, set only after a round-trip trust prompt — see
+//! (the exact expected fingerprint, set only after a round-trip trust prompt — see
 //! `commands::sftp_connect`).
 
 use std::sync::{Arc, Mutex};
@@ -16,6 +16,10 @@ use russh::keys::PublicKey;
 use crate::sftp_known_hosts::{
     HostKeyDecision, KnownHostEntry, KnownHostsStore, evaluate_host_key,
 };
+
+fn confirmed_fingerprint_matches(expected: Option<&str>, presented: &str) -> bool {
+    expected == Some(presented)
+}
 
 /// Outcome of a connection attempt's host-key check, surfaced up to
 /// `sftp_connect` so it can either proceed (already trusted or freshly
@@ -50,8 +54,8 @@ pub(crate) struct SftpClientHandler {
     pub(crate) known_hosts: KnownHostsStore,
     /// Set only when the frontend already showed the trust prompt for this
     /// exact host/port and the user confirmed — see `sftp_connect`'s
-    /// `trust_new_host` parameter.
-    pub(crate) trust_new_host: bool,
+    /// `expected_new_host_fingerprint` parameter.
+    pub(crate) expected_new_host_fingerprint: Option<String>,
     pub(crate) outcome: Arc<Mutex<Option<HandshakeOutcome>>>,
 }
 
@@ -68,7 +72,7 @@ impl russh::client::Handler for SftpClientHandler {
             .to_string();
         // The presented key's identity, independent of the trust decision
         // below — used both to build a NewHostNeedsPrompt/Proceeded entry and
-        // (on trust_new_host) as exactly what gets pinned to disk.
+        // (on confirmation) as exactly what gets pinned to disk.
         let presented_entry = KnownHostEntry {
             host: self.host.clone(),
             port: self.port,
@@ -92,7 +96,10 @@ impl russh::client::Handler for SftpClientHandler {
                 },
             ),
             HostKeyDecision::NewHostNeedsPrompt(entry) => {
-                if self.trust_new_host {
+                if confirmed_fingerprint_matches(
+                    self.expected_new_host_fingerprint.as_deref(),
+                    &fingerprint,
+                ) {
                     (true, HandshakeOutcome::Proceeded { entry })
                 } else {
                     (false, HandshakeOutcome::NeedsTrustPrompt { entry })
@@ -116,3 +123,7 @@ impl russh::client::Handler for SftpClientHandler {
         Ok(accept)
     }
 }
+
+#[cfg(test)]
+#[path = "handler_tests.rs"]
+mod tests;

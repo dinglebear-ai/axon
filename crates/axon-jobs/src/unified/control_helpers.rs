@@ -8,6 +8,7 @@ pub(super) async fn reset_job_for_retry(
     tx: &mut SqliteConnection,
     job_id: JobId,
     current_status: LifecycleStatus,
+    current_attempt: u32,
     attempt: u32,
     idempotency_key: Option<&str>,
     request_json: Option<&str>,
@@ -45,7 +46,9 @@ pub(super) async fn reset_job_for_retry(
             finished_at = NULL,
             last_error_json = NULL,
             cooldown_until = NULL
-         WHERE job_id = ?",
+         WHERE job_id = ?
+           AND attempt = ?
+           AND status = ?",
     )
     .bind(attempt as i64)
     .bind(request_json)
@@ -53,11 +56,17 @@ pub(super) async fn reset_job_for_retry(
     .bind(idempotency_key)
     .bind(now.0.as_str())
     .bind(job_id.0.to_string())
+    .bind(current_attempt as i64)
+    .bind(enum_name(current_status)?)
     .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     if result.rows_affected() == 0 {
-        return Err(missing_job(job_id));
+        return Err(ApiError::new(
+            "job_retry.concurrent_change",
+            ErrorStage::Planning,
+            "job changed while retry was being prepared; retry the request against its current state",
+        ));
     }
     sqlx::query("DELETE FROM job_stages WHERE job_id = ?")
         .bind(job_id.0.to_string())
@@ -92,6 +101,7 @@ pub(super) async fn reset_stale_job_for_recovery(
     request_json: Option<&str>,
     metadata: &MetadataMap,
     stage_plan: &[JobStagePlan],
+    stale_before: Option<&Timestamp>,
 ) -> Result<bool> {
     let now = now_timestamp();
     let recovery_error = recovery_api_error();
@@ -114,7 +124,8 @@ pub(super) async fn reset_stale_job_for_recovery(
             cooldown_until = NULL
          WHERE job_id = ?
            AND attempt = ?
-           AND status IN ('running', 'waiting')",
+           AND status IN ('running', 'waiting')
+           AND (? IS NULL OR COALESCE(json_extract(heartbeat_json, '$.heartbeat_at'), updated_at) <= ?)",
     )
     .bind(next_attempt as i64)
     .bind(request_json)
@@ -122,6 +133,8 @@ pub(super) async fn reset_stale_job_for_recovery(
     .bind(now.0.as_str())
     .bind(job_id.0.to_string())
     .bind(current_attempt as i64)
+    .bind(stale_before.map(|timestamp| timestamp.0.as_str()))
+    .bind(stale_before.map(|timestamp| timestamp.0.as_str()))
     .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
@@ -198,6 +211,7 @@ pub(super) async fn fail_stale_job_after_attempt_limit(
     job_id: JobId,
     current_attempt: u32,
     max_attempts: u32,
+    stale_before: Option<&Timestamp>,
 ) -> Result<bool> {
     let now = now_timestamp();
     let error = ApiError::new(
@@ -225,13 +239,16 @@ pub(super) async fn fail_stale_job_after_attempt_limit(
             cooldown_until = NULL
          WHERE job_id = ?
            AND attempt = ?
-           AND status IN ('running', 'waiting')",
+           AND status IN ('running', 'waiting')
+           AND (? IS NULL OR COALESCE(json_extract(heartbeat_json, '$.heartbeat_at'), updated_at) <= ?)",
     )
     .bind(now.0.as_str())
     .bind(now.0.as_str())
     .bind(optional_to_json(&Some(summary_error))?)
     .bind(job_id.0.to_string())
     .bind(current_attempt as i64)
+    .bind(stale_before.map(|timestamp| timestamp.0.as_str()))
+    .bind(stale_before.map(|timestamp| timestamp.0.as_str()))
     .execute(&mut *tx)
     .await
     .map_err(sql_error)?;

@@ -83,12 +83,35 @@ class AskViewModel(
      * text is neither "Error:" nor "Stopped.") doesn't fool it into evicting the
      * previous good turn.
      */
-    internal var lastAskProducedTurn = false
+    private val regenerationState = AskRegenerationState()
+    internal var lastAskProducedTurn: Boolean
+        get() = regenerationState.producedTurn
+        set(value) {
+            if (value) regenerationState.completed() else regenerationState.started()
+        }
     private val emittedOperationContexts = mutableSetOf<String>()
     private var currentSessionId: String = newSessionId()
     private var createdAtMs: Long = System.currentTimeMillis()
     private var restoringSession = false
     private var persistSessionJob: Job? = null
+    private val sessionPersistence =
+        AskSessionPersistenceCoordinator { session ->
+            container.axonRepository.upsertMobileSession(session)
+        }
+    val sessionSaveError: StateFlow<String?> = sessionPersistence.saveError
+    private val sessionLoader =
+        AskSessionLoadCoordinator(
+            scope = viewModelScope,
+            loadSession = { container.axonRepository.getMobileSession(it) },
+            applySession = ::applyLoadedSession,
+            reportFailure = { sessionId, cause ->
+                Log.w(TAG, "Failed to load mobile session $sessionId", cause)
+                _uiState.value =
+                    AskUiState.Error(
+                        cause.message ?: "Could not load this chat session. Check your connection and sign in again.",
+                    )
+            },
+        )
 
     /** Drops all in-VM turns. Called by OperationsScreen on mode-switch away from Ask. */
     fun clearFollowUp() {
@@ -97,6 +120,7 @@ class AskViewModel(
     }
 
     fun startNewSession() {
+        sessionLoader.invalidate()
         cancelActiveSessionJobs()
         currentSessionId = newSessionId()
         createdAtMs = System.currentTimeMillis()
@@ -106,6 +130,7 @@ class AskViewModel(
         emittedOperationContexts.clear()
         lastAttachment = null
         lastAskProducedTurn = false
+        sessionPersistence.select(null)
         _uiState.value = AskUiState.Idle
         restoringSession = false
     }
@@ -115,29 +140,23 @@ class AskViewModel(
             startNewSession()
             return
         }
-        viewModelScope.launch {
-            val session =
-                container.axonRepository.getMobileSession(sessionId).getOrElse { cause ->
-                    Log.w(TAG, "Failed to load mobile session $sessionId", cause)
-                    _uiState.value =
-                        AskUiState.Error(
-                            cause.message ?: "Could not load this chat session. Check your connection and sign in again.",
-                        )
-                    return@launch
-                }
-            cancelActiveSessionJobs()
-            restoringSession = true
-            currentSessionId = session.id
-            createdAtMs = session.createdAt
-            val items = session.items.mapNotNull { it.toChatItem() }
-            _chatItems.value = items
-            _turns.value = restoredTurns(items)
-            emittedOperationContexts.clear()
-            lastAttachment = null
-            lastAskProducedTurn = false
-            _uiState.value = AskUiState.Idle
-            restoringSession = false
-        }
+        sessionLoader.load(sessionId)
+    }
+
+    private fun applyLoadedSession(session: com.axon.app.core.api.models.MobileSessionDto) {
+        cancelActiveSessionJobs()
+        restoringSession = true
+        currentSessionId = session.id
+        createdAtMs = session.createdAt
+        val items = session.items.mapNotNull { it.toChatItem() }
+        _chatItems.value = items
+        _turns.value = restoredTurns(items)
+        emittedOperationContexts.clear()
+        lastAttachment = null
+        lastAskProducedTurn = false
+        sessionPersistence.select(session)
+        _uiState.value = AskUiState.Idle
+        restoringSession = false
     }
 
     /**
@@ -250,9 +269,7 @@ class AskViewModel(
         // (Done / truncation-fallback); it stays false for errored or stopped
         // answers (including partial-then-stopped, which keeps non-blank text).
         // Dropping in those cases would wrongly evict the *previous* good turn.
-        if (lastAskProducedTurn) {
-            _turns.value = _turns.value.dropLast(1)
-        }
+        _turns.value = regenerationState.turnsBeforeRegeneration(_turns.value)
 
         // toList() takes a defensive copy — subList returns a live view backed by the
         // snapshot list, which pins the dropped tail in memory and is fragile to mutate.
@@ -473,21 +490,18 @@ class AskViewModel(
                 val items = _chatItems.value
                 if (items.isEmpty()) return@launch
                 val now = System.currentTimeMillis()
-                val session =
-                    buildMobileSessionDto(
-                        sessionId = currentSessionId,
-                        createdAt = createdAtMs,
-                        updatedAt = now,
-                        items = items,
-                    )
-                container.axonRepository.upsertMobileSession(session).onFailure { cause ->
-                    Log.w(TAG, "Failed to save mobile session ${session.id}", cause)
-                    if (_uiState.value is AskUiState.Idle) {
-                        _uiState.value =
-                            AskUiState.Error(
-                                cause.message ?: "Could not save this chat session. Check your connection and sign in again.",
-                            )
-                    }
+                val savedSessionId = currentSessionId
+                val savedCreatedAt = createdAtMs
+                viewModelScope.launch {
+                    sessionPersistence
+                        .save(
+                            sessionId = savedSessionId,
+                            createdAt = savedCreatedAt,
+                            updatedAt = now,
+                            items = items,
+                        ).onFailure { cause ->
+                            Log.w(TAG, "Failed to save mobile session $savedSessionId", cause)
+                        }
                 }
             }
     }

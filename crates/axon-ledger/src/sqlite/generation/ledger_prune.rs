@@ -10,17 +10,14 @@
 //! under it. See the `LEDGER_GENERATION_RETENTION_COMMITTED` doc comment in
 //! `crate::lib` for the contract citation.
 //!
-//! Walks the generation chain backward via each row's own
-//! `previous_generation` pointer (the only linkage — there is no forward
-//! index), stopping as soon as a row is missing (already ledger-pruned, or
-//! never existed): nothing older than a missing row can still be present.
+//! Uses the durable per-source sequence so deleting an intermediate generation
+//! cannot strand older debt-protected rows outside future retention walks.
 
 use axon_api::source::*;
 
 use crate::LEDGER_GENERATION_RETENTION_COMMITTED;
 use crate::cleanup_debt::ledger_prune_debt;
 use crate::migration::sqlite_error;
-use crate::sqlite::util::json_error;
 use crate::store::Result;
 
 pub(super) async fn ledger_prune_cleanup_debt_in_tx(
@@ -32,55 +29,37 @@ pub(super) async fn ledger_prune_cleanup_debt_in_tx(
         return Ok(Vec::new());
     };
 
-    // The just-published generation is retained slot 1; `previous_generation`
-    // is retained slot 2. Step back the rest of the retention window to reach
-    // the first prune candidate.
-    let mut cursor = Some(previous_generation.clone());
-    for _ in 0..LEDGER_GENERATION_RETENTION_COMMITTED.saturating_sub(1) {
-        let Some(current) = cursor else {
-            return Ok(Vec::new());
-        };
-        cursor = fetch_generation_in_tx(tx, source_id, &current)
-            .await?
-            .and_then(|generation| generation.previous_generation);
-    }
-
-    let mut cleanup_debt = Vec::new();
-    while let Some(candidate) = cursor {
-        let Some(candidate_generation) = fetch_generation_in_tx(tx, source_id, &candidate).await?
-        else {
-            break; // already pruned — nothing older left to consider
-        };
-        if !has_unresolved_non_ledger_debt_in_tx(tx, source_id, &candidate).await? {
-            cleanup_debt.push(ledger_prune_debt(source_id, &candidate));
-        }
-        cursor = candidate_generation.previous_generation;
-    }
-    Ok(cleanup_debt)
-}
-
-/// The full generation row for `(source_id, generation)`, or `None` if it no
-/// longer exists (already ledger-pruned, or never existed).
-async fn fetch_generation_in_tx(
-    tx: &mut sqlx::SqliteConnection,
-    source_id: &SourceId,
-    generation: &SourceGenerationId,
-) -> Result<Option<SourceGeneration>> {
-    let generation_json: Option<String> = sqlx::query_scalar(
-        r#"
-        SELECT generation_json
-        FROM source_generations
-        WHERE source_id = ?1 AND generation = ?2
-        "#,
+    let previous_exists: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM source_generations
+         WHERE source_id = ?1 AND generation = ?2 AND published_at IS NOT NULL",
     )
     .bind(&source_id.0)
-    .bind(&generation.0)
+    .bind(&previous_generation.0)
     .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
-    generation_json
-        .map(|json| serde_json::from_str(&json).map_err(json_error))
-        .transpose()
+    let Some(_) = previous_exists else {
+        return Ok(Vec::new());
+    };
+    let retained_before_previous = LEDGER_GENERATION_RETENTION_COMMITTED.saturating_sub(1) as i64;
+    let candidates: Vec<String> = sqlx::query_scalar(
+        "SELECT generation FROM source_generations
+         WHERE source_id = ?1 AND published_at IS NOT NULL
+         ORDER BY sequence DESC
+         LIMIT -1 OFFSET ?2",
+    )
+    .bind(&source_id.0)
+    .bind(retained_before_previous)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    let mut cleanup_debt = Vec::new();
+    for candidate in candidates.into_iter().map(SourceGenerationId::new) {
+        if !has_unresolved_non_ledger_debt_in_tx(tx, source_id, &candidate).await? {
+            cleanup_debt.push(ledger_prune_debt(source_id, &candidate));
+        }
+    }
+    Ok(cleanup_debt)
 }
 
 /// Whether `generation` still has unresolved cleanup debt of any kind other

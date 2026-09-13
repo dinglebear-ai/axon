@@ -256,7 +256,7 @@ Axon uses two configuration layers, both rooted under `~/.axon/`:
 
 `~/.axon/` is the canonical home for axon's persistent data — `jobs.db`, `output/`, `logs/`, `artifacts/`, `screenshots/`, and `chrome-diagnostics/` all live flat under it. `AXON_DATA_DIR` defaults to `~/.axon` (no nested `axon/` subdirectory). See `docs/guides/configuration.md` for the full directory tree.
 
-**Migration from `~/.local/share/axon`:** axon does NOT auto-migrate. Either move the directory yourself (`mv ~/.local/share/axon ~/.axon`) or set `AXON_DATA_DIR=~/.local/share` to pin the old location. Tuning knobs that were previously env-only are now also accepted in `~/.axon/config.toml`.
+**Migration from `~/.local/share/axon`:** axon does NOT auto-migrate. Either move the directory yourself (`mv ~/.local/share/axon ~/.axon`) or set `AXON_DATA_DIR=~/.local/share/axon` to pin the old location. Tuning knobs that were previously env-only are now also accepted in `~/.axon/config.toml`.
 
 ```bash
 # Set up config.toml (optional — defaults are sensible)

@@ -54,9 +54,45 @@ HOST_AXON_BINARY="${AXON_INCUS_BINARY:-$REPO_ROOT/target/release-fast/axon}"
 MODE="${1:-external-qdrant}"
 TEI_MODE="${AXON_INCUS_TEI_MODE:-external}"
 RUN_INCUS_SERVER="${AXON_INCUS_RUN_SERVER:-false}"
+READINESS_TIMEOUT_SECS="${AXON_INCUS_READINESS_TIMEOUT_SECS:-360}"
 
 log() { echo "[bootstrap] $*"; }
 fatal() { echo "[bootstrap] FATAL: $*" >&2; exit 1; }
+
+case "$READINESS_TIMEOUT_SECS" in
+  ''|*[!0-9]*|0) fatal "AXON_INCUS_READINESS_TIMEOUT_SECS must be a positive integer" ;;
+esac
+command -v timeout >/dev/null 2>&1 || fatal "GNU timeout is required to bound Incus readiness probes"
+
+bounded_incus_probe() {
+  local deadline="$1" attempt_cap="$2" remaining limit
+  shift 2
+  remaining=$(( deadline - SECONDS ))
+  (( remaining > 0 )) || return 124
+  limit="$attempt_cap"
+  (( remaining < limit )) && limit="$remaining"
+  timeout --signal=KILL "${limit}s" incus "$@"
+}
+
+sleep_before_retry() {
+  local deadline="$1" delay="$2" remaining
+  remaining=$(( deadline - SECONDS ))
+  (( remaining > 0 )) || return 0
+  (( remaining < delay )) && delay="$remaining"
+  sleep "$delay"
+}
+
+nested_statuses_healthy() {
+  local statuses="$1" service matches expected_count=0 actual_count
+  shift
+  for service in "$@"; do
+    expected_count=$(( expected_count + 1 ))
+    matches="$(printf '%s\n' "$statuses" | grep -Fxc "$service:healthy" || true)"
+    [ "$matches" = "1" ] || return 1
+  done
+  actual_count="$(printf '%s\n' "$statuses" | awk 'NF { count++ } END { print count + 0 }')"
+  [ "$actual_count" = "$expected_count" ]
+}
 
 case "$MODE" in
   external-qdrant|bundled-qdrant) ;;
@@ -84,23 +120,6 @@ if [ "$TEI_MODE" = "external" ]; then
     *[[:space:]]*) fatal "AXON_EXTERNAL_TEI_URL contains whitespace" ;;
   esac
   tei_unit_environment="Environment=TEI_URL=${AXON_EXTERNAL_TEI_URL}"
-fi
-if [ "$MODE" = "external-qdrant" ]; then
-  log "polling for external Qdrant ready at ${AXON_EXTERNAL_QDRANT_URL}"
-  qdrant_healthy=0
-  for _ in $(seq 1 36); do
-    if incus exec "$CONTAINER_NAME" -- sh -c '
-      set -a; . "$1"; set +a
-      set -- -fsS --max-time 4
-      [ -z "${QDRANT_API_KEY:-}" ] || set -- "$@" -H "api-key: ${QDRANT_API_KEY}"
-      curl "$@" "${QDRANT_URL%/}/readyz" >/dev/null
-    ' sh "$container_data_path/.env"; then
-      qdrant_healthy=1
-      break
-    fi
-    sleep 10
-  done
-  [ "$qdrant_healthy" = "1" ] || fatal "external Qdrant did not become ready within 360s: ${AXON_EXTERNAL_QDRANT_URL}"
 fi
 
 ### 1. Profile: create from the committed definition if missing. Never
@@ -136,14 +155,15 @@ if [ "$state" != "RUNNING" ]; then
   incus start "$CONTAINER_NAME"
 fi
 
-### 4. Wait for exec-readiness — bounded (30 attempts * 2s = 60s max).
+### 4. Wait for exec-readiness under one 60-second monotonic deadline.
 ready=0
-for _ in $(seq 1 30); do
-  if incus exec "$CONTAINER_NAME" -- true >/dev/null 2>&1; then
+exec_ready_deadline=$(( SECONDS + 60 ))
+while (( SECONDS < exec_ready_deadline )); do
+  if bounded_incus_probe "$exec_ready_deadline" 4 exec "$CONTAINER_NAME" -- true >/dev/null 2>&1; then
     ready=1
     break
   fi
-  sleep 2
+  sleep_before_retry "$exec_ready_deadline" 2
 done
 [ "$ready" = "1" ] || fatal "container did not become exec-ready within 60s"
 
@@ -337,6 +357,26 @@ else
   incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$container_data_path/.env"
 fi
 
+if [ "$MODE" = "external-qdrant" ]; then
+  log "polling for external Qdrant ready at ${AXON_EXTERNAL_QDRANT_URL}"
+  qdrant_healthy=0
+  qdrant_deadline=$(( SECONDS + READINESS_TIMEOUT_SECS ))
+  while (( SECONDS < qdrant_deadline )); do
+    if bounded_incus_probe "$qdrant_deadline" 5 exec "$CONTAINER_NAME" -- sh -c '
+      set -a; . "$1"; set +a
+      endpoint="$2"
+      set -- -fsS --max-time 4
+      [ -z "${QDRANT_API_KEY:-}" ] || set -- "$@" -H "api-key: ${QDRANT_API_KEY}"
+      curl "$@" "${endpoint%/}/readyz" >/dev/null
+    ' sh "$container_data_path/.env" "$AXON_EXTERNAL_QDRANT_URL"; then
+      qdrant_healthy=1
+      break
+    fi
+    sleep_before_retry "$qdrant_deadline" 10
+  done
+  [ "$qdrant_healthy" = "1" ] || fatal "external Qdrant did not become ready within ${READINESS_TIMEOUT_SECS}s: ${AXON_EXTERNAL_QDRANT_URL}"
+fi
+
 ### 13. Bring up only the selected nested-Docker services. Chrome is always
 ### nested, qdrant is optional, and TEI is nested only when explicitly opted in.
 docker_services="axon-chrome"
@@ -360,32 +400,34 @@ incus exec "$CONTAINER_NAME" -- sh -c \
   "cd $DEPLOY_PATH && docker compose --env-file .env -f docker-compose.prod.yaml up -d $docker_services"
 
 ### 14. Health-check polling for nested services and the selected TEI provider.
-log "polling for nested-Docker services healthy (bounded: up to 360s)"
+log "polling for nested-Docker services healthy (bounded: up to ${READINESS_TIMEOUT_SECS}s)"
 healthy=0
-for _ in $(seq 1 36); do
-  statuses="$(incus exec "$CONTAINER_NAME" -- sh -c \
+nested_services_deadline=$(( SECONDS + READINESS_TIMEOUT_SECS ))
+while (( SECONDS < nested_services_deadline )); do
+  statuses="$(bounded_incus_probe "$nested_services_deadline" 5 exec "$CONTAINER_NAME" -- sh -c \
     "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yaml ps ${docker_services} --format '{{.Service}}:{{.Health}}'" 2>/dev/null || true)"
-  if [ -n "$statuses" ] && ! printf '%s\n' "$statuses" | grep -qv "healthy$"; then
+  if nested_statuses_healthy "$statuses" $docker_services; then
     healthy=1
     break
   fi
-  sleep 10
+  sleep_before_retry "$nested_services_deadline" 10
 done
 if [ "$healthy" != "1" ]; then
-  fatal "not all nested-Docker services reported healthy within the bounded window (360s) — inspect 'docker compose ps' inside $CONTAINER_NAME"
+  fatal "not all nested-Docker services reported healthy within the bounded window (${READINESS_TIMEOUT_SECS}s) — inspect 'docker compose ps' inside $CONTAINER_NAME"
 fi
 if [ "$TEI_MODE" = "external" ]; then
   log "polling for external TEI healthy at ${AXON_EXTERNAL_TEI_URL}"
   tei_healthy=0
-  for _ in $(seq 1 36); do
-    if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 \
+  tei_deadline=$(( SECONDS + READINESS_TIMEOUT_SECS ))
+  while (( SECONDS < tei_deadline )); do
+    if bounded_incus_probe "$tei_deadline" 5 exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 \
       "${AXON_EXTERNAL_TEI_URL%/}/health" >/dev/null 2>&1; then
       tei_healthy=1
       break
     fi
-    sleep 10
+    sleep_before_retry "$tei_deadline" 10
   done
-  [ "$tei_healthy" = "1" ] || fatal "external TEI did not become healthy within 360s: ${AXON_EXTERNAL_TEI_URL}"
+  [ "$tei_healthy" = "1" ] || fatal "external TEI did not become healthy within ${READINESS_TIMEOUT_SECS}s: ${AXON_EXTERNAL_TEI_URL}"
 fi
 
 ### 15. Deploy the already-validated host binary. The Ubuntu guest shares
@@ -454,23 +496,32 @@ cleanup_unit_tmp
 trap - EXIT
 incus exec "$CONTAINER_NAME" -- systemctl daemon-reload
 if [ "$RUN_INCUS_SERVER" = "true" ]; then
-  incus exec "$CONTAINER_NAME" -- systemctl enable --now axon-native.service
+  incus exec "$CONTAINER_NAME" -- systemctl enable axon-native.service
+  incus exec "$CONTAINER_NAME" -- systemctl restart axon-native.service
   incus exec "$CONTAINER_NAME" -- systemctl is-enabled --quiet axon-native.service
   incus exec "$CONTAINER_NAME" -- systemctl is-active --quiet axon-native.service
 
-  ### 17. Health-check polling for the native axon service — same bounded
-  ### pattern as step 14 (36 * 10s = 360s max).
-  log "polling for axon-native healthy (bounded: up to 360s)"
+  ### 17. Health-check polling for the native axon service under one configured
+  ### monotonic deadline.
+  log "polling for axon-native healthy (bounded: up to ${READINESS_TIMEOUT_SECS}s)"
   axon_healthy=0
-  for _ in $(seq 1 36); do
-    if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 http://127.0.0.1:8001/readyz >/dev/null 2>&1; then
+  axon_deadline=$(( SECONDS + READINESS_TIMEOUT_SECS ))
+  while (( SECONDS < axon_deadline )); do
+    if bounded_incus_probe "$axon_deadline" 5 exec "$CONTAINER_NAME" -- sh -c '
+      set -eu
+      pid="$(systemctl show --property MainPID --value axon-native.service)"
+      case "$pid" in ""|0|*[!0-9]*) exit 1 ;; esac
+      running_sha="$(sha256sum "/proc/$pid/exe" | cut -d " " -f 1)"
+      [ "$running_sha" = "$1" ] || exit 1
+      curl -fsS --max-time 4 http://127.0.0.1:8001/readyz >/dev/null
+    ' sh "$host_sha" >/dev/null 2>&1; then
       axon_healthy=1
       break
     fi
-    sleep 10
+    sleep_before_retry "$axon_deadline" 10
   done
   if [ "$axon_healthy" != "1" ]; then
-    fatal "axon-native did not become healthy within the bounded window (360s) — inspect 'systemctl status axon-native' and 'journalctl -u axon-native' inside $CONTAINER_NAME"
+    fatal "axon-native did not become healthy within the bounded window (${READINESS_TIMEOUT_SECS}s) — inspect 'systemctl status axon-native' and 'journalctl -u axon-native' inside $CONTAINER_NAME"
   fi
 else
   log "disabling axon-native; the host owns the shared SQLite worker runtime"

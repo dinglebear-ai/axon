@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SOURCE_SKILL_DIR="${REPO_ROOT}/skills/axon"
+SOURCE_SKILL_DIR="${REPO_ROOT}/plugins/axon/skills"
 
 if [[ ! -d "${SOURCE_SKILL_DIR}" ]]; then
   echo "[error] source skill directory not found: ${SOURCE_SKILL_DIR}" >&2
@@ -13,7 +13,7 @@ fi
 install_for_root() {
   local root_dir="$1"
   local target_skills_dir="${root_dir}/skills"
-  local target_skill_dir="${target_skills_dir}/axon"
+  local target_skill_dir="${target_skills_dir}"
 
   if [[ ! -d "${root_dir}" ]]; then
     echo "[skip] ${root_dir} not found"

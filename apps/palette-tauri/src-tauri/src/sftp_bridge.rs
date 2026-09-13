@@ -23,7 +23,7 @@
 //! DOES need the same local-path rigor as `files_bridge.rs`; see
 //! `validate_private_key_path` below).
 
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use tokio::sync::Mutex;
 
@@ -32,15 +32,17 @@ mod handler;
 
 pub(crate) type ConnectionId = String;
 
+pub(crate) struct SftpSession {
+    pub(crate) high_level: russh_sftp::client::SftpSession,
+    pub(crate) raw: russh_sftp::client::RawSftpSession,
+}
+
 /// Live SFTP sessions keyed by connection id, held as Tauri managed state.
 ///
-/// `tokio::sync::Mutex`, not `std::sync::Mutex`: SFTP list/read are async
-/// network round-trips, and holding a `std::sync::Mutex` guard across an
-/// `.await` blocks the async executor thread for the call's full latency —
-/// exactly what clippy's `await_holding_lock` lint exists to catch.
-pub(crate) struct SftpConnections(
-    pub(crate) Mutex<HashMap<ConnectionId, russh_sftp::client::SftpSession>>,
-);
+/// Sessions are reference counted so commands clone the selected session and
+/// release this map lock before any network await. The mutex protects only
+/// insertion/removal/lookup, never remote I/O.
+pub(crate) struct SftpConnections(pub(crate) Mutex<HashMap<ConnectionId, Arc<SftpSession>>>);
 
 impl SftpConnections {
     pub(crate) fn new() -> Self {
@@ -52,10 +54,32 @@ impl SftpConnections {
     /// process exit — `sftp_disconnect` only ever closes one connection at a
     /// time and there is no other app-exit hook that reaches this state.
     pub(crate) async fn close_all(&self) {
-        let mut guard = self.0.lock().await;
-        for (_, sftp) in guard.drain() {
-            let _ = sftp.close().await;
+        let sessions = {
+            let mut guard = self.0.lock().await;
+            guard
+                .drain()
+                .map(|(_, session)| session)
+                .collect::<Vec<_>>()
+        };
+        for sftp in sessions {
+            close_session_bounded(&sftp).await;
         }
+    }
+}
+
+pub(crate) async fn close_session_bounded(session: &SftpSession) {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        session.high_level.close(),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => crate::diag::warn_with_context("SFTP session close failed", error),
+        Err(_) => crate::diag::warn("SFTP session close timed out"),
+    }
+    if let Err(error) = session.raw.close_session() {
+        crate::diag::warn_with_context("raw SFTP session close failed", error);
     }
 }
 

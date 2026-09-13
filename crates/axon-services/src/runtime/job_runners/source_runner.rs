@@ -158,14 +158,16 @@ impl UnifiedJobRunner for SourceRunner {
             })?;
 
         let ctx = self.service_context(store).await?;
+        let heartbeat_interval = super::job_heartbeat_interval(&ctx.cfg);
         let run_fut = run_source_request_with_cancellation(
             claimed,
             source_request,
             ctx,
             Some(shutdown.clone()),
         );
-        let result = drive_source_with_heartbeat(run_fut, shutdown, || {
-            heartbeat_running_preserving_progress(store, claimed)
+        let result = drive_source_with_heartbeat(run_fut, shutdown, heartbeat_interval, || async {
+            heartbeat_running_preserving_progress(store, claimed).await;
+            super::attempt_ownership(store, claimed).await
         })
         .await?;
 
@@ -188,17 +190,18 @@ impl UnifiedJobRunner for SourceRunner {
 async fn drive_source_with_heartbeat<F, H, HF>(
     run_fut: F,
     shutdown: &CancellationToken,
+    heartbeat_interval: std::time::Duration,
     mut send_heartbeat: H,
 ) -> Result<F::Output, ApiError>
 where
     F: std::future::Future,
     H: FnMut() -> HF,
-    HF: std::future::Future<Output = ()>,
+    HF: std::future::Future<Output = super::AttemptOwnership>,
 {
     tokio::pin!(run_fut);
     let mut heartbeat = tokio::time::interval_at(
-        tokio::time::Instant::now() + std::time::Duration::from_secs(30),
-        std::time::Duration::from_secs(30),
+        tokio::time::Instant::now() + heartbeat_interval,
+        heartbeat_interval,
     );
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // A heartbeat can wait for a writer held (or already queued) by the
@@ -208,14 +211,16 @@ where
         let heartbeat_loop = async {
             loop {
                 heartbeat.tick().await;
-                send_heartbeat().await;
+                if send_heartbeat().await == super::AttemptOwnership::Lost {
+                    break;
+                }
             }
         };
         tokio::pin!(heartbeat_loop);
         tokio::select! {
             _ = shutdown.cancelled() => None,
             result = &mut run_fut => Some(result),
-            _ = &mut heartbeat_loop => unreachable!("heartbeat loop never finishes"),
+            _ = &mut heartbeat_loop => None,
         }
     };
     // Drop the heartbeat future before cleanup: it may itself hold a writer

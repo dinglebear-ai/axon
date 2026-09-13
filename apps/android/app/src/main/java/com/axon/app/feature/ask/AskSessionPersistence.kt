@@ -19,6 +19,7 @@ internal fun buildMobileSessionDto(
     createdAt: Long,
     updatedAt: Long,
     items: List<ChatItem>,
+    prior: MobileSessionDto? = null,
 ): MobileSessionDto = MobileSessionDto(
     id = sessionId,
     title = sessionTitle(items),
@@ -28,6 +29,11 @@ internal fun buildMobileSessionDto(
     createdAt = createdAt,
     updatedAt = updatedAt,
     items = items.map { it.toMobileDto(updatedAt) },
+    pinnedAt = prior?.pinnedAt,
+    status = prior?.status ?: "active",
+    sourceRefs = prior?.sourceRefs.orEmpty(),
+    draft = prior?.draft,
+    syncVersion = prior?.syncVersion,
 )
 
 internal fun restoredTurns(items: List<ChatItem>): List<AskTurn> {

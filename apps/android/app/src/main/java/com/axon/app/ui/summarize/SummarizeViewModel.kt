@@ -7,6 +7,7 @@ import com.axon.app.AxonApp
 import com.axon.app.data.repository.SummarizeResultUi
 import com.axon.app.data.util.UrlValidator
 import com.axon.app.ui.common.Resource
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,25 +30,45 @@ import kotlinx.coroutines.launch
 class SummarizeViewModel(
     app: Application,
 ) : AndroidViewModel(app) {
-
     private val container = (app as AxonApp).container
 
+    private val coordinator =
+        SummarizeCoordinator(
+            scope = viewModelScope,
+            collection = {
+                container.settingsRepository.settings
+                    .first()
+                    .collection
+            },
+            summarize = { urls, collection -> container.axonRepository.summarize(urls, collection) },
+        )
+    val uiState: StateFlow<Resource<SummarizeResultUi>> = coordinator.uiState
+
+    fun submit(input: String) {
+        coordinator.submit(input)
+    }
+}
+
+/** The production summarize lifecycle, separated from Android construction for deterministic tests. */
+internal class SummarizeCoordinator(
+    private val scope: CoroutineScope,
+    private val collection: suspend () -> String?,
+    private val summarize: suspend (List<String>, String?) -> Result<SummarizeResultUi>,
+) {
     private val _uiState = MutableStateFlow<Resource<SummarizeResultUi>>(Resource.Idle)
     val uiState: StateFlow<Resource<SummarizeResultUi>> = _uiState.asStateFlow()
-
     private var submitJob: Job? = null
 
     fun submit(input: String) {
         if (!UrlValidator.isValidHttpUrl(input)) return
         submitJob?.cancel()
-        submitJob = viewModelScope.launch {
-            _uiState.value = Resource.Loading
-            // DataStore handles its own dispatcher; no need to wrap in withContext.
-            val collection = container.settingsRepository.settings.first().collection
-            container.axonRepository.summarize(listOf(input), collection).fold(
-                onSuccess = { _uiState.value = Resource.Ready(it) },
-                onFailure = { _uiState.value = Resource.Error(it.message ?: "Error") },
-            )
-        }
+        submitJob =
+            scope.launch {
+                _uiState.value = Resource.Loading
+                summarize(listOf(input), collection()).fold(
+                    onSuccess = { _uiState.value = Resource.Ready(it) },
+                    onFailure = { _uiState.value = Resource.Error(it.message ?: "Error") },
+                )
+            }
     }
 }

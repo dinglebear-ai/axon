@@ -32,10 +32,25 @@ pub(crate) static INTERNAL_SERVICE_NO_REDIRECT_HTTP_CLIENT: LazyLock<
 });
 
 #[cfg(not(test))]
+pub(crate) static NO_REDIRECT_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> =
+    LazyLock::new(|| {
+        build_client_no_redirect(30, Some(super::ua::axon_ua())).map_err(|e| e.to_string())
+    });
+
+#[cfg(not(test))]
 pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
     HTTP_CLIENT
         .as_ref()
         .map_err(|err| anyhow::Error::msg(format!("failed to initialize HTTP client: {err}")))
+}
+
+#[cfg(not(test))]
+pub fn no_redirect_http_client() -> anyhow::Result<&'static reqwest::Client> {
+    NO_REDIRECT_HTTP_CLIENT.as_ref().map_err(|err| {
+        anyhow::Error::msg(format!(
+            "failed to initialize no-redirect HTTP client: {err}"
+        ))
+    })
 }
 
 #[cfg(not(test))]
@@ -55,6 +70,13 @@ pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
     // reqwest::Client (~200 bytes). For a typical test suite this is negligible
     // and avoids lifetime issues with static references to runtime-scoped data.
     let client = build_client(30, None)
+        .map_err(|err| anyhow::Error::msg(format!("failed to initialize HTTP client: {err}")))?;
+    Ok(Box::leak(Box::new(client)))
+}
+
+#[cfg(test)]
+pub fn no_redirect_http_client() -> anyhow::Result<&'static reqwest::Client> {
+    let client = build_client_no_redirect(30, None)
         .map_err(|err| anyhow::Error::msg(format!("failed to initialize HTTP client: {err}")))?;
     Ok(Box::leak(Box::new(client)))
 }

@@ -1,4 +1,42 @@
 use super::*;
+
+#[test]
+fn heartbeat_interval_stays_inside_configured_watchdog_window() {
+    let mut cfg = Config::test_default();
+    cfg.watchdog_stale_timeout_secs = 2;
+    cfg.watchdog_confirm_secs = 1;
+    assert_eq!(
+        job_heartbeat_interval(&cfg),
+        std::time::Duration::from_secs(1)
+    );
+}
+
+#[test]
+fn ownership_probe_distinguishes_storage_error_from_confirmed_loss() {
+    use super::attempt_ownership::classify_attempt_ownership;
+    let job_id = axon_api::source::JobId::new(uuid::Uuid::new_v4());
+    let read_error = ApiError::new("sqlite.read", ErrorStage::Storage, "injected read failure");
+    assert_eq!(
+        classify_attempt_ownership(Err(read_error), 2, job_id),
+        AttemptOwnership::Unknown
+    );
+    assert_eq!(
+        classify_attempt_ownership(Ok(None), 2, job_id),
+        AttemptOwnership::Lost
+    );
+    assert_eq!(
+        classify_attempt_ownership(Ok(Some((1, LifecycleStatus::Running))), 2, job_id),
+        AttemptOwnership::Lost
+    );
+    assert_eq!(
+        classify_attempt_ownership(Ok(Some((2, LifecycleStatus::Completed))), 2, job_id),
+        AttemptOwnership::Lost
+    );
+    assert_eq!(
+        classify_attempt_ownership(Ok(Some((2, LifecycleStatus::Running))), 2, job_id),
+        AttemptOwnership::Active
+    );
+}
 use axon_api::source::{
     AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind,
     JobPriority, JobStagePlan, LifecycleStatus, MetadataMap, PipelinePhase,

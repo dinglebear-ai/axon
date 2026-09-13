@@ -17,7 +17,6 @@ Run `just --list` to see all available recipes.
 | `just check-tests` | Type check including test code |
 | `just test` | Run all tests (prefers cargo-nextest, falls back to cargo test) |
 | `just test-fast` | Run lib tests only (no integration tests) |
-| `just test-infra` | Run infrastructure integration tests (requires services) |
 | `just test-all` | Run all targets with all features |
 | `just fmt` | Format all Rust code |
 | `just fmt-check` | Check formatting without modifying |
@@ -73,7 +72,7 @@ Run `just --list` to see all available recipes.
 | Recipe | Purpose |
 |--------|---------|
 | `just gen-mcp-schema` | Regenerate MCP-TOOL-SCHEMA.md from source |
-| `just test-watch` | Run focused watch command/parser/REST/scheduler tests |
+| `just test-watch` | Run canonical watch tests across jobs, services, CLI, and web |
 | `just watch-check` | cargo-watch: check + test on every save |
 
 ## Chaining

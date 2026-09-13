@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "axon-adapters"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -427,6 +427,7 @@ dependencies = [
  "axon-parse",
  "base64 0.22.1",
  "chrono",
+ "command-group",
  "feed-rs",
  "futures-util",
  "globset",
@@ -456,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-error",
@@ -473,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -487,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "axon-cli"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "anyhow",
  "axon-api",
@@ -524,10 +525,10 @@ dependencies = [
 
 [[package]]
 name = "axon-codex"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "fs2",
- "nix",
+ "nix 0.30.1",
  "rand 0.8.6",
  "rusqlite",
  "serde",
@@ -541,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -588,7 +589,7 @@ dependencies = [
 
 [[package]]
 name = "axon-document"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -602,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "axon-embedding"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -625,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "axon-error"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "chrono",
  "schemars",
@@ -636,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "axon-core",
  "axon-graph",
@@ -657,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "axon-graph"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -674,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -708,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "axon-ledger"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -724,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "axon-llm"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -745,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -774,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "axon-memory"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-adapters",
@@ -795,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "axon-observe"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -816,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "axon-parse"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "axon-api",
  "axon-core",
@@ -835,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "axon-prune"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -846,7 +847,7 @@ dependencies = [
 
 [[package]]
 name = "axon-retrieval"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -861,7 +862,7 @@ dependencies = [
 
 [[package]]
 name = "axon-route"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -876,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -939,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "axon-vectors"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -966,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "7.3.4"
+version = "7.3.5"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -1631,6 +1632,18 @@ dependencies = [
  "crossterm",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "command-group"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a68fa787550392a9d58f44c21a3022cfb3ea3e2458b7f85d3b399d0ceeccf409"
+dependencies = [
+ "async-trait",
+ "nix 0.27.1",
+ "tokio",
+ "winapi",
 ]
 
 [[package]]
@@ -4562,6 +4575,17 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "libc",
+]
 
 [[package]]
 name = "nix"

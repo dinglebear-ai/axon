@@ -201,6 +201,7 @@ jobs:
           scripts/test-evaluate-retrieval.sh
           scripts/test-install-behavior.sh
           scripts/test-incus-bootstrap.sh
+          python3 scripts/test-review-remediation.py
           scripts/test-live-cli-portability.sh
           python3 scripts/test-mlx-metrics.py
           python3 scripts/test_mcp_doc_renderer.py
@@ -903,12 +904,6 @@ jobs:
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: cargo nextest
         run: cargo nextest run --workspace --locked --features test-helpers
-
-      - name: cargo test ignored cli infra tests
-        run: cargo test --locked cli_ --features test-helpers -- --ignored --quiet
-
-      - name: cargo test github integration (clone + cleanup regression)
-        run: cargo test --locked --features test-helpers -- github_integration_ --ignored --quiet
 
       - name: ask quality regression fixtures
         run: ./scripts/test-ask-quality-regressions.sh --verify-only

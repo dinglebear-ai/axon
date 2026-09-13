@@ -400,8 +400,23 @@ async fn timed_out_wait_keeps_writer_gate_until_real_mutation_finishes() {
 #[tokio::test]
 async fn maintenance_uses_fixed_size_passes_and_exact_trigger_count() {
     let (store, pool, _) = store().await;
-    let entries = (0..1_200).map(entry).collect::<Vec<_>>();
-    store.put_many(&entries, 10).await.unwrap();
+    let now = chrono::Utc::now().timestamp_millis();
+    for value in (0..1_200).map(entry) {
+        sqlx::query(
+            "INSERT INTO embedding_vector_cache
+             (cache_key, provider_id, model, dimensions, vector, created_at, last_used_at)
+             VALUES (?, 'tei', 'test-model', 4, ?, ?, ?)",
+        )
+        .bind(value.cache_key)
+        .bind(encode_vector(&value.values))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    store.inner.max_entries.store(10, Ordering::Relaxed);
+    run_periodic_maintenance(&store.inner).await;
     let after_first_pass: i64 =
         sqlx::query_scalar("SELECT entry_count FROM embedding_vector_cache_state")
             .fetch_one(&pool)
@@ -615,4 +630,23 @@ async fn missing_state_singleton_self_heals_instead_of_failing_writes() {
     .await
     .expect("recomputed singleton");
     assert_eq!(count, 8);
+}
+
+#[tokio::test]
+async fn one_large_write_restores_capacity_even_when_overshoot_exceeds_maintenance_budget() {
+    let (store, pool, _) = store().await;
+    let entries = (0..700).map(entry).collect::<Vec<_>>();
+
+    store
+        .put_many(&entries, 25)
+        .await
+        .expect("large cache write");
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("cache count");
+    assert_eq!(count, 25);
 }

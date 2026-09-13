@@ -3,9 +3,14 @@ package com.axon.app.core.api
 import com.axon.app.core.auth.AuthConfig
 import com.axon.app.core.auth.OAuthTokenSource
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.collect
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,6 +47,50 @@ class AxonClientTest {
     }
 
     // ── Original tests ────────────────────────────────────────────────────────
+
+    @Test
+    fun `cancelling stalled ask stream promptly closes production call`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setSocketPolicy(SocketPolicy.NO_RESPONSE),
+        )
+        val collection = launch { client.askStream(AskRequest(query = "hello")).toList() }
+        server.takeRequest(2, TimeUnit.SECONDS)
+        delay(50)
+        collection.cancel()
+        withTimeout(1_000) { collection.join() }
+        assertTrue(collection.isCancelled)
+    }
+
+    @Test
+    fun `slow ask collector receives every event beyond channel capacity`() = runBlocking {
+        val deltas = (0 until 100).joinToString("\n") { index ->
+            "data: {\"event_id\":\"e-$index\",\"kind\":\"token\",\"sequence\":$index,\"timestamp\":\"2026-01-01T00:00:00Z\",\"data\":{\"text\":\"$index\"}}\n"
+        }
+        val done = "data: {\"event_id\":\"done\",\"kind\":\"final\",\"sequence\":100,\"timestamp\":\"2026-01-01T00:00:00Z\",\"data\":{\"answer\":\"complete\"}}\n\n"
+        server.enqueue(MockResponse().addHeader("Content-Type", "text/event-stream").setBody(deltas + done))
+        val events = mutableListOf<AskStreamEvent>()
+        client.askStream(AskRequest(query = "hello")).collect { event ->
+            delay(2)
+            events += event
+        }
+        assertEquals(101, events.size)
+        assertTrue(events.last() is AskStreamEvent.Done)
+    }
+
+    @Test
+    fun `cancelling stalled job event stream promptly closes production call`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setSocketPolicy(SocketPolicy.NO_RESPONSE),
+        )
+        val collection = launch { client.streamJobEvents("job-1").toList() }
+        server.takeRequest(2, TimeUnit.SECONDS)
+        delay(50)
+        collection.cancel()
+        withTimeout(1_000) { collection.join() }
+        assertTrue(collection.isCancelled)
+    }
 
     @Test
     fun `healthz returns true when server responds 200`() = runBlocking {

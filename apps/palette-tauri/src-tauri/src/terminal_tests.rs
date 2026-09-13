@@ -18,20 +18,9 @@ async fn run_direct(state: &TerminalState, command: &str) -> TerminalRunResult {
     }
     let cwd = current_cwd(state);
     let shell = login_shell();
-    let output = Command::new(&shell)
-        .arg("-c")
-        .arg(command)
-        .current_dir(&cwd)
-        .kill_on_drop(true)
-        .output()
+    run_shell_bounded(&shell, command, &cwd)
         .await
-        .expect("spawn shell");
-    TerminalRunResult {
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        exit_code: output.status.code(),
-        cwd,
-    }
+        .expect("run shell")
 }
 
 #[tokio::test]
@@ -174,4 +163,81 @@ fn parse_cd_target_rejects_compound_commands_with_shell_metacharacters() {
     assert_eq!(parse_cd_target("cd $(pwd)"), None);
     assert_eq!(parse_cd_target("cd `pwd`"), None);
     assert_eq!(parse_cd_target("cd foo bar"), None);
+}
+
+#[tokio::test]
+async fn large_output_is_drained_but_retained_transcript_is_bounded() {
+    let state = TerminalState::new();
+    let result = run_direct(&state, "head -c 1100000 /dev/zero | tr '\\000' x").await;
+    assert!(result.stdout.len() < 1_049_000);
+    assert!(result.stdout.ends_with("[stdout truncated at 1 MiB]"));
+    assert_eq!(result.exit_code, Some(0));
+}
+
+#[tokio::test]
+async fn command_deadline_terminates_a_long_running_child() {
+    let cwd = current_cwd(&TerminalState::new());
+    let error = run_shell_with_timeout(
+        &login_shell(),
+        "sleep 5",
+        &cwd,
+        std::time::Duration::from_millis(20),
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("timed out"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn inherited_background_pipes_cannot_outlive_the_command_deadline() {
+    let cwd = current_cwd(&TerminalState::new());
+    let pid_file = std::env::temp_dir().join(format!(
+        "axon-palette-terminal-descendant-{}.pid",
+        uuid::Uuid::new_v4()
+    ));
+    let command = format!(
+        "sleep 30 & descendant=$!; echo $descendant > '{}'; wait",
+        pid_file.display()
+    );
+    let started = std::time::Instant::now();
+    let error = run_shell_with_timeout(
+        &login_shell(),
+        &command,
+        &cwd,
+        std::time::Duration::from_millis(500),
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("timed out"));
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+
+    let pid = std::fs::read_to_string(&pid_file)
+        .expect("descendant PID file")
+        .trim()
+        .parse::<u32>()
+        .expect("numeric descendant PID");
+    let _cleanup = ProcessCleanup(pid);
+    let stopped = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .expect("inspect descendant");
+    let state = String::from_utf8_lossy(&stopped.stdout);
+    assert!(
+        !stopped.status.success() || state.trim().is_empty() || state.contains('Z'),
+        "descendant {pid} remains active after timeout with state {state:?}"
+    );
+    let _ = std::fs::remove_file(pid_file);
+}
+
+#[cfg(unix)]
+struct ProcessCleanup(u32);
+
+#[cfg(unix)]
+impl Drop for ProcessCleanup {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", &self.0.to_string()])
+            .output();
+    }
 }

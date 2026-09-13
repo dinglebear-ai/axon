@@ -1,4 +1,6 @@
 use std::error::Error as StdError;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::reservation;
 
@@ -34,13 +36,24 @@ pub async fn complete_text(
     req: CompletionRequest,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
     ensure_configured(&req)?;
-    tokio::time::timeout(req.backend.completion_timeout(), complete_text_inner(req))
-        .await
-        .map_err(|_| completion_deadline_error())?
+    let admitted = Arc::new(AtomicBool::new(false));
+    match tokio::time::timeout(
+        req.backend.completion_timeout(),
+        complete_text_inner(req, Arc::clone(&admitted)),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            record_completion_deadline_if_admitted(&admitted).await;
+            Err(completion_deadline_error())
+        }
+    }
 }
 
 async fn complete_text_inner(
     req: CompletionRequest,
+    admitted: Arc<AtomicBool>,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
     let _reservation = reservation::reserve().await?;
     let limiter_key = completion_limiter_key(&req);
@@ -49,6 +62,7 @@ async fn complete_text_inner(
         req.backend.completion_concurrency,
     )
     .await?;
+    admitted.store(true, Ordering::Release);
     let result = match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_text(req).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_text(req).await,
@@ -76,12 +90,29 @@ where
     F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
 {
     ensure_configured(&req)?;
-    tokio::time::timeout(
+    let admitted = Arc::new(AtomicBool::new(false));
+    match tokio::time::timeout(
         req.backend.completion_timeout(),
-        complete_streaming_inner(req, on_delta),
+        complete_streaming_inner(req, on_delta, Arc::clone(&admitted)),
     )
     .await
-    .map_err(|_| completion_deadline_error())?
+    {
+        Ok(result) => result,
+        Err(_) => {
+            record_completion_deadline_if_admitted(&admitted).await;
+            Err(completion_deadline_error())
+        }
+    }
+}
+
+async fn record_completion_deadline() {
+    reservation::record_failure("LLM completion deadline exceeded", true).await;
+}
+
+async fn record_completion_deadline_if_admitted(admitted: &AtomicBool) {
+    if admitted.load(Ordering::Acquire) {
+        record_completion_deadline().await;
+    }
 }
 
 fn completion_deadline_error() -> Box<dyn StdError + Send + Sync> {
@@ -95,6 +126,7 @@ fn completion_deadline_error() -> Box<dyn StdError + Send + Sync> {
 async fn complete_streaming_inner<F>(
     req: CompletionRequest,
     on_delta: F,
+    admitted: Arc<AtomicBool>,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>>
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
@@ -106,6 +138,7 @@ where
         req.backend.completion_concurrency,
     )
     .await?;
+    admitted.store(true, Ordering::Release);
     let result = match req.backend.kind {
         LlmBackendKind::GeminiHeadless => headless::gemini::complete_streaming(req, on_delta).await,
         LlmBackendKind::OpenAiCompat => openai_compat::complete_streaming(req, on_delta).await,

@@ -35,7 +35,11 @@ use axon_memory::sqlite::SqliteMemoryStore;
 use axon_memory::store::MemoryStore;
 use tokio_util::sync::CancellationToken;
 
+mod attempt_ownership;
+mod extract_heartbeat;
 mod source_runner;
+use attempt_ownership::{AttemptOwnership, attempt_ownership};
+use extract_heartbeat::drive_extract_with_heartbeat;
 use source_runner::SourceRunner;
 #[cfg(test)]
 pub(crate) use source_runner::run_source_request_with_context;
@@ -140,6 +144,14 @@ pub(crate) async fn heartbeat_running_preserving_progress(
         }
     };
     record_running_heartbeat(store, claimed, summary.phase, summary.counts).await;
+}
+
+fn job_heartbeat_interval(cfg: &Config) -> std::time::Duration {
+    let stale_window = cfg
+        .watchdog_stale_timeout_secs
+        .saturating_add(cfg.watchdog_confirm_secs)
+        .max(1) as u64;
+    std::time::Duration::from_secs((stale_window / 3).clamp(1, 30))
 }
 
 async fn record_running_heartbeat(
@@ -413,13 +425,21 @@ impl UnifiedJobRunner for ExtractRunner {
         effective_cfg.output_path = None;
 
         let prompt = effective_cfg.query.clone().unwrap_or_default();
-        let extract_fut = crate::extract::extract_sync(&effective_cfg, &urls, &prompt);
-        tokio::select! {
-            _ = shutdown.cancelled() => Err(extract_error("extract canceled")),
-            result = extract_fut => result
+        let extract_fut = async {
+            crate::extract::extract_sync(&effective_cfg, &urls, &prompt)
+                .await
                 .map(|_summary| UnifiedJobOutcome::completed_without_counts())
-                .map_err(|error| extract_error(error.to_string())),
-        }
+                .map_err(|error| extract_error(error.to_string()))
+        };
+        let heartbeat_interval = job_heartbeat_interval(&effective_cfg);
+        drive_extract_with_heartbeat(extract_fut, shutdown, heartbeat_interval, || async {
+            let ownership = attempt_ownership(store, claimed).await;
+            if ownership == AttemptOwnership::Active {
+                heartbeat_running_preserving_progress(store, claimed).await;
+            }
+            ownership
+        })
+        .await?
     }
 }
 

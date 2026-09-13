@@ -40,6 +40,47 @@ async fn streaming_completion_deadline_includes_admission() {
     completion_queue_obeys_deadline(true).await;
 }
 
+#[tokio::test]
+async fn completion_admission_deadline_does_not_record_provider_failure() {
+    reservation::record_success().await;
+    let mut request = CompletionRequest::new("queued deadline accounting");
+    request.backend = LlmBackendConfig {
+        kind: LlmBackendKind::OpenAiCompat,
+        openai_base_url: Some("http://127.0.0.1:9/v1".to_string()),
+        openai_model: Some("deadline-accounting".to_string()),
+        completion_concurrency: 1,
+        completion_timeout_secs: 1,
+        configured: true,
+        ..LlmBackendConfig::default()
+    };
+    let held = concurrency::acquire_completion_permit_for_key(completion_limiter_key(&request), 1)
+        .await
+        .unwrap();
+    let error = complete_text(request).await.unwrap_err();
+    drop(held);
+
+    assert!(error.to_string().contains("deadline"));
+    assert_eq!(
+        reservation::health().await,
+        axon_api::source::HealthStatus::Healthy
+    );
+    reservation::record_success().await;
+}
+
+#[tokio::test]
+async fn admitted_execution_deadline_records_provider_failure() {
+    reservation::record_success().await;
+    let admitted = AtomicBool::new(true);
+
+    record_completion_deadline_if_admitted(&admitted).await;
+
+    assert_eq!(
+        reservation::health().await,
+        axon_api::source::HealthStatus::Degraded
+    );
+    reservation::record_success().await;
+}
+
 #[test]
 fn limiter_key_uses_request_model_for_openai() {
     let backend = LlmBackendConfig {

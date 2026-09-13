@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { invoke } from "@/lib/invoke";
 import type { RunState } from "@/lib/runState";
@@ -34,37 +41,65 @@ export interface LiveRefreshState {
 // successful zero-input result. Identity is the result `path` (e.g. `/v1/stats`),
 // so navigating away cleanly stops the loop. Updates `run.result.payload` in
 // place; the structured view (StatsView/StatusView) re-renders with fresh data.
-export function useLiveRefresh({ run, setRun, paused, intervalMs = 2000 }: UseLiveRefreshArgs): LiveRefreshState {
+export function useLiveRefresh({
+  run,
+  setRun,
+  paused,
+  intervalMs = 2000,
+}: UseLiveRefreshArgs): LiveRefreshState {
   const [lastRefreshedAtMs, setLastRefreshedAtMs] = useState<number | null>(null);
+  const generationRef = useRef(0);
+  const inFlightRef = useRef(false);
 
   const path = run.kind === "success" && "result" in run ? run.result.path : "";
   const active = isLiveRefreshablePath(path);
 
   const refreshNow = useCallback(() => {
-    if (!isLiveRefreshablePath(path)) return;
+    if (!isLiveRefreshablePath(path) || inFlightRef.current) return;
+    const generation = generationRef.current;
+    inFlightRef.current = true;
     void (async () => {
       try {
-        const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
-          request: { method: "GET", path, body: null },
-        });
-        if (res.ok) {
+        const res = await invoke<{ ok: boolean; status: number; payload: unknown }>(
+          "axon_http_request",
+          {
+            request: { method: "GET", path, body: null },
+          },
+        );
+        if (res.ok && generationRef.current === generation) {
           setRun((current) =>
             current.kind === "success" && "result" in current && current.result.path === path
-              ? { ...current, result: { ...current.result, ok: res.ok, status: res.status, payload: res.payload } }
+              ? {
+                  ...current,
+                  result: {
+                    ...current.result,
+                    ok: res.ok,
+                    status: res.status,
+                    payload: res.payload,
+                  },
+                }
               : current,
           );
           setLastRefreshedAtMs(Date.now());
         }
       } catch {
         /* transient — keep the last good snapshot until the next tick */
+      } finally {
+        if (generationRef.current === generation) inFlightRef.current = false;
       }
     })();
   }, [path, setRun]);
 
   useEffect(() => {
+    generationRef.current += 1;
+    inFlightRef.current = false;
     if (!active || paused) return;
     const id = window.setInterval(refreshNow, intervalMs);
-    return () => window.clearInterval(id);
+    return () => {
+      generationRef.current += 1;
+      inFlightRef.current = false;
+      window.clearInterval(id);
+    };
   }, [active, paused, intervalMs, refreshNow]);
 
   return { active, paused, lastRefreshedAtMs, refreshNow };

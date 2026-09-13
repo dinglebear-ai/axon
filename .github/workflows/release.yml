@@ -174,6 +174,46 @@ jobs:
             target/release/install.ps1.sha256
           if-no-files-found: error
 
+  sign-windows:
+    name: sign immutable Windows artifact
+    needs: [resolve-release, axon-windows]
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    timeout-minutes: 10
+    steps:
+      # This job deliberately has no checkout and executes no selected source.
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: axon-windows-x86_64
+          path: dist
+      - name: Verify, sign, and re-verify Windows artifact
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          AXON_UPDATE_MINISIGN_PUBKEY: ${{ vars.AXON_UPDATE_MINISIGN_PUBKEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEY" || { echo "SIGNING_KEY is required" >&2; exit 1; }
+          test -n "$SIGNING_KEY_PASSWORD" || { echo "SIGNING_KEY_PASSWORD is required" >&2; exit 1; }
+          test -n "$AXON_UPDATE_MINISIGN_PUBKEY" || { echo "AXON_UPDATE_MINISIGN_PUBKEY is required for release publication" >&2; exit 1; }
+          cd dist
+          sha256sum --check axon-windows-x86_64.zip.sha256
+          sudo apt-get update && sudo apt-get install -y minisign
+          umask 077
+          SIGNING_KEY_FILE=$(mktemp)
+          trap 'shred -u "$SIGNING_KEY_FILE"' EXIT
+          printf '%s' "$SIGNING_KEY" > "$SIGNING_KEY_FILE"
+          echo "$SIGNING_KEY_PASSWORD" | minisign -S -s "$SIGNING_KEY_FILE" \
+            -m axon-windows-x86_64.zip -x axon-windows-x86_64.zip.minisig
+          minisign -V -P "$AXON_UPDATE_MINISIGN_PUBKEY" \
+            -m axon-windows-x86_64.zip -x axon-windows-x86_64.zip.minisig
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: axon-windows-signature
+          path: |
+            dist/axon-windows-x86_64.zip.minisig
+          if-no-files-found: error
+
   sign-linux:
     name: sign immutable Linux artifact
     needs: [resolve-release, axon-linux]
@@ -238,6 +278,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: release-axon-windows
+      - name: Verify Windows installer signature gate
+        shell: pwsh
+        run: ./scripts/test-install-windows.ps1
       - name: Verify TLS fingerprinting build prerequisites
         shell: pwsh
         run: |
@@ -300,7 +343,7 @@ jobs:
 
   publish:
     name: publish github release
-    needs: [resolve-release, axon-linux, sign-linux, axon-windows]
+    needs: [resolve-release, axon-linux, sign-linux, axon-windows, sign-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # Attach artifacts only when release-please dispatches this workflow on an
@@ -331,6 +374,7 @@ jobs:
             dist/axon-linux-x86_64.tar.gz.minisig \
             dist/axon-windows-x86_64.zip \
             dist/axon-windows-x86_64.zip.sha256 \
+            dist/axon-windows-x86_64.zip.minisig \
             dist/install.sh \
             dist/install.sh.sha256 \
             dist/install.sh.minisig \

@@ -1,5 +1,5 @@
 pub mod auth_enforcement;
-mod cancel_registry;
+pub(crate) mod cancel_registry;
 mod spawn_unified;
 mod starvation;
 pub mod unified;
