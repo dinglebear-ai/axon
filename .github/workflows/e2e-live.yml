@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
+      TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
+      TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
       AXON_E2E_QDRANT_GATEWAY_URL: ${{ vars.AXON_E2E_QDRANT_GATEWAY_URL }}
       AXON_E2E_QDRANT_PEER: ${{ vars.AXON_E2E_QDRANT_PEER }}
       AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
@@ -55,6 +57,8 @@ jobs:
         run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
       - name: Reject stale or untrusted invocation before discovery
         run: python3 scripts/e2e/validate-live-invocation.py
+      - name: Validate live E2E configuration before build
+        run: python3 scripts/e2e/validate-live-config.py
       - name: Recover stale owned runs before mutation
         run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --stale-seconds 21600 --live-gateways --report target/e2e/stale-cleanup.json
       - name: Build exact tested commit before private-network access
