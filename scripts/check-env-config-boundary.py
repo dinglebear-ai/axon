@@ -49,6 +49,7 @@ IGNORED_TOKENS = {
     "AXON_E2E_ATTEMPT_ID",
     "AXON_E2E_CATALOG",
     "AXON_E2E_CHROME_GATEWAY_URL",
+    "AXON_E2E_CHROME_PEER",
     "AXON_E2E_CHROME_TOKEN",
     "AXON_E2E_CLEANUP_REGISTRY",
     "AXON_E2E_EXPECTED_PEERS",
@@ -58,6 +59,7 @@ IGNORED_TOKENS = {
     "AXON_E2E_HERMETIC",
     "AXON_E2E_LIVE",
     "AXON_E2E_LLM_GATEWAY_URL",
+    "AXON_E2E_LLM_PEER",
     "AXON_E2E_LLM_TOKEN",
     "AXON_E2E_MANIFEST",
     "AXON_E2E_NAMESPACE",
@@ -70,6 +72,7 @@ IGNORED_TOKENS = {
     "AXON_E2E_PROCESS_NONCE",
     "AXON_E2E_PROVIDER_MODE",
     "AXON_E2E_QDRANT_GATEWAY_URL",
+    "AXON_E2E_QDRANT_PEER",
     "AXON_E2E_QDRANT_TOKEN",
     "AXON_E2E_REAL_AXON_BIN",
     "AXON_E2E_REQUIRE_REAL_SOURCE_JOBS",
@@ -78,6 +81,7 @@ IGNORED_TOKENS = {
     "AXON_E2E_RUN_ID",
     "AXON_E2E_STAGE_GATES",
     "AXON_E2E_TEI_GATEWAY_URL",
+    "AXON_E2E_TEI_PEER",
     "AXON_E2E_TEI_TOKEN",
     "AXON_E2E_TESTED_SHA",
     "AXON_MCP_ALLOWED_ORIGIN",
@@ -156,6 +160,11 @@ IGNORED_TOKENS = {
     "AXON_STRESS_TIMEOUT_SECS",  # stress-harness terminal deadline
     "AXON_STRESS_URL",  # stress-harness target override
     "AXON_STRESS_WORKER_CONCURRENCY",  # stress-harness worker concurrency
+    "AXON_INCUS_BINARY",  # deployment regression executable double
+    "AXON_TEST_FIXTURE",  # Windows installer fixture path
+    "AXON_TEST_INSTALLER",  # Windows installer regression target
+    "AXON_TEST_RAW_PUBLIC_KEY",  # synthetic installer public-key fixture
+    "AXON_TEST_VERIFY_EXIT",  # installer verifier-double exit status
     "AXON_TEST_FROM_FILE",  # axon-env loader regression fixture
     "AXON_TEST_PRECEDENCE",  # axon-env loader regression fixture
     "QDRANT_DEST",  # local shell variable in scripts/axon-backup.sh
