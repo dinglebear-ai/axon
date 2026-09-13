@@ -835,7 +835,7 @@ git add README.md
 git commit -m "retry fixture"
 git remote add origin "$root/remote.git"
 git push origin HEAD:main
-git tag {tag}
+git tag -a {tag} -m "Release fixture"
 git push origin {tag}
 bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
 test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
@@ -886,7 +886,7 @@ git commit -m "candidate"
 candidate_sha="$(git rev-parse HEAD)"
 git remote add origin "$root/remote.git"
 git push origin HEAD:main
-git tag {tag}
+git tag -a {tag} -m "Release fixture"
 git push origin {tag}
 echo advanced > README.md
 git add README.md
