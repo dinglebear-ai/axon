@@ -1006,14 +1006,9 @@ async fn cancellation_mid_generation_cleans_vectors_and_fails_generation() {
     canceled_generation_cleans_up(false).await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn lost_source_lease_cleans_generation_without_canceling_parent_job() {
-    tokio::time::timeout(
-        std::time::Duration::from_secs(1200),
-        canceled_generation_cleans_up(true),
-    )
-    .await
-    .expect("ownership loss must stop the pipeline");
+    canceled_generation_cleans_up(true).await;
 }
 
 async fn canceled_generation_cleans_up(lose_lease: bool) {
@@ -1059,16 +1054,37 @@ async fn canceled_generation_cleans_up(lose_lease: bool) {
         &execution,
         |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
     );
-    let (result, ()) = tokio::join!(run, async {
-        entered_rx
-            .await
-            .expect("second batch normalization must start");
-        if lose_lease {
-            tokio::time::advance(std::time::Duration::from_secs(601)).await;
-        } else {
-            cancel.cancel();
+    tokio::pin!(run);
+    let mut entered_rx = entered_rx;
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        tokio::select! {
+            entered = &mut entered_rx => {
+                entered.expect("second batch normalization must start");
+            }
+            result = &mut run => {
+                panic!("pipeline completed before cancellation trigger: {result:?}");
+            }
         }
-    });
+    })
+    .await
+    .expect("pipeline must reach the blocked second batch");
+
+    if lose_lease {
+        // Keep filesystem work on the real clock. Once the pipeline is parked
+        // in its pure-async provider double, freeze time just long enough to
+        // deliver the independently scheduled lease heartbeat.
+        tokio::task::yield_now().await;
+        tokio::time::pause();
+        tokio::time::advance(std::time::Duration::from_secs(601)).await;
+        tokio::task::yield_now().await;
+        tokio::time::resume();
+    } else {
+        cancel.cancel();
+    }
+
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), &mut run)
+        .await
+        .expect("cancellation must stop the blocked pipeline");
 
     assert_eq!(
         cancel.is_cancelled(),
