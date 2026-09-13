@@ -3,6 +3,7 @@ package com.axon.app.feature.ask
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -37,7 +38,7 @@ internal suspend fun admitPromptAttachments(
     candidates = uris,
     existingNames = existing.map { it.name }.toSet(),
     availableSlots = (MAX_ATTACHMENTS - existing.size).coerceAtLeast(0),
-    nameOf = { withContext(Dispatchers.IO) { fileMeta(context, it).name } },
+    nameOf = { runCatching { withContext(Dispatchers.IO) { fileMeta(context, it).name } } },
     read = { withContext(Dispatchers.IO) { readPromptAttachment(context, it) } },
 )
 
@@ -45,7 +46,7 @@ internal suspend fun <T> admitAttachmentCandidates(
     candidates: List<T>,
     existingNames: Set<String>,
     availableSlots: Int,
-    nameOf: suspend (T) -> String,
+    nameOf: suspend (T) -> Result<String>,
     read: suspend (T) -> Result<PromptAttachment>,
 ): AttachmentAdmission {
     var slots = availableSlots.coerceAtLeast(0)
@@ -58,7 +59,14 @@ internal suspend fun <T> admitAttachmentCandidates(
             skipped++
             continue
         }
-        val name = nameOf(candidate)
+        val nameResult = nameOf(candidate)
+        if (nameResult.isFailure) {
+            val error = checkNotNull(nameResult.exceptionOrNull())
+            error.rethrowIfCancellation()
+            failed += error
+            continue
+        }
+        val name = nameResult.getOrThrow()
         if (!names.add(name)) {
             skipped++
             continue
@@ -68,11 +76,16 @@ internal suspend fun <T> admitAttachmentCandidates(
                 accepted += it
                 slots--
             }.onFailure {
+                it.rethrowIfCancellation()
                 names.remove(name)
                 failed += it
             }
     }
     return AttachmentAdmission(accepted, failed, skipped)
+}
+
+private fun Throwable.rethrowIfCancellation() {
+    if (this is CancellationException) throw this
 }
 
 /** Human-readable byte size for attachment chips. */

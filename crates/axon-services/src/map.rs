@@ -269,6 +269,11 @@ pub(crate) fn build_map_request(url: &str) -> SourceRequest {
 fn build_map_request_with_config(cfg: &Config, url: &str) -> SourceRequest {
     let mut request = build_map_request(url);
     request.options.values = web_crawl_options(cfg, None, None);
+    // The dispatcher reconstructs this trusted option from `ctx.cfg()`. Keeping
+    // it in the request would misclassify the configured path as caller input
+    // when the route's validated options are merged at the authorization
+    // boundary.
+    request.options.values.remove("output_dir");
     request
 }
 

@@ -167,7 +167,7 @@ impl UnifiedJobRunner for SourceRunner {
         );
         let result = drive_source_with_heartbeat(run_fut, shutdown, heartbeat_interval, || async {
             heartbeat_running_preserving_progress(store, claimed).await;
-            super::attempt_remains_active(store, claimed).await
+            super::attempt_ownership(store, claimed).await
         })
         .await?;
 
@@ -196,7 +196,7 @@ async fn drive_source_with_heartbeat<F, H, HF>(
 where
     F: std::future::Future,
     H: FnMut() -> HF,
-    HF: std::future::Future<Output = bool>,
+    HF: std::future::Future<Output = super::AttemptOwnership>,
 {
     tokio::pin!(run_fut);
     let mut heartbeat = tokio::time::interval_at(
@@ -211,7 +211,7 @@ where
         let heartbeat_loop = async {
             loop {
                 heartbeat.tick().await;
-                if !send_heartbeat().await {
+                if send_heartbeat().await == super::AttemptOwnership::Lost {
                     break;
                 }
             }

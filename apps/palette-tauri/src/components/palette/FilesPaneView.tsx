@@ -157,6 +157,7 @@ export function FilesPaneView({
     localStorage.setItem("axon.files.showHidden", String(showHidden));
   }, [showHidden]);
   useEffect(() => localStorage.setItem("axon.files.sort", sortMode), [sortMode]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each input changes visibleEntries and resets keyboard focus
   useEffect(() => setFocusedIndex(0), [filter, pane.cwd, sortMode, showHidden]);
   useEffect(() => {
     const focusFilter = (event: globalThis.KeyboardEvent) => {
@@ -351,7 +352,7 @@ export function FilesPaneView({
             </button>
           </div>
           {recentPaths.length > 0 && (
-            <div className="files-recent-strip" role="group" aria-label="Recent files">
+            <fieldset className="files-recent-strip" aria-label="Recent files">
               <span>Recent</span>
               {recentPaths.slice(0, 3).map((path) => (
                 <button
@@ -371,7 +372,7 @@ export function FilesPaneView({
                   }
                 />
               ))}
-            </div>
+            </fieldset>
           )}
           <div
             className="files-tree aurora-scrollbar"

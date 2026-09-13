@@ -127,9 +127,11 @@ Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.
 Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1.sha256' -OutFile install.ps1.sha256
 Invoke-WebRequest 'https://github.com/dinglebear-ai/axon/releases/download/vX.Y.Z/install.ps1.minisig' -OutFile install.ps1.minisig
 if ((Get-FileHash .\install.ps1 -Algorithm SHA256).Hash.ToLowerInvariant() -ne ((Get-Content .\install.ps1.sha256).Split()[0]).ToLowerInvariant()) { throw 'installer checksum mismatch' }
-$env:AXON_UPDATE_MINISIGN_PUBKEY = Get-Content .\axon-release.minisign.pub -Raw
-minisign -V -P $env:AXON_UPDATE_MINISIGN_PUBKEY -m install.ps1 -x install.ps1.minisig
+$TrustedPublicKeyFile = Get-Content .\axon-release.minisign.pub -Raw
+$TrustedPublicKey = ($TrustedPublicKeyFile -split "`r?`n" | Where-Object { $_ -and -not $_.StartsWith('untrusted comment:') } | Select-Object -First 1).Trim()
+minisign -V -P $TrustedPublicKey -m install.ps1 -x install.ps1.minisig
 Get-Content .\install.ps1
+$env:AXON_UPDATE_MINISIGN_PUBKEY = $TrustedPublicKeyFile
 .\install.ps1
 ```
 

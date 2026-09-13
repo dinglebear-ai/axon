@@ -66,9 +66,9 @@ journalctl -u axon -f              # live logs (tracing + progress)
 journalctl -u axon --since today
 
 # Axon's own self-checks (run as the axon user, or via the HTTP API):
-sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon --local doctor
-sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon --local preflight
-sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon --local status
+sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon doctor
+sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon preflight
+sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon status
 ```
 
 `axon setup init` can populate `/var/lib/axon/config.toml` and `/var/lib/axon/.env`

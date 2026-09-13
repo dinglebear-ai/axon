@@ -35,7 +35,11 @@ use axon_memory::sqlite::SqliteMemoryStore;
 use axon_memory::store::MemoryStore;
 use tokio_util::sync::CancellationToken;
 
+mod attempt_ownership;
+mod extract_heartbeat;
 mod source_runner;
+use attempt_ownership::{AttemptOwnership, attempt_ownership};
+use extract_heartbeat::drive_extract_with_heartbeat;
 use source_runner::SourceRunner;
 #[cfg(test)]
 pub(crate) use source_runner::run_source_request_with_context;
@@ -140,18 +144,6 @@ pub(crate) async fn heartbeat_running_preserving_progress(
         }
     };
     record_running_heartbeat(store, claimed, summary.phase, summary.counts).await;
-}
-
-async fn attempt_remains_active(
-    store: &SqliteUnifiedJobStore,
-    claimed: &UnifiedClaimedJob,
-) -> bool {
-    matches!(
-        store.get(claimed.job_id).await,
-        Ok(Some(summary))
-            if summary.attempt == claimed.attempt
-                && matches!(summary.status, LifecycleStatus::Running | LifecycleStatus::Waiting)
-    )
 }
 
 fn job_heartbeat_interval(cfg: &Config) -> std::time::Duration {
@@ -433,35 +425,21 @@ impl UnifiedJobRunner for ExtractRunner {
         effective_cfg.output_path = None;
 
         let prompt = effective_cfg.query.clone().unwrap_or_default();
-        let extract_fut = crate::extract::extract_sync(&effective_cfg, &urls, &prompt);
-        tokio::pin!(extract_fut);
+        let extract_fut = async {
+            crate::extract::extract_sync(&effective_cfg, &urls, &prompt)
+                .await
+                .map(|_summary| UnifiedJobOutcome::completed_without_counts())
+                .map_err(|error| extract_error(error.to_string()))
+        };
         let heartbeat_interval = job_heartbeat_interval(&effective_cfg);
-        let mut heartbeat = tokio::time::interval_at(
-            tokio::time::Instant::now() + heartbeat_interval,
-            heartbeat_interval,
-        );
-        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            let heartbeat_fut = async {
-                heartbeat.tick().await;
-                let active = attempt_remains_active(store, claimed).await;
-                if active {
-                    heartbeat_running_preserving_progress(store, claimed).await;
-                }
-                active
-            };
-            tokio::select! {
-                _ = shutdown.cancelled() => return Err(extract_error("extract canceled")),
-                result = &mut extract_fut => return result
-                    .map(|_summary| UnifiedJobOutcome::completed_without_counts())
-                    .map_err(|error| extract_error(error.to_string())),
-                active = heartbeat_fut => {
-                    if !active {
-                        return Err(extract_error("extract attempt is no longer active"));
-                    }
-                }
+        drive_extract_with_heartbeat(extract_fut, shutdown, heartbeat_interval, || async {
+            let ownership = attempt_ownership(store, claimed).await;
+            if ownership == AttemptOwnership::Active {
+                heartbeat_running_preserving_progress(store, claimed).await;
             }
-        }
+            ownership
+        })
+        .await?
     }
 }
 

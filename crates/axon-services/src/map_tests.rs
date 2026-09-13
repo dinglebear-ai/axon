@@ -1,6 +1,6 @@
 use super::{
-    append_source_warnings, build_map_request, parse_map_result, source_result_map_failure,
-    source_status_projects_manifest, unsupported_map_result,
+    append_source_warnings, build_map_request, build_map_request_with_config, parse_map_result,
+    source_result_map_failure, source_status_projects_manifest, unsupported_map_result,
 };
 use crate::source::result_map::{adapter_ref, degraded_no_data_plane};
 use crate::source::routing::resolve_source_route;
@@ -9,6 +9,7 @@ use axon_api::source::{
     LifecycleStatus, Severity, SourceIntent, SourceKind, SourceScope, SourceWarning,
 };
 use serde_json::json;
+use std::path::PathBuf;
 
 // ── parse_map_result ──────────────────────────────────────────────────────
 
@@ -221,6 +222,25 @@ fn build_map_request_sets_map_intent_no_embed_map_scope() {
     assert_eq!(
         request.adapter, None,
         "the resolver must select the adapter"
+    );
+}
+
+#[test]
+fn configured_map_output_directory_stays_at_the_trusted_dispatch_boundary() {
+    let cfg = axon_core::config::Config {
+        output_dir: PathBuf::from("/srv/axon/managed-output"),
+        ..axon_core::config::Config::default()
+    };
+
+    let request = build_map_request_with_config(&cfg, "https://example.com/docs");
+
+    assert!(
+        request.options.values.get("output_dir").is_none(),
+        "trusted config is reapplied by dispatch and must not enter caller options"
+    );
+    assert!(
+        request.options.values.get("max_pages").is_some(),
+        "non-filesystem map configuration remains on the routed request"
     );
 }
 

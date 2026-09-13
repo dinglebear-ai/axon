@@ -11,13 +11,17 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use super::{
-    ConnectionId, SftpConnections, SftpSession, new_connection_id, normalize_remote_path,
-    validate_private_key_path,
+    ConnectionId, SftpConnections, SftpSession, close_session_bounded, new_connection_id,
+    normalize_remote_path, validate_private_key_path,
 };
 use crate::sftp_bridge::handler::{HandshakeOutcome, SftpClientHandler};
 use crate::sftp_known_hosts::{
     KnownHostEntry, load_known_hosts, pin_host_key, revoke_host_key, save_known_hosts,
 };
+
+#[path = "commands_io.rs"]
+mod io;
+use io::{read_dir_bounded, read_file_bounded};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +92,7 @@ const MAX_SFTP_TEXT_FILE_BYTES: usize = 5 * 1024 * 1024;
 /// way for the UI to cancel it.
 const SFTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 const SFTP_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const SFTP_READ_CHUNK_BYTES: u32 = 64 * 1024;
 
 /// Outcome of the handshake phase: either the fully-established SFTP session
 /// (auth done, channel open), or an early return the caller should surface
@@ -339,12 +344,8 @@ pub(crate) async fn sftp_read_file(
         .get(&connection_id)
         .cloned()
         .ok_or_else(|| "SFTP connection not found".to_string())?;
-    // Stat before reading: reject oversized files based on the server-reported
-    // size instead of buffering the whole file into memory first and checking
-    // afterward. Mirrors `files_bridge::files_read_file`'s `metadata.len()`
-    // check before `fs::read`. A server that lies about its own file size
-    // (reports small, serves large) is not defended against here — that would
-    // need a streaming/bounded read, out of scope for this pass.
+    // Reject honest oversized files before opening them. The raw read loop
+    // below independently enforces the same cap when size is absent or false.
     let metadata = tokio::time::timeout(
         SFTP_OPERATION_TIMEOUT,
         sftp.high_level.metadata(&normalized),
@@ -359,16 +360,13 @@ pub(crate) async fn sftp_read_file(
             "file is too large to preview ({size} bytes, limit {MAX_SFTP_TEXT_FILE_BYTES})"
         ));
     }
-    let bytes = tokio::time::timeout(SFTP_OPERATION_TIMEOUT, sftp.high_level.read(&normalized))
-        .await
-        .map_err(|_| "SFTP file read timed out".to_string())?
-        .map_err(|err| err.to_string())?;
-    if bytes.len() > MAX_SFTP_TEXT_FILE_BYTES {
-        return Err(format!(
-            "file is too large to preview ({} bytes, limit {MAX_SFTP_TEXT_FILE_BYTES})",
-            bytes.len()
-        ));
-    }
+    let bytes = read_file_bounded(
+        &sftp.raw,
+        &normalized,
+        MAX_SFTP_TEXT_FILE_BYTES,
+        SFTP_OPERATION_TIMEOUT,
+    )
+    .await?;
     let content =
         String::from_utf8(bytes).map_err(|_| "file is not valid UTF-8 text".to_string())?;
     Ok(SftpFileContents {
@@ -385,64 +383,9 @@ pub(crate) async fn sftp_disconnect(
     crate::require_desktop_feature("SFTP")?;
     let sftp = connections.0.lock().await.remove(&connection_id);
     if let Some(sftp) = sftp {
-        let _ = sftp.high_level.close().await;
-        let _ = sftp.raw.close_session();
+        close_session_bounded(&sftp).await;
     }
     Ok(())
-}
-
-async fn read_dir_bounded(
-    raw: &russh_sftp::client::RawSftpSession,
-    path: &str,
-    limit: usize,
-    timeout: std::time::Duration,
-) -> Result<(Vec<SftpEntry>, bool), String> {
-    use russh_sftp::client::error::Error;
-    use russh_sftp::protocol::StatusCode;
-
-    let deadline = tokio::time::Instant::now() + timeout;
-    let handle = tokio::time::timeout_at(deadline, raw.opendir(path))
-        .await
-        .map_err(|_| "SFTP directory listing timed out".to_string())?
-        .map_err(|err| err.to_string())?
-        .handle;
-    let mut entries = Vec::with_capacity(limit.min(256));
-    let result = 'read: loop {
-        match tokio::time::timeout_at(deadline, raw.readdir(handle.clone())).await {
-            Err(_) => break Err("SFTP directory listing timed out".to_string()),
-            Ok(result) => match result {
-                Ok(names) => {
-                    for file in names.files {
-                        if file.filename == "." || file.filename == ".." {
-                            continue;
-                        }
-                        let attrs = file.attrs;
-                        let entry_path = if path.ends_with('/') {
-                            format!("{path}{}", file.filename)
-                        } else {
-                            format!("{path}/{}", file.filename)
-                        };
-                        let entry = SftpEntry {
-                            name: file.filename,
-                            path: entry_path,
-                            is_dir: attrs.file_type().is_dir(),
-                            size: attrs.size.unwrap_or(0),
-                            modified_unix: attrs.mtime.map(u64::from),
-                        };
-                        if push_entry_bounded(&mut entries, entry, limit) {
-                            break 'read Ok((entries, true));
-                        }
-                    }
-                }
-                Err(Error::Status(status)) if status.status_code == StatusCode::Eof => {
-                    break Ok((entries, false));
-                }
-                Err(err) => break Err(err.to_string()),
-            },
-        }
-    };
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), raw.close(handle)).await;
-    result
 }
 
 fn push_entry_bounded(entries: &mut Vec<SftpEntry>, entry: SftpEntry, limit: usize) -> bool {
@@ -451,6 +394,17 @@ fn push_entry_bounded(entries: &mut Vec<SftpEntry>, entry: SftpEntry, limit: usi
     } else {
         entries.push(entry);
         false
+    }
+}
+
+fn validate_sftp_filename(filename: &str) -> Result<(), String> {
+    // russh-sftp 2.3 decodes protocol strings with from_utf8_lossy. Rejecting
+    // U+FFFD prevents distinct malformed byte names from collapsing into one
+    // actionable path. This conservatively rejects a literal U+FFFD too.
+    if filename.contains('\u{FFFD}') {
+        Err("SFTP directory contains a filename that is not safely representable as UTF-8".into())
+    } else {
+        Ok(())
     }
 }
 

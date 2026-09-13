@@ -56,18 +56,29 @@ export function createAiEditFlow({
 }) {
   async function submitSparkleQuery(id: PaneId) {
     const pane = panes.find((p) => p.id === id);
-    if (!pane?.sparkleQuery.trim() || pane.file.kind !== "loaded" || !pane.selected) return;
+    if (
+      !pane?.sparkleQuery.trim() ||
+      pane.file.kind !== "loaded" ||
+      !pane.selected
+    )
+      return;
     if (!client || !config) {
       dispatch({
         type: "pane/proposalError",
         pane: id,
+        path: pane.selected.path,
+        loadGen: pane.loadGen,
         message: "Connect to an Axon server to use AI-assisted edits.",
       });
       return;
     }
     const chatAction = resolveChatAction();
     if (!chatAction) {
-      dispatch({ type: "pane/proposalError", pane: id, message: "Chat action is unavailable." });
+      dispatch({
+        type: "pane/proposalError",
+        pane: id,
+        message: "Chat action is unavailable.",
+      });
       return;
     }
     const proposalPath = pane.selected.path;
@@ -127,6 +138,8 @@ export function createAiEditFlow({
       dispatch({
         type: "pane/proposalApproveError",
         pane: id,
+        path: pane.selected.path,
+        loadGen: pane.loadGen,
         message:
           "This edit belongs to a different file. Generate a new proposal for the selected file.",
       });
@@ -141,11 +154,18 @@ export function createAiEditFlow({
       // atomic-write semantics make this a cheap extra round-trip; skipping it
       // would let Approve silently clobber an out-of-band edit made while the
       // proposal was open for review.
-      const fresh = await invoke<FileContents>("files_read_file", { path: targetPath });
-      if (pane.file.kind === "loaded" && fresh.content !== pane.file.value.content) {
+      const fresh = await invoke<FileContents>("files_read_file", {
+        path: targetPath,
+      });
+      if (
+        pane.file.kind === "loaded" &&
+        fresh.content !== pane.file.value.content
+      ) {
         dispatch({
           type: "pane/proposalApproveError",
           pane: id,
+          path: targetPath,
+          loadGen: targetLoadGen,
           message:
             "The file changed on disk since this edit was proposed. Re-open it and try again.",
         });
@@ -166,6 +186,8 @@ export function createAiEditFlow({
       dispatch({
         type: "pane/proposalApproveError",
         pane: id,
+        path: targetPath,
+        loadGen: targetLoadGen,
         message: err instanceof Error ? err.message : String(err),
       });
     }

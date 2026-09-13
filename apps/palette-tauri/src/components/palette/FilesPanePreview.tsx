@@ -52,7 +52,7 @@ export function FilesPanePreview({
         </div>
         <h3>Select a file to inspect</h3>
         <p>Preview, edit, or index content from this folder.</p>
-        <div className="files-directory-summary" role="group" aria-label="Current folder summary">
+        <fieldset className="files-directory-summary" aria-label="Current folder summary">
           <span>
             <strong>{directoryStats.files}</strong> files
           </span>
@@ -65,7 +65,7 @@ export function FilesPanePreview({
           <span>
             <strong>{formatBytes(directoryStats.size)}</strong> total
           </span>
-        </div>
+        </fieldset>
       </div>
     );
   }

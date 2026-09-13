@@ -20,7 +20,11 @@ import {
   type PaneId,
   toggleChecked,
 } from "./filesModel";
-import type { SftpConnectionDraft, SftpConnectionProfile, SftpKnownHostEntry } from "./sftpModel";
+import type {
+  SftpConnectionDraft,
+  SftpConnectionProfile,
+  SftpKnownHostEntry,
+} from "./sftpModel";
 
 export const MIN_TREE_WIDTH = 180;
 export const MAX_TREE_WIDTH = 460;
@@ -73,7 +77,12 @@ export type FilesViewAction =
   | { type: "pane/listingError"; pane: PaneId; message: string }
   | { type: "pane/select"; pane: PaneId; entry: FileEntry | null }
   | { type: "pane/fileLoading"; pane: PaneId; loadGen: number }
-  | { type: "pane/fileLoaded"; pane: PaneId; loadGen: number; file: FileContents }
+  | {
+      type: "pane/fileLoaded";
+      pane: PaneId;
+      loadGen: number;
+      file: FileContents;
+    }
   | { type: "pane/fileError"; pane: PaneId; loadGen: number; message: string }
   | { type: "pane/setEditing"; pane: PaneId; editing: boolean }
   | { type: "pane/setDraft"; pane: PaneId; draft: string }
@@ -88,9 +97,25 @@ export type FilesViewAction =
   | { type: "pane/sparkleOpen"; pane: PaneId }
   | { type: "pane/sparkleClose"; pane: PaneId }
   | { type: "pane/sparkleQueryChange"; pane: PaneId; query: string }
-  | { type: "pane/proposalPending"; pane: PaneId; loadGen: number; path: string }
-  | { type: "pane/proposalReady"; pane: PaneId; loadGen: number; proposal: AiEditProposal }
-  | { type: "pane/proposalError"; pane: PaneId; message: string; loadGen?: number; path?: string }
+  | {
+      type: "pane/proposalPending";
+      pane: PaneId;
+      loadGen: number;
+      path: string;
+    }
+  | {
+      type: "pane/proposalReady";
+      pane: PaneId;
+      loadGen: number;
+      proposal: AiEditProposal;
+    }
+  | {
+      type: "pane/proposalError";
+      pane: PaneId;
+      message: string;
+      loadGen?: number;
+      path?: string;
+    }
   | { type: "pane/proposalDeny"; pane: PaneId }
   | { type: "pane/proposalApproveStart"; pane: PaneId }
   | {
@@ -100,12 +125,22 @@ export type FilesViewAction =
       loadGen: number;
       path: string;
     }
-  | { type: "pane/proposalApproveError"; pane: PaneId; message: string }
+  | {
+      type: "pane/proposalApproveError";
+      pane: PaneId;
+      message: string;
+      loadGen: number;
+      path: string;
+    }
   | { type: "sftp/dialogOpen"; draft: SftpConnectionDraft }
   | { type: "sftp/dialogClose" }
   | { type: "sftp/connectionsLoaded"; connections: SftpConnectionProfile[] }
   | { type: "sftp/connectStart" }
-  | { type: "sftp/connected"; connectionId: string; profile: SftpConnectionProfile }
+  | {
+      type: "sftp/connected";
+      connectionId: string;
+      profile: SftpConnectionProfile;
+    }
   | { type: "sftp/pendingTrust"; entry: SftpKnownHostEntry }
   | { type: "sftp/trustConfirmed" }
   | { type: "sftp/disconnect" };
@@ -125,11 +160,17 @@ function updatePane(
   return [first, second];
 }
 
-function findPane(panes: FilesViewState["panes"], id: PaneId): FilesPane | undefined {
+function findPane(
+  panes: FilesViewState["panes"],
+  id: PaneId,
+): FilesPane | undefined {
   return panes.find((pane) => pane.id === id);
 }
 
-export function filesViewReducer(state: FilesViewState, action: FilesViewAction): FilesViewState {
+export function filesViewReducer(
+  state: FilesViewState,
+  action: FilesViewAction,
+): FilesViewState {
   switch (action.type) {
     case "pane/setCwd":
       return {
@@ -144,11 +185,17 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
         }),
       };
     case "pane/listingLoading":
-      return { ...state, listings: { ...state.listings, [action.pane]: { kind: "loading" } } };
+      return {
+        ...state,
+        listings: { ...state.listings, [action.pane]: { kind: "loading" } },
+      };
     case "pane/listingLoaded":
       return {
         ...state,
-        listings: { ...state.listings, [action.pane]: { kind: "loaded", value: action.listing } },
+        listings: {
+          ...state.listings,
+          [action.pane]: { kind: "loaded", value: action.listing },
+        },
       };
     case "pane/listingError":
       return {
@@ -203,11 +250,22 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
       };
     }
     case "pane/setEditing":
-      return { ...state, panes: updatePane(state.panes, action.pane, { editing: action.editing }) };
+      return {
+        ...state,
+        panes: updatePane(state.panes, action.pane, {
+          editing: action.editing,
+        }),
+      };
     case "pane/setDraft":
-      return { ...state, panes: updatePane(state.panes, action.pane, { draft: action.draft }) };
+      return {
+        ...state,
+        panes: updatePane(state.panes, action.pane, { draft: action.draft }),
+      };
     case "pane/setSaving":
-      return { ...state, panes: updatePane(state.panes, action.pane, { saving: action.saving }) };
+      return {
+        ...state,
+        panes: updatePane(state.panes, action.pane, { saving: action.saving }),
+      };
     case "split/open": {
       if (state.panes.length === 2) return state;
       const left = state.panes[0];
@@ -221,7 +279,10 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
     case "treeWidth/set":
       return {
         ...state,
-        treeWidth: Math.max(MIN_TREE_WIDTH, Math.min(MAX_TREE_WIDTH, action.width)),
+        treeWidth: Math.max(
+          MIN_TREE_WIDTH,
+          Math.min(MAX_TREE_WIDTH, action.width),
+        ),
       };
     case "checked/toggle":
       return { ...state, checked: toggleChecked(state.checked, action.path) };
@@ -230,16 +291,24 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
     case "checked/clear":
       return { ...state, checked: clearChecked() };
     case "pane/sparkleOpen":
-      return { ...state, panes: updatePane(state.panes, action.pane, { sparkleOpen: true }) };
+      return {
+        ...state,
+        panes: updatePane(state.panes, action.pane, { sparkleOpen: true }),
+      };
     case "pane/sparkleClose":
       return {
         ...state,
-        panes: updatePane(state.panes, action.pane, { sparkleOpen: false, sparkleQuery: "" }),
+        panes: updatePane(state.panes, action.pane, {
+          sparkleOpen: false,
+          sparkleQuery: "",
+        }),
       };
     case "pane/sparkleQueryChange":
       return {
         ...state,
-        panes: updatePane(state.panes, action.pane, { sparkleQuery: action.query }),
+        panes: updatePane(state.panes, action.pane, {
+          sparkleQuery: action.query,
+        }),
       };
     case "pane/proposalPending":
       return {
@@ -251,7 +320,10 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
       };
     case "pane/proposalReady": {
       const pane = findPane(state.panes, action.pane);
-      if (pane?.loadGen !== action.loadGen || pane.selected?.path !== action.proposal.forPath) {
+      if (
+        pane?.loadGen !== action.loadGen ||
+        pane.selected?.path !== action.proposal.forPath
+      ) {
         return state;
       }
       return {
@@ -315,6 +387,12 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
         }),
       };
     case "pane/proposalApproveError":
+      if (
+        findPane(state.panes, action.pane)?.loadGen !== action.loadGen ||
+        findPane(state.panes, action.pane)?.selected?.path !== action.path
+      ) {
+        return state;
+      }
       return {
         ...state,
         panes: updatePane(state.panes, action.pane, {
@@ -328,9 +406,15 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
         sftp: { ...state.sftp, dialogOpen: true, editingProfile: action.draft },
       };
     case "sftp/dialogClose":
-      return { ...state, sftp: { ...state.sftp, dialogOpen: false, editingProfile: null } };
+      return {
+        ...state,
+        sftp: { ...state.sftp, dialogOpen: false, editingProfile: null },
+      };
     case "sftp/connectionsLoaded":
-      return { ...state, sftp: { ...state.sftp, connections: action.connections } };
+      return {
+        ...state,
+        sftp: { ...state.sftp, connections: action.connections },
+      };
     case "sftp/connectStart":
       return { ...state, sftp: { ...state.sftp, pendingTrust: null } };
     case "sftp/connected": {
@@ -338,10 +422,14 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
       // Question resolution): the profile is added to the connections list
       // the moment a connection actually succeeds, not behind a separate
       // "save profile?" step.
-      const existingIndex = state.sftp.connections.findIndex((c) => c.id === action.profile.id);
+      const existingIndex = state.sftp.connections.findIndex(
+        (c) => c.id === action.profile.id,
+      );
       const connections =
         existingIndex >= 0
-          ? state.sftp.connections.map((c, i) => (i === existingIndex ? action.profile : c))
+          ? state.sftp.connections.map((c, i) =>
+              i === existingIndex ? action.profile : c,
+            )
           : [...state.sftp.connections, action.profile];
       return {
         ...state,

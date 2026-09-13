@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # cleanup-claude.sh — Kill zombie Claude Code sessions and their MCP child trees.
 #
-# Selects stopped/orphaned Claude processes, plus an optional lifetime policy:
-#   - State 'T' (stopped/suspended via ctrl-z)
-#   - Parent process is dead (orphaned to init/PID 1)
+# Selects orphaned Claude processes, plus an optional lifetime policy:
+#   - Parent process is dead (orphaned to init/PID 1), including stopped orphans
 #   - Lifetime exceeds explicitly supplied --max-age (disabled by default)
 #
 # Active Zed sessions, terminal sessions, and recently-used sessions are KEPT.
@@ -12,7 +11,7 @@
 #   ./scripts/cleanup-claude.sh                  # dry-run (default)
 #   ./scripts/cleanup-claude.sh --kill           # actually kill
 #   ./scripts/cleanup-claude.sh --cron           # kill + quiet (for cron)
-#   ./scripts/cleanup-claude.sh --kill --max-age 0   # kill stopped/orphaned only, ignore age
+#   ./scripts/cleanup-claude.sh --kill --max-age 0   # kill orphaned only, ignore age
 #   ./scripts/cleanup-claude.sh --kill --max-age 60  # also kill sessions older than 60 min (may still be working)
 
 set -euo pipefail
@@ -137,11 +136,10 @@ for pid in "${claude_pids[@]}"; do
 
     reason=""
 
-    # KILL: stopped/suspended (ctrl-z'd) — always dead
-    if [[ "${state}" == *"T"* ]]; then
-        reason="stopped (ctrl-z)"
-    # KILL: orphaned — parent is init (PID 1) or dead
-    elif [[ "${ppid}" == "1" ]] || [[ "${parent_cmd}" == "dead" ]]; then
+    # KILL: orphaned — parent is init (PID 1) or dead. A stopped process with a
+    # live parent remains resumable via fg/bg and is not dead merely because its
+    # state contains T.
+    if [[ "${ppid}" == "1" ]] || [[ "${parent_cmd}" == "dead" ]]; then
         reason="orphaned (parent dead)"
     # KILL: explicit lifetime policy (this does not measure activity)
     elif [[ "${MAX_AGE_MIN}" -gt 0 ]] && [[ "${elapsed_min}" -ge "${MAX_AGE_MIN}" ]]; then

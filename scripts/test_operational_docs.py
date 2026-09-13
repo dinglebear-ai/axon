@@ -87,6 +87,15 @@ for required in (
 windows_installer = (root / "install.ps1").read_text()
 if "raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" in windows_installer:
     raise SystemExit("Windows installer recommends executing a mutable bootstrap directly")
+for required in ('-split "`r?`n"', "FromBase64String", "Length -ne 42"):
+    if required not in windows_installer:
+        raise SystemExit(f"Windows installer does not normalize a trusted minisign .pub file: {required}")
+for required in ("$TrustedPublicKeyFile", "$TrustedPublicKey", "minisign -V -P $TrustedPublicKey"):
+    if required not in readme:
+        raise SystemExit(f"README does not extract the raw key for minisign -P: {required}")
+systemd_readme = (root / "deploy/systemd/README.md").read_text()
+if "axon --local" in systemd_readme:
+    raise SystemExit("systemd runbook uses the nonexistent --local CLI flag")
 
 overview = (root / "docs/reference/cli/overview.md").read_text()
 if "110 commands" in overview:

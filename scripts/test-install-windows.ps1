@@ -7,11 +7,21 @@ New-Item -ItemType Directory $Work | Out-Null
 try {
     $env:AXON_TEST_INSTALLER = Join-Path $Root 'install.ps1'
     $env:AXON_TEST_FIXTURE = $Work
-    $env:AXON_UPDATE_MINISIGN_PUBKEY = 'independently-trusted-test-key'
+    $KeyBytes = New-Object byte[] 42
+    $KeyBytes[0] = [byte][char]'E'
+    $KeyBytes[1] = [byte][char]'d'
+    for ($Index = 2; $Index -lt $KeyBytes.Length; $Index++) { $KeyBytes[$Index] = [byte]$Index }
+    $RawPublicKey = [Convert]::ToBase64String($KeyBytes)
+    $env:AXON_UPDATE_MINISIGN_PUBKEY = "untrusted comment: minisign public key fixture`n$RawPublicKey`n"
     $env:AXON_INSTALL_SKIP_SETUP = '1'
     Remove-Item Env:AXON_INSTALL_DRY_RUN -ErrorAction SilentlyContinue
     Set-Content (Join-Path $Work 'archive') 'fixture archive with a matching checksum'
-    Set-Content (Join-Path $Work 'verifier.ps1') 'exit ([int]$env:AXON_TEST_VERIFY_EXIT)'
+    Set-Content (Join-Path $Work 'verifier.ps1') @'
+$PublicKeyIndex = [Array]::IndexOf($args, '-P') + 1
+if ($PublicKeyIndex -le 0 -or $args[$PublicKeyIndex] -ne $env:AXON_TEST_RAW_PUBLIC_KEY) { exit 64 }
+exit ([int]$env:AXON_TEST_VERIFY_EXIT)
+'@
+    $env:AXON_TEST_RAW_PUBLIC_KEY = $RawPublicKey
     $Child = Join-Path $Work 'child.ps1'
     @'
 $ErrorActionPreference = 'Stop'

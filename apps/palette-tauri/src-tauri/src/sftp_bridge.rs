@@ -54,11 +54,32 @@ impl SftpConnections {
     /// process exit — `sftp_disconnect` only ever closes one connection at a
     /// time and there is no other app-exit hook that reaches this state.
     pub(crate) async fn close_all(&self) {
-        let mut guard = self.0.lock().await;
-        for (_, sftp) in guard.drain() {
-            let _ = sftp.high_level.close().await;
-            let _ = sftp.raw.close_session();
+        let sessions = {
+            let mut guard = self.0.lock().await;
+            guard
+                .drain()
+                .map(|(_, session)| session)
+                .collect::<Vec<_>>()
+        };
+        for sftp in sessions {
+            close_session_bounded(&sftp).await;
         }
+    }
+}
+
+pub(crate) async fn close_session_bounded(session: &SftpSession) {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        session.high_level.close(),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => crate::diag::warn_with_context("SFTP session close failed", error),
+        Err(_) => crate::diag::warn("SFTP session close timed out"),
+    }
+    if let Err(error) = session.raw.close_session() {
+        crate::diag::warn_with_context("raw SFTP session close failed", error);
     }
 }
 
