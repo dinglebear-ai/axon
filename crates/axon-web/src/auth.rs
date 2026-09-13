@@ -15,6 +15,7 @@ pub(crate) struct PanelPassword {
 pub(crate) struct PanelPasswordInit {
     pub password: PanelPassword,
     pub generated: bool,
+    pub path: PathBuf,
 }
 
 impl PanelPassword {
@@ -44,6 +45,7 @@ pub(crate) fn init_panel_password() -> io::Result<PanelPasswordInit> {
         return Ok(PanelPasswordInit {
             password: PanelPassword { token },
             generated: false,
+            path,
         });
     }
 
@@ -52,6 +54,7 @@ pub(crate) fn init_panel_password() -> io::Result<PanelPasswordInit> {
         Ok(()) => Ok(PanelPasswordInit {
             password: PanelPassword { token },
             generated: true,
+            path,
         }),
         Err(err) if err.kind() == ErrorKind::AlreadyExists => {
             let token = read_existing_password(&path)?.ok_or_else(|| {
@@ -63,6 +66,7 @@ pub(crate) fn init_panel_password() -> io::Result<PanelPasswordInit> {
             Ok(PanelPasswordInit {
                 password: PanelPassword { token },
                 generated: false,
+                path,
             })
         }
         Err(err) => Err(err),

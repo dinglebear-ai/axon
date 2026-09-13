@@ -83,7 +83,7 @@
     if (lower.includes("missing bearer token") || lower.includes("401") || lower.includes("auth_failed")) return "Auth failed — Axon needs the bearer token for this server. Open Settings.";
     if (lower.includes("403") || lower.includes("forbidden")) return "Forbidden by the Axon server or proxy. Check the URL and token.";
     if (lower.includes("failed to fetch") || lower.includes("networkerror")) return "Axon is unreachable from Chrome. Check the server URL and that Axon is listening.";
-    return message.replace(/<!--[\s\S]*?-->/g, "").trim() || "Request failed.";
+    return message.trim() || "Request failed.";
   }
 
   /* ── current tab ── */

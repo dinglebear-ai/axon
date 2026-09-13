@@ -109,10 +109,11 @@ the same access.
 
 ### First-run behaviour
 
-When `axon serve` generates a new password it logs it to stderr **once**:
+When `axon serve` generates a new password it logs the protected file location
+to stderr **once**:
 
 ```
-Axon web panel password: <token>
+Axon web panel password generated at /home/user/.axon/panel-password
 Open: http://127.0.0.1:8001
 ```
 
@@ -124,13 +125,14 @@ cat ~/.axon/panel-password
 
 ### Rotating
 
-Delete the file, restart `axon serve`, copy the new password from stderr.
+Delete the file, restart `axon serve`, then read the new password from the
+owner-only file.
 There is no in-product rotation API.
 
 ```bash
 rm ~/.axon/panel-password
 axon serve
-# Axon web panel password: <new-token>
+cat ~/.axon/panel-password
 ```
 
 ---

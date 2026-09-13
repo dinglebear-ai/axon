@@ -2,7 +2,7 @@
 //! unchanged"; any 2xx is "maybe changed" (caller confirms by diffing). Body
 //! ignored — the scrape pipeline re-fetches only when needed.
 
-use crate::http::http_client;
+use crate::http::no_redirect_http_client;
 use crate::http::validate_url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,7 +15,16 @@ pub enum Probe {
     Failed(String),
 }
 
-fn conditional_headers(etag: Option<&str>, last_modified: Option<&str>) -> Vec<(String, String)> {
+fn conditional_headers(
+    url: &str,
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+) -> Vec<(String, String)> {
+    // Validators can encode private resource state. Never transmit them over
+    // cleartext HTTP; an unconditional probe still preserves HTTP watch support.
+    if !url::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https") {
+        return Vec::new();
+    }
     let mut h = Vec::new();
     if let Some(e) = etag {
         h.push(("if-none-match".into(), e.to_string()));
@@ -41,17 +50,11 @@ fn classify(status: u16, etag: Option<String>, last_modified: Option<String>) ->
 /// snapshot's validators.
 ///
 /// SSRF posture (checked in security review): the initial `url` is validated
-/// here via `validate_url` before any request. The request is then issued via
-/// the shared `http_client()`, whose `build_client_with_options` installs a
-/// `reqwest::redirect::Policy::custom` that re-runs `validate_url` on *every*
-/// redirect hop (rejecting any cross-host redirect to a blocked destination),
-/// and in non-test builds wires `SsrfBlockingResolver` as the DNS resolver to
-/// close the connect-time DNS-rebinding TOCTOU window. So a server redirect
-/// after this initial validation cannot reach an unvalidated/blocked host — the
-/// validated initial host is not silently swapped for an unvalidated fetch
-/// target. We intentionally keep redirect-following (the same client the scrape
-/// path uses) rather than disabling it, because each hop is independently
-/// SSRF-guarded.
+/// here via `validate_url` before any request. The no-redirect shared client
+/// also wires `SsrfBlockingResolver` to close the connect-time DNS-rebinding
+/// TOCTOU window. Redirects are deliberately not followed: besides keeping the
+/// probe on its validated origin, this prevents HTTPS conditional validators
+/// from being forwarded to a cleartext redirect target.
 pub async fn conditional_probe(
     url: &str,
     etag: Option<&str>,
@@ -60,12 +63,12 @@ pub async fn conditional_probe(
     if let Err(e) = validate_url(url) {
         return Probe::Failed(format!("ssrf guard rejected request: {e}"));
     }
-    let client = match http_client() {
+    let client = match no_redirect_http_client() {
         Ok(c) => c,
         Err(e) => return Probe::Failed(format!("http client unavailable: {e}")),
     };
     let mut req = client.get(url);
-    for (k, v) in conditional_headers(etag, last_modified) {
+    for (k, v) in conditional_headers(url, etag, last_modified) {
         req = req.header(k, v);
     }
     let resp = match req.send().await {

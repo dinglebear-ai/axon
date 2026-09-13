@@ -29,12 +29,7 @@ impl PanelRuntimeState {
         let config_init = axon_services::setup::config_store::ensure_user_config()?;
         let password_init = init_panel_password()?;
         if password_init.generated {
-            eprintln!(
-                "Axon web panel password: {}\nOpen: http://{}:{}",
-                password_init.password.as_str(),
-                host,
-                port
-            );
+            eprintln!("{}", new_password_notice(&password_init.path, host, port));
         }
         Ok(Self {
             password: password_init.password,
@@ -47,3 +42,14 @@ impl PanelRuntimeState {
         self.setup_required
     }
 }
+
+fn new_password_notice(path: &std::path::Path, host: &str, port: u16) -> String {
+    format!(
+        "Axon web panel password generated at {}\nOpen: http://{host}:{port}",
+        path.display()
+    )
+}
+
+#[cfg(test)]
+#[path = "state_tests.rs"]
+mod tests;
