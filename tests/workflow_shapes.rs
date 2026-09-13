@@ -189,6 +189,58 @@ fn workspace_nextest_is_the_single_owner_of_cli_and_git_test_coverage() {
 }
 
 #[test]
+fn live_homelab_validates_configuration_before_building_or_discovery() {
+    let workflow = active_workflow_content(include_str!("../.github/workflows/e2e-live.yml"));
+    for variable in [
+        "TS_WIF_CLIENT_ID",
+        "TS_WIF_AUDIENCE",
+        "AXON_E2E_QDRANT_GATEWAY_URL",
+        "AXON_E2E_QDRANT_PEER",
+        "AXON_E2E_TEI_GATEWAY_URL",
+        "AXON_E2E_TEI_PEER",
+        "AXON_E2E_CHROME_GATEWAY_URL",
+        "AXON_E2E_CHROME_PEER",
+        "AXON_E2E_LLM_GATEWAY_URL",
+        "AXON_E2E_LLM_PEER",
+        "AXON_E2E_EXPECTED_PEERS",
+    ] {
+        let binding = format!("{variable}: ${{{{ vars.{variable} }}}}");
+        assert!(
+            workflow.contains(&binding),
+            "live E2E variable is not projected into the validator environment: {variable}"
+        );
+    }
+    for secret in [
+        "AXON_E2E_QDRANT_TOKEN",
+        "AXON_E2E_TEI_TOKEN",
+        "AXON_E2E_CHROME_TOKEN",
+        "AXON_E2E_LLM_TOKEN",
+    ] {
+        let binding = format!("{secret}: ${{{{ secrets.{secret} }}}}");
+        assert!(
+            workflow.contains(&binding),
+            "live E2E secret is not projected into the validator environment: {secret}"
+        );
+    }
+    let validate = workflow
+        .find("python3 scripts/e2e/validate-live-config.py")
+        .expect("live E2E must validate configuration");
+    let recovery = workflow
+        .find("python3 scripts/e2e/cleanup-owned-runs.py --manifest-root")
+        .expect("live E2E must preserve stale ownership recovery");
+    let build = workflow
+        .find("cargo build --locked --bin axon")
+        .expect("live E2E must build the tested binary");
+    let attestation = workflow
+        .find("python3 scripts/e2e/attest-wif.py")
+        .expect("live E2E must preserve WIF attestation");
+
+    assert!(validate < recovery);
+    assert!(validate < build);
+    assert!(build < attestation);
+}
+
+#[test]
 fn focused_watch_recipe_cannot_silently_select_zero_tests() {
     let justfile = include_str!("../Justfile");
     assert!(justfile.contains(
