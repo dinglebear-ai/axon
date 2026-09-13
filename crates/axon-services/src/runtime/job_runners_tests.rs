@@ -1,4 +1,15 @@
 use super::*;
+
+#[test]
+fn heartbeat_interval_stays_inside_configured_watchdog_window() {
+    let mut cfg = Config::test_default();
+    cfg.watchdog_stale_timeout_secs = 2;
+    cfg.watchdog_confirm_secs = 1;
+    assert_eq!(
+        job_heartbeat_interval(&cfg),
+        std::time::Duration::from_secs(1)
+    );
+}
 use axon_api::source::{
     AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobIntent, JobKind as UnifiedJobKind,
     JobPriority, JobStagePlan, LifecycleStatus, MetadataMap, PipelinePhase,

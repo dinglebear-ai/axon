@@ -7,6 +7,7 @@
 #   AXON_VERSION             Release version tag, e.g. v5.8.1 (default: latest)
 #   AXON_INSTALL_PREFIX      Install prefix (default: $HOME\.local)
 #   AXON_INSTALL_DRY_RUN     Set to 1 to print what would happen without doing it
+#   AXON_UPDATE_MINISIGN_PUBKEY Trusted release public key obtained independently
 #   AXON_INSTALL_SKIP_SETUP  Set to 1 to skip running `axon setup` after install
 #
 # Usage: download install.ps1 from a reviewed, version-pinned release, inspect
@@ -48,6 +49,11 @@ if ($DryRun) {
     exit 0
 }
 
+$PublicKey = $env:AXON_UPDATE_MINISIGN_PUBKEY
+if ([string]::IsNullOrWhiteSpace($PublicKey)) { Fail 'AXON_UPDATE_MINISIGN_PUBKEY is required to authenticate release downloads' }
+$Minisign = Get-Command minisign -CommandType Application -ErrorAction SilentlyContinue
+if (-not $Minisign) { Fail 'install minisign from a trusted source before running this installer' }
+
 $Target    = 'windows-x86_64'
 $ZipUrl    = Get-AssetUrl $Target 'zip'
 $Sha256Url = "$ZipUrl.sha256"
@@ -70,6 +76,12 @@ try {
     $Actual = (Get-FileHash $ZipPath -Algorithm SHA256).Hash.ToLower()
     if ($Expected -ne $Actual) { Fail "checksum mismatch — expected $Expected, got $Actual" }
 
+    $SignaturePath = Join-Path $TmpDir 'axon.zip.minisig'
+    Invoke-WebRequest -Uri "$ZipUrl.minisig" -OutFile $SignaturePath -UseBasicParsing
+    & $Minisign.Source -V -P $PublicKey -m $ZipPath -x $SignaturePath
+    if ($LASTEXITCODE -ne 0) { Fail 'release signature verification failed' }
+
+    # Extract only after authenticating the archive with an independently trusted key.
     # Extract axon.exe from the zip
     Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
     $ExtractedExe = Join-Path $TmpDir 'axon.exe'

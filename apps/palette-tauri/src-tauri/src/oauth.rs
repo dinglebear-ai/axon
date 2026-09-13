@@ -14,7 +14,10 @@ pub(crate) mod secret;
 pub(crate) mod status;
 pub(crate) mod store;
 
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
@@ -43,15 +46,12 @@ enum CredCache {
 }
 
 /// Tauri-managed OAuth state: the credential cache (whose lock also serializes
-/// refresh — single-flight) and a guard that serializes interactive logins.
-///
-/// Known narrow race: an interactive login does NOT hold the cache lock during
-/// the ~240s browser flow, so in a rare ordering its freshly-saved credentials
-/// can be overwritten by a concurrently-completing refresh of the prior session;
-/// it is self-healing on the next refresh.
+/// refresh — single-flight), a guard that serializes interactive logins, and a
+/// generation that invalidates an older browser flow when logout occurs.
 pub(crate) struct OauthState {
     creds: tokio::sync::Mutex<CredCache>,
     login: tokio::sync::Mutex<()>,
+    generation: AtomicU64,
 }
 
 impl OauthState {
@@ -59,6 +59,7 @@ impl OauthState {
         OauthState {
             creds: tokio::sync::Mutex::new(CredCache::Unloaded),
             login: tokio::sync::Mutex::new(()),
+            generation: AtomicU64::new(0),
         }
     }
 }
@@ -84,11 +85,11 @@ pub(crate) async fn axon_oauth_login(
     let settings = merged_settings(&app)?;
     let server_url = validate_saved_server_url(&settings.server_url)?;
     let client = bridge.client().clone();
+    let login_generation = oauth_state.generation.load(Ordering::Acquire);
 
     let creds = run_login(&app, &client, &server_url).await?;
     let path = store::credentials_path(&app)?;
-    store::save(&path, &creds)?;
-    *oauth_state.creds.lock().await = CredCache::Loaded(Some(creds.clone()));
+    commit_login_credentials(&path, &oauth_state, login_generation, &creds).await?;
     Ok(status_for(Some(&creds), &server_url))
 }
 
@@ -98,9 +99,33 @@ pub(crate) async fn axon_oauth_logout(
     oauth_state: tauri::State<'_, OauthState>,
 ) -> Result<OauthStatus, String> {
     let path = store::credentials_path(&app)?;
-    store::clear(&path)?;
-    *oauth_state.creds.lock().await = CredCache::Loaded(None);
+    clear_credentials(&path, &oauth_state).await?;
     Ok(OauthStatus::signed_out())
+}
+
+async fn clear_credentials(path: &std::path::Path, state: &OauthState) -> Result<(), String> {
+    // Refresh holds this lock for its network request and subsequent disk
+    // write. Taking it before clearing disk makes logout the final operation.
+    let mut cache = state.creds.lock().await;
+    state.generation.fetch_add(1, Ordering::AcqRel);
+    store::clear(path)?;
+    *cache = CredCache::Loaded(None);
+    Ok(())
+}
+
+async fn commit_login_credentials(
+    path: &std::path::Path,
+    state: &OauthState,
+    login_generation: u64,
+    credentials: &StoredCredentials,
+) -> Result<(), String> {
+    let mut cache = state.creds.lock().await;
+    if state.generation.load(Ordering::Acquire) != login_generation {
+        return Err("sign-in was canceled because the session was signed out".to_string());
+    }
+    store::save(path, credentials)?;
+    *cache = CredCache::Loaded(Some(credentials.clone()));
+    Ok(())
 }
 
 #[tauri::command]

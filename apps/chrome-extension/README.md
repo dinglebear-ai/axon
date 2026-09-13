@@ -45,19 +45,14 @@ referenced assets into the staging directory, omitting dev-only files
 
 ## Release It
 
-The extension is released independently of the main axon `v*` releases, on its
-own tag. Bump `version` in `manifest.json`, then push a matching tag:
+The extension uses release-please. Merge the feature change without manually
+editing version files. Review and merge the generated Chrome release PR;
+release-please creates the matching tag and GitHub Release, then dispatches
+`chrome-extension-release` with `publish=true` to attach the ZIP and checksum.
 
-```bash
-git tag chrome-ext-v0.2.1   # must match manifest.json's "version"
-git push origin chrome-ext-v0.2.1
-```
-
-The `chrome-extension-release` workflow builds the zip, checksums it, and
-publishes a GitHub Release with `axon-<version>.zip` +
-`.sha256` attached. The tag version must match `manifest.json` or the workflow
-fails. A manual **Run workflow** (workflow_dispatch) builds the zip as a run
-artifact without creating a release (dry-run).
+A manual workflow dispatch without `publish=true` builds a run artifact only.
+Publishing requires a matching existing release tag and GitHub Release. Direct
+tag pushes are not the normal release trigger.
 
 ## Side panel — the launcher
 

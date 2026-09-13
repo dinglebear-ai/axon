@@ -613,7 +613,43 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
             other => panic!("expected LedgerGenerations selector, got {other:?}"),
         })
         .collect::<Vec<_>>();
-    assert_eq!(ledger_prune_targets, vec![gen2.generation]);
+    assert_eq!(ledger_prune_targets, vec![gen2.generation.clone()]);
+
+    store
+        .delete_generation(SourceId::new("src_sqlite"), gen2.generation.clone())
+        .await
+        .expect("prune intermediate generation");
+    sqlx::query(
+        "UPDATE cleanup_debt SET completed_at = ?
+         WHERE source_id = ? AND generation_key = ? AND kind != 'ledger_prune'",
+    )
+    .bind(ts().0)
+    .bind("src_sqlite")
+    .bind(&gen1.generation.0)
+    .execute(&store.pool)
+    .await
+    .expect("resolve old generation's non-ledger debt");
+
+    let gen5 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create gen5");
+    store
+        .put_manifest(manifest_with_items(&gen5.generation.0, vec![]))
+        .await
+        .expect("put gen5");
+    complete_and_publish(&store, completed_generation_from(&gen5)).await;
+
+    let old_ledger_prune_exists: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cleanup_debt
+         WHERE source_id = ? AND generation_key = ? AND kind = 'ledger_prune'",
+    )
+    .bind("src_sqlite")
+    .bind(&gen1.generation.0)
+    .fetch_one(&store.pool)
+    .await
+    .expect("read regenerated ledger prune debt");
+    assert_eq!(old_ledger_prune_exists, 1);
 }
 
 /// A source that publishes generation after generation with an always-
@@ -673,4 +709,50 @@ async fn sqlite_publish_creates_ledger_prune_debt_past_retention() {
     assert!(up_to_generations.contains(&generations[1].generation));
     assert!(!up_to_generations.contains(&generations[2].generation));
     assert!(!up_to_generations.contains(&generations[3].generation));
+}
+
+#[tokio::test]
+async fn ledger_prune_retention_ignores_failed_sequence_gaps() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+
+    let gen1 = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    store
+        .put_manifest(manifest_with_items(&gen1.generation.0, vec![]))
+        .await
+        .unwrap();
+    complete_and_publish(&store, completed_generation_from(&gen1)).await;
+
+    let failed = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    store
+        .fail_generation(failed.clone())
+        .await
+        .expect("fail generation");
+
+    for _ in 0..2 {
+        let generation = store
+            .create_generation(SourceId::new("src_sqlite"))
+            .await
+            .unwrap();
+        store
+            .put_manifest(manifest_with_items(&generation.generation.0, vec![]))
+            .await
+            .unwrap();
+        complete_and_publish(&store, completed_generation_from(&generation)).await;
+    }
+
+    let targets: Vec<String> = sqlx::query_scalar(
+        "SELECT generation_key FROM cleanup_debt WHERE kind = 'ledger_prune' ORDER BY generation_key",
+    )
+    .fetch_all(&store.pool)
+    .await
+    .unwrap();
+    assert_eq!(targets, vec![gen1.generation.0]);
+    assert!(!targets.contains(&failed.generation.0));
 }

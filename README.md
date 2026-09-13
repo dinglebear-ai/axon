@@ -2,7 +2,7 @@
 
 Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.
 
-Version: 7.3.4
+Version: 7.3.5
 
 Every source — a web page, a site, a local checkout, a Git repo, a package, a
 Reddit subreddit, a YouTube transcript, or an AI session export — enters
@@ -205,7 +205,7 @@ nested `axon/` subdirectory:
 
 `AXON_DATA_DIR` defaults to `~/.axon`. If you previously used
 `~/.local/share/axon`, axon does not auto-migrate — either `mv` it to
-`~/.axon` or set `AXON_DATA_DIR=~/.local/share` to pin the old location.
+`~/.axon` or set `AXON_DATA_DIR=~/.local/share/axon` to pin the old location.
 
 `axon setup init` creates `~/.axon`, `config.toml`, and `.env` idempotently,
 filling only missing runtime values and preserving secrets. Focused commands:

@@ -19,14 +19,43 @@ async fn heartbeat_waiting_for_writer_must_keep_polling_source() {
     };
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(35),
-        drive_source_with_heartbeat(source, &shutdown, || async {
-            let _writer = gate.lock().await;
-        }),
+        drive_source_with_heartbeat(
+            source,
+            &shutdown,
+            std::time::Duration::from_secs(30),
+            || async {
+                let _writer = gate.lock().await;
+                true
+            },
+        ),
     )
     .await
     .expect("heartbeat must not suspend the source holding its writer gate")
     .expect("source completes");
     assert_eq!(result, 42);
+}
+
+#[tokio::test(start_paused = true)]
+async fn short_watchdog_heartbeat_cadence_ticks_during_long_work() {
+    let shutdown = CancellationToken::new();
+    let heartbeats = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed = Arc::clone(&heartbeats);
+    let source = async {
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        42
+    };
+    let result =
+        drive_source_with_heartbeat(source, &shutdown, std::time::Duration::from_secs(1), || {
+            let observed = Arc::clone(&observed);
+            async move {
+                observed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                true
+            }
+        })
+        .await
+        .expect("source completes");
+    assert_eq!(result, 42);
+    assert!(heartbeats.load(std::sync::atomic::Ordering::SeqCst) >= 3);
 }
 
 #[tokio::test(start_paused = true)]
@@ -36,9 +65,12 @@ async fn cancellation_bounds_cleanup_while_heartbeat_is_blocked() {
         tokio::time::sleep(std::time::Duration::from_secs(31)).await;
         shutdown.cancel();
     };
-    let running = drive_source_with_heartbeat(std::future::pending::<()>(), &shutdown, || {
-        std::future::pending::<()>()
-    });
+    let running = drive_source_with_heartbeat(
+        std::future::pending::<()>(),
+        &shutdown,
+        std::time::Duration::from_secs(30),
+        std::future::pending::<bool>,
+    );
     let (_, result) = tokio::time::timeout(std::time::Duration::from_secs(42), async {
         tokio::join!(cancel, running)
     })
@@ -60,10 +92,15 @@ async fn cancellation_releases_heartbeat_writer_before_source_cleanup() {
         let _writer = gate.lock().await;
         42
     };
-    let running = drive_source_with_heartbeat(source, &shutdown, || async {
-        let _writer = gate.lock().await;
-        std::future::pending::<()>().await;
-    });
+    let running = drive_source_with_heartbeat(
+        source,
+        &shutdown,
+        std::time::Duration::from_secs(30),
+        || async {
+            let _writer = gate.lock().await;
+            std::future::pending::<bool>().await
+        },
+    );
     let (_, result) = tokio::join!(cancel, running);
     assert_eq!(
         result.expect("cleanup must acquire the abandoned heartbeat writer"),

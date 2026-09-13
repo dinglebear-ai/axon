@@ -9,11 +9,20 @@ fn request(product: BackendProduct, path: &str) -> BackendRequest {
         body: None,
     }
 }
+fn post_request(product: BackendProduct, path: &str) -> BackendRequest {
+    BackendRequest {
+        method: BackendMethod::Post,
+        ..request(product, path)
+    }
+}
 #[test]
 fn product_routes_fail_closed() {
     assert!(validate_request(&request(BackendProduct::Axon, "/v1/doctor")).is_ok());
     assert!(validate_request(&request(BackendProduct::Labby, "/v1/integration/identity")).is_ok());
     assert!(validate_request(&request(BackendProduct::Labby, "/v1/gateway")).is_ok());
+    assert!(validate_request(&post_request(BackendProduct::Labby, "/v1/skills")).is_ok());
+    assert!(validate_request(&request(BackendProduct::Labby, "/v1/skills")).is_err());
+    assert!(validate_request(&request(BackendProduct::Labby, "/v1/skills/other")).is_err());
     assert!(
         validate_request(&request(
             BackendProduct::Labby,

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use super::{
-    ConnectionId, SftpConnections, new_connection_id, normalize_remote_path,
+    ConnectionId, SftpConnections, SftpSession, new_connection_id, normalize_remote_path,
     validate_private_key_path,
 };
 use crate::sftp_bridge::handler::{HandshakeOutcome, SftpClientHandler};
@@ -29,7 +29,7 @@ pub(crate) struct SftpConnectionInput {
     /// Set by the frontend on a re-connect attempt after the user confirmed
     /// `SftpTrustPrompt` for this exact host/port/fingerprint.
     #[serde(default)]
-    pub trust_new_host: bool,
+    pub expected_new_host_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -87,13 +87,45 @@ const MAX_SFTP_TEXT_FILE_BYTES: usize = 5 * 1024 * 1024;
 /// unresponsive host would otherwise hang the command indefinitely with no
 /// way for the UI to cancel it.
 const SFTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+const SFTP_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Outcome of the handshake phase: either the fully-established SFTP session
 /// (auth done, channel open), or an early return the caller should surface
 /// as-is (a pending trust prompt or a rejected/mismatched host key).
 enum HandshakePhaseResult {
-    Session(russh_sftp::client::SftpSession),
+    Session(SftpSession),
     Early(SftpConnectResult),
+}
+
+async fn open_sftp_channels(
+    session: &mut russh::client::Handle<SftpClientHandler>,
+) -> Result<SftpSession, String> {
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|err| err.to_string())?;
+    channel
+        .request_subsystem(true, "sftp")
+        .await
+        .map_err(|err| err.to_string())?;
+    let high_level = russh_sftp::client::SftpSession::new(channel.into_stream())
+        .await
+        .map_err(|err| err.to_string())?;
+
+    // Directory reads use the raw protocol so the client can stop requesting
+    // packets at its cardinality bound instead of materializing the whole
+    // directory through the high-level API.
+    let raw_channel = session
+        .channel_open_session()
+        .await
+        .map_err(|err| err.to_string())?;
+    raw_channel
+        .request_subsystem(true, "sftp")
+        .await
+        .map_err(|err| err.to_string())?;
+    let raw = russh_sftp::client::RawSftpSession::new(raw_channel.into_stream());
+    raw.init().await.map_err(|err| err.to_string())?;
+    Ok(SftpSession { high_level, raw })
 }
 
 /// Runs the TCP-connect+SSH-handshake, then (unless the handshake short-
@@ -113,7 +145,7 @@ async fn establish_sftp_session(
         host: profile.host.clone(),
         port: profile.port,
         known_hosts,
-        trust_new_host: profile.trust_new_host,
+        expected_new_host_fingerprint: profile.expected_new_host_fingerprint.clone(),
         outcome: outcome.clone(),
     };
 
@@ -161,11 +193,11 @@ async fn establish_sftp_session(
     let mut session = connect_result.map_err(|err| err.to_string())?;
 
     // The handshake succeeded and check_server_key accepted the key. If this
-    // was a first-trust confirmation (trust_new_host), persist the pin now
+    // was a first-trust confirmation, persist the pin now
     // that the connection is actually proven live, not merely offered — the
     // exact entry the handler observed during the handshake (host/port/
     // key_type/fingerprint) is reused verbatim, no re-derivation needed.
-    if profile.trust_new_host
+    if profile.expected_new_host_fingerprint.is_some()
         && let Some(mut entry) = proceeded_entry
     {
         entry.first_seen_unix = std::time::SystemTime::now()
@@ -203,29 +235,16 @@ async fn establish_sftp_session(
         ));
     }
 
-    let sftp = tokio::time::timeout(SFTP_CONNECT_TIMEOUT, async {
-        let channel = session
-            .channel_open_session()
-            .await
-            .map_err(|err| err.to_string())?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|err| err.to_string())?;
-        let stream = channel.into_stream();
-        russh_sftp::client::SftpSession::new(stream)
-            .await
-            .map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|_| {
-        format!(
-            "opening the SFTP channel to {}:{} timed out after {}s",
-            profile.host,
-            profile.port,
-            SFTP_CONNECT_TIMEOUT.as_secs()
-        )
-    })??;
+    let sftp = tokio::time::timeout(SFTP_CONNECT_TIMEOUT, open_sftp_channels(&mut session))
+        .await
+        .map_err(|_| {
+            format!(
+                "opening the SFTP channel to {}:{} timed out after {}s",
+                profile.host,
+                profile.port,
+                SFTP_CONNECT_TIMEOUT.as_secs()
+            )
+        })??;
 
     Ok(HandshakePhaseResult::Session(sftp))
 }
@@ -261,7 +280,7 @@ pub(crate) async fn sftp_connect(
         .0
         .lock()
         .await
-        .insert(connection_id.clone(), sftp);
+        .insert(connection_id.clone(), Arc::new(sftp));
     Ok(SftpConnectResult::Connected { connection_id })
 }
 
@@ -274,35 +293,25 @@ pub(crate) async fn sftp_list_dir(
     crate::require_desktop_feature("SFTP")?;
     let target = path.unwrap_or_default();
     let normalized = normalize_remote_path(&target)?;
-    let guard = connections.0.lock().await;
-    let sftp = guard
+    let sftp = connections
+        .0
+        .lock()
+        .await
         .get(&connection_id)
+        .cloned()
         .ok_or_else(|| "SFTP connection not found".to_string())?;
     let list_path = if normalized.is_empty() {
         ".".to_string()
     } else {
         normalized.clone()
     };
-    let read_dir = sftp
-        .read_dir(&list_path)
-        .await
-        .map_err(|err| err.to_string())?;
-    let mut entries = Vec::new();
-    let mut truncated = false;
-    for entry in read_dir {
-        if entries.len() >= MAX_SFTP_DIR_ENTRIES {
-            truncated = true;
-            break;
-        }
-        let metadata = entry.metadata();
-        entries.push(SftpEntry {
-            name: entry.file_name(),
-            path: entry.path(),
-            is_dir: entry.file_type().is_dir(),
-            size: metadata.size.unwrap_or(0),
-            modified_unix: metadata.mtime.map(u64::from),
-        });
-    }
+    let (mut entries, truncated) = read_dir_bounded(
+        &sftp.raw,
+        &list_path,
+        MAX_SFTP_DIR_ENTRIES,
+        SFTP_OPERATION_TIMEOUT,
+    )
+    .await?;
     entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
         (true, false) => std::cmp::Ordering::Less,
         (false, true) => std::cmp::Ordering::Greater,
@@ -323,9 +332,12 @@ pub(crate) async fn sftp_read_file(
 ) -> Result<SftpFileContents, String> {
     crate::require_desktop_feature("SFTP")?;
     let normalized = normalize_remote_path(&path)?;
-    let guard = connections.0.lock().await;
-    let sftp = guard
+    let sftp = connections
+        .0
+        .lock()
+        .await
         .get(&connection_id)
+        .cloned()
         .ok_or_else(|| "SFTP connection not found".to_string())?;
     // Stat before reading: reject oversized files based on the server-reported
     // size instead of buffering the whole file into memory first and checking
@@ -333,10 +345,13 @@ pub(crate) async fn sftp_read_file(
     // check before `fs::read`. A server that lies about its own file size
     // (reports small, serves large) is not defended against here — that would
     // need a streaming/bounded read, out of scope for this pass.
-    let metadata = sftp
-        .metadata(&normalized)
-        .await
-        .map_err(|err| err.to_string())?;
+    let metadata = tokio::time::timeout(
+        SFTP_OPERATION_TIMEOUT,
+        sftp.high_level.metadata(&normalized),
+    )
+    .await
+    .map_err(|_| "SFTP metadata request timed out".to_string())?
+    .map_err(|err| err.to_string())?;
     if let Some(size) = metadata.size
         && size > MAX_SFTP_TEXT_FILE_BYTES as u64
     {
@@ -344,9 +359,9 @@ pub(crate) async fn sftp_read_file(
             "file is too large to preview ({size} bytes, limit {MAX_SFTP_TEXT_FILE_BYTES})"
         ));
     }
-    let bytes = sftp
-        .read(&normalized)
+    let bytes = tokio::time::timeout(SFTP_OPERATION_TIMEOUT, sftp.high_level.read(&normalized))
         .await
+        .map_err(|_| "SFTP file read timed out".to_string())?
         .map_err(|err| err.to_string())?;
     if bytes.len() > MAX_SFTP_TEXT_FILE_BYTES {
         return Err(format!(
@@ -368,12 +383,80 @@ pub(crate) async fn sftp_disconnect(
     connection_id: String,
 ) -> Result<(), String> {
     crate::require_desktop_feature("SFTP")?;
-    let mut guard = connections.0.lock().await;
-    if let Some(sftp) = guard.remove(&connection_id) {
-        let _ = sftp.close().await;
+    let sftp = connections.0.lock().await.remove(&connection_id);
+    if let Some(sftp) = sftp {
+        let _ = sftp.high_level.close().await;
+        let _ = sftp.raw.close_session();
     }
     Ok(())
 }
+
+async fn read_dir_bounded(
+    raw: &russh_sftp::client::RawSftpSession,
+    path: &str,
+    limit: usize,
+    timeout: std::time::Duration,
+) -> Result<(Vec<SftpEntry>, bool), String> {
+    use russh_sftp::client::error::Error;
+    use russh_sftp::protocol::StatusCode;
+
+    let deadline = tokio::time::Instant::now() + timeout;
+    let handle = tokio::time::timeout_at(deadline, raw.opendir(path))
+        .await
+        .map_err(|_| "SFTP directory listing timed out".to_string())?
+        .map_err(|err| err.to_string())?
+        .handle;
+    let mut entries = Vec::with_capacity(limit.min(256));
+    let result = 'read: loop {
+        match tokio::time::timeout_at(deadline, raw.readdir(handle.clone())).await {
+            Err(_) => break Err("SFTP directory listing timed out".to_string()),
+            Ok(result) => match result {
+                Ok(names) => {
+                    for file in names.files {
+                        if file.filename == "." || file.filename == ".." {
+                            continue;
+                        }
+                        let attrs = file.attrs;
+                        let entry_path = if path.ends_with('/') {
+                            format!("{path}{}", file.filename)
+                        } else {
+                            format!("{path}/{}", file.filename)
+                        };
+                        let entry = SftpEntry {
+                            name: file.filename,
+                            path: entry_path,
+                            is_dir: attrs.file_type().is_dir(),
+                            size: attrs.size.unwrap_or(0),
+                            modified_unix: attrs.mtime.map(u64::from),
+                        };
+                        if push_entry_bounded(&mut entries, entry, limit) {
+                            break 'read Ok((entries, true));
+                        }
+                    }
+                }
+                Err(Error::Status(status)) if status.status_code == StatusCode::Eof => {
+                    break Ok((entries, false));
+                }
+                Err(err) => break Err(err.to_string()),
+            },
+        }
+    };
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), raw.close(handle)).await;
+    result
+}
+
+fn push_entry_bounded(entries: &mut Vec<SftpEntry>, entry: SftpEntry, limit: usize) -> bool {
+    if entries.len() == limit {
+        true
+    } else {
+        entries.push(entry);
+        false
+    }
+}
+
+#[cfg(test)]
+#[path = "commands_tests.rs"]
+mod tests;
 
 #[tauri::command]
 pub(crate) fn sftp_list_known_hosts(app: AppHandle) -> Result<Vec<KnownHostEntry>, String> {

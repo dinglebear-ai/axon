@@ -1,9 +1,54 @@
 package com.axon.app.feature.ask
 
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PromptAttachmentTest {
+    @Test fun `full attachment quota performs no metadata or content reads`() =
+        runTest {
+            var metadataReads = 0
+            var contentReads = 0
+            val result =
+                admitAttachmentCandidates(
+                    candidates = (1..20).toList(),
+                    existingNames = (1..MAX_ATTACHMENTS).map { "existing-$it" }.toSet(),
+                    availableSlots = 0,
+                    nameOf = {
+                        metadataReads++
+                        "file-$it"
+                    },
+                    read = {
+                        contentReads++
+                        Result.success(attachment("file-$it"))
+                    },
+                )
+            assertEquals(0, metadataReads)
+            assertEquals(0, contentReads)
+            assertEquals(20, result.skipped)
+        }
+
+    @Test fun `oversized selection reads at most remaining unique slots`() =
+        runTest {
+            var contentReads = 0
+            val result =
+                admitAttachmentCandidates(
+                    candidates = listOf("duplicate", "one", "two", "three", "four"),
+                    existingNames = setOf("duplicate"),
+                    availableSlots = 2,
+                    nameOf = { it },
+                    read = {
+                        contentReads++
+                        Result.success(attachment(it))
+                    },
+                )
+            assertEquals(2, contentReads)
+            assertEquals(listOf("one", "two"), result.accepted.map { it.name })
+            assertEquals(3, result.skipped)
+        }
+
+    private fun attachment(name: String) = PromptAttachment(name, "text", false, 4)
+
     @Test
     fun `formatBytes renders zero as bytes`() {
         assertEquals("0 B", formatBytes(0L))

@@ -40,7 +40,7 @@ Current groups from `crates/axon-mcp/src/`:
 - One action-dispatched `axon` tool (`action` + optional `subaction`) — never one tool per operation.
 - Every action routes to exactly one `axon-services` entrypoint; tool schema is generated from shared `axon-api` DTOs.
 - Error envelopes align with REST and CLI JSON output; every response returns a structured envelope.
-- Removed actions such as `code_search_watch`, purge, dedupe, and `vertical_scrape` remain absent; destructive reset stays under `action=reset` with admin scope.
+- Removed actions such as `code_search_watch`, purge, dedupe, and `vertical_scrape` remain absent; reset is not exposed by the MCP action schema. Use CLI `axon reset plan` and `axon reset exec --confirm` for the explicit local reset workflow.
 
 ## DTO ownership
 Shared operation request DTOs live in **`axon-api`** (`axon_api::action`), while the MCP-only tagged action router and response envelope live in **`axon-mcp`** (`crate::schema`); this crate generates its schema from them and returns them. Transports

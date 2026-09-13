@@ -244,3 +244,18 @@ fn caller_web_options_allow_automation_for_local_execute() {
         &serde_json::json!("/tmp/automation.json")
     );
 }
+
+#[test]
+fn caller_web_options_cannot_replace_trusted_output_directory() {
+    let trusted = serde_json::json!("/srv/axon/exports");
+    let mut base = MetadataMap::new();
+    base.insert("output_dir".to_string(), trusted.clone());
+    let mut caller = MetadataMap::new();
+    caller.insert("output_dir".to_string(), serde_json::json!("/tmp/escape"));
+
+    let err = merge_caller_web_options(&mut base, &caller, Some(&AuthSnapshot::default()))
+        .expect_err("remote requests cannot select host filesystem destinations");
+
+    assert_eq!(err.code.0, "source.web.output_dir_forbidden");
+    assert_eq!(base.get("output_dir"), Some(&trusted));
+}

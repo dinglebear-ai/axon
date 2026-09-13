@@ -88,12 +88,18 @@ export type FilesViewAction =
   | { type: "pane/sparkleOpen"; pane: PaneId }
   | { type: "pane/sparkleClose"; pane: PaneId }
   | { type: "pane/sparkleQueryChange"; pane: PaneId; query: string }
-  | { type: "pane/proposalPending"; pane: PaneId }
-  | { type: "pane/proposalReady"; pane: PaneId; proposal: AiEditProposal }
-  | { type: "pane/proposalError"; pane: PaneId; message: string }
+  | { type: "pane/proposalPending"; pane: PaneId; loadGen: number; path: string }
+  | { type: "pane/proposalReady"; pane: PaneId; loadGen: number; proposal: AiEditProposal }
+  | { type: "pane/proposalError"; pane: PaneId; message: string; loadGen?: number; path?: string }
   | { type: "pane/proposalDeny"; pane: PaneId }
   | { type: "pane/proposalApproveStart"; pane: PaneId }
-  | { type: "pane/proposalApproved"; pane: PaneId; file: FileContents }
+  | {
+      type: "pane/proposalApproved";
+      pane: PaneId;
+      file: FileContents;
+      loadGen: number;
+      path: string;
+    }
   | { type: "pane/proposalApproveError"; pane: PaneId; message: string }
   | { type: "sftp/dialogOpen"; draft: SftpConnectionDraft }
   | { type: "sftp/dialogClose" }
@@ -132,6 +138,9 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
           cwd: action.cwd,
           selected: null,
           file: { kind: "idle" },
+          proposal: null,
+          proposalState: "idle",
+          proposalErrorMessage: null,
         }),
       };
     case "pane/listingLoading":
@@ -150,7 +159,15 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
         },
       };
     case "pane/select":
-      return { ...state, panes: updatePane(state.panes, action.pane, { selected: action.entry }) };
+      return {
+        ...state,
+        panes: updatePane(state.panes, action.pane, {
+          selected: action.entry,
+          proposal: null,
+          proposalState: "idle",
+          proposalErrorMessage: null,
+        }),
+      };
     case "pane/fileLoading":
       return {
         ...state,
@@ -232,7 +249,11 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
           proposalErrorMessage: null,
         }),
       };
-    case "pane/proposalReady":
+    case "pane/proposalReady": {
+      const pane = findPane(state.panes, action.pane);
+      if (pane?.loadGen !== action.loadGen || pane.selected?.path !== action.proposal.forPath) {
+        return state;
+      }
       return {
         ...state,
         panes: updatePane(state.panes, action.pane, {
@@ -243,7 +264,15 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
           sparkleQuery: "",
         }),
       };
+    }
     case "pane/proposalError":
+      if (
+        action.loadGen != null &&
+        (findPane(state.panes, action.pane)?.loadGen !== action.loadGen ||
+          findPane(state.panes, action.pane)?.selected?.path !== action.path)
+      ) {
+        return state;
+      }
       return {
         ...state,
         panes: updatePane(state.panes, action.pane, {
@@ -269,6 +298,12 @@ export function filesViewReducer(state: FilesViewState, action: FilesViewAction)
         }),
       };
     case "pane/proposalApproved":
+      if (
+        findPane(state.panes, action.pane)?.loadGen !== action.loadGen ||
+        findPane(state.panes, action.pane)?.selected?.path !== action.path
+      ) {
+        return state;
+      }
       return {
         ...state,
         panes: updatePane(state.panes, action.pane, {

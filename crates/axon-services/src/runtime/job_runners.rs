@@ -142,6 +142,26 @@ pub(crate) async fn heartbeat_running_preserving_progress(
     record_running_heartbeat(store, claimed, summary.phase, summary.counts).await;
 }
 
+async fn attempt_remains_active(
+    store: &SqliteUnifiedJobStore,
+    claimed: &UnifiedClaimedJob,
+) -> bool {
+    matches!(
+        store.get(claimed.job_id).await,
+        Ok(Some(summary))
+            if summary.attempt == claimed.attempt
+                && matches!(summary.status, LifecycleStatus::Running | LifecycleStatus::Waiting)
+    )
+}
+
+fn job_heartbeat_interval(cfg: &Config) -> std::time::Duration {
+    let stale_window = cfg
+        .watchdog_stale_timeout_secs
+        .saturating_add(cfg.watchdog_confirm_secs)
+        .max(1) as u64;
+    std::time::Duration::from_secs((stale_window / 3).clamp(1, 30))
+}
+
 async fn record_running_heartbeat(
     store: &SqliteUnifiedJobStore,
     claimed: &UnifiedClaimedJob,
@@ -414,11 +434,33 @@ impl UnifiedJobRunner for ExtractRunner {
 
         let prompt = effective_cfg.query.clone().unwrap_or_default();
         let extract_fut = crate::extract::extract_sync(&effective_cfg, &urls, &prompt);
-        tokio::select! {
-            _ = shutdown.cancelled() => Err(extract_error("extract canceled")),
-            result = extract_fut => result
-                .map(|_summary| UnifiedJobOutcome::completed_without_counts())
-                .map_err(|error| extract_error(error.to_string())),
+        tokio::pin!(extract_fut);
+        let heartbeat_interval = job_heartbeat_interval(&effective_cfg);
+        let mut heartbeat = tokio::time::interval_at(
+            tokio::time::Instant::now() + heartbeat_interval,
+            heartbeat_interval,
+        );
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            let heartbeat_fut = async {
+                heartbeat.tick().await;
+                let active = attempt_remains_active(store, claimed).await;
+                if active {
+                    heartbeat_running_preserving_progress(store, claimed).await;
+                }
+                active
+            };
+            tokio::select! {
+                _ = shutdown.cancelled() => return Err(extract_error("extract canceled")),
+                result = &mut extract_fut => return result
+                    .map(|_summary| UnifiedJobOutcome::completed_without_counts())
+                    .map_err(|error| extract_error(error.to_string())),
+                active = heartbeat_fut => {
+                    if !active {
+                        return Err(extract_error("extract attempt is no longer active"));
+                    }
+                }
+            }
         }
     }
 }

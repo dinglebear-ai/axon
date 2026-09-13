@@ -78,8 +78,8 @@ export function FilesView({ client, config }: FilesViewProps) {
   // persistent UI mode — the reducer models durable view state (panes,
   // selection, checked set), not ephemeral in-flight operation feedback.
   const [bulkIndexState, setBulkIndexState] = useState<BulkIndexState>({ kind: "idle" });
-  const [indexedPaths, setIndexedPaths] = useState<ReadonlySet<string>>(() =>
-    new Set(JSON.parse(localStorage.getItem("axon.files.indexedPaths") ?? "[]") as string[]),
+  const [indexedPaths, setIndexedPaths] = useState<ReadonlySet<string>>(
+    () => new Set(JSON.parse(localStorage.getItem("axon.files.indexedPaths") ?? "[]") as string[]),
   );
   const bulkIndexCancelRef = useRef(false);
   const sftpTreeRef = useRef<SftpTreeSectionHandle>(null);
@@ -256,9 +256,16 @@ export function FilesView({ client, config }: FilesViewProps) {
     const absolutePath = `${listing.value.root.replace(/\/+$/, "")}/${entry.path}`;
     setIndexResult(id, { kind: "running" });
     const result = await executeAction(client, embedAction, absolutePath, config);
-    setIndexResult(id, result.ok
-      ? { kind: "done", ok: true, message: entry.isDir ? "Folder queued for indexing." : "Queued for indexing." }
-      : { kind: "done", ok: false, message: `Indexing failed (HTTP ${result.status}).` });
+    setIndexResult(
+      id,
+      result.ok
+        ? {
+            kind: "done",
+            ok: true,
+            message: entry.isDir ? "Folder queued for indexing." : "Queued for indexing.",
+          }
+        : { kind: "done", ok: false, message: `Indexing failed (HTTP ${result.status}).` },
+    );
     if (result.ok && !entry.isDir) setIndexedPaths((paths) => new Set(paths).add(entry.path));
   }
 
@@ -501,7 +508,7 @@ export function FilesView({ client, config }: FilesViewProps) {
           onTrust={() => {
             const draft = state.sftp.editingProfile;
             dispatch({ type: "sftp/trustConfirmed" });
-            if (draft) void connectSftp(draft, true);
+            if (draft) void connectSftp(draft, state.sftp.pendingTrust?.fingerprint);
           }}
           onCancel={() => dispatch({ type: "sftp/trustConfirmed" })}
         />

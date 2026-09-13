@@ -160,3 +160,45 @@ fn credentials_from_token_preserves_prior_refresh_token_when_omitted() {
         Some("new-refresh")
     );
 }
+
+#[tokio::test]
+async fn logout_waits_for_an_inflight_refresh_before_clearing_credentials() {
+    let state = std::sync::Arc::new(OauthState::new());
+    let path = std::env::temp_dir().join(format!("palette-oauth-{}.json", uuid::Uuid::new_v4()));
+    std::fs::write(&path, b"refresh-result").unwrap();
+    let refresh_guard = state.creds.lock().await;
+    let task_state = state.clone();
+    let task_path = path.clone();
+    let logout = tokio::spawn(async move { clear_credentials(&task_path, &task_state).await });
+    tokio::task::yield_now().await;
+    assert!(
+        !logout.is_finished(),
+        "logout must serialize behind refresh ownership"
+    );
+    drop(refresh_guard);
+    logout.await.unwrap().unwrap();
+    assert!(!path.exists());
+    assert!(matches!(*state.creds.lock().await, CredCache::Loaded(None)));
+}
+
+#[tokio::test]
+async fn logout_invalidates_an_interactive_login_that_started_earlier() {
+    let state = OauthState::new();
+    let path =
+        std::env::temp_dir().join(format!("palette-oauth-login-{}.json", uuid::Uuid::new_v4()));
+    let login_generation = state.generation.load(Ordering::Acquire);
+
+    clear_credentials(&path, &state).await.unwrap();
+    let error = commit_login_credentials(
+        &path,
+        &state,
+        login_generation,
+        &creds("https://axon.example.com"),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(error.contains("signed out"));
+    assert!(!path.exists());
+    assert!(matches!(*state.creds.lock().await, CredCache::Loaded(None)));
+}

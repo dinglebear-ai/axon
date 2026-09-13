@@ -62,7 +62,7 @@ export function createSftpLifecycle({
     }
   }
 
-  async function connectSftp(draft: SftpConnectionDraft, trustNewHost = false) {
+  async function connectSftp(draft: SftpConnectionDraft, expectedNewHostFingerprint?: string) {
     // Disconnect any previously active connection FIRST, and wait for it —
     // v1 supports one active SFTP connection at a time (see Task 5d's Open
     // Question resolution), and the Rust side now hard-rejects a new
@@ -81,7 +81,7 @@ export function createSftpLifecycle({
         port: draft.port,
         username: draft.username,
         privateKeyPath: draft.privateKeyPath,
-        trustNewHost,
+        expectedNewHostFingerprint,
       },
     }).catch((err) => {
       dispatch({ type: "sftp/dialogClose" });
@@ -107,10 +107,7 @@ export function createSftpLifecycle({
     // Persist the newly-connected profile so it survives an app restart (see
     // fix for P1 #3) — save_palette_prefs merges/writes sftp_connections
     // alongside the rest of settings.json.
-    void persistSftpConnections([
-      ...sftp.connections.filter((c) => c.id !== profile.id),
-      profile,
-    ]);
+    void persistSftpConnections([...sftp.connections.filter((c) => c.id !== profile.id), profile]);
   }
 
   function disconnectSftp() {

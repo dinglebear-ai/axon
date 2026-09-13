@@ -23,7 +23,7 @@
 //! DOES need the same local-path rigor as `files_bridge.rs`; see
 //! `validate_private_key_path` below).
 
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use tokio::sync::Mutex;
 
@@ -32,15 +32,17 @@ mod handler;
 
 pub(crate) type ConnectionId = String;
 
+pub(crate) struct SftpSession {
+    pub(crate) high_level: russh_sftp::client::SftpSession,
+    pub(crate) raw: russh_sftp::client::RawSftpSession,
+}
+
 /// Live SFTP sessions keyed by connection id, held as Tauri managed state.
 ///
-/// `tokio::sync::Mutex`, not `std::sync::Mutex`: SFTP list/read are async
-/// network round-trips, and holding a `std::sync::Mutex` guard across an
-/// `.await` blocks the async executor thread for the call's full latency —
-/// exactly what clippy's `await_holding_lock` lint exists to catch.
-pub(crate) struct SftpConnections(
-    pub(crate) Mutex<HashMap<ConnectionId, russh_sftp::client::SftpSession>>,
-);
+/// Sessions are reference counted so commands clone the selected session and
+/// release this map lock before any network await. The mutex protects only
+/// insertion/removal/lookup, never remote I/O.
+pub(crate) struct SftpConnections(pub(crate) Mutex<HashMap<ConnectionId, Arc<SftpSession>>>);
 
 impl SftpConnections {
     pub(crate) fn new() -> Self {
@@ -54,7 +56,8 @@ impl SftpConnections {
     pub(crate) async fn close_all(&self) {
         let mut guard = self.0.lock().await;
         for (_, sftp) in guard.drain() {
-            let _ = sftp.close().await;
+            let _ = sftp.high_level.close().await;
+            let _ = sftp.raw.close_session();
         }
     }
 }

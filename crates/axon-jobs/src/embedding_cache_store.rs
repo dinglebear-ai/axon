@@ -224,7 +224,7 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
         self.inner
             .max_entries
             .store(max_entries.max(1), Ordering::Relaxed);
-        prune_capacity(&mut transaction, max_entries).await?;
+        prune_capacity(&mut transaction, max_entries, None).await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -279,12 +279,13 @@ async fn prune(
     .bind(MAINTENANCE_DELETE_BUDGET)
     .execute(&mut **transaction)
     .await?;
-    prune_capacity(transaction, max_entries).await
+    prune_capacity(transaction, max_entries, Some(MAINTENANCE_DELETE_BUDGET)).await
 }
 
 async fn prune_capacity(
     transaction: &mut sqlx::Transaction<'_, Sqlite>,
     max_entries: usize,
+    delete_budget: Option<i64>,
 ) -> Result<(), sqlx::Error> {
     let max_entries = i64::try_from(max_entries).unwrap_or(i64::MAX).max(1);
     let count: Option<i64> = sqlx::query_scalar(
@@ -311,12 +312,12 @@ async fn prune_capacity(
             .await?
         }
     };
-    // `max_entries` is a soft bound: each pass deletes at most
-    // MAINTENANCE_DELETE_BUDGET rows, so a burst that overshoots by more than
-    // the budget drains over subsequent put/maintenance passes by design.
-    let victims = count
-        .saturating_sub(max_entries)
-        .clamp(0, MAINTENANCE_DELETE_BUDGET);
+    // An admitted write must restore the configured capacity before it
+    // commits. The fixed budget is reserved for opportunistic maintenance;
+    // applying it here lets a single large provider batch grow the cache
+    // indefinitely faster than maintenance can drain it.
+    let overshoot = count.saturating_sub(max_entries).max(0);
+    let victims = delete_budget.map_or(overshoot, |budget| overshoot.min(budget));
     if victims == 0 {
         return Ok(());
     }

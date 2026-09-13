@@ -199,3 +199,22 @@ fn files_list_write_read_roundtrip_via_pure_helpers() {
 
     fs::remove_dir_all(&root).ok();
 }
+
+#[cfg(unix)]
+#[test]
+fn document_write_preserves_existing_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+    for mode in [0o755, 0o644] {
+        let root = tempdir();
+        let path = root.join("script.sh");
+        fs::write(&path, b"old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+        atomic_write_document(&path, b"new").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            mode
+        );
+        fs::remove_dir_all(root).ok();
+    }
+}

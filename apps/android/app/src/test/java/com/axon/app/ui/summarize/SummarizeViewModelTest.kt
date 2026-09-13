@@ -1,90 +1,61 @@
 package com.axon.app.ui.summarize
 
-import app.cash.turbine.test
 import com.axon.app.data.repository.SummarizeResultUi
-import com.axon.app.data.util.UrlValidator
 import com.axon.app.ui.common.Resource
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 
-/**
- * The real [SummarizeViewModel] is an [androidx.lifecycle.AndroidViewModel] that
- * depends on the [com.axon.app.AxonApp] container — instantiating it requires a
- * Robolectric Application. We test the contract instead through a stand-in that
- * mirrors the production state machine (URL validation gate + Resource<T> states).
- *
- * The stand-in is intentionally a near-copy of [SummarizeViewModel.submit]'s body
- * minus AndroidViewModel plumbing; if the production VM's state contract changes,
- * both must be updated together — this is the simplicity vs. test-rig trade-off
- * captured in the plan (Step 3.1).
- */
-@OptIn(ExperimentalCoroutinesApi::class)
 class SummarizeViewModelTest {
-    private val dispatcher = StandardTestDispatcher()
-
-    @Before fun setUp() { Dispatchers.setMain(dispatcher) }
-    @After fun tearDown() { Dispatchers.resetMain() }
-
-    @Test fun `success path emits Idle, Loading, then Ready with summary`() = runTest(dispatcher) {
-        val vm = TestSummarizeViewModel(stubResult = Result.success(
-            SummarizeResultUi(urls = listOf("https://a"), summary = "ok", contextChars = 7, contextTruncated = false)
-        ))
-        vm.uiState.test {
-            assertEquals(Resource.Idle, awaitItem())
-            vm.submit("https://a")
-            assertEquals(Resource.Loading, awaitItem())
-            val ready = awaitItem() as Resource.Ready<SummarizeResultUi>
-            assertEquals("ok", ready.value.summary)
-            cancelAndIgnoreRemainingEvents()
+    @Test fun `production coordinator publishes successful summary`() =
+        runTest {
+            val expected = SummarizeResultUi(listOf("https://a"), "ok", 7, false)
+            val coordinator = SummarizeCoordinator(this, { "docs" }) { _, _ -> Result.success(expected) }
+            coordinator.submit("https://a")
+            testScheduler.advanceUntilIdle()
+            assertEquals(Resource.Ready(expected), coordinator.uiState.value)
         }
-    }
 
-    @Test fun `invalid URL never calls the repository and stays Idle`() = runTest(dispatcher) {
-        val vm = TestSummarizeViewModel(stubResult = Result.success(
-            SummarizeResultUi(emptyList(), "", 0, false)
-        ))
-        vm.submit("not-a-url")
-        // Stays Idle, no Loading state, no repo call
-        assertEquals(Resource.Idle, vm.uiState.value)
-        assertEquals("expected zero repo calls", 0, vm.calls)
-    }
-
-    @Test fun `failure path emits Loading then Error with message`() = runTest(dispatcher) {
-        val vm = TestSummarizeViewModel(stubResult = Result.failure(IllegalStateException("boom")))
-        vm.uiState.test {
-            assertEquals(Resource.Idle, awaitItem())
-            vm.submit("https://example.com")
-            assertEquals(Resource.Loading, awaitItem())
-            val err = awaitItem() as Resource.Error
-            assertTrue("expected 'boom' in message, got: ${err.message}", err.message.contains("boom"))
-            cancelAndIgnoreRemainingEvents()
+    @Test fun `invalid URL never calls repository`() =
+        runTest {
+            var calls = 0
+            val coordinator =
+                SummarizeCoordinator(this, { null }) { _, _ ->
+                    calls++
+                    error("must not run")
+                }
+            coordinator.submit("not-a-url")
+            testScheduler.advanceUntilIdle()
+            assertEquals(Resource.Idle, coordinator.uiState.value)
+            assertEquals(0, calls)
         }
-    }
-}
 
-private class TestSummarizeViewModel(private val stubResult: Result<SummarizeResultUi>) {
-    var calls: Int = 0
-    private val _uiState = MutableStateFlow<Resource<SummarizeResultUi>>(Resource.Idle)
-    val uiState = _uiState.asStateFlow()
+    @Test fun `new submission cancels stale work and only latest result is published`() =
+        runTest {
+            val first = CompletableDeferred<Result<SummarizeResultUi>>()
+            val second = CompletableDeferred<Result<SummarizeResultUi>>()
+            val coordinator =
+                SummarizeCoordinator(this, { null }) { urls, _ ->
+                    if (urls.single().endsWith("first")) first.await() else second.await()
+                }
+            coordinator.submit("https://example.com/first")
+            testScheduler.runCurrent()
+            coordinator.submit("https://example.com/second")
+            testScheduler.runCurrent()
+            second.complete(Result.success(SummarizeResultUi(listOf("second"), "latest", 1, false)))
+            testScheduler.runCurrent()
+            first.complete(Result.success(SummarizeResultUi(listOf("first"), "stale", 1, false)))
+            testScheduler.advanceUntilIdle()
+            assertEquals("latest", (coordinator.uiState.value as Resource.Ready<SummarizeResultUi>).value.summary)
+        }
 
-    fun submit(input: String) {
-        if (!UrlValidator.isValidHttpUrl(input)) return
-        calls++
-        _uiState.value = Resource.Loading
-        stubResult.fold(
-            onSuccess = { _uiState.value = Resource.Ready(it) },
-            onFailure = { _uiState.value = Resource.Error(it.message ?: "Error") },
-        )
-    }
+    @Test fun `failure is published by production coordinator`() =
+        runTest {
+            val coordinator = SummarizeCoordinator(this, { null }) { _, _ -> Result.failure(IllegalStateException("boom")) }
+            coordinator.submit("https://example.com")
+            testScheduler.advanceUntilIdle()
+            assertTrue((coordinator.uiState.value as Resource.Error).message.contains("boom"))
+        }
 }

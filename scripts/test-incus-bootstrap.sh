@@ -27,11 +27,11 @@ grep -Fq 'RUN_INCUS_SERVER="${AXON_INCUS_RUN_SERVER:-false}"' "$bootstrap"
 grep -Fq 'host_glibc="$(getconf GNU_LIBC_VERSION)"' "$bootstrap"
 grep -Fq 'incus exec "$CONTAINER_NAME" -- /usr/local/bin/axon --version' "$bootstrap"
 grep -Fq 'systemctl disable --now axon-native.service' "$bootstrap"
-grep -Fq 'systemctl enable --now axon-native.service' "$bootstrap"
+grep -Fq 'systemctl enable axon-native.service' "$bootstrap"
 grep -Fq 'systemctl is-enabled --quiet axon-native.service' "$bootstrap"
 grep -Fq 'systemctl is-active --quiet axon-native.service' "$bootstrap"
 grep -Fq 'http://127.0.0.1:8001/readyz' "$bootstrap"
-grep -Fq '${QDRANT_URL%/}/readyz' "$bootstrap"
+grep -Fq '${endpoint%/}/readyz' "$bootstrap"
 if grep -Fq 'http://127.0.0.1:8001/healthz' "$bootstrap"; then
   echo "deployment readiness must not use the liveness endpoint" >&2
   exit 1

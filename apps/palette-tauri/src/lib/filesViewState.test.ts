@@ -64,6 +64,55 @@ describe("filesViewReducer — pane lifecycle", () => {
     });
     expect(applied.panes[0].draft).toBe("fresh");
   });
+
+  it("clears a proposal when selecting a different file", () => {
+    let state = createInitialState();
+    const a = { name: "a.md", path: "a.md", isDir: false, size: 1 };
+    state = filesViewReducer(state, { type: "pane/select", pane: "left", entry: a });
+    state = filesViewReducer(state, { type: "pane/fileLoading", pane: "left", loadGen: 1 });
+    state = filesViewReducer(state, {
+      type: "pane/proposalReady",
+      pane: "left",
+      loadGen: 1,
+      proposal: { forPath: "a.md", proposedContent: "new", diff: [], capturedModifiedUnix: null },
+    });
+    const b = { name: "b.md", path: "b.md", isDir: false, size: 1 };
+    state = filesViewReducer(state, { type: "pane/select", pane: "left", entry: b });
+    expect(state.panes[0].proposal).toBeNull();
+    expect(state.panes[0].proposalState).toBe("idle");
+  });
+
+  it("drops a proposal response from a superseded file generation", () => {
+    let state = createInitialState();
+    const b = { name: "b.md", path: "b.md", isDir: false, size: 1 };
+    state = filesViewReducer(state, { type: "pane/select", pane: "left", entry: b });
+    state = filesViewReducer(state, { type: "pane/fileLoading", pane: "left", loadGen: 2 });
+    const unchanged = filesViewReducer(state, {
+      type: "pane/proposalReady",
+      pane: "left",
+      loadGen: 1,
+      proposal: { forPath: "a.md", proposedContent: "wrong", diff: [], capturedModifiedUnix: null },
+    });
+    expect(unchanged).toBe(state);
+    expect(unchanged.panes[0].proposal).toBeNull();
+  });
+
+  it("does not replace a newly selected file with a late approval result", () => {
+    let state = createInitialState();
+    const b = { name: "b.md", path: "b.md", isDir: false, size: 1 };
+    state = filesViewReducer(state, { type: "pane/select", pane: "left", entry: b });
+    state = filesViewReducer(state, { type: "pane/fileLoading", pane: "left", loadGen: 2 });
+    const unchanged = filesViewReducer(state, {
+      type: "pane/proposalApproved",
+      pane: "left",
+      loadGen: 1,
+      path: "a.md",
+      file: { path: "a.md", content: "approved A", size: 10 },
+    });
+    expect(unchanged).toBe(state);
+    expect(unchanged.panes[0].selected?.path).toBe("b.md");
+    expect(unchanged.panes[0].file).toEqual({ kind: "loading" });
+  });
 });
 
 describe("filesViewReducer — split view", () => {

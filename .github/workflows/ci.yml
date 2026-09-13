@@ -201,6 +201,7 @@ jobs:
           scripts/test-evaluate-retrieval.sh
           scripts/test-install-behavior.sh
           scripts/test-incus-bootstrap.sh
+          python3 scripts/test-review-remediation.py
           scripts/test-live-cli-portability.sh
           python3 scripts/test-mlx-metrics.py
           python3 scripts/test_mcp_doc_renderer.py

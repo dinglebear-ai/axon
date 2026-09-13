@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # cleanup-claude.sh — Kill zombie Claude Code sessions and their MCP child trees.
 #
-# Only kills Claude processes that are DEFINITELY dead:
+# Selects stopped/orphaned Claude processes, plus an optional lifetime policy:
 #   - State 'T' (stopped/suspended via ctrl-z)
 #   - Parent process is dead (orphaned to init/PID 1)
-#   - Idle for longer than --max-age (default: 2 hours, 0 = disable age check)
+#   - Lifetime exceeds explicitly supplied --max-age (disabled by default)
 #
 # Active Zed sessions, terminal sessions, and recently-used sessions are KEPT.
 #
@@ -13,7 +13,7 @@
 #   ./scripts/cleanup-claude.sh --kill           # actually kill
 #   ./scripts/cleanup-claude.sh --cron           # kill + quiet (for cron)
 #   ./scripts/cleanup-claude.sh --kill --max-age 0   # kill stopped/orphaned only, ignore age
-#   ./scripts/cleanup-claude.sh --kill --max-age 60  # also kill sessions idle >60 min
+#   ./scripts/cleanup-claude.sh --kill --max-age 60  # also kill sessions older than 60 min (may still be working)
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ readonly CRON_LOG_MAX_LINES=500
 # ---------------------------------------------------------------------------
 MODE="dry-run"
 QUIET=false
-MAX_AGE_MIN=120  # default: 2 hours
+MAX_AGE_MIN=0  # lifetime termination is opt-in; elapsed time is not inactivity
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -143,7 +143,7 @@ for pid in "${claude_pids[@]}"; do
     # KILL: orphaned — parent is init (PID 1) or dead
     elif [[ "${ppid}" == "1" ]] || [[ "${parent_cmd}" == "dead" ]]; then
         reason="orphaned (parent dead)"
-    # KILL: idle too long (if age check enabled)
+    # KILL: explicit lifetime policy (this does not measure activity)
     elif [[ "${MAX_AGE_MIN}" -gt 0 ]] && [[ "${elapsed_min}" -ge "${MAX_AGE_MIN}" ]]; then
         # Spare if it is foreground in a TTY — user is actively in it
         if [[ "${state}" == *"+"* ]]; then
@@ -151,7 +151,7 @@ for pid in "${claude_pids[@]}"; do
             log "  KEEP  PID=${pid}  state=${state}  tty=${tty}  parent=${parent_cmd}  ${rss_mb}MB  age=${elapsed_min}m  (foreground)"
             continue
         fi
-        reason="idle ${elapsed_min}m (>${MAX_AGE_MIN}m)"
+        reason="explicit lifetime limit: ${elapsed_min}m (>=${MAX_AGE_MIN}m)"
     fi
 
     if [[ -n "${reason}" ]]; then

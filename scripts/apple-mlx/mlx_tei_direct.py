@@ -113,6 +113,37 @@ def interval_window_metrics(
     return wall_us, busy_us, max(0, wall_us - busy_us)
 
 
+class DispatcherMetrics:
+    """Constant-space union, fed in FIFO drain order by the sole dispatcher.
+
+    Request completion order may differ; request bounds only extend the window.
+    Busy intervals are never replayed from completed requests.
+    """
+    def __init__(self) -> None:
+        self.busy_ns = 0
+        self.last_end_ns: int | None = None
+        self.last_start_ns: int | None = None
+        self.start_ns: int | None = None
+        self.end_ns: int | None = None
+
+    def observe_window(self, start: int, end: int) -> None:
+        self.start_ns = start if self.start_ns is None else min(self.start_ns, start)
+        self.end_ns = end if self.end_ns is None else max(self.end_ns, end)
+
+    def observe_dispatch(self, start: int, end: int) -> None:
+        if end < start or (self.last_start_ns is not None and start < self.last_start_ns):
+            raise ValueError("dispatcher intervals must have ordered starts and valid ends")
+        self.busy_ns += max(0, end - max(start, self.last_end_ns or start))
+        self.last_start_ns = start
+        self.last_end_ns = end if self.last_end_ns is None else max(self.last_end_ns, end)
+        self.observe_window(start, end)
+
+    def snapshot(self) -> tuple[int, int, int]:
+        wall = 0 if self.start_ns is None else max(0, self.end_ns - self.start_ns) // 1_000
+        busy = self.busy_ns // 1_000
+        return wall, busy, max(0, wall - busy)
+
+
 def validate_bind(host: str, token: str) -> None:
     try:
         loopback = ip_address(host).is_loopback
@@ -181,9 +212,7 @@ if not TEST_MODE:
     EMBED_STREAM = None
     WORK: queue.Queue = queue.Queue()
     METRICS_LOCK = threading.Lock()
-    METRIC_INTERVALS: list[tuple[int, int]] = []
-    METRIC_WINDOW_START_NS: int | None = None
-    METRIC_WINDOW_END_NS: int | None = None
+    DISPATCHER_METRICS = DispatcherMetrics()
     METRICS: dict[str, int | str] = {
         "epoch": secrets.token_hex(16),
         "requests": 0,
@@ -253,6 +282,8 @@ if not TEST_MODE:
                 mx.eval(out)
                 state.vectors[indices] = np.asarray(out)
                 end_ns = time.perf_counter_ns()
+                with METRICS_LOCK:
+                    DISPATCHER_METRICS.observe_dispatch(start_ns, end_ns)
                 with state.lock:
                     state.intervals.append((start_ns, end_ns))
             except Exception as exc:  # noqa: BLE001
@@ -354,27 +385,14 @@ if not TEST_MODE:
         request_start_ns: int,
         request_end_ns: int,
     ) -> None:
-        global METRIC_INTERVALS, METRIC_WINDOW_START_NS, METRIC_WINDOW_END_NS
         with METRICS_LOCK:
             METRICS["requests"] = int(METRICS["requests"]) + 1
             for key, value in measurement.items():
                 if key in {"request_wall_us", "metal_busy_us", "dispatcher_idle_us"}:
                     continue
                 METRICS[key] = int(METRICS.get(key, 0)) + value
-            METRIC_INTERVALS = merge_intervals([*METRIC_INTERVALS, *intervals])
-            METRIC_WINDOW_START_NS = (
-                request_start_ns
-                if METRIC_WINDOW_START_NS is None
-                else min(METRIC_WINDOW_START_NS, request_start_ns)
-            )
-            METRIC_WINDOW_END_NS = (
-                request_end_ns
-                if METRIC_WINDOW_END_NS is None
-                else max(METRIC_WINDOW_END_NS, request_end_ns)
-            )
-            window_us, busy_us, idle_us = interval_window_metrics(
-                METRIC_INTERVALS, METRIC_WINDOW_START_NS, METRIC_WINDOW_END_NS
-            )
+            DISPATCHER_METRICS.observe_window(request_start_ns, request_end_ns)
+            window_us, busy_us, idle_us = DISPATCHER_METRICS.snapshot()
             METRICS["request_wall_us"] = window_us
             METRICS["metal_busy_us"] = busy_us
             METRICS["dispatcher_idle_us"] = idle_us

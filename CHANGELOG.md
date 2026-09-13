@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.3.5] - 2026-09-12
+
+### Fixed
+
+- Fence concurrent job retries and stale recovery; stop force-canceled attempts and heartbeat long-running extraction.
+- Preserve ledger retention across deleted and failed generations, enforce embedding-cache capacity, and use approximate dense vector search.
+- Reject caller-supplied web output directories and count admitted LLM execution timeouts toward provider cooldown.
+- Authenticate Windows release archives before installation and create annotated CLI release tags.
+- Correct Incus bootstrap ordering and verify the restarted process uses the deployed binary.
+
 ## [7.3.4] - 2026-09-12
 
 ## [7.3.3] - 2026-09-08

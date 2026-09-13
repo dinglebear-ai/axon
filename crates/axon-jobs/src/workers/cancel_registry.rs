@@ -21,7 +21,7 @@ fn lock_tokens() -> MutexGuard<'static, HashMap<AttemptKey, CancellationToken>> 
     }
 }
 
-pub(super) fn register(
+pub(crate) fn register(
     job_id: JobId,
     attempt: u32,
     shutdown: &CancellationToken,
@@ -31,7 +31,7 @@ pub(super) fn register(
     token
 }
 
-pub(super) fn unregister(job_id: JobId, attempt: u32) {
+pub(crate) fn unregister(job_id: JobId, attempt: u32) {
     lock_tokens().remove(&(job_id, attempt));
 }
 

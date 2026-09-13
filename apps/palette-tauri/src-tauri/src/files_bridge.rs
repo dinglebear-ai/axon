@@ -33,12 +33,34 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-use crate::persistence::atomic_write;
-
 /// Files larger than this are rejected for read/write — the palette's preview
 /// pane is not a general-purpose file manager for large binaries/archives.
 const MAX_TEXT_FILE_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_PREVIEW_FILE_BYTES: u64 = 20 * 1024 * 1024;
+
+fn atomic_write_document(path: &Path, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let tmp = path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()));
+    let existing_permissions = fs::metadata(path).ok().map(|meta| meta.permissions());
+    let write = || -> Result<(), Box<dyn std::error::Error>> {
+        {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&tmp)?;
+            if let Some(permissions) = existing_permissions {
+                file.set_permissions(permissions)?;
+            }
+            use std::io::Write as _;
+            file.write_all(data)?;
+            file.sync_all()?;
+        }
+        fs::rename(&tmp, path)?;
+        Ok(())
+    };
+    write().inspect_err(|_| {
+        let _ = fs::remove_file(&tmp);
+    })
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -339,7 +361,7 @@ pub(crate) fn files_write_file(
     if target.is_dir() {
         return Err("path is a directory, not a file".to_string());
     }
-    atomic_write(&target, content.as_bytes()).map_err(|err| err.to_string())?;
+    atomic_write_document(&target, content.as_bytes()).map_err(|err| err.to_string())?;
     let metadata = fs::metadata(&target).map_err(|err| err.to_string())?;
     let relative = target.strip_prefix(&root).unwrap_or(&target);
     Ok(FileContents {

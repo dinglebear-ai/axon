@@ -20,13 +20,14 @@ impl SqliteUnifiedJobStore {
         let mut tx = ImmediateTx::begin_with_gate(&self.pool, &self.write_gate)
             .await
             .map_err(sql_error)?;
-        let row = sqlx::query("SELECT status, phase FROM jobs WHERE job_id = ?")
+        let row = sqlx::query("SELECT status, phase, attempt FROM jobs WHERE job_id = ?")
             .bind(job_id.0.to_string())
             .fetch_optional(&mut *tx)
             .await
             .map_err(sql_error)?
             .ok_or_else(|| missing_job(job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+        let current_attempt = (row.get::<i64, _>("attempt") as u32).max(1);
         // Last completed safe point before the cancellation unwind begins —
         // the job's phase at the moment cancellation was requested.
         let last_safe_stage = parse_enum::<PipelinePhase>(row.get::<String, _>("phase"))
@@ -122,8 +123,11 @@ impl SqliteUnifiedJobStore {
             .map(|row| format!("cleanup_debt:{}", row.get::<String, _>("kind")))
             .collect::<Vec<_>>();
         tx.commit().await.map_err(sql_error)?;
-        if target == LifecycleStatus::Canceling {
-            crate::workers::cancel_job(job_id);
+        if matches!(
+            current,
+            LifecycleStatus::Running | LifecycleStatus::Waiting | LifecycleStatus::Canceling
+        ) {
+            crate::workers::cancel_attempt(job_id, current_attempt);
         }
         Ok(JobCancelResult {
             job_id,
@@ -198,6 +202,7 @@ impl SqliteUnifiedJobStore {
             &mut tx,
             job_id,
             original.status,
+            original.attempt,
             attempt,
             request.idempotency_key.as_deref(),
             request_json.as_deref(),

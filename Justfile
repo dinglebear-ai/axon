@@ -364,6 +364,8 @@ validate-plugin:
 # test-catalog: scripts/test-evaluate-retrieval.sh hermetic-required
 # test-catalog: scripts/test-install-behavior.sh platform-required:linux
 # test-catalog: scripts/test-incus-bootstrap.sh hermetic-required
+# test-catalog: scripts/test-review-remediation.py hermetic-required
+# test-catalog: scripts/test-install-windows.ps1 platform-required:windows
 # test-catalog: scripts/test-live-cli-portability.sh hermetic-required
 # test-catalog: scripts/test-mcp-tasks-wire.py live-optional
 # test-catalog: scripts/test-mlx-metrics.py hermetic-required
@@ -382,6 +384,7 @@ operational-test-contracts:
     scripts/test-evaluate-retrieval.sh
     if [ "$(uname -s)" = "Linux" ]; then scripts/test-install-behavior.sh; else echo "SKIP test-install-behavior.sh (Linux platform required)"; fi
     scripts/test-incus-bootstrap.sh
+    python3 scripts/test-review-remediation.py
     scripts/test-live-cli-portability.sh
     python3 scripts/test-mlx-metrics.py
     python3 scripts/test_mcp_doc_renderer.py

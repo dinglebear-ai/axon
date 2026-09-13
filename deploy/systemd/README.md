@@ -66,14 +66,17 @@ journalctl -u axon -f              # live logs (tracing + progress)
 journalctl -u axon --since today
 
 # Axon's own self-checks (run as the axon user, or via the HTTP API):
-sudo -u axon axon doctor
-sudo -u axon axon preflight
-sudo -u axon axon status
+sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon --local doctor
+sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon --local preflight
+sudo -u axon env AXON_DATA_DIR=/var/lib/axon AXON_ENV_FILE=/etc/axon/axon.env axon --local status
 ```
 
 `axon setup init` can populate `/var/lib/axon/config.toml` and `/var/lib/axon/.env`
 with sensible defaults if you'd rather generate config than hand-write it; run it
-as the `axon` user with `AXON_HOME=/var/lib/axon` set.
+as the `axon` user with `AXON_DATA_DIR=/var/lib/axon` set. After setup, securely
+copy the generated `/var/lib/axon/.env` to `/etc/axon/axon.env` (root:axon,
+mode 0640), which is the environment file consumed by the service. `AXON_HOME`
+alone controls Compose mounts and does not select the CLI data directory.
 
 ## Updating
 
