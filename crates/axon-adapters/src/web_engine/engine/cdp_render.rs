@@ -5,11 +5,14 @@
 //! to recover thin pages while the HTTP crawl is still in progress.
 
 use axon_core::content::bytes_to_markdown;
+use axon_core::http::{cdp_websocket_bearer_header, cdp_websocket_origin_is_authorized};
 use axon_core::logging::log_warn;
 use futures_util::{SinkExt, StreamExt};
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
 /// Process-wide CDP message ID counter shared across all inline Chrome renders.
 static REFETCH_CDP_ID: AtomicU64 = AtomicU64::new(1_000_000);
@@ -91,6 +94,7 @@ where
 ///
 /// The caller is responsible for sending `Target.closeTarget` when done with the session.
 async fn open_chrome_session(
+    remote_url: &str,
     browser_ws_url: &str,
     page_url: &str,
     cmd_timeout: Duration,
@@ -125,11 +129,26 @@ async fn open_chrome_session(
     } else {
         browser_ws_url.to_string()
     };
+    if !cdp_websocket_origin_is_authorized(remote_url, &effective_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {effective_ws_url}"
+        ));
+    }
+
+    let mut request = effective_ws_url
+        .as_str()
+        .into_client_request()
+        .map_err(|e| format!("invalid Chrome WS handshake URL {effective_ws_url}: {e}"))?;
+    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        && let Some(header) = cdp_websocket_bearer_header(remote_url, &effective_ws_url, &token)
+    {
+        request.headers_mut().insert(AUTHORIZATION, header);
+    }
 
     // connect_async handles both ws:// and wss:// (via rustls-tls-native-roots feature).
     let (stream, _resp) = tokio::time::timeout(
         Duration::from_secs(5),
-        tokio_tungstenite::connect_async(&effective_ws_url),
+        tokio_tungstenite::connect_async(request),
     )
     .await
     .map_err(|_| format!("timeout during WS handshake with Chrome at {addr}"))?
@@ -299,7 +318,7 @@ pub(super) async fn render_html_with_chrome(
     let cmd_timeout = Duration::from_secs(timeout_secs.clamp(5, 120));
 
     let (mut ws_tx, mut ws_rx, target_id, session_id) =
-        match open_chrome_session(&resolved_ws_url, page_url, cmd_timeout).await {
+        match open_chrome_session(chrome_ws_url, &resolved_ws_url, page_url, cmd_timeout).await {
             Ok(session) => session,
             Err(e) => {
                 log_warn(&format!(

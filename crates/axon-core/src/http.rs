@@ -55,4 +55,7 @@ pub use ssrf::{validate_url, validate_url_with_dns};
 pub use ua::{AXON_API_UA, DEFAULT_UA, axon_api_ua, axon_ua};
 pub use url_path::with_path;
 
-pub use cdp::cdp_discovery_url;
+pub use cdp::{
+    cdp_discovery_url, cdp_spider_connection_url, cdp_websocket_bearer_header,
+    cdp_websocket_origin_is_authorized,
+};

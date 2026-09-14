@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lease-scoped live runner; gateways, never raw shared providers, own mutation."""
 from __future__ import annotations
-import argparse,datetime as dt,hashlib,importlib.util,json,os,secrets,signal,subprocess,threading,time,urllib.error,urllib.parse,urllib.request
+import argparse,datetime as dt,hashlib,importlib.util,json,os,re,secrets,signal,subprocess,threading,time,urllib.error,urllib.parse,urllib.request
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 def module(name,path):
@@ -31,6 +31,13 @@ class CancellationShield:
 def call(url,token,method,payload):
  data=json.dumps(payload).encode();request=urllib.request.Request(url,data=data,method=method,headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"})
  with urllib.request.urlopen(request,timeout=20) as response:return json.load(response)
+def mask_github_secret(value):
+ if os.environ.get("GITHUB_ACTIONS")!="true":return
+ escaped=value.replace("%","%25").replace("\r","%0D").replace("\n","%0A");print(f"::add-mask::{escaped}",flush=True)
+def take_data_token(lease):
+ value=lease.pop("data_token",None)
+ if not isinstance(value,str) or re.fullmatch(r"axe1_[0-9a-f]{64}",value) is None:raise RuntimeError("provider lease data token contract mismatch")
+ return value
 def retire_manifest_authority(manifest,owned_root):
  directory=manifest.path.parent.resolve();expected=(owned_root/"manifests"/manifest.run_id).resolve()
  if directory!=expected:raise RuntimeError("refusing to retire manifest outside the owned authority")
@@ -111,7 +118,7 @@ def main():
  if preflight.get("status")!="passed":
   a.report.parent.mkdir(parents=True,exist_ok=True);a.report.write_text(json.dumps({"schema":1,"tested_sha":sha,"run_id":run_id,"run_attempt":attempt,"namespace":None,"duration_ms":0,"classification":preflight.get("classification","provider"),"success":False,"scenarios":[],"cleanup":[],"preflight":preflight,"sanitized":True},indent=2,sort_keys=True)+"\n");return 2
  owned_root=Path(os.environ.get("AXON_E2E_OWNED_ROOT",ROOT/"target/e2e")).resolve();owned_root.mkdir(parents=True,exist_ok=True)
- namespace=f"axon_e2e_{run_id}_{attempt}_{secrets.token_hex(8)}";leases=[];started=time.time();failure=None;failure_detail=None;outcomes=[]
+ namespace=f"axon_e2e_{run_id}_{attempt}_{secrets.token_hex(8)}";leases=[];data_tokens={};started=time.time();failure=None;failure_detail=None;outcomes=[];declared=[];plan_digest=None
  run_root=owned_root/"runs"/namespace;data_dir=run_root/"data";data_dir.mkdir(parents=True,mode=0o700)
  manifest=isolation.Manifest.create(owned_root/"manifests",namespace,data_dir);register_for_outer_cleanup(manifest.path);manifest.register("data_dir",str(data_dir));manifest.register("sqlite",str(data_dir/"jobs.db"))
  cancellation=CancellationShield();cancellation.install()
@@ -120,18 +127,22 @@ def main():
    url=os.environ[item["url_env"]].rstrip("/")+"/v1/e2e/leases";token=os.environ[item["auth_env"]]
    janitor=call(url+"/reap",token,"POST",{"owner":"dinglebear-ai/axon","expired_only":True,"residual_audit":True})
    if janitor!={"status":"passed","residuals":[]}:raise RuntimeError("provider stale-lease janitor failed")
-   lease_id=f"{namespace}_{item['name']}_{secrets.token_hex(8)}";now=dt.datetime.now(dt.timezone.utc);expires_at=(now+dt.timedelta(seconds=config["lease_ttl_seconds"])).isoformat().replace("+00:00","Z");heartbeat_at=now.isoformat().replace("+00:00","Z")
+   lease_id=f"{namespace}_{item['name']}";now=dt.datetime.now(dt.timezone.utc);expires_at=(now+dt.timedelta(seconds=config["lease_ttl_seconds"])).isoformat().replace("+00:00","Z");heartbeat_at=now.isoformat().replace("+00:00","Z")
    manifest.register("provider_reservation",f"{namespace}_{item['name']}",{"provider":item["name"],"lease_id":lease_id,"namespace":namespace,"owner":"axon-e2e","gateway_owner":"dinglebear-ai/axon","run_id":namespace,"github_run_id":run_id,"run_attempt":attempt,"attempt":1,"base_url_env":item["url_env"],"token_env":item["auth_env"],"heartbeat_unix_ms":int(now.timestamp()*1000),"expires_unix_ms":int((now+dt.timedelta(seconds=config["lease_ttl_seconds"])).timestamp()*1000),"ownership_generation":secrets.token_hex(32),"workflow":"e2e-live.yml"})
    header,resources=teardown.manifest_api.load(manifest.path);resource=next(value for value in resources if value.resource_type=="provider_reservation" and value.identity==f"{namespace}_{item['name']}");teardown.manifest_api.write_setup_intent(header,resource)
    lease=call(url,token,"POST",{"lease_id":lease_id,"namespace":namespace,"owner":"dinglebear-ai/axon","run_id":run_id,"run_attempt":attempt,"tested_sha":sha,"expires_at":expires_at,"heartbeat_at":heartbeat_at,"ttl_seconds":config["lease_ttl_seconds"],"heartbeat_seconds":config["heartbeat_seconds"],"max_concurrency":item["max_concurrency"],"qps":item["qps"]})
-   if set(lease)!={"lease_id","namespace","expires_at","provider","owner","run_id","run_attempt","heartbeat_at"} or (lease["namespace"],lease["provider"],lease["owner"],lease["run_id"],lease["run_attempt"])!=(namespace,item["name"],"dinglebear-ai/axon",run_id,attempt):raise RuntimeError("provider lease ownership contract mismatch")
+   if set(lease)!={"lease_id","namespace","expires_at","provider","owner","run_id","run_attempt","heartbeat_at","data_token"} or (lease["namespace"],lease["provider"],lease["owner"],lease["run_id"],lease["run_attempt"])!=(namespace,item["name"],"dinglebear-ai/axon",run_id,attempt):raise RuntimeError("provider lease ownership contract mismatch")
+   data_token=take_data_token(lease)
+   mask_github_secret(data_token);data_tokens[item["name"]]=data_token
    if (lease["lease_id"],lease["expires_at"],lease["heartbeat_at"])!=(lease_id,expires_at,heartbeat_at):raise RuntimeError("provider did not honor signed lease identity/times")
    if dt.datetime.fromisoformat(lease["expires_at"].replace("Z","+00:00"))<=dt.datetime.now(dt.timezone.utc):raise RuntimeError("provider lease is already expired")
    state={key:lease[key] for key in ("lease_id","namespace","provider","owner","run_id","run_attempt")};teardown.manifest_api.write_provider_ledger(header,resource,state)
    leases.append((item,lease))
-  env=dict(os.environ);env.update(AXON_E2E_LIVE="1",AXON_E2E_NAMESPACE=namespace,AXON_E2E_TESTED_SHA=sha,AXON_DATA_DIR=str(data_dir),
-   QDRANT_URL=os.environ["AXON_E2E_QDRANT_GATEWAY_URL"],QDRANT_API_KEY=os.environ["AXON_E2E_QDRANT_TOKEN"],TEI_URL=os.environ["AXON_E2E_TEI_GATEWAY_URL"],AXON_TEI_BEARER_TOKEN=os.environ["AXON_E2E_TEI_TOKEN"],AXON_CHROME_REMOTE_URL=os.environ["AXON_E2E_CHROME_GATEWAY_URL"],AXON_CHROME_BEARER_TOKEN=os.environ["AXON_E2E_CHROME_TOKEN"],
-   AXON_LLM_BACKEND="openai-compat",AXON_OPENAI_BASE_URL=os.environ["AXON_E2E_LLM_GATEWAY_URL"]+"/v1",AXON_OPENAI_API_KEY=os.environ["AXON_E2E_LLM_TOKEN"])
+  env=dict(os.environ)
+  for item in config["providers"]:env.pop(item["auth_env"],None)
+  env.update(AXON_E2E_LIVE="1",AXON_E2E_NAMESPACE=namespace,AXON_E2E_TESTED_SHA=sha,AXON_DATA_DIR=str(data_dir),AXON_COLLECTION=namespace,
+   QDRANT_URL=os.environ["AXON_E2E_QDRANT_GATEWAY_URL"],QDRANT_API_KEY=data_tokens["qdrant"],TEI_URL=os.environ["AXON_E2E_TEI_GATEWAY_URL"],AXON_TEI_BEARER_TOKEN=data_tokens["tei"],AXON_CHROME_REMOTE_URL=os.environ["AXON_E2E_CHROME_GATEWAY_URL"],AXON_CHROME_BEARER_TOKEN=data_tokens["chrome"],
+   AXON_LLM_BACKEND="openai-compat",AXON_OPENAI_BASE_URL=os.environ["AXON_E2E_LLM_GATEWAY_URL"]+"/v1",AXON_OPENAI_API_KEY=data_tokens["llm"])
   plan=json.loads(a.scenario_plan.read_text())
   plan_digest=hashlib.sha256(a.scenario_plan.read_bytes()).hexdigest()
   checked=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip()

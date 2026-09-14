@@ -6,6 +6,10 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 class PreflightError(RuntimeError):pass
 def load_config(path=ROOT/"config/e2e/live-services.json"):return json.loads(path.read_text())
+def validate_management_tokens(config,env=os.environ):
+ tokens=[env.get(item["auth_env"],"").strip() for item in config["providers"]]
+ if any(not token for token in tokens):raise PreflightError("provider management bearer auth required")
+ if len(tokens)!=len(set(tokens)):raise PreflightError("provider management tokens must be pairwise distinct")
 def tailscale_peers():
  result=subprocess.run(["tailscale","status","--json"],capture_output=True,text=True,check=True);body=json.loads(result.stdout);return list(body.get("Peer",{}).values())
 def validate_provider(item,env=os.environ,fetch=None,ping=None,peers=None):
@@ -35,6 +39,7 @@ def main():
  p=argparse.ArgumentParser();p.add_argument("--out",type=Path,required=True);a=p.parse_args();a.out.parent.mkdir(parents=True,exist_ok=True)
  try:
   config=load_config();declared={os.environ.get(item["peer_env"],"") for item in config["providers"]};expected={value.strip() for value in os.environ.get("AXON_E2E_EXPECTED_PEERS","").split(",") if value.strip()}
+  validate_management_tokens(config)
   if declared!=expected or len(declared)!=4:raise PreflightError("expected peer set does not exactly match provider peers")
   peers=tailscale_peers();results=[validate_provider(item,peers=peers) for item in config["providers"]];body={"schema":1,"status":"passed","classification":None,"providers":results,"sanitized":True};code=0
  except urllib.error.HTTPError as error:

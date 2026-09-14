@@ -76,6 +76,11 @@ class LiveConfigTests(unittest.TestCase):
         validator = load_validator()
         env = os.environ.copy()
         env.update({name: "configured-value" for name in REQUIRED_NAMES})
+        token_names = sorted(
+            value for value in REQUIRED_NAMES if value.endswith("_TOKEN")
+        )
+        for index, name in enumerate(token_names):
+            env[name] = f"management-token-{index}"
 
         completed = subprocess.run(
             [sys.executable, str(SCRIPT)],
@@ -88,6 +93,33 @@ class LiveConfigTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertEqual("", completed.stdout)
         self.assertEqual("", completed.stderr)
+
+    def test_reused_management_tokens_report_names_without_values(self):
+        validator = load_validator()
+        env = {name: "configured-value" for name in REQUIRED_NAMES}
+        token_names = sorted(name for name in REQUIRED_NAMES if name.endswith("_TOKEN"))
+        for index, name in enumerate(token_names):
+            env[name] = f"management-token-{index}"
+        marker = "shared-management-secret"
+        env[token_names[0]] = marker
+        env[token_names[1]] = marker
+
+        self.assertEqual(
+            token_names[:2], validator.duplicate_management_token_names(env)
+        )
+
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            env={**os.environ, **env},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn("management tokens must be pairwise distinct", completed.stderr)
+        self.assertTrue(all(name in completed.stderr for name in token_names[:2]))
+        self.assertNotIn(marker, completed.stdout + completed.stderr)
 
 
 if __name__ == "__main__":
