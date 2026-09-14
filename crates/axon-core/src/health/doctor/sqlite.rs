@@ -4,15 +4,21 @@ use crate::config::Config;
 use crate::endpoints::{EndpointKind, resolve_host_endpoint};
 use crate::health::browser_diagnostics_pattern;
 use crate::health::doctor::{
-    LlmDoctorProbe, build_browser_runtime, probe_tei_info, tei_info_summary, tei_model_from_info,
-    timed_probe,
+    LlmDoctorProbe, build_browser_runtime, tei_info_summary, tei_model_from_info,
 };
-use crate::http::internal_service_http_client;
-use crate::http::with_path;
 use crate::sqlite::diagnostics as sqlite_diagnostics;
 use serde_json::{Map, Value};
 use std::error::Error;
-use std::time::Duration;
+
+mod provider_probes;
+
+use provider_probes::{collect_service_probes, probe_collection_info_if_reachable};
+
+#[cfg(test)]
+use provider_probes::{
+    ProbeAuth, authenticated_probe_request, probe_authenticated_tei_info, probe_collection_info,
+    probe_internal_http, same_origin,
+};
 
 /// SQLite-runtime doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 ///
@@ -243,102 +249,6 @@ fn assemble_services_map(inputs: ServicesMapInputs<'_>) -> Map<String, Value> {
     services
 }
 
-struct ServiceProbes {
-    tei: (bool, Option<String>),
-    tei_latency_ms: u64,
-    tei_info: (Option<Value>, Option<String>),
-    qdrant: (bool, Option<String>),
-    chrome: (bool, Option<String>),
-    client_ok: bool,
-}
-
-async fn collect_service_probes(cfg: &Config) -> ServiceProbes {
-    let probe_client_result = internal_service_http_client();
-    let client_err_detail = probe_client_result
-        .as_ref()
-        .err()
-        .map(|e| format!("http client init failed: {e}"));
-
-    match probe_client_result {
-        Ok(client) => {
-            let chrome_url = cfg.chrome_remote_url.as_deref();
-            let ((tei, tei_latency_ms), (qdrant, _), (chrome, _)) = spider::tokio::join!(
-                timed_probe(probe_internal_http(client, &cfg.tei_url, &["/health", "/"])),
-                timed_probe(probe_internal_http(
-                    client,
-                    &cfg.qdrant_url,
-                    &["/healthz", "/"]
-                )),
-                timed_probe(probe_internal_chrome(client, chrome_url)),
-            );
-            let (tei_info, _) = timed_probe(probe_tei_info(&cfg.tei_url, client)).await;
-
-            ServiceProbes {
-                tei,
-                tei_latency_ms,
-                tei_info,
-                qdrant,
-                chrome,
-                client_ok: true,
-            }
-        }
-        Err(_) => failed_service_probes(client_err_detail),
-    }
-}
-
-fn failed_service_probes(detail: Option<String>) -> ServiceProbes {
-    let failed = (false, detail.clone());
-    let tei_info = (None, detail);
-
-    ServiceProbes {
-        tei: failed.clone(),
-        tei_latency_ms: 0,
-        tei_info,
-        qdrant: failed.clone(),
-        chrome: failed,
-        client_ok: false,
-    }
-}
-
-async fn probe_internal_chrome(
-    client: &reqwest::Client,
-    chrome_url: Option<&str>,
-) -> (bool, Option<String>) {
-    match chrome_url {
-        Some(url) if !url.trim().is_empty() => {
-            probe_internal_http(client, url, &["/json/version", "/json"]).await
-        }
-        _ => (false, None),
-    }
-}
-
-async fn probe_internal_http(
-    client: &reqwest::Client,
-    url: &str,
-    paths: &[&str],
-) -> (bool, Option<String>) {
-    if url.trim().is_empty() {
-        return (false, Some("not configured".to_string()));
-    }
-
-    let mut last_error = None;
-    for path in paths {
-        let endpoint = with_path(url, path);
-        match client.get(endpoint).send().await {
-            Ok(resp) => {
-                let status = resp.status();
-                if status.is_success() || status.is_redirection() {
-                    return (true, Some(format!("http {}", status.as_u16())));
-                }
-                last_error = Some(format!("http {}", status.as_u16()));
-            }
-            Err(err) => last_error = Some(err.to_string()),
-        }
-    }
-
-    (false, last_error)
-}
-
 fn tei_service_json(
     cfg: &Config,
     ok: bool,
@@ -446,18 +356,6 @@ fn llm_service_json(
     })
 }
 
-async fn probe_collection_info_if_reachable(
-    cfg: &Config,
-    qdrant_ok: bool,
-    client_ok: bool,
-) -> (Option<String>, Option<u64>) {
-    if qdrant_ok && client_ok {
-        probe_collection_info(&cfg.qdrant_url, &cfg.collection).await
-    } else {
-        (None, None)
-    }
-}
-
 fn vector_mode_mismatch_warning(vector_mode: Option<&str>, cfg: &Config) -> Option<&'static str> {
     match vector_mode {
         Some("unnamed") if cfg.hybrid_search_enabled => Some(
@@ -495,71 +393,9 @@ fn dimension_mismatch_warning(tei_dim: Option<u64>, qdrant_size: Option<u64>) ->
     }
 }
 
-/// GET `/collections/{name}`, classify the vectors block, and extract the dense vector size.
-///
-/// Returns `(mode, dense_size)` where:
-/// - `mode` is `Some("named")`, `Some("unnamed")`, or `None` if unreachable/missing.
-/// - `dense_size` is the dimension of the dense vector config:
-///   unnamed → `vectors.size`; named → `vectors.dense.size`.
-///   `None` when the field is absent or the collection does not exist.
-///
-/// Best-effort — never fails the doctor probe.
-async fn probe_collection_info(
-    qdrant_url: &str,
-    collection: &str,
-) -> (Option<String>, Option<u64>) {
-    let url = format!(
-        "{}/collections/{}",
-        qdrant_url.trim_end_matches('/'),
-        collection
-    );
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return (None, None),
-    };
-    let resp = match client.get(&url).send().await {
-        Ok(r) => r,
-        Err(_) => return (None, None),
-    };
-    if !resp.status().is_success() {
-        return (None, None);
-    }
-    let body: Value = match crate::http::read_response_json_bounded(
-        resp,
-        crate::http::DEFAULT_MAX_RESPONSE_BODY_BYTES,
-    )
-    .await
-    {
-        Ok(v) => v,
-        Err(_) => return (None, None),
-    };
-    let vectors = match body
-        .get("result")
-        .and_then(|r| r.get("config"))
-        .and_then(|c| c.get("params"))
-        .and_then(|p| p.get("vectors"))
-    {
-        Some(v) => v,
-        None => return (None, None),
-    };
-
-    if let Some(size) = vectors.get("size").and_then(Value::as_u64) {
-        // Unnamed (legacy) collection — single flat vectors block with a `size` key.
-        (Some("unnamed".to_string()), Some(size))
-    } else if vectors.is_object() {
-        // Named collection — dense vector lives under the "dense" key.
-        let dense_size = vectors
-            .get("dense")
-            .and_then(|d| d.get("size"))
-            .and_then(Value::as_u64);
-        (Some("named".to_string()), dense_size)
-    } else {
-        (None, None)
-    }
-}
+#[cfg(test)]
+#[path = "sqlite_tests.rs"]
+mod tests;
 
 // `count_pending_jobs` moved to `jobs::store::count_pending_jobs`; the doctor
 // now receives the count as a parameter so `core` no longer depends on `jobs`.

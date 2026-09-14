@@ -1,5 +1,5 @@
 from __future__ import annotations
-import importlib.util,json,os,re,sys,tempfile,unittest
+import importlib.util,json,os,re,sys,tempfile,unittest,urllib.error
 from pathlib import Path
 from unittest import mock
 ROOT=Path(__file__).resolve().parents[3]
@@ -11,6 +11,11 @@ wif=load("axon_wif_claim_test",ROOT/"scripts/e2e/validate-wif-claims.py")
 def policy():
  text=(ROOT/"config/tailscale/axon-ci-live-policy.hujson").read_text();return json.loads(re.sub(r"//.*","",text))
 class LiveContractTests(unittest.TestCase):
+ def test_live_lease_data_token_requires_exact_scoped_token_format(self):
+  valid="axe1_"+"a"*64
+  for value in (None,"","x"*64,"axe1_"+"a"*63,"axe1_"+"A"*64,"axe1_"+"g"*64,valid+"0"):
+   with self.assertRaises(RuntimeError):runner.take_data_token({"data_token":value})
+  lease={"data_token":valid};self.assertEqual(valid,runner.take_data_token(lease));self.assertNotIn("data_token",lease)
  def test_heartbeat_failure_retains_sanitized_provider_operation_and_cause(self):
   item={"name":"qdrant","url_env":"GATEWAY_URL","auth_env":"GATEWAY_TOKEN"};lease={"lease_id":"opaque"}
   beats=runner.Heartbeats([(item,lease)],"namespace","123","2",1)
@@ -33,9 +38,13 @@ class LiveContractTests(unittest.TestCase):
   self.assertIn("branches: [main]",text);self.assertIn("schedule:",text);self.assertIn("workflow_dispatch:",text)
   for forbidden in ("pull_request:","pull_request_target:","workflow_run:","oauth-secret:","TS_OAUTH_SECRET","authkey:"):self.assertNotIn(forbidden,text)
   self.assertIn("contents: read\n  id-token: write",text);self.assertIn("environment: axon-live-e2e",text)
+  self.assertIn("environment: axon-live-e2e-manual",text)
+  self.assertIn("if: github.event_name == 'workflow_dispatch'",text)
+  self.assertIn("needs: [admission, manual-approval]",text)
+  self.assertIn("needs.manual-approval.result == 'success'",text)
   self.assertIn("tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888",text);self.assertIn("version: 1.94.0",text)
   self.assertIn("tags: tag:axon-ci-e2e",text);self.assertIn("cancel-in-progress: false",text);self.assertIn("ref: ${{ github.sha }}",text)
-  self.assertIn("E2E Live admission (no private access)",text);self.assertIn("needs: admission",text);self.assertGreaterEqual(text.count("validate-live-invocation.py"),2)
+  self.assertIn("E2E Live admission (no private access)",text);self.assertGreaterEqual(text.count("validate-live-invocation.py"),2)
   for action in re.findall(r"uses:\s*([^\s]+)",text):self.assertRegex(action,r"^[^@]+@[0-9a-f]{40}$")
  def test_wif_claims_are_exact_and_scope_only_ephemeral_tag_creation(self):
   body=json.loads((ROOT/"config/tailscale/axon-ci-wif.json").read_text())
@@ -69,24 +78,37 @@ class LiveContractTests(unittest.TestCase):
   with self.assertRaises(preflight.PreflightError):preflight.validate_provider(item,env,lambda _:raw,lambda _:None,peers)
   localhost=dict(env);localhost[item["url_env"]]="https://localhost";localhost[item["peer_env"]]="localhost"
   with self.assertRaises(preflight.PreflightError):preflight.validate_provider(item,localhost,lambda _:identity,lambda _:None,[])
+ def test_preflight_rejects_reused_management_tokens_without_leaking_values(self):
+  config=preflight.load_config();env={item["auth_env"]:f"token-{item['name']}" for item in config["providers"]}
+  preflight.validate_management_tokens(config,env)
+  marker="shared-management-secret"
+  env[config["providers"][0]["auth_env"]]=marker;env[config["providers"][1]["auth_env"]]=marker
+  with self.assertRaises(preflight.PreflightError) as caught:preflight.validate_management_tokens(config,env)
+  self.assertNotIn(marker,str(caught.exception))
  def test_live_runner_always_deletes_every_acquired_lease_and_audits_residuals(self):
-  config=json.loads((ROOT/"config/e2e/live-services.json").read_text());env={"GITHUB_RUN_ID":"123","GITHUB_RUN_ATTEMPT":"2","GITHUB_SHA":"a"*40}
-  for item in config["providers"]:env.update({item["url_env"]:f"https://{item['name']}.example.ts.net",item["auth_env"]:"token"})
-  calls=[];deleted=set();leases_by_name={}
-  def api(url,_token,method,payload):
+  config=json.loads((ROOT/"config/e2e/live-services.json").read_text());env={"GITHUB_RUN_ID":"123","GITHUB_RUN_ATTEMPT":"2","GITHUB_SHA":"a"*40,"GITHUB_ACTIONS":"true"}
+  admin_tokens={};data_tokens={item["name"]:"axe1_"+format(index,"064x") for index,item in enumerate(config["providers"],1)}
+  for item in config["providers"]:
+   admin_tokens[item["name"]]=f"admin-{item['name']}";env.update({item["url_env"]:f"https://{item['name']}.example.ts.net",item["auth_env"]:admin_tokens[item["name"]]})
+  calls=[];deleted=set();leases_by_name={};command_envs=[]
+  def api(url,token,method,payload):
+   name=next(item["name"] for item in config["providers"] if item["url_env"].split("_")[2].lower() in url)
+   self.assertEqual(admin_tokens[name],token,"lease management must retain the static root token")
    calls.append((url,method,payload))
    if url.endswith("/reap"):return {"status":"passed","residuals":[]}
    if url.endswith("/heartbeat"):return {"status":"renewed","heartbeat_at":"2026-08-30T00:00:00Z","expires_at":"2099-01-01T00:00:00Z","namespace":payload["namespace"],"owner":"dinglebear-ai/axon","run_id":"123","run_attempt":"2"}
    if method=="POST":
-    name=next(item["name"] for item in config["providers"] if item["url_env"].split("_")[2].lower() in url);lease={"lease_id":payload["lease_id"],"namespace":payload["namespace"],"expires_at":payload["expires_at"],"provider":name,"owner":"dinglebear-ai/axon","run_id":"123","run_attempt":"2","heartbeat_at":payload["heartbeat_at"]};leases_by_name[payload["lease_id"]]=lease;return lease
+    lease={"lease_id":payload["lease_id"],"namespace":payload["namespace"],"expires_at":payload["expires_at"],"provider":name,"owner":"dinglebear-ai/axon","run_id":"123","run_attempt":"2","heartbeat_at":payload["heartbeat_at"],"data_token":data_tokens[name]};leases_by_name[payload["lease_id"]]=lease;return lease
    name=url.rsplit("/",1)[-1]
    if method=="DELETE":deleted.add(name);return {"status":"deleted","residuals":[]}
    return None if name in deleted else leases_by_name.get(name)
   adapter_deleted=set()
   def adapter_api(_self,resource,method="GET",payload=None):
    name=resource.metadata["lease_id"]
+   self.assertEqual(admin_tokens[resource.metadata["provider"]],os.environ[resource.metadata["token_env"]])
    if method=="DELETE":adapter_deleted.add(name);return {"status":"deleted","residuals":[]}
-   return None if name in adapter_deleted else leases_by_name.get(name)
+   lease=None if name in adapter_deleted else leases_by_name.get(name)
+   return None if lease is None else {key:value for key,value in lease.items() if key!="data_token"}
   with tempfile.TemporaryDirectory() as directory:
    path=Path(directory);owned=path/"owned";pf=path/"preflight.json";report=path/"report.json";pf.write_text(json.dumps({"status":"passed"}));env["AXON_E2E_OWNED_ROOT"]=str(owned)
    argv=["run-live.py","--preflight",str(pf),"--report",str(report)]
@@ -94,19 +116,64 @@ class LiveContractTests(unittest.TestCase):
    def process(argv,**_kwargs):
     if argv[:2]==["git","rev-parse"]:return mock.Mock(returncode=0,stdout="a"*40+"\n",stderr="")
     return failed
-   with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(sys,"argv",argv),mock.patch.object(runner,"call",side_effect=api),mock.patch.object(runner.subprocess,"run",side_effect=process),mock.patch.object(runner,"run_owned",return_value=failed),mock.patch.object(runner.teardown.provider_api.GatewayLeaseAdapter,"_request",adapter_api):
+   def run_owned(_manifest,_run_root,_scenario,command_env,_heartbeats):self.assertEqual(4,printed.call_count,"data tokens must be masked before commands run");command_envs.append(command_env);return failed
+   with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(sys,"argv",argv),mock.patch.object(runner,"call",side_effect=api),mock.patch.object(runner.subprocess,"run",side_effect=process),mock.patch.object(runner,"run_owned",side_effect=run_owned),mock.patch.object(runner.teardown.provider_api.GatewayLeaseAdapter,"_request",adapter_api),mock.patch("builtins.print") as printed:
     self.assertEqual(2,runner.main())
    self.assertEqual([],list(owned.rglob("*")),"successful canonical teardown must remove every run-owned path and manifest")
    body=json.loads(report.read_text());self.assertEqual("product",body["classification"],body);self.assertEqual([{"provider":"canonical-teardown","passed":True}],body["cleanup"],body);self.assertTrue(body["teardown"]["success"]);self.assertTrue(body["manifest_digest"])
    self.assertEqual(4,len(adapter_deleted));self.assertEqual(4,sum(url.endswith("/reap") for url,_method,_payload in calls))
    self.assertEqual(["provider-doctor"],[item["id"] for item in body["scenarios"]],"circuit breaker must prevent later destructive work")
    self.assertGreaterEqual(sum(url.endswith("/heartbeat") for url,_method,_payload in calls),4)
+   command_env=command_envs[0];self.assertEqual(data_tokens["qdrant"],command_env["QDRANT_API_KEY"]);self.assertEqual(data_tokens["tei"],command_env["AXON_TEI_BEARER_TOKEN"]);self.assertEqual(data_tokens["chrome"],command_env["AXON_CHROME_BEARER_TOKEN"]);self.assertEqual(data_tokens["llm"],command_env["AXON_OPENAI_API_KEY"])
+   self.assertEqual(body["namespace"],command_env["AXON_COLLECTION"]);self.assertFalse(set(admin_tokens.values())&set(command_env.values()),"root management tokens must not enter command environment")
+   self.assertEqual([mock.call(f"::add-mask::{data_tokens[item['name']]}",flush=True) for item in config["providers"]],printed.call_args_list)
+   encoded=json.dumps(body);self.assertTrue(all(token not in encoded for token in data_tokens.values()));self.assertTrue(all(token not in encoded for token in admin_tokens.values()))
+ def test_live_runner_cleans_intent_when_first_provider_lease_is_absent(self):
+  config=json.loads((ROOT/"config/e2e/live-services.json").read_text());env={"GITHUB_RUN_ID":"123","GITHUB_RUN_ATTEMPT":"2","GITHUB_SHA":"a"*40}
+  for item in config["providers"]:env.update({item["url_env"]:f"https://{item['name']}.example.ts.net",item["auth_env"]:"token"})
+  def api(url,_token,method,_payload):
+   if url.endswith("/reap"):return {"status":"passed","residuals":[]}
+   if method=="POST":raise urllib.error.URLError(TimeoutError("gateway unavailable"))
+   raise AssertionError(f"unexpected direct gateway request: {method} {url}")
+  with tempfile.TemporaryDirectory() as directory:
+   path=Path(directory);owned=path/"owned";pf=path/"preflight.json";report=path/"report.json";pf.write_text(json.dumps({"status":"passed"}));env["AXON_E2E_OWNED_ROOT"]=str(owned)
+   argv=["run-live.py","--preflight",str(pf),"--report",str(report)]
+   with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(sys,"argv",argv),mock.patch.object(runner,"call",side_effect=api),mock.patch.object(runner.teardown.provider_api.GatewayLeaseAdapter,"_request",return_value=None):
+    self.assertEqual(2,runner.main())
+   body=json.loads(report.read_text());self.assertEqual("network",body["classification"],body);self.assertEqual("TimeoutError",body["failure_detail"],body)
+   self.assertFalse(body["success"]);self.assertEqual([],body["scenarios"]);self.assertEqual([],body["invariants"])
+   self.assertTrue(body["cleanup"][0]["passed"]);self.assertTrue(body["teardown"]["success"])
+   self.assertEqual([],list(owned.rglob("*")),"authoritative absence must retire all run-owned authority")
+ def test_lost_lease_create_response_is_reconciled_from_signed_intent(self):
+  config=json.loads((ROOT/"config/e2e/live-services.json").read_text());env={"GITHUB_RUN_ID":"123","GITHUB_RUN_ATTEMPT":"2","GITHUB_SHA":"a"*40}
+  for item in config["providers"]:env.update({item["url_env"]:f"https://{item['name']}.example.ts.net",item["auth_env"]:"token"})
+  created={};deleted=set()
+  def api(url,_token,method,payload):
+   if url.endswith("/reap"):return {"status":"passed","residuals":[]}
+   if method=="POST":
+    provider=config["providers"][0]["name"]
+    created[payload["lease_id"]]={"lease_id":payload["lease_id"],"namespace":payload["namespace"],"provider":provider,"owner":payload["owner"],"run_id":payload["run_id"],"run_attempt":payload["run_attempt"],"expires_at":payload["expires_at"],"heartbeat_at":payload["heartbeat_at"]}
+    raise urllib.error.URLError(TimeoutError("response lost after durable create"))
+   raise AssertionError(f"unexpected direct gateway request: {method} {url}")
+  def adapter_api(_self,resource,method="GET",payload=None):
+   lease_id=resource.metadata["lease_id"]
+   if method=="DELETE":
+    self.assertEqual({"namespace":resource.metadata["namespace"],"owner":"dinglebear-ai/axon","residual_audit":True},payload);deleted.add(lease_id);return {"status":"deleted","residuals":[]}
+   return None if lease_id in deleted else created.get(lease_id)
+  with tempfile.TemporaryDirectory() as directory:
+   path=Path(directory);owned=path/"owned";pf=path/"preflight.json";report=path/"report.json";pf.write_text(json.dumps({"status":"passed"}));env["AXON_E2E_OWNED_ROOT"]=str(owned)
+   argv=["run-live.py","--preflight",str(pf),"--report",str(report)]
+   with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(sys,"argv",argv),mock.patch.object(runner,"call",side_effect=api),mock.patch.object(runner.teardown.provider_api.GatewayLeaseAdapter,"_request",adapter_api):
+    self.assertEqual(2,runner.main())
+   body=json.loads(report.read_text());self.assertEqual("network",body["classification"],body);self.assertTrue(body["cleanup"][0]["passed"],body);self.assertTrue(body["teardown"]["success"],body)
+   self.assertEqual(1,len(created));self.assertEqual(set(created),deleted);lease_id=next(iter(created));self.assertEqual(f"{body['namespace']}_qdrant",lease_id)
+   self.assertEqual([],list(owned.rglob("*")),"reconciled cleanup must retire all run-owned authority")
  def test_docs_keep_raw_shared_controls_and_external_mutation_forbidden(self):
   text=(ROOT/"docs/guides/e2e-live-homelab.md").read_text().lower();self.assertIn("never point ci at raw",text);self.assertIn("application bearer",text)
   self.assertIn("stale-lease",text);self.assertIn("non-required",text);self.assertIn("separate read-only job",text);self.assertIn("same evaluation session",text);self.assertIn("tailscale token exchange",text)
  def test_actual_provider_clients_receive_application_credentials_and_canonical_teardown(self):
   runner_text=(ROOT/"scripts/e2e/run-live.py").read_text();tei=(ROOT/"crates/axon-embedding/src/tei/client.rs").read_text();chrome=(ROOT/"crates/axon-adapters/src/web_engine/engine/runtime.rs").read_text()
-  self.assertNotIn("?api_key=",runner_text);self.assertIn('QDRANT_API_KEY=os.environ["AXON_E2E_QDRANT_TOKEN"]',runner_text);self.assertIn("AXON_TEI_BEARER_TOKEN",runner_text+tei);self.assertIn("bearer_auth(token)",tei)
+  self.assertNotIn("?api_key=",runner_text);self.assertIn('QDRANT_API_KEY=data_tokens["qdrant"]',runner_text);self.assertIn("AXON_TEI_BEARER_TOKEN",runner_text+tei);self.assertIn("bearer_auth(token)",tei)
   self.assertIn("AXON_CHROME_BEARER_TOKEN",runner_text+chrome);self.assertIn("bearer_auth(token)",chrome)
   self.assertIn("write_setup_intent",runner_text);self.assertIn("write_provider_ledger",runner_text);self.assertIn("teardown.Engine",runner_text)
   self.assertIn("GatewayLeaseAdapter",(ROOT/"scripts/e2e/lib/axon_e2e_provider_state.py").read_text())

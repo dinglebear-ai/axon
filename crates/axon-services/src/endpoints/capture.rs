@@ -1,8 +1,11 @@
 use super::{CapturedRequest, validate_url_with_dns_timeout};
+use axon_core::http::{cdp_websocket_bearer_header, cdp_websocket_origin_is_authorized};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
 const CAPTURE_IDLE_MS: u64 = 750;
 const CAPTURE_CDP_TIMEOUT_SECS: u64 = 5;
@@ -24,10 +27,24 @@ pub(super) async fn capture_requests_with_chrome(
     .await
     .map_err(|_| "timeout resolving Chrome CDP WebSocket URL".to_string())?
     .ok_or_else(|| format!("Chrome URL {remote_url} did not resolve to a ws:// endpoint"))?;
+    if !cdp_websocket_origin_is_authorized(remote_url, &resolved_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {resolved_ws_url}"
+        ));
+    }
 
+    let mut request = resolved_ws_url
+        .as_str()
+        .into_client_request()
+        .map_err(|err| format!("invalid Chrome WebSocket URL: {err}"))?;
+    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        && let Some(header) = cdp_websocket_bearer_header(remote_url, &resolved_ws_url, &token)
+    {
+        request.headers_mut().insert(AUTHORIZATION, header);
+    }
     let (stream, _) = tokio::time::timeout(
         Duration::from_secs(CAPTURE_CDP_TIMEOUT_SECS),
-        tokio_tungstenite::connect_async(&resolved_ws_url),
+        tokio_tungstenite::connect_async(request),
     )
     .await
     .map_err(|_| format!("timeout connecting to Chrome at {resolved_ws_url}"))?

@@ -73,6 +73,20 @@ async fn preresolved_ws_url_is_wired_as_the_chrome_connection() {
 }
 
 #[tokio::test]
+async fn authenticated_rendered_source_uses_the_local_spider_relay() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream = format!(
+        "ws://{}/devtools/browser/render-contract",
+        listener.local_addr().unwrap()
+    );
+    let connection = spider_connection_url(&upstream, &upstream, Some("render-contract-token"))
+        .await
+        .expect("authenticated render configuration must succeed");
+    assert_ne!(connection, upstream);
+    assert!(connection.starts_with("ws://127.0.0.1:"));
+}
+
+#[tokio::test]
 async fn unreachable_remote_leaves_the_chrome_connection_unset() {
     // Inside Docker the probe is skipped and the discovery URL is handed to
     // spider as-is — this test covers the host path only.

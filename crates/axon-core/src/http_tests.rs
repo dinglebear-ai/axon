@@ -2,8 +2,9 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::LazyLock;
 
 use crate::http::{
-    LoopbackGuard, build_client, cdp_discovery_url, normalize_url, ssrf_blacklist_patterns,
-    validate_resolved_ips, validate_url,
+    LoopbackGuard, build_client, cdp_discovery_url, cdp_spider_connection_url,
+    cdp_websocket_bearer_header, cdp_websocket_origin_is_authorized, normalize_url,
+    ssrf_blacklist_patterns, validate_resolved_ips, validate_url,
 };
 
 // --- normalize_url tests ---
@@ -304,6 +305,79 @@ fn cdp_discovery_url_ws_with_existing_path_preserved() {
 }
 
 #[test]
+fn cdp_websocket_bearer_requires_the_configured_origin() {
+    let header = cdp_websocket_bearer_header(
+        "https://chrome.example:8443",
+        "wss://chrome.example:8443/devtools/browser/opaque",
+        "secret",
+    )
+    .expect("same origin should receive authorization");
+    assert_eq!(header.to_str().unwrap(), "Bearer secret");
+    assert!(header.is_sensitive());
+
+    for websocket_url in [
+        "wss://other.example:8443/devtools/browser/opaque",
+        "wss://chrome.example:9443/devtools/browser/opaque",
+        "ws://chrome.example:8443/devtools/browser/opaque",
+        "wss://127.0.0.1:8443/devtools/browser/opaque",
+    ] {
+        assert_eq!(
+            cdp_websocket_bearer_header("https://chrome.example:8443", websocket_url, "secret"),
+            None,
+            "authorization leaked to {websocket_url}"
+        );
+    }
+}
+
+#[test]
+fn cdp_websocket_origin_rejects_remote_redirects_but_allows_local_rewrites() {
+    assert!(cdp_websocket_origin_is_authorized(
+        "https://chrome.example:8443",
+        "wss://chrome.example:8443/devtools/browser/opaque"
+    ));
+    assert!(!cdp_websocket_origin_is_authorized(
+        "https://chrome.example:8443",
+        "wss://attacker.example:8443/devtools/browser/opaque"
+    ));
+    assert!(!cdp_websocket_origin_is_authorized(
+        "https://chrome.example:8443",
+        "ws://chrome.example:8443/devtools/browser/opaque"
+    ));
+    assert!(cdp_websocket_origin_is_authorized(
+        "http://localhost:6000",
+        "ws://127.0.0.1:9222/devtools/browser/opaque"
+    ));
+}
+
+#[test]
+fn cdp_websocket_bearer_compares_effective_ports_and_rejects_bad_tokens() {
+    assert!(
+        cdp_websocket_bearer_header(
+            "http://chrome.example",
+            "ws://chrome.example:80/devtools/browser/opaque",
+            "secret"
+        )
+        .is_some()
+    );
+    assert!(
+        cdp_websocket_bearer_header(
+            "https://chrome.example:443",
+            "wss://chrome.example/devtools/browser/opaque",
+            "secret"
+        )
+        .is_some()
+    );
+    assert_eq!(
+        cdp_websocket_bearer_header(
+            "https://chrome.example",
+            "wss://chrome.example/devtools/browser/opaque",
+            "bad\r\ntoken"
+        ),
+        None
+    );
+}
+
+#[test]
 fn ssrf_blacklist_blocks_localhost_with_fragment() {
     let url = "https://localhost#secret";
     let blocked = COMPILED_SSRF_PATTERNS.iter().any(|re| re.is_match(url));
@@ -485,4 +559,70 @@ fn validate_url_allows_ipv4_mapped_ipv6_public() {
         validate_url("http://[::ffff:93.184.216.34]/").is_ok(),
         "::ffff: with public IPv4 should be allowed"
     );
+}
+
+#[tokio::test]
+async fn spider_cdp_relay_injects_bearer_and_forwards_messages() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream_url = format!(
+        "ws://{}/devtools/browser/relay-contract",
+        listener.local_addr().unwrap()
+    );
+    let (authorization_tx, authorization_rx) = tokio::sync::oneshot::channel();
+    let upstream_task = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut authorization_tx = Some(authorization_tx);
+        let mut websocket = tokio_tungstenite::accept_hdr_async(
+            stream,
+            move |request: &tokio_tungstenite::tungstenite::handshake::server::Request,
+                  response| {
+                let bearer = request
+                    .headers()
+                    .get(reqwest::header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+                let _ = authorization_tx.take().unwrap().send(bearer);
+                Ok(response)
+            },
+        )
+        .await
+        .unwrap();
+        let message = websocket.next().await.unwrap().unwrap();
+        websocket.send(message).await.unwrap();
+    });
+
+    let relay_url =
+        cdp_spider_connection_url(&upstream_url, &upstream_url, Some("relay-contract-token"))
+            .await
+            .unwrap();
+    assert!(!relay_url.contains("relay-contract-token"));
+    let (mut client, _) = tokio_tungstenite::connect_async(relay_url).await.unwrap();
+    client
+        .send(Message::Text("round-trip".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        client.next().await.unwrap().unwrap(),
+        Message::Text("round-trip".into())
+    );
+    assert_eq!(
+        authorization_rx.await.unwrap().as_deref(),
+        Some("Bearer relay-contract-token")
+    );
+    upstream_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn spider_cdp_connection_rejects_cross_origin_discovery() {
+    let error = cdp_spider_connection_url(
+        "https://chrome.example:8443",
+        "wss://attacker.example:8443/devtools/browser/stolen",
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("unauthorized WebSocket origin"));
 }

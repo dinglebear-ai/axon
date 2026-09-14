@@ -98,7 +98,7 @@ async fn web_streaming_fast_item_is_not_held_behind_a_slow_first_item() {
             then.status(200)
                 .header("content-type", "text/plain")
                 .body("slow document")
-                .delay(std::time::Duration::from_millis(500));
+                .delay(std::time::Duration::from_secs(10));
         })
         .await;
     server
@@ -148,7 +148,7 @@ async fn web_streaming_fast_item_is_not_held_behind_a_slow_first_item() {
             .acquire_streaming(&plan, &diff, None, &Sink(tx))
             .await
     });
-    let first = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await;
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await;
     run.await.unwrap().unwrap();
     slow.assert_calls_async(1).await;
     let first = first

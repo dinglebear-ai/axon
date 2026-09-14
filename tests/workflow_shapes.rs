@@ -241,6 +241,59 @@ fn live_homelab_validates_configuration_before_building_or_discovery() {
 }
 
 #[test]
+fn live_homelab_scopes_gateway_management_tokens_to_python_consumers() {
+    let workflow = include_str!("../.github/workflows/e2e-live.yml");
+    let live = workflow_job_block(workflow, "live");
+    let job_configuration = live
+        .split_once("    steps:\n")
+        .expect("live E2E job defines steps")
+        .0;
+    let secrets = [
+        "AXON_E2E_QDRANT_TOKEN",
+        "AXON_E2E_TEI_TOKEN",
+        "AXON_E2E_CHROME_TOKEN",
+        "AXON_E2E_LLM_TOKEN",
+    ];
+
+    for secret in secrets {
+        assert!(
+            !job_configuration.contains(secret),
+            "gateway management token must not be inherited through the live job environment: {secret}"
+        );
+    }
+
+    for step_name in [
+        "Checkout exact tested commit",
+        "Build exact tested commit before private-network access",
+        "Join as dedicated ephemeral CI identity with WIF",
+        "Retain sanitized evidence",
+    ] {
+        let step = workflow_step_block(live, step_name);
+        assert!(
+            !step.contains("secrets.AXON_E2E_"),
+            "gateway management tokens must not reach {step_name}"
+        );
+    }
+
+    for step_name in [
+        "Validate live E2E configuration before build",
+        "Recover stale owned runs before mutation",
+        "Verify exact peers and enforcing authenticated gateways",
+        "Run lease-owned live catalog packs from tested binary",
+        "Outer ownership-checked teardown",
+    ] {
+        let step = workflow_step_block(live, step_name);
+        for secret in secrets {
+            let binding = format!("{secret}: ${{{{ secrets.{secret} }}}}");
+            assert!(
+                step.contains(&binding),
+                "{step_name} must receive scoped gateway credential {secret}"
+            );
+        }
+    }
+}
+
+#[test]
 fn focused_watch_recipe_cannot_silently_select_zero_tests() {
     let justfile = include_str!("../Justfile");
     assert!(justfile.contains(
@@ -859,7 +912,8 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     assert!(
         release.contains("Create and push tag")
             && release.contains("ref: ${{ needs.plan.outputs.target_sha }}")
-            && release.contains("expected_sha=\"${{ needs.plan.outputs.target_sha }}\"")
+            && release.contains("EXPECTED_SHA: ${{ needs.plan.outputs.target_sha }}")
+            && release.contains("expected_sha=\"$EXPECTED_SHA\"")
             && !workflow.contains("gh run list")
             && !workflow.contains("sleep 20"),
         "auto-tag must bind the release to completed CI without polling"
@@ -962,7 +1016,7 @@ git remote add origin "$root/remote.git"
 git push origin HEAD:main
 git tag -a {tag} -m "Release fixture"
 git push origin {tag}
-bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+CANDIDATE_TAG={tag} EXPECTED_SHA="$(git rev-parse HEAD)" bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
 test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
 "#
     );
@@ -970,6 +1024,7 @@ test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
     let output = command
         .args(["-euo", "pipefail", "-c", &harness])
         .env("AUTO_TAG_SCRIPT", script)
+        .env("SHIPPING_PATHS_JSON", r#"["shipping"]"#)
         .output()
         .expect("run auto-tag tag step");
 
@@ -1018,7 +1073,7 @@ git add README.md
 git commit -m "advance main"
 git push origin HEAD:main
 git switch --detach "$candidate_sha"
-bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+CANDIDATE_TAG={tag} EXPECTED_SHA="$candidate_sha" bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
 test "$(git rev-parse {tag}^{{commit}})" = "$candidate_sha"
 test "$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 {{ print $1 }}')" != "$candidate_sha"
 "#
@@ -1027,6 +1082,7 @@ test "$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 {{ print $1 
     let output = command
         .args(["-euo", "pipefail", "-c", &harness])
         .env("AUTO_TAG_SCRIPT", script)
+        .env("SHIPPING_PATHS_JSON", r#"["shipping"]"#)
         .output()
         .expect("run auto-tag recovery step after main advances");
 
@@ -1039,7 +1095,7 @@ test "$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 {{ print $1 
 }
 
 #[test]
-fn auto_tag_rejects_a_superseded_main_commit_before_creating_a_tag() {
+fn auto_tag_tags_the_exact_tested_commit_after_main_advances() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let release = workflow_job_block(workflow, "release");
     let script = workflow_step_script(
@@ -1049,9 +1105,10 @@ fn auto_tag_rejects_a_superseded_main_commit_before_creating_a_tag() {
     );
 
     let tag = "v99.99.98-superseded";
-    let script = script
-        .replace("${{ matrix.candidate_tag }}", tag)
-        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ needs.plan.outputs.target_sha }}",
+        "$(git rev-parse HEAD)",
+    );
     let harness = format!(
         r#"
 root="$(mktemp -d)"
@@ -1072,12 +1129,68 @@ git add README.md
 git commit -m "advance main"
 git push origin HEAD:main
 git switch --detach "$candidate_sha"
-if bash -euo pipefail -c "$AUTO_TAG_SCRIPT"; then
-  echo "superseded workflow commit unexpectedly passed the tag guard" >&2
+CANDIDATE_TAG={tag} EXPECTED_SHA="$candidate_sha" bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+test "$(git ls-remote --tags origin "refs/tags/{tag}^{{}}" | awk 'NR == 1 {{ print $1 }}')" = "$candidate_sha"
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .env("SHIPPING_PATHS_JSON", r#"["shipping"]"#)
+        .output()
+        .expect("run auto-tag tag step against advanced remote main");
+
+    assert!(
+        output.status.success(),
+        "a completed green CI run must tag its exact tested commit after a linear main advance; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_tag_rejects_main_advance_that_changes_component_shipping_paths() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.95-stale-component";
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ needs.plan.outputs.target_sha }}",
+        "$(git rev-parse HEAD)",
+    );
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+mkdir shipping
+echo candidate > shipping/component
+git add shipping/component
+git commit -m "candidate"
+candidate_sha="$(git rev-parse HEAD)"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+echo advanced > shipping/component
+git add shipping/component
+git commit -m "advance component"
+git push origin HEAD:main
+git switch --detach "$candidate_sha"
+if CANDIDATE_TAG={tag} EXPECTED_SHA="$candidate_sha" bash -euo pipefail -c "$AUTO_TAG_SCRIPT"; then
+  echo "stale component plan unexpectedly created a tag" >&2
   exit 1
 fi
 if git ls-remote --exit-code --tags origin "refs/tags/{tag}" >/dev/null 2>&1; then
-  echo "superseded workflow commit created remote tag {tag}" >&2
+  echo "stale component tag unexpectedly exists" >&2
   exit 1
 fi
 "#
@@ -1086,12 +1199,75 @@ fi
     let output = command
         .args(["-euo", "pipefail", "-c", &harness])
         .env("AUTO_TAG_SCRIPT", script)
+        .env("SHIPPING_PATHS_JSON", r#"["shipping"]"#)
         .output()
-        .expect("run auto-tag tag step against advanced remote main");
+        .expect("run auto-tag tag step after component changes");
 
     assert!(
         output.status.success(),
-        "an obsolete main push run must fail closed before tag creation; stdout={} stderr={}",
+        "auto-tag must reject a stale release plan when component paths changed; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_tag_rejects_a_tested_commit_removed_from_main() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.96-rewritten";
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ needs.plan.outputs.target_sha }}",
+        "$(git rev-parse HEAD)",
+    );
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo candidate > README.md
+git add README.md
+git commit -m "candidate"
+candidate_sha="$(git rev-parse HEAD)"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+git switch --orphan replacement
+echo replacement > README.md
+git add README.md
+git commit -m "replace main"
+git push --force origin HEAD:main
+git switch --detach "$candidate_sha"
+if CANDIDATE_TAG={tag} EXPECTED_SHA="$candidate_sha" bash -euo pipefail -c "$AUTO_TAG_SCRIPT"; then
+  echo "commit removed from main unexpectedly passed the tag guard" >&2
+  exit 1
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/{tag}" >/dev/null 2>&1; then
+  echo "commit removed from main created remote tag {tag}" >&2
+  exit 1
+fi
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .env("SHIPPING_PATHS_JSON", r#"["shipping"]"#)
+        .output()
+        .expect("run auto-tag tag step against rewritten remote main");
+
+    assert!(
+        output.status.success(),
+        "a tested commit removed from main must fail closed before tag creation; stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -2333,6 +2509,16 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
             }
         })
         .unwrap_or(rest.len());
+    &rest[..end]
+}
+
+fn workflow_step_block<'a>(job: &'a str, step_name: &str) -> &'a str {
+    let marker = format!("      - name: {step_name}\n");
+    let start = job
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing workflow step {step_name}"));
+    let rest = &job[start + marker.len()..];
+    let end = rest.find("\n      - ").unwrap_or(rest.len());
     &rest[..end]
 }
 

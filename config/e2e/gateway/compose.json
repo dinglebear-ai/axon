@@ -1,0 +1,264 @@
+{
+  "name": "axon-e2e-gateways",
+  "services": {
+    "tailscale-qdrant": {
+      "image": "tailscale/tailscale:v1.102.3",
+      "hostname": "axon-e2e-qdrant-gateway",
+      "environment": {
+        "TS_HOSTNAME": "axon-e2e-qdrant-gateway",
+        "TS_AUTHKEY": "${AXON_E2E_QDRANT_JOIN_KEY:?gateway enrollment key required}",
+        "TS_EXTRA_ARGS": "--advertise-tags=tag:axon-e2e-qdrant-gateway",
+        "TS_STATE_DIR": "/var/lib/tailscale",
+        "TS_USERSPACE": "true",
+        "TS_SERVE_CONFIG": "/config/serve.json"
+      },
+      "volumes": [
+        "qdrant-tailscale:/var/lib/tailscale",
+        "./serve.json:/config/serve.json:ro"
+      ],
+      "networks": [
+        "qdrant_network"
+      ],
+      "restart": "unless-stopped"
+    },
+    "qdrant": {
+      "build": {
+        "context": "../../..",
+        "dockerfile": "config/e2e/gateway/Dockerfile"
+      },
+      "image": "axon-e2e-gateway:local",
+      "network_mode": "service:tailscale-qdrant",
+      "depends_on": [
+        "tailscale-qdrant"
+      ],
+      "environment": {
+        "AXON_E2E_GATEWAY_SERVICE": "qdrant",
+        "AXON_E2E_GATEWAY_PEER": "${AXON_E2E_QDRANT_PEER:?exact peer required}",
+        "AXON_E2E_GATEWAY_TAG": "tag:axon-e2e-qdrant-gateway",
+        "AXON_E2E_GATEWAY_TOKEN": "${AXON_E2E_QDRANT_TOKEN:?application token required}",
+        "AXON_E2E_GATEWAY_STATE": "/state/leases.db",
+        "AXON_E2E_GATEWAY_UPSTREAM": "${AXON_E2E_QDRANT_UPSTREAM:?Qdrant upstream URL required}",
+        "AXON_E2E_GATEWAY_UPSTREAM_TOKEN": "${AXON_E2E_QDRANT_UPSTREAM_TOKEN:-}"
+      },
+      "volumes": [
+        "qdrant-state:/state"
+      ],
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,size=256m"
+      ],
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "cap_add": [],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "256m",
+      "restart": "unless-stopped",
+      "init": true
+    },
+    "tailscale-tei": {
+      "image": "tailscale/tailscale:v1.102.3",
+      "hostname": "axon-e2e-tei-gateway",
+      "environment": {
+        "TS_HOSTNAME": "axon-e2e-tei-gateway",
+        "TS_AUTHKEY": "${AXON_E2E_TEI_JOIN_KEY:?gateway enrollment key required}",
+        "TS_EXTRA_ARGS": "--advertise-tags=tag:axon-e2e-tei-gateway",
+        "TS_STATE_DIR": "/var/lib/tailscale",
+        "TS_USERSPACE": "true",
+        "TS_SERVE_CONFIG": "/config/serve.json"
+      },
+      "volumes": [
+        "tei-tailscale:/var/lib/tailscale",
+        "./serve.json:/config/serve.json:ro"
+      ],
+      "networks": [
+        "tei_network"
+      ],
+      "restart": "unless-stopped"
+    },
+    "tei": {
+      "build": {
+        "context": "../../..",
+        "dockerfile": "config/e2e/gateway/Dockerfile"
+      },
+      "image": "axon-e2e-gateway:local",
+      "network_mode": "service:tailscale-tei",
+      "depends_on": [
+        "tailscale-tei"
+      ],
+      "environment": {
+        "AXON_E2E_GATEWAY_SERVICE": "tei",
+        "AXON_E2E_GATEWAY_PEER": "${AXON_E2E_TEI_PEER:?exact peer required}",
+        "AXON_E2E_GATEWAY_TAG": "tag:axon-e2e-tei-gateway",
+        "AXON_E2E_GATEWAY_TOKEN": "${AXON_E2E_TEI_TOKEN:?application token required}",
+        "AXON_E2E_GATEWAY_STATE": "/state/leases.db",
+        "AXON_E2E_GATEWAY_UPSTREAM": "${AXON_E2E_TEI_UPSTREAM:?TEI upstream URL required}",
+        "AXON_E2E_GATEWAY_UPSTREAM_TOKEN": "${AXON_E2E_TEI_UPSTREAM_TOKEN:-}"
+      },
+      "volumes": [
+        "tei-state:/state"
+      ],
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,size=256m"
+      ],
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "cap_add": [],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "256m",
+      "restart": "unless-stopped",
+      "init": true
+    },
+    "tailscale-chrome": {
+      "image": "tailscale/tailscale:v1.102.3",
+      "hostname": "axon-e2e-chrome-gateway",
+      "environment": {
+        "TS_HOSTNAME": "axon-e2e-chrome-gateway",
+        "TS_AUTHKEY": "${AXON_E2E_CHROME_JOIN_KEY:?gateway enrollment key required}",
+        "TS_EXTRA_ARGS": "--advertise-tags=tag:axon-e2e-chrome-gateway",
+        "TS_STATE_DIR": "/var/lib/tailscale",
+        "TS_USERSPACE": "true",
+        "TS_SERVE_CONFIG": "/config/serve.json"
+      },
+      "volumes": [
+        "chrome-tailscale:/var/lib/tailscale",
+        "./serve.json:/config/serve.json:ro"
+      ],
+      "networks": [
+        "qdrant_network"
+      ],
+      "restart": "unless-stopped"
+    },
+    "chrome": {
+      "build": {
+        "context": "../../..",
+        "dockerfile": "config/e2e/gateway/Dockerfile"
+      },
+      "image": "axon-e2e-gateway:local",
+      "network_mode": "service:tailscale-chrome",
+      "depends_on": [
+        "tailscale-chrome"
+      ],
+      "environment": {
+        "AXON_E2E_GATEWAY_SERVICE": "chrome",
+        "AXON_E2E_GATEWAY_PEER": "${AXON_E2E_CHROME_PEER:?exact peer required}",
+        "AXON_E2E_GATEWAY_TAG": "tag:axon-e2e-chrome-gateway",
+        "AXON_E2E_GATEWAY_TOKEN": "${AXON_E2E_CHROME_TOKEN:?application token required}",
+        "AXON_E2E_GATEWAY_STATE": "/state/leases.db",
+        "AXON_E2E_GATEWAY_UPSTREAM": "${AXON_E2E_CHROME_UPSTREAM:-}",
+        "AXON_E2E_GATEWAY_UPSTREAM_TOKEN": "${AXON_E2E_CHROME_UPSTREAM_TOKEN:-}"
+      },
+      "volumes": [
+        "chrome-state:/state"
+      ],
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,size=256m"
+      ],
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "cap_add": [
+        "SETUID",
+        "SETGID",
+        "CHOWN",
+        "KILL",
+        "DAC_OVERRIDE",
+        "NET_ADMIN"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "1g",
+      "restart": "unless-stopped",
+      "init": true
+    },
+    "tailscale-llm": {
+      "image": "tailscale/tailscale:v1.102.3",
+      "hostname": "axon-e2e-llm-gateway",
+      "environment": {
+        "TS_HOSTNAME": "axon-e2e-llm-gateway",
+        "TS_AUTHKEY": "${AXON_E2E_LLM_JOIN_KEY:?gateway enrollment key required}",
+        "TS_EXTRA_ARGS": "--advertise-tags=tag:axon-e2e-llm-gateway",
+        "TS_STATE_DIR": "/var/lib/tailscale",
+        "TS_USERSPACE": "true",
+        "TS_SERVE_CONFIG": "/config/serve.json"
+      },
+      "volumes": [
+        "llm-tailscale:/var/lib/tailscale",
+        "./serve.json:/config/serve.json:ro"
+      ],
+      "networks": [
+        "qdrant_network"
+      ],
+      "restart": "unless-stopped"
+    },
+    "llm": {
+      "build": {
+        "context": "../../..",
+        "dockerfile": "config/e2e/gateway/Dockerfile"
+      },
+      "image": "axon-e2e-gateway:local",
+      "network_mode": "service:tailscale-llm",
+      "depends_on": [
+        "tailscale-llm"
+      ],
+      "environment": {
+        "AXON_E2E_GATEWAY_SERVICE": "llm",
+        "AXON_E2E_GATEWAY_PEER": "${AXON_E2E_LLM_PEER:?exact peer required}",
+        "AXON_E2E_GATEWAY_TAG": "tag:axon-e2e-llm-gateway",
+        "AXON_E2E_GATEWAY_TOKEN": "${AXON_E2E_LLM_TOKEN:?application token required}",
+        "AXON_E2E_GATEWAY_STATE": "/state/leases.db",
+        "AXON_E2E_GATEWAY_UPSTREAM": "${AXON_E2E_LLM_UPSTREAM:?LLM upstream URL required}",
+        "AXON_E2E_GATEWAY_UPSTREAM_TOKEN": "${AXON_E2E_LLM_UPSTREAM_TOKEN:-}"
+      },
+      "volumes": [
+        "llm-state:/state"
+      ],
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,size=256m"
+      ],
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "cap_add": [],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "256m",
+      "restart": "unless-stopped",
+      "init": true
+    }
+  },
+  "volumes": {
+    "qdrant-tailscale": {},
+    "qdrant-state": {},
+    "tei-tailscale": {},
+    "tei-state": {},
+    "chrome-tailscale": {},
+    "chrome-state": {},
+    "llm-tailscale": {},
+    "llm-state": {}
+  },
+  "networks": {
+    "qdrant_network": {
+      "external": true,
+      "name": "jakenet"
+    },
+    "tei_network": {
+      "external": true,
+      "name": "axon"
+    }
+  }
+}

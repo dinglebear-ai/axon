@@ -1,7 +1,9 @@
 //! Shared Spider Chrome configuration for crawl, scrape, map rendering, and refetch.
 
 use axon_core::config::{Config, RenderMode};
-use axon_core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings};
+use axon_core::http::{
+    cdp_discovery_url, cdp_spider_connection_url, ssrf_blacklist_compact_strings,
+};
 use axon_core::logging::log_warn;
 use spider::features::chrome_common::{
     RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector,
@@ -81,6 +83,16 @@ pub(crate) fn apply_spider_browser_defaults_with_timeout(
     }));
 }
 
+async fn spider_connection_url(
+    remote_url: &str,
+    websocket_url: &str,
+    bearer_token: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+    cdp_spider_connection_url(remote_url, websocket_url, bearer_token)
+        .await
+        .map_err(|error| format!("failed to authenticate Spider Chrome: {error}").into())
+}
+
 pub(crate) async fn configure_spider_browser(
     cfg: &Config,
     mut website: Website,
@@ -90,7 +102,15 @@ pub(crate) async fn configure_spider_browser(
     if let Some(remote_url) = &cfg.chrome_remote_url {
         match super::engine::resolve_cdp_ws_url(remote_url).await {
             Some(ws_url) => {
-                website.with_chrome_connection(Some(ws_url));
+                let bearer = std::env::var("AXON_CHROME_BEARER_TOKEN").ok();
+                let connection_url =
+                    spider_connection_url(remote_url, &ws_url, bearer.as_deref()).await?;
+                website.with_chrome_connection(Some(connection_url));
+            }
+            None if std::env::var("AXON_CHROME_BEARER_TOKEN")
+                .is_ok_and(|token| !token.is_empty()) =>
+            {
+                return Err("authenticated Chrome discovery failed".into());
             }
             None if super::engine::cdp_probe_skipped_in_docker() => {
                 // Inside Docker the hostname resolves on the bridge network;
