@@ -2,7 +2,8 @@ use crate::web_engine::engine::resolve_cdp_ws_url;
 use axon_core::config::Config;
 use axon_core::http::parse_custom_headers;
 use axon_core::http::{
-    axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url_with_dns,
+    axon_ua, cdp_discovery_url, cdp_websocket_bearer_header, cdp_websocket_origin_is_authorized,
+    ssrf_blacklist_compact_strings, validate_url_with_dns,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use futures_util::{SinkExt, StreamExt};
@@ -12,6 +13,8 @@ use spider::features::chrome_common::{ScreenShotConfig, ScreenshotParams};
 use spider::website::Website;
 use std::error::Error;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
 static SCREENSHOT_CDP_ID: AtomicU64 = AtomicU64::new(2_000_000);
 
@@ -50,7 +53,9 @@ pub async fn spider_screenshot_with_options(
         None => cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.to_string()),
     };
 
-    match capture_screenshot_via_cdp(cfg, url, &chrome_url, width, height, full_page).await {
+    match capture_screenshot_via_cdp(cfg, remote_url, url, &chrome_url, width, height, full_page)
+        .await
+    {
         Ok(bytes) => return Ok(bytes),
         Err(err) => {
             axon_core::logging::log_warn(&format!(
@@ -156,6 +161,7 @@ pub async fn spider_screenshot_with_options(
 
 async fn capture_screenshot_via_cdp(
     cfg: &Config,
+    remote_url: &str,
     url: &str,
     browser_ws_url: &str,
     width: u32,
@@ -164,9 +170,21 @@ async fn capture_screenshot_via_cdp(
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     use tokio_tungstenite::tungstenite::Message;
 
+    if !cdp_websocket_origin_is_authorized(remote_url, browser_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {browser_ws_url}"
+        )
+        .into());
+    }
+    let mut request = browser_ws_url.into_client_request()?;
+    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        && let Some(header) = cdp_websocket_bearer_header(remote_url, browser_ws_url, &token)
+    {
+        request.headers_mut().insert(AUTHORIZATION, header);
+    }
     let (stream, _) = tokio::time::timeout(
         std::time::Duration::from_secs(8),
-        tokio_tungstenite::connect_async(browser_ws_url),
+        tokio_tungstenite::connect_async(request),
     )
     .await
     .map_err(|_| format!("timeout connecting to Chrome at {browser_ws_url}"))?

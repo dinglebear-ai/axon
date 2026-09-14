@@ -4,7 +4,9 @@ use super::{
     collect_page_results, run_single_url_extract,
 };
 use crate::config::parse::is_docker_service_host;
-use crate::http::{cdp_discovery_url, http_client, ssrf_blacklist_patterns};
+use crate::http::{
+    cdp_discovery_url, cdp_spider_connection_url, http_client, ssrf_blacklist_patterns,
+};
 use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::url::Url;
 use spider::website::Website;
@@ -23,25 +25,45 @@ use std::sync::Arc;
 ///
 /// Falls back to `remote_url` unchanged when any step fails, so callers always
 /// get a usable string even when the probe errors.
-async fn resolve_chrome_url(remote_url: &str) -> String {
+async fn resolve_chrome_url(remote_url: &str) -> Result<String, String> {
     if remote_url.starts_with("ws://") || remote_url.starts_with("wss://") {
-        return remote_url.to_string();
+        return Ok(remote_url.to_string());
     }
 
-    if tokio::fs::try_exists("/.dockerenv").await.unwrap_or(false) {
-        return remote_url.to_string();
+    let chrome_bearer = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+    let authenticated = chrome_bearer.is_some();
+    if tokio::fs::try_exists("/.dockerenv").await.unwrap_or(false) && !authenticated {
+        return Ok(remote_url.to_string());
     }
 
     let Some(discovery_url) = cdp_discovery_url(remote_url) else {
-        return remote_url.to_string();
+        return if authenticated {
+            Err("authenticated Chrome discovery URL is invalid".to_string())
+        } else {
+            Ok(remote_url.to_string())
+        };
     };
 
     let Ok(client) = http_client() else {
-        return remote_url.to_string();
+        return if authenticated {
+            Err("authenticated Chrome discovery client is unavailable".to_string())
+        } else {
+            Ok(remote_url.to_string())
+        };
     };
 
-    let Ok(resp) = client.get(&discovery_url).send().await else {
-        return remote_url.to_string();
+    let mut request = client.get(&discovery_url);
+    if let Some(token) = chrome_bearer {
+        request = request.bearer_auth(token);
+    }
+    let Ok(resp) = request.send().await else {
+        return if authenticated {
+            Err("authenticated Chrome discovery request failed".to_string())
+        } else {
+            Ok(remote_url.to_string())
+        };
     };
 
     let Ok(body) = crate::http::read_response_json_bounded::<serde_json::Value>(
@@ -50,15 +72,27 @@ async fn resolve_chrome_url(remote_url: &str) -> String {
     )
     .await
     else {
-        return remote_url.to_string();
+        return if authenticated {
+            Err("authenticated Chrome discovery response is invalid".to_string())
+        } else {
+            Ok(remote_url.to_string())
+        };
     };
 
     let Some(ws_url) = body.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) else {
-        return remote_url.to_string();
+        return if authenticated {
+            Err("authenticated Chrome discovery omitted its WebSocket URL".to_string())
+        } else {
+            Ok(remote_url.to_string())
+        };
     };
 
     let Ok(mut parsed) = Url::parse(ws_url) else {
-        return ws_url.to_string();
+        return if authenticated {
+            Err("authenticated Chrome discovery returned an invalid WebSocket URL".to_string())
+        } else {
+            Ok(ws_url.to_string())
+        };
     };
 
     if let Some(host) = parsed.host_str() {
@@ -68,7 +102,17 @@ async fn resolve_chrome_url(remote_url: &str) -> String {
         }
     }
 
-    parsed.to_string()
+    Ok(parsed.to_string())
+}
+
+async fn spider_connection_url(
+    remote_url: &str,
+    websocket_url: &str,
+    bearer_token: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+    cdp_spider_connection_url(remote_url, websocket_url, bearer_token)
+        .await
+        .map_err(|error| format!("failed to authenticate Spider Chrome: {error}").into())
 }
 
 /// Build a spider `Website` configured for single-page Chrome extraction.
@@ -76,10 +120,18 @@ async fn resolve_chrome_url(remote_url: &str) -> String {
 /// Applies Chrome stealth, fingerprint patching, network intercept, CDP
 /// connection, and network-idle wait. Returns `None` when `chrome_remote_url`
 /// is absent — callers must fall back to the HTTP path in that case.
-async fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Option<Website> {
-    let chrome_url = wcfg.chrome_remote_url.as_deref()?;
+async fn build_chrome_extract_website(
+    url: &str,
+    wcfg: &ExtractWebConfig,
+) -> Result<Option<Website>, Box<dyn Error>> {
+    let Some(chrome_url) = wcfg.chrome_remote_url.as_deref() else {
+        return Ok(None);
+    };
 
-    let resolved_url = resolve_chrome_url(chrome_url).await;
+    let resolved_url = resolve_chrome_url(chrome_url).await?;
+    let bearer = std::env::var("AXON_CHROME_BEARER_TOKEN").ok();
+    let connection_url =
+        spider_connection_url(chrome_url, &resolved_url, bearer.as_deref()).await?;
 
     let ssrf_patterns: Vec<spider::compact_str::CompactString> = ssrf_blacklist_patterns()
         .iter()
@@ -105,7 +157,7 @@ async fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Opt
             std::time::Duration::from_secs(wcfg.chrome_network_idle_timeout_secs),
         ))))
         .with_chrome_intercept(RequestInterceptConfiguration::new(true))
-        .with_chrome_connection(Some(resolved_url));
+        .with_chrome_connection(Some(connection_url));
 
     if wcfg.bypass_csp {
         website.with_csp_bypass(true);
@@ -124,7 +176,7 @@ async fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Opt
 
     website.configuration.disable_log = true;
 
-    Some(website)
+    Ok(Some(website))
 }
 
 /// Fetch a single URL via headless Chrome and extract structured data from it.
@@ -138,7 +190,7 @@ pub(super) async fn run_single_url_extract_chrome(
     cfg: &ExtractWebConfig,
     fallback_cfg: FallbackConfig,
 ) -> Result<ExtractRun, Box<dyn Error>> {
-    let Some(mut website) = build_chrome_extract_website(url, cfg).await else {
+    let Some(mut website) = build_chrome_extract_website(url, cfg).await? else {
         // No Chrome configured — delegate to the HTTP path.
         return run_single_url_extract(
             url,
@@ -208,3 +260,7 @@ pub(super) async fn run_single_url_extract_chrome(
         parser_hits,
     })
 }
+
+#[cfg(test)]
+#[path = "chrome_tests.rs"]
+mod tests;

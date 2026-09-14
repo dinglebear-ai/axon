@@ -204,10 +204,14 @@ jobs:
           fetch-tags: true
 
       - name: Create and push tag
+        env:
+          CANDIDATE_TAG: ${{ matrix.candidate_tag }}
+          EXPECTED_SHA: ${{ needs.plan.outputs.target_sha }}
+          SHIPPING_PATHS_JSON: ${{ toJson(matrix.shipping_paths) }}
         run: |
           set -euo pipefail
-          tag="${{ matrix.candidate_tag }}"
-          expected_sha="${{ needs.plan.outputs.target_sha }}"
+          tag="$CANDIDATE_TAG"
+          expected_sha="$EXPECTED_SHA"
           head_sha="$(git rev-parse --verify "HEAD^{commit}")"
           if [ "$head_sha" != "$expected_sha" ]; then
             echo "::error::checked-out HEAD $head_sha does not match workflow commit $expected_sha" >&2
@@ -228,6 +232,8 @@ jobs:
           fi
 
           remote_refs="$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")"
+          # The braces below are awk regex literals.
+          # shellcheck disable=SC1083
           remote_target="$(awk '
             $2 ~ /\^\{\}$/ { peeled = $1 }
             $2 !~ /\^\{\}$/ { direct = $1 }
@@ -239,16 +245,31 @@ jobs:
           fi
 
           if [ -n "$remote_target" ]; then
+            # shellcheck disable=SC1083
             awk '$2 ~ /\^\{\}$/ { found=1 } END { exit !found }' <<<"$remote_refs" || { echo "::error::existing remote release tag must be annotated" >&2; exit 1; }
             echo "Remote tag $tag already resolves to $expected_sha."
           else
-            remote_main="$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 { print $1 }')"
-            if [ -z "$remote_main" ]; then
-              echo "::error::remote refs/heads/main is missing" >&2
+            # A later merge may advance main while this completed-CI release is
+            # queued. Preserve the exact tested commit as the tag target, while
+            # requiring it to remain in current main's history. This permits a
+            # normal linear advance and fails closed after a rewritten main.
+            git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+            remote_main="$(git rev-parse --verify "refs/remotes/origin/main^{commit}")"
+            if ! git merge-base --is-ancestor "$expected_sha" "$remote_main"; then
+              echo "::error::workflow commit $expected_sha is not an ancestor of remote main $remote_main" >&2
               exit 1
             fi
-            if [ "$remote_main" != "$expected_sha" ]; then
-              echo "::error::remote main now resolves to $remote_main, not workflow commit $expected_sha" >&2
+            shipping_paths=()
+            while IFS= read -r path; do
+              shipping_paths+=("$path")
+            done < <(jq -er '
+              if type == "array" and length > 0 and all(.[]; type == "string" and length > 0)
+              then .[]
+              else error("shipping_paths must be a non-empty string array")
+              end
+            ' <<<"$SHIPPING_PATHS_JSON")
+            if ! git diff --quiet "$expected_sha" "$remote_main" -- "${shipping_paths[@]}"; then
+              echo "::error::component shipping paths changed after tested commit $expected_sha" >&2
               exit 1
             fi
 

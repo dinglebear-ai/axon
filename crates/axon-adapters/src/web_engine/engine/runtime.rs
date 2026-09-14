@@ -35,7 +35,10 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
         return Some(remote_url.to_string());
     }
 
-    if cdp_probe_skipped_in_docker() {
+    let chrome_bearer = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+    if cdp_probe_skipped_in_docker() && chrome_bearer.is_none() {
         return None;
     }
 
@@ -45,9 +48,7 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     let client = axon_core::http::http_client().ok()?;
 
     let mut request = client.get(&discovery_url);
-    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
-        && !token.is_empty()
-    {
+    if let Some(token) = chrome_bearer {
         request = request.bearer_auth(token);
     }
     let response = request.send().await.ok()?;
