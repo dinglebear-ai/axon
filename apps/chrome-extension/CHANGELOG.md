@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1](https://github.com/dinglebear-ai/axon/compare/chrome-ext-v1.0.0...chrome-ext-v1.0.1) (2026-09-14)
+
+
+### Fixed
+
+* harden job lifecycle, clients, and release workflows ([#611](https://github.com/dinglebear-ai/axon/issues/611)) ([62b8e53](https://github.com/dinglebear-ai/axon/commit/62b8e538ac92ae670d1dc7f4fa8a7336f934a3fd))
+
 ## [1.0.0](https://github.com/dinglebear-ai/axon/compare/chrome-ext-v0.3.2...chrome-ext-v1.0.0) (2026-08-09)
 
 
