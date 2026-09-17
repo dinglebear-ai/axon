@@ -98,7 +98,7 @@ where
             cfg,
             question,
             &hits,
-            ask_ctx.chunks_selected,
+            &ask_ctx.citations,
             &ask_ctx.context,
         );
         return Ok(assemble_explain_result(
@@ -300,8 +300,15 @@ fn build_ask_context_from_ordered_hits(
     let mut selected_citations = Vec::new();
     let mut domains: BTreeSet<String> = BTreeSet::new();
 
-    for (zero_based_source_idx, hit) in ordered_hits.iter().take(chunk_limit).enumerate() {
-        let source_idx = zero_based_source_idx + 1;
+    for hit in ordered_hits {
+        if selected_urls.len() >= chunk_limit {
+            break;
+        }
+
+        // Source numbering follows admitted context order, not raw retrieval
+        // rank. Oversized candidates are skipped so one pathological chunk
+        // cannot starve every later result that would fit the context budget.
+        let source_idx = selected_urls.len() + 1;
         let source = display_source(&hit.canonical_uri);
         let header = format!("## Top Chunk [S{}]: {}\n\n", source_idx, source);
         let body = defang_chunk_text(&hit.text);
@@ -312,7 +319,7 @@ fn build_ask_context_from_ordered_hits(
             CONTEXT_SEPARATOR.len()
         };
         if context.len() + sep_len + entry.len() > max_context_chars {
-            break;
+            continue;
         }
         if source_idx > 1 {
             context.push_str(CONTEXT_SEPARATOR);
@@ -328,10 +335,11 @@ fn build_ask_context_from_ordered_hits(
         selected_citations.push(hit.citation.clone());
     }
 
+    let candidate_count = ordered_hits.len();
     let chunks_selected = selected_urls.len();
     let mut ask_ctx = AskContext::from_retrieval(
         context,
-        chunks_selected,
+        candidate_count,
         chunks_selected,
         retrieval_elapsed_ms,
         domains.into_iter().collect(),

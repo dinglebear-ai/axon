@@ -229,8 +229,43 @@ fn source_kind_exclusion_rest_filter_requires_provenance() {
     let filter = search_filter_json(&request)
         .unwrap()
         .expect("must-not filter");
-    assert_eq!(filter["must_not"].as_array().unwrap().len(), 2);
+    assert_eq!(filter["must_not"].as_array().unwrap().len(), 3);
     assert_eq!(filter["must_not"][1]["is_empty"]["key"], "source_kind");
+    assert_eq!(
+        filter["must_not"][2]["is_null"]["key"],
+        "committed_generation"
+    );
+}
+
+#[test]
+fn search_filter_excludes_uncommitted_and_retired_points() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 10,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap::new(),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = search_filter_json(&request)
+        .expect("live-snapshot filter")
+        .expect("filter");
+    let must = filter["must"].as_array().expect("must filters");
+    let must_not = filter["must_not"].as_array().expect("must-not filters");
+    assert!(
+        must.iter()
+            .any(|c| c["is_null"]["key"] == serde_json::json!("retired_epoch"))
+    );
+    assert!(
+        must_not
+            .iter()
+            .any(|c| c["is_null"]["key"] == serde_json::json!("committed_generation"))
+    );
 }
 
 #[test]

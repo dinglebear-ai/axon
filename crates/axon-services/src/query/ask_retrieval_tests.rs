@@ -96,6 +96,33 @@ fn defang_breaks_injected_citation_and_headers() {
 }
 
 #[test]
+fn oversized_candidate_does_not_starve_later_fitting_chunks() {
+    let mut cfg = Config::test_default();
+    cfg.ask_chunk_limit = 2;
+    cfg.ask_max_context_chars = 700;
+    let hits = vec![
+        hit("https://example.com/oversized", &"x".repeat(2_000)),
+        hit("https://example.org/fit-a", "small relevant alpha"),
+        hit("https://example.net/fit-b", "small relevant beta"),
+    ];
+
+    let ctx = build_ask_context_from_hits(&cfg, &hits, 0);
+
+    assert_eq!(ctx.candidate_count, 3);
+    assert_eq!(ctx.reranked_count, 3);
+    assert_eq!(ctx.chunks_selected, 2);
+    assert!(!ctx.context.contains("oversized"));
+    assert!(ctx.context.contains("small relevant alpha"));
+    assert!(ctx.context.contains("small relevant beta"));
+    assert!(ctx.context.contains("## Top Chunk [S1]: example.org"));
+    assert!(ctx.context.contains("## Top Chunk [S2]: example.net"));
+    assert_eq!(ctx.citations.len(), 2);
+    assert_eq!(ctx.citations[0].canonical_uri, "https://example.org/fit-a");
+    assert_eq!(ctx.citations[1].canonical_uri, "https://example.net/fit-b");
+    assert!(ctx.context.len() <= cfg.ask_max_context_chars);
+}
+
+#[test]
 fn context_respects_max_chars_budget() {
     let mut cfg = Config::test_default();
     // Tiny budget: only the prefix + first entry (or nothing beyond prefix) fits.
