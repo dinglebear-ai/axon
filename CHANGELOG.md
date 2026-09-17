@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.3.6] - 2026-09-17
+
+### Fixed
+
+- `doctor` gives OpenAI-compatible LLM backends up to 90s for the round-trip
+  probe instead of the 12s local-backend ceiling, so slower remote runtimes no
+  longer report as down.
+
 ## [7.3.5] - 2026-09-12
 
 ### Fixed
