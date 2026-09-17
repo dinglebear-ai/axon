@@ -27,6 +27,33 @@ use crate::acquisition_security::validate_source_url;
 /// Wall-clock cap for a single clone before it is aborted.
 const CLONE_TIMEOUT: Duration = Duration::from_secs(300);
 
+const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
+const GITHUB_HOST: &str = "github.com";
+
+fn credential_env_for_url(clone_url: &str) -> Option<&'static str> {
+    let parsed = url::Url::parse(clone_url).ok()?;
+    (parsed.scheme() == "https"
+        && parsed.port_or_known_default() == Some(443)
+        && parsed
+            .host_str()
+            .is_some_and(|host| host.eq_ignore_ascii_case(GITHUB_HOST)))
+    .then_some(GITHUB_TOKEN_ENV)
+}
+
+fn configured_credential_env(clone_url: &str) -> Option<&'static str> {
+    credential_env_for_url(clone_url).filter(|name| {
+        std::env::var_os(name)
+            .as_deref()
+            .is_some_and(|value| !value.is_empty())
+    })
+}
+
+fn credential_helper_config(env_name: &str) -> String {
+    format!(
+        "credential.https://{GITHUB_HOST}.helper=!f() {{ test \"$1\" = get || exit 0; printf '%s\\n' 'username=x-access-token' \"password=${env_name}\"; }}; f"
+    )
+}
+
 /// Classify whether `input` is a git repository target.
 ///
 /// Thin wrapper over `git::parse_git_target` so transports
@@ -40,19 +67,38 @@ pub fn is_git_target(input: &str) -> bool {
 ///
 /// Pure — spawns nothing — so callers can assert the exact command shape. The
 /// `--` terminator guards against a clone URL that looks like a flag.
-fn clone_argv(clone_url: &str, dest: &str, curl_resolve: &str) -> Vec<String> {
-    vec![
+fn clone_argv(
+    clone_url: &str,
+    dest: &str,
+    curl_resolve: &str,
+    credential_env: Option<&str>,
+) -> Vec<String> {
+    let mut argv = vec![
         "-c".to_string(),
         format!("http.curloptResolve={curl_resolve}"),
         "-c".to_string(),
         "http.followRedirects=false".to_string(),
+    ];
+    if let Some(env_name) = credential_env {
+        // Clear inherited credential helpers so the source-specific credential
+        // is the only helper Git can consult. The token itself stays out of
+        // argv and is expanded by the helper from the child process environment.
+        argv.extend([
+            "-c".to_string(),
+            "credential.helper=".to_string(),
+            "-c".to_string(),
+            credential_helper_config(env_name),
+        ]);
+    }
+    argv.extend([
         "clone".to_string(),
         "--depth=1".to_string(),
         "--no-tags".to_string(),
         "--".to_string(),
         clone_url.to_string(),
         dest.to_string(),
-    ]
+    ]);
+    argv
 }
 
 /// Shallow-clone `clone_url` into a fresh temp directory.
@@ -83,7 +129,8 @@ async fn clone_git_repo_with_program_and_timeout(
     let curl_resolve = resolve_git_transport(clone_url).await?;
     let tmp = tempfile::tempdir().context("failed to create temp dir for git clone")?;
     let dest = tmp.path().to_string_lossy().to_string();
-    let argv = clone_argv(clone_url, &dest, &curl_resolve);
+    let credential_env = configured_credential_env(clone_url);
+    let argv = clone_argv(clone_url, &dest, &curl_resolve, credential_env);
 
     let mut command = tokio::process::Command::new(git_program);
     command
