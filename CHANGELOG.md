@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probe instead of the 12s local-backend ceiling, so slower remote runtimes no
   longer report as down.
 
+### Security
+
+- Update `rustls` to 0.23.45 for RUSTSEC-2026-0285 (TLS 1.3 handshake messages
+  accepted across encryption level boundaries).
+
 ## [7.3.5] - 2026-09-12
 
 ### Fixed
