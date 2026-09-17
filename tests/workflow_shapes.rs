@@ -202,7 +202,7 @@ fn live_homelab_validates_configuration_before_building_or_discovery() {
         !workflow.contains("vars.AXON_E2E_"),
         "private gateway identities must not be stored as unmasked Actions variables"
     );
-    for secret in [
+    for env_name in [
         "AXON_E2E_QDRANT_GATEWAY_URL",
         "AXON_E2E_QDRANT_PEER",
         "AXON_E2E_QDRANT_TOKEN",
@@ -217,10 +217,10 @@ fn live_homelab_validates_configuration_before_building_or_discovery() {
         "AXON_E2E_LLM_TOKEN",
         "AXON_E2E_EXPECTED_PEERS",
     ] {
-        let binding = format!("{secret}: ${{{{ secrets.{secret} }}}}");
+        let binding = format!("{env_name}: ${{{{ secrets.{env_name} }}}}");
         assert!(
             workflow.contains(&binding),
-            "live E2E protected value is not projected into the consumer environment: {secret}"
+            "live E2E protected value is not projected into the consumer environment: {env_name}"
         );
     }
     let validate = workflow

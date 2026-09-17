@@ -4,6 +4,12 @@
 # unmaintained = "workspace" limits unmaintained checks to workspace-local crates only,
 # avoiding noise from transitive dependency churn in the spider/octocrab ecosystem.
 unmaintained = "workspace"
+ignore = [
+  # RUSTSEC-2023-0071: Marvin Attack timing side-channel in the `rsa` crate.
+  # Source: octocrab -> jsonwebtoken -> rsa; no upgrade path available.
+  # Risk is low for our usage (JWT verification, not key generation/export).
+  "RUSTSEC-2023-0071",
+]
 [licenses]
 allow = [
   "AGPL-3.0-only",
