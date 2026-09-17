@@ -5,6 +5,11 @@ use crate::config::types::Config;
 use crate::llm::{SynthesisModelProfile, SynthesisModelTier};
 
 pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
+    // Resolve the explicit context-capability override before deriving any
+    // model-tiered ask defaults so it actually participates in those defaults.
+    cfg.synthesis_high_context =
+        env_bool_opt("AXON_SYNTHESIS_HIGH_CONTEXT").or(toml.llm.synthesis_high_context);
+
     // Computed into locals first: these defaults read the resolved LLM
     // backend/model off `cfg` (model-aware retrieval depth), which can't be
     // borrowed while assigning the field in the same expression.
@@ -55,10 +60,6 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     );
 
     let ask_hybrid = ask_hybrid_candidates(cfg, toml);
-    // Explicit high-context override: env wins over TOML; absent = `None`, which
-    // leaves `high_context_synthesis_model` on its substring-heuristic fallback.
-    cfg.synthesis_high_context =
-        env_bool_opt("AXON_SYNTHESIS_HIGH_CONTEXT").or(toml.llm.synthesis_high_context);
     cfg.llm_completion_concurrency = resolve_clamped_usize(
         "AXON_LLM_COMPLETION_CONCURRENCY",
         toml.llm.completion_concurrency,

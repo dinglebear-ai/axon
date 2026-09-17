@@ -19,6 +19,21 @@ mod tests;
 static OpenAiCompatClients: LazyLock<dashmap::DashMap<u64, reqwest::Client>> =
     LazyLock::new(dashmap::DashMap::new);
 
+pub fn validate_config(config: &LlmBackendConfig) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    openai_chat_completions_url(config)?;
+    if config
+        .openai_model
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        return Err(
+            "AXON_SYNTHESIS_OPENAI_MODEL is required when AXON_LLM_BACKEND=openai-compat".into(),
+        );
+    }
+    Ok(())
+}
+
 pub fn openai_chat_completions_url(
     config: &LlmBackendConfig,
 ) -> Result<String, Box<dyn StdError + Send + Sync>> {

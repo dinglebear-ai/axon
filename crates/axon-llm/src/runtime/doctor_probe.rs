@@ -12,9 +12,12 @@ use axon_core::config::Config;
 use axon_core::health::LlmDoctorProbe;
 use axon_core::llm::{CompletionRequest, LlmBackendConfig, LlmBackendKind};
 
-use crate::runtime::codex_app_server::probe_codex_capabilities;
+use crate::runtime::codex_app_server::{
+    probe_codex_capabilities, validate_config as validate_codex_config,
+};
 use crate::runtime::complete_text;
-use crate::runtime::headless::gemini::validate_config;
+use crate::runtime::headless::gemini::validate_config as validate_gemini_config;
+use crate::runtime::openai_compat::validate_config as validate_openai_compat_config;
 
 /// Hard ceiling on how long the doctor LLM round-trip is allowed to take.
 /// Independent of `completion_timeout_secs` (which can be 300s) so `doctor`
@@ -40,6 +43,7 @@ pub async fn build_llm_doctor_probe(cfg: &Config) -> LlmDoctorProbe {
 
     LlmDoctorProbe {
         roundtrip,
+        config_validation: probe_backend_config(cfg),
         gemini_validation: probe_gemini_headless(cfg),
         codex_capabilities: codex_caps,
     }
@@ -97,14 +101,67 @@ async fn probe_llm_roundtrip(cfg: &Config) -> (bool, String) {
     }
 }
 
-/// Shallow gemini-headless command/config validation: `(ok, detail)`.
+fn probe_backend_config(cfg: &Config) -> (bool, String) {
+    let backend = LlmBackendConfig::from_config(cfg);
+    let (name, result) = match cfg.llm_backend {
+        LlmBackendKind::GeminiHeadless => ("Gemini headless", validate_gemini_config(&backend)),
+        LlmBackendKind::OpenAiCompat => {
+            ("OpenAI-compatible", validate_openai_compat_config(&backend))
+        }
+        LlmBackendKind::CodexAppServer => ("Codex app-server", validate_codex_config(&backend)),
+    };
+    match result {
+        Ok(()) => (true, format!("{name} configuration validation passed")),
+        Err(err) => (
+            false,
+            format!("{name} configuration validation failed: {err}"),
+        ),
+    }
+}
+
+/// Gemini-specific command/config validation for the dedicated doctor service row.
 fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
-    let gemini_backend = LlmBackendConfig::from_config(cfg);
-    match validate_config(&gemini_backend) {
+    let backend = LlmBackendConfig::from_config(cfg);
+    match validate_gemini_config(&backend) {
         Ok(()) => (
             true,
-            "Gemini headless command validation passed".to_string(),
+            "Gemini headless configuration validation passed".to_string(),
         ),
         Err(err) => (false, err.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openai_compat_doctor_validation_reports_the_active_backend() {
+        let cfg = Config {
+            llm_backend: LlmBackendKind::OpenAiCompat,
+            openai_base_url: "http://127.0.0.1:43871/v1".to_string(),
+            openai_model: "chatgpt-browser-medium".to_string(),
+            ..Config::default()
+        };
+
+        let (ok, detail) = probe_backend_config(&cfg);
+        assert!(ok, "{detail}");
+        assert!(detail.contains("OpenAI-compatible configuration validation passed"));
+        assert!(!detail.contains("Gemini"));
+    }
+
+    #[test]
+    fn openai_compat_doctor_validation_exposes_missing_model() {
+        let cfg = Config {
+            llm_backend: LlmBackendKind::OpenAiCompat,
+            openai_base_url: "http://127.0.0.1:43871/v1".to_string(),
+            openai_model: String::new(),
+            ..Config::default()
+        };
+
+        let (ok, detail) = probe_backend_config(&cfg);
+        assert!(!ok);
+        assert!(detail.contains("OpenAI-compatible configuration validation failed"));
+        assert!(detail.contains("AXON_SYNTHESIS_OPENAI_MODEL"));
     }
 }

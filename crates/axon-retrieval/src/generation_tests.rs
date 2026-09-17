@@ -15,6 +15,7 @@ fn retrieval_filters_exclude_unpublished_vectors_by_default() {
         namespace_filters: Vec::new(),
         excluded_source_kinds: Vec::new(),
         hybrid: true,
+        hybrid_candidates: None,
         since: Some("2026-07-01T00:00:00+00:00".to_string()),
         before: Some("2026-07-31T00:00:00+00:00".to_string()),
         byte_budget: 4096,

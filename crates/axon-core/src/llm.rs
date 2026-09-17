@@ -169,6 +169,7 @@ pub struct SynthesisModelProfile {
     model: String,
     is_gemini_backend: bool,
     is_codex_backend: bool,
+    high_context_override: Option<bool>,
 }
 
 impl SynthesisModelProfile {
@@ -180,11 +181,19 @@ impl SynthesisModelProfile {
                 .to_ascii_lowercase(),
             is_gemini_backend: matches!(cfg.llm_backend, LlmBackendKind::GeminiHeadless),
             is_codex_backend: matches!(cfg.llm_backend, LlmBackendKind::CodexAppServer),
+            high_context_override: cfg.synthesis_high_context,
         }
     }
 
     #[must_use]
     pub fn tier(&self) -> SynthesisModelTier {
+        if let Some(high_context) = self.high_context_override {
+            return if high_context {
+                SynthesisModelTier::Large
+            } else {
+                SynthesisModelTier::Small
+            };
+        }
         if self.is_gemini() || self.model.contains("claude") {
             SynthesisModelTier::Large
         } else if self.model.contains("gemma") {
@@ -206,10 +215,10 @@ impl SynthesisModelProfile {
 
     #[must_use]
     pub fn preserve_full_research_sources(&self) -> bool {
-        self.is_gemini()
-            || self.model.contains("opus")
-            || self.is_gpt_or_codex()
-            || self.is_codex_backend
+        matches!(
+            self.tier(),
+            SynthesisModelTier::Large | SynthesisModelTier::Medium
+        )
     }
 
     fn is_gemini(&self) -> bool {
@@ -218,6 +227,7 @@ impl SynthesisModelProfile {
 
     fn is_gpt_or_codex(&self) -> bool {
         self.model.contains("codex")
+            || self.model.contains("chatgpt")
             || self.model.starts_with("gpt-")
             || self.model.contains("/gpt-")
     }

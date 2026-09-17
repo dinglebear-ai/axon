@@ -230,33 +230,8 @@ fn strip_route_variant_suffix(path: &str) -> &str {
         .unwrap_or(path)
 }
 
-/// Stop words used only to gate the citation-count threshold below. Duplicated
-/// (not imported) from legacy `axon_vector::ops::sparse::STOP_WORDS` /
-/// `axon_vector::ops::token_policy::query_tokens` — `axon-vector` still owns
-/// the full ranking/tokenization stack for `code_search` and the legacy
-/// reranker, so this crate keeps only the minimal slice `is_non_trivial` needs
-/// rather than pulling in that whole module.
-const STOP_WORDS: &[&str] = &[
-    "a", "am", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "do", "does",
-    "for", "from", "had", "has", "have", "he", "her", "him", "his", "how", "if", "in", "into",
-    "is", "it", "its", "me", "my", "no", "not", "of", "on", "or", "our", "out", "she", "so",
-    "than", "that", "the", "their", "them", "then", "they", "this", "to", "too", "up", "us", "via",
-    "was", "we", "were", "what", "when", "where", "who", "why", "you", "your",
-];
-
-/// Tokenize a query into lowercase alphanumeric runs of length >= 2, dropping
-/// stop words. Ports legacy `axon_core::token_policy::query_tokens` (used via
-/// `axon_vector::ops::ranking::tokenize_query`).
-fn tokenize_query(text: &str) -> Vec<String> {
-    text.to_ascii_lowercase()
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|token| token.len() >= 2 && !STOP_WORDS.contains(token))
-        .map(str::to_string)
-        .collect()
-}
-
 fn is_non_trivial(query: &str, body: &str) -> bool {
-    let query_tokens = tokenize_query(query);
+    let query_tokens = super::super::query_tokens::query_tokens(query);
     let body_words = body.split_whitespace().count();
     query_tokens.len() >= 4 || body_words >= 70 || body.len() >= 450
 }

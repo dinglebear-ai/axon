@@ -77,6 +77,31 @@ async fn definitive_done_returns_without_waiting_for_http_eof() {
     );
 }
 
+#[test]
+fn openai_compat_config_requires_synthesis_model() {
+    let config = LlmBackendConfig {
+        kind: LlmBackendKind::OpenAiCompat,
+        openai_base_url: Some("http://127.0.0.1:43871/v1".to_string()),
+        openai_model: None,
+        ..LlmBackendConfig::default()
+    };
+
+    let error = validate_config(&config).expect_err("missing model must fail validation");
+    assert!(error.to_string().contains("AXON_SYNTHESIS_OPENAI_MODEL"));
+}
+
+#[test]
+fn openai_compat_config_accepts_exgpt_style_endpoint_without_key() {
+    let config = LlmBackendConfig {
+        kind: LlmBackendKind::OpenAiCompat,
+        openai_base_url: Some("http://127.0.0.1:43871/v1".to_string()),
+        openai_model: Some("chatgpt-browser-medium".to_string()),
+        ..LlmBackendConfig::default()
+    };
+
+    validate_config(&config).expect("local OpenAI-compatible endpoint should validate");
+}
+
 fn backend(server: &MockServer, api_key: Option<&str>) -> LlmBackendConfig {
     LlmBackendConfig {
         kind: LlmBackendKind::OpenAiCompat,

@@ -98,6 +98,7 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
             collection: cfg.collection.clone(),
             limit: fetch_limit.max(1),
             hybrid: cfg.hybrid_search_enabled,
+            hybrid_candidates: None,
             since,
             before,
         },

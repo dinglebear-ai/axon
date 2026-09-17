@@ -53,6 +53,7 @@ axon ask --query "<question>" [FLAGS]
 | `AXON_SYNTHESIS_OPENAI_MODEL` | Model name for the OpenAI-compatible backend. |
 | `AXON_OPENAI_MODEL` | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL`. |
 | `AXON_OPENAI_API_KEY` | Optional bearer token for the OpenAI-compatible backend. |
+| `AXON_SYNTHESIS_HIGH_CONTEXT` | Explicitly force high (`true`) or small (`false`) synthesis context tier; unset uses model/backend detection. |
 
 `ask` uses Qdrant + TEI retrieval and the configured LLM backend for synthesis. The default backend is Gemini headless.
 
@@ -283,7 +284,7 @@ Compact example:
 }
 ```
 
-`retrieval_score` scale depends on retrieval mode. Cosine/dense paths use cosine-like scores and may apply `ask.min-relevance-score`; RRF paths use rank-fusion scores, mark additive rerank components as `skipped`, and do not apply the cosine threshold.
+`retrieval_score` scale depends on retrieval mode. Cosine/dense paths use cosine-like scores and apply `ask.min-relevance-score`; RRF paths use rank-fusion scores and skip the cosine threshold. Both paths then apply ask-specific lexical, documentation-path, authoritative-domain, product-authority, phrase-match, low-signal-source, and topical-overlap reranking/filtering.
 
 ## RAG Tuning
 
@@ -294,24 +295,27 @@ to store these values.
 | TOML key | Env override | Default | Effect |
 |----------|--------------|---------|--------|
 | `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance on cosine/dense paths (0.6-0.7 for high-precision); lower if you get "no candidates". Skipped for hybrid/RRF named-vector mode because RRF scores are not cosine scores. |
-| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | Model-tiered | More candidates = better recall, slower reranking |
-| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | Model-tiered | Top chunks eligible for final LLM context |
-| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | Adaptive | Explicit max full-document fetches; unset means 4 simple / 6 complex, with high-context models floored at 4 |
+| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | Model-tiered | Raw candidates admitted to ask-specific reranking; more improves recall but costs rerank work. |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | Model-tiered | Configured maximum chunks. Runtime complexity/model policy may use fewer. |
+| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | `6` | Compatibility-only legacy control. Unified retrieval uses bounded chunk context and does not execute full-document backfill. |
 
 Additional ask controls:
 
 | TOML key | Env override | Default | Effect |
 |----------|--------------|---------|--------|
-| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Total context characters; defaults by model family unless explicitly overridden |
-| `ask.authoritative-domains` | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |
+| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Configured maximum context characters. Runtime adaptive policy uses a smaller effective budget for simple/complex/exhaustive questions; diagnostics report both. |
+| `search.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | Model-tiered | Dense and sparse prefetch candidates per arm before RRF fusion for `ask`. |
+| `ask.authoritative-domains` | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional exact/suffix domains boosted after retrieval, including RRF mode. |
 | `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
 | `ask.min-citations-nontrivial` | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Minimum unique citations for non-trivial answers |
 
 ## Notes
 
-- LLM answer generation goes through the configured backend. By default this is Gemini headless; `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` is the preferred Gemini model override, with `AXON_HEADLESS_GEMINI_MODEL` kept as a legacy alias.
+- LLM answer generation goes through the configured backend. By default this is Gemini headless; `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` is the preferred Gemini model override, with `AXON_HEADLESS_GEMINI_MODEL` kept as a legacy alias. `openai-compat` requires both a valid `AXON_OPENAI_BASE_URL` and synthesis model.
+- The legacy full-document/backfill/cache controls remain parseable for configuration compatibility but are not executed by the unified retrieval-engine ask path. An explicit legacy override produces an ask warning instead of silently pretending it is active.
+- Normal product/documentation questions suppress session/log/cache sources unless the query explicitly asks for session, transcript, log, or history content. Web citations retain page-level URLs so multiple pages on the same documentation host remain distinct evidence sources.
 - The generic CLI forwarding mode was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon ask` through HTTP; use `axon serve` directly for external REST/MCP clients.
-- If you get "No candidates met relevance threshold", lower `ask.min-relevance-score` in `~/.axon/config.toml` or run `axon <source>` / `axon scrape <url>` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
+- If dense-only retrieval returns no candidates above the relevance threshold, lower `ask.min-relevance-score` or index more relevant content. Hybrid/RRF skips the cosine threshold, but candidates can still be rejected by topical/source-quality filters.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.
 - `ask` enforces citation-quality gates:

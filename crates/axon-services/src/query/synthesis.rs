@@ -55,6 +55,9 @@ pub struct AskContext {
     pub authoritative_ratio: f64,
     pub configured_authority_ratio: f64,
     pub product_authority_ratio: f64,
+    pub effective_chunk_limit: usize,
+    pub effective_max_context_chars: usize,
+    pub max_chunk_chars: usize,
     pub corpus_health: CorpusHealthDiagnostic,
     /// True when full-doc fetch was skipped or never attempted. Always `true`
     /// on the retrieval-engine path — full-doc/supplemental staging is a
@@ -63,9 +66,7 @@ pub struct AskContext {
     /// Static reason string ("retrieval_engine" for every value built here).
     pub full_doc_fetch_skip_reason: &'static str,
     pub full_doc_fetch_errors: Vec<AskExplainFullDocFetchError>,
-    /// Coarse query-complexity signal. Always `"simple"` on the
-    /// retrieval-engine path — the adaptive complexity classifier is part of
-    /// the legacy reranker's query-rewrite stage, not reproduced here.
+    /// Coarse query-complexity signal resolved by the ask retrieval policy.
     pub detected_complexity: &'static str,
     pub resolved_full_docs: usize,
     pub full_docs_source: &'static str,
@@ -109,6 +110,9 @@ impl AskContext {
             authoritative_ratio: 0.0,
             configured_authority_ratio: 0.0,
             product_authority_ratio: 0.0,
+            effective_chunk_limit: chunks_selected,
+            effective_max_context_chars: context.len(),
+            max_chunk_chars: context.len(),
             corpus_health,
             full_doc_fetch_skipped: true,
             full_doc_fetch_skip_reason: "retrieval_engine",
