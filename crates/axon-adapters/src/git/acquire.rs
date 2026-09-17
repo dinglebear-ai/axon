@@ -33,6 +33,7 @@ const GITHUB_HOST: &str = "github.com";
 fn credential_env_for_url(clone_url: &str) -> Option<&'static str> {
     let parsed = url::Url::parse(clone_url).ok()?;
     (parsed.scheme() == "https"
+        && parsed.port_or_known_default() == Some(443)
         && parsed
             .host_str()
             .is_some_and(|host| host.eq_ignore_ascii_case(GITHUB_HOST)))

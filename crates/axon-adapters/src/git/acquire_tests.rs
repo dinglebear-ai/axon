@@ -74,6 +74,10 @@ fn github_credentials_are_scoped_to_https_github() {
         None
     );
     assert_eq!(
+        credential_env_for_url("https://github.com:8443/unraid/core"),
+        None
+    );
+    assert_eq!(
         credential_env_for_url("https://github.example.com/unraid/core"),
         None
     );
