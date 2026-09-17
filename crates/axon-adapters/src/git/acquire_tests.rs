@@ -6,6 +6,7 @@ fn clone_argv_is_shallow_no_prompt_terminated() {
         "https://github.com/jmagar/axon.git",
         "/tmp/dest-xyz",
         "github.com:443:140.82.114.4",
+        None,
     );
     assert_eq!(
         argv,
@@ -32,6 +33,7 @@ fn clone_argv_terminates_flag_shaped_urls() {
         "--upload-pack=evil",
         "/tmp/d",
         "example.com:443:93.184.216.34",
+        None,
     );
     let dash_dash = argv.iter().position(|a| a == "--").expect("has terminator");
     let url = argv
@@ -47,6 +49,7 @@ fn clone_argv_pins_validated_dns_and_disables_redirects() {
         "https://example.com/repo.git",
         "/tmp/d",
         "example.com:443:93.184.216.34,93.184.216.35",
+        None,
     );
     assert!(
         argv.contains(
@@ -54,6 +57,58 @@ fn clone_argv_pins_validated_dns_and_disables_redirects() {
         )
     );
     assert!(argv.contains(&"http.followRedirects=false".to_string()));
+}
+
+#[test]
+fn github_credentials_are_scoped_to_https_github() {
+    assert_eq!(
+        credential_env_for_url("https://github.com/unraid/core"),
+        Some(GITHUB_TOKEN_ENV)
+    );
+    assert_eq!(
+        credential_env_for_url("https://GitHub.com/unraid/core.git"),
+        Some(GITHUB_TOKEN_ENV)
+    );
+    assert_eq!(
+        credential_env_for_url("http://github.com/unraid/core"),
+        None
+    );
+    assert_eq!(
+        credential_env_for_url("https://github.example.com/unraid/core"),
+        None
+    );
+    assert_eq!(
+        credential_env_for_url("https://gitlab.com/unraid/core"),
+        None
+    );
+}
+
+#[test]
+fn github_clone_argv_uses_env_backed_credentials_without_embedding_secret() {
+    let argv = clone_argv(
+        "https://github.com/unraid/core",
+        "/tmp/dest",
+        "github.com:443:140.82.114.4",
+        Some(GITHUB_TOKEN_ENV),
+    );
+    let joined = argv.join(" ");
+
+    assert!(joined.contains("credential.helper="));
+    assert!(joined.contains("credential.https://github.com.helper="));
+    assert!(joined.contains("username=x-access-token"));
+    assert!(joined.contains("password=$GITHUB_TOKEN"));
+    assert!(!joined.contains("https://x-access-token:"));
+    assert!(!joined.contains("ghp_"));
+
+    let helper = argv
+        .iter()
+        .position(|arg| arg.contains("credential.https://github.com.helper="))
+        .expect("credential helper config present");
+    let clone = argv
+        .iter()
+        .position(|arg| arg == "clone")
+        .expect("clone verb");
+    assert!(helper < clone);
 }
 
 #[tokio::test]
