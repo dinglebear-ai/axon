@@ -8,6 +8,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
 const SPIDER_CDP_RELAY_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+const SPIDER_CDP_RELAY_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const SPIDER_CDP_RELAY_MAX_CONNECTIONS: usize = 16;
 
 fn is_loopback_host(host: &str) -> bool {
@@ -134,41 +135,59 @@ pub async fn cdp_spider_connection_url(
     let upstream_url = websocket_url.to_string();
 
     tokio::spawn(async move {
+        let expires_at = tokio::time::Instant::now() + SPIDER_CDP_RELAY_IDLE_TIMEOUT;
         for _ in 0..SPIDER_CDP_RELAY_MAX_CONNECTIONS {
-            let accepted =
-                tokio::time::timeout(SPIDER_CDP_RELAY_IDLE_TIMEOUT, listener.accept()).await;
+            let accepted = tokio::time::timeout_at(expires_at, listener.accept()).await;
             let Ok(Ok((stream, _))) = accepted else {
                 break;
             };
-            let upstream_url = upstream_url.clone();
-            let authorization = authorization.clone();
             let expected_path = expected_path.clone();
-            tokio::spawn(async move {
-                let callback = move |request: &Request, response: Response| {
-                    if request.uri().path() == expected_path {
-                        Ok(response)
-                    } else {
-                        let mut rejection = ErrorResponse::new(Some("forbidden".to_string()));
-                        *rejection.status_mut() = reqwest::StatusCode::FORBIDDEN;
-                        Err(rejection)
-                    }
-                };
-                let Ok(downstream) = tokio_tungstenite::accept_hdr_async(stream, callback).await
-                else {
-                    return;
-                };
-                let Ok(mut upstream_request) = upstream_url.into_client_request() else {
-                    return;
-                };
-                upstream_request
-                    .headers_mut()
-                    .insert(reqwest::header::AUTHORIZATION, authorization);
-                let Ok((upstream, _)) = tokio_tungstenite::connect_async(upstream_request).await
-                else {
-                    return;
-                };
-                relay_websocket_messages(downstream, upstream).await;
-            });
+            let callback = move |request: &Request, response: Response| {
+                if request.uri().path() == expected_path {
+                    Ok(response)
+                } else {
+                    let mut rejection = ErrorResponse::new(Some("forbidden".to_string()));
+                    *rejection.status_mut() = reqwest::StatusCode::FORBIDDEN;
+                    Err(rejection)
+                }
+            };
+            let handshake_deadline = std::cmp::min(
+                expires_at,
+                tokio::time::Instant::now() + SPIDER_CDP_RELAY_HANDSHAKE_TIMEOUT,
+            );
+            let downstream = tokio::time::timeout_at(
+                handshake_deadline,
+                tokio_tungstenite::accept_hdr_async(stream, callback),
+            )
+            .await;
+            let Ok(Ok(downstream)) = downstream else {
+                continue;
+            };
+            let Ok(mut upstream_request) = upstream_url.as_str().into_client_request() else {
+                break;
+            };
+            upstream_request
+                .headers_mut()
+                .insert(reqwest::header::AUTHORIZATION, authorization.clone());
+            let connect_deadline = std::cmp::min(
+                expires_at,
+                tokio::time::Instant::now() + SPIDER_CDP_RELAY_HANDSHAKE_TIMEOUT,
+            );
+            let upstream = tokio::time::timeout_at(
+                connect_deadline,
+                tokio_tungstenite::connect_async(upstream_request),
+            )
+            .await;
+            let Ok(Ok((upstream, _))) = upstream else {
+                continue;
+            };
+
+            // One Spider browser session owns this relay. Stop accepting new
+            // connections as soon as that session is established so the
+            // bearer credential and listener do not outlive it.
+            drop(listener);
+            relay_websocket_messages(downstream, upstream).await;
+            return;
         }
     });
 

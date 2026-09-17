@@ -191,35 +191,36 @@ fn workspace_nextest_is_the_single_owner_of_cli_and_git_test_coverage() {
 #[test]
 fn live_homelab_validates_configuration_before_building_or_discovery() {
     let workflow = active_workflow_content(include_str!("../.github/workflows/e2e-live.yml"));
-    for variable in [
-        "TS_WIF_CLIENT_ID",
-        "TS_WIF_AUDIENCE",
-        "AXON_E2E_QDRANT_GATEWAY_URL",
-        "AXON_E2E_QDRANT_PEER",
-        "AXON_E2E_TEI_GATEWAY_URL",
-        "AXON_E2E_TEI_PEER",
-        "AXON_E2E_CHROME_GATEWAY_URL",
-        "AXON_E2E_CHROME_PEER",
-        "AXON_E2E_LLM_GATEWAY_URL",
-        "AXON_E2E_LLM_PEER",
-        "AXON_E2E_EXPECTED_PEERS",
-    ] {
+    for variable in ["TS_WIF_CLIENT_ID", "TS_WIF_AUDIENCE"] {
         let binding = format!("{variable}: ${{{{ vars.{variable} }}}}");
         assert!(
             workflow.contains(&binding),
-            "live E2E variable is not projected into the validator environment: {variable}"
+            "live E2E WIF identifier is not projected into the validator environment: {variable}"
         );
     }
+    assert!(
+        !workflow.contains("vars.AXON_E2E_"),
+        "private gateway identities must not be stored as unmasked Actions variables"
+    );
     for secret in [
+        "AXON_E2E_QDRANT_GATEWAY_URL",
+        "AXON_E2E_QDRANT_PEER",
         "AXON_E2E_QDRANT_TOKEN",
+        "AXON_E2E_TEI_GATEWAY_URL",
+        "AXON_E2E_TEI_PEER",
         "AXON_E2E_TEI_TOKEN",
+        "AXON_E2E_CHROME_GATEWAY_URL",
+        "AXON_E2E_CHROME_PEER",
         "AXON_E2E_CHROME_TOKEN",
+        "AXON_E2E_LLM_GATEWAY_URL",
+        "AXON_E2E_LLM_PEER",
         "AXON_E2E_LLM_TOKEN",
+        "AXON_E2E_EXPECTED_PEERS",
     ] {
         let binding = format!("{secret}: ${{{{ secrets.{secret} }}}}");
         assert!(
             workflow.contains(&binding),
-            "live E2E secret is not projected into the validator environment: {secret}"
+            "live E2E protected value is not projected into the consumer environment: {secret}"
         );
     }
     let validate = workflow
@@ -269,10 +270,12 @@ fn live_homelab_scopes_gateway_management_tokens_to_python_consumers() {
         "Retain sanitized evidence",
     ] {
         let step = workflow_step_block(live, step_name);
-        assert!(
-            !step.contains("secrets.AXON_E2E_"),
-            "gateway management tokens must not reach {step_name}"
-        );
+        for secret in secrets {
+            assert!(
+                !step.contains(&format!("secrets.{secret}")),
+                "gateway management token {secret} must not reach {step_name}"
+            );
+        }
     }
 
     for step_name in [

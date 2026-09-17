@@ -2,16 +2,19 @@ use super::url_utils::{
     build_exclude_blacklist_patterns, derive_auto_whitelist_pattern, extract_link_host,
     is_junk_discovered_url,
 };
+use axon_core::config::parse::docker::running_in_container;
 use axon_core::config::parse::is_docker_service_host;
 use axon_core::config::{Config, RenderMode};
-use axon_core::http::{axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings};
+use axon_core::http::{
+    axon_ua, cdp_discovery_url, internal_service_no_redirect_http_client,
+    ssrf_blacklist_compact_strings,
+};
 use spider::CaseInsensitiveString;
 use spider::configuration::RedirectPolicy;
 use spider::url::Url;
 use spider::utils::hedge::HedgeConfig;
 use spider::website::Website;
 use std::error::Error;
-use std::path::Path;
 use std::time::Duration;
 
 /// Pre-resolve the Chrome DevTools WebSocket URL from the CDP discovery endpoint.
@@ -24,11 +27,11 @@ use std::time::Duration;
 /// any known Docker service hostname (from the explicit allowlist) to `127.0.0.1`
 /// so the host CLI can reach the Chrome proxy.
 ///
-/// Returns `None` inside Docker (container hostnames resolve on the bridge
-/// network) or when the fetch/parse fails. Callers that need to distinguish
-/// those two `None` cases check [`cdp_probe_skipped_in_docker`]: in Docker the
-/// unresolved discovery URL is still the right thing to hand spider, while a
-/// failed probe on a host means the remote is unreachable.
+/// Without bearer authentication, returns `None` inside a container because
+/// service hostnames resolve directly on its bridge network. Authenticated
+/// endpoints are always resolved here so the caller can attach credentials to
+/// the resulting WebSocket handshake. Other fetch or parse failures also
+/// return `None`.
 pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     // ws:// shortcut: bootstrap already resolved the URL — use it directly.
     if remote_url.starts_with("ws://") || remote_url.starts_with("wss://") {
@@ -38,20 +41,24 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     let chrome_bearer = std::env::var("AXON_CHROME_BEARER_TOKEN")
         .ok()
         .filter(|token| !token.is_empty());
-    if cdp_probe_skipped_in_docker() && chrome_bearer.is_none() {
+    let in_container = cdp_probe_skipped_in_docker();
+    if in_container && chrome_bearer.is_none() {
         return None;
     }
 
     // Build the discovery URL (appends /json/version, converts ws→http).
     let discovery_url = cdp_discovery_url(remote_url)?;
 
-    let client = axon_core::http::http_client().ok()?;
+    // Chrome is an operator-configured internal provider. The public-fetch
+    // client intentionally rejects private, loopback, and Tailscale addresses,
+    // so use the no-redirect internal client for discovery.
+    let client = internal_service_no_redirect_http_client().ok()?;
 
     let mut request = client.get(&discovery_url);
     if let Some(token) = chrome_bearer {
         request = request.bearer_auth(token);
     }
-    let response = request.send().await.ok()?;
+    let response = request.send().await.ok()?.error_for_status().ok()?;
     let body: serde_json::Value =
         axon_core::http::read_response_json_bounded(response, 1024 * 1024)
             .await
@@ -63,7 +70,7 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     let mut parsed = Url::parse(ws_url).ok()?;
     if let Some(host) = parsed.host_str() {
         let host = host.to_string();
-        if is_docker_service_host(&host) {
+        if !in_container && is_docker_service_host(&host) {
             let _ = parsed.set_host(Some("127.0.0.1"));
         }
     }
@@ -71,11 +78,10 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     Some(parsed.to_string())
 }
 
-/// Whether the CDP liveness probe is skipped because this process runs inside
-/// Docker, where the remote Chrome hostname resolves on the bridge network and
-/// the unresolved discovery URL is handed to spider as-is.
+/// Whether this process runs inside a container where the remote Chrome
+/// hostname resolves on the bridge network.
 pub fn cdp_probe_skipped_in_docker() -> bool {
-    Path::new("/.dockerenv").exists()
+    running_in_container()
 }
 
 pub(super) fn apply_limit_and_behavior_settings(
@@ -327,3 +333,7 @@ pub(super) async fn configure_website_with_crawl_id(
 
     Ok(website)
 }
+
+#[cfg(test)]
+#[path = "runtime_tests.rs"]
+mod tests;

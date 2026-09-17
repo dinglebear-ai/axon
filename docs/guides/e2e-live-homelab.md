@@ -58,8 +58,8 @@ four independent `*_JOIN_KEY` enrollment credentials, four independent
 `*_TOKEN` management credentials, and the Qdrant, TEI, and LLM `*_UPSTREAM`
 URLs. Set `*_UPSTREAM_TOKEN` only when the upstream itself requires auth. Keep
 all of these values in the host secret store; never commit the deployment
-environment file. The CI environment receives the gateway URLs and peers as
-variables and the four management credentials as protected secrets. Lease
+environment file. The CI environment receives gateway URLs, peer identities,
+and the four management credentials as protected environment secrets. Lease
 creation returns a short-lived, lease-specific data credential, so the tested
 binary never receives a gateway management credential.
 
@@ -69,9 +69,10 @@ runs before discovery: manual runs outrank pushes, pushes outrank schedules,
 same-priority older work coalesces, and stale work is refused. Once mutation
 starts, supersession waits because `cancel-in-progress` is false.
 
-Repository variables hold exact MagicDNS peer names and gateway URLs; protected
-environment secrets hold application bearer tokens. Values are masked before
-use and never passed on argv. Provider outage/auth/network failure is classified
+Protected environment secrets hold exact MagicDNS peer names, gateway URLs, and
+application bearer tokens. Only the non-secret WIF client identifier and audience
+remain environment variables. Protected values are masked before use and never
+passed on argv. Provider outage/auth/network failure is classified
 as infrastructure; a tested-binary invariant failure is product. The gateway
 owns stale-lease expiry and janitor recovery, while every workflow `finally`
 deletes all acquired leases and requires zero residuals. Tailscale action cleanup

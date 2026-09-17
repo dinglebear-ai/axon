@@ -38,8 +38,12 @@ pub(super) async fn capture_requests_with_chrome(
         .into_client_request()
         .map_err(|err| format!("invalid Chrome WebSocket URL: {err}"))?;
     if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
-        && let Some(header) = cdp_websocket_bearer_header(remote_url, &resolved_ws_url, &token)
+        && !token.is_empty()
     {
+        let header =
+            cdp_websocket_bearer_header(remote_url, &resolved_ws_url, &token).ok_or_else(|| {
+                "authenticated Chrome WebSocket origin or bearer token is invalid".to_string()
+            })?;
         request.headers_mut().insert(AUTHORIZATION, header);
     }
     let (stream, _) = tokio::time::timeout(
@@ -68,21 +72,7 @@ pub(super) async fn capture_requests_with_chrome(
     .map(str::to_string)
     .ok_or_else(|| "Chrome Target.createTarget returned no targetId".to_string())?;
 
-    let session_id = send_capture_cdp_cmd(
-        &mut tx,
-        &mut rx,
-        None,
-        "Target.attachToTarget",
-        serde_json::json!({ "targetId": target_id, "flatten": true }),
-        cmd_timeout,
-        None,
-    )
-    .await?
-    .get("sessionId")
-    .and_then(|value| value.as_str())
-    .filter(|value| !value.is_empty())
-    .map(str::to_string)
-    .ok_or_else(|| "Chrome Target.attachToTarget returned no sessionId".to_string())?;
+    let session_id = attach_capture_target(&mut tx, &mut rx, &target_id, cmd_timeout).await?;
 
     let capture_result = capture_session_requests(
         &mut tx,
@@ -104,6 +94,53 @@ pub(super) async fn capture_requests_with_chrome(
     )
     .await;
     capture_result
+}
+
+async fn attach_capture_target<Tx, Rx>(
+    tx: &mut Tx,
+    rx: &mut Rx,
+    target_id: &str,
+    cmd_timeout: Duration,
+) -> Result<String, String>
+where
+    Tx: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+    Rx: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    let session_result = send_capture_cdp_cmd(
+        tx,
+        rx,
+        None,
+        "Target.attachToTarget",
+        serde_json::json!({ "targetId": target_id, "flatten": true }),
+        cmd_timeout,
+        None,
+    )
+    .await
+    .and_then(|value| {
+        value
+            .get("sessionId")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| "Chrome Target.attachToTarget returned no sessionId".to_string())
+    });
+    let session_id = match session_result {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            let _ = send_capture_cdp_cmd(
+                tx,
+                rx,
+                None,
+                "Target.closeTarget",
+                serde_json::json!({ "targetId": target_id }),
+                cmd_timeout,
+                None,
+            )
+            .await;
+            return Err(error);
+        }
+    };
+    Ok(session_id)
 }
 
 /// Enable Network, Page, and Fetch CDP domains for a session.
@@ -388,3 +425,7 @@ where
             .unwrap_or(serde_json::Value::Null));
     }
 }
+
+#[cfg(test)]
+#[path = "capture_tests.rs"]
+mod tests;

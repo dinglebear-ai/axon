@@ -1,5 +1,5 @@
 from __future__ import annotations
-import importlib.util,json,os,re,sys,tempfile,unittest,urllib.error
+import importlib.util,json,os,re,sys,tempfile,threading,time,unittest,urllib.error
 from pathlib import Path
 from unittest import mock
 ROOT=Path(__file__).resolve().parents[3]
@@ -23,6 +23,21 @@ class LiveContractTests(unittest.TestCase):
    with self.assertRaises(runner.HeartbeatFailure) as caught:beats._beat()
   self.assertEqual({"provider":"qdrant","operation":"lease-heartbeat","cause":"TimeoutError"},caught.exception.evidence())
   self.assertNotIn("secret",json.dumps(caught.exception.evidence()))
+ def test_provider_heartbeats_start_independently_as_leases_are_admitted(self):
+  barrier=threading.Barrier(4);seen=[];lock=threading.Lock()
+  items=[{"name":name,"url_env":f"{name.upper()}_URL","auth_env":f"{name.upper()}_TOKEN"} for name in ("qdrant","tei","chrome","llm")]
+  env={name:"https://private.example" if name.endswith("_URL") else "secret" for item in items for name in (item["url_env"],item["auth_env"])}
+  def heartbeat(_url,_token,_method,payload):
+   barrier.wait(timeout=1)
+   with lock:seen.append(payload["namespace"])
+   return {"status":"renewed","heartbeat_at":"2026-09-14T00:00:00Z","expires_at":"2099-01-01T00:00:00Z","namespace":payload["namespace"],"owner":"dinglebear-ai/axon","run_id":"123","run_attempt":"2"}
+  beats=runner.Heartbeats([],"namespace","123","2",60)
+  with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(runner,"call",side_effect=heartbeat),beats:
+   for item in items:beats.add(item,{"lease_id":"opaque_"+item["name"]})
+   deadline=time.monotonic()+2
+   while len(seen)<4 and beats.error is None and time.monotonic()<deadline:time.sleep(.01)
+  self.assertIsNone(beats.error)
+  self.assertEqual(4,len(seen),"a serial heartbeat loop cannot reach the four-party barrier")
  def test_invalid_invariants_and_wrong_binary_are_typed_harness_errors(self):
   valid={"commands":[{"argv":["target/debug/axon"]}],"invariants":["job-terminal"]}
   with self.assertRaises(runner.HarnessError):runner.validate_plan({**valid,"invariants":["invented"]},"a"*40,"a"*40)
@@ -37,7 +52,10 @@ class LiveContractTests(unittest.TestCase):
   text=(ROOT/".github/workflows/e2e-live.yml").read_text()
   self.assertIn("branches: [main]",text);self.assertIn("schedule:",text);self.assertIn("workflow_dispatch:",text)
   for forbidden in ("pull_request:","pull_request_target:","workflow_run:","oauth-secret:","TS_OAUTH_SECRET","authkey:"):self.assertNotIn(forbidden,text)
-  self.assertIn("contents: read\n  id-token: write",text);self.assertIn("environment: axon-live-e2e",text)
+  self.assertNotIn("id-token: write",text.split("jobs:",1)[0]);self.assertIn("contents: read\n      id-token: write",text);self.assertIn("environment: axon-live-e2e",text)
+  self.assertNotIn("vars.AXON_E2E_",text)
+  for secret in ("AXON_E2E_QDRANT_GATEWAY_URL","AXON_E2E_QDRANT_PEER","AXON_E2E_TEI_GATEWAY_URL","AXON_E2E_TEI_PEER","AXON_E2E_CHROME_GATEWAY_URL","AXON_E2E_CHROME_PEER","AXON_E2E_LLM_GATEWAY_URL","AXON_E2E_LLM_PEER","AXON_E2E_EXPECTED_PEERS"):
+   self.assertIn(f"secrets.{secret}",text)
   self.assertIn("environment: axon-live-e2e-manual",text)
   self.assertIn("if: github.event_name == 'workflow_dispatch'",text)
   self.assertIn("needs: [admission, manual-approval]",text)
@@ -87,6 +105,12 @@ class LiveContractTests(unittest.TestCase):
   self.assertNotIn(marker,str(caught.exception))
  def test_live_runner_always_deletes_every_acquired_lease_and_audits_residuals(self):
   config=json.loads((ROOT/"config/e2e/live-services.json").read_text());env={"GITHUB_RUN_ID":"123","GITHUB_RUN_ATTEMPT":"2","GITHUB_SHA":"a"*40,"GITHUB_ACTIONS":"true"}
+  forbidden_child_env={
+   "ACTIONS_ID_TOKEN_REQUEST_TOKEN":"oidc-request-token","ACTIONS_ID_TOKEN_REQUEST_URL":"https://oidc.actions.example/token",
+   "GITHUB_ENV":"/tmp/github-env","GITHUB_OUTPUT":"/tmp/github-output","GITHUB_PATH":"/tmp/github-path","GITHUB_STATE":"/tmp/github-state","GITHUB_STEP_SUMMARY":"/tmp/github-summary",
+   "BASH_ENV":"/tmp/attacker-profile","RUNNER_TEMP":"/tmp/runner-private","AXON_HTTP_TOKEN":"unrelated-root-token","TS_WIF_CLIENT_ID":"wif-client","TS_WIF_AUDIENCE":"wif-audience",
+  }
+  env.update(forbidden_child_env);env["PATH"]="/safe/bin"
   admin_tokens={};data_tokens={item["name"]:"axe1_"+format(index,"064x") for index,item in enumerate(config["providers"],1)}
   for item in config["providers"]:
    admin_tokens[item["name"]]=f"admin-{item['name']}";env.update({item["url_env"]:f"https://{item['name']}.example.ts.net",item["auth_env"]:admin_tokens[item["name"]]})
@@ -126,6 +150,9 @@ class LiveContractTests(unittest.TestCase):
    self.assertGreaterEqual(sum(url.endswith("/heartbeat") for url,_method,_payload in calls),4)
    command_env=command_envs[0];self.assertEqual(data_tokens["qdrant"],command_env["QDRANT_API_KEY"]);self.assertEqual(data_tokens["tei"],command_env["AXON_TEI_BEARER_TOKEN"]);self.assertEqual(data_tokens["chrome"],command_env["AXON_CHROME_BEARER_TOKEN"]);self.assertEqual(data_tokens["llm"],command_env["AXON_OPENAI_API_KEY"])
    self.assertEqual(body["namespace"],command_env["AXON_COLLECTION"]);self.assertFalse(set(admin_tokens.values())&set(command_env.values()),"root management tokens must not enter command environment")
+   self.assertEqual("/safe/bin",command_env["PATH"])
+   self.assertTrue(set(forbidden_child_env).isdisjoint(command_env),"OIDC, GitHub control files, WIF metadata, and unrelated authority must not enter the tested process")
+   self.assertTrue({item["auth_env"] for item in config["providers"]}.isdisjoint(command_env),"gateway management variables must not enter the tested process")
    self.assertEqual([mock.call(f"::add-mask::{data_tokens[item['name']]}",flush=True) for item in config["providers"]],printed.call_args_list)
    encoded=json.dumps(body);self.assertTrue(all(token not in encoded for token in data_tokens.values()));self.assertTrue(all(token not in encoded for token in admin_tokens.values()))
  def test_live_runner_cleans_intent_when_first_provider_lease_is_absent(self):

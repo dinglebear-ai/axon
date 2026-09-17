@@ -57,6 +57,23 @@ fn provider_headers_are_attached_only_to_the_configured_origin() {
     assert!(!cross_origin.headers().contains_key("api-key"));
 }
 
+#[test]
+fn malformed_provider_credentials_fail_without_exposing_the_value() {
+    let secret = "secret\nleak";
+    let error = ProbeAuth::from_value(
+        "AXON_CHROME_BEARER_TOKEN",
+        reqwest::header::AUTHORIZATION,
+        "Bearer ",
+        secret,
+    )
+    .err()
+    .expect("a credential containing a newline must be rejected");
+
+    assert!(error.contains("AXON_CHROME_BEARER_TOKEN"));
+    assert!(!error.contains(secret));
+    assert!(!error.contains("secret"));
+}
+
 #[tokio::test]
 async fn tei_info_fallback_sends_bearer_auth_on_each_same_origin_probe() {
     let server = MockServer::start_async().await;
@@ -118,7 +135,7 @@ async fn qdrant_collection_info_sends_api_key() {
 }
 
 #[tokio::test]
-async fn authenticated_probe_does_not_follow_redirects() {
+async fn authenticated_probe_rejects_redirects_without_leaking_credentials() {
     let source = MockServer::start_async().await;
     let destination = MockServer::start_async().await;
     let leaked = destination
@@ -152,6 +169,6 @@ async fn authenticated_probe_does_not_follow_redirects() {
     )
     .await;
 
-    assert!(result.0);
+    assert_eq!(result, (false, Some("http 302".to_string())));
     leaked.assert_calls_async(0).await;
 }

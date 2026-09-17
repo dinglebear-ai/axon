@@ -98,6 +98,7 @@ async fn open_chrome_session(
     browser_ws_url: &str,
     page_url: &str,
     cmd_timeout: Duration,
+    bearer_token: Option<&str>,
 ) -> Result<
     (
         impl SinkExt<
@@ -121,27 +122,31 @@ async fn open_chrome_session(
     let port = parsed.port().unwrap_or(9222);
     let addr = format!("{host}:{port}");
 
-    // Normalize wss:// to ws:// for loopback connections — Chrome on localhost
-    // never serves TLS on its CDP endpoint.
+    if !cdp_websocket_origin_is_authorized(remote_url, browser_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {browser_ws_url}"
+        ));
+    }
+
+    // Normalize wss:// to ws:// only after validating the discovered origin.
+    // Chrome on localhost never serves TLS on its CDP endpoint. An authenticated
+    // endpoint still fails closed below because bearer credentials may not be
+    // sent over a downgraded connection.
     let is_loopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
     let effective_ws_url = if parsed.scheme() == "wss" && is_loopback {
         browser_ws_url.replacen("wss://", "ws://", 1)
     } else {
         browser_ws_url.to_string()
     };
-    if !cdp_websocket_origin_is_authorized(remote_url, &effective_ws_url) {
-        return Err(format!(
-            "Chrome discovery returned an unauthorized WebSocket origin: {effective_ws_url}"
-        ));
-    }
-
     let mut request = effective_ws_url
         .as_str()
         .into_client_request()
         .map_err(|e| format!("invalid Chrome WS handshake URL {effective_ws_url}: {e}"))?;
-    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
-        && let Some(header) = cdp_websocket_bearer_header(remote_url, &effective_ws_url, &token)
-    {
+    if let Some(token) = bearer_token.filter(|token| !token.is_empty()) {
+        let header =
+            cdp_websocket_bearer_header(remote_url, &effective_ws_url, token).ok_or_else(|| {
+                "authenticated Chrome WebSocket origin or bearer token is invalid".to_string()
+            })?;
         request.headers_mut().insert(AUTHORIZATION, header);
     }
 
@@ -173,7 +178,7 @@ async fn open_chrome_session(
             .ok_or_else(|| format!("empty targetId for {page_url}"))
     })?;
 
-    let session_id = send_cdp_cmd(
+    let session_result = send_cdp_cmd(
         &mut ws_tx,
         &mut ws_rx,
         None,
@@ -188,7 +193,14 @@ async fn open_chrome_session(
             .filter(|sid| !sid.is_empty())
             .map(str::to_string)
             .ok_or_else(|| format!("empty sessionId for {page_url}"))
-    })?;
+    });
+    let session_id = match session_result {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            close_cdp_target(&mut ws_tx, &mut ws_rx, &target_id).await;
+            return Err(error);
+        }
+    };
 
     Ok((ws_tx, ws_rx, target_id, session_id))
 }
@@ -317,16 +329,26 @@ pub(super) async fn render_html_with_chrome(
     // so a misconfigured value cannot hang indefinitely.
     let cmd_timeout = Duration::from_secs(timeout_secs.clamp(5, 120));
 
-    let (mut ws_tx, mut ws_rx, target_id, session_id) =
-        match open_chrome_session(chrome_ws_url, &resolved_ws_url, page_url, cmd_timeout).await {
-            Ok(session) => session,
-            Err(e) => {
-                log_warn(&format!(
-                    "thin_refetch: Chrome session failed for {page_url}: {e}"
-                ));
-                return None;
-            }
-        };
+    let bearer_token = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+    let (mut ws_tx, mut ws_rx, target_id, session_id) = match open_chrome_session(
+        chrome_ws_url,
+        &resolved_ws_url,
+        page_url,
+        cmd_timeout,
+        bearer_token.as_deref(),
+    )
+    .await
+    {
+        Ok(session) => session,
+        Err(e) => {
+            log_warn(&format!(
+                "thin_refetch: Chrome session failed for {page_url}: {e}"
+            ));
+            return None;
+        }
+    };
 
     let render_result = inject_and_render(
         &mut ws_tx,

@@ -11,11 +11,12 @@ use std::collections::HashMap;
 use axon_api::source::*;
 use qdrant_client::qdrant::{
     CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
-    FieldType, Filter, HnswConfigDiff, IsEmptyCondition, IsNullCondition, Match, NamedVectors,
-    OptimizersConfigDiff, PointStruct, QuantizationConfig, QuantizationType, ScalarQuantization,
-    SparseVector as QdrantSparseVector, SparseVectorConfig as QdrantSparseVectorConfig,
-    SparseVectorParams, Value, Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors,
-    VectorsConfig, condition, r#match, quantization_config, vector, vectors, vectors_config,
+    FieldType, Filter, HnswConfigDiff, IsEmptyCondition, IsNullCondition, Match, Memory,
+    NamedVectors, OptimizersConfigDiff, PointStruct, QuantizationConfig, QuantizationType,
+    ScalarQuantization, SparseVector as QdrantSparseVector,
+    SparseVectorConfig as QdrantSparseVectorConfig, SparseVectorParams, Value,
+    Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors, VectorsConfig, condition,
+    r#match, quantization_config, vector, vectors, vectors_config,
 };
 
 use crate::collection::{normalize_collection_spec, validate_collection_spec};
@@ -50,9 +51,10 @@ pub fn qdrant_collection_request_with_settings(
             distance: qdrant_distance(spec.dense.distance) as i32,
             hnsw_config: None,
             quantization_config: None,
-            on_disk: Some(settings.dense_on_disk),
             datatype: None,
             multivector_config: None,
+            memory: Some(qdrant_memory(settings.dense_on_disk) as i32),
+            ..Default::default()
         },
     );
 
@@ -79,9 +81,10 @@ pub fn qdrant_collection_request_with_settings(
             ef_construct: Some(settings.hnsw_ef_construct),
             full_scan_threshold: None,
             max_indexing_threads: None,
-            on_disk: Some(settings.hnsw_on_disk),
             payload_m: None,
             inline_storage: None,
+            memory: Some(qdrant_memory(settings.hnsw_on_disk) as i32),
+            ..Default::default()
         }),
         wal_config: None,
         optimizers_config: Some(OptimizersConfigDiff {
@@ -97,7 +100,6 @@ pub fn qdrant_collection_request_with_settings(
             prevent_unoptimized: None,
         }),
         shard_number: None,
-        on_disk_payload: None,
         timeout: None,
         replication_factor: None,
         write_consistency_factor: None,
@@ -106,14 +108,27 @@ pub fn qdrant_collection_request_with_settings(
                 ScalarQuantization {
                     r#type: QuantizationType::Int8 as i32,
                     quantile: Some(settings.quantization_quantile),
-                    always_ram: Some(settings.quantization_always_ram),
+                    memory: settings
+                        .quantization_always_ram
+                        .then_some(Memory::Pinned as i32),
+                    ..Default::default()
                 },
             )),
         }),
         sharding_method: None,
         strict_mode_config: None,
         metadata: HashMap::new(),
+        payload: None,
+        ..Default::default()
     })
+}
+
+fn qdrant_memory(on_disk: bool) -> Memory {
+    if on_disk {
+        Memory::Cold
+    } else {
+        Memory::Pinned
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

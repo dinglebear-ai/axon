@@ -562,6 +562,7 @@ fn validate_url_allows_ipv4_mapped_ipv6_public() {
 }
 
 #[tokio::test]
+#[allow(clippy::result_large_err)] // tungstenite's handshake callback fixes this Result error type.
 async fn spider_cdp_relay_injects_bearer_and_forwards_messages() {
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::tungstenite::Message;
@@ -599,7 +600,9 @@ async fn spider_cdp_relay_injects_bearer_and_forwards_messages() {
             .await
             .unwrap();
     assert!(!relay_url.contains("relay-contract-token"));
-    let (mut client, _) = tokio_tungstenite::connect_async(relay_url).await.unwrap();
+    let (mut client, _) = tokio_tungstenite::connect_async(relay_url.as_str())
+        .await
+        .unwrap();
     client
         .send(Message::Text("round-trip".into()))
         .await
@@ -613,6 +616,16 @@ async fn spider_cdp_relay_injects_bearer_and_forwards_messages() {
         Some("Bearer relay-contract-token")
     );
     upstream_task.await.unwrap();
+
+    let second_connection = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        tokio_tungstenite::connect_async(relay_url.as_str()),
+    )
+    .await;
+    assert!(
+        !matches!(second_connection, Ok(Ok(_))),
+        "authenticated CDP relay must stop accepting after its first session"
+    );
 }
 
 #[tokio::test]

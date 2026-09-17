@@ -59,6 +59,13 @@ class HeartbeatFailure(RuntimeError):
   super().__init__("provider heartbeat failed");self.provider=provider;self.cause=type(cause).__name__
  def evidence(self):return {"provider":self.provider,"operation":"lease-heartbeat","cause":self.cause}
 class HarnessError(RuntimeError):pass
+INHERITED_CHILD_ENV=("HOME","LANG","LC_ALL","LC_CTYPE","LOGNAME","NO_COLOR","PATH","SSL_CERT_DIR","SSL_CERT_FILE","TERM","TMPDIR","TZ","USER")
+def child_environment(namespace,sha,data_dir,data_tokens):
+ env={key:os.environ[key] for key in INHERITED_CHILD_ENV if key in os.environ}
+ env.update(AXON_E2E_LIVE="1",AXON_E2E_NAMESPACE=namespace,AXON_E2E_TESTED_SHA=sha,AXON_DATA_DIR=str(data_dir),AXON_COLLECTION=namespace,
+  QDRANT_URL=os.environ["AXON_E2E_QDRANT_GATEWAY_URL"],QDRANT_API_KEY=data_tokens["qdrant"],TEI_URL=os.environ["AXON_E2E_TEI_GATEWAY_URL"],AXON_TEI_BEARER_TOKEN=data_tokens["tei"],AXON_CHROME_REMOTE_URL=os.environ["AXON_E2E_CHROME_GATEWAY_URL"],AXON_CHROME_BEARER_TOKEN=data_tokens["chrome"],
+  AXON_LLM_BACKEND="openai-compat",AXON_OPENAI_BASE_URL=os.environ["AXON_E2E_LLM_GATEWAY_URL"]+"/v1",AXON_OPENAI_API_KEY=data_tokens["llm"])
+ return env
 def validate_plan(plan,checked,sha):
  supported={"grounded-citations","nonempty-answer","job-terminal","ownership-markers","zero-residuals"}
  declared=plan.get("invariants") if isinstance(plan,dict) else None
@@ -71,21 +78,36 @@ def validate_plan(plan,checked,sha):
  if checked!=sha or any(binary!=expected for binary in binaries):raise HarnessError("scenario binary is not the locally built tested commit")
  return declared
 class Heartbeats:
- def __init__(self,leases,namespace,run_id,attempt,interval):self.leases,self.namespace,self.run_id,self.attempt,self.interval=leases,namespace,run_id,attempt,interval;self.stop=threading.Event();self.error=None;self.thread=threading.Thread(target=self._run,daemon=True)
- def _beat(self):
-  for item,lease in self.leases:
-   try:
-    beat=call(os.environ[item["url_env"]].rstrip("/")+f"/v1/e2e/leases/{lease['lease_id']}/heartbeat",os.environ[item["auth_env"]],"PATCH",{"namespace":self.namespace,"owner":"dinglebear-ai/axon","run_id":self.run_id,"run_attempt":self.attempt})
-    required={"status","heartbeat_at","expires_at","namespace","owner","run_id","run_attempt"}
-    if set(beat)!=required or (beat["status"],beat["namespace"],beat["owner"],beat["run_id"],beat["run_attempt"])!=("renewed",self.namespace,"dinglebear-ai/axon",self.run_id,self.attempt):raise RuntimeError("ownership mismatch")
-    if dt.datetime.fromisoformat(beat["expires_at"].replace("Z","+00:00"))<=dt.datetime.now(dt.timezone.utc):raise RuntimeError("expiry not renewed")
-   except Exception as error:raise HeartbeatFailure(item["name"],error) from error
- def _run(self):
+ def __init__(self,leases,namespace,run_id,attempt,interval):self.leases,self.namespace,self.run_id,self.attempt,self.interval=list(leases),namespace,run_id,attempt,interval;self.stop=threading.Event();self.error=None;self.error_lock=threading.Lock();self.threads=[];self.started=False
+ def _beat_one(self,item,lease):
   try:
-   while not self.stop.is_set():self._beat();self.stop.wait(self.interval)
-  except Exception as error:self.error=error;self.stop.set()
- def __enter__(self):self.thread.start();return self
- def __exit__(self,*_args):self.stop.set();self.thread.join(timeout=max(2,self.interval+1))
+   beat=call(os.environ[item["url_env"]].rstrip("/")+f"/v1/e2e/leases/{lease['lease_id']}/heartbeat",os.environ[item["auth_env"]],"PATCH",{"namespace":self.namespace,"owner":"dinglebear-ai/axon","run_id":self.run_id,"run_attempt":self.attempt})
+   required={"status","heartbeat_at","expires_at","namespace","owner","run_id","run_attempt"}
+   if set(beat)!=required or (beat["status"],beat["namespace"],beat["owner"],beat["run_id"],beat["run_attempt"])!=("renewed",self.namespace,"dinglebear-ai/axon",self.run_id,self.attempt):raise RuntimeError("ownership mismatch")
+   if dt.datetime.fromisoformat(beat["expires_at"].replace("Z","+00:00"))<=dt.datetime.now(dt.timezone.utc):raise RuntimeError("expiry not renewed")
+  except Exception as error:raise HeartbeatFailure(item["name"],error) from error
+ def _beat(self):
+  for item,lease in self.leases:self._beat_one(item,lease)
+ def _run(self,item,lease):
+  try:
+   while not self.stop.is_set():self._beat_one(item,lease);self.stop.wait(self.interval)
+  except Exception as error:
+   with self.error_lock:
+    if self.error is None:self.error=error
+   self.stop.set()
+ def _start(self,item,lease):
+  thread=threading.Thread(target=self._run,args=(item,lease),daemon=True);self.threads.append(thread);thread.start()
+ def add(self,item,lease):
+  self.leases.append((item,lease))
+  if self.started:self._start(item,lease)
+ def __enter__(self):
+  self.started=True
+  for item,lease in self.leases:self._start(item,lease)
+  return self
+ def __exit__(self,*_args):
+  self.stop.set()
+  deadline=time.monotonic()+max(22,self.interval+1)
+  for thread in self.threads:thread.join(timeout=max(0,deadline-time.monotonic()))
 def run_owned(manifest,run_root,scenario,env,heartbeats):
  capture=run_root/f"scenario-{scenario['id']}";managed=isolation.spawn_owned_process(manifest,run_root,scenario["argv"],env=env,capture_prefix=capture)
  stdout_path=capture.with_suffix(".stdout");stderr_path=capture.with_suffix(".stderr");manifest.register("output",str(stdout_path));manifest.register("output",str(stderr_path))
@@ -121,9 +143,10 @@ def main():
  namespace=f"axon_e2e_{run_id}_{attempt}_{secrets.token_hex(8)}";leases=[];data_tokens={};started=time.time();failure=None;failure_detail=None;outcomes=[];declared=[];plan_digest=None
  run_root=owned_root/"runs"/namespace;data_dir=run_root/"data";data_dir.mkdir(parents=True,mode=0o700)
  manifest=isolation.Manifest.create(owned_root/"manifests",namespace,data_dir);register_for_outer_cleanup(manifest.path);manifest.register("data_dir",str(data_dir));manifest.register("sqlite",str(data_dir/"jobs.db"))
- cancellation=CancellationShield();cancellation.install()
+ cancellation=CancellationShield();cancellation.install();heartbeats=Heartbeats([],namespace,run_id,attempt,min(30,config["heartbeat_seconds"]));heartbeats.__enter__()
  try:
   for item in config["providers"]:
+   if heartbeats.error is not None:raise heartbeats.error
    url=os.environ[item["url_env"]].rstrip("/")+"/v1/e2e/leases";token=os.environ[item["auth_env"]]
    janitor=call(url+"/reap",token,"POST",{"owner":"dinglebear-ai/axon","expired_only":True,"residual_audit":True})
    if janitor!={"status":"passed","residuals":[]}:raise RuntimeError("provider stale-lease janitor failed")
@@ -137,29 +160,23 @@ def main():
    if (lease["lease_id"],lease["expires_at"],lease["heartbeat_at"])!=(lease_id,expires_at,heartbeat_at):raise RuntimeError("provider did not honor signed lease identity/times")
    if dt.datetime.fromisoformat(lease["expires_at"].replace("Z","+00:00"))<=dt.datetime.now(dt.timezone.utc):raise RuntimeError("provider lease is already expired")
    state={key:lease[key] for key in ("lease_id","namespace","provider","owner","run_id","run_attempt")};teardown.manifest_api.write_provider_ledger(header,resource,state)
-   leases.append((item,lease))
-  env=dict(os.environ)
-  for item in config["providers"]:env.pop(item["auth_env"],None)
-  env.update(AXON_E2E_LIVE="1",AXON_E2E_NAMESPACE=namespace,AXON_E2E_TESTED_SHA=sha,AXON_DATA_DIR=str(data_dir),AXON_COLLECTION=namespace,
-   QDRANT_URL=os.environ["AXON_E2E_QDRANT_GATEWAY_URL"],QDRANT_API_KEY=data_tokens["qdrant"],TEI_URL=os.environ["AXON_E2E_TEI_GATEWAY_URL"],AXON_TEI_BEARER_TOKEN=data_tokens["tei"],AXON_CHROME_REMOTE_URL=os.environ["AXON_E2E_CHROME_GATEWAY_URL"],AXON_CHROME_BEARER_TOKEN=data_tokens["chrome"],
-   AXON_LLM_BACKEND="openai-compat",AXON_OPENAI_BASE_URL=os.environ["AXON_E2E_LLM_GATEWAY_URL"]+"/v1",AXON_OPENAI_API_KEY=data_tokens["llm"])
+   leases.append((item,lease));heartbeats.add(item,lease)
+  env=child_environment(namespace,sha,data_dir,data_tokens)
   plan=json.loads(a.scenario_plan.read_text())
   plan_digest=hashlib.sha256(a.scenario_plan.read_bytes()).hexdigest()
   checked=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip()
   declared=validate_plan(plan,checked,sha)
-  for key in ("AXON_SERVER_URL","AXON_REMOTE_URL","AXON_API_URL"):env.pop(key,None)
-  with Heartbeats(leases,namespace,run_id,attempt,min(30,config["heartbeat_seconds"])) as heartbeats:
-   for scenario in plan["commands"]:
-    if failure is not None or heartbeats.error is not None:break
-    result=run_owned(manifest,run_root,scenario,env,heartbeats)
-    passed=result.returncode==0 and oracle(scenario["oracle"],result.stdout)
-    assertions=[{"id":"job-terminal","passed":result.returncode==0,"kind":"exit-status"},
-                {"id":"ownership-markers","passed":True,"kind":"lease-ownership","namespace":namespace}]
-    if scenario["oracle"]=="grounded-json":assertions.append({"id":"grounded-citations","passed":oracle("grounded-json",result.stdout),"kind":"typed-json"})
-    if scenario["oracle"]=="nonempty":assertions.append({"id":"nonempty-answer","passed":oracle("nonempty",result.stdout),"kind":"bytes"})
-    outcomes.append({"id":scenario["id"],"oracle":scenario["oracle"],"passed":passed and all(item["passed"] for item in assertions),"returncode":result.returncode,"assertions":assertions})
-    if not passed:failure="product"
-   if heartbeats.error is not None:raise heartbeats.error
+  for scenario in plan["commands"]:
+   if failure is not None or heartbeats.error is not None:break
+   result=run_owned(manifest,run_root,scenario,env,heartbeats)
+   passed=result.returncode==0 and oracle(scenario["oracle"],result.stdout)
+   assertions=[{"id":"job-terminal","passed":result.returncode==0,"kind":"exit-status"},
+               {"id":"ownership-markers","passed":True,"kind":"lease-ownership","namespace":namespace}]
+   if scenario["oracle"]=="grounded-json":assertions.append({"id":"grounded-citations","passed":oracle("grounded-json",result.stdout),"kind":"typed-json"})
+   if scenario["oracle"]=="nonempty":assertions.append({"id":"nonempty-answer","passed":oracle("nonempty",result.stdout),"kind":"bytes"})
+   outcomes.append({"id":scenario["id"],"oracle":scenario["oracle"],"passed":passed and all(item["passed"] for item in assertions),"returncode":result.returncode,"assertions":assertions})
+   if not passed:failure="product"
+  if heartbeats.error is not None:raise heartbeats.error
  except HeartbeatFailure as error:failure="provider";failure_detail=error.evidence()
  except HarnessError as error:failure="harness";failure_detail=type(error).__name__
  except subprocess.TimeoutExpired as error:failure="timeout";failure_detail=type(error).__name__
@@ -170,7 +187,7 @@ def main():
  except urllib.error.URLError as error:failure="network";failure_detail=type(error.reason).__name__
  except (RuntimeError,OSError,ValueError) as error:failure="provider";failure_detail=type(error).__name__
  finally:
-  cancellation.begin_cleanup()
+  cancellation.begin_cleanup();heartbeats.__exit__()
   provider_config=a.report.with_name("live-provider-adapters.json");provider_config.write_text(json.dumps({"providers":{"live-gateways":{"kind":"gateway-lease","resource_types":["provider_reservation"]}}}))
   header,_=teardown.manifest_api.load(manifest.path);adapters=teardown.provider_api.build(provider_config,header,teardown.manifest_api);receipt=teardown.Engine(manifest.path,adapters).run().json();provider_config.unlink(missing_ok=True)
   cleanup=[{"provider":"canonical-teardown","passed":receipt["success"] and not receipt["residual"] and not receipt["refused"]}]

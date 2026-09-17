@@ -3,9 +3,11 @@ use super::{
     ExtractWebConfig, FallbackConfig, PageCollectResult, all_fallback_attempts_failed,
     collect_page_results, run_single_url_extract,
 };
+use crate::config::parse::docker::running_in_container;
 use crate::config::parse::is_docker_service_host;
 use crate::http::{
-    cdp_discovery_url, cdp_spider_connection_url, http_client, ssrf_blacklist_patterns,
+    cdp_discovery_url, cdp_spider_connection_url, http_client,
+    internal_service_no_redirect_http_client, ssrf_blacklist_patterns,
 };
 use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::url::Url;
@@ -17,8 +19,10 @@ use std::sync::Arc;
 /// `src/crawl/engine/runtime.rs::resolve_cdp_ws_url`.
 ///
 /// - Already a `ws://`/`wss://` URL → return as-is (no extra round-trip).
-/// - Inside Docker (`/.dockerenv` exists) → return the raw management URL;
-///   spider resolves the WS URL itself on the Docker bridge network.
+/// - Inside a container without bearer authentication → return the raw
+///   management URL; spider resolves it on the container bridge network.
+/// - Authenticated endpoints → resolve the WebSocket URL so the caller can
+///   attach the bearer credential to its handshake.
 /// - Otherwise → fetch `/json/version`, extract `webSocketDebuggerUrl`, and
 ///   rewrite any Docker service hostname to `127.0.0.1` so the host CLI can
 ///   reach the Chrome proxy.
@@ -34,7 +38,8 @@ async fn resolve_chrome_url(remote_url: &str) -> Result<String, String> {
         .ok()
         .filter(|token| !token.is_empty());
     let authenticated = chrome_bearer.is_some();
-    if tokio::fs::try_exists("/.dockerenv").await.unwrap_or(false) && !authenticated {
+    let in_container = running_in_container();
+    if in_container && !authenticated {
         return Ok(remote_url.to_string());
     }
 
@@ -46,7 +51,10 @@ async fn resolve_chrome_url(remote_url: &str) -> Result<String, String> {
         };
     };
 
-    let Ok(client) = http_client() else {
+    // Chrome is an operator-configured internal provider. The public-fetch
+    // client intentionally rejects private, loopback, and Tailscale addresses,
+    // so use the no-redirect internal client for discovery.
+    let Ok(client) = internal_service_no_redirect_http_client() else {
         return if authenticated {
             Err("authenticated Chrome discovery client is unavailable".to_string())
         } else {
@@ -58,7 +66,11 @@ async fn resolve_chrome_url(remote_url: &str) -> Result<String, String> {
     if let Some(token) = chrome_bearer {
         request = request.bearer_auth(token);
     }
-    let Ok(resp) = request.send().await else {
+    let Ok(resp) = request
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+    else {
         return if authenticated {
             Err("authenticated Chrome discovery request failed".to_string())
         } else {
@@ -97,7 +109,7 @@ async fn resolve_chrome_url(remote_url: &str) -> Result<String, String> {
 
     if let Some(host) = parsed.host_str() {
         let host = host.to_string();
-        if is_docker_service_host(&host) {
+        if !in_container && is_docker_service_host(&host) {
             let _ = parsed.set_host(Some("127.0.0.1"));
         }
     }

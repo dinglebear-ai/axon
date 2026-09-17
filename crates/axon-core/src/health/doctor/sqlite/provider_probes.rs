@@ -23,13 +23,31 @@ pub(super) struct ProbeAuth {
 }
 
 impl ProbeAuth {
-    fn from_env(env_name: &str, header_name: HeaderName, prefix: &str) -> Option<Self> {
-        let token = std::env::var(env_name)
-            .ok()
-            .filter(|value| !value.trim().is_empty())?;
-        let mut value = HeaderValue::from_str(&format!("{prefix}{token}")).ok()?;
+    fn from_env(
+        env_name: &str,
+        header_name: HeaderName,
+        prefix: &str,
+    ) -> Result<Option<Self>, String> {
+        let token = match std::env::var(env_name) {
+            Ok(value) if !value.trim().is_empty() => value,
+            Ok(_) | Err(std::env::VarError::NotPresent) => return Ok(None),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(format!("{env_name} is not valid Unicode"));
+            }
+        };
+        Self::from_value(env_name, header_name, prefix, &token).map(Some)
+    }
+
+    pub(super) fn from_value(
+        env_name: &str,
+        header_name: HeaderName,
+        prefix: &str,
+        token: &str,
+    ) -> Result<Self, String> {
+        let mut value = HeaderValue::from_str(&format!("{prefix}{token}"))
+            .map_err(|_| format!("{env_name} cannot be encoded as an HTTP header"))?;
         value.set_sensitive(true);
-        Some(Self {
+        Ok(Self {
             name: header_name,
             value,
         })
@@ -58,30 +76,50 @@ pub(super) async fn collect_service_probes(cfg: &Config) -> ServiceProbes {
                 reqwest::header::AUTHORIZATION,
                 "Bearer ",
             );
-            let ((tei, tei_latency_ms), (qdrant, _), (chrome, _)) = spider::tokio::join!(
-                timed_probe(probe_internal_http(
-                    client,
-                    &cfg.tei_url,
-                    &["/health", "/"],
-                    tei_auth.as_ref(),
-                )),
-                timed_probe(probe_internal_http(
-                    client,
-                    &cfg.qdrant_url,
-                    &["/healthz", "/"],
-                    qdrant_auth.as_ref(),
-                )),
-                timed_probe(probe_internal_chrome(
-                    client,
-                    chrome_url,
-                    chrome_auth.as_ref()
-                )),
-            );
-            let (tei_info, _) = match tei_auth.as_ref() {
-                Some(auth) => {
+            let tei_probe = async {
+                match &tei_auth {
+                    Ok(auth) => {
+                        timed_probe(probe_internal_http(
+                            client,
+                            &cfg.tei_url,
+                            &["/health", "/"],
+                            auth.as_ref(),
+                        ))
+                        .await
+                    }
+                    Err(error) => ((false, Some(error.clone())), 0),
+                }
+            };
+            let qdrant_probe = async {
+                match &qdrant_auth {
+                    Ok(auth) => {
+                        timed_probe(probe_internal_http(
+                            client,
+                            &cfg.qdrant_url,
+                            &["/healthz", "/"],
+                            auth.as_ref(),
+                        ))
+                        .await
+                    }
+                    Err(error) => ((false, Some(error.clone())), 0),
+                }
+            };
+            let chrome_probe = async {
+                match &chrome_auth {
+                    Ok(auth) => {
+                        timed_probe(probe_internal_chrome(client, chrome_url, auth.as_ref())).await
+                    }
+                    Err(error) => ((false, Some(error.clone())), 0),
+                }
+            };
+            let ((tei, tei_latency_ms), (qdrant, _), (chrome, _)) =
+                spider::tokio::join!(tei_probe, qdrant_probe, chrome_probe);
+            let (tei_info, _) = match &tei_auth {
+                Ok(Some(auth)) => {
                     timed_probe(probe_authenticated_tei_info(&cfg.tei_url, client, auth)).await
                 }
-                None => timed_probe(probe_tei_info(&cfg.tei_url, client)).await,
+                Ok(None) => timed_probe(probe_tei_info(&cfg.tei_url, client)).await,
+                Err(error) => ((None, Some(error.clone())), 0),
             };
 
             ServiceProbes {
@@ -143,7 +181,7 @@ pub(super) async fn probe_internal_http(
         {
             Ok(resp) => {
                 let status = resp.status();
-                if status.is_success() || status.is_redirection() {
+                if status.is_success() {
                     return (true, Some(format!("http {}", status.as_u16())));
                 }
                 last_error = Some(format!("http {}", status.as_u16()));
@@ -232,8 +270,11 @@ pub(super) async fn probe_collection_info_if_reachable(
     let Ok(client) = internal_service_no_redirect_http_client() else {
         return (None, None);
     };
-    let auth = ProbeAuth::from_env("QDRANT_API_KEY", HeaderName::from_static("api-key"), "");
-    probe_collection_info(&client, &cfg.qdrant_url, &cfg.collection, auth.as_ref()).await
+    let Ok(auth) = ProbeAuth::from_env("QDRANT_API_KEY", HeaderName::from_static("api-key"), "")
+    else {
+        return (None, None);
+    };
+    probe_collection_info(client, &cfg.qdrant_url, &cfg.collection, auth.as_ref()).await
 }
 
 /// GET `/collections/{name}`, classify the vectors block, and extract the dense vector size.
