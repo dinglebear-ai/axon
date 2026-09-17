@@ -115,6 +115,46 @@ fn github_clone_argv_uses_env_backed_credentials_without_embedding_secret() {
     assert!(helper < clone);
 }
 
+#[test]
+fn github_credential_helper_is_consumed_by_git_without_url_secret() {
+    use std::io::Write as _;
+
+    let synthetic_token = "synthetic-private-repo-token";
+    let helper = credential_helper_config(GITHUB_TOKEN_ENV);
+    let mut child = std::process::Command::new("git")
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            &helper,
+            "credential",
+            "fill",
+        ])
+        .env(GITHUB_TOKEN_ENV, synthetic_token)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git must be installed for git adapter tests");
+
+    child
+        .stdin
+        .take()
+        .expect("credential fill stdin")
+        .write_all(b"protocol=https\nhost=github.com\n\n")
+        .expect("write credential query");
+    let output = child.wait_with_output().expect("credential fill completes");
+    assert!(
+        output.status.success(),
+        "credential helper failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("credential output is utf-8");
+    assert!(stdout.contains("username=x-access-token"));
+    assert!(stdout.contains(&format!("password={synthetic_token}")));
+}
+
 #[tokio::test]
 async fn clone_git_repo_rejects_ssrf_target() {
     // A loopback/private target is rejected before any git process is spawned.
