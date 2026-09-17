@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.3.7] - 2026-09-17
+
+### Fixed
+
+- Plain vector search now hides staged points (no `committed_generation`) and
+  retired points (`retired_epoch` set), matching the live-snapshot fence that
+  `retrieve` already applied. On the homelab collection that was ~109K of
+  751K points leaking into results. `query` also keeps only the newest
+  committed generation per document.
+- `ask` context admission skips a chunk that does not fit the remaining
+  context budget instead of stopping, so one oversized chunk no longer starves
+  every later result. Sources are numbered in admitted order.
+- `ask --explain` identifies selected chunks by chunk ID, and reports dense
+  cosine scoring when hybrid search is disabled instead of always claiming RRF.
+
+## [7.3.6] - 2026-09-17
+
+### Fixed
+
+- `doctor` gives OpenAI-compatible LLM backends up to 90s for the round-trip
+  probe instead of the 12s local-backend ceiling, so slower remote runtimes no
+  longer report as down.
+
+### Security
+
+- Update `rustls` to 0.23.45 for RUSTSEC-2026-0285 (TLS 1.3 handshake messages
+  accepted across encryption level boundaries).
+
 ## [7.3.5] - 2026-09-12
 
 ### Fixed

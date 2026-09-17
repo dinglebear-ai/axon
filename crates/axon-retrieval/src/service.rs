@@ -6,6 +6,7 @@
 //! public request/result DTOs and constructs the (crate-private) engine from a
 //! runtime-held vector store + embedding provider.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axon_api::result::CanonicalCitation;
@@ -98,10 +99,15 @@ pub async fn run_query(
     // runtime-held trait objects by wrapping each in one more `Arc`.
     let engine = RetrievalEngine::new(Arc::new(store), Arc::new(provider), config);
 
+    let requested_limit = request.limit.max(1);
     let retrieval_request = RetrievalRequest {
         query: request.query,
         collection: request.collection,
-        limit: request.limit.max(1),
+        // Over-fetch before generation reconciliation so a stranded live historical
+        // generation cannot consume the entire public result window. Qdrant also
+        // filters retired generations, so this primarily covers legacy/cutover
+        // fossils whose `retired_epoch` was never stamped.
+        limit: requested_limit.saturating_mul(2),
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
@@ -119,7 +125,7 @@ pub async fn run_query(
 
     let result = engine.retrieve(retrieval_request).await?;
 
-    let hits = result
+    let mut hits: Vec<_> = result
         .matches
         .into_iter()
         .map(|item| {
@@ -144,7 +150,48 @@ pub async fn run_query(
         })
         .collect();
 
+    retain_latest_document_generations(&mut hits);
+    hits.truncate(requested_limit as usize);
+
     Ok(QueryServiceResult { hits })
+}
+
+/// Remove hits from older committed generations of the same stable document.
+///
+/// Normal Qdrant search already excludes retired points. This second fence is
+/// intentionally defensive: legacy/cutover indexes can contain an older
+/// committed generation whose `retired_epoch` was never stamped. Keeping only
+/// the greatest numeric generation observed for each `(source_id, document_id)`
+/// prevents those fossils from duplicating or outranking current content. An
+/// opaque/non-numeric generation is retained rather than guessed about.
+fn retain_latest_document_generations(hits: &mut Vec<QueryServiceHit>) {
+    let mut latest: HashMap<(String, String), u64> = HashMap::new();
+    for hit in hits.iter() {
+        let Ok(generation) = hit.citation.generation.0.parse::<u64>() else {
+            continue;
+        };
+        let key = (
+            hit.citation.source_id.0.clone(),
+            hit.citation.document_id.0.clone(),
+        );
+        latest
+            .entry(key)
+            .and_modify(|current| *current = (*current).max(generation))
+            .or_insert(generation);
+    }
+
+    hits.retain(|hit| {
+        let Ok(generation) = hit.citation.generation.0.parse::<u64>() else {
+            return true;
+        };
+        let key = (
+            hit.citation.source_id.0.clone(),
+            hit.citation.document_id.0.clone(),
+        );
+        latest
+            .get(&key)
+            .is_none_or(|current| *current == generation)
+    });
 }
 
 /// Resolve the embedding provider's authoritative identity from `capabilities()`,

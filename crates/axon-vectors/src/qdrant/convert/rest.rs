@@ -252,6 +252,20 @@ pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_
             &serde_json::Value::from(generation_payload_i64(generation, SEARCH_GENERATION_FIELD)?),
         ));
     }
+
+    // Unscoped search reads the live committed snapshot. Published points from
+    // older source generations remain in Qdrant for lineage/history and are
+    // marked with `retired_epoch`; staged points keep `committed_generation`
+    // null until publish. An explicit generation is a historical committed-
+    // generation lookup, so its equality predicate is sufficient and must not
+    // be constrained to the current live snapshot.
+    if request.generation.is_none() {
+        must.push(serde_json::json!({ "is_null": { "key": "retired_epoch" } }));
+        must_not.push(serde_json::json!({
+            "is_null": { "key": crate::filter::COMMITTED_GENERATION }
+        }));
+    }
+
     Ok((!must.is_empty() || !must_not.is_empty()).then(|| {
         let mut filter = serde_json::Map::new();
         if !must.is_empty() {
