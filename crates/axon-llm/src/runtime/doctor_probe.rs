@@ -16,10 +16,15 @@ use crate::runtime::codex_app_server::probe_codex_capabilities;
 use crate::runtime::complete_text;
 use crate::runtime::headless::gemini::validate_config;
 
-/// Hard ceiling on how long the doctor LLM round-trip is allowed to take.
-/// Independent of `completion_timeout_secs` (which can be 300s) so `doctor`
-/// stays fast and never hangs on an unreachable backend.
-const LLM_PROBE_TIMEOUT_SECS: u64 = 12;
+/// Fast ceiling for local/CLI-backed doctor round-trips. These providers should
+/// either answer or fail quickly, so `doctor` must not inherit a long user timeout.
+const FAST_LLM_PROBE_TIMEOUT_SECS: u64 = 12;
+
+/// OpenAI-compatible endpoints can legitimately front slower remote runtimes
+/// (including browser-backed providers). Give them enough time to complete a
+/// real round-trip while still bounding `doctor` well below the normal 300s
+/// completion timeout.
+const OPENAI_COMPAT_LLM_PROBE_TIMEOUT_SECS: u64 = 90;
 
 /// Run the doctor's LLM legs (deep round-trip, gemini command validation, and —
 /// for codex — the capability probe) and return them for injection into the
@@ -63,9 +68,9 @@ async fn probe_llm_roundtrip(cfg: &Config) -> (bool, String) {
     // Build a request from cfg but clamp the per-call timeout to the probe
     // ceiling so a misconfigured long timeout can't stall the doctor.
     let mut backend = LlmBackendConfig::from_config(cfg);
-    backend.completion_timeout_secs = backend
-        .completion_timeout_secs
-        .clamp(1, LLM_PROBE_TIMEOUT_SECS);
+    let probe_timeout_secs =
+        doctor_probe_timeout_secs(backend.kind, backend.completion_timeout_secs);
+    backend.completion_timeout_secs = probe_timeout_secs;
 
     let req = CompletionRequest {
         system_prompt: Some("Reply with the single word: ok".to_string()),
@@ -77,7 +82,7 @@ async fn probe_llm_roundtrip(cfg: &Config) -> (bool, String) {
     };
 
     let probe = complete_text(req);
-    match tokio::time::timeout(Duration::from_secs(LLM_PROBE_TIMEOUT_SECS), probe).await {
+    match tokio::time::timeout(Duration::from_secs(probe_timeout_secs), probe).await {
         Ok(Ok(resp)) => {
             let preview: String = resp.text.trim().chars().take(40).collect();
             (
@@ -92,9 +97,19 @@ async fn probe_llm_roundtrip(cfg: &Config) -> (bool, String) {
         }
         Err(_) => (
             false,
-            format!("LLM round-trip timed out after {LLM_PROBE_TIMEOUT_SECS}s"),
+            format!("LLM round-trip timed out after {probe_timeout_secs}s"),
         ),
     }
+}
+
+fn doctor_probe_timeout_secs(kind: LlmBackendKind, configured_timeout_secs: u64) -> u64 {
+    let ceiling = match kind {
+        LlmBackendKind::OpenAiCompat => OPENAI_COMPAT_LLM_PROBE_TIMEOUT_SECS,
+        LlmBackendKind::GeminiHeadless | LlmBackendKind::CodexAppServer => {
+            FAST_LLM_PROBE_TIMEOUT_SECS
+        }
+    };
+    configured_timeout_secs.clamp(1, ceiling)
 }
 
 /// Shallow gemini-headless command/config validation: `(ok, detail)`.
@@ -106,5 +121,47 @@ fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
             "Gemini headless command validation passed".to_string(),
         ),
         Err(err) => (false, err.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openai_compat_probe_allows_slow_bounded_roundtrips() {
+        assert_eq!(
+            doctor_probe_timeout_secs(LlmBackendKind::OpenAiCompat, 300),
+            OPENAI_COMPAT_LLM_PROBE_TIMEOUT_SECS
+        );
+    }
+
+    #[test]
+    fn openai_compat_probe_honors_shorter_configured_timeout() {
+        assert_eq!(
+            doctor_probe_timeout_secs(LlmBackendKind::OpenAiCompat, 45),
+            45
+        );
+    }
+
+    #[test]
+    fn local_backends_keep_fast_probe_ceiling() {
+        for kind in [
+            LlmBackendKind::GeminiHeadless,
+            LlmBackendKind::CodexAppServer,
+        ] {
+            assert_eq!(
+                doctor_probe_timeout_secs(kind, 300),
+                FAST_LLM_PROBE_TIMEOUT_SECS
+            );
+        }
+    }
+
+    #[test]
+    fn probe_timeout_never_drops_below_one_second() {
+        assert_eq!(
+            doctor_probe_timeout_secs(LlmBackendKind::OpenAiCompat, 0),
+            1
+        );
     }
 }
