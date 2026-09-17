@@ -195,6 +195,11 @@ jobs:
       - name: Set up Android SDK
         if: matrix.language == 'java-kotlin'
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          # Use the hosted runner SDK as-is. The action's historical default
+          # tries to install the retired `tools` package, which sdkmanager no
+          # longer publishes and causes CodeQL to fail before initialization.
+          packages: ""
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@fddeee1a7ece751b577e409a89057319e3172939 # v4
