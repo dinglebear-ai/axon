@@ -5,11 +5,14 @@
 //! to recover thin pages while the HTTP crawl is still in progress.
 
 use axon_core::content::bytes_to_markdown;
+use axon_core::http::{cdp_websocket_bearer_header, cdp_websocket_origin_is_authorized};
 use axon_core::logging::log_warn;
 use futures_util::{SinkExt, StreamExt};
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
 /// Process-wide CDP message ID counter shared across all inline Chrome renders.
 static REFETCH_CDP_ID: AtomicU64 = AtomicU64::new(1_000_000);
@@ -91,9 +94,11 @@ where
 ///
 /// The caller is responsible for sending `Target.closeTarget` when done with the session.
 async fn open_chrome_session(
+    remote_url: &str,
     browser_ws_url: &str,
     page_url: &str,
     cmd_timeout: Duration,
+    bearer_token: Option<&str>,
 ) -> Result<
     (
         impl SinkExt<
@@ -117,19 +122,38 @@ async fn open_chrome_session(
     let port = parsed.port().unwrap_or(9222);
     let addr = format!("{host}:{port}");
 
-    // Normalize wss:// to ws:// for loopback connections — Chrome on localhost
-    // never serves TLS on its CDP endpoint.
+    if !cdp_websocket_origin_is_authorized(remote_url, browser_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {browser_ws_url}"
+        ));
+    }
+
+    // Normalize wss:// to ws:// only after validating the discovered origin.
+    // Chrome on localhost never serves TLS on its CDP endpoint. An authenticated
+    // endpoint still fails closed below because bearer credentials may not be
+    // sent over a downgraded connection.
     let is_loopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
     let effective_ws_url = if parsed.scheme() == "wss" && is_loopback {
         browser_ws_url.replacen("wss://", "ws://", 1)
     } else {
         browser_ws_url.to_string()
     };
+    let mut request = effective_ws_url
+        .as_str()
+        .into_client_request()
+        .map_err(|e| format!("invalid Chrome WS handshake URL {effective_ws_url}: {e}"))?;
+    if let Some(token) = bearer_token.filter(|token| !token.is_empty()) {
+        let header =
+            cdp_websocket_bearer_header(remote_url, &effective_ws_url, token).ok_or_else(|| {
+                "authenticated Chrome WebSocket origin or bearer token is invalid".to_string()
+            })?;
+        request.headers_mut().insert(AUTHORIZATION, header);
+    }
 
     // connect_async handles both ws:// and wss:// (via rustls-tls-native-roots feature).
     let (stream, _resp) = tokio::time::timeout(
         Duration::from_secs(5),
-        tokio_tungstenite::connect_async(&effective_ws_url),
+        tokio_tungstenite::connect_async(request),
     )
     .await
     .map_err(|_| format!("timeout during WS handshake with Chrome at {addr}"))?
@@ -154,7 +178,7 @@ async fn open_chrome_session(
             .ok_or_else(|| format!("empty targetId for {page_url}"))
     })?;
 
-    let session_id = send_cdp_cmd(
+    let session_result = send_cdp_cmd(
         &mut ws_tx,
         &mut ws_rx,
         None,
@@ -169,7 +193,14 @@ async fn open_chrome_session(
             .filter(|sid| !sid.is_empty())
             .map(str::to_string)
             .ok_or_else(|| format!("empty sessionId for {page_url}"))
-    })?;
+    });
+    let session_id = match session_result {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            close_cdp_target(&mut ws_tx, &mut ws_rx, &target_id).await;
+            return Err(error);
+        }
+    };
 
     Ok((ws_tx, ws_rx, target_id, session_id))
 }
@@ -298,16 +329,26 @@ pub(super) async fn render_html_with_chrome(
     // so a misconfigured value cannot hang indefinitely.
     let cmd_timeout = Duration::from_secs(timeout_secs.clamp(5, 120));
 
-    let (mut ws_tx, mut ws_rx, target_id, session_id) =
-        match open_chrome_session(&resolved_ws_url, page_url, cmd_timeout).await {
-            Ok(session) => session,
-            Err(e) => {
-                log_warn(&format!(
-                    "thin_refetch: Chrome session failed for {page_url}: {e}"
-                ));
-                return None;
-            }
-        };
+    let bearer_token = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+    let (mut ws_tx, mut ws_rx, target_id, session_id) = match open_chrome_session(
+        chrome_ws_url,
+        &resolved_ws_url,
+        page_url,
+        cmd_timeout,
+        bearer_token.as_deref(),
+    )
+    .await
+    {
+        Ok(session) => session,
+        Err(e) => {
+            log_warn(&format!(
+                "thin_refetch: Chrome session failed for {page_url}: {e}"
+            ));
+            return None;
+        }
+    };
 
     let render_result = inject_and_render(
         &mut ws_tx,

@@ -19,17 +19,32 @@ class GatewayLeaseAdapter:
                 if error.code==404:return None
                 raise ProviderError("gateway lease request failed") from error
             finally:error.close()
+    @staticmethod
+    def _owned_state(resource,body):
+        required={"lease_id","namespace","provider","owner","run_id","run_attempt","expires_at","heartbeat_at"}
+        if not isinstance(body,dict) or set(body)!=required:raise ProviderError("gateway provider-visible lease shape changed")
+        expected=(resource.metadata["lease_id"],resource.metadata["namespace"],resource.metadata["provider"],resource.metadata["gateway_owner"],resource.metadata["github_run_id"],resource.metadata["run_attempt"])
+        observed=tuple(body[key] for key in ("lease_id","namespace","provider","owner","run_id","run_attempt"))
+        if observed!=expected:raise ProviderError("gateway provider-visible ownership changed")
+        return {key:body[key] for key in ("lease_id","namespace","provider","owner","run_id","run_attempt")}
     def marker(self,resource):
         body=self._request(resource)
         if body is None:return None
-        expected=(resource.metadata["lease_id"],resource.metadata["namespace"],resource.metadata["gateway_owner"],resource.metadata["github_run_id"],resource.metadata["run_attempt"])
-        if (body.get("lease_id"),body.get("namespace"),body.get("owner"),body.get("run_id"),body.get("run_attempt"))!=expected:raise ProviderError("gateway provider-visible ownership changed")
-        state={key:body[key] for key in ("lease_id","namespace","provider","owner","run_id","run_attempt")}
-        return self.manifest_api.verify_provider_ledger(self.header,resource,state)
+        state=self._owned_state(resource,body)
+        try:return self.manifest_api.verify_provider_ledger(self.header,resource,state)
+        except self.manifest_api.ManifestError:
+            self.manifest_api.verify_setup_intent(self.header,resource)
+            return None
     def delete(self,resource,_deadline):
         body=self._request(resource,"DELETE",{"namespace":resource.metadata["namespace"],"owner":resource.metadata["gateway_owner"],"residual_audit":True})
         if body!={"status":"deleted","residuals":[]}:raise ProviderError("gateway exhaustive residual audit failed")
         return "deleted-and-audited"
+    def recover_creating(self,resource,deadline):
+        self.manifest_api.verify_setup_intent(self.header,resource)
+        body=self._request(resource)
+        if body is None:return "absent-after-create-intent"
+        self._owned_state(resource,body)
+        return self.delete(resource,deadline)
     def exists(self,resource):return self._request(resource) is not None
     def snapshot_shared(self,owned):return {"boundary":"dedicated-disposable-provider-gateway","owned_excluded":sorted(identity for kind,identity in owned if kind=="provider_reservation")}
 

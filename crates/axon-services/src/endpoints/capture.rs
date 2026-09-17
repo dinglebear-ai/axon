@@ -1,8 +1,11 @@
 use super::{CapturedRequest, validate_url_with_dns_timeout};
+use axon_core::http::{cdp_websocket_bearer_header, cdp_websocket_origin_is_authorized};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
 const CAPTURE_IDLE_MS: u64 = 750;
 const CAPTURE_CDP_TIMEOUT_SECS: u64 = 5;
@@ -24,10 +27,28 @@ pub(super) async fn capture_requests_with_chrome(
     .await
     .map_err(|_| "timeout resolving Chrome CDP WebSocket URL".to_string())?
     .ok_or_else(|| format!("Chrome URL {remote_url} did not resolve to a ws:// endpoint"))?;
+    if !cdp_websocket_origin_is_authorized(remote_url, &resolved_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {resolved_ws_url}"
+        ));
+    }
 
+    let mut request = resolved_ws_url
+        .as_str()
+        .into_client_request()
+        .map_err(|err| format!("invalid Chrome WebSocket URL: {err}"))?;
+    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        && !token.is_empty()
+    {
+        let header =
+            cdp_websocket_bearer_header(remote_url, &resolved_ws_url, &token).ok_or_else(|| {
+                "authenticated Chrome WebSocket origin or bearer token is invalid".to_string()
+            })?;
+        request.headers_mut().insert(AUTHORIZATION, header);
+    }
     let (stream, _) = tokio::time::timeout(
         Duration::from_secs(CAPTURE_CDP_TIMEOUT_SECS),
-        tokio_tungstenite::connect_async(&resolved_ws_url),
+        tokio_tungstenite::connect_async(request),
     )
     .await
     .map_err(|_| format!("timeout connecting to Chrome at {resolved_ws_url}"))?
@@ -51,21 +72,7 @@ pub(super) async fn capture_requests_with_chrome(
     .map(str::to_string)
     .ok_or_else(|| "Chrome Target.createTarget returned no targetId".to_string())?;
 
-    let session_id = send_capture_cdp_cmd(
-        &mut tx,
-        &mut rx,
-        None,
-        "Target.attachToTarget",
-        serde_json::json!({ "targetId": target_id, "flatten": true }),
-        cmd_timeout,
-        None,
-    )
-    .await?
-    .get("sessionId")
-    .and_then(|value| value.as_str())
-    .filter(|value| !value.is_empty())
-    .map(str::to_string)
-    .ok_or_else(|| "Chrome Target.attachToTarget returned no sessionId".to_string())?;
+    let session_id = attach_capture_target(&mut tx, &mut rx, &target_id, cmd_timeout).await?;
 
     let capture_result = capture_session_requests(
         &mut tx,
@@ -87,6 +94,53 @@ pub(super) async fn capture_requests_with_chrome(
     )
     .await;
     capture_result
+}
+
+async fn attach_capture_target<Tx, Rx>(
+    tx: &mut Tx,
+    rx: &mut Rx,
+    target_id: &str,
+    cmd_timeout: Duration,
+) -> Result<String, String>
+where
+    Tx: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+    Rx: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    let session_result = send_capture_cdp_cmd(
+        tx,
+        rx,
+        None,
+        "Target.attachToTarget",
+        serde_json::json!({ "targetId": target_id, "flatten": true }),
+        cmd_timeout,
+        None,
+    )
+    .await
+    .and_then(|value| {
+        value
+            .get("sessionId")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| "Chrome Target.attachToTarget returned no sessionId".to_string())
+    });
+    let session_id = match session_result {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            let _ = send_capture_cdp_cmd(
+                tx,
+                rx,
+                None,
+                "Target.closeTarget",
+                serde_json::json!({ "targetId": target_id }),
+                cmd_timeout,
+                None,
+            )
+            .await;
+            return Err(error);
+        }
+    };
+    Ok(session_id)
 }
 
 /// Enable Network, Page, and Fetch CDP domains for a session.
@@ -371,3 +425,7 @@ where
             .unwrap_or(serde_json::Value::Null));
     }
 }
+
+#[cfg(test)]
+#[path = "capture_tests.rs"]
+mod tests;

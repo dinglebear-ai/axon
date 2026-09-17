@@ -87,7 +87,8 @@ class ReviewRegressions(unittest.TestCase):
     def test_auto_tag_creates_annotated_tag_and_rejects_lightweight(self):
         workflow=(ROOT/'.github/workflows/auto-tag.yml').read_text()
         block=workflow.split('      - name: Create and push tag\n',1)[1].split('      - name:',1)[0]
-        script='\n'.join(line[10:] for line in block.splitlines()[1:] if line.startswith('          '))
+        run=block.split('        run: |\n',1)[1]
+        script='\n'.join(line[10:] for line in run.splitlines() if line.startswith('          '))
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); remote=root/'remote.git'; checkout=root/'checkout'
             def git(*args):
@@ -97,13 +98,13 @@ class ReviewRegressions(unittest.TestCase):
             git('checkout','-b','main');(checkout/'fixture').write_text('fixture')
             git('add','.');git('commit','-m','fixture');git('push','origin','main')
             sha=git('rev-parse','HEAD')
-            script=script.replace('${{ matrix.candidate_tag }}','v1.0.0').replace('${{ needs.plan.outputs.target_sha }}',sha)
+            env={**os.environ,'CANDIDATE_TAG':'v1.0.0','EXPECTED_SHA':sha,'SHIPPING_PATHS_JSON':'["fixture"]'}
             for _ in range(2):
-                result=subprocess.run(['bash','-c',script],cwd=checkout,capture_output=True,text=True)
+                result=subprocess.run(['bash','-c',script],cwd=checkout,env=env,capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(git('cat-file','-t','refs/tags/v1.0.0'),'tag')
             git('tag','v1.0.1')
-            result=subprocess.run(['bash','-c',script.replace('v1.0.0','v1.0.1')],cwd=checkout,capture_output=True,text=True)
+            result=subprocess.run(['bash','-c',script],cwd=checkout,env={**env,'CANDIDATE_TAG':'v1.0.1'},capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
             self.assertIn('must be annotated',result.stderr)
 
