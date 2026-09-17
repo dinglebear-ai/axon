@@ -29,8 +29,7 @@ async fn attach_failure_closes_the_created_target() {
 
     let error = attach_capture_target(&mut tx, &mut rx, "target-1", Duration::from_secs(2))
         .await
-        .err()
-        .expect("attach without a session id must fail");
+        .expect_err("attach without a session id must fail");
     assert!(error.contains("no sessionId"));
     server.await.unwrap();
 }
