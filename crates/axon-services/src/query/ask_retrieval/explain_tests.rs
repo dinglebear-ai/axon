@@ -1,17 +1,19 @@
 use super::*;
 use axon_core::ask_explain::{
-    AskExplainFilterDecisionKind, AskExplainInsertionMode, AskExplainMode,
+    AskExplainFilterDecisionKind, AskExplainInsertionMode, AskExplainMode, AskExplainScoreKind,
     AskExplainSelectionDecisionKind,
 };
 use axon_core::config::Config;
 
 fn hit(uri: &str, id: &str, score: f64, text: &str) -> QueryServiceHit {
+    let mut citation = super::super::tests::citation(uri);
+    citation.chunk_id = axon_api::ChunkId::new(id);
     QueryServiceHit {
         canonical_uri: uri.to_string(),
         chunk_id: id.to_string(),
         score,
         text: text.to_string(),
-        citation: super::super::tests::citation(uri),
+        citation,
     }
 }
 
@@ -23,7 +25,8 @@ fn selected_candidates_are_kept_and_ranked() {
         hit("https://example.org/b", "b#0", 0.7, "beta body"),
         hit("https://example.net/c", "c#0", 0.5, "gamma body"),
     ];
-    let trace = build_explain_trace(&cfg, "question", &hits, 2, "Sources:\n...");
+    let selected = vec![hits[0].citation.clone(), hits[1].citation.clone()];
+    let trace = build_explain_trace(&cfg, "question", &hits, &selected, "Sources:\n...");
 
     assert_eq!(trace.mode, AskExplainMode::ExplainOnly);
     assert!(trace.llm_skipped);
@@ -69,6 +72,50 @@ fn selected_candidates_are_kept_and_ranked() {
 }
 
 #[test]
+fn non_prefix_selected_candidates_keep_actual_context_rank() {
+    let cfg = Config::test_default();
+    let hits = vec![
+        hit("https://example.com/oversized", "a#0", 0.9, "alpha"),
+        hit("https://example.org/selected", "b#0", 0.8, "beta"),
+        hit("https://example.net/selected", "c#0", 0.7, "gamma"),
+    ];
+    let selected = vec![hits[1].citation.clone(), hits[2].citation.clone()];
+    let trace = build_explain_trace(&cfg, "q", &hits, &selected, "Sources:\n...");
+
+    assert_eq!(trace.candidates[0].selected_context_rank, None);
+    assert_eq!(trace.candidates[1].selected_context_rank, Some(1));
+    assert_eq!(trace.candidates[2].selected_context_rank, Some(2));
+    assert_eq!(trace.citations, selected);
+    assert_eq!(trace.context.final_source_order.len(), 2);
+    assert_eq!(
+        trace.context.final_source_order[0].url,
+        "https://example.org/selected"
+    );
+    assert_eq!(trace.context.final_source_order[0].source_id, "S1");
+    assert_eq!(
+        trace.context.final_source_order[1].url,
+        "https://example.net/selected"
+    );
+    assert_eq!(trace.context.final_source_order[1].source_id, "S2");
+}
+
+#[test]
+fn dense_only_explain_reports_dense_scoring() {
+    let mut cfg = Config::test_default();
+    cfg.hybrid_search_enabled = false;
+    let hits = vec![hit("https://example.com/a", "a#0", 0.82, "alpha body")];
+
+    let selected = vec![hits[0].citation.clone()];
+    let trace = build_explain_trace(&cfg, "question", &hits, &selected, "Sources:\n...");
+
+    assert!(!trace.retrieval.hybrid_search_enabled);
+    assert_eq!(trace.retrieval.score_kind, AskExplainScoreKind::Cosine);
+    assert_eq!(trace.retrieval.vector_mode, "named_dense");
+    assert_eq!(trace.candidates[0].score_kind, AskExplainScoreKind::Cosine);
+    assert_eq!(trace.candidates[0].score_components[0].name, "dense_cosine");
+}
+
+#[test]
 fn candidate_trace_truncates_at_limit() {
     let cfg = Config::test_default();
     let hits: Vec<_> = (0..(CANDIDATE_TRACE_LIMIT + 5))
@@ -81,7 +128,12 @@ fn candidate_trace_truncates_at_limit() {
             )
         })
         .collect();
-    let trace = build_explain_trace(&cfg, "q", &hits, 3, "Sources:\n...");
+    let selected = hits
+        .iter()
+        .take(3)
+        .map(|hit| hit.citation.clone())
+        .collect::<Vec<_>>();
+    let trace = build_explain_trace(&cfg, "q", &hits, &selected, "Sources:\n...");
 
     assert_eq!(trace.candidates.len(), CANDIDATE_TRACE_LIMIT);
     assert_eq!(trace.candidate_trace_limit, CANDIDATE_TRACE_LIMIT);
@@ -95,7 +147,8 @@ fn context_final_source_order_matches_selected_prefix() {
         hit("https://example.com/a", "a#0", 0.9, "alpha"),
         hit("https://example.org/b", "b#0", 0.7, "beta"),
     ];
-    let trace = build_explain_trace(&cfg, "q", &hits, 1, "Sources:\nabc");
+    let selected = vec![hits[0].citation.clone()];
+    let trace = build_explain_trace(&cfg, "q", &hits, &selected, "Sources:\nabc");
 
     assert_eq!(trace.context.final_source_order.len(), 1);
     assert_eq!(
@@ -113,7 +166,7 @@ fn context_final_source_order_matches_selected_prefix() {
 #[test]
 fn no_candidates_yields_empty_trace_without_panicking() {
     let cfg = Config::test_default();
-    let trace = build_explain_trace(&cfg, "q", &[], 0, "Sources:\n");
+    let trace = build_explain_trace(&cfg, "q", &[], &[], "Sources:\n");
     assert!(trace.candidates.is_empty());
     assert!(trace.context.final_source_order.is_empty());
     assert!(!trace.context.truncated_by_budget);
