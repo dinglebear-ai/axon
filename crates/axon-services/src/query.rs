@@ -29,6 +29,7 @@ mod ask_retrieval;
 mod code_search;
 mod evaluate;
 mod provider_execution;
+mod query_tokens;
 mod retrieval;
 mod retrieve;
 mod suggest;

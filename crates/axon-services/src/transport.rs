@@ -209,7 +209,7 @@ pub fn apply_ask_overrides(cfg: &Config, req: AskTransportOverrides) -> Config {
         cfg.hybrid_search_enabled = h;
     }
     if let Some(v) = req.ask_chunk_limit {
-        cfg.ask_chunk_limit = v.clamp(3, 40);
+        cfg.ask_chunk_limit = v.clamp(3, 64);
     }
     if let Some(v) = req.ask_full_docs {
         cfg.ask_full_docs = v.clamp(1, 20);
@@ -256,6 +256,20 @@ mod tests {
     fn map_omitted_limit_is_unbounded_across_transports() {
         assert_eq!(map_options(None, None).limit, 0);
         assert_eq!(map_options(Some(100), Some(2)).offset, 2);
+    }
+
+    #[test]
+    fn ask_chunk_limit_transport_override_matches_config_bound() {
+        let cfg = Config::default();
+        let overridden = apply_ask_overrides(
+            &cfg,
+            AskTransportOverrides {
+                ask_chunk_limit: Some(999),
+                ..AskTransportOverrides::default()
+            },
+        );
+
+        assert_eq!(overridden.ask_chunk_limit, 64);
     }
 
     #[test]

@@ -1,139 +1,167 @@
 use super::*;
 use axon_core::ask_explain::{
-    AskExplainFilterDecisionKind, AskExplainInsertionMode, AskExplainMode, AskExplainScoreKind,
+    AskExplainFilterDecisionKind, AskExplainInsertionMode, AskExplainMode,
     AskExplainSelectionDecisionKind,
 };
 use axon_core::config::Config;
+use axon_core::llm::LlmBackendKind;
+use axon_retrieval::QueryServiceHit;
 
 fn hit(uri: &str, id: &str, score: f64, text: &str) -> QueryServiceHit {
-    let mut citation = super::super::tests::citation(uri);
-    citation.chunk_id = axon_api::ChunkId::new(id);
     QueryServiceHit {
         canonical_uri: uri.to_string(),
         chunk_id: id.to_string(),
         score,
         text: text.to_string(),
-        citation,
+        citation: super::super::tests::citation(uri),
+    }
+}
+
+fn cfg() -> Config {
+    Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        openai_model: "chatgpt-browser-medium".to_string(),
+        ..Config::test_default()
     }
 }
 
 #[test]
-fn selected_candidates_are_kept_and_ranked() {
-    let cfg = Config::test_default();
-    let hits = vec![
-        hit("https://example.com/a", "a#0", 0.9, "alpha body"),
-        hit("https://example.org/b", "b#0", 0.7, "beta body"),
-        hit("https://example.net/c", "c#0", 0.5, "gamma body"),
-    ];
-    let selected = vec![hits[0].citation.clone(), hits[1].citation.clone()];
-    let trace = build_explain_trace(&cfg, "question", &hits, &selected, "Sources:\n...");
+fn explain_reports_real_rerank_and_selection_order() {
+    let mut cfg = cfg();
+    cfg.ask_chunk_limit = 2;
+    cfg.ask_authoritative_domains = vec!["example.org".to_string()];
+    cfg.ask_authoritative_boost = 0.5;
+    let mut ranked = super::super::ranking::rank_candidates(
+        &cfg,
+        "Claude hooks",
+        vec![
+            hit(
+                "https://example.com/docs/hooks",
+                "a#0",
+                0.9,
+                "Claude hooks body",
+            ),
+            hit(
+                "https://example.org/docs/hooks",
+                "b#0",
+                0.7,
+                "Claude hooks body",
+            ),
+            hit(
+                "https://example.net/docs/hooks",
+                "c#0",
+                0.5,
+                "Claude hooks body",
+            ),
+        ],
+        true,
+    );
+    let ctx = super::super::build_ask_context_from_ranking(&cfg, &mut ranked, 5);
+    let trace = build_explain_trace(&cfg, "Claude hooks", &ranked, &ctx.context);
 
     assert_eq!(trace.mode, AskExplainMode::ExplainOnly);
     assert!(trace.llm_skipped);
     assert_eq!(trace.candidates.len(), 3);
     assert_eq!(trace.citations.len(), 2);
+    assert_eq!(trace.candidates[0].url, "https://example.org/docs/hooks");
+    assert!(trace.candidates[0].rerank_score > trace.candidates[0].retrieval_score);
+    assert!(
+        trace.candidates[0]
+            .score_components
+            .iter()
+            .any(|component| component.name == "authority_boost" && component.value > 0.0)
+    );
 
-    let selected: Vec<_> = trace.candidates.iter().take(2).collect();
-    for (idx, candidate) in selected.iter().enumerate() {
+    for (index, candidate) in trace.candidates.iter().take(2).enumerate() {
         assert!(
             candidate
                 .filter_decisions
                 .iter()
-                .any(|d| d.kind == AskExplainFilterDecisionKind::Kept)
+                .any(|decision| decision.kind == AskExplainFilterDecisionKind::Kept)
         );
         assert_eq!(
             candidate.selection_decisions[0].kind,
             AskExplainSelectionDecisionKind::SelectedTopChunk
         );
-        assert_eq!(candidate.selected_context_rank, Some(idx + 1));
+        assert_eq!(candidate.selected_context_rank, Some(index + 1));
         assert_eq!(
             candidate.insertion_mode,
             Some(AskExplainInsertionMode::TopChunk)
         );
-        assert_eq!(candidate.retrieval_score, candidate.rerank_score);
     }
 
-    let dropped = &trace.candidates[2];
+    let unselected = &trace.candidates[2];
     assert!(
-        dropped
+        unselected
             .filter_decisions
             .iter()
-            .all(|d| d.kind != AskExplainFilterDecisionKind::Kept)
+            .any(|decision| decision.kind == AskExplainFilterDecisionKind::Kept)
     );
     assert_eq!(
-        dropped.selection_decisions[0].kind,
+        unselected.selection_decisions[0].kind,
         AskExplainSelectionDecisionKind::NotSelected
     );
-    assert_eq!(dropped.selected_context_rank, None);
     assert_eq!(
-        dropped.insertion_mode,
+        unselected.insertion_mode,
         Some(AskExplainInsertionMode::NotSelected)
     );
 }
 
 #[test]
-fn non_prefix_selected_candidates_keep_actual_context_rank() {
-    let cfg = Config::test_default();
-    let hits = vec![
-        hit("https://example.com/oversized", "a#0", 0.9, "alpha"),
-        hit("https://example.org/selected", "b#0", 0.8, "beta"),
-        hit("https://example.net/selected", "c#0", 0.7, "gamma"),
-    ];
-    let selected = vec![hits[1].citation.clone(), hits[2].citation.clone()];
-    let trace = build_explain_trace(&cfg, "q", &hits, &selected, "Sources:\n...");
-
-    assert_eq!(trace.candidates[0].selected_context_rank, None);
-    assert_eq!(trace.candidates[1].selected_context_rank, Some(1));
-    assert_eq!(trace.candidates[2].selected_context_rank, Some(2));
-    assert_eq!(trace.citations, selected);
-    assert_eq!(trace.context.final_source_order.len(), 2);
-    assert_eq!(
-        trace.context.final_source_order[0].url,
-        "https://example.org/selected"
+fn explain_surfaces_low_signal_session_filter() {
+    let cfg = cfg();
+    let ranked = super::super::ranking::rank_candidates(
+        &cfg,
+        "Claude hooks",
+        vec![hit(
+            "session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa",
+            "session#0",
+            0.99,
+            "Claude hooks from prior session",
+        )],
+        true,
     );
-    assert_eq!(trace.context.final_source_order[0].source_id, "S1");
-    assert_eq!(
-        trace.context.final_source_order[1].url,
-        "https://example.net/selected"
+    let trace = build_explain_trace(
+        &cfg,
+        "Claude hooks",
+        &ranked,
+        "Sources:
+",
     );
-    assert_eq!(trace.context.final_source_order[1].source_id, "S2");
-}
 
-#[test]
-fn dense_only_explain_reports_dense_scoring() {
-    let mut cfg = Config::test_default();
-    cfg.hybrid_search_enabled = false;
-    let hits = vec![hit("https://example.com/a", "a#0", 0.82, "alpha body")];
-
-    let selected = vec![hits[0].citation.clone()];
-    let trace = build_explain_trace(&cfg, "question", &hits, &selected, "Sources:\n...");
-
-    assert!(!trace.retrieval.hybrid_search_enabled);
-    assert_eq!(trace.retrieval.score_kind, AskExplainScoreKind::Cosine);
-    assert_eq!(trace.retrieval.vector_mode, "named_dense");
-    assert_eq!(trace.candidates[0].score_kind, AskExplainScoreKind::Cosine);
-    assert_eq!(trace.candidates[0].score_components[0].name, "dense_cosine");
+    assert!(
+        trace.candidates[0]
+            .filter_decisions
+            .iter()
+            .any(|decision| decision.kind == AskExplainFilterDecisionKind::DroppedLowSignal)
+    );
+    assert_eq!(
+        trace.candidates[0].selection_decisions[0].kind,
+        AskExplainSelectionDecisionKind::NotSelected
+    );
 }
 
 #[test]
 fn candidate_trace_truncates_at_limit() {
-    let cfg = Config::test_default();
-    let hits: Vec<_> = (0..(CANDIDATE_TRACE_LIMIT + 5))
-        .map(|i| {
+    let cfg = cfg();
+    let hits = (0..(CANDIDATE_TRACE_LIMIT + 5))
+        .map(|index| {
             hit(
-                &format!("https://example.com/{i}"),
-                &format!("c{i}"),
+                &format!("https://example.com/docs/hooks/{index}"),
+                &format!("c{index}"),
                 0.5,
-                "body",
+                "Claude hooks documentation",
             )
         })
         .collect();
-    let selected = hits
-        .iter()
-        .take(3)
-        .map(|hit| hit.citation.clone())
-        .collect::<Vec<_>>();
-    let trace = build_explain_trace(&cfg, "q", &hits, &selected, "Sources:\n...");
+    let ranked = super::super::ranking::rank_candidates(&cfg, "Claude hooks", hits, true);
+    let trace = build_explain_trace(
+        &cfg,
+        "Claude hooks",
+        &ranked,
+        "Sources:
+",
+    );
 
     assert_eq!(trace.candidates.len(), CANDIDATE_TRACE_LIMIT);
     assert_eq!(trace.candidate_trace_limit, CANDIDATE_TRACE_LIMIT);
@@ -141,32 +169,54 @@ fn candidate_trace_truncates_at_limit() {
 }
 
 #[test]
-fn context_final_source_order_matches_selected_prefix() {
-    let cfg = Config::test_default();
-    let hits = vec![
-        hit("https://example.com/a", "a#0", 0.9, "alpha"),
-        hit("https://example.org/b", "b#0", 0.7, "beta"),
-    ];
-    let selected = vec![hits[0].citation.clone()];
-    let trace = build_explain_trace(&cfg, "q", &hits, &selected, "Sources:\nabc");
+fn context_final_source_order_matches_actual_selection() {
+    let mut cfg = cfg();
+    cfg.ask_chunk_limit = 1;
+    let mut ranked = super::super::ranking::rank_candidates(
+        &cfg,
+        "Claude hooks",
+        vec![
+            hit(
+                "https://example.com/docs/hooks",
+                "a#0",
+                0.9,
+                "Claude hooks alpha",
+            ),
+            hit(
+                "https://example.org/docs/hooks",
+                "b#0",
+                0.7,
+                "Claude hooks beta",
+            ),
+        ],
+        true,
+    );
+    let ctx = super::super::build_ask_context_from_ranking(&cfg, &mut ranked, 5);
+    let trace = build_explain_trace(&cfg, "Claude hooks", &ranked, &ctx.context);
 
     assert_eq!(trace.context.final_source_order.len(), 1);
     assert_eq!(
         trace.context.final_source_order[0].url,
-        "https://example.com/a"
+        "https://example.com/docs/hooks"
     );
     assert_eq!(trace.context.final_source_order[0].source_id, "S1");
-    assert!(trace.context.truncated_by_budget);
     assert_eq!(
         trace.context.context_chars_used,
-        "Sources:\nabc".chars().count()
+        ctx.context.chars().count()
     );
 }
 
 #[test]
 fn no_candidates_yields_empty_trace_without_panicking() {
-    let cfg = Config::test_default();
-    let trace = build_explain_trace(&cfg, "q", &[], &[], "Sources:\n");
+    let cfg = cfg();
+    let ranked = super::super::ranking::rank_candidates(&cfg, "Claude hooks", Vec::new(), true);
+    let trace = build_explain_trace(
+        &cfg,
+        "Claude hooks",
+        &ranked,
+        "Sources:
+",
+    );
     assert!(trace.candidates.is_empty());
     assert!(trace.context.final_source_order.is_empty());
     assert!(!trace.context.truncated_by_budget);

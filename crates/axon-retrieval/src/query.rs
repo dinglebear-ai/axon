@@ -21,6 +21,8 @@ pub struct RetrievalRequest {
     /// retrieval path, regardless of vector namespace filters.
     pub excluded_source_kinds: Vec<String>,
     pub hybrid: bool,
+    /// Optional per-arm candidate window used by hybrid RRF vector search.
+    pub hybrid_candidates: Option<u32>,
     /// Inclusive lower bound for the canonical `embedded_at` payload timestamp.
     pub since: Option<String>,
     /// Inclusive upper bound for the canonical `embedded_at` payload timestamp.

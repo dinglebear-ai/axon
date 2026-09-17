@@ -9,6 +9,8 @@ use crate::filter::validate_search_filters;
 
 /// Default per-arm prefetch window before RRF fusion.
 const DEFAULT_HYBRID_CANDIDATES: usize = 100;
+const MAX_HYBRID_CANDIDATES: usize = 10_000;
+const HYBRID_CANDIDATES_METADATA_KEY: &str = "hybrid_candidates";
 const HNSW_EF_SEARCH: usize = 128;
 
 /// A single scored hit from Qdrant's query response.
@@ -77,6 +79,13 @@ pub async fn qdrant_search(
     let filter_json = search_filter_json(request)?;
 
     let limit = request.limit.max(1) as usize;
+    let hybrid_candidates = request
+        .metadata
+        .get(HYBRID_CANDIDATES_METADATA_KEY)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+        .filter(|value| *value > 0)
+        .map(|value| value.min(MAX_HYBRID_CANDIDATES));
     let dense_name = &spec.dense.name;
 
     let body = match (&request.sparse_vector, spec.sparse.as_ref()) {
@@ -86,6 +95,7 @@ pub async fn qdrant_search(
             sparse,
             &sparse_cfg.name,
             limit,
+            hybrid_candidates,
             filter_json.as_ref(),
         ),
         _ => named_dense_body(dense, dense_name, limit, filter_json.as_ref()),
@@ -113,9 +123,10 @@ fn hybrid_body(
     sparse: &SparseVector,
     sparse_name: &str,
     limit: usize,
+    hybrid_candidates: Option<usize>,
     filter: Option<&serde_json::Value>,
 ) -> serde_json::Value {
-    let candidates = DEFAULT_HYBRID_CANDIDATES.max(limit);
+    let candidates = hybrid_candidates.unwrap_or_else(|| DEFAULT_HYBRID_CANDIDATES.max(limit));
     let mut body = serde_json::json!({
         "prefetch": [
             {

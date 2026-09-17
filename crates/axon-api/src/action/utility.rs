@@ -64,13 +64,21 @@ pub struct AskRequest {
     /// Per-request hybrid search override. `false` forces dense-only retrieval
     /// (skips BM42 sparse + RRF). When unset, falls back to server config.
     pub hybrid_search: Option<bool>,
+    /// Maximum chunks eligible for final context before adaptive caps.
     pub ask_chunk_limit: Option<usize>,
+    /// Compatibility-only legacy full-document fetch count. The unified
+    /// retrieval-engine ask path does not execute full-document backfill.
     pub ask_full_docs: Option<usize>,
+    /// Maximum configured context characters; adaptive ask policy may use less.
     pub ask_max_context_chars: Option<usize>,
+    /// Per-arm dense/sparse prefetch window before hybrid RRF fusion.
     pub ask_hybrid_candidates: Option<usize>,
     pub ask_min_relevance_score: Option<f64>,
+    /// Compatibility-only legacy full-document chunk limit.
     pub ask_doc_chunk_limit: Option<usize>,
+    /// Compatibility-only legacy full-document fetch concurrency.
     pub ask_doc_fetch_concurrency: Option<usize>,
+    /// Compatibility-only legacy full-document supplemental chunk count.
     pub ask_backfill_chunks: Option<usize>,
     pub ask_candidate_limit: Option<usize>,
     pub ask_min_citations_nontrivial: Option<usize>,

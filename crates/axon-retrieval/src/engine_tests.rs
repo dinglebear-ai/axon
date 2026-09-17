@@ -28,6 +28,7 @@ fn request() -> RetrievalRequest {
         namespace_filters: vec!["docs".to_string(), "guides".to_string()],
         excluded_source_kinds: Vec::new(),
         hybrid: true,
+        hybrid_candidates: None,
         since: None,
         before: None,
         byte_budget: 80,

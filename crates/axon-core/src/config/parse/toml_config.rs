@@ -241,17 +241,17 @@ pub(super) struct TomlSearchSection {
 pub(super) struct TomlAskSection {
     /// Max context characters passed to the LLM (clamped 20_000–1_000_000).
     pub max_context_chars: Option<usize>,
-    /// Max chunks returned per ask query (clamped 3–40).
+    /// Configured max chunks eligible for ask context (clamped 3–64); runtime adaptive caps may use fewer.
     pub chunk_limit: Option<usize>,
     /// Max candidate chunks fetched before scoring (clamped 8–300).
     pub candidate_limit: Option<usize>,
-    /// Max full documents included in context (clamped 1–20).
+    /// Compatibility-only legacy full-document fetch count (clamped 1–20); unified retrieval does not execute backfill.
     pub full_docs: Option<usize>,
-    /// Backfill chunks from top documents to pad context (clamped 0–20).
+    /// Compatibility-only legacy supplemental-chunk count (clamped 0–20).
     pub backfill_chunks: Option<usize>,
-    /// Concurrent document fetches during context build (clamped 1–16).
+    /// Compatibility-only legacy full-document fetch concurrency (clamped 1–16).
     pub doc_fetch_concurrency: Option<usize>,
-    /// Max chunks per document in context (clamped 8–2000).
+    /// Compatibility-only legacy full-document chunk limit (clamped 8–2000).
     pub doc_chunk_limit: Option<usize>,
     /// Minimum relevance score threshold (clamped -1.0–2.0).
     pub min_relevance_score: Option<f64>,
@@ -261,14 +261,10 @@ pub(super) struct TomlAskSection {
     pub authoritative_boost: Option<f64>,
     /// Min unique citations for non-trivial answers (clamped 1–5).
     pub min_citations_nontrivial: Option<usize>,
-    /// In-process document-chunk cache for the ask full-doc fetch path.
-    /// Only useful in long-lived parents (`axon serve`, `axon mcp`).
-    /// (bd axon_rust-pmc)
+    /// Compatibility-only settings for the retired full-document ask cache.
     #[serde(default)]
     pub cache: TomlAskCacheSection,
-    /// Adaptive ask heuristics — currently the full-doc fetch skip gate.
-    /// Opt-in until validated against the `axon evaluate` golden set.
-    /// (bd axon_rust-30y)
+    /// Compatibility-only settings for the retired full-document skip gate.
     #[serde(default)]
     pub adaptive: TomlAskAdaptiveSection,
 }
@@ -276,7 +272,7 @@ pub(super) struct TomlAskSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlAskCacheSection {
-    /// Enable the cache. Default: false.
+    /// Compatibility-only; ignored by unified ask retrieval. Default: false.
     pub enabled: Option<bool>,
     /// Max bytes (summed `chunk_text` length). Default: 268_435_456 (256 MiB).
     pub max_capacity_bytes: Option<u64>,
@@ -287,7 +283,7 @@ pub(super) struct TomlAskCacheSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlAskAdaptiveSection {
-    /// Enable the adaptive full-doc fetch skip gate. Default: false (opt-in).
+    /// Compatibility-only; ignored by unified ask retrieval. Default: false.
     pub fulldoc_skip_enabled: Option<bool>,
     /// Minimum unique URLs required in reranked top-K. Default: 3.
     pub fulldoc_skip_min_urls: Option<usize>,
