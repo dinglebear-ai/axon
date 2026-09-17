@@ -17,7 +17,7 @@ default = []
 axum = { version = "0.8", features = ["macros"] }
 base64 = "0.22"
 getrandom = "0.4"
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 reqwest = { version = "0.13", default-features = false, features = [
   "rustls",
   "json",

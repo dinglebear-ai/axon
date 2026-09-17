@@ -33,10 +33,10 @@ check-tests:
     {{rust_dev_env}}; cargo check -q --tests --locked
 
 test:
-    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --workspace; else echo "cargo-nextest not installed; falling back to cargo test"; {{rust_dev_env}}; cargo test -q --locked; fi
+    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; RUST_MIN_STACK=8388608 cargo nextest run --locked --workspace; else echo "cargo-nextest not installed; falling back to cargo test"; {{rust_dev_env}}; RUST_MIN_STACK=8388608 cargo test -q --locked; fi
 
 test-fast:
-    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --lib; else {{rust_dev_env}}; cargo test -q --lib --locked; fi
+    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; RUST_MIN_STACK=8388608 cargo nextest run --locked --lib; else {{rust_dev_env}}; RUST_MIN_STACK=8388608 cargo test -q --lib --locked; fi
 
 # Deterministic, network-free drift and schema gate for the shared E2E catalog.
 e2e-catalog-check:
