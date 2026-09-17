@@ -22,10 +22,11 @@
 //!   top-chunks only (see
 //!   [`super::super::synthesis::AskContext::from_retrieval`]).
 //! - `filter_decisions`/`selection_decisions` reduce to a single binary: a
-//!   hit that landed in the rendered context (a strict-prefix cutoff of the
-//!   retrieval-ordered hit list — see `build_ask_context_from_hits`) is
+//!   hit whose canonical chunk ID landed in the rendered context is
 //!   `Kept`/`SelectedTopChunk`; everything else is `DroppedLowSignal`/
-//!   `NotSelected`.
+//!   `NotSelected`. Context admission may skip an oversized hit and continue
+//!   scanning later candidates, so selected hits are not required to be a
+//!   strict retrieval-order prefix.
 //! - There is no dual NL/keyword query embedding at this layer (see
 //!   `crates/axon-retrieval/src/engine.rs::retrieve`), so `keyword_query`
 //!   mirrors `query` and `dual_search` is always `false`.
@@ -34,6 +35,7 @@
 //! (filtering for `Kept`), `rerank_score`/`retrieval_score`, `url`,
 //! `chunk_index`, and `snippet` — every field it needs is populated here.
 
+use axon_api::CanonicalCitation;
 use axon_core::ask_explain::{
     AskExplainCandidate, AskExplainContext, AskExplainContextSource, AskExplainFilterDecision,
     AskExplainFilterDecisionKind, AskExplainFullDocFetchMode, AskExplainFullDocFetchSkipReason,
@@ -43,6 +45,7 @@ use axon_core::ask_explain::{
 };
 use axon_core::config::Config;
 use axon_retrieval::QueryServiceHit;
+use std::collections::HashMap;
 
 /// Cap on the number of candidates included in the trace. Matches the legacy
 /// reranker's `ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT` so `train`'s downstream
@@ -55,25 +58,37 @@ const SNIPPET_MAX_CHARS: usize = 280;
 /// Build the `ask --explain` trace from the retrieval engine's ranked hits.
 ///
 /// `hits` is the full candidate pool returned by `run_query`, in retrieval
-/// order. `chunks_selected` is the count of hits (from the front of that same
-/// list) that were rendered into `context` — `build_ask_context_from_hits`
-/// selects a strict prefix of `hits` (capped by `cfg.ask_chunk_limit` and the
-/// context-byte budget), so `hits[..chunks_selected]` is exactly the selected
-/// set.
+/// order. `selected_citations` is the exact context-admission order produced
+/// by `build_ask_context_from_hits`. A candidate that exceeds the remaining
+/// context budget may be skipped while later candidates are admitted, so the
+/// selected set is identified by canonical chunk ID rather than by prefix
+/// length.
 pub(crate) fn build_explain_trace(
     cfg: &Config,
     question: &str,
     hits: &[QueryServiceHit],
-    chunks_selected: usize,
+    selected_citations: &[CanonicalCitation],
     context: &str,
 ) -> AskExplainTrace {
     let candidate_limit = hits.len();
     let truncated = candidate_limit > CANDIDATE_TRACE_LIMIT;
+    let selected_rank_by_chunk: HashMap<&str, usize> = selected_citations
+        .iter()
+        .enumerate()
+        .map(|(idx, citation)| (citation.chunk_id.0.as_str(), idx + 1))
+        .collect();
     let candidates = hits
         .iter()
         .take(CANDIDATE_TRACE_LIMIT)
         .enumerate()
-        .map(|(idx, hit)| candidate_trace(hit, idx, idx < chunks_selected))
+        .map(|(idx, hit)| {
+            candidate_trace(
+                hit,
+                idx,
+                selected_rank_by_chunk.get(hit.chunk_id.as_str()).copied(),
+                cfg.hybrid_search_enabled,
+            )
+        })
         .collect();
 
     AskExplainTrace {
@@ -84,34 +99,44 @@ pub(crate) fn build_explain_trace(
             dual_search: false,
             collection: cfg.collection.clone(),
             candidate_limit,
-            hybrid_search_enabled: true,
+            hybrid_search_enabled: cfg.hybrid_search_enabled,
             hybrid_candidate_limit: cfg.ask_hybrid_candidates,
-            score_kind: AskExplainScoreKind::Rrf,
-            vector_mode: "named_hybrid_rrf".to_string(),
+            score_kind: if cfg.hybrid_search_enabled {
+                AskExplainScoreKind::Rrf
+            } else {
+                AskExplainScoreKind::Cosine
+            },
+            vector_mode: if cfg.hybrid_search_enabled {
+                "named_hybrid_rrf".to_string()
+            } else {
+                "named_dense".to_string()
+            },
             sparse_query_status: None,
         },
         candidates,
-        citations: hits
-            .iter()
-            .take(chunks_selected)
-            .map(|hit| hit.citation.clone())
-            .collect(),
-        context: explain_context(hits, chunks_selected, context, cfg.ask_max_context_chars),
+        citations: selected_citations.to_vec(),
+        context: explain_context(hits, selected_citations, context, cfg.ask_max_context_chars),
         candidate_trace_limit: CANDIDATE_TRACE_LIMIT,
         candidate_trace_truncated: truncated,
         llm_skipped: true,
     }
 }
 
-fn candidate_trace(hit: &QueryServiceHit, idx: usize, selected: bool) -> AskExplainCandidate {
+fn candidate_trace(
+    hit: &QueryServiceHit,
+    idx: usize,
+    selected_context_rank: Option<usize>,
+    hybrid_search_enabled: bool,
+) -> AskExplainCandidate {
     let rank = idx + 1;
+    let selected = selected_context_rank.is_some();
     AskExplainCandidate {
         id: hit.chunk_id.clone(),
         url: hit.canonical_uri.clone(),
         chunk_index: None,
         raw_rerank_rank: Some(rank),
         planned_full_doc_rank: None,
-        selected_context_rank: selected.then_some(rank),
+        selected_context_rank,
         insertion_mode: Some(if selected {
             AskExplainInsertionMode::TopChunk
         } else {
@@ -119,9 +144,17 @@ fn candidate_trace(hit: &QueryServiceHit, idx: usize, selected: bool) -> AskExpl
         }),
         retrieval_score: hit.score,
         rerank_score: hit.score,
-        score_kind: AskExplainScoreKind::Rrf,
+        score_kind: if hybrid_search_enabled {
+            AskExplainScoreKind::Rrf
+        } else {
+            AskExplainScoreKind::Cosine
+        },
         score_components: vec![AskExplainScoreComponent {
-            name: "hybrid_rrf".to_string(),
+            name: if hybrid_search_enabled {
+                "hybrid_rrf".to_string()
+            } else {
+                "dense_cosine".to_string()
+            },
             value: hit.score,
             status: AskExplainScoreComponentStatus::Applied,
             reason: None,
@@ -179,20 +212,27 @@ fn snippet(text: &str) -> String {
 /// legacy's own tests, never at runtime).
 fn explain_context(
     hits: &[QueryServiceHit],
-    chunks_selected: usize,
+    selected_citations: &[CanonicalCitation],
     context: &str,
     max_context_chars: usize,
 ) -> AskExplainContext {
-    let final_source_order = hits
+    let hit_by_chunk: HashMap<&str, &QueryServiceHit> = hits
         .iter()
-        .take(chunks_selected)
+        .map(|hit| (hit.chunk_id.as_str(), hit))
+        .collect();
+    let final_source_order = selected_citations
+        .iter()
         .enumerate()
-        .map(|(idx, hit)| AskExplainContextSource {
-            source_id: format!("S{}", idx + 1),
-            url: hit.canonical_uri.clone(),
-            tier: axon_core::ask_explain::AskExplainContextSourceTier::TopChunk,
-            sort_rank: idx,
-            sort_score: hit.score,
+        .filter_map(|(idx, citation)| {
+            hit_by_chunk
+                .get(citation.chunk_id.0.as_str())
+                .map(|hit| AskExplainContextSource {
+                    source_id: format!("S{}", idx + 1),
+                    url: hit.canonical_uri.clone(),
+                    tier: axon_core::ask_explain::AskExplainContextSourceTier::TopChunk,
+                    sort_rank: idx,
+                    sort_score: hit.score,
+                })
         })
         .collect();
 
@@ -208,7 +248,7 @@ fn explain_context(
         context_bytes_budget: max_context_chars,
         context_bytes_used: context.len(),
         rendered_context: None,
-        truncated_by_budget: chunks_selected < hits.len(),
+        truncated_by_budget: selected_citations.len() < hits.len(),
     }
 }
 

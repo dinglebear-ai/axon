@@ -191,7 +191,17 @@ fn source_generation_and_document_filters_convert_to_qdrant_filters() {
 
     request.filters.clear();
     request.generation = None;
-    assert!(qdrant_filter(&request).unwrap().is_none());
+    let live = qdrant_filter(&request)
+        .unwrap()
+        .expect("live-snapshot filter");
+    assert!(live.must.iter().any(|condition| matches!(
+        condition.condition_one_of,
+        Some(condition::ConditionOneOf::IsNull(ref value)) if value.key == "retired_epoch"
+    )));
+    assert!(live.must_not.iter().any(|condition| matches!(
+        condition.condition_one_of,
+        Some(condition::ConditionOneOf::IsNull(ref value)) if value.key == "committed_generation"
+    )));
 }
 
 #[test]
@@ -222,8 +232,11 @@ fn source_kind_exclusion_is_a_provider_side_must_not_filter() {
     let filter = qdrant_filter(&request)
         .unwrap()
         .expect("must-not-only filter");
-    assert!(filter.must.is_empty());
-    assert_eq!(filter.must_not.len(), 2);
+    assert!(filter.must.iter().any(|condition| matches!(
+        condition.condition_one_of,
+        Some(condition::ConditionOneOf::IsNull(ref value)) if value.key == "retired_epoch"
+    )));
+    assert_eq!(filter.must_not.len(), 3);
     assert!(filter.must_not.iter().any(|condition| matches!(
         condition.condition_one_of,
         Some(condition::ConditionOneOf::IsEmpty(_))
@@ -354,12 +367,14 @@ fn array_filter_values_convert_to_qdrant_should_groups() {
     };
 
     let filter = qdrant_filter(&request).unwrap().unwrap();
-    assert_eq!(filter.must.len(), 1);
-    let condition::ConditionOneOf::Filter(namespace_filter) =
-        filter.must[0].condition_one_of.as_ref().unwrap()
-    else {
-        panic!("expected nested OR filter");
-    };
+    let namespace_filter = filter
+        .must
+        .iter()
+        .find_map(|condition| match condition.condition_one_of.as_ref()? {
+            condition::ConditionOneOf::Filter(filter) => Some(filter),
+            _ => None,
+        })
+        .expect("expected nested OR filter");
     let keys = namespace_filter
         .should
         .iter()
@@ -408,11 +423,16 @@ fn empty_array_filter_values_convert_to_match_none_qdrant_filter() {
     };
 
     let filter = qdrant_filter(&request).unwrap().unwrap();
-    assert_eq!(filter.must.len(), 1);
-    let condition::ConditionOneOf::Field(field) = filter.must[0].condition_one_of.as_ref().unwrap()
-    else {
-        panic!("expected match-none field condition");
-    };
+    let field = filter
+        .must
+        .iter()
+        .find_map(|condition| match condition.condition_one_of.as_ref()? {
+            condition::ConditionOneOf::Field(field) if field.key == "__axon_match_none" => {
+                Some(field)
+            }
+            _ => None,
+        })
+        .expect("expected match-none field condition");
     assert_eq!(field.key, "__axon_match_none");
     assert!(matches!(
         field

@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use axon_api::source::*;
 use qdrant_client::qdrant::{
     CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
-    FieldType, Filter, HnswConfigDiff, IsEmptyCondition, Match, NamedVectors, OptimizersConfigDiff,
-    PointStruct, QuantizationConfig, QuantizationType, ScalarQuantization,
+    FieldType, Filter, HnswConfigDiff, IsEmptyCondition, IsNullCondition, Match, NamedVectors,
+    OptimizersConfigDiff, PointStruct, QuantizationConfig, QuantizationType, ScalarQuantization,
     SparseVector as QdrantSparseVector, SparseVectorConfig as QdrantSparseVectorConfig,
     SparseVectorParams, Value, Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors,
     VectorsConfig, condition, r#match, quantization_config, vector, vectors, vectors_config,
@@ -186,6 +186,17 @@ pub fn qdrant_filter(request: &VectorSearchRequest) -> Result<Option<Filter>> {
         let value =
             serde_json::Value::from(generation_payload_i64(generation, SEARCH_GENERATION_FIELD)?);
         conditions.push(field_condition(SEARCH_GENERATION_FIELD, &value));
+    } else {
+        conditions.push(qdrant_client::qdrant::Condition {
+            condition_one_of: Some(condition::ConditionOneOf::IsNull(IsNullCondition {
+                key: "retired_epoch".to_string(),
+            })),
+        });
+        must_not.push(qdrant_client::qdrant::Condition {
+            condition_one_of: Some(condition::ConditionOneOf::IsNull(IsNullCondition {
+                key: crate::filter::COMMITTED_GENERATION.to_string(),
+            })),
+        });
     }
     Ok(
         (!conditions.is_empty() || !must_not.is_empty()).then_some(Filter {
