@@ -178,6 +178,116 @@ fn executable_script(dir: &std::path::Path, name: &str, body: &str) -> std::path
 }
 
 #[cfg(unix)]
+#[test]
+fn github_credential_helper_suppresses_inherited_url_specific_helpers() {
+    use std::io::Write as _;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let inherited_log = fixture.path().join("inherited-helper.log");
+    let inherited_helper = executable_script(
+        fixture.path(),
+        "inherited-helper",
+        &format!(
+            "printf '%s\\n' \"$1\" >> '{}'\n\
+             case \"$1\" in\n\
+               get) printf '%s\\n' 'username=inherited-user' 'password=inherited-pass' ;;\n\
+             esac",
+            inherited_log.display()
+        ),
+    );
+    let global_config = fixture.path().join("gitconfig");
+    std::fs::write(
+        &global_config,
+        format!(
+            "[credential \"https://github.com\"]\n\thelper = !{}\n",
+            inherited_helper.display()
+        ),
+    )
+    .unwrap();
+
+    let synthetic_token = "synthetic-private-repo-token";
+    let helper = credential_helper_config(GITHUB_TOKEN_ENV);
+    let mut fill = std::process::Command::new("git")
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            &helper,
+            "credential",
+            "fill",
+        ])
+        .env(GITHUB_TOKEN_ENV, synthetic_token)
+        .env("GIT_CONFIG_GLOBAL", &global_config)
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git must be installed for git adapter tests");
+    fill.stdin
+        .take()
+        .expect("credential fill stdin")
+        .write_all(b"protocol=https\nhost=github.com\n\n")
+        .expect("write credential query");
+    let fill_output = fill.wait_with_output().expect("credential fill completes");
+    assert!(
+        fill_output.status.success(),
+        "credential helper failed: {}",
+        String::from_utf8_lossy(&fill_output.stderr)
+    );
+    let stdout = String::from_utf8(fill_output.stdout).expect("credential output is utf-8");
+    assert!(stdout.contains("username=x-access-token"));
+    assert!(stdout.contains(&format!("password={synthetic_token}")));
+    assert!(
+        !inherited_log.exists(),
+        "inherited URL-specific helper must not service credential lookup"
+    );
+
+    let mut reject = std::process::Command::new("git")
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            &helper,
+            "credential",
+            "reject",
+        ])
+        .env(GITHUB_TOKEN_ENV, synthetic_token)
+        .env("GIT_CONFIG_GLOBAL", &global_config)
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git must be installed for git adapter tests");
+    reject
+        .stdin
+        .take()
+        .expect("credential reject stdin")
+        .write_all(
+            format!(
+                "protocol=https\nhost=github.com\nusername=x-access-token\npassword={synthetic_token}\n\n"
+            )
+            .as_bytes(),
+        )
+        .expect("write credential rejection");
+    let reject_output = reject
+        .wait_with_output()
+        .expect("credential reject completes");
+    assert!(
+        reject_output.status.success(),
+        "credential reject failed: {}",
+        String::from_utf8_lossy(&reject_output.stderr)
+    );
+    assert!(
+        !inherited_log.exists(),
+        "inherited URL-specific helper must not receive credential rejection"
+    );
+}
+
+#[cfg(unix)]
 async fn wait_for_file(path: &std::path::Path) {
     tokio::time::timeout(Duration::from_secs(5), async {
         while !path.exists() {

@@ -12,7 +12,6 @@
 //! - anything that requires an actual `RenderMode::Chrome` browser is marked
 //!   `#[ignore]` with the reason documented on the test.
 
-use axon_api::source::*;
 use httpmock::prelude::*;
 
 use super::*;
