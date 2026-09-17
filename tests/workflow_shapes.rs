@@ -249,17 +249,17 @@ fn live_homelab_scopes_gateway_management_tokens_to_python_consumers() {
         .split_once("    steps:\n")
         .expect("live E2E job defines steps")
         .0;
-    let secrets = [
+    let credential_env_names = [
         "AXON_E2E_QDRANT_TOKEN",
         "AXON_E2E_TEI_TOKEN",
         "AXON_E2E_CHROME_TOKEN",
         "AXON_E2E_LLM_TOKEN",
     ];
 
-    for secret in secrets {
+    for env_name in credential_env_names {
         assert!(
-            !job_configuration.contains(secret),
-            "gateway management token must not be inherited through the live job environment: {secret}"
+            !job_configuration.contains(env_name),
+            "gateway management token must not be inherited through the live job environment: {env_name}"
         );
     }
 
@@ -270,10 +270,10 @@ fn live_homelab_scopes_gateway_management_tokens_to_python_consumers() {
         "Retain sanitized evidence",
     ] {
         let step = workflow_step_block(live, step_name);
-        for secret in secrets {
+        for env_name in credential_env_names {
             assert!(
-                !step.contains(&format!("secrets.{secret}")),
-                "gateway management token {secret} must not reach {step_name}"
+                !step.contains(&format!("secrets.{env_name}")),
+                "gateway management token {env_name} must not reach {step_name}"
             );
         }
     }
@@ -286,11 +286,11 @@ fn live_homelab_scopes_gateway_management_tokens_to_python_consumers() {
         "Outer ownership-checked teardown",
     ] {
         let step = workflow_step_block(live, step_name);
-        for secret in secrets {
-            let binding = format!("{secret}: ${{{{ secrets.{secret} }}}}");
+        for env_name in credential_env_names {
+            let binding = format!("{env_name}: ${{{{ secrets.{env_name} }}}}");
             assert!(
                 step.contains(&binding),
-                "{step_name} must receive scoped gateway credential {secret}"
+                "{step_name} must receive scoped gateway credential {env_name}"
             );
         }
     }
