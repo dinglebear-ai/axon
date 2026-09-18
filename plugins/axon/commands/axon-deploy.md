@@ -1,12 +1,11 @@
 ---
-description: Deploy or restart the axon stack (qdrant, tei, chrome, axon) via docker compose.
+description: Start or restart Axon's local/reference Compose stack. Production Axon deployment uses the documented Incus or systemd path.
 argument-hint: [up|restart|rebuild]
 ---
 
 # Deploy Axon
 
-Bring up the axon stack on demand. Use this when the stack is not running, or
-after editing `~/.axon/.env` / `~/.axon/config.toml`.
+Bring up the local/reference Compose stack on demand. Use this for development or local dependency provisioning when the stack is not running, or after editing `~/.axon/.env` / `~/.axon/config.toml`. Do not present this as Axon's supported production deployment; use `install-axon` with the Incus or bare-metal systemd contract for that.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT:-plugins/axon}/bin/axon" compose ${ARGUMENTS:-up}
