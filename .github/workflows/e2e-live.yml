@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   admission:
@@ -22,9 +21,20 @@ jobs:
           ref: ${{ github.sha }}
       - name: Coalesce stale/lower-priority work before serialized queue
         run: python3 scripts/e2e/validate-live-invocation.py
+  manual-approval:
+    name: Approve manual live diagnostic
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: axon-live-e2e-manual
+    steps:
+      - run: echo "Manual live diagnostic approved"
   live:
     name: E2E Live Homelab (non-required)
-    needs: admission
+    permissions:
+      contents: read
+      id-token: write
+    needs: [admission, manual-approval]
+    if: ${{ always() && needs.admission.result == 'success' && (github.event_name != 'workflow_dispatch' || needs.manual-approval.result == 'success') }}
     concurrency:
       group: axon-e2e-live-homelab
       cancel-in-progress: false
@@ -34,19 +44,6 @@ jobs:
     env:
       TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
       TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
-      AXON_E2E_QDRANT_GATEWAY_URL: ${{ vars.AXON_E2E_QDRANT_GATEWAY_URL }}
-      AXON_E2E_QDRANT_PEER: ${{ vars.AXON_E2E_QDRANT_PEER }}
-      AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
-      AXON_E2E_TEI_GATEWAY_URL: ${{ vars.AXON_E2E_TEI_GATEWAY_URL }}
-      AXON_E2E_TEI_PEER: ${{ vars.AXON_E2E_TEI_PEER }}
-      AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
-      AXON_E2E_CHROME_GATEWAY_URL: ${{ vars.AXON_E2E_CHROME_GATEWAY_URL }}
-      AXON_E2E_CHROME_PEER: ${{ vars.AXON_E2E_CHROME_PEER }}
-      AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
-      AXON_E2E_LLM_GATEWAY_URL: ${{ vars.AXON_E2E_LLM_GATEWAY_URL }}
-      AXON_E2E_LLM_PEER: ${{ vars.AXON_E2E_LLM_PEER }}
-      AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
-      AXON_E2E_EXPECTED_PEERS: ${{ vars.AXON_E2E_EXPECTED_PEERS }}
     steps:
       - name: Checkout exact tested commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -57,9 +54,49 @@ jobs:
         run: echo "AXON_E2E_CLEANUP_REGISTRY=${RUNNER_TOOL_CACHE}/axon-e2e-cleanup/${GITHUB_REPOSITORY_ID}/registry.json" >> "$GITHUB_ENV"
       - name: Reject stale or untrusted invocation before discovery
         run: python3 scripts/e2e/validate-live-invocation.py
+      - name: Register masks before application credentials are used
+        env:
+          TOKENS: |-
+            ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+            ${{ secrets.AXON_E2E_TEI_TOKEN }}
+            ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+            ${{ secrets.AXON_E2E_LLM_TOKEN }}
+            ${{ secrets.AXON_E2E_QDRANT_GATEWAY_URL }}
+            ${{ secrets.AXON_E2E_QDRANT_PEER }}
+            ${{ secrets.AXON_E2E_TEI_GATEWAY_URL }}
+            ${{ secrets.AXON_E2E_TEI_PEER }}
+            ${{ secrets.AXON_E2E_CHROME_GATEWAY_URL }}
+            ${{ secrets.AXON_E2E_CHROME_PEER }}
+            ${{ secrets.AXON_E2E_LLM_GATEWAY_URL }}
+            ${{ secrets.AXON_E2E_LLM_PEER }}
+            ${{ secrets.AXON_E2E_EXPECTED_PEERS }}
+        run: python3 scripts/e2e/register-live-masks.py
       - name: Validate live E2E configuration before build
+        env:
+          AXON_E2E_QDRANT_GATEWAY_URL: ${{ secrets.AXON_E2E_QDRANT_GATEWAY_URL }}
+          AXON_E2E_QDRANT_PEER: ${{ secrets.AXON_E2E_QDRANT_PEER }}
+          AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+          AXON_E2E_TEI_GATEWAY_URL: ${{ secrets.AXON_E2E_TEI_GATEWAY_URL }}
+          AXON_E2E_TEI_PEER: ${{ secrets.AXON_E2E_TEI_PEER }}
+          AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
+          AXON_E2E_CHROME_GATEWAY_URL: ${{ secrets.AXON_E2E_CHROME_GATEWAY_URL }}
+          AXON_E2E_CHROME_PEER: ${{ secrets.AXON_E2E_CHROME_PEER }}
+          AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+          AXON_E2E_LLM_GATEWAY_URL: ${{ secrets.AXON_E2E_LLM_GATEWAY_URL }}
+          AXON_E2E_LLM_PEER: ${{ secrets.AXON_E2E_LLM_PEER }}
+          AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
+          AXON_E2E_EXPECTED_PEERS: ${{ secrets.AXON_E2E_EXPECTED_PEERS }}
         run: python3 scripts/e2e/validate-live-config.py
       - name: Recover stale owned runs before mutation
+        env:
+          AXON_E2E_QDRANT_GATEWAY_URL: ${{ secrets.AXON_E2E_QDRANT_GATEWAY_URL }}
+          AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+          AXON_E2E_TEI_GATEWAY_URL: ${{ secrets.AXON_E2E_TEI_GATEWAY_URL }}
+          AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
+          AXON_E2E_CHROME_GATEWAY_URL: ${{ secrets.AXON_E2E_CHROME_GATEWAY_URL }}
+          AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+          AXON_E2E_LLM_GATEWAY_URL: ${{ secrets.AXON_E2E_LLM_GATEWAY_URL }}
+          AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
         run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --stale-seconds 21600 --live-gateways --report target/e2e/stale-cleanup.json
       - name: Build exact tested commit before private-network access
         run: cargo build --locked --bin axon
@@ -73,22 +110,46 @@ jobs:
           tags: tag:axon-ci-e2e
           version: 1.94.0
           use-cache: 'false'
-          ping: ${{ vars.AXON_E2E_EXPECTED_PEERS }}
-      - name: Register masks before application credentials are used
-        env:
-          TOKENS: |-
-            ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
-            ${{ secrets.AXON_E2E_TEI_TOKEN }}
-            ${{ secrets.AXON_E2E_CHROME_TOKEN }}
-            ${{ secrets.AXON_E2E_LLM_TOKEN }}
-        run: python3 scripts/e2e/register-live-masks.py
+          ping: ${{ secrets.AXON_E2E_EXPECTED_PEERS }}
       - name: Verify exact peers and enforcing authenticated gateways
         continue-on-error: true
+        env:
+          AXON_E2E_QDRANT_GATEWAY_URL: ${{ secrets.AXON_E2E_QDRANT_GATEWAY_URL }}
+          AXON_E2E_QDRANT_PEER: ${{ secrets.AXON_E2E_QDRANT_PEER }}
+          AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+          AXON_E2E_TEI_GATEWAY_URL: ${{ secrets.AXON_E2E_TEI_GATEWAY_URL }}
+          AXON_E2E_TEI_PEER: ${{ secrets.AXON_E2E_TEI_PEER }}
+          AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
+          AXON_E2E_CHROME_GATEWAY_URL: ${{ secrets.AXON_E2E_CHROME_GATEWAY_URL }}
+          AXON_E2E_CHROME_PEER: ${{ secrets.AXON_E2E_CHROME_PEER }}
+          AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+          AXON_E2E_LLM_GATEWAY_URL: ${{ secrets.AXON_E2E_LLM_GATEWAY_URL }}
+          AXON_E2E_LLM_PEER: ${{ secrets.AXON_E2E_LLM_PEER }}
+          AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
+          AXON_E2E_EXPECTED_PEERS: ${{ secrets.AXON_E2E_EXPECTED_PEERS }}
         run: python3 scripts/e2e/preflight-live.py --out target/e2e/live-preflight.json
       - name: Run lease-owned live catalog packs from tested binary
+        env:
+          AXON_E2E_QDRANT_GATEWAY_URL: ${{ secrets.AXON_E2E_QDRANT_GATEWAY_URL }}
+          AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+          AXON_E2E_TEI_GATEWAY_URL: ${{ secrets.AXON_E2E_TEI_GATEWAY_URL }}
+          AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
+          AXON_E2E_CHROME_GATEWAY_URL: ${{ secrets.AXON_E2E_CHROME_GATEWAY_URL }}
+          AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+          AXON_E2E_LLM_GATEWAY_URL: ${{ secrets.AXON_E2E_LLM_GATEWAY_URL }}
+          AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
         run: python3 scripts/e2e/run-live.py --preflight target/e2e/live-preflight.json --report target/e2e/live-report.json
       - name: Outer ownership-checked teardown
         if: always()
+        env:
+          AXON_E2E_QDRANT_GATEWAY_URL: ${{ secrets.AXON_E2E_QDRANT_GATEWAY_URL }}
+          AXON_E2E_QDRANT_TOKEN: ${{ secrets.AXON_E2E_QDRANT_TOKEN }}
+          AXON_E2E_TEI_GATEWAY_URL: ${{ secrets.AXON_E2E_TEI_GATEWAY_URL }}
+          AXON_E2E_TEI_TOKEN: ${{ secrets.AXON_E2E_TEI_TOKEN }}
+          AXON_E2E_CHROME_GATEWAY_URL: ${{ secrets.AXON_E2E_CHROME_GATEWAY_URL }}
+          AXON_E2E_CHROME_TOKEN: ${{ secrets.AXON_E2E_CHROME_TOKEN }}
+          AXON_E2E_LLM_GATEWAY_URL: ${{ secrets.AXON_E2E_LLM_GATEWAY_URL }}
+          AXON_E2E_LLM_TOKEN: ${{ secrets.AXON_E2E_LLM_TOKEN }}
         run: python3 scripts/e2e/cleanup-owned-runs.py --manifest-root target/e2e --registry "${{ env.AXON_E2E_CLEANUP_REGISTRY }}" --live-gateways --report target/e2e/outer-cleanup.json
       - name: Verify cleanup and sanitized evidence
         if: always()

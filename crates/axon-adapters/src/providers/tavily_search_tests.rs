@@ -12,7 +12,6 @@
 //! [`SearchResult`] DTO. Those three are exactly what's tested here,
 //! directly, without going over the network.
 
-use axon_api::source::*;
 use spider_agent::{AgentError, SearchError, SearchResult as TavilyResult, SearchResults};
 
 use super::*;

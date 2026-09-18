@@ -84,9 +84,9 @@ than a long-lived OAuth secret, and has only `contents: read` and
 `id-token: write`. Trusted triggers are protected main, schedule, and approved
 manual dispatch—never forks, pull requests, `pull_request_target`, or merge refs.
 
-Repository variables hold peer names, gateway URLs, expected peer set, WIF
-client ID, and audience. Protected-environment secrets hold application bearer
-values. Never track, print, or pass values on argv. Each gateway must authenticate
+Protected-environment secrets hold peer names, gateway URLs, the expected peer
+set, and application bearer values. Repository variables hold only the WIF client
+ID and audience. Never track, print, or pass protected values on argv. Each gateway must authenticate
 requests; validate owner/run/attempt and heartbeat; enforce TTL, QPS, concurrency,
 and tenant isolation; and block raw shared Qdrant/Chrome enumeration or mutation.
 Preflight binds configured DNS names to real `tailscale status` node identity,

@@ -1,6 +1,6 @@
 use axon_api::source::*;
 use qdrant_client::qdrant::{
-    FieldType, condition, r#match, point_id, vector, vectors, vectors_config,
+    FieldType, Memory, condition, r#match, point_id, vector, vectors, vectors_config,
 };
 use serde_json::json;
 
@@ -39,11 +39,11 @@ fn collection_spec_converts_to_named_dense_and_optional_sparse_config() {
         map.map["dense_docs"].distance,
         qdrant_client::qdrant::Distance::Cosine as i32
     );
-    assert_eq!(map.map["dense_docs"].on_disk, Some(true));
+    assert_eq!(map.map["dense_docs"].memory, Some(Memory::Cold as i32));
     let hnsw = request.hnsw_config.unwrap();
     assert_eq!(hnsw.m, Some(32));
     assert_eq!(hnsw.ef_construct, Some(256));
-    assert_eq!(hnsw.on_disk, Some(false));
+    assert_eq!(hnsw.memory, Some(Memory::Pinned as i32));
     assert!(request.quantization_config.is_none());
 
     let sparse = request.sparse_vectors_config.unwrap();
@@ -88,7 +88,7 @@ fn collection_settings_drive_bulk_threshold_hnsw_and_quantization() {
         panic!("expected scalar quantization");
     };
     assert_eq!(scalar.quantile, Some(0.97));
-    assert_eq!(scalar.always_ram, Some(false));
+    assert_eq!(scalar.memory, None);
 }
 
 #[test]

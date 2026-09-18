@@ -2,7 +2,8 @@ use crate::web_engine::engine::resolve_cdp_ws_url;
 use axon_core::config::Config;
 use axon_core::http::parse_custom_headers;
 use axon_core::http::{
-    axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url_with_dns,
+    axon_ua, cdp_discovery_url, cdp_spider_connection_url, cdp_websocket_bearer_header,
+    cdp_websocket_origin_is_authorized, ssrf_blacklist_compact_strings, validate_url_with_dns,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use futures_util::{SinkExt, StreamExt};
@@ -12,6 +13,8 @@ use spider::features::chrome_common::{ScreenShotConfig, ScreenshotParams};
 use spider::website::Website;
 use std::error::Error;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
 static SCREENSHOT_CDP_ID: AtomicU64 = AtomicU64::new(2_000_000);
 
@@ -50,7 +53,9 @@ pub async fn spider_screenshot_with_options(
         None => cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.to_string()),
     };
 
-    match capture_screenshot_via_cdp(cfg, url, &chrome_url, width, height, full_page).await {
+    match capture_screenshot_via_cdp(cfg, remote_url, url, &chrome_url, width, height, full_page)
+        .await
+    {
         Ok(bytes) => return Ok(bytes),
         Err(err) => {
             axon_core::logging::log_warn(&format!(
@@ -58,6 +63,11 @@ pub async fn spider_screenshot_with_options(
             ));
         }
     }
+
+    let bearer = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty());
+    let spider_chrome_url = spider_fallback_url(remote_url, &chrome_url, bearer.as_deref()).await?;
 
     let params = ScreenshotParams {
         full_page: Some(full_page),
@@ -72,7 +82,7 @@ pub async fn spider_screenshot_with_options(
 
     let mut website = Website::new(url);
     website
-        .with_chrome_connection(Some(chrome_url))
+        .with_chrome_connection(Some(spider_chrome_url))
         .with_chrome_intercept(RequestInterceptConfiguration::new(true))
         .with_stealth(true)
         .with_fingerprint(true)
@@ -154,8 +164,28 @@ pub async fn spider_screenshot_with_options(
     })
 }
 
+async fn spider_fallback_url(
+    remote_url: &str,
+    chrome_url: &str,
+    bearer: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+    if chrome_url.starts_with("ws://") || chrome_url.starts_with("wss://") {
+        let connection_url = cdp_spider_connection_url(remote_url, chrome_url, bearer)
+            .await
+            .map_err(|error| -> Box<dyn Error> {
+                format!("refusing unsafe Chrome screenshot fallback: {error}").into()
+            })?;
+        Ok(connection_url)
+    } else if bearer.is_some() {
+        Err("authenticated Chrome discovery failed; refusing unauthenticated fallback".into())
+    } else {
+        Ok(chrome_url.to_string())
+    }
+}
+
 async fn capture_screenshot_via_cdp(
     cfg: &Config,
+    remote_url: &str,
     url: &str,
     browser_ws_url: &str,
     width: u32,
@@ -164,9 +194,23 @@ async fn capture_screenshot_via_cdp(
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     use tokio_tungstenite::tungstenite::Message;
 
+    if !cdp_websocket_origin_is_authorized(remote_url, browser_ws_url) {
+        return Err(format!(
+            "Chrome discovery returned an unauthorized WebSocket origin: {browser_ws_url}"
+        )
+        .into());
+    }
+    let mut request = browser_ws_url.into_client_request()?;
+    if let Ok(token) = std::env::var("AXON_CHROME_BEARER_TOKEN")
+        && !token.is_empty()
+    {
+        let header = cdp_websocket_bearer_header(remote_url, browser_ws_url, &token)
+            .ok_or("authenticated Chrome WebSocket origin or bearer token is invalid")?;
+        request.headers_mut().insert(AUTHORIZATION, header);
+    }
     let (stream, _) = tokio::time::timeout(
         std::time::Duration::from_secs(8),
-        tokio_tungstenite::connect_async(browser_ws_url),
+        tokio_tungstenite::connect_async(request),
     )
     .await
     .map_err(|_| format!("timeout connecting to Chrome at {browser_ws_url}"))?
@@ -410,3 +454,7 @@ where
             .unwrap_or(serde_json::Value::Null));
     }
 }
+
+#[cfg(test)]
+#[path = "screenshot_tests.rs"]
+mod tests;

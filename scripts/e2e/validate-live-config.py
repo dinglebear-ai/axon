@@ -28,10 +28,34 @@ def missing_names(env: Mapping[str, str] = os.environ) -> list[str]:
     return sorted(name for name in required_names() if not env.get(name, "").strip())
 
 
+def duplicate_management_token_names(
+    env: Mapping[str, str] = os.environ,
+) -> list[str]:
+    services = json.loads((ROOT / "config/e2e/live-services.json").read_text())
+    names_by_token: dict[str, list[str]] = {}
+    for provider in services["providers"]:
+        name = provider["auth_env"]
+        token = env.get(name, "").strip()
+        if token:
+            names_by_token.setdefault(token, []).append(name)
+    return sorted(
+        name
+        for names in names_by_token.values()
+        if len(names) > 1
+        for name in names
+    )
+
+
 def main() -> int:
     missing = missing_names()
     if missing:
         raise SystemExit("missing live E2E configuration: " + ", ".join(missing))
+    duplicates = duplicate_management_token_names()
+    if duplicates:
+        raise SystemExit(
+            "live E2E management tokens must be pairwise distinct: "
+            + ", ".join(duplicates)
+        )
     return 0
 
 

@@ -6,6 +6,7 @@ fn clone_argv_is_shallow_no_prompt_terminated() {
         "https://github.com/jmagar/axon.git",
         "/tmp/dest-xyz",
         "github.com:443:140.82.114.4",
+        None,
     );
     assert_eq!(
         argv,
@@ -32,6 +33,7 @@ fn clone_argv_terminates_flag_shaped_urls() {
         "--upload-pack=evil",
         "/tmp/d",
         "example.com:443:93.184.216.34",
+        None,
     );
     let dash_dash = argv.iter().position(|a| a == "--").expect("has terminator");
     let url = argv
@@ -47,6 +49,7 @@ fn clone_argv_pins_validated_dns_and_disables_redirects() {
         "https://example.com/repo.git",
         "/tmp/d",
         "example.com:443:93.184.216.34,93.184.216.35",
+        None,
     );
     assert!(
         argv.contains(
@@ -54,6 +57,102 @@ fn clone_argv_pins_validated_dns_and_disables_redirects() {
         )
     );
     assert!(argv.contains(&"http.followRedirects=false".to_string()));
+}
+
+#[test]
+fn github_credentials_are_scoped_to_https_github() {
+    assert_eq!(
+        credential_env_for_url("https://github.com/unraid/core"),
+        Some(GITHUB_TOKEN_ENV)
+    );
+    assert_eq!(
+        credential_env_for_url("https://GitHub.com/unraid/core.git"),
+        Some(GITHUB_TOKEN_ENV)
+    );
+    assert_eq!(
+        credential_env_for_url("http://github.com/unraid/core"),
+        None
+    );
+    assert_eq!(
+        credential_env_for_url("https://github.com:8443/unraid/core"),
+        None
+    );
+    assert_eq!(
+        credential_env_for_url("https://github.example.com/unraid/core"),
+        None
+    );
+    assert_eq!(
+        credential_env_for_url("https://gitlab.com/unraid/core"),
+        None
+    );
+}
+
+#[test]
+fn github_clone_argv_uses_env_backed_credentials_without_embedding_secret() {
+    let argv = clone_argv(
+        "https://github.com/unraid/core",
+        "/tmp/dest",
+        "github.com:443:140.82.114.4",
+        Some(GITHUB_TOKEN_ENV),
+    );
+    let joined = argv.join(" ");
+
+    assert!(joined.contains("credential.helper="));
+    assert!(joined.contains("credential.https://github.com.helper="));
+    assert!(joined.contains("username=x-access-token"));
+    assert!(joined.contains("password=$GITHUB_TOKEN"));
+    assert!(!joined.contains("https://x-access-token:"));
+    assert!(!joined.contains("ghp_"));
+
+    let helper = argv
+        .iter()
+        .position(|arg| arg.contains("credential.https://github.com.helper="))
+        .expect("credential helper config present");
+    let clone = argv
+        .iter()
+        .position(|arg| arg == "clone")
+        .expect("clone verb");
+    assert!(helper < clone);
+}
+
+#[test]
+fn github_credential_helper_is_consumed_by_git_without_url_secret() {
+    use std::io::Write as _;
+
+    let synthetic_token = "synthetic-private-repo-token";
+    let helper = credential_helper_config(GITHUB_TOKEN_ENV);
+    let mut child = std::process::Command::new("git")
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            &helper,
+            "credential",
+            "fill",
+        ])
+        .env(GITHUB_TOKEN_ENV, synthetic_token)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git must be installed for git adapter tests");
+
+    child
+        .stdin
+        .take()
+        .expect("credential fill stdin")
+        .write_all(b"protocol=https\nhost=github.com\n\n")
+        .expect("write credential query");
+    let output = child.wait_with_output().expect("credential fill completes");
+    assert!(
+        output.status.success(),
+        "credential helper failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("credential output is utf-8");
+    assert!(stdout.contains("username=x-access-token"));
+    assert!(stdout.contains(&format!("password={synthetic_token}")));
 }
 
 #[tokio::test]
@@ -76,6 +175,116 @@ fn executable_script(dir: &std::path::Path, name: &str, body: &str) -> std::path
     std::fs::write(&path, format!("#!/bin/sh\nset -eu\n{body}\n")).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path
+}
+
+#[cfg(unix)]
+#[test]
+fn github_credential_helper_suppresses_inherited_url_specific_helpers() {
+    use std::io::Write as _;
+
+    let fixture = tempfile::tempdir().unwrap();
+    let inherited_log = fixture.path().join("inherited-helper.log");
+    let inherited_helper = executable_script(
+        fixture.path(),
+        "inherited-helper",
+        &format!(
+            "printf '%s\\n' \"$1\" >> '{}'\n\
+             case \"$1\" in\n\
+               get) printf '%s\\n' 'username=inherited-user' 'password=inherited-pass' ;;\n\
+             esac",
+            inherited_log.display()
+        ),
+    );
+    let global_config = fixture.path().join("gitconfig");
+    std::fs::write(
+        &global_config,
+        format!(
+            "[credential \"https://github.com\"]\n\thelper = !{}\n",
+            inherited_helper.display()
+        ),
+    )
+    .unwrap();
+
+    let synthetic_token = "synthetic-private-repo-token";
+    let helper = credential_helper_config(GITHUB_TOKEN_ENV);
+    let mut fill = std::process::Command::new("git")
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            &helper,
+            "credential",
+            "fill",
+        ])
+        .env(GITHUB_TOKEN_ENV, synthetic_token)
+        .env("GIT_CONFIG_GLOBAL", &global_config)
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git must be installed for git adapter tests");
+    fill.stdin
+        .take()
+        .expect("credential fill stdin")
+        .write_all(b"protocol=https\nhost=github.com\n\n")
+        .expect("write credential query");
+    let fill_output = fill.wait_with_output().expect("credential fill completes");
+    assert!(
+        fill_output.status.success(),
+        "credential helper failed: {}",
+        String::from_utf8_lossy(&fill_output.stderr)
+    );
+    let stdout = String::from_utf8(fill_output.stdout).expect("credential output is utf-8");
+    assert!(stdout.contains("username=x-access-token"));
+    assert!(stdout.contains(&format!("password={synthetic_token}")));
+    assert!(
+        !inherited_log.exists(),
+        "inherited URL-specific helper must not service credential lookup"
+    );
+
+    let mut reject = std::process::Command::new("git")
+        .args([
+            "-c",
+            "credential.helper=",
+            "-c",
+            &helper,
+            "credential",
+            "reject",
+        ])
+        .env(GITHUB_TOKEN_ENV, synthetic_token)
+        .env("GIT_CONFIG_GLOBAL", &global_config)
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("git must be installed for git adapter tests");
+    reject
+        .stdin
+        .take()
+        .expect("credential reject stdin")
+        .write_all(
+            format!(
+                "protocol=https\nhost=github.com\nusername=x-access-token\npassword={synthetic_token}\n\n"
+            )
+            .as_bytes(),
+        )
+        .expect("write credential rejection");
+    let reject_output = reject
+        .wait_with_output()
+        .expect("credential reject completes");
+    assert!(
+        reject_output.status.success(),
+        "credential reject failed: {}",
+        String::from_utf8_lossy(&reject_output.stderr)
+    );
+    assert!(
+        !inherited_log.exists(),
+        "inherited URL-specific helper must not receive credential rejection"
+    );
 }
 
 #[cfg(unix)]
