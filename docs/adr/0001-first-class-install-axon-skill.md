@@ -1,3 +1,9 @@
+---
+title: "ADR 0001: Make install-axon the first-class guided installer"
+created: 2026-09-18
+updated: 2026-09-18
+---
+
 # ADR 0001: Make install-axon the first-class guided installer
 
 - Status: Accepted
