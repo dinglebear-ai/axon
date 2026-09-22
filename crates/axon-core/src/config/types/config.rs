@@ -656,15 +656,15 @@ pub struct Config {
     pub evaluate_responses_mode: EvaluateResponsesMode,
 
     /// Maximum total characters of context passed to the LLM in a single `ask` request.
-    /// Env: `AXON_ASK_MAX_CONTEXT_CHARS` (clamped 20_000–1_000_000). Default: 300_000.
+    /// Env: `AXON_ASK_MAX_CONTEXT_CHARS` (clamped 20_000–1_000_000). Unset defaults are model-tiered.
     pub ask_max_context_chars: usize,
 
     /// Number of candidate chunks retrieved from Qdrant before reranking.
-    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Default: 250.
+    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Unset defaults are model-tiered.
     pub ask_candidate_limit: usize,
 
     /// Maximum chunks included in the LLM context after reranking.
-    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–64). Default: 24.
+    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–64). Unset defaults are model-tiered and remain bounded by the candidate limit.
     pub ask_chunk_limit: usize,
 
     /// Compatibility-only legacy full-document fetch count. The unified
@@ -730,9 +730,10 @@ pub struct Config {
 
     /// Candidates fetched per prefetch arm before RRF fusion, for the `ask` pipeline only.
     ///
-    /// Ask performs lexical, authority, and source-quality reranking after RRF,
-    /// so it uses a wider raw prefetch window than plain `query`.
-    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
+    /// Ask applies authority/source-quality policy after RRF while preserving
+    /// Qdrant's fused relevance scale, so it uses a wider raw prefetch window
+    /// than plain `query`.
+    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Unset defaults are model-tiered.
     pub ask_hybrid_candidates: usize,
 
     /// Compatibility-only switch for the retired full-document ask cache.

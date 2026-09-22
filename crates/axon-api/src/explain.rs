@@ -51,7 +51,9 @@ pub enum AskExplainFilterDecisionKind {
     Kept,
     DroppedLowSignal,
     DroppedMinRelevance,
+    // Retained for backward compatibility with older explain payloads.
     DroppedTopicalOverlap,
+    DroppedProductIdentityMismatch,
     DroppedDuplicate,
 }
 
@@ -151,6 +153,7 @@ pub enum AskExplainFullDocFetchMode {
 #[serde(rename_all = "snake_case")]
 pub enum AskExplainFullDocFetchSkipReason {
     Disabled,
+    NotSupportedByRetrievalEngine,
     EmptyTopK,
     InsufficientUrls,
     InsufficientChars,
@@ -164,6 +167,7 @@ impl From<&str> for AskExplainFullDocFetchSkipReason {
     fn from(value: &str) -> Self {
         match value {
             "disabled" => Self::Disabled,
+            "not_supported_by_retrieval_engine" => Self::NotSupportedByRetrievalEngine,
             "empty_top_k" => Self::EmptyTopK,
             "insufficient_urls" => Self::InsufficientUrls,
             "insufficient_chars" => Self::InsufficientChars,
@@ -199,13 +203,16 @@ pub struct AskExplainContext {
     pub full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason,
     pub full_doc_fetch_mode: AskExplainFullDocFetchMode,
     pub final_source_order: Vec<AskExplainContextSource>,
-    /// Deprecated compatibility alias. Runtime budget enforcement is byte-based;
-    /// prefer `context_bytes_budget`.
+    /// Active context budget in Unicode scalar values for character-bounded
+    /// retrieval paths.
     pub context_char_budget: usize,
     /// Actual Unicode scalar value count for the final rendered context.
     pub context_chars_used: usize,
+    /// Optional independent UTF-8 byte budget. A value of 0 means the runtime
+    /// did not enforce a separate byte ceiling for this trace.
     #[serde(default)]
     pub context_bytes_budget: usize,
+    /// Actual UTF-8 byte length of the final rendered context.
     #[serde(default)]
     pub context_bytes_used: usize,
     #[serde(

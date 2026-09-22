@@ -1,23 +1,27 @@
 //! Ask-specific post-retrieval ranking and adaptive context policy.
 
+mod components;
+mod signals;
+
 use super::super::query_tokens::{
-    identity_tokens, is_generic_authority_token, is_generic_topical_token, query_tokens,
-    query_wants_low_signal_sources, tokenize_path_set, tokenize_text_set,
+    query_tokens, query_wants_low_signal_sources, tokenize_path_set, tokenize_text_set,
 };
-use axon_api::{
-    AskExplainFilterDecision, AskExplainFilterDecisionKind, AskExplainScoreComponent,
-    AskExplainScoreComponentStatus,
-};
+use axon_api::{AskExplainFilterDecision, AskExplainFilterDecisionKind, AskExplainScoreComponent};
 use axon_core::config::Config;
 use axon_core::llm::{SynthesisModelProfile, SynthesisModelTier};
 use axon_retrieval::QueryServiceHit;
+use components::{ScoreBoosts, components, decision};
 use reqwest::Url;
+use signals::{
+    ascii_lowercase_contains, authority_deltas, classify_complexity, docs_path_boost,
+    host_matches_domains, is_low_signal_source, matches_named_product_identity, normalized_domains,
+    product_authority_match,
+};
 use std::collections::{HashMap, HashSet};
 
 const URL_TOKEN_BOOST: f64 = 0.045;
 const TEXT_TOKEN_BOOST: f64 = 0.015;
 const LEXICAL_BOOST_CAP: f64 = 0.30;
-const DOCS_PATH_BOOST: f64 = 0.04;
 const PHRASE_MATCH_BOOST: f64 = 0.06;
 const PRODUCT_AUTHORITY_BOOST: f64 = 0.35;
 
@@ -58,7 +62,11 @@ impl EffectiveAskBudget {
             (_, AskComplexity::Exhaustive) => (18, 128_000, 12_000),
         };
         Self {
-            chunk_limit: cfg.ask_chunk_limit.min(chunks).max(1),
+            chunk_limit: cfg
+                .ask_chunk_limit
+                .min(cfg.ask_candidate_limit)
+                .min(chunks)
+                .max(1),
             max_context_chars: cfg.ask_max_context_chars.min(context_chars).max(1),
             max_chunk_chars: chunk_chars.min(cfg.ask_max_context_chars).max(1),
         }
@@ -90,10 +98,10 @@ impl RankedCandidate {
 pub(crate) struct RankingResult {
     pub(crate) candidates: Vec<RankedCandidate>,
     pub(crate) ranked_indices: Vec<usize>,
-    pub(crate) query_tokens: Vec<String>,
     pub(crate) keyword_query: String,
     pub(crate) complexity: AskComplexity,
     pub(crate) effective_budget: EffectiveAskBudget,
+    pub(crate) authority_ratio: f64,
     pub(crate) configured_authority_ratio: f64,
     pub(crate) product_authority_ratio: f64,
     pub(crate) top_domains: Vec<String>,
@@ -109,112 +117,187 @@ pub(crate) fn rank_candidates(
     let keyword_query = tokens.join(" ");
     let complexity = classify_complexity(question, &tokens);
     let effective_budget = EffectiveAskBudget::resolve(cfg, complexity);
-    let allow_low_signal = query_wants_low_signal_sources(&tokens, question);
-    let phrase = tokens.join(" ");
-    let normalized_domains = normalized_domains(&cfg.ask_authoritative_domains);
-    let configured_boost = cfg.ask_authoritative_boost.clamp(0.0, 0.5);
-    let mut candidates = Vec::with_capacity(hits.len());
-
-    for (index, hit) in hits
+    let signals = RankingSignals {
+        tokens: &tokens,
+        phrase: &keyword_query,
+        allow_low_signal: query_wants_low_signal_sources(&tokens, question),
+        domains: normalized_domains(&cfg.ask_authoritative_domains),
+        configured_boost: cfg.ask_authoritative_boost.clamp(0.0, 0.5),
+        min_relevance: cfg.ask_min_relevance_score,
+        hybrid,
+    };
+    let mut candidates = hits
         .into_iter()
         .take(cfg.ask_candidate_limit.max(1))
         .enumerate()
-    {
-        let url_tokens = tokenize_path_set(&hit.canonical_uri);
-        let chunk_tokens = tokenize_text_set(&hit.text);
-        let mut url_boost = 0.0;
-        let mut text_boost = 0.0;
-        for token in &tokens {
-            if url_tokens.contains(token) {
-                url_boost += URL_TOKEN_BOOST;
-            }
-            if chunk_tokens.contains(token) {
-                text_boost += TEXT_TOKEN_BOOST;
-            }
-        }
-        let lexical = url_boost + text_boost;
-        if lexical > LEXICAL_BOOST_CAP {
-            let scale = LEXICAL_BOOST_CAP / lexical;
-            url_boost *= scale;
-            text_boost *= scale;
-        }
-        let docs_boost = docs_path_boost(&hit.canonical_uri);
-        let configured_authoritative =
-            host_matches_domains(&hit.canonical_uri, &normalized_domains);
-        let authority_boost = if configured_authoritative {
-            configured_boost
+        .map(|(index, hit)| score_candidate(&signals, index, hit))
+        .collect::<Vec<_>>();
+    let ranked_indices = order_kept_candidates(&mut candidates);
+    let kept = ranked_indices
+        .iter()
+        .map(|i| &candidates[*i])
+        .collect::<Vec<_>>();
+    let authority_ratio = ratio(&kept, |c| {
+        c.configured_authoritative || c.product_authoritative
+    });
+    let configured_authority_ratio = ratio(&kept, |c| c.configured_authoritative);
+    let product_authority_ratio = ratio(&kept, |c| c.product_authoritative);
+    let top_domains = top_domains(&kept, 5);
+    RankingResult {
+        candidates,
+        ranked_indices,
+        keyword_query,
+        complexity,
+        effective_budget,
+        authority_ratio,
+        configured_authority_ratio,
+        product_authority_ratio,
+        top_domains,
+    }
+}
+
+/// Query-derived inputs shared by every candidate in one ranking pass.
+struct RankingSignals<'a> {
+    tokens: &'a [String],
+    phrase: &'a str,
+    allow_low_signal: bool,
+    domains: Vec<String>,
+    configured_boost: f64,
+    min_relevance: f64,
+    hybrid: bool,
+}
+
+fn score_candidate(
+    signals: &RankingSignals<'_>,
+    index: usize,
+    hit: QueryServiceHit,
+) -> RankedCandidate {
+    let url_tokens = tokenize_path_set(&hit.canonical_uri);
+    let chunk_tokens = tokenize_text_set(&hit.text);
+    // Dense/cosine scores can safely absorb lexical relevance deltas.
+    // RRF scores are rank-fusion values on a different scale, so preserve
+    // Qdrant's fused ordering and only apply explicit trust/authority boosts.
+    let (url, text) = if signals.hybrid {
+        (0.0, 0.0)
+    } else {
+        lexical_boosts(signals.tokens, &url_tokens, &chunk_tokens)
+    };
+    let docs = if signals.hybrid {
+        0.0
+    } else {
+        docs_path_boost(&hit.canonical_uri)
+    };
+    let configured_authoritative = host_matches_domains(&hit.canonical_uri, &signals.domains);
+    let product_authoritative = product_authority_match(&hit.canonical_uri, signals.tokens);
+    let (authority, product) = authority_deltas(
+        hit.score,
+        if configured_authoritative {
+            signals.configured_boost
         } else {
             0.0
-        };
-        let product_authoritative = product_authority_match(&hit.canonical_uri, &tokens);
-        let product_boost = if product_authoritative {
+        },
+        if product_authoritative {
             PRODUCT_AUTHORITY_BOOST
         } else {
             0.0
-        };
-        let phrase_boost = if phrase.len() >= 6
-            && tokens.len() >= 2
-            && ascii_lowercase_contains(&hit.text, &phrase)
-        {
-            PHRASE_MATCH_BOOST
-        } else {
-            0.0
-        };
-        let rerank_score = hit.score
-            + url_boost
-            + text_boost
-            + docs_boost
-            + authority_boost
-            + product_boost
-            + phrase_boost;
-        let mut filters = Vec::new();
-        if !allow_low_signal && is_low_signal_source(&hit) {
-            filters.push(decision(
-                AskExplainFilterDecisionKind::DroppedLowSignal,
-                "session/log/cache sources are excluded unless explicitly requested",
-            ));
+        },
+        signals.hybrid,
+    );
+    let phrase = if !signals.hybrid
+        && signals.phrase.len() >= 6
+        && signals.tokens.len() >= 2
+        && ascii_lowercase_contains(&hit.text, signals.phrase)
+    {
+        PHRASE_MATCH_BOOST
+    } else {
+        0.0
+    };
+    let boosts = ScoreBoosts {
+        url,
+        text,
+        docs,
+        authority,
+        product,
+        phrase,
+    };
+    let filter_decisions = filter_decisions(signals, &hit, &url_tokens, &chunk_tokens);
+    let retrieval_score = hit.score;
+    RankedCandidate {
+        hit,
+        retrieval_rank: index + 1,
+        rerank_rank: None,
+        rerank_score: boosts.applied_to(retrieval_score),
+        score_components: components(retrieval_score, boosts, signals.hybrid),
+        filter_decisions,
+        configured_authoritative,
+        product_authoritative,
+        selected_context_rank: None,
+        selection_reason: None,
+    }
+}
+
+/// URL and chunk token boosts, scaled down together when they exceed the cap.
+fn lexical_boosts(
+    tokens: &[String],
+    url_tokens: &HashSet<String>,
+    chunk_tokens: &HashSet<String>,
+) -> (f64, f64) {
+    let mut url = 0.0;
+    let mut text = 0.0;
+    for token in tokens {
+        if url_tokens.contains(token) {
+            url += URL_TOKEN_BOOST;
         }
-        if !hybrid && hit.score < cfg.ask_min_relevance_score {
-            filters.push(decision(
-                AskExplainFilterDecisionKind::DroppedMinRelevance,
-                "dense score was below ask_min_relevance_score",
-            ));
+        if chunk_tokens.contains(token) {
+            text += TEXT_TOKEN_BOOST;
         }
-        if !topical_overlap(&url_tokens, &chunk_tokens, &tokens) {
-            filters.push(decision(
-                AskExplainFilterDecisionKind::DroppedTopicalOverlap,
-                "candidate did not sufficiently overlap salient query tokens",
-            ));
-        }
-        if filters.is_empty() {
-            filters.push(AskExplainFilterDecision {
-                kind: AskExplainFilterDecisionKind::Kept,
-                reason: None,
-            });
-        }
-        let retrieval_score = hit.score;
-        candidates.push(RankedCandidate {
-            hit,
-            retrieval_rank: index + 1,
-            rerank_rank: None,
-            rerank_score,
-            score_components: components(
-                retrieval_score,
-                url_boost,
-                text_boost,
-                docs_boost,
-                authority_boost,
-                product_boost,
-                phrase_boost,
-            ),
-            filter_decisions: filters,
-            configured_authoritative,
-            product_authoritative,
-            selected_context_rank: None,
-            selection_reason: None,
+    }
+    let lexical = url + text;
+    if lexical > LEXICAL_BOOST_CAP {
+        let scale = LEXICAL_BOOST_CAP / lexical;
+        url *= scale;
+        text *= scale;
+    }
+    (url, text)
+}
+
+fn filter_decisions(
+    signals: &RankingSignals<'_>,
+    hit: &QueryServiceHit,
+    url_tokens: &HashSet<String>,
+    chunk_tokens: &HashSet<String>,
+) -> Vec<AskExplainFilterDecision> {
+    let mut filters = Vec::new();
+    if !signals.allow_low_signal && is_low_signal_source(hit) {
+        filters.push(decision(
+            AskExplainFilterDecisionKind::DroppedLowSignal,
+            "session/log/cache sources are excluded unless explicitly requested",
+        ));
+    }
+    if !signals.hybrid && hit.score < signals.min_relevance {
+        filters.push(decision(
+            AskExplainFilterDecisionKind::DroppedMinRelevance,
+            "dense score was below ask_min_relevance_score",
+        ));
+    }
+    if !matches_named_product_identity(url_tokens, chunk_tokens, signals.tokens) {
+        filters.push(decision(
+            AskExplainFilterDecisionKind::DroppedProductIdentityMismatch,
+            "candidate did not match an explicit named-product identity in the query",
+        ));
+    }
+    if filters.is_empty() {
+        filters.push(AskExplainFilterDecision {
+            kind: AskExplainFilterDecisionKind::Kept,
+            reason: None,
         });
     }
+    filters
+}
 
+/// Orders kept candidates by rerank score (retrieval rank breaks ties) and
+/// stamps each with its 1-based rerank rank.
+fn order_kept_candidates(candidates: &mut [RankedCandidate]) -> Vec<usize> {
     let mut ranked_indices = candidates
         .iter()
         .enumerate()
@@ -234,261 +317,9 @@ pub(crate) fn rank_candidates(
     for (rank, index) in ranked_indices.iter().copied().enumerate() {
         candidates[index].rerank_rank = Some(rank + 1);
     }
-    let kept = ranked_indices
-        .iter()
-        .map(|i| &candidates[*i])
-        .collect::<Vec<_>>();
-    let configured_authority_ratio = ratio(&kept, |c| c.configured_authoritative);
-    let product_authority_ratio = ratio(&kept, |c| c.product_authoritative);
-    let top_domains = top_domains(&kept, 5);
-    RankingResult {
-        candidates,
-        ranked_indices,
-        query_tokens: tokens,
-        keyword_query,
-        complexity,
-        effective_budget,
-        configured_authority_ratio,
-        product_authority_ratio,
-        top_domains,
-    }
+    ranked_indices
 }
 
-fn components(
-    retrieval: f64,
-    url: f64,
-    text: f64,
-    docs: f64,
-    authority: f64,
-    product: f64,
-    phrase: f64,
-) -> Vec<AskExplainScoreComponent> {
-    vec![
-        component(
-            "retrieval_score",
-            retrieval,
-            AskExplainScoreComponentStatus::Applied,
-        ),
-        component(
-            "lexical_url_token_boost",
-            url,
-            AskExplainScoreComponentStatus::Applied,
-        ),
-        component(
-            "lexical_chunk_token_boost",
-            text,
-            AskExplainScoreComponentStatus::Applied,
-        ),
-        component(
-            "docs_path_boost",
-            docs,
-            AskExplainScoreComponentStatus::Applied,
-        ),
-        component(
-            "authority_boost",
-            authority,
-            if authority > 0.0 {
-                AskExplainScoreComponentStatus::Applied
-            } else {
-                AskExplainScoreComponentStatus::NotApplicable
-            },
-        ),
-        component(
-            "product_authority_boost",
-            product,
-            if product > 0.0 {
-                AskExplainScoreComponentStatus::Applied
-            } else {
-                AskExplainScoreComponentStatus::NotApplicable
-            },
-        ),
-        component(
-            "phrase_match_boost",
-            phrase,
-            AskExplainScoreComponentStatus::Applied,
-        ),
-    ]
-}
-fn component(
-    name: &str,
-    value: f64,
-    status: AskExplainScoreComponentStatus,
-) -> AskExplainScoreComponent {
-    AskExplainScoreComponent {
-        name: name.to_string(),
-        value,
-        status,
-        reason: None,
-    }
-}
-fn decision(kind: AskExplainFilterDecisionKind, reason: &str) -> AskExplainFilterDecision {
-    AskExplainFilterDecision {
-        kind,
-        reason: Some(reason.to_string()),
-    }
-}
-
-fn classify_complexity(question: &str, tokens: &[String]) -> AskComplexity {
-    let lower = question.to_ascii_lowercase();
-    if [
-        "list all",
-        "show all",
-        "every ",
-        "everything",
-        "enumerate",
-        "comprehensive",
-        "thorough",
-        "in detail",
-        "deep dive",
-    ]
-    .iter()
-    .any(|n| lower.contains(n))
-    {
-        AskComplexity::Exhaustive
-    } else if tokens.len() >= 5
-        || lower.contains("how do i")
-        || lower.contains("how should")
-        || lower.contains("step by step")
-        || lower.matches('?').count() > 1
-    {
-        AskComplexity::Complex
-    } else {
-        AskComplexity::Simple
-    }
-}
-
-fn is_low_signal_source(hit: &QueryServiceHit) -> bool {
-    let lower = hit.canonical_uri.to_ascii_lowercase();
-    let source_key = hit.citation.source_item_key.to_ascii_lowercase();
-    let web = lower.starts_with("http://") || lower.starts_with("https://");
-    lower.starts_with("session://")
-        || lower.starts_with("file://")
-        || source_key.ends_with(".jsonl")
-        || lower.contains("/docs/sessions/")
-        || lower.contains("docs/sessions/")
-        || lower.contains("/.cache/")
-        || lower.contains(".cache/")
-        || (!web && lower.contains("/logs/"))
-        || (!web && lower.ends_with(".log"))
-}
-
-fn topical_overlap(url: &HashSet<String>, text: &HashSet<String>, tokens: &[String]) -> bool {
-    let topical = tokens.iter().filter(|t| t.len() >= 3).collect::<Vec<_>>();
-    if topical.is_empty() {
-        return true;
-    }
-    let salient = topical
-        .iter()
-        .copied()
-        .filter(|t| !is_generic_topical_token(t))
-        .collect::<Vec<_>>();
-    if !salient.is_empty()
-        && !salient
-            .iter()
-            .any(|t| url.contains(t.as_str()) || text.contains(t.as_str()))
-    {
-        return false;
-    }
-    let overlap = topical
-        .iter()
-        .filter(|t| url.contains(t.as_str()) || text.contains(t.as_str()))
-        .count();
-    match topical.len() {
-        1 | 2 => overlap >= 1,
-        3 | 4 => overlap >= 1,
-        _ => overlap >= 2,
-    }
-}
-
-fn docs_path_boost(url: &str) -> f64 {
-    let path = Url::parse(url)
-        .ok()
-        .map(|u| u.path().to_ascii_lowercase())
-        .unwrap_or_else(|| url.to_ascii_lowercase());
-    if path.contains("/docs/")
-        || path.contains("/guides/")
-        || path.contains("/api/")
-        || path.contains("/reference/")
-    {
-        DOCS_PATH_BOOST
-    } else {
-        0.0
-    }
-}
-fn normalized_domains(domains: &[String]) -> Vec<String> {
-    domains
-        .iter()
-        .map(|d| d.trim().trim_start_matches('.').to_ascii_lowercase())
-        .filter(|d| !d.is_empty())
-        .collect()
-}
-fn host_matches_domains(url: &str, domains: &[String]) -> bool {
-    let Some(host) = Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
-    else {
-        return false;
-    };
-    domains.iter().any(|d| {
-        host == *d
-            || (host.len() > d.len()
-                && host.ends_with(d)
-                && host.as_bytes()[host.len() - d.len() - 1] == b'.')
-    })
-}
-fn product_authority_match(url: &str, tokens: &[String]) -> bool {
-    let Ok(parsed) = Url::parse(url) else {
-        return false;
-    };
-    let Some(host) = parsed.host_str().map(str::to_ascii_lowercase) else {
-        return false;
-    };
-    if !is_docs_like_url(&host, url) {
-        return false;
-    }
-    let mut identity = identity_tokens(&host);
-    for segment in parsed
-        .path_segments()
-        .into_iter()
-        .flatten()
-        .filter(|s| !s.is_empty())
-        .take(2)
-    {
-        identity.extend(identity_tokens(segment));
-    }
-    tokens
-        .iter()
-        .any(|t| !is_generic_authority_token(t) && identity.contains(t.as_str()))
-}
-fn is_docs_like_url(host: &str, url: &str) -> bool {
-    let lower = url.to_ascii_lowercase();
-    host == "docs.rs"
-        || host.starts_with("docs.")
-        || host.contains(".readthedocs.")
-        || host.contains("developer")
-        || [
-            "/documentation/",
-            "/docs/",
-            "/guides/",
-            "/guide/",
-            "/api/",
-            "/reference/",
-            "/book/",
-            "/learn/",
-        ]
-        .iter()
-        .any(|p| lower.contains(p))
-}
-fn ascii_lowercase_contains(haystack: &str, needle: &str) -> bool {
-    if needle.len() > haystack.len() {
-        return false;
-    }
-    haystack.as_bytes().windows(needle.len()).any(|w| {
-        w.iter()
-            .zip(needle.as_bytes())
-            .all(|(a, b)| a.to_ascii_lowercase() == *b)
-    })
-}
 fn ratio<F>(candidates: &[&RankedCandidate], predicate: F) -> f64
 where
     F: Fn(&RankedCandidate) -> bool,

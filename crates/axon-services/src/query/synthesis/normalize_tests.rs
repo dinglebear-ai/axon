@@ -155,7 +155,7 @@ fn summarize_citation_validation_reports_failure_reasons() {
 
 #[test]
 fn tokenize_query_drops_stop_words_and_short_tokens() {
-    let tokens = tokenize_query("how do I use the API for this");
+    let tokens = super::super::super::query_tokens::query_tokens("how do I use the API for this");
     assert!(!tokens.contains(&"do".to_string()));
     assert!(!tokens.contains(&"the".to_string()));
     assert!(tokens.contains(&"use".to_string()));

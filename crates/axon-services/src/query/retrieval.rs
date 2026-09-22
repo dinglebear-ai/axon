@@ -98,7 +98,7 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
             collection: cfg.collection.clone(),
             limit: fetch_limit.max(1),
             hybrid: cfg.hybrid_search_enabled,
-            hybrid_candidates: None,
+            hybrid_candidates: query_hybrid_candidate_limit(cfg),
             since,
             before,
         },
@@ -153,6 +153,11 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         .collect();
 
     Ok(QueryResult { results })
+}
+
+pub(super) fn query_hybrid_candidate_limit(cfg: &Config) -> Option<u32> {
+    cfg.hybrid_search_enabled
+        .then(|| u32::try_from(cfg.hybrid_search_candidates.max(1)).unwrap_or(u32::MAX))
 }
 
 pub(super) fn normalize_time_bounds(

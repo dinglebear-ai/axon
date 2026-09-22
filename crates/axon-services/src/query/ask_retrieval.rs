@@ -138,8 +138,7 @@ async fn retrieval_ask_context_with_ranking(
     let provider_id = execution.embedding_provider_id();
     let model = execution.embedding_model();
     let dimensions = execution.embedding_dimensions();
-    let fetch_limit =
-        u32::try_from(cfg.ask_candidate_limit.max(cfg.ask_chunk_limit).max(1)).unwrap_or(u32::MAX);
+    let fetch_limit = u32::try_from(cfg.ask_candidate_limit.max(1)).unwrap_or(u32::MAX);
     let (since, before) = super::retrieval::normalize_time_bounds(cfg, chrono::Utc::now())?;
 
     log_info(&format!(
@@ -179,7 +178,7 @@ async fn retrieval_ask_context_with_ranking(
         ranking::rank_candidates(cfg, question, result.hits, cfg.hybrid_search_enabled);
     if ranked.ranked_indices.is_empty() {
         return Err(Box::new(ServiceError::new(if cfg.hybrid_search_enabled {
-            "ask retrieval returned candidates, but none passed topical/source-quality filtering"
+            "ask retrieval returned candidates, but none passed source-quality/named-product identity filtering"
                 .to_string()
         } else {
             format!(
@@ -233,7 +232,7 @@ fn build_ask_context_from_ranking(
         }
         let source_idx = selected_urls.len() + 1;
         let candidate = &mut ranked.candidates[candidate_index];
-        let source = display_source(&candidate.hit.canonical_uri);
+        let source = context_source_label(&candidate.hit.canonical_uri);
         let header = format!(
             "## Top Chunk [S{source_idx}]: {source}
 
@@ -293,16 +292,7 @@ fn build_ask_context_from_ranking(
         selected_citations.push(candidate.hit.citation.clone());
     }
 
-    if body_truncations > 0 {
-        warnings.push(format!(
-            "ask context truncated {body_truncations} oversized chunk(s) to preserve source diversity"
-        ));
-    }
-    if budget_skips > 0 {
-        warnings.push(format!(
-            "ask context skipped {budget_skips} candidate(s) that could not fit the effective context budget"
-        ));
-    }
+    push_context_budget_warnings(&mut warnings, body_truncations, budget_skips);
 
     let chunks_selected = selected_urls.len();
     let reranked_count = ranked.ranked_indices.len();
@@ -318,9 +308,7 @@ fn build_ask_context_from_ranking(
     );
     ask_ctx.reranked_count = reranked_count;
     ask_ctx.citations = selected_citations;
-    ask_ctx.authoritative_ratio = ranked
-        .configured_authority_ratio
-        .max(ranked.product_authority_ratio);
+    ask_ctx.authoritative_ratio = ranked.authority_ratio;
     ask_ctx.configured_authority_ratio = ranked.configured_authority_ratio;
     ask_ctx.product_authority_ratio = ranked.product_authority_ratio;
     ask_ctx.detected_complexity = ranked.complexity.as_str();
@@ -331,6 +319,23 @@ fn build_ask_context_from_ranking(
     ask_ctx.full_doc_fetch_skip_reason = "not_supported_by_retrieval_engine";
     ask_ctx.full_docs_source = "not_supported_by_retrieval_engine";
     ask_ctx
+}
+
+fn push_context_budget_warnings(
+    warnings: &mut Vec<String>,
+    body_truncations: usize,
+    budget_skips: usize,
+) {
+    if body_truncations > 0 {
+        warnings.push(format!(
+            "ask context truncated {body_truncations} oversized chunk(s) to preserve source diversity"
+        ));
+    }
+    if budget_skips > 0 {
+        warnings.push(format!(
+            "ask context skipped {budget_skips} candidate(s) that could not fit the effective context budget"
+        ));
+    }
 }
 
 fn document_diverse_ranked_order(ranked: &ranking::RankingResult) -> Vec<usize> {
@@ -383,36 +388,102 @@ fn clip_text_chars(text: &str, max_chars: usize) -> (String, bool) {
 }
 
 fn defang_chunk_text(text: &str) -> String {
-    let source_headers_defanged = text
-        .replace("## Sources", "## ​Sources")
-        .replace("## Source Document", "## ​Source Document")
-        .replace("## Top Chunk", "## ​Top Chunk")
-        .replace("## Supplemental Chunk", "## ​Supplemental Chunk");
-    defang_citation_patterns(&source_headers_defanged)
+    let sanitized = strip_unsafe_control_chars(text);
+    let structural = defang_structural_headers(&sanitized);
+    let reserved_markup = defang_ascii_token(&structural, "retrieved_content");
+    defang_citation_patterns(&reserved_markup)
+}
+
+fn defang_structural_headers(text: &str) -> String {
+    [
+        "## Sources",
+        "## Source Document",
+        "## Top Chunk",
+        "## Supplemental Chunk",
+    ]
+    .into_iter()
+    .fold(text.to_string(), |value, header| {
+        defang_ascii_token(&value, header)
+    })
+}
+
+fn defang_ascii_token(text: &str, token: &str) -> String {
+    debug_assert!(token.is_ascii());
+    let token_lower = token.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len() + 16);
+    let mut rest = text;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let Some(position) = lower.find(&token_lower) else {
+            result.push_str(rest);
+            break;
+        };
+        result.push_str(&rest[..position]);
+        result.push('\u{200B}');
+        let end = position + token.len();
+        result.push_str(&rest[position..end]);
+        rest = &rest[end..];
+    }
+    result
+}
+
+fn strip_unsafe_control_chars(text: &str) -> String {
+    text.chars()
+        .filter(|ch| !ch.is_control() || matches!(*ch as u32, 0x0A | 0x0D | 0x09))
+        .collect()
 }
 
 fn defang_citation_patterns(text: &str) -> String {
     let mut result = String::with_capacity(text.len() + 16);
     let mut rest = text;
-    while let Some(pos) = rest.find("[S") {
+    loop {
+        let upper = rest.find("[S");
+        let lower = rest.find("[s");
+        let Some(pos) = (match (upper, lower) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }) else {
+            result.push_str(rest);
+            break;
+        };
         result.push_str(&rest[..pos]);
+        let marker = &rest[pos + 1..pos + 2];
         let tail = &rest[pos + 2..];
         let digit_end = tail
             .bytes()
             .take_while(|byte| byte.is_ascii_digit())
             .count();
         if digit_end > 0 && tail[digit_end..].starts_with(']') {
-            result.push_str("[​S");
+            result.push_str("[\u{200B}");
+            result.push_str(marker);
             result.push_str(&tail[..digit_end]);
             result.push(']');
             rest = &tail[digit_end + 1..];
         } else {
-            result.push_str("[S");
+            result.push('[');
+            result.push_str(marker);
             rest = tail;
         }
     }
-    result.push_str(rest);
     result
+}
+
+fn context_source_label(uri: &str) -> String {
+    let displayed = display_source(uri);
+    let prompt_safe = if reqwest::Url::parse(uri).is_ok() {
+        displayed
+    } else {
+        percent_encode_source_label(&displayed)
+    };
+    let single_line = prompt_safe
+        .chars()
+        .map(|ch| if ch.is_control() { ' ' } else { ch })
+        .collect::<String>();
+    let structural = defang_structural_headers(&single_line);
+    let reserved_markup = defang_ascii_token(&structural, "retrieved_content");
+    defang_citation_patterns(&reserved_markup)
 }
 
 fn display_source(uri: &str) -> String {
@@ -421,6 +492,9 @@ fn display_source(uri: &str) -> String {
     };
     match url.scheme() {
         "http" | "https" => {
+            let _ = url.set_username("");
+            let _ = url.set_password(None);
+            url.set_query(None);
             url.set_fragment(None);
             url.to_string()
         }
@@ -437,6 +511,21 @@ fn display_source(uri: &str) -> String {
             .map(ToString::to_string)
             .unwrap_or_else(|| uri.to_string()),
     }
+}
+
+fn percent_encode_source_label(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b':' | b'/') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[(byte >> 4) as usize]));
+            encoded.push(char::from(HEX[(byte & 0x0F) as usize]));
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]

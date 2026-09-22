@@ -33,7 +33,7 @@ pub(crate) fn assemble_ask_result(
 ) -> AskResult {
     log_info(&format!(
         "ask complete answer_chars={} llm_ms={} total_ms={}",
-        answer.len(),
+        answer.chars().count(),
         llm_total_ms,
         total_elapsed_ms,
     ));
@@ -80,7 +80,7 @@ pub(crate) fn assemble_explain_result(
 ) -> AskResult {
     log_info(&format!(
         "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
-        ctx.context.len()
+        ctx.context.chars().count()
     ));
     AskResult {
         query: query.to_string(),

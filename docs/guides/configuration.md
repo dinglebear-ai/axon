@@ -345,13 +345,13 @@ Core retrieval selection knobs live in `~/.axon/config.toml` under `[ask]`.
 | `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Max context characters passed to the LLM (clamped 20000-1000000). When unset, model-tier fallbacks apply: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
 | `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | Model-tiered | Max retrieval candidates per prefetch (clamped 8-300). When unset, model-tier fallbacks apply: 250 large, 150 GPT/Codex, 120 local Gemma, 60 unknown |
 | `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | Model-tiered | Max total chunks selected for LLM context (clamped 3-64). When unset, model-tier fallbacks apply: 50 large, 28 GPT/Codex, 20 local Gemma, 10 unknown |
-| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | Adaptive | Explicit max full documents included in context (clamped 1-20). When unset, `ask` resolves 4 for simple queries and 6 for complex queries; high-context Gemini/Claude/GPT/Codex-family models use at least 4 |
-| `ask.backfill-chunks` | `AXON_ASK_BACKFILL_CHUNKS` | `5` | Backfill chunks from top documents to pad context (clamped 0-20) |
-| `ask.doc-fetch-concurrency` | `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1-16) |
-| `ask.doc-chunk-limit` | `AXON_ASK_DOC_CHUNK_LIMIT` | `96` | Max chunks per document in context (clamped 8-2000) |
-| `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum relevance score for candidate inclusion |
+| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | Compatibility | Legacy full-document control retained for configuration compatibility. Unified `ask` uses bounded retrieved chunks and does not fetch full documents |
+| `ask.backfill-chunks` | `AXON_ASK_BACKFILL_CHUNKS` | `5` | Compatibility-only legacy setting; unified `ask` does not execute supplemental backfill |
+| `ask.doc-fetch-concurrency` | `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Compatibility-only legacy setting; unified `ask` does not fetch full documents |
+| `ask.doc-chunk-limit` | `AXON_ASK_DOC_CHUNK_LIMIT` | `96` | Compatibility-only legacy setting; unified `ask` assembles bounded retrieved chunks directly |
+| `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum dense/cosine relevance score for candidate inclusion; skipped for hybrid RRF scores |
 | `ask.authoritative-domains` | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `[]` | Authoritative domains to boost in reranking |
-| `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Boost weight for authoritative domains in reranking (clamped 0.0-0.5) |
+| `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Authority weight (clamped 0.0-0.5): additive for dense scores; hybrid RRF caps combined configured/product trust delta at the original fused score |
 | `ask.min-citations-nontrivial` | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers (clamped 1-5) |
 
 | Variable | Default | Description |

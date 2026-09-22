@@ -73,7 +73,7 @@ pub(crate) fn build_explain_trace(
             .iter()
             .map(|(_, candidate)| candidate.hit.citation.clone())
             .collect(),
-        context: explain_context(ranked, &selected, context),
+        context: explain_context(ranked, &selected, context, cfg.hybrid_search_enabled),
         candidate_trace_limit: CANDIDATE_TRACE_LIMIT,
         candidate_trace_truncated: truncated,
         llm_skipped: true,
@@ -146,6 +146,7 @@ fn explain_context(
     ranked: &RankingResult,
     selected: &[(usize, &RankedCandidate)],
     context: &str,
+    hybrid_search_enabled: bool,
 ) -> AskExplainContext {
     let final_source_order = selected
         .iter()
@@ -159,23 +160,27 @@ fn explain_context(
         .collect();
     let truncated_by_budget = ranked.candidates.iter().any(|candidate| {
         candidate.kept()
-            && candidate.selected_context_rank.is_none()
-            && candidate
-                .selection_reason
-                .as_deref()
-                .is_some_and(|reason| reason.starts_with("skipped:"))
+            && candidate.selection_reason.as_deref().is_some_and(|reason| {
+                reason.starts_with("skipped:") || reason.contains("context truncation")
+            })
     });
 
     AskExplainContext {
         planned_full_doc_urls: Vec::new(),
         full_doc_fetch_errors: Vec::new(),
         full_doc_fetch_skipped: true,
-        full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason::Disabled,
-        full_doc_fetch_mode: AskExplainFullDocFetchMode::Rrf,
+        full_doc_fetch_skip_reason: AskExplainFullDocFetchSkipReason::NotSupportedByRetrievalEngine,
+        full_doc_fetch_mode: if hybrid_search_enabled {
+            AskExplainFullDocFetchMode::Rrf
+        } else {
+            AskExplainFullDocFetchMode::Cosine
+        },
         final_source_order,
         context_char_budget: ranked.effective_budget.max_context_chars,
         context_chars_used: context.chars().count(),
-        context_bytes_budget: ranked.effective_budget.max_context_chars,
+        // This ask path is bounded in Unicode scalar values, not UTF-8 bytes.
+        // Zero explicitly means there is no independent byte budget.
+        context_bytes_budget: 0,
         context_bytes_used: context.len(),
         rendered_context: None,
         truncated_by_budget,

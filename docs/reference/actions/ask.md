@@ -68,7 +68,7 @@ All global flags apply. Key flags:
 | `--no-hybrid-search` | `false` | Disable hybrid (dense + BM42 sparse + RRF) retrieval; force dense-only. Overrides `AXON_HYBRID_SEARCH=true`. |
 | `--since <date>` | — | Filter retrieved context to content indexed on or after this date. Accepts `7d`, `30d`, `1w`, `YYYY-MM-DD`, or RFC3339. |
 | `--before <date>` | — | Filter retrieved context to content indexed on or before this date. Same formats as `--since`. |
-| `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, authority ratio, dropped by allowlist, top domains). |
+| `--diagnostics` | `false` | Print retrieval diagnostics (candidate/reranked pool, selected chunks, configured and effective context ceilings, complexity, authority ratios, corpus health, and top domains). Legacy full-doc/supplemental counters remain compatibility fields and are zero on the unified path. |
 | `--explain` | `false` | Emit a per-candidate ranking/context trace. Implies diagnostics and skips LLM synthesis; use with `--json` for the full payload. |
 | `--stream` | `true` | Stream answer tokens as they arrive for interactive use. Uses the in-process ask path; JSON and explain output remain buffered. |
 | `--no-stream` | `false` | Disable answer streaming and render only the final response. |
@@ -140,12 +140,12 @@ axon ask --no-stream "what changed in server mode?"
 
 1. Embed the question via TEI
 2. Query Qdrant for top `ask.candidate-limit` candidate chunks. The fallback is model-tiered unless explicitly set.
-3. Apply the score threshold only on cosine/dense paths. `ask.min-relevance-score` (default: 0.45) is used for legacy unnamed-vector collections, named dense searches, named-vector collections with hybrid disabled, and named-vector searches whose sparse query is empty.
-4. Skip that threshold in hybrid/RRF named-vector mode. RRF scores are rank-fusion outputs rather than cosine scores, so ask keeps the loose topical-overlap gate and uses Qdrant's fused ordering.
-5. Rerank by the mode-appropriate score/order; plan top chunks and full-document URLs
-6. Resolve the full-document count. Explicit `ask.full-docs` / `AXON_ASK_FULL_DOCS` wins; otherwise simple queries use 4, complex dual-embedding queries use 6, and high-context Gemini/Claude/GPT/Codex-family models use at least 4.
-7. Fetch full documents first, then insert top chunks while suppressing chunks from already-inserted full-document URLs
-8. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (model-tiered fallback: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown), flatten sources by score, and renumber citations
+3. Apply `ask.min-relevance-score` (default: 0.45) only when hybrid search is disabled and retrieval returns dense/cosine scores.
+4. When hybrid search is enabled, the retrieval engine issues dense + BM42 prefetch arms and Qdrant returns RRF fusion scores. RRF values are not cosine similarities, so the cosine threshold is skipped.
+5. Apply ask-specific post-retrieval policy: drop low-signal session/log/cache sources unless the question explicitly asks for them, enforce the dense relevance floor only on cosine scores, and use a narrow named-product identity guard instead of a general exact-keyword gate. Dense/cosine results may receive URL/text lexical, documentation-path, phrase, configured-authority, and verified product-authority boosts. RRF skips lexical additions; configured and product trust may raise a candidate, but their combined delta is capped at the candidate's original fused score.
+6. Classify the question as simple, complex, or exhaustive and derive an effective per-query context budget. `AXON_ASK_CHUNK_LIMIT` and `AXON_ASK_MAX_CONTEXT_CHARS` remain hard configured ceilings; they are not targets that Axon tries to fill.
+7. Assemble a document-diverse context from the reranked candidates. Each chunk has its own character cap, the selected-chunk count is bounded by the effective chunk limit, and the final context is bounded by the effective character budget. The unified retrieval path does not expand the prompt by fetching full documents.
+8. Report both configured ceilings and effective runtime limits in diagnostics, including `effective_chunk_limit`, `effective_max_context_chars`, `max_chunk_chars`, `detected_complexity`, authority ratios, and selected-source ordering.
 9. Call the configured LLM backend with context + question
 10. Apply response-quality gates (citations + policy checks, including structured `citation_validation` when the model returns it)
 11. Print the normalized answer
@@ -213,7 +213,7 @@ topics.
 
 Use `--diagnostics` for aggregate health counters. Use `--explain --json` when a ranking result looks wrong and you need the per-candidate math and context decisions. Explain mode returns the normal `AskResult` shape with `answer: ""`, `timing_ms.llm: 0`, `explain.llm_skipped: true`, and no Gemini call.
 
-Raw rendered retrieval context is omitted from default explain JSON so CLI, MCP, REST, and runner artifacts do not leak the full prompt fragment by accident. Use `.explain.context.final_source_order` for source ordering metadata, `.explain.context.context_bytes_used` / `.context_bytes_budget` for the concrete budget invariant, `.explain.context.context_chars_used` for Unicode character count, and `.explain.candidates[]` for candidate scores, filter decisions, selected context ranks, insertion modes, and snippets.
+Raw rendered retrieval context is omitted from default explain JSON so CLI, MCP, REST, and runner artifacts do not leak the full prompt fragment by accident. Use `.explain.context.final_source_order` for source ordering metadata, `.explain.context.context_chars_used` / `.context_char_budget` for the enforced Unicode-character invariant, and `.explain.context.context_bytes_used` for actual UTF-8 size. `.context_bytes_budget` is `0` on the character-bounded unified ask path because no separate byte ceiling is enforced. Use `.explain.candidates[]` for candidate scores, filter decisions, selected context ranks, insertion modes, and snippets.
 
 When an internal caller explicitly includes rendered context, it is shaped as `.explain.context.rendered_context = { "format": "axon_sources_v1", "content": "...", "bytes_used": N, "chars_used": N }`.
 
@@ -230,7 +230,7 @@ rerank/filter + token/authority policy
 corpus-health classification
   |
   v
-context selection + bounded full-doc fetch
+document-diverse bounded chunk-context selection
   |
   v
 ask --explain retrieval harness
@@ -251,8 +251,8 @@ Compact example:
   "explain": {
     "mode": "explain_only",
     "retrieval": {
-      "score_kind": "cosine",
-      "vector_mode": "unnamed",
+      "score_kind": "rrf",
+      "vector_mode": "named_hybrid_rrf",
       "hybrid_search_enabled": true
     },
     "candidates": [
@@ -260,10 +260,10 @@ Compact example:
         "id": "candidate-1",
         "url": "https://code.claude.com/docs/en/plugins",
         "retrieval_score": 0.17,
-        "rerank_score": 0.62,
+        "rerank_score": 0.34,
         "score_components": [
           { "name": "retrieval_score", "value": 0.17, "status": "applied" },
-          { "name": "authority_boost", "value": 0.35, "status": "applied" }
+          { "name": "product_authority_boost", "value": 0.17, "status": "applied" }
         ],
         "filter_decisions": [{ "kind": "kept" }],
         "selection_decisions": [{ "kind": "selected_top_chunk" }]
@@ -272,7 +272,8 @@ Compact example:
     "context": {
       "planned_full_doc_urls": [],
       "full_doc_fetch_skipped": true,
-      "full_doc_fetch_mode": "cosine",
+      "full_doc_fetch_skip_reason": "not_supported_by_retrieval_engine",
+      "full_doc_fetch_mode": "rrf",
       "final_source_order": [
         { "source_id": "S1", "url": "https://code.claude.com/docs/en/plugins", "tier": "top_chunk" }
       ],
@@ -284,7 +285,7 @@ Compact example:
 }
 ```
 
-`retrieval_score` scale depends on retrieval mode. Cosine/dense paths use cosine-like scores and apply `ask.min-relevance-score`; RRF paths use rank-fusion scores and skip the cosine threshold. Both paths then apply ask-specific lexical, documentation-path, authoritative-domain, product-authority, phrase-match, low-signal-source, and topical-overlap reranking/filtering.
+`retrieval_score` scale depends on retrieval mode. Cosine/dense paths use cosine-like scores, apply `ask.min-relevance-score`, and may receive lexical/documentation/phrase rerank boosts. RRF paths use rank-fusion scores, skip the cosine threshold, and preserve Qdrant's fused relevance scale by marking those additive lexical components as `skipped`. Both paths still apply low-signal and named-product identity filtering. Dense mode keeps additive trust boosts; RRF caps the combined configured/product trust delta at the original fused score.
 
 ## RAG Tuning
 
@@ -304,18 +305,18 @@ Additional ask controls:
 | TOML key | Env override | Default | Effect |
 |----------|--------------|---------|--------|
 | `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Configured maximum context characters. Runtime adaptive policy uses a smaller effective budget for simple/complex/exhaustive questions; diagnostics report both. |
-| `search.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | Model-tiered | Dense and sparse prefetch candidates per arm before RRF fusion for `ask`. |
+| `retrieval.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | Model-tiered | Dense and sparse prefetch candidates per arm before RRF fusion for `ask`. |
 | `ask.authoritative-domains` | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional exact/suffix domains boosted after retrieval, including RRF mode. |
-| `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
+| `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Authority weight: additive on dense scores; on RRF it shares a combined trust delta capped at the original fused score |
 | `ask.min-citations-nontrivial` | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Minimum unique citations for non-trivial answers |
 
 ## Notes
 
 - LLM answer generation goes through the configured backend. By default this is Gemini headless; `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` is the preferred Gemini model override, with `AXON_HEADLESS_GEMINI_MODEL` kept as a legacy alias. `openai-compat` requires both a valid `AXON_OPENAI_BASE_URL` and synthesis model.
 - The legacy full-document/backfill/cache controls remain parseable for configuration compatibility but are not executed by the unified retrieval-engine ask path. An explicit legacy override produces an ask warning instead of silently pretending it is active.
-- Normal product/documentation questions suppress session/log/cache sources unless the query explicitly asks for session, transcript, log, or history content. Web citations retain page-level URLs so multiple pages on the same documentation host remain distinct evidence sources.
+- Normal product/documentation questions suppress session/log/cache sources unless the query explicitly asks for session, transcript, log, or history content. Built-in product authority is fail-closed to Axon's small registered official-domain map; arbitrary docs-looking hosts cannot self-declare authority by placing a product name in their hostname/path. Use `ask.authoritative-domains` for operator-controlled trust extensions. Web citations retain page-level URLs so multiple pages on the same documentation host remain distinct evidence sources.
 - The generic CLI forwarding mode was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon ask` through HTTP; use `axon serve` directly for external REST/MCP clients.
-- If dense-only retrieval returns no candidates above the relevance threshold, lower `ask.min-relevance-score` or index more relevant content. Hybrid/RRF skips the cosine threshold, but candidates can still be rejected by topical/source-quality filters.
+- If dense-only retrieval returns no candidates above the relevance threshold, lower `ask.min-relevance-score` or index more relevant content. Hybrid/RRF skips the cosine threshold and does not require general lexical overlap; candidates can still be rejected by low-signal or explicit named-product identity guards.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.
 - `ask` enforces citation-quality gates:

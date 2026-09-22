@@ -166,6 +166,7 @@ async fn run_query_keeps_only_latest_generation_for_same_document() {
             collection: "axon-test".to_string(),
             limit: 2,
             hybrid: false,
+            hybrid_candidates: None,
             since: None,
             before: None,
         },

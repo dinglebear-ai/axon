@@ -63,7 +63,7 @@ pub struct AskContext {
     /// on the retrieval-engine path — full-doc/supplemental staging is a
     /// legacy-reranker-only concept.
     pub full_doc_fetch_skipped: bool,
-    /// Static reason string ("retrieval_engine" for every value built here).
+    /// Static reason string ("not_supported_by_retrieval_engine" for this path).
     pub full_doc_fetch_skip_reason: &'static str,
     pub full_doc_fetch_errors: Vec<AskExplainFullDocFetchError>,
     /// Coarse query-complexity signal resolved by the ask retrieval policy.
@@ -83,7 +83,7 @@ impl AskContext {
     /// synthesis prompt expects, and passes it here along with retrieval
     /// bookkeeping. Full-doc/supplemental/rerank stages are not run on this
     /// path, so their counts are zero and the fetch-skip reason is
-    /// `"retrieval_engine"`.
+    /// `"not_supported_by_retrieval_engine"`.
     pub fn from_retrieval(
         context: String,
         candidate_count: usize,
@@ -93,8 +93,9 @@ impl AskContext {
         selected_urls: &[String],
         warnings: Vec<String>,
     ) -> AskContext {
+        let context_chars = context.chars().count();
         let corpus_health =
-            classify_corpus_health(&top_domains, selected_urls, candidate_count, context.len());
+            classify_corpus_health(&top_domains, selected_urls, candidate_count, context_chars);
         AskContext {
             context,
             candidate_count,
@@ -111,15 +112,15 @@ impl AskContext {
             configured_authority_ratio: 0.0,
             product_authority_ratio: 0.0,
             effective_chunk_limit: chunks_selected,
-            effective_max_context_chars: context.len(),
-            max_chunk_chars: context.len(),
+            effective_max_context_chars: context_chars,
+            max_chunk_chars: context_chars,
             corpus_health,
             full_doc_fetch_skipped: true,
-            full_doc_fetch_skip_reason: "retrieval_engine",
+            full_doc_fetch_skip_reason: "not_supported_by_retrieval_engine",
             full_doc_fetch_errors: Vec::new(),
             detected_complexity: "simple",
             resolved_full_docs: 0,
-            full_docs_source: "retrieval_engine",
+            full_docs_source: "not_supported_by_retrieval_engine",
             warnings,
         }
     }
