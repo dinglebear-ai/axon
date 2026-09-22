@@ -93,20 +93,7 @@ pub(super) async fn build(
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
 
     let config_diagnostics = super::config_checks::run_all();
-
-    let mut recommendations = vec![
-        "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
-            .to_string(),
-    ];
-    if let Some(guidance) = cutover_guidance {
-        recommendations.push(guidance);
-    }
-    if !config_diagnostics.is_empty() {
-        recommendations.push(format!(
-            "{} config diagnostic(s) found — see config_diagnostics in this report",
-            config_diagnostics.len()
-        ));
-    }
+    let recommendations = doctor_recommendations(cutover_guidance, config_diagnostics.len());
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
@@ -158,6 +145,25 @@ pub(super) async fn build(
             && vector_mode_mismatch.is_none()
             && dimension_mismatch.is_none(),
     }))
+}
+
+fn doctor_recommendations(
+    cutover_guidance: Option<String>,
+    config_diagnostic_count: usize,
+) -> Vec<String> {
+    let mut recommendations = vec![
+        "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
+            .to_string(),
+    ];
+    if let Some(guidance) = cutover_guidance {
+        recommendations.push(guidance);
+    }
+    if config_diagnostic_count > 0 {
+        recommendations.push(format!(
+            "{config_diagnostic_count} config diagnostic(s) found — see config_diagnostics in this report"
+        ));
+    }
+    recommendations
 }
 
 /// Grouped `(ok, detail, latency)` for the TEI probe leg.
