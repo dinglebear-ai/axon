@@ -33,7 +33,7 @@ pub(crate) fn assemble_ask_result(
 ) -> AskResult {
     log_info(&format!(
         "ask complete answer_chars={} llm_ms={} total_ms={}",
-        answer.len(),
+        answer.chars().count(),
         llm_total_ms,
         total_elapsed_ms,
     ));
@@ -80,7 +80,7 @@ pub(crate) fn assemble_explain_result(
 ) -> AskResult {
     log_info(&format!(
         "ask explain complete total_ms={total_elapsed_ms} context_chars={}",
-        ctx.context.len()
+        ctx.context.chars().count()
     ));
     AskResult {
         query: query.to_string(),
@@ -123,7 +123,7 @@ fn build_diagnostics(enabled: bool, cfg: &Config, ctx: &AskContext) -> Option<As
         chunks_selected: ctx.chunks_selected,
         full_docs_selected: ctx.full_docs_selected,
         supplemental_selected: ctx.supplemental_count,
-        context_chars: ctx.context.len(),
+        context_chars: ctx.context.chars().count(),
         full_doc_fetch_skipped: ctx.full_doc_fetch_skipped,
         full_doc_fetch_skip_reason: ctx.full_doc_fetch_skip_reason.to_string(),
         full_doc_fetch_errors: ctx.full_doc_fetch_errors.clone(),
@@ -140,6 +140,9 @@ fn build_diagnostics(enabled: bool, cfg: &Config, ctx: &AskContext) -> Option<As
         ask_full_docs_explicit: cfg.ask_full_docs_explicit,
         ask_fulldoc_skip_enabled: cfg.ask_fulldoc_skip_enabled,
         ask_max_context_chars: cfg.ask_max_context_chars,
+        effective_chunk_limit: ctx.effective_chunk_limit,
+        effective_max_context_chars: ctx.effective_max_context_chars,
+        max_chunk_chars: ctx.max_chunk_chars,
         doc_fetch_concurrency: cfg.ask_doc_fetch_concurrency,
         top_domains: ctx.top_domains.clone(),
         authority_ratio: ctx.authoritative_ratio,

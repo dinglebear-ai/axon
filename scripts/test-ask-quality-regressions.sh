@@ -35,7 +35,10 @@ esac
 
 echo "[ask-quality] Running regression fixtures and policy tests..."
 
-mapfile -t REQUIRED_TESTS <<'TESTS'
+REQUIRED_TESTS=()
+while IFS= read -r test_name; do
+  REQUIRED_TESTS+=("$test_name")
+done <<'TESTS'
 normalize_ask_answer_dedupes_sources_by_url
 normalize_ask_answer_formats_insufficient_evidence_when_uncited
 normalize_ask_answer_formats_insufficient_evidence_when_flagged_in_body

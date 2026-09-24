@@ -91,19 +91,23 @@ pub(crate) fn defanged_byte_len(text: &str) -> usize {
     .iter()
     .map(|pattern| text.match_indices(pattern).count())
     .sum::<usize>();
-    let citation_insertions = text
-        .match_indices("[S")
-        .filter(|(position, _)| {
-            let tail = &text[position + 2..];
-            let digit_end = tail.bytes().take_while(u8::is_ascii_digit).count();
-            digit_end > 0 && tail[digit_end..].starts_with(']')
+    let citation_insertions = ["[S", "[s"]
+        .iter()
+        .map(|pattern| {
+            text.match_indices(pattern)
+                .filter(|(position, _)| {
+                    let tail = &text[position + 2..];
+                    let digit_end = tail.bytes().take_while(u8::is_ascii_digit).count();
+                    digit_end > 0 && tail[digit_end..].starts_with(']')
+                })
+                .count()
         })
-        .count();
+        .sum::<usize>();
     text.len() + (heading_insertions + citation_insertions) * '\u{200b}'.len_utf8()
 }
 
 pub(crate) fn defang_chunk_text(text: &str) -> String {
-    let text = text
+    let text = strip_unsafe_control_chars(text)
         .replace("## Sources", "## \u{200b}Sources")
         .replace("## Source Document", "## \u{200b}Source Document")
         .replace("## Top Chunk", "## \u{200b}Top Chunk")
@@ -111,23 +115,45 @@ pub(crate) fn defang_chunk_text(text: &str) -> String {
     defang_citation_patterns(&text)
 }
 
+fn strip_unsafe_control_chars(text: &str) -> String {
+    text.chars()
+        .filter(|ch| !ch.is_control() || matches!(*ch as u32, 0x0A | 0x0D | 0x09))
+        .collect()
+}
+
 fn defang_citation_patterns(text: &str) -> String {
     let mut result = String::with_capacity(text.len() + 16);
     let mut rest = text;
-    while let Some(pos) = rest.find("[S") {
+    loop {
+        let upper = rest.find("[S");
+        let lower = rest.find("[s");
+        let Some(pos) = (match (upper, lower) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }) else {
+            result.push_str(rest);
+            break;
+        };
         result.push_str(&rest[..pos]);
+        let marker = &rest[pos + 1..pos + 2];
         let tail = &rest[pos + 2..];
-        let digit_end = tail.bytes().take_while(|b| b.is_ascii_digit()).count();
+        let digit_end = tail
+            .bytes()
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
         if digit_end > 0 && tail[digit_end..].starts_with(']') {
-            result.push_str("[\u{200b}S");
+            result.push_str("[\u{200b}");
+            result.push_str(marker);
             result.push_str(&tail[..digit_end]);
             result.push(']');
             rest = &tail[digit_end + 1..];
         } else {
-            result.push_str("[S");
+            result.push('[');
+            result.push_str(marker);
             rest = tail;
         }
     }
-    result.push_str(rest);
     result
 }

@@ -93,6 +93,45 @@ fn configured_model_uses_codex_backend_model() {
 }
 
 #[test]
+fn chatgpt_compat_model_uses_medium_context_tier() {
+    let cfg = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        openai_model: "chatgpt-browser-medium".to_string(),
+        ..Config::default()
+    };
+
+    assert_eq!(
+        SynthesisModelProfile::from_config(&cfg).tier(),
+        SynthesisModelTier::Medium
+    );
+}
+
+#[test]
+fn synthesis_high_context_override_controls_model_tier() {
+    let high = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        openai_model: "tiny-unknown-model".to_string(),
+        synthesis_high_context: Some(true),
+        ..Config::default()
+    };
+    let low = Config {
+        llm_backend: LlmBackendKind::OpenAiCompat,
+        openai_model: "chatgpt-browser-medium".to_string(),
+        synthesis_high_context: Some(false),
+        ..Config::default()
+    };
+
+    assert_eq!(
+        SynthesisModelProfile::from_config(&high).tier(),
+        SynthesisModelTier::Large
+    );
+    assert_eq!(
+        SynthesisModelProfile::from_config(&low).tier(),
+        SynthesisModelTier::Small
+    );
+}
+
+#[test]
 fn completion_timeout_is_at_least_one_second_on_backend_config() {
     let zero = LlmBackendConfig {
         completion_timeout_secs: 0,

@@ -583,7 +583,7 @@
         {
           "path": "crates/axon-api/src/action/utility.rs",
           "kind": "rust_module",
-          "checksum": "sha256:87986a79e3cf49b28af6bd41672e2395ddbb41dbbf9c8b791c85cc0515a16a56"
+          "checksum": "sha256:6c5ca1c0ac07f585648fd7023b872833799f1af3f186e09010cf8db1bd6d027f"
         },
         {
           "path": "crates/axon-mcp/src/schema.rs",
@@ -616,7 +616,7 @@
           "checksum": "sha256:b54190a8b9c46db3306558115e2955830ede6eff6b25e62df3205aac66c400e3"
         }
       ],
-      "manifest_checksum": "090a79519cc3662aa4149a635c593ef869b6ec35e5135f43ef73b0cb7c296e8c"
+      "manifest_checksum": "94dd3ee341e510a2d6011997298b13a26ca9d16699228996566400289c6e8d06"
     },
     {
       "family": "openapi",

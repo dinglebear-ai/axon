@@ -153,11 +153,11 @@ fn map_ask_payload_preserves_explain_contract() {
                     "name": "product_authority_boost",
                     "value": 0.35,
                     "status": "applied",
-                    "reason": "docs-like URL contains query product token"
+                    "reason": "registered product authority matched official domain"
                 }],
                 "filter_decisions": [{
                     "kind": "kept",
-                    "reason": "passed topical overlap"
+                    "reason": "passed post-retrieval filters"
                 }],
                 "selection_decisions": [{
                     "kind": "selected_top_chunk",

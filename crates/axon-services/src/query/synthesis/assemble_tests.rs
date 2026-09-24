@@ -37,6 +37,30 @@ fn sample_ctx() -> AskContext {
 }
 
 #[test]
+fn from_retrieval_uses_character_count_for_corpus_health() {
+    let context = "😀".repeat(600);
+    assert!(context.len() > 2_000);
+    assert_eq!(context.chars().count(), 600);
+
+    let ctx = AskContext::from_retrieval(
+        context,
+        1,
+        1,
+        0,
+        vec!["example.com".to_string()],
+        &["https://example.com/docs".to_string()],
+        Vec::new(),
+    );
+
+    assert_eq!(
+        ctx.corpus_health.kind,
+        axon_core::ask_explain::CorpusHealthKind::ThinDomain
+    );
+    assert_eq!(ctx.effective_max_context_chars, 600);
+    assert_eq!(ctx.max_chunk_chars, 600);
+}
+
+#[test]
 fn assemble_ask_result_without_diagnostics_omits_diagnostics_field() {
     let cfg = Config::default();
     let ctx = sample_ctx();
@@ -71,7 +95,10 @@ fn assemble_ask_result_with_diagnostics_reports_context_stats() {
     let diagnostics = result.diagnostics.expect("diagnostics present");
     assert_eq!(diagnostics.candidate_pool, ctx.candidate_count);
     assert_eq!(diagnostics.chunks_selected, ctx.chunks_selected);
-    assert_eq!(diagnostics.full_doc_fetch_skip_reason, "retrieval_engine");
+    assert_eq!(
+        diagnostics.full_doc_fetch_skip_reason,
+        "not_supported_by_retrieval_engine"
+    );
     assert_eq!(diagnostics.top_domains, ctx.top_domains);
 }
 

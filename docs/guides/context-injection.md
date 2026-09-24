@@ -1,7 +1,7 @@
 ---
 title: "Context Injection Pipeline"
 created: 2026-03-04
-updated: 2026-07-30
+updated: 2026-09-18
 ---
 
 # Context Injection Pipeline
@@ -16,11 +16,11 @@ Every `ask` and `evaluate` command goes through the same five-stage pipeline bef
 
 ```
 Query
-  └─► 1. Embed          — TEI converts query text to one or two dense vectors
-  └─► 2. Retrieve       — Qdrant ANN search returns up to N candidate chunks
-  └─► 3. Filter         — Low-signal and allowlist guards narrow the pool
-  └─► 4. Rerank         — Lexical + domain boosts re-order by combined score
-  └─► 5. Build context  — Chunks and full docs assembled into a string
+  └─► 1. Embed          — the unified retrieval engine embeds the user query
+  └─► 2. Retrieve       — dense or dense+BM42/RRF Qdrant search returns candidates
+  └─► 3. Filter         — low-signal, dense-relevance, and named-product identity guards
+  └─► 4. Rank           — mode-aware policy preserves RRF scale or reranks dense scores
+  └─► 5. Build context  — diverse, bounded chunks become evidence-only source blocks
                               └─► injected as "Context:\n..." into the LLM prompt
 ```
 
@@ -37,169 +37,91 @@ Context:
 
 ## Stage 1 — Embed the Query
 
-`retrieval.rs → retrieve_ask_candidates`
+`crates/axon-retrieval/src/engine.rs`
 
-Query vectors are encoded with `QUERY_INSTRUCTION` from `src/vector/ops/tei/tei_client.rs`:
-
-```
-Instruct: Given a web search query, retrieve relevant passages that answer the query
-Query: {query}
-```
-
-This prefix is applied only to query-side embeddings. Document chunks are embedded as raw text.
-
-`retrieve_ask_candidates` embeds the full user query and, when keyword extraction produces a distinct keyword query, embeds that keyword query too. The full user query uses `tei::EmbedInput::query(...)`, which prepends the query instruction. The keyword form uses `tei::EmbedInput::document(...)` because it is already document-shaped text. The additional keyword vector improves recall for exact terms, identifiers, API names, and short domain phrases.
+The unified retrieval engine embeds the user query once through the configured embedder. The old ask-only dual-embedding/keyword-query path is no longer part of the active `ask` pipeline. The resulting dense vector is paired with a client-side BM42 sparse query vector when hybrid retrieval is enabled.
 
 ```
 "how does axon crawl work?"
-        ↓ prepend QUERY_INSTRUCTION
-        ↓ TEI
-[0.023, -0.441, 0.118, ...]   (1024-dim or model-dependent)
+        ↓ query embedding
+Dense vector
+        └─► optional BM42 sparse query vector
 ```
 
 ---
 
 ## Stage 2 — Retrieve Candidates from Qdrant
 
-`retrieval.rs → retrieve_ask_candidates`
+`crates/axon-services/src/query/ask_retrieval.rs → axon-retrieval → axon-vectors`
 
-`qdrant::dispatch_vector_search` searches Qdrant using the dense query vector. Named hybrid collections use the dense vector plus BM42 sparse search with RRF fusion; legacy unnamed collections fall back to dense-only search. When a keyword query vector exists, Axon runs a second search and merges/deduplicates the candidate pool.
+`ask` calls the shared retrieval service with a result limit of `max(ask_candidate_limit, ask_chunk_limit, 1)`. Hybrid mode sends both the dense embedding and a BM42 sparse vector to Qdrant's `/points/query` RRF path. `ask_hybrid_candidates` controls the dense and sparse prefetch window per arm; dense-only mode omits the sparse arm.
 
-The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `250`).
+Each result carries:
+- `score` — cosine-style on dense-only paths; unitless RRF fusion score on hybrid paths
+- `canonical_uri` — canonical source identity used for trust, diversity, and citations
+- `text` — retrieved chunk text
+- canonical citation metadata from the retrieval boundary
 
-Each result comes back with:
-- `score` — retrieval score from Qdrant. Dense-only paths return cosine-style scores; hybrid RRF paths return unitless rank-fusion scores.
-- `url` — source page URL stored in the Qdrant payload
-- `chunk_text` — the raw text of that chunk
-
-Chunks with fewer than 40 characters are dropped immediately.
+The shared retrieval engine also enforces source/generation filters before the ask-specific ranking policy runs.
 
 ---
 
 ## Stage 3 — Filter
 
-`retrieval.rs → retrieve_ask_candidates`
+`crates/axon-services/src/query/ask_retrieval/ranking.rs`
 
-Two guards run after retrieval:
+Ask applies three post-retrieval gates:
 
-### Low-signal filter
+1. **Low-signal source gate.** Session URIs, local `file://` sources, JSONL/session exports, cache paths, and local log paths are suppressed for ordinary product/documentation questions. Queries explicitly asking for session, transcript, log, or history evidence opt back in.
+2. **Dense relevance floor.** Dense-only retrieval drops candidates whose raw cosine-style score is below `ask.min-relevance-score`. Hybrid RRF does not apply this threshold because RRF scores are not cosine similarities.
+3. **Named-product identity guard.** When a query explicitly names a product in Axon's small registered product map, a candidate must carry that product identity or a registered alias in its URL/text. Generic terms such as `docs`, `config`, `plugin`, and `api` are not used as a hard lexical relevance gate; dense embeddings and hybrid RRF may preserve semantically relevant synonym matches.
 
-URLs matching these patterns are dropped unless the query itself is about sessions/logs:
-
-| Pattern | Rationale |
-|---------|-----------|
-| `/docs/sessions/` | AI session export files — noise for most queries |
-| `/.cache/` | Build artefacts, not documentation |
-| `/logs/` (local file path only) | Log files |
-| `.log` (local file path only) | Log files |
-
-The query is allowed to opt-in: if the query contains tokens like `session`, `log`, `history`, or the substring `docs/sessions`, the low-signal filter is bypassed.
-
-### Authoritative domain boost
-
-If `AXON_ASK_AUTHORITATIVE_DOMAINS` is set (comma-separated domains), matching chunks receive the configured `AXON_ASK_AUTHORITATIVE_BOOST`. Matches use exact host or subdomain checks.
-
-When the domain list is empty (the default), no authority boost is applied.
+Dropped candidates remain visible in `ask --explain` with explicit filter decisions.
 
 ---
 
-## Stage 4 — Rerank
+## Stage 4 — Mode-Aware Ranking
 
-`retrieval.rs → apply_mode_aware_rerank`
+`crates/axon-services/src/query/ask_retrieval/ranking.rs`
 
-Cosine/dense-only retrieval paths are re-scored using a combined formula:
+Dense/cosine results can safely absorb additive relevance deltas:
 
 ```
 rerank_score = retrieval_score
-             + lexical_boost    (capped at 0.30)
-             + docs_boost       (0.04 if path has /docs/, /guides/, /api/, /reference/)
-             + authority_boost  (cfg.ask_authoritative_boost if domain is in authoritative list)
-             + phrase_boost     (0.06 if joined query tokens appear verbatim in chunk text)
+             + lexical_url_and_text_boost   (combined cap 0.30)
+             + docs_path_boost              (0.04)
+             + configured_authority_boost
+             + verified_product_authority   (0.35)
+             + phrase_match_boost           (0.06)
 ```
 
-**Lexical boost** details:
-- `+0.045` for each query token found in the chunk's URL path tokens
-- `+0.015` for each query token found in the chunk text tokens
+Configured authority comes from `ask.authoritative-domains` / `AXON_ASK_AUTHORITATIVE_DOMAINS` and uses exact-host-or-subdomain matching. Built-in product authority is deliberately fail-closed to Axon's small official-domain registry; a docs-looking untrusted host cannot gain trust merely by putting a product name in its hostname or path.
 
-Tokens are lowercased, split on non-alphanumeric characters, and stop-words are stripped (`the`, `and`, `for`, `how`, `what`, etc.).
-
-After scoring on cosine/dense-only paths, two post-rerank gates remove candidates that don't meet the bar:
-
-1. `rerank_score < cfg.ask_min_relevance_score` (env: `AXON_ASK_MIN_RELEVANCE_SCORE`, default 0.45) → dropped
-2. `candidate_has_topical_overlap` → dropped if the candidate shares too few tokens with the query
-
-On hybrid RRF paths, Qdrant's fusion order is already the ranking signal. Axon sets `rerank_score = score`, skips the cosine-calibrated minimum relevance threshold, and keeps the topical-overlap guard.
-
-**Topical overlap thresholds:**
-
-| Query token count | Minimum overlap required |
-|-------------------|--------------------------|
-| 1–2 tokens | ≥ 1 token match |
-| 3–4 tokens | ≥ 1 token match, OR coverage ≥ 50% |
-| 5+ tokens | ≥ 2 matches AND coverage ≥ 34% |
+Hybrid RRF uses a different score scale. Axon preserves Qdrant's fused relevance signal: lexical URL/text, docs-path, and phrase-match components are emitted as `skipped` and contribute zero. Explicit configured authority and fail-closed verified product authority may raise an RRF candidate, but their combined delta is capped at that candidate's original fused score, so trust can improve an RRF score by at most 2×.
 
 ---
 
 ## Stage 5 — Build the Context String
 
-`build.rs → build_context_from_candidates`
+`crates/axon-services/src/query/ask_retrieval.rs`
 
-The reranked pool is planned in three tiers. Full documents are fetched and budgeted first so complete authoritative pages are not crowded out by loose chunks. Top chunks are inserted next, with chunks from successfully inserted full-document URLs suppressed to avoid duplicating the same source. Supplemental chunks backfill remaining budget. Before the final prompt is emitted, all inserted entries are flattened by score and renumbered so the highest-scoring evidence appears earliest.
+The active unified ask path assembles context directly from ranked chunks. Legacy full-document fetch and supplemental-backfill controls remain compatibility fields, but they are not executed by this path.
 
-Each entry is separated by `\n\n---\n\n`. A running `context_char_count` is maintained; once the count would exceed `cfg.ask_max_context_chars` (env: `AXON_ASK_MAX_CONTEXT_CHARS`), no further entries are added.
+Before selection, Axon derives an effective budget from the configured synthesis model tier and coarse query complexity (simple, complex, or exhaustive). The effective chunk count and character budget never exceed the configured `ask_chunk_limit` / `ask_max_context_chars` ceilings.
 
-### Planned Top Chunks
+Selection is document-diverse: Axon first takes at most one ranked chunk per canonical source, then considers repeat chunks only if capacity remains. Each chunk also has a per-chunk character cap. Evidence shorter than the minimum useful body threshold is skipped.
 
-`select_context_indices(..., ask_chunk_limit, resolved_full_docs, ...)`
-
-Selects up to `ask_chunk_limit` (env: `AXON_ASK_CHUNK_LIMIT`) chunks from the reranked list, enforcing a diversity constraint of at most 1 chunk per unique URL per selection pass. Each selected chunk is formatted as:
+Retrieved text is treated as untrusted evidence. Structural source markers and citation-like `[S#]` text are defanged, unsafe control characters are removed, source labels are forced onto one line, case-insensitive retrieved_content boundary tokens are defanged, and every body is wrapped in an evidence-only boundary:
 
 ```
 ## Top Chunk [S1]: example.com/guide/crawl
 
-<chunk text>
+<retrieved_content trust="evidence_only">
+<defanged chunk text>
+</retrieved_content>
 ```
 
-### Planned Full Documents
-
-`select_context_indices(..., ask_chunk_limit, resolved_full_docs, ...)` → fetched concurrently from Qdrant
-
-For up to `resolved_full_docs` URLs, all stored chunks for that URL are fetched from Qdrant via `qdrant_retrieve_by_url`, capped at `cfg.ask_doc_chunk_limit` chunks per document. `resolved_full_docs` comes from `ask.full-docs` / `AXON_ASK_FULL_DOCS` when explicitly set; otherwise it is adaptive: simple queries use 4 full docs, complex dual-embedding queries use 6, and high-context model families (Gemini, Claude, GPT, and Codex-named models) use at least 4.
-
-Fetches run concurrently up to `cfg.ask_doc_fetch_concurrency` (env: `AXON_ASK_DOC_FETCH_CONCURRENCY`) at a time, and results are re-sorted by original rank order before insertion.
-
-This only runs if `context_char_count < max_context_chars`. Each full doc is formatted as:
-
-```
-## Source Document [S2]: example.com/api/reference
-
-<all chunks concatenated>
-```
-
-### Supplemental Chunks (backfill)
-
-This tier fires only when **both** conditions hold:
-
-1. Context is under 85% of `max_context_chars`
-2. Either no full docs were selected, **or** fewer than 6 top chunks were selected
-
-Supplemental candidates are those remaining in the reranked pool that were not already inserted as full docs. On cosine/dense-only paths, they must satisfy the minimum supplemental score derived from `ask_min_relevance_score`. On hybrid RRF paths, there is no cosine score floor because RRF scores are unitless. Up to `cfg.ask_backfill_chunks` (env: `AXON_ASK_BACKFILL_CHUNKS`) are selected with the same per-URL diversity pass. Each is formatted as:
-
-```
-## Supplemental Chunk [S3]: example.com/changelog
-
-<chunk text>
-```
-
-### Final assembly
-
-Inserted full docs, chunks, and supplemental entries are sorted by score, then their `[S#]` headers are renumbered in final display order:
-
-```rust
-format!("Sources:\n{}", context_entries.join("\n\n---\n\n"))
-```
-
-This string is the `context` that flows into the LLM prompt.
+The final `Sources:` context is bounded in Unicode scalar values, not UTF-8 bytes. Explain/diagnostic output reports the active character budget and actual character/byte usage separately.
 
 ---
 
@@ -244,20 +166,20 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 
 | Env var | What it controls | Typical default |
 |---------|-----------------|-----------------|
-| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | Model-tiered: 250 large, 150 GPT/Codex, 120 local Gemma, 60 unknown |
+| `AXON_ASK_CANDIDATE_LIMIT` | Ask candidate pool ceiling before ranking | Model-tiered: 250 large, 150 GPT/Codex, 120 local Gemma, 60 unknown |
 | `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | Model-tiered: 200 large, 120 GPT/Codex, 100 local Gemma, 60 unknown |
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.45 |
-| `AXON_ASK_CHUNK_LIMIT` | Max top chunks | Model-tiered: 50 large, 28 GPT/Codex, 20 local Gemma, 10 unknown |
-| `AXON_ASK_FULL_DOCS` | Explicit max full-document fetches | Unset = adaptive: 4 simple, 6 complex; high-context models floor at 4 |
-| `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 96 |
-| `AXON_ASK_DOC_FETCH_CONCURRENCY` | Concurrent Qdrant fetches for full docs | 4 |
-| `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 5 |
-| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | Model-tiered: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
+| `AXON_ASK_MIN_RELEVANCE_SCORE` | Raw dense/cosine relevance floor; not applied to RRF | 0.45 |
+| `AXON_ASK_CHUNK_LIMIT` | Configured selected-chunk ceiling; adaptive runtime budget may be lower | Model-tiered: 50 large, 28 GPT/Codex, 20 local Gemma, 10 unknown |
+| `AXON_ASK_FULL_DOCS` | Compatibility-only legacy full-document control on unified ask | No active full-doc fetch on unified ask |
+| `AXON_ASK_DOC_CHUNK_LIMIT` | Compatibility-only legacy full-document chunk control | Not executed by unified ask |
+| `AXON_ASK_DOC_FETCH_CONCURRENCY` | Compatibility-only legacy full-document concurrency | Not executed by unified ask |
+| `AXON_ASK_BACKFILL_CHUNKS` | Compatibility-only legacy supplemental-backfill control | Not executed by unified ask |
+| `AXON_ASK_MAX_CONTEXT_CHARS` | Configured Unicode-character ceiling; adaptive runtime budget may be lower | Model-tiered: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | Comma-separated domains that receive an authority boost | (empty) |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.0 |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for non-trivial answers | 2 |
 
-Defaults in this table are owned by `src/core/config/parse/build_config.rs` and `src/core/config/types/config_impls.rs`. Re-check both when changing defaults because tests and direct `Config::default()` callers can differ from CLI/env construction.
+Model-tiered ask defaults are resolved in `crates/axon-core/src/config/parse/tuning.rs` from `SynthesisModelProfile`. `AXON_SYNTHESIS_HIGH_CONTEXT` is resolved before those defaults so an explicit override participates in the tier selection.
 
 ---
 
@@ -267,39 +189,28 @@ Defaults in this table are owned by `src/core/config/parse/build_config.rs` and 
 User query string
        │
        ▼
-  tei_embed()  ──────────────────────────────────►  Dense vector
+  unified retrieval engine ───────────────────────► Dense embedding
+       │                                               + optional BM42 sparse vector
+       ▼
+  Qdrant dense search or dense+BM42 RRF ─────────► candidate hits
        │
        ▼
-  qdrant_search(vector, ask_candidate_limit)  ────►  Vec<ScoredPoint>
-       │
-       ▼  (filter: chunk_text.len() >= 40, low-signal, allowlist)
-  candidates: Vec<AskCandidate>
-       │
-       ▼  rerank_ask_candidates()
-            ├─ lexical boost (url_tokens + chunk_tokens)
-            ├─ docs path boost
-            ├─ authority domain boost
-            └─ verbatim phrase boost
-       │
-       ▼  filter: rerank_score >= min_relevance AND topical_overlap
-  reranked: Vec<AskCandidate>
-       │
-       ├──► select_context_indices → top chunks + full-doc URLs
-       │
-       ├──► qdrant_retrieve_by_url (concurrent) → full docs
-       │              └─ format "## Source Document [Sx]: url\n\ntext"
-       │
-       ├──► top chunks, suppressing chunks for inserted full-doc URLs
-       │              └─ format "## Top Chunk [Sx]: url\n\ntext"
-       │
-       └──► supplemental backfill (if under 85% budget)
-                      └─ format "## Supplemental Chunk [Sx]: url\n\ntext"
+  ask ranking policy
+       ├─ low-signal / dense-score / named-product identity filters
+       ├─ dense: lexical + docs + phrase + trust boosts
+       └─ RRF: preserve fused scale; bounded combined trust delta
        │
        ▼
-  flatten by score + renumber source IDs
+  adaptive model/query budget
        │
        ▼
-  context = "Sources:\n" + entries.join("\n\n---\n\n")
+  document-diverse chunk selection
+       ├─ per-chunk character cap
+       ├─ defang source/citation/boundary markers and unsafe controls
+       └─ wrap body as retrieved_content trust=evidence_only
+       │
+       ▼
+  bounded Sources context with canonical citations
        │
        ▼
   LLM user message:

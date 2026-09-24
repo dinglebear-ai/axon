@@ -8,13 +8,24 @@ use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorStore, VectorStore};
 use axon_vectors::testing::{TestPointSpec, test_clean_point, test_collection_spec_hybrid};
 
-use super::{normalize_time_bounds, query_via_retrieval};
+use super::{normalize_time_bounds, query_hybrid_candidate_limit, query_via_retrieval};
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::test_support::NoopServiceRuntime;
 use crate::types::Pagination;
 
 const BATCH_ID: &str = "00000000-0000-0000-0000-000000000001";
 const JOB_ID: &str = "00000000-0000-0000-0000-000000000099";
+
+#[test]
+fn hybrid_candidate_limit_uses_query_search_config_only_when_hybrid_is_enabled() {
+    let mut cfg = Config::test_default();
+    cfg.hybrid_search_candidates = 137;
+    cfg.hybrid_search_enabled = true;
+    assert_eq!(query_hybrid_candidate_limit(&cfg), Some(137));
+
+    cfg.hybrid_search_enabled = false;
+    assert_eq!(query_hybrid_candidate_limit(&cfg), None);
+}
 
 #[test]
 fn temporal_bounds_normalize_relative_dates_and_reject_reversed_windows() {

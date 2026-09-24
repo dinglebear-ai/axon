@@ -39,6 +39,7 @@ pub struct QueryServiceRequest {
     pub collection: String,
     pub limit: u32,
     pub hybrid: bool,
+    pub hybrid_candidates: Option<u32>,
     pub since: Option<String>,
     pub before: Option<String>,
 }
@@ -115,6 +116,7 @@ pub async fn run_query(
         // that opts in explicitly.
         excluded_source_kinds: vec![crate::memory::MEMORY_SOURCE_KIND.to_string()],
         hybrid: request.hybrid,
+        hybrid_candidates: request.hybrid_candidates,
         since: request.since,
         before: request.before,
         byte_budget: DEFAULT_BYTE_BUDGET,

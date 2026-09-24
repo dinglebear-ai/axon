@@ -106,7 +106,9 @@ where
 pub struct LlmDoctorProbe {
     /// Deep round-trip: `(ok, detail)` from a minimal real completion.
     pub roundtrip: (bool, String),
-    /// Shallow gemini-headless command/config validation: `(ok, detail)`.
+    /// Shallow validation for the configured LLM backend: `(ok, detail)`.
+    pub config_validation: (bool, String),
+    /// Gemini-specific command/config validation used by the dedicated service row.
     pub gemini_validation: (bool, String),
     /// Codex capability document JSON, when the backend is codex-app-server.
     pub codex_capabilities: Option<Value>,
@@ -118,6 +120,7 @@ impl LlmDoctorProbe {
     pub fn unavailable() -> Self {
         Self {
             roundtrip: (false, "LLM probe not run".to_string()),
+            config_validation: (false, "LLM probe not run".to_string()),
             gemini_validation: (false, "LLM probe not run".to_string()),
             codex_capabilities: None,
         }

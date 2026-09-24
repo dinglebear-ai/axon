@@ -86,6 +86,8 @@ After the script completes, edit `~/.axon/.env` to fill in any `CHANGE_ME` value
 
 Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and service URLs automatically; you must supply the external service URLs manually.
 
+The environment consumed by the running Axon service is authoritative. Editing a developer workstation's `~/.axon/.env` does not reconfigure a remote/native systemd deployment. After changing the synthesis backend or endpoint on a deployed host, restart the Axon service and verify `axon doctor` / provider diagnostics report the intended active backend before trusting `ask` synthesis.
+
 ### Required for all features
 
 - `AXON_DATA_DIR` — root for all persistent volume data

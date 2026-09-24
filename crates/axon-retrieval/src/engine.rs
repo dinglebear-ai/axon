@@ -100,6 +100,13 @@ where
         let sparse_vector = request.hybrid.then(|| {
             axon_vectors::bm42::compute_bm42_sparse(ChunkId::new("query"), &request.query)
         });
+        let mut search_metadata = MetadataMap::new();
+        if let Some(hybrid_candidates) = plan.hybrid_candidates {
+            search_metadata.insert(
+                "hybrid_candidates".to_string(),
+                serde_json::json!(hybrid_candidates),
+            );
+        }
         let search = self
             .store
             .search(VectorSearchRequest {
@@ -112,7 +119,7 @@ where
                 hybrid: Some(plan.hybrid),
                 generation: plan.generation.clone(),
                 graph_refs: Vec::new(),
-                metadata: MetadataMap::new(),
+                metadata: search_metadata,
             })
             .await?;
 

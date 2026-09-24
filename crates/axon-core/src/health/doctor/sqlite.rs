@@ -36,6 +36,7 @@ pub(super) async fn build(
     let codex_caps = llm_probe.codex_capabilities;
     let sqlite = sqlite_diagnostics(&cfg.sqlite_path).await;
     let sqlite_ok = sqlite.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let llm_config_probe = llm_probe.config_validation;
     let gemini_probe = llm_probe.gemini_validation;
     let tei_model = probes.tei_info.0.as_ref().and_then(tei_model_from_info);
     let tei_summary = probes.tei_info.0.as_ref().and_then(tei_info_summary);
@@ -70,6 +71,7 @@ pub(super) async fn build(
         chrome_ok,
         chrome_detail,
         gemini_probe: &gemini_probe,
+        llm_config_probe: &llm_config_probe,
         llm_roundtrip: &llm_roundtrip,
         codex_caps,
     });
@@ -91,20 +93,7 @@ pub(super) async fn build(
     let effective_tei = resolve_host_endpoint(EndpointKind::Embedding, Some(&cfg.tei_url), &[]);
 
     let config_diagnostics = super::config_checks::run_all();
-
-    let mut recommendations = vec![
-        "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
-            .to_string(),
-    ];
-    if let Some(guidance) = cutover_guidance {
-        recommendations.push(guidance);
-    }
-    if !config_diagnostics.is_empty() {
-        recommendations.push(format!(
-            "{} config diagnostic(s) found — see config_diagnostics in this report",
-            config_diagnostics.len()
-        ));
-    }
+    let recommendations = doctor_recommendations(cutover_guidance, config_diagnostics.len());
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
@@ -139,7 +128,7 @@ pub(super) async fn build(
             "extract": true,
             // Readiness now reflects a real LLM round-trip (OPS-M4): a present
             // command with expired creds / unreachable endpoint reports false.
-            "extract_llm_ready": llm_roundtrip.0,
+            "extract_llm_ready": llm_roundtrip.0 && llm_config_probe.0,
             "watch": true,
             "prune": true,
         },
@@ -152,9 +141,29 @@ pub(super) async fn build(
             && qdrant_ok
             && chrome_ok
             && llm_roundtrip.0
+            && llm_config_probe.0
             && vector_mode_mismatch.is_none()
             && dimension_mismatch.is_none(),
     }))
+}
+
+fn doctor_recommendations(
+    cutover_guidance: Option<String>,
+    config_diagnostic_count: usize,
+) -> Vec<String> {
+    let mut recommendations = vec![
+        "CLI and MCP run all actions in-process; run `axon serve` only to expose the HTTP API."
+            .to_string(),
+    ];
+    if let Some(guidance) = cutover_guidance {
+        recommendations.push(guidance);
+    }
+    if config_diagnostic_count > 0 {
+        recommendations.push(format!(
+            "{config_diagnostic_count} config diagnostic(s) found — see config_diagnostics in this report"
+        ));
+    }
+    recommendations
 }
 
 /// Grouped `(ok, detail, latency)` for the TEI probe leg.
@@ -181,6 +190,7 @@ struct ServicesMapInputs<'a> {
     chrome_ok: bool,
     chrome_detail: &'a Option<String>,
     gemini_probe: &'a (bool, String),
+    llm_config_probe: &'a (bool, String),
     llm_roundtrip: &'a (bool, String),
     codex_caps: Option<Value>,
 }
@@ -202,6 +212,7 @@ fn assemble_services_map(inputs: ServicesMapInputs<'_>) -> Map<String, Value> {
         chrome_ok,
         chrome_detail,
         gemini_probe,
+        llm_config_probe,
         llm_roundtrip,
         codex_caps,
     } = inputs;
@@ -241,7 +252,7 @@ fn assemble_services_map(inputs: ServicesMapInputs<'_>) -> Map<String, Value> {
     );
     services.insert(
         "llm".to_string(),
-        llm_service_json(cfg, gemini_probe, llm_roundtrip),
+        llm_service_json(cfg, llm_config_probe, llm_roundtrip),
     );
     if let Some(caps) = codex_caps {
         services.insert("codex_capabilities".to_string(), caps);
@@ -343,7 +354,7 @@ fn llm_service_json(
     };
     let model = crate::llm::configured_model_from_config(cfg);
     serde_json::json!({
-        "ok": roundtrip.0,
+        "ok": roundtrip.0 && validation.0,
         "backend": backend,
         "model": model,
         "requested_model": model,

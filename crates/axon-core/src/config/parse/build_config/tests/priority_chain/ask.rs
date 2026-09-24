@@ -475,6 +475,45 @@ fn toml_ask_candidate_limit_clamps_upper_bound() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
+fn synthesis_high_context_override_affects_model_tiered_ask_defaults() {
+    let _guard = env_guard();
+    let keys = [
+        "AXON_LLM_BACKEND",
+        "AXON_SYNTHESIS_OPENAI_MODEL",
+        "AXON_SYNTHESIS_HIGH_CONTEXT",
+        "AXON_ASK_CANDIDATE_LIMIT",
+        "AXON_ASK_CHUNK_LIMIT",
+        "AXON_ASK_MAX_CONTEXT_CHARS",
+    ];
+    let mut high = None;
+    let mut low = None;
+    with_env_saved(&keys, || unsafe {
+        env::set_var("AXON_LLM_BACKEND", "openai-compat");
+        env::set_var("AXON_SYNTHESIS_OPENAI_MODEL", "tiny-unknown-model");
+        env::remove_var("AXON_ASK_CANDIDATE_LIMIT");
+        env::remove_var("AXON_ASK_CHUNK_LIMIT");
+        env::remove_var("AXON_ASK_MAX_CONTEXT_CHARS");
+
+        env::set_var("AXON_SYNTHESIS_HIGH_CONTEXT", "true");
+        high = Some(into_config_via_args(&["status"]).unwrap());
+
+        env::set_var("AXON_SYNTHESIS_HIGH_CONTEXT", "false");
+        low = Some(into_config_via_args(&["status"]).unwrap());
+    });
+
+    let high = high.unwrap();
+    let low = low.unwrap();
+    assert_eq!(high.ask_candidate_limit, 250);
+    assert_eq!(high.ask_chunk_limit, 50);
+    assert_eq!(high.ask_max_context_chars, 1_000_000);
+    assert_eq!(low.ask_candidate_limit, 60);
+    assert_eq!(low.ask_chunk_limit, 10);
+    assert_eq!(low.ask_max_context_chars, 40_000);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
 fn toml_ask_min_relevance_score_wins_over_default() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

@@ -304,6 +304,12 @@ pub struct AskDiagnostics {
     pub ask_fulldoc_skip_enabled: bool,
     #[serde(default)]
     pub ask_max_context_chars: usize,
+    #[serde(default)]
+    pub effective_chunk_limit: usize,
+    #[serde(default)]
+    pub effective_max_context_chars: usize,
+    #[serde(default)]
+    pub max_chunk_chars: usize,
     pub doc_fetch_concurrency: usize,
     pub top_domains: Vec<String>,
     pub authority_ratio: f64,

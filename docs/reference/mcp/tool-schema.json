@@ -918,6 +918,7 @@
           ]
         },
         "ask_backfill_chunks": {
+          "description": "Compatibility-only legacy full-document supplemental chunk count.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -934,6 +935,7 @@
           ]
         },
         "ask_chunk_limit": {
+          "description": "Maximum chunks eligible for final context before adaptive caps.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -942,6 +944,7 @@
           ]
         },
         "ask_doc_chunk_limit": {
+          "description": "Compatibility-only legacy full-document chunk limit.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -950,6 +953,7 @@
           ]
         },
         "ask_doc_fetch_concurrency": {
+          "description": "Compatibility-only legacy full-document fetch concurrency.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -958,6 +962,7 @@
           ]
         },
         "ask_full_docs": {
+          "description": "Compatibility-only legacy full-document fetch count. The unified\nretrieval-engine ask path does not execute full-document backfill.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -966,6 +971,7 @@
           ]
         },
         "ask_hybrid_candidates": {
+          "description": "Per-arm dense/sparse prefetch window before hybrid RRF fusion.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -974,6 +980,7 @@
           ]
         },
         "ask_max_context_chars": {
+          "description": "Maximum configured context characters; adaptive ask policy may use less.",
           "format": "uint",
           "minimum": 0,
           "type": [
@@ -5687,7 +5694,7 @@
         "path": "crates/axon-api/src/action/requests/watch.rs"
       },
       {
-        "checksum": "sha256:87986a79e3cf49b28af6bd41672e2395ddbb41dbbf9c8b791c85cc0515a16a56",
+        "checksum": "sha256:6c5ca1c0ac07f585648fd7023b872833799f1af3f186e09010cf8db1bd6d027f",
         "kind": "rust_module",
         "path": "crates/axon-api/src/action/utility.rs"
       },

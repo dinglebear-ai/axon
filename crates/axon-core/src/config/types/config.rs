@@ -656,38 +656,39 @@ pub struct Config {
     pub evaluate_responses_mode: EvaluateResponsesMode,
 
     /// Maximum total characters of context passed to the LLM in a single `ask` request.
-    /// Env: `AXON_ASK_MAX_CONTEXT_CHARS` (clamped 20_000–1_000_000). Default: 300_000.
+    /// Env: `AXON_ASK_MAX_CONTEXT_CHARS` (clamped 20_000–1_000_000). Unset defaults are model-tiered.
     pub ask_max_context_chars: usize,
 
     /// Number of candidate chunks retrieved from Qdrant before reranking.
-    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Default: 250.
+    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Unset defaults are model-tiered.
     pub ask_candidate_limit: usize,
 
     /// Maximum chunks included in the LLM context after reranking.
-    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–64). Default: 24.
+    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–64). Unset defaults are model-tiered and remain bounded by the candidate limit.
     pub ask_chunk_limit: usize,
 
-    /// Number of top-scoring documents for which full-doc backfill is attempted.
+    /// Compatibility-only legacy full-document fetch count. The unified
+    /// retrieval-engine ask path does not execute full-document backfill.
     /// Env: `AXON_ASK_FULL_DOCS` (clamped 1–20). Default: 6.
     pub ask_full_docs: usize,
 
-    /// True when `ask_full_docs` was set explicitly by the user (via
-    /// `AXON_ASK_FULL_DOCS` env var or a CLI flag) rather than left at the
-    /// hardcoded default. The adaptive resolver in
-    /// `build_ask_context` honours user overrides and only applies its
-    /// complexity-based default when this is `false`.
-    /// (bd axon_rust-721)
+    /// True when the compatibility-only `ask_full_docs` control was explicitly
+    /// configured. The unified retrieval path uses this to surface a warning
+    /// instead of silently pretending legacy backfill is active.
     pub ask_full_docs_explicit: bool,
 
-    /// Extra chunks added from each full-doc backfill pass.
+    /// Compatibility-only legacy supplemental-chunk count; not executed by
+    /// the unified retrieval-engine ask path.
     /// Env: `AXON_ASK_BACKFILL_CHUNKS` (clamped 0–20). Default: 5.
     pub ask_backfill_chunks: usize,
 
-    /// Maximum concurrent Qdrant fetches during full-doc backfill.
+    /// Compatibility-only legacy full-document fetch concurrency; not executed
+    /// by the unified retrieval-engine ask path.
     /// Env: `AXON_ASK_DOC_FETCH_CONCURRENCY` (clamped 1–16). Default: 4.
     pub ask_doc_fetch_concurrency: usize,
 
-    /// Maximum chunks fetched per document during backfill.
+    /// Compatibility-only legacy per-document chunk limit; not executed by the
+    /// unified retrieval-engine ask path.
     /// Env: `AXON_ASK_DOC_CHUNK_LIMIT` (clamped 8–2000). Default: 96.
     pub ask_doc_chunk_limit: usize,
 
@@ -707,13 +708,10 @@ pub struct Config {
     /// Env: `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` (clamped 1–5). Default: 2.
     pub ask_min_citations_nontrivial: usize,
 
-    /// Explicit override for whether the configured synthesis backend has a
-    /// large context window, driving the adaptive full-docs context floor in
-    /// the `ask` path. `None` (default) falls back to the substring-heuristic
-    /// in `high_context_synthesis_model` that infers capability from the model
-    /// name. `Some(true)`/`Some(false)` force the decision regardless of the
-    /// model name, so a new high-context model can be flagged without code
-    /// changes (arch-M4). No behavior change unless the operator sets the knob.
+    /// Explicit override for synthesis context capability. `Some(true)` forces
+    /// the high-context model tier; `Some(false)` forces the small tier; `None`
+    /// uses model/backend detection. The tier drives ask candidate defaults and
+    /// adaptive effective context budgets.
     /// Env: `AXON_SYNTHESIS_HIGH_CONTEXT` (true/false/1/0). TOML: `[llm] synthesis-high-context`.
     pub synthesis_high_context: Option<bool>,
 
@@ -732,48 +730,40 @@ pub struct Config {
 
     /// Candidates fetched per prefetch arm before RRF fusion, for the `ask` pipeline only.
     ///
-    /// Ask reranks with `ask_min_relevance_score` (default 0.45) before selecting context,
-    /// so it needs a wider prefetch window than `query` (which skips reranking).
-    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
+    /// Ask applies authority/source-quality policy after RRF while preserving
+    /// Qdrant's fused relevance scale, so it uses a wider raw prefetch window
+    /// than plain `query`.
+    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Unset defaults are model-tiered.
     pub ask_hybrid_candidates: usize,
 
-    /// Enable the in-process document-chunk cache for `ask` (full-doc fetch path).
-    /// Process-local cache: only useful in long-lived parents (`axon serve`, `axon mcp`).
-    /// CLI one-shots see zero hit rate. Config-only via `[ask.cache] enabled` in
-    /// `~/.axon/config.toml`. Default: false. (bd axon_rust-pmc)
+    /// Compatibility-only switch for the retired full-document ask cache.
+    /// The unified retrieval-engine ask path does not use this cache.
+    /// Config-only via `[ask.cache] enabled`. Default: false.
     pub ask_cache_enabled: bool,
 
-    /// Maximum bytes (summed `chunk_text` length) the doc-chunk cache may hold.
+    /// Compatibility-only capacity for the retired full-document ask cache.
     /// Config-only via `[ask.cache] max-capacity-bytes`. Default: 256 MiB.
     pub ask_cache_max_capacity_bytes: u64,
 
-    /// Time-to-live for cached doc-chunk entries, in seconds. Capped at 300s
-    /// (security primitive: bounds staleness of deleted content).
+    /// Compatibility-only TTL for the retired full-document ask cache.
     /// Config-only via `[ask.cache] ttl-secs`. Default: 300s.
     pub ask_cache_ttl_secs: u64,
 
-    /// Enable the adaptive full-doc fetch skip gate for `ask`. When the top-K
-    /// reranked candidates already cover enough URLs, bytes, and quality, the
-    /// full-doc backfill stage is elided entirely. Default: false. Config-only via
-    /// `[ask.adaptive] fulldoc-skip-enabled`. (bd axon_rust-30y)
+    /// Compatibility-only switch for the retired full-document skip gate.
+    /// The unified retrieval-engine ask path always uses bounded chunk context.
+    /// Config-only via `[ask.adaptive] fulldoc-skip-enabled`. Default: false.
     pub ask_fulldoc_skip_enabled: bool,
 
-    /// Minimum unique URLs required in the reranked top-K for the skip gate
-    /// to fire. Config-only via `[ask.adaptive] fulldoc-skip-min-urls`.
-    /// Default: 3.
+    /// Compatibility-only threshold for the retired full-document skip gate.
+    /// Config-only via `[ask.adaptive] fulldoc-skip-min-urls`. Default: 3.
     pub ask_fulldoc_skip_min_urls: usize,
 
-    /// Minimum total chunk_text bytes (summed across reranked top-K) required
-    /// for the skip gate to fire. Config-only via
-    /// `[ask.adaptive] fulldoc-skip-min-chars`. Default: 4000.
+    /// Compatibility-only threshold for the retired full-document skip gate.
+    /// Config-only via `[ask.adaptive] fulldoc-skip-min-chars`. Default: 4000.
     pub ask_fulldoc_skip_min_chars: usize,
 
-    /// Cosine-mode score floor offset added on top of `ask_min_relevance_score`.
-    /// Every score in the reranked top-K must be `>= ask_min_relevance_score +
-    /// ask_fulldoc_skip_score_delta` for the gate to fire on cosine paths.
-    /// Ignored on RRF paths (rank-fusion output is unitless and uses a
-    /// rank-based gate instead). Config-only via
-    /// `[ask.adaptive] fulldoc-skip-score-delta`. Default: 0.15.
+    /// Compatibility-only score threshold for the retired full-document skip gate.
+    /// Config-only via `[ask.adaptive] fulldoc-skip-score-delta`. Default: 0.15.
     pub ask_fulldoc_skip_score_delta: f64,
 
     /// Maximum TEI embed retry attempts after the initial request.

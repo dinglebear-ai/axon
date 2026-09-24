@@ -55,17 +55,18 @@ pub struct AskContext {
     pub authoritative_ratio: f64,
     pub configured_authority_ratio: f64,
     pub product_authority_ratio: f64,
+    pub effective_chunk_limit: usize,
+    pub effective_max_context_chars: usize,
+    pub max_chunk_chars: usize,
     pub corpus_health: CorpusHealthDiagnostic,
     /// True when full-doc fetch was skipped or never attempted. Always `true`
     /// on the retrieval-engine path — full-doc/supplemental staging is a
     /// legacy-reranker-only concept.
     pub full_doc_fetch_skipped: bool,
-    /// Static reason string ("retrieval_engine" for every value built here).
+    /// Static reason string ("not_supported_by_retrieval_engine" for this path).
     pub full_doc_fetch_skip_reason: &'static str,
     pub full_doc_fetch_errors: Vec<AskExplainFullDocFetchError>,
-    /// Coarse query-complexity signal. Always `"simple"` on the
-    /// retrieval-engine path — the adaptive complexity classifier is part of
-    /// the legacy reranker's query-rewrite stage, not reproduced here.
+    /// Coarse query-complexity signal resolved by the ask retrieval policy.
     pub detected_complexity: &'static str,
     pub resolved_full_docs: usize,
     pub full_docs_source: &'static str,
@@ -82,7 +83,7 @@ impl AskContext {
     /// synthesis prompt expects, and passes it here along with retrieval
     /// bookkeeping. Full-doc/supplemental/rerank stages are not run on this
     /// path, so their counts are zero and the fetch-skip reason is
-    /// `"retrieval_engine"`.
+    /// `"not_supported_by_retrieval_engine"`.
     pub fn from_retrieval(
         context: String,
         candidate_count: usize,
@@ -92,8 +93,9 @@ impl AskContext {
         selected_urls: &[String],
         warnings: Vec<String>,
     ) -> AskContext {
+        let context_chars = context.chars().count();
         let corpus_health =
-            classify_corpus_health(&top_domains, selected_urls, candidate_count, context.len());
+            classify_corpus_health(&top_domains, selected_urls, candidate_count, context_chars);
         AskContext {
             context,
             candidate_count,
@@ -109,13 +111,16 @@ impl AskContext {
             authoritative_ratio: 0.0,
             configured_authority_ratio: 0.0,
             product_authority_ratio: 0.0,
+            effective_chunk_limit: chunks_selected,
+            effective_max_context_chars: context_chars,
+            max_chunk_chars: context_chars,
             corpus_health,
             full_doc_fetch_skipped: true,
-            full_doc_fetch_skip_reason: "retrieval_engine",
+            full_doc_fetch_skip_reason: "not_supported_by_retrieval_engine",
             full_doc_fetch_errors: Vec::new(),
             detected_complexity: "simple",
             resolved_full_docs: 0,
-            full_docs_source: "retrieval_engine",
+            full_docs_source: "not_supported_by_retrieval_engine",
             warnings,
         }
     }

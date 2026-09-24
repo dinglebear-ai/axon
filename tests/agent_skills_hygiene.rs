@@ -14,6 +14,7 @@ const EXPECTED_SKILLS: &[&str] = &[
     "demo-walkthrough",
     "download",
     "extract",
+    "install-axon",
     "knowledge-base",
     "knowledge-ingest",
     "lead-gen",
