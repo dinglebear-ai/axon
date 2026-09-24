@@ -1,6 +1,6 @@
 interface:
   display_name: "Install Axon"
   short_description: "Install, secure, and verify Axon"
-  default_prompt: "Use $install-axon to install or repair Axon and connect my agent safely."
+  brand_color: "#29B6F6"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
