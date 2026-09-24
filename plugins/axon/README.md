@@ -10,6 +10,16 @@ Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optiona
 
 ## Installation
 
+The first-class guided bootstrap is:
+
+```bash
+npx skills add dinglebear-ai/axon --skill install-axon
+```
+
+Then invoke `$install-axon`. It drives Axon's canonical binary/setup/deployment surfaces and can configure the full client plugin after the server is healthy.
+
+To install the complete Claude plugin from a checkout:
+
 ```bash
 claude plugin install <path>
 ```
@@ -82,7 +92,7 @@ Default `response_mode: "path"` writes large outputs under the configured Axon a
 
 ## Skills
 
-The plugin ships 25 plain-name Axon skills under `skills/`. Because these
+The plugin ships 26 plain-name Axon skills under `skills/`, including the first-run `install-axon` workflow. Because these
 skills already live inside the Axon plugin namespace, folder names do not carry
 an `axon-` prefix. Every skill includes `agents/openai.yaml` metadata.
 
@@ -91,6 +101,7 @@ outcome-focused research, monitoring, QA, shopping, and design deliverables.
 
 | Skill | Purpose |
 |-------|---------|
+| `install-axon` | Install, secure, deploy, connect, and verify an Axon runtime. |
 | `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
 | `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
 | `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |

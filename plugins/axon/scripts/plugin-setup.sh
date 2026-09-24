@@ -30,14 +30,14 @@ ensure_axon_binary() {
     export PATH="${PLUGIN_ROOT}/bin:${PATH}"
     return 0
   fi
-  printf 'axon is not installed - install it with:\n  curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh\nThen run: axon setup\n' >&2
+  printf 'axon is not installed - use $install-axon or the reviewed-source/release installation path in the Axon README, then run: axon setup\n' >&2
   return 1
 }
 
 warn_stale_systemd_unit() {
   local unit="${HOME}/.config/systemd/user/axon-mcp.service"
   if [[ -e "${unit}" ]]; then
-    printf 'axon plugin setup: stale systemd unit detected at %s; Docker setup is canonical, remove the unit to avoid port conflicts\n' "${unit}" >&2
+    printf 'axon plugin setup: legacy user systemd unit detected at %s; current production deployment uses deploy/systemd/axon.service or the documented Incus native service, review/remove the legacy unit to avoid port conflicts\n' "${unit}" >&2
   fi
 }
 
