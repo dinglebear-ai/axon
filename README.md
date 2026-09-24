@@ -73,6 +73,8 @@ TEI GPU throughput). Axon itself is CPU-only.
 
 ## Install the binary
 
+The first-class guided path is `npx skills add dinglebear-ai/axon --skill install-axon` followed by `$install-axon`. It respects the release trust boundary below, drives `axon setup`, and guides deployment/auth/client verification.
+
 The installers fetch a release binary and delegate the rest to `axon setup`.
 Deployment (Incus or systemd) is a separate step above.
 

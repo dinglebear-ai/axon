@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Added
-- Rebuilt the plugin skill surface around 25 plain-name Axon skills under `skills/`: one `using-axon` guide, eight core command/action skills, and sixteen outcome-focused workflow skills.
+- Added `install-axon` as the first-class guided installer/repair skill, covering reviewed-source installation, Incus or bare-metal deployment, bearer/OAuth dual-mode auth, Codex app-server synthesis, agent connection, and live verification.
+- Rebuilt the plugin skill surface around 26 plain-name Axon skills under `skills/`: one `using-axon` guide, eight core command/action skills, and sixteen outcome-focused workflow skills.
 - Added OpenAI skill metadata at `agents/openai.yaml` for every shipped skill.
 - Added shared workflow references under `references/`, including capture recipes, workflow authoring guidance, and output templates.
 - Documented the `memory.remember`, `memory.search`, `memory.show`, `memory.link`, `memory.supersede`, and `memory.context` agent-memory actions in the `using-axon` skill.
