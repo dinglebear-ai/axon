@@ -13,7 +13,7 @@ use super::super::super::types::{
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
     env_bool, env_port, parse_csv_env, parse_origin_allowlist, parse_path_budgets,
-    resolve_mcp_transport, validate_custom_headers,
+    resolve_mcp_projection, resolve_mcp_transport, validate_custom_headers,
 };
 use super::super::toml_config::TomlConfig;
 use super::super::tuning;
@@ -646,6 +646,7 @@ fn populate_misc(
         inputs.dispatched.mcp_transport_default,
     );
     cfg.mcp_transport = resolve_mcp_transport(mcp_transport, mcp_transport_default);
+    cfg.mcp_projection = resolve_mcp_projection();
     cfg.mcp_http_host = env::var("AXON_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     cfg.mcp_http_port = mcp_http_port;
     cfg.custom_headers = custom_headers;
