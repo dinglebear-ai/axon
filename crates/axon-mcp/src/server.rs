@@ -29,6 +29,11 @@ mod handlers_system;
 mod handlers_watch;
 #[path = "server/http.rs"]
 mod http;
+#[path = "server/projection.rs"]
+mod projection;
+#[cfg(test)]
+#[path = "server/projection_call_tests.rs"]
+mod projection_call_tests;
 #[path = "server/authz.rs"]
 mod server_authz;
 #[cfg(test)]
@@ -67,8 +72,8 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams, GetTaskParams,
         GetTaskResult, InitializeRequestParams, InitializeResult, ListResourcesResult,
-        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, RequestMetaObject,
-        ServerInfo, TASKS_EXTENSION_ID, UpdateTaskParams,
+        ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
+        RequestMetaObject, ServerInfo, TASKS_EXTENSION_ID, Tool, UpdateTaskParams,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -321,6 +326,29 @@ impl AxonMcpServer {
 
 #[tool_handler(router = Self::tool_router())]
 impl ServerHandler for AxonMcpServer {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            result_type: Some(rmcp::model::ResultType::COMPLETE),
+            tools: projection::projected_tools(
+                self.cfg.mcp_projection,
+                Self::tool_router().list_all(),
+            ),
+            meta: None,
+            next_cursor: None,
+            ttl_ms: Some(30_000),
+            cache_scope: Some(rmcp::model::CacheScope::Private),
+        })
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        let router_tools = Self::tool_router().list_all();
+        projection::projected_tool(self.cfg.mcp_projection, &router_tools, name)
+    }
+
     async fn call_tool(
         &self,
         mut request: CallToolRequestParams,
@@ -332,6 +360,7 @@ impl ServerHandler for AxonMcpServer {
         // wire metadata (typed params metadata remains useful for direct SDK
         // callers that bypass the transport loop).
         rehydrate_request_meta(&mut request, &context.meta);
+        projection::normalize_projected_tool_call(self, &mut request)?;
         // SEP-2663: rmcp 3.x removed the dedicated `ServerHandler::enqueue_task`
         // hook and the typed `CallToolRequestParams::task` field that rmcp 1.x
         // used to route task-augmented `tools/call` requests. Task augmentation

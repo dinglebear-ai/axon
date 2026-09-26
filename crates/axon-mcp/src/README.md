@@ -9,9 +9,11 @@ Axon MCP server crate backing the `axon mcp` command.
 - Runtime config loading (`config.rs`)
 
 ## Public Contract
-- Single MCP tool: `axon`
+- MCP projection: `legacy`, `atomic`, or `both` via `AXON_MCP_PROJECTION`
+- Legacy compatibility tool: `axon`
+- Atomic tools: one `axon_<action>` tool per live action
 - Transport: `http`, `stdio`, or `both` via `axon mcp --transport ...`
-- Primary request shape: action-routed requests via `action` + `subaction`
+- Legacy request shape: action-routed requests via `action` + `subaction`
 - Parser is strict (no fallback action keys, no alias remapping)
 - Context-safe default: large payloads written artifact-first to `~/.axon/artifacts/<context>/` (small payloads return inline)
 - Resource exposed: `axon://schema/mcp-tool`

@@ -1,12 +1,13 @@
 # Axon MCP Server Guide
 Last Modified: 2026-07-16
 
-`axon mcp` exposes Axon through one MCP tool named `axon`.
+`axon mcp` supports legacy and atomic MCP tool projections.
 
 - Transport: stdio, streamable HTTP (`/mcp`), or both.
-- Tool count: 1.
-- Tool name: `axon`.
-- Routing fields: `action` plus optional `subaction`.
+- Projection: `AXON_MCP_PROJECTION=legacy|atomic|both` (default `legacy`).
+- Legacy surface: one tool named `axon`, routed by `action` plus optional `subaction`.
+- Atomic surface: one focused `axon_<action>` tool per live action, with no `action` discriminator in its input schema.
+- `both`: publishes legacy and atomic surfaces simultaneously for compatibility rollout.
 - Schema resource: `axon://schema/mcp-tool`.
 - MCP Apps resource: `ui://axon/status-dashboard`.
 
@@ -43,6 +44,7 @@ HTTP transport shares the same listener as `axon serve`.
 |---|---|---|
 | `AXON_HTTP_HOST` | `127.0.0.1` | Unified HTTP bind host; non-loopback requires auth. |
 | `AXON_HTTP_PORT` | `8001` | Unified HTTP bind port. |
+| `AXON_MCP_PROJECTION` | `legacy` | `legacy`, `atomic`, or `both` MCP tool projection. |
 | `AXON_HTTP_TOKEN` | unset | Static bearer or `x-api-key` token. |
 | `AXON_AUTH_MODE` | bearer/static mode | Set `oauth` for lab-auth Google OAuth/JWT. |
 

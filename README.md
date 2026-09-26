@@ -421,10 +421,14 @@ tree. Per-command flags: `axon <cmd> --help`.
 
 ## MCP
 
-Axon exposes **one** MCP tool named `axon`; actions route by `action` and
-optional `subaction`. `axon mcp` defaults to stdio; `--transport http` (or
-`both`) and `axon serve mcp` expose it over HTTP on the same listener as
-`axon serve`.
+Axon supports three MCP tool projections controlled by
+`AXON_MCP_PROJECTION=legacy|atomic|both`. The default, `legacy`, exposes the
+single compatibility tool `axon` with `action` / optional `subaction`
+routing. `atomic` exposes one focused `axon_<action>` tool per live MCP
+action, and `both` publishes both surfaces during migration. All projections
+route into the same dispatcher and authorization path. `axon mcp` defaults to
+stdio; `--transport http` (or `both`) and `axon serve mcp` expose the
+selected projection over HTTP on the same listener as `axon serve`.
 
 ```json
 { "action": "doctor" }

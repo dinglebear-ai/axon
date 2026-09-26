@@ -445,6 +445,14 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_MCP_PROJECTION",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "AXON_NEO4J_URL",
         TrustedOperatorBootstrap,
         HostOnly,
