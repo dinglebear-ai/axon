@@ -166,6 +166,7 @@ fn source() -> SourceSummary {
         authority: AuthorityLevel::UserPinned,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,
@@ -228,6 +229,7 @@ fn completed(mut generation: SourceGeneration) -> SourceGeneration {
         failed: 0,
     };
     generation.document_counts = DocumentCounts {
+        skipped: 0,
         discovered: 0,
         prepared: 0,
         embedded: 0,
@@ -323,6 +325,7 @@ async fn seed_generation_with_multiple_vector_debts(
 
 fn index_counts(committed: &SourceGenerationId) -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(Uuid::from_u128(1)),
         source_id: SourceId::new(SRC),
         generation: committed.clone(),

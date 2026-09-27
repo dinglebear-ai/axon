@@ -57,6 +57,17 @@ pub struct SourceDocument {
     pub parser_hints: Vec<ParserHint>,
 }
 
+/// Identity retained when preparation intentionally produces no searchable output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkippedDocument {
+    pub document_id: DocumentId,
+    pub source_id: SourceId,
+    pub source_item_key: SourceItemKey,
+    pub generation: SourceGenerationId,
+    pub reason: ContentSkipReason,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PreparedDocument {

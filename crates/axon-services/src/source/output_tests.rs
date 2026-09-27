@@ -24,6 +24,7 @@ fn cleanup_source() -> SourceSummary {
         authority: AuthorityLevel::UserPinned,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 0,
             items_changed: 0,
             documents_total: 0,
@@ -116,6 +117,7 @@ impl CleanupProviderOps for ArtifactRecoveryOps {
 
 fn cleanup_counts() -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(uuid::Uuid::nil()),
         source_id: SourceId::new("src_cleanup_guard"),
         generation: SourceGenerationId::new("gen_uncommitted"),

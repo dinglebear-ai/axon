@@ -194,6 +194,7 @@ where
                 }
             };
             let counts = IndexCounts {
+                documents_skipped: 0,
                 job_id: debt.job_id,
                 source_id: debt.source_id,
                 generation: committed,

@@ -112,7 +112,7 @@ fn classify_bytes(bytes: &[u8], max_bytes: usize) -> ContentDisposition {
 }
 
 fn classify_text(text: &str) -> ContentDisposition {
-    if text.is_empty() {
+    if text.trim().is_empty() {
         skipped(ContentSkipReason::EmptyContent)
     } else if text
         .chars()
@@ -162,7 +162,7 @@ fn decode_utf16(bytes: &[u8], little_endian: bool, max_bytes: usize) -> ContentD
         };
         text.push(character);
     }
-    if text.is_empty() {
+    if text.trim().is_empty() {
         skipped(ContentSkipReason::EmptyContent)
     } else if text
         .chars()

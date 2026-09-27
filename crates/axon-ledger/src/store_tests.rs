@@ -24,6 +24,7 @@ fn source() -> SourceSummary {
         authority: AuthorityLevel::UserPinned,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,
@@ -158,6 +159,7 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: manifest.items.len() as u64,
             prepared: 0,
             embedded: 0,

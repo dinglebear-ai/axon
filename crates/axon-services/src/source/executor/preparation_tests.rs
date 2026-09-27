@@ -103,6 +103,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
         parser_hints: Vec::new(),
     }];
     let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+        max_content_bytes: axon_document::content_policy::DEFAULT_CONTENT_BYTE_LIMIT,
         markdown_max_chars: 48,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
@@ -119,9 +120,12 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
     .await
     .expect("prepare documents");
 
-    assert!(prepared[0].chunks.len() > 1);
+    let PrepareSourceDocumentResult::Prepared(document) = &prepared[0] else {
+        panic!("text skipped")
+    };
+    assert!(document.chunks.len() > 1);
     assert!(
-        prepared[0]
+        document
             .chunks
             .iter()
             .all(|chunk| chunk.content.chars().count() <= 48)

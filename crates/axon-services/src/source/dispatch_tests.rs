@@ -817,7 +817,17 @@ impl SourceAdapter for StampingSourceAdapter {
         &self,
         plan: &SourcePlan,
     ) -> std::result::Result<axon_api::source::SourceManifest, ApiError> {
-        self.inner.discover(plan).await
+        let mut manifest = self.inner.discover(plan).await?;
+        // The base fake has no content fingerprint. Give these lifecycle fixtures
+        // an explicit version so changes in kind/length exercise refresh paths.
+        for item in &mut manifest.items {
+            item.version = Some(format!(
+                "{:?}:{}",
+                item.content_kind,
+                item.size_bytes.unwrap_or(0)
+            ));
+        }
+        Ok(manifest)
     }
 
     async fn acquire(
@@ -835,6 +845,19 @@ impl SourceAdapter for StampingSourceAdapter {
     ) -> std::result::Result<axon_api::source::StageExecutionResult<Vec<SourceDocument>>, ApiError>
     {
         let mut result = self.inner.normalize(plan, acquisition).await?;
+        // Raw-binary fixtures preserve real ContentRef semantics after the text-only fake.
+        for document in &mut result.data {
+            if document.content_kind == axon_api::source::ContentKind::BinaryMetadata {
+                if let axon_api::source::ContentRef::InlineText { text } = &document.content {
+                    use base64::Engine as _;
+                    document.content = axon_api::source::ContentRef::InlineBytes {
+                        bytes_base64: base64::engine::general_purpose::STANDARD
+                            .encode(text.as_bytes()),
+                        mime_type: "application/octet-stream".into(),
+                    };
+                }
+            }
+        }
         stamp_required_payload_metadata(plan, &mut result);
         Ok(result)
     }
@@ -1111,7 +1134,7 @@ async fn canceled_generation_cleans_up(lose_lease: bool) {
     assert_eq!(
         generation.status,
         LifecycleStatus::Failed,
-        "cancel must mark the uncommitted generation row failed (M3)"
+        "cancel must mark the uncommitted generation row failed (M3); pipeline error: {error:#}"
     );
     assert!(
         vectors.points("axon-test").await.is_empty(),
@@ -1349,5 +1372,208 @@ async fn failed_generation_never_delivers_artifact_candidates() {
     assert!(
         sink.deliveries().is_empty(),
         "failed generation leaked a ghost candidate to the sink"
+    );
+}
+
+#[tokio::test]
+async fn shared_skips_publish_without_embedding_and_retire_prior_text_in_both_modes() {
+    use axon_api::source::{ContentKind, HealthStatus};
+    for scheduled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().to_string_lossy().to_string();
+        let route = route_for(&source);
+        let ledger = Arc::new(FakeLedgerStore::new());
+        let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+        let embedding = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
+        let mut runtime = TargetLocalSourceRuntime::new(
+            Arc::new(FakeJobWatchStore::new()),
+            ledger.clone(),
+            embedding.clone(),
+            vectors.clone(),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        );
+        runtime.embed_scheduler_enabled = scheduled;
+        let mixed = StampingSourceAdapter {
+            inner: FakeSourceAdapter::new(route.adapter.clone())
+                .with_item("asset", ContentKind::BinaryMetadata, "%PDF-1.7")
+                .with_item("text", ContentKind::PlainText, "searchable words"),
+        };
+        let first = dispatch_materialized(
+            &runtime,
+            &mixed,
+            family_source_plan(&source, &route, true, None, None),
+            "axon-test",
+            "test-owner",
+            None,
+            &test_execution(&source),
+            |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+        )
+        .await
+        .unwrap();
+        assert_eq!((first.documents_prepared, first.documents_skipped), (1, 1));
+        assert!(first.warnings.is_empty());
+        assert!(!embedding.calls().await.is_empty());
+        // A tolerated post-publication summary write can leave stale zero totals.
+        // Publication must use the committed generation, not this projection.
+        let mut stale = ledger
+            .get_source(first.source_id.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        stale.counts.vector_points_total = 0;
+        stale.counts.documents_total = 0;
+        ledger.upsert_source(stale).await.unwrap();
+
+        let offline = Arc::new(
+            FakeEmbeddingProvider::new("fake-embedding", 8).with_health(HealthStatus::Unavailable),
+        );
+        runtime.embedding_provider = offline.clone();
+        let skipped = StampingSourceAdapter {
+            inner: FakeSourceAdapter::new(route.adapter.clone())
+                .with_item("asset", ContentKind::BinaryMetadata, "%PDF-1.8 changed")
+                .with_item("text", ContentKind::BinaryMetadata, "%PDF-1.9"),
+        };
+        let second = dispatch_materialized(
+            &runtime,
+            &skipped,
+            family_source_plan(&source, &route, true, None, None),
+            "axon-test",
+            "test-owner",
+            None,
+            &test_execution(&source),
+            |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (second.documents_prepared, second.documents_skipped),
+            (0, 2)
+        );
+        assert!(offline.calls().await.is_empty());
+        assert!(vectors.points("axon-test").await.iter().all(|point| {
+            point
+                .payload
+                .get("retired_epoch")
+                .is_some_and(|v| !v.is_null())
+        }));
+        assert_eq!(
+            ledger
+                .get_source(second.source_id.clone())
+                .await
+                .unwrap()
+                .unwrap()
+                .counts
+                .documents_skipped,
+            2
+        );
+    }
+}
+
+#[tokio::test]
+async fn repeated_all_skipped_generations_do_not_require_embedding_or_collection() {
+    use axon_api::source::{ContentKind, HealthStatus};
+    for scheduled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().to_string_lossy().to_string();
+        let route = route_for(&source);
+        let ledger = Arc::new(FakeLedgerStore::new());
+        let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+        let embedding = Arc::new(
+            FakeEmbeddingProvider::new("fake-embedding", 8).with_health(HealthStatus::Unavailable),
+        );
+        let mut runtime = TargetLocalSourceRuntime::new(
+            Arc::new(FakeJobWatchStore::new()),
+            ledger.clone(),
+            embedding.clone(),
+            vectors.clone(),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        );
+        runtime.embed_scheduler_enabled = scheduled;
+        for content in ["%PDF-1.7", "%PDF-1.8 changed"] {
+            let skipped = StampingSourceAdapter {
+                inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
+                    "asset",
+                    ContentKind::BinaryMetadata,
+                    content,
+                ),
+            };
+            let result = dispatch_materialized(
+                &runtime,
+                &skipped,
+                family_source_plan(&source, &route, true, None, None),
+                "axon-test",
+                "test-owner",
+                None,
+                &test_execution(&source),
+                |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                (result.documents_prepared, result.documents_skipped),
+                (0, 1)
+            );
+            assert!(result.warnings.is_empty());
+        }
+        assert!(embedding.calls().await.is_empty());
+        assert!(
+            vectors
+                .calls()
+                .await
+                .iter()
+                .all(|call| *call == "capabilities")
+        );
+    }
+}
+
+#[tokio::test]
+async fn unscheduled_multibatch_ingestion_enters_bulk_loading_once() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let mut runtime = test_runtime(vectors.clone(), ledger);
+    runtime.embed_scheduler_enabled = false;
+    let mut inner = FakeSourceAdapter::new(route.adapter.clone());
+    for index in 0..257 {
+        inner = inner.with_item(
+            format!("item-{index:03}"),
+            axon_api::source::ContentKind::PlainText,
+            format!("searchable content {index}"),
+        );
+    }
+    let adapter = StampingSourceAdapter { inner };
+    let result = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, true, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.documents_prepared, 257);
+    let calls = vectors.calls().await;
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| **call == "begin_bulk_load")
+            .count(),
+        1
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| **call == "finish_bulk_load")
+            .count(),
+        1
     );
 }

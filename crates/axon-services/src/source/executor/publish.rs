@@ -50,6 +50,7 @@ pub(super) async fn complete_generation(
                 failed: diff.counts.failed,
             },
             document_counts: DocumentCounts {
+                skipped: vectorized.documents_skipped,
                 discovered,
                 prepared: vectorized.documents_prepared,
                 embedded: if vectorized.points_written > 0 {
@@ -74,7 +75,7 @@ pub(super) async fn publish(
     embed: bool,
     expected_new_points: u64,
 ) -> anyhow::Result<PublishOutcome> {
-    if !embed {
+    if !embed || (expected_new_points == 0 && generation.previous_generation.is_none()) {
         return Ok(PublishOutcome {
             generation: publish_ledger(runtime.ledger.as_ref(), input, generation).await?,
             warnings: Vec::new(),

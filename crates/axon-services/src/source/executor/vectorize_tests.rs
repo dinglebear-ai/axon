@@ -141,6 +141,7 @@ async fn document_status_writes_are_bounded_ordered_and_complete() {
             authority: AuthorityLevel::UserPinned,
             status: LifecycleStatus::Running,
             counts: SourceCounts {
+                documents_skipped: 0,
                 items_total: 0,
                 items_changed: 0,
                 documents_total: 0,
@@ -347,4 +348,35 @@ fn vectorize_result_reports_redaction_skips_per_source_item() {
         .expect("redaction skip warning");
     assert_eq!(warning.source_item_key.as_ref(), Some(&source_item_key));
     assert!(warning.message.contains("skipped 1 chunk"));
+}
+
+#[test]
+fn skipped_preparation_keeps_identity_without_prepared_counts_or_warnings() {
+    let skipped = SkippedDocument {
+        document_id: DocumentId::new("skipped-doc"),
+        source_id: SourceId::new("src-window-test"),
+        source_item_key: SourceItemKey::new("asset.png"),
+        generation: SourceGenerationId::new("1"),
+        reason: ContentSkipReason::UnsupportedBinary,
+    };
+    let (prepared, skips) = partition_prepared(vec![
+        axon_document::PrepareSourceDocumentResult::Prepared(prepared_document(2)),
+        axon_document::PrepareSourceDocumentResult::Skipped(skipped),
+    ]);
+    assert_eq!(prepared.len(), 1);
+    assert_eq!(skips.documents_skipped, 1);
+    assert_eq!(skips.documents_prepared, 0);
+    assert!(skips.warnings.is_empty());
+    let status = &skips.document_statuses[0];
+    assert_eq!(status.status, DocumentLifecycleStatus::Skipped);
+    assert_eq!(status.chunk_count, 0);
+    assert_eq!(status.source_item_key.0, "asset.png");
+    assert_eq!(status.error.as_ref().unwrap().code, "unsupported_binary");
+    let mut aggregate = statuses_only(prepared, DocumentLifecycleStatus::Prepared);
+    merge_vectorize_result(&mut aggregate, skips);
+    assert_eq!(
+        (aggregate.documents_prepared, aggregate.documents_skipped),
+        (1, 1)
+    );
+    assert_eq!(aggregate.chunks_prepared, 2);
 }

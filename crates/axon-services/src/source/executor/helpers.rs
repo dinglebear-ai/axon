@@ -26,6 +26,7 @@ pub(super) async fn unchanged_result(
     let counts = previous
         .map(preserved_source_counts)
         .unwrap_or(SourceCounts {
+            documents_skipped: 0,
             items_total: manifest.items.len() as u64,
             items_changed: 0,
             documents_total: manifest.items.len() as u64,
@@ -46,6 +47,7 @@ pub(super) async fn unchanged_result(
         ))
         .await?;
     Ok(IndexCounts {
+        documents_skipped: previous.map_or(0, |source| source.counts.documents_skipped),
         job_id: input.plan.job_id,
         source_id: manifest.source_id.clone(),
         generation,
@@ -228,6 +230,7 @@ pub(super) fn terminal_source_counts(
         .sum();
     if diff.counts.unchanged == 0 {
         return SourceCounts {
+            documents_skipped: vectorized.documents_skipped,
             items_total: manifest.items.len() as u64,
             items_changed: changed,
             documents_total: vectorized.documents_prepared,
@@ -249,6 +252,7 @@ pub(super) fn terminal_source_counts(
         u64::try_from(numerator / u128::from(previous_items)).unwrap_or(u64::MAX)
     };
     SourceCounts {
+        documents_skipped: vectorized.documents_skipped,
         items_total: manifest.items.len() as u64,
         items_changed: changed,
         documents_total: retained(prior.map_or(0, |counts| counts.documents_total))
@@ -263,6 +267,7 @@ pub(super) fn terminal_source_counts(
 
 pub(super) fn empty_source_counts() -> SourceCounts {
     SourceCounts {
+        documents_skipped: 0,
         items_total: 0,
         items_changed: 0,
         documents_total: 0,
@@ -282,7 +287,7 @@ pub(super) fn preserved_source_counts(source: &SourceSummary) -> SourceCounts {
 pub(super) async fn ensure_providers_ready(
     runtime: &TargetLocalSourceRuntime,
 ) -> anyhow::Result<()> {
-    crate::reserved_call::ensure_source_providers_ready(runtime).await?;
+    crate::reserved_call::ensure_source_embedding_ready(runtime).await?;
     Ok(())
 }
 

@@ -85,36 +85,19 @@ fn start_bulk_load_finish(
     result_rx
 }
 
-pub async fn with_bulk_load<F>(
+pub(crate) async fn start_bulk_load_guard(
     runtime: &TargetLocalSourceRuntime,
-    begin_context: ProviderCallContext,
-    finish_context: ProviderCallContext,
+    context: ProviderCallContext,
     collection: String,
-    failure_context: &str,
-    processing: F,
-) -> anyhow::Result<()>
-where
-    F: Future<Output = anyhow::Result<()>>,
-{
-    begin_bulk_load(runtime, begin_context, collection.clone()).await?;
-    let mut guard =
-        BulkLoadCompletionGuard::new(Arc::clone(&runtime.vector_store), collection.clone());
-    let processing = processing.await;
-    let finishing = finish_bulk_load_with_handoff(runtime, finish_context, collection, || {
-        guard.disarm();
-    })
-    .await;
-    match (processing, finishing) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(()), Err(error)) => Err(error.into()),
-        (Err(error), Err(finish_error)) => {
-            Err(error.context(format!("{failure_context}: {finish_error}")))
-        }
-    }
+) -> Result<BulkLoadCompletionGuard, ApiError> {
+    begin_bulk_load(runtime, context, collection.clone()).await?;
+    Ok(BulkLoadCompletionGuard::new(
+        Arc::clone(&runtime.vector_store),
+        collection,
+    ))
 }
 
-struct BulkLoadCompletionGuard {
+pub(crate) struct BulkLoadCompletionGuard {
     store: Arc<dyn axon_vectors::store::VectorStore>,
     collection: String,
     cleanups: Arc<DetachedWorkerRegistry>,
@@ -122,6 +105,17 @@ struct BulkLoadCompletionGuard {
 }
 
 impl BulkLoadCompletionGuard {
+    pub(crate) async fn finish(
+        mut self,
+        runtime: &TargetLocalSourceRuntime,
+        context: ProviderCallContext,
+    ) -> Result<(), ApiError> {
+        finish_bulk_load_with_handoff(runtime, context, self.collection.clone(), || {
+            self.disarm();
+        })
+        .await
+    }
+
     fn new(store: Arc<dyn axon_vectors::store::VectorStore>, collection: String) -> Self {
         Self {
             store,

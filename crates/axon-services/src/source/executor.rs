@@ -213,7 +213,12 @@ async fn run_generation(
     .await?;
 
     if input.plan.request.embed {
-        lease_heartbeat::until_cancelled(input.execution, ensure_providers_ready(runtime)).await?;
+        lease_heartbeat::until_cancelled(input.execution, async {
+            crate::reserved_call::ensure_source_vectors_ready(runtime)
+                .await
+                .map_err(anyhow::Error::from)
+        })
+        .await?;
     }
     let generation = runtime
         .ledger
@@ -241,7 +246,7 @@ async fn run_generation(
     // caller drop the pipeline future mid-flight, so the failed-generation
     // cleanup below (vector cleanup + `fail_generation`) still runs for the
     // uncommitted generation (2026-08-23 adversarial pipeline review, M3).
-    let result = match input.execution.cancellation.as_ref() {
+    let mut result = match input.execution.cancellation.as_ref() {
         Some(cancel) => {
             tokio::select! {
                 biased;
@@ -270,7 +275,7 @@ async fn run_generation(
             )
             .await
         {
-            return result.map_err(|error| {
+            result = result.map_err(|error| {
                 error.context(format!(
                     "failed-generation vector cleanup also failed: {cleanup_error:#}"
                 ))

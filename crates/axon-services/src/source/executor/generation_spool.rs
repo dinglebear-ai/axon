@@ -8,7 +8,8 @@ use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
 use axon_api::source::{
-    AcquiredSourceItem, ArtifactCandidate, ManifestItem, SourceItemKey, SourceWarning,
+    AcquiredSourceItem, ArtifactCandidate, DocumentStatus, ManifestItem, SourceItemKey,
+    SourceWarning,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -29,6 +30,7 @@ pub(super) struct GenerationSpool {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(super) struct SideEffectsSpoolRecord {
+    pub(super) skipped_statuses: Vec<DocumentStatus>,
     pub(super) archive_items: Vec<AcquiredSourceItem>,
     pub(super) artifact_candidates: Vec<ArtifactCandidate>,
     pub(super) warnings: Vec<SourceWarning>,

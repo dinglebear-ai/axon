@@ -2,7 +2,6 @@ use super::*;
 use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
-use crate::source::executor::created_generation::setup::ensure_generation_collection;
 use crate::source::executor::generation_work::{
     PreparedBatchSender, PreparedBatchSideEffects, prepared_work_channel_with_byte_budget,
 };
@@ -41,18 +40,9 @@ pub(super) async fn process(
     state: ScheduledGenerationState<'_>,
 ) -> anyhow::Result<()> {
     if context.changed_total == 0 {
-        return ensure_generation_collection(context.runtime, context.input, context.collection)
-            .await;
+        return Ok(());
     }
-    ensure_generation_collection(context.runtime, context.input, context.collection).await?;
-    super::with_bulk_load(
-        context.runtime,
-        context.input,
-        context.collection,
-        "restoring Qdrant indexing after the failed scheduled pipeline also failed",
-        process_inner(context, state),
-    )
-    .await
+    process_inner(context, state).await
 }
 
 async fn process_inner(
@@ -206,7 +196,7 @@ async fn prepare_and_send(
     }
     while let Some(documents) = batches.next() {
         let is_final = components.is_final && batches.peek().is_none();
-        let prepared = vectorize::prepare_generation_documents(
+        let (prepared, skipped) = vectorize::prepare_generation_documents(
             runtime,
             input,
             documents,
@@ -218,15 +208,12 @@ async fn prepare_and_send(
             is_final,
         )
         .await?;
+        let mut effects = side_effects
+            .take()
+            .unwrap_or_else(PreparedBatchSideEffects::empty);
+        effects.skipped_statuses = skipped.document_statuses;
         sender
-            .send_final(
-                prepared,
-                side_effects
-                    .take()
-                    .unwrap_or_else(PreparedBatchSideEffects::empty),
-                is_final,
-                cancel,
-            )
+            .send_final(prepared, effects, is_final, cancel)
             .await?;
     }
     Ok(())

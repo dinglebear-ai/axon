@@ -1,16 +1,11 @@
-use super::setup::ensure_generation_collection;
 use super::*;
 use crate::reserved_call::{self, ProviderCallContext};
 use crate::source::executor::generation_work::PreparedBatchSideEffects;
 use std::future::Future;
 use std::time::Instant;
 
-#[path = "batches/bulk_load.rs"]
-mod bulk_load;
 #[path = "batches/scheduled.rs"]
 mod scheduled;
-
-use bulk_load::with_bulk_load;
 
 struct ChangedBatch {
     diff: SourceManifestDiff,
@@ -42,18 +37,6 @@ where
             Err(error) => (Err(error), None),
         }
     }
-}
-
-async fn join_collection_setup_and_first_acquisition<A, Setup, Acquire>(
-    setup: Setup,
-    acquire: Acquire,
-) -> anyhow::Result<A>
-where
-    Setup: Future<Output = anyhow::Result<()>>,
-    Acquire: Future<Output = anyhow::Result<A>>,
-{
-    let ((), acquired) = tokio::try_join!(setup, acquire)?;
-    Ok(acquired)
 }
 
 fn resolve_batch_step<P, A>(
@@ -145,44 +128,32 @@ pub(super) async fn process_generation_batches(
         // fall through so finalization still publishes the removals and
         // retires the previous generation instead of failing the run
         // (2026-08-23 adversarial pipeline review, H1).
-        return ensure_generation_collection(runtime, input, collection).await;
+        return Ok(());
     };
-    let acquired = join_collection_setup_and_first_acquisition(
-        ensure_generation_collection(runtime, input, collection),
-        acquire_changed_batch(
-            input,
-            first,
-            changed_total,
-            stage.acquired_items,
-            stage.acquired_documents,
-            coordinator,
-            true,
-        ),
+    let acquired = acquire_changed_batch(
+        input,
+        first,
+        changed_total,
+        stage.acquired_items,
+        stage.acquired_documents,
+        coordinator,
+        true,
     )
     .await?;
-    // Keep the large prepare/embed/publish future off Tokio's test/runtime
-    // worker stack now that the bulk lifecycle wraps it with additional state.
-    with_bulk_load(
+    Box::pin(process_acquired_batches(
         runtime,
         input,
-        collection,
-        "restoring Qdrant indexing after the failed batch also failed",
-        Box::pin(process_acquired_batches(
-            runtime,
-            input,
-            emitter,
-            generation,
-            collection,
-            archive_requested,
-            changed_total,
-            coordinator,
-            stage,
-            accumulated,
-            artifact_cleanup,
-            acquired,
-            batches,
-        )),
-    )
+        emitter,
+        generation,
+        archive_requested,
+        changed_total,
+        coordinator,
+        stage,
+        accumulated,
+        artifact_cleanup,
+        acquired,
+        batches,
+    ))
     .await
 }
 
@@ -192,7 +163,6 @@ async fn process_acquired_batches(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     generation: &SourceGenerationId,
-    collection: &CollectionSpec,
     archive_requested: bool,
     changed_total: u64,
     coordinator: &ProgressCoordinator,
@@ -202,73 +172,78 @@ async fn process_acquired_batches(
     mut acquired: AcquiredChangedBatch,
     mut batches: impl Iterator<Item = ChangedBatch>,
 ) -> anyhow::Result<()> {
-    loop {
-        stage.acquired_items = stage.acquired_items.saturating_add(acquired.items);
-        stage.acquired_documents = stage.acquired_documents.saturating_add(acquired.documents);
-        let Some(next_batch) = batches.next() else {
-            let processed = process_acquired_batch(
-                runtime,
-                input,
-                emitter,
-                generation,
-                collection,
-                acquired,
-                archive_requested,
-                coordinator,
-                stage,
-                artifact_cleanup,
-            )
-            .await?;
-            let (side_effects, vectorized) = processed;
-            accumulated
-                .absorb_pretracked_side_effects(side_effects)
+    let mut vector_state = vectorize::GenerationVectorState::default();
+    let result = async {
+        loop {
+            stage.acquired_items = stage.acquired_items.saturating_add(acquired.items);
+            stage.acquired_documents = stage.acquired_documents.saturating_add(acquired.documents);
+            let Some(next_batch) = batches.next() else {
+                let processed = process_acquired_batch(
+                    runtime,
+                    input,
+                    emitter,
+                    generation,
+                    &mut vector_state,
+                    acquired,
+                    archive_requested,
+                    coordinator,
+                    stage,
+                    artifact_cleanup,
+                )
                 .await?;
-            accumulated.absorb_vectorized(vectorized);
-            return Ok(());
-        };
-        let next_acquisition = acquire_changed_batch(
-            input,
-            next_batch,
-            changed_total,
-            stage.acquired_items,
-            stage.acquired_documents,
-            coordinator,
-            !input.adapter.supports_acquisition_prefetch(),
-        );
-        let (processed, prefetched) = process_and_acquire_next(
-            input.adapter,
-            process_acquired_batch(
-                runtime,
-                input,
-                emitter,
-                generation,
-                collection,
-                acquired,
-                archive_requested,
-                coordinator,
-                stage,
-                artifact_cleanup,
-            ),
-            next_acquisition,
-        )
-        .await;
-        if let Some(Ok(prefetched)) = prefetched.as_ref() {
-            artifact_cleanup
-                .track(&prefetched.acquisition.artifacts)
-                .await?;
-        }
-        let processed = match processed {
-            Ok((side_effects, vectorized)) => {
+                let (side_effects, vectorized) = processed;
                 accumulated
                     .absorb_pretracked_side_effects(side_effects)
                     .await?;
                 accumulated.absorb_vectorized(vectorized);
-                Ok(())
+                return Ok(());
+            };
+            let next_acquisition = acquire_changed_batch(
+                input,
+                next_batch,
+                changed_total,
+                stage.acquired_items,
+                stage.acquired_documents,
+                coordinator,
+                !input.adapter.supports_acquisition_prefetch(),
+            );
+            let (processed, prefetched) = process_and_acquire_next(
+                input.adapter,
+                process_acquired_batch(
+                    runtime,
+                    input,
+                    emitter,
+                    generation,
+                    &mut vector_state,
+                    acquired,
+                    archive_requested,
+                    coordinator,
+                    stage,
+                    artifact_cleanup,
+                ),
+                next_acquisition,
+            )
+            .await;
+            if let Some(Ok(prefetched)) = prefetched.as_ref() {
+                artifact_cleanup
+                    .track(&prefetched.acquisition.artifacts)
+                    .await?;
             }
-            Err(error) => Err(error),
-        };
-        acquired = resolve_batch_step(processed, prefetched, |_| Ok(()))?;
+            let processed = match processed {
+                Ok((side_effects, vectorized)) => {
+                    accumulated
+                        .absorb_pretracked_side_effects(side_effects)
+                        .await?;
+                    accumulated.absorb_vectorized(vectorized);
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            };
+            acquired = resolve_batch_step(processed, prefetched, |_| Ok(()))?;
+        }
     }
+    .await;
+    vector_state.finish(runtime, input, result).await
 }
 
 #[cfg(test)]
@@ -429,6 +404,7 @@ async fn prepare_acquired_components(
         documents,
         enrichment_graph,
         side_effects: PreparedBatchSideEffects {
+            skipped_statuses: Vec::new(),
             acquisition_artifacts,
             enrichment_artifacts,
             clean_output,
@@ -448,7 +424,7 @@ async fn process_acquired_batch(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     generation: &SourceGenerationId,
-    collection: &CollectionSpec,
+    vector_state: &mut vectorize::GenerationVectorState,
     acquired: AcquiredChangedBatch,
     archive_requested: bool,
     coordinator: &ProgressCoordinator,
@@ -480,7 +456,7 @@ async fn process_acquired_batch(
         components.documents,
         &components.enrichment_graph,
         generation,
-        collection.clone(),
+        vector_state,
         emitter,
         coordinator,
         &mut stage.pipeline,

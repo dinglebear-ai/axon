@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axon_api::source::*;
-use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
+use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use futures_util::{StreamExt, stream};
 use tokio::sync::Semaphore;
 
@@ -15,7 +15,7 @@ pub(super) async fn prepare_documents(
     preparer: DocumentPreparer,
     concurrency: usize,
     max_in_flight_bytes: usize,
-) -> anyhow::Result<Vec<PreparedDocument>> {
+) -> anyhow::Result<Vec<PrepareSourceDocumentResult>> {
     let generation = generation.clone();
     let work_items = documents
         .into_iter()
@@ -44,8 +44,7 @@ pub(super) async fn prepare_documents(
                     warnings: Vec::new(),
                     errors: Vec::new(),
                 })
-                .map_err(|error| anyhow::anyhow!("failed to prepare {item_key}: {error}"))?
-                .document)
+                .map_err(|error| anyhow::anyhow!("failed to prepare {item_key}: {error}"))?)
         },
     )
     .await

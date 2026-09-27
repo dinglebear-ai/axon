@@ -104,7 +104,8 @@ pub trait LedgerStore: Send + Sync {
     /// must roll back the current batch when any status is invalid, rather than
     /// leaving a prefix of a pipeline stage visible.
     async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()>;
-    /// Mark every durable document status for one source generation published
+    /// Mark prepared/embedded/vectorized document statuses for a generation published.
+    /// Skipped, failed and other non-publishable states retain their disposition
     /// without materializing the generation's status rows in the caller.
     async fn publish_document_statuses(
         &self,

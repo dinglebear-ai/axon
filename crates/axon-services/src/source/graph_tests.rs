@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 fn counts(source_id: &str, generation: &str) -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(Uuid::from_u128(7)),
         source_id: SourceId::new(source_id),
         generation: SourceGenerationId::new(generation),
@@ -139,6 +140,7 @@ fn source_summary(source_id: &str, uri: &str) -> SourceSummary {
         authority: AuthorityLevel::Inferred,
         status: LifecycleStatus::Completed,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 0,
             items_changed: 0,
             documents_total: 0,

@@ -664,3 +664,68 @@ async fn fake_publish_creates_ledger_prune_debt_past_retention() {
     assert!(!up_to_generations.contains(&generations[2].generation));
     assert!(!up_to_generations.contains(&generations[3].generation));
 }
+
+#[tokio::test]
+async fn fake_publication_preserves_skipped_reason_and_zero_counts() {
+    let store = FakeLedgerStore::new();
+    store.upsert_source(source()).await.unwrap();
+    let generation = SourceGenerationId::new("gen_1");
+    let skipped = DocumentStatus {
+        document_id: DocumentId::new("doc-skipped"),
+        source_id: SourceId::new("src_a"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: Some(generation.clone()),
+        status: DocumentLifecycleStatus::Skipped,
+        updated_at: ts(),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: Some(SourceError {
+            code: "document.skipped.unsupported_binary".into(),
+            severity: Severity::Info,
+            message: "unsupported binary".into(),
+            source_item_key: None,
+            retryable: false,
+            provider_id: None,
+            cause: None,
+        }),
+        cleanup_status: None,
+    };
+    let prepared = DocumentStatus {
+        document_id: DocumentId::new("doc-prepared"),
+        status: DocumentLifecycleStatus::Prepared,
+        error: None,
+        ..skipped.clone()
+    };
+    store
+        .update_document_statuses(vec![skipped.clone(), prepared])
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .publish_document_statuses(SourceId::new("src_a"), generation.clone(), ts_at(8))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-skipped"))
+            .await
+            .unwrap(),
+        skipped
+    );
+    assert_eq!(
+        store
+            .publish_document_statuses(SourceId::new("src_a"), generation, ts_at(9))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-skipped"))
+            .await
+            .unwrap(),
+        skipped
+    );
+}

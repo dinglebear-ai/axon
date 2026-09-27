@@ -22,6 +22,7 @@ use uuid::Uuid;
 /// `removed` field so mapping is uniform.
 #[derive(Debug, Clone)]
 pub struct IndexCounts {
+    pub documents_skipped: u64,
     pub job_id: JobId,
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
@@ -75,6 +76,7 @@ pub fn to_source_result_with_counts(
     authoritative_counts: Option<SourceCounts>,
 ) -> SourceResult {
     let source_counts = authoritative_counts.unwrap_or(SourceCounts {
+        documents_skipped: counts.documents_skipped,
         items_total: counts.items_discovered,
         items_changed: counts.documents_prepared,
         documents_total: counts.documents_prepared,
@@ -132,6 +134,7 @@ pub fn queued_result(
     descriptor: JobDescriptor,
 ) -> SourceResult {
     let zero = SourceCounts {
+        documents_skipped: 0,
         items_total: 0,
         items_changed: 0,
         documents_total: 0,
@@ -238,6 +241,7 @@ fn failed_result(
     message: &str,
 ) -> SourceResult {
     let zero = SourceCounts {
+        documents_skipped: 0,
         items_total: 0,
         items_changed: 0,
         documents_total: 0,

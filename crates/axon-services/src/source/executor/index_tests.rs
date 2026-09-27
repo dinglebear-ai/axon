@@ -19,6 +19,7 @@ fn runtime() -> TargetLocalSourceRuntime {
 
 fn counts() -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(uuid::Uuid::new_v4()),
         source_id: SourceId::new("source-release-debt"),
         generation: SourceGenerationId::new("generation-release-debt"),

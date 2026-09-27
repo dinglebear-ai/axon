@@ -3148,6 +3148,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -4014,6 +4020,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -11193,6 +11205,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -17600,6 +17618,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -17954,6 +17978,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -18018,6 +18048,12 @@
           "type": "integer"
         },
         "published": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -24648,6 +24684,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -25069,6 +25111,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -25689,6 +25737,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -29199,12 +29253,12 @@
         "path": "crates/axon-api/src/source/capability.rs"
       },
       {
-        "checksum": "sha256:2f90a731c1891edc3d44faa45b95f560914598cd7ccfaf98350d2748bbfb38da",
+        "checksum": "sha256:2db23f4eb4efec88fa9bdca8193417034204baf476f8000bee116cf8ef4a26b1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:5729d8e387e888e466a716a78e1e3699ba7a079cd51fe6f3522b4ccad2feaa03",
+        "checksum": "sha256:2d74f4f1617b70bcf71f5ecbc7eb18141a7e4ae136da416400eda1d23147cc49",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -29309,7 +29363,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:0e0a13dd0acbdaf8b4de2a8b309a279a3a423d286a0bad6133461c7be99bd860",
+        "checksum": "sha256:cf05bfb9ef97b6a20138646cfb0e929b5ee1b0e362b00cfec28ea33a39c28c48",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },

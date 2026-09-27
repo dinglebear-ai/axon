@@ -168,3 +168,30 @@ fn diff_stage_counts(diff: &SourceManifestDiff) -> StageCounts {
         .saturating_add(diff.counts.failed);
     item_counts(items)
 }
+
+pub(crate) async fn preparation_skipped(emitter: &SourceEventEmitter, statuses: &[DocumentStatus]) {
+    for status in statuses {
+        let reason = status
+            .error
+            .as_ref()
+            .map_or("content_skipped", |error| error.code.as_str());
+        emitter
+            .completed_with(
+                PipelinePhase::Preparing,
+                reason,
+                SourceEventDetails {
+                    generation: status.generation.clone(),
+                    current: Some(ProgressCurrent {
+                        source_item_key: Some(status.source_item_key.clone()),
+                        document_id: Some(status.document_id.clone()),
+                        chunk_id: None,
+                        adapter: None,
+                        provider: None,
+                        message: Some(reason.to_owned()),
+                    }),
+                    ..SourceEventDetails::default()
+                },
+            )
+            .await;
+    }
+}

@@ -19,6 +19,7 @@ static PROCESS_BYTE_PERMITS: LazyLock<Arc<Semaphore>> =
 /// Side effects are cleanup-owned before this value is constructed. Moving it
 /// into the accumulator transfers only finalization/accounting ownership.
 pub(super) struct PreparedBatchSideEffects {
+    pub(super) skipped_statuses: Vec<DocumentStatus>,
     pub(super) acquisition_artifacts: Vec<ArtifactRef>,
     pub(super) enrichment_artifacts: Vec<ArtifactRef>,
     pub(super) clean_output: SourceOutput,
@@ -32,6 +33,7 @@ pub(super) struct PreparedBatchSideEffects {
 impl PreparedBatchSideEffects {
     pub(super) fn empty() -> Self {
         Self {
+            skipped_statuses: Vec::new(),
             acquisition_artifacts: Vec::new(),
             enrichment_artifacts: Vec::new(),
             clean_output: SourceOutput::default(),
@@ -45,6 +47,7 @@ impl PreparedBatchSideEffects {
 
     pub(super) fn estimated_resident_bytes(&self) -> usize {
         std::mem::size_of_val(self)
+            .saturating_add(vector_resident_bytes(&self.skipped_statuses))
             .saturating_add(vector_resident_bytes(&self.acquisition_artifacts))
             .saturating_add(vector_resident_bytes(&self.enrichment_artifacts))
             .saturating_add(vector_resident_bytes(&self.archive_items))
@@ -63,6 +66,7 @@ impl PreparedBatchSideEffects {
 
     pub(super) fn estimated_bytes(&self) -> anyhow::Result<usize> {
         let serializable = (
+            &self.skipped_statuses,
             &self.acquisition_artifacts,
             &self.enrichment_artifacts,
             &self.archive_items,

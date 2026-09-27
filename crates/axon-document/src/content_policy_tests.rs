@@ -221,3 +221,25 @@ fn oversized_encoded_body_is_rejected_before_alphabet_validation() {
         ContentPolicyError::MalformedBase64
     );
 }
+
+#[test]
+fn whitespace_only_skips_without_trimming_nonempty_source_ranges() {
+    let whitespace = " \r\n\t\u{c}";
+    for content in [
+        ContentRef::InlineText {
+            text: whitespace.into(),
+        },
+        raw(whitespace.as_bytes()),
+        raw(&utf16(whitespace, true)),
+    ] {
+        assert_eq!(
+            classify_content(&content, 64).unwrap(),
+            skipped(ContentSkipReason::EmptyContent)
+        );
+    }
+    let text = " \r\n actual text \t";
+    assert_eq!(
+        classify_content(&raw(text.as_bytes()), 64).unwrap(),
+        ContentDisposition::Text(text.into())
+    );
+}

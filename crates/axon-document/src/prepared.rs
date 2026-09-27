@@ -1,8 +1,8 @@
 //! Request/result types for document preparation.
 
 use axon_api::source::{
-    GraphCandidate, PreparedDocument, SourceDocument, SourceError, SourceGenerationId,
-    SourceParseFacts, SourceWarning,
+    GraphCandidate, PreparedDocument, SkippedDocument, SourceDocument, SourceError,
+    SourceGenerationId, SourceParseFacts, SourceWarning,
 };
 
 use crate::profile::ChunkingProfile;
@@ -19,6 +19,7 @@ pub struct PrepareSourceDocumentRequest {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PrepareSourceDocumentResult {
-    pub document: PreparedDocument,
+pub enum PrepareSourceDocumentResult {
+    Prepared(PreparedDocument),
+    Skipped(SkippedDocument),
 }
