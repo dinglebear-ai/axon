@@ -31,6 +31,22 @@ for canonical in agent_scopes:
         if not alias.is_symlink() or alias.readlink() != Path("AGENTS.md"):
             raise SystemExit(f"agent alias must point directly to AGENTS.md: {alias}")
 
+def validate_instruction_budget(scopes: list[Path], limit_bytes: int = 30 * 1024) -> None:
+    """Leave space for loader separators below the default 32 KiB project limit."""
+    for canonical in scopes:
+        chain_bytes = sum(
+            guide.stat().st_size
+            for guide in scopes
+            if guide == canonical or guide.parent in canonical.parent.parents
+        )
+        if chain_bytes > limit_bytes:
+            raise SystemExit(
+                f"instruction chain exceeds {limit_bytes} bytes at {canonical}: {chain_bytes}"
+            )
+
+
+validate_instruction_budget(agent_scopes)
+
 active = [
     root / "README.md",
     root / "docs/operations/operations.md",

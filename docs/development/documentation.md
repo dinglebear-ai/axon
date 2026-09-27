@@ -51,6 +51,12 @@ The compatibility-named cargo xtask check-claude-symlinks command enforces this
 AGENTS-first contract. The crate-structure validator calls the same directory
 validator. Other worktrees and immutable review snapshots are excluded.
 
+Keep inherited guidance concise. Codex defaults to a 32 KiB project instruction
+budget; a large root guide can prevent a nested guide from loading fully.
+The operational documentation check caps each tracked root-to-scope chain at
+30 KiB, leaving space for loader separators. Move detailed reference prose
+into linked guides rather than requiring every user to raise a local limit.
+
 ## Local, untracked instructions
 
 Use `AGENTS.override.md` for Codex and `CLAUDE.local.md` for Claude Code,
