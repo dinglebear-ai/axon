@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Added `axon-snippets` and 24 portable, skill-bundled Labby Code Mode snippet sources, one for each legacy skill planned for retirement. The legacy skills remain available; snippets require explicit installation into a selected Labby home.
 - Added `install-axon` as the first-class guided installer/repair skill, covering reviewed-source installation, Incus or bare-metal deployment, bearer/OAuth dual-mode auth, Codex app-server synthesis, agent connection, and live verification.
 - Rebuilt the plugin skill surface around 26 plain-name Axon skills under `skills/`: one `using-axon` guide, eight core command/action skills, and sixteen outcome-focused workflow skills.
 - Added OpenAI skill metadata at `agents/openai.yaml` for every shipped skill.
@@ -12,6 +13,7 @@
   does not register a SessionStart hook.
 
 ### Changed
+- Rewrote `using-axon` and its job/response references against the current MCP action schema, including supported focused projections, watch routing, and artifact access. Corrected the install-skill metadata test to match the existing discoverable policy.
 - Realigned the skill surface with the unified source pipeline. The canonical
   `source` action and its supported focused projections share one lifecycle;
   per-family lifecycle commands were replaced by `jobs`.

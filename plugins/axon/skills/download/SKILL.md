@@ -1,6 +1,6 @@
 ---
 name: download
-description: Save website or documentation content locally with Axon map, scrape, site-scope source indexing, output-dir, and screenshots.
+description: Use when saving a known website or documentation page with Axon capture, output artifacts, or screenshots.
 ---
 
 # Axon Download
@@ -51,6 +51,6 @@ axon screenshot "https://example.com" --output .axon/download/example.png
 
 ## See Also
 
-- [map](../map/SKILL.md)
-- [scrape](../scrape/SKILL.md)
-- [crawl](../crawl/SKILL.md)
+- `map`
+- `scrape`
+- `crawl`

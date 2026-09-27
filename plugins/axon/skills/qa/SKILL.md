@@ -71,5 +71,3 @@ focus: [full/forms/navigation/responsive/performance]
 - Include reproduction steps for functional issues.
 - Do not report speculative bugs without evidence.
 - Deduplicate findings across testers.
-- For examples, see [workflow-output-templates.md](../../examples/workflow-output-templates.md).
-- For Axon/browser routing, see [capture-recipes.md](../../references/capture-recipes.md).

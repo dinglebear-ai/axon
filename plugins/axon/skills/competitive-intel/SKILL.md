@@ -1,6 +1,6 @@
 ---
 name: competitive-intel
-description: Monitor competitor pricing, features, changelogs, dashboards, and product changes with Axon. Use for recurring competitive intelligence, pricing tier extraction, feature change tracking, or structured competitor alerts.
+description: Use when monitoring competitor pricing, features, changelogs, or product changes with Axon for recurring competitive intelligence.
 ---
 
 # Axon Competitive Intel
@@ -79,4 +79,3 @@ When structured output is requested, include `generatedAt`, `baselineDate`,
 - Note contact-sales or gated details instead of guessing.
 - Preserve sources for diffing future runs.
 - Do not bypass auth, CAPTCHA, paywalls, rate limits, or source terms.
-- For current Axon capture patterns, see [capture-recipes.md](../../references/capture-recipes.md).

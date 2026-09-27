@@ -1,6 +1,6 @@
 ---
 name: extract
-description: Use Axon extract for schema-shaped, LLM-assisted structured extraction from one or more URLs.
+description: Use when extracting schema-shaped structured data from one or more URLs with Axon.
 ---
 
 # Axon Extract
@@ -51,6 +51,6 @@ axon "https://docs.example.com/reference" --scope site --max-pages 100 --wait tr
 
 ## See Also
 
-- [scrape](../scrape/SKILL.md) for one-page markdown extraction.
-- [crawl](../crawl/SKILL.md) for bulk site capture.
-- [map](../map/SKILL.md) for URL discovery.
+- `scrape` for one-page markdown extraction.
+- `crawl` for bulk site capture.
+- `map` for URL discovery.

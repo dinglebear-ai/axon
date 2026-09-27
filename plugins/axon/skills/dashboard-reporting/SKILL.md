@@ -71,5 +71,3 @@ Use `reportedAt`, `dateRange`, `dashboards[]`, `metrics[]`, `tables[]`,
 - Extract actual numbers, not just chart labels.
 - Note when a chart cannot be read precisely.
 - Preserve date ranges and source URLs.
-- For examples, see [workflow-output-templates.md](../../examples/workflow-output-templates.md).
-- For Axon/browser routing, see [capture-recipes.md](../../references/capture-recipes.md).

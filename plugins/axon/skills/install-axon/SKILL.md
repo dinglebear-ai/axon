@@ -1,6 +1,6 @@
 ---
 name: install-axon
-description: Install or repair Axon. Use when bootstrapping Axon, choosing Incus or systemd, configuring bearer/OAuth auth, exposing MCP, selecting Codex app-server synthesis, connecting an agent, or verifying the RAG stack.
+description: Use when installing or repairing Axon, choosing Incus or systemd, configuring bearer/OAuth auth, exposing MCP, selecting Codex app-server synthesis, connecting an agent, or verifying the RAG stack.
 ---
 
 # Install Axon
@@ -14,7 +14,7 @@ Use Axon's installer/setup/deploy surfaces.
 - Ask local/Incus/systemd mode and bearer/Google OAuth/dual auth. Never run host and guest servers on shared SQLite. Non-loopback requires auth; do not claim unverified Authelia support.
 - Existing proxy/Tailscale/Incus/systemd config edits require current docs, verified backup/checksum, exact changes, and explicit approval.
 
-## Flow
+## Workflow
 
 1. Follow [setup](references/setup.md): install, run `axon setup init`, preserve Axon config/secrets.
 2. Configure auth. OAuth needs public URL, Google credentials, admin email, callback `<public>/auth/google/callback`; a static `AXON_HTTP_TOKEN` remains valid in OAuth dual mode.

@@ -74,5 +74,3 @@ output: [json/csv/markdown]
 - Do not bypass CAPTCHAs or access controls.
 - Respect rate limits/robots where applicable, cap request volume, and record
   filters/query/date plus a rerun command or structured rerun config.
-- For examples, see [workflow-output-templates.md](../../examples/workflow-output-templates.md).
-- For Axon/browser routing, see [capture-recipes.md](../../references/capture-recipes.md).

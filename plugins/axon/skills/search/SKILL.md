@@ -1,6 +1,6 @@
 ---
 name: search
-description: Use Axon search and research to discover current web sources and queue bounded indexing when available.
+description: Use when discovering current web sources with Axon search or research before bounded indexing.
 ---
 
 # Axon Search
@@ -33,6 +33,6 @@ axon ask "What did the indexed sources say about optional skill metadata?"
 
 ## See Also
 
-- [scrape](../scrape/SKILL.md)
-- [crawl](../crawl/SKILL.md)
-- [deep-research](../deep-research/SKILL.md)
+- `scrape`
+- `crawl`
+- `deep-research`
