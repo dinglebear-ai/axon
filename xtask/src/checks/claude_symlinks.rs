@@ -1,11 +1,10 @@
 use anyhow::{Result, bail};
+use std::collections::BTreeSet;
 use std::path::Path;
 use walkdir::{DirEntry, WalkDir};
 
-// `.worktrees` is the documented home for sibling worktrees in this repo
-// (see CLAUDE.md). Recursing into it would surface symlink failures that
-// belong to other branch checkouts, not the current one. `.full-review`
-// contains immutable review snapshots rather than live repository content.
+// Other worktrees and immutable review snapshots do not belong to this checkout.
+// See AGENTS.md. Never follow aliases while discovering instruction directories.
 const SKIP_DIRS: &[&str] = &[
     ".git",
     ".full-review",
@@ -16,97 +15,81 @@ const SKIP_DIRS: &[&str] = &[
     ".next",
     ".worktrees",
 ];
-const TARGETS: &[&str] = &["AGENTS.md", "GEMINI.md"];
+const CANONICAL: &str = "AGENTS.md";
+const ALIASES: &[&str] = &["CLAUDE.md", "GEMINI.md"];
 
 fn is_excluded_dir(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
-        return false;
-    }
-    if entry.depth() == 0 {
-        return false;
-    }
-    entry
-        .file_name()
-        .to_str()
-        .map(|name| SKIP_DIRS.contains(&name) || name.starts_with(".full-review-archive-"))
-        .unwrap_or(false)
+    entry.depth() > 0
+        && entry.file_type().is_dir()
+        && entry.file_name().to_str().is_some_and(|name| {
+            let cargo_cache = matches!(name, "registry" | "git")
+                && entry
+                    .path()
+                    .parent()
+                    .and_then(Path::file_name)
+                    .is_some_and(|parent| parent == ".cargo");
+            SKIP_DIRS.contains(&name) || name.starts_with(".full-review-archive-") || cargo_cache
+        })
 }
 
-fn rel_dir_display(root: &Path, dir: &Path) -> String {
-    if dir == root {
-        return ".".to_string();
+/// Shared by the full-tree check and the crate-structure contract.
+pub(super) fn validate_dir(dir: &Path) -> Vec<String> {
+    let mut errors = Vec::new();
+    let canonical = dir.join(CANONICAL);
+    match canonical.symlink_metadata() {
+        Ok(meta) if meta.file_type().is_file() => {}
+        _ => errors.push(format!(
+            "{} must be a regular canonical file, not a symlink",
+            canonical.display()
+        )),
     }
-    match dir.strip_prefix(root) {
-        Ok(rel) => rel.to_string_lossy().into_owned(),
-        Err(_) => dir.to_string_lossy().into_owned(),
+    for alias in ALIASES {
+        let path = dir.join(alias);
+        match std::fs::read_link(&path) {
+            Ok(target) if target == Path::new(CANONICAL) => {}
+            _ => errors.push(format!(
+                "{} must be a direct relative symlink to {CANONICAL}",
+                path.display()
+            )),
+        }
     }
+    errors
 }
 
 pub fn check(root: &Path) -> Result<()> {
-    let mut failures = 0usize;
-
-    let walker = WalkDir::new(root)
+    // Always require root guidance. Discover any instruction name, including
+    // symlinks, so the old reversed layout and orphan aliases cannot be skipped.
+    let mut directories = BTreeSet::from([root.to_path_buf()]);
+    for entry in WalkDir::new(root)
+        .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_excluded_dir(e));
-
-    for entry in walker {
+        .filter_entry(|entry| !is_excluded_dir(entry))
+    {
         let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        if entry.file_name() != "CLAUDE.md" {
-            continue;
-        }
-        let dir = match entry.path().parent() {
-            Some(p) => p,
-            None => continue,
-        };
-        let rel_dir = rel_dir_display(root, dir);
-
-        for target in TARGETS {
-            let link = dir.join(target);
-            match link.symlink_metadata() {
-                Err(_) => {
-                    println!(
-                        "[claude-symlinks] MISSING: {}/{} (should be a symlink to CLAUDE.md)",
-                        rel_dir, target
-                    );
-                    failures += 1;
-                }
-                Ok(meta) => {
-                    if !meta.file_type().is_symlink() {
-                        println!(
-                            "[claude-symlinks] NOT A SYMLINK: {}/{} (must be: ln -sf CLAUDE.md {})",
-                            rel_dir, target, target
-                        );
-                        failures += 1;
-                    } else {
-                        let dest = std::fs::read_link(&link)?;
-                        let dest_str = dest.to_string_lossy();
-                        if dest_str != "CLAUDE.md" {
-                            println!(
-                                "[claude-symlinks] WRONG TARGET: {}/{} -> {} (expected -> CLAUDE.md)",
-                                rel_dir, target, dest_str
-                            );
-                            failures += 1;
-                        }
-                    }
-                }
+        let name = entry.file_name().to_str();
+        if name == Some(CANONICAL) || name.is_some_and(|name| ALIASES.contains(&name)) {
+            if let Some(dir) = entry.path().parent() {
+                directories.insert(dir.to_path_buf());
             }
         }
     }
 
-    if failures > 0 {
-        println!();
-        println!(
-            "[claude-symlinks] Fix with: ln -sf CLAUDE.md AGENTS.md && ln -sf CLAUDE.md GEMINI.md"
-        );
-        println!("[claude-symlinks] Run from each directory listed above.");
-        bail!("{} claude-symlinks failure(s)", failures);
+    let mut failures = 0;
+    for dir in &directories {
+        for error in validate_dir(dir) {
+            println!("[claude-symlinks] {error}");
+            failures += 1;
+        }
     }
-
+    if failures > 0 {
+        println!(
+            "[claude-symlinks] Preserve guidance in AGENTS.md, then create CLAUDE.md and GEMINI.md as relative symlinks to AGENTS.md."
+        );
+        bail!("{failures} claude-symlinks failure(s)");
+    }
     println!(
-        "[claude-symlinks] OK — all CLAUDE.md files have valid AGENTS.md + GEMINI.md symlinks"
+        "[claude-symlinks] OK — {} canonical AGENTS.md files with direct CLAUDE.md + GEMINI.md aliases",
+        directories.len()
     );
     Ok(())
 }

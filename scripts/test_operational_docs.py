@@ -4,8 +4,33 @@
 from pathlib import Path
 import json
 import re
+import subprocess
 
 root = Path(__file__).resolve().parents[1]
+
+# Inspect tracked scopes only: unrelated worktrees and runtime caches are not
+# documentation inputs. The Rust checker separately discovers orphan aliases.
+tracked = subprocess.check_output(
+    ["git", "ls-files", "-z"], cwd=root, text=True
+).split("\0")
+local_names = {"AGENTS.override.md", "CLAUDE.local.md", "CLAUDE.md.local"}
+if any(Path(name).name in local_names for name in tracked):
+    raise SystemExit("personal agent instructions must not be tracked")
+ignore_lines = set((root / ".gitignore").read_text().splitlines())
+if not {"AGENTS.override.md", "CLAUDE.local.md"}.issubset(ignore_lines):
+    raise SystemExit("repository must ignore both canonical local instruction filenames")
+
+agent_scopes = [root / name for name in tracked if Path(name).name == "AGENTS.md"]
+if root / "AGENTS.md" not in agent_scopes:
+    raise SystemExit("root AGENTS.md must be tracked")
+for canonical in agent_scopes:
+    if canonical.is_symlink() or not canonical.is_file():
+        raise SystemExit(f"agent guide is not a regular canonical file: {canonical}")
+    for name in ("CLAUDE.md", "GEMINI.md"):
+        alias = canonical.with_name(name)
+        if not alias.is_symlink() or alias.readlink() != Path("AGENTS.md"):
+            raise SystemExit(f"agent alias must point directly to AGENTS.md: {alias}")
+
 active = [
     root / "README.md",
     root / "docs/operations/operations.md",

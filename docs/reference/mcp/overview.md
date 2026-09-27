@@ -1,11 +1,14 @@
 # Axon MCP Server Guide
-Last Modified: 2026-07-16
+Last reviewed: 2026-09-27
 
-`axon mcp` exposes Axon through one MCP tool named `axon`.
+`axon mcp` exposes the primary action-dispatched `axon` tool and the
+auxiliary `axon_status_dashboard` MCP App tool. The server tool catalog,
+not the primary action schema alone, defines discovery.
 
 - Transport: stdio, streamable HTTP (`/mcp`), or both.
-- Tool count: 1.
-- Tool name: `axon`.
+- Primary tool: `axon`.
+- Auxiliary tool: `axon_status_dashboard`.
+- Task handling: transport task handlers map protocol operations to durable jobs.
 - Routing fields: `action` plus optional `subaction`.
 - Schema resource: `axon://schema/mcp-tool`.
 - MCP Apps resource: `ui://axon/status-dashboard`.

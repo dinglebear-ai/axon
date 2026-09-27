@@ -44,6 +44,51 @@ fn classify(event: &str, files: &[&str]) -> HashMap<String, String> {
 }
 
 #[test]
+fn canonical_agent_guides_and_aliases_use_only_documentation_lanes() {
+    for directory in [
+        "",
+        "crates/axon-mcp/src/",
+        "crates/axon-embedding/src/",
+        "apps/palette-tauri/",
+        "plugins/axon/",
+        "docs/reference/mcp/",
+    ] {
+        for name in ["AGENTS.md", "CLAUDE.md", "GEMINI.md"] {
+            let file = format!("{directory}{name}");
+            let out = classify("pull_request", &[&file]);
+            assert_eq!(out["docs"], "true", "{file}");
+            assert_eq!(out["docs_contracts"], "true", "{file}");
+            for key in [
+                "rust",
+                "mcp",
+                "rag",
+                "docker",
+                "palette",
+                "release",
+                "auto_tag",
+                "release_please",
+                "version_files",
+                "codeql_rust",
+            ] {
+                assert_eq!(out[key], "false", "{file} should not enable {key}");
+            }
+        }
+    }
+}
+
+#[test]
+fn agent_guides_do_not_hide_mixed_runtime_changes() {
+    let out = classify(
+        "pull_request",
+        &["AGENTS.md", "crates/axon-mcp/src/server.rs"],
+    );
+    assert_eq!(out["docs_contracts"], "true");
+    assert_eq!(out["rust"], "true");
+    assert_eq!(out["mcp"], "true");
+    assert_eq!(out["docker"], "true");
+}
+
+#[test]
 fn docs_only_changes_skip_expensive_runtime_categories() {
     let out = classify(
         "pull_request",

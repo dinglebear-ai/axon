@@ -42,7 +42,7 @@ enum Command {
     CheckUnwraps,
     /// Enforce that web acquisition goes through the shared fetch ladder.
     CheckFetchDivergence,
-    /// Verify AGENTS.md/GEMINI.md symlinks next to CLAUDE.md files.
+    /// Verify canonical AGENTS.md files and direct CLAUDE.md/GEMINI.md aliases.
     CheckClaudeSymlinks,
     /// Verify target pipeline crate skeleton structure.
     CheckRepoStructure,
