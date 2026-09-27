@@ -19,8 +19,10 @@ Use for a known page. Follow the returned artifact path for saved content. The e
 async (input) => {
   if (typeof input.url !== "string" || !input.url.trim()) throw new Error("url is required");
   const request = {
-    action: "scrape",
-    url: input.url,
+    action: "source",
+    source: input.url,
+    scope: "page",
+    detached: true,
     response_mode: "path"
   };
   const result = await callTool("Axon::axon", request);

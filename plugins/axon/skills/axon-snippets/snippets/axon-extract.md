@@ -25,9 +25,9 @@ async (input) => {
   if (typeof input.prompt !== "string" || !input.prompt.trim()) throw new Error("prompt is required");
   const request = {
     action: "extract",
+    subaction: "start",
     urls: [input.url],
-    prompt: input.prompt,
-    response_mode: "path"
+    prompt: input.prompt
   };
   const result = await callTool("Axon::axon", request);
   return {

@@ -20,7 +20,7 @@ async (input) => {
   if (typeof input.url !== "string" || !input.url.trim()) throw new Error("url is required");
   const requests = [
     { action: "brand", url: input.url, response_mode: "path" },
-    { action: "scrape", url: input.url, response_mode: "path" },
+    { action: "scrape", inputs: [{ input: input.url }] },
     { action: "screenshot", url: input.url, response_mode: "path" }
   ];
   const batch = await codemode.batch(requests.map(request => () => callTool("Axon::axon", request)));
@@ -37,7 +37,7 @@ async (input) => {
         preview: JSON.stringify(response.data ?? response).slice(0, 1200)
       };
     }),
-    failures: batch.failed.map(entry => ({ action: requests[entry.i].action, error: String(entry.error) }))
+    failures: batch.failed.map(entry => ({ action: requests[entry.i].action, error: JSON.stringify(entry.error).slice(0, 1000) }))
   };
 }
 ```

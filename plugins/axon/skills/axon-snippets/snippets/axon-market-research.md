@@ -36,7 +36,7 @@ async (input) => {
         preview: JSON.stringify(response.data ?? response).slice(0, 1200)
       };
     }),
-    failures: batch.failed.map(entry => ({ action: requests[entry.i].action, error: String(entry.error) }))
+    failures: batch.failed.map(entry => ({ action: requests[entry.i].action, error: JSON.stringify(entry.error).slice(0, 1000) }))
   };
 }
 ```

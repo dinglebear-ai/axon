@@ -20,8 +20,7 @@ async (input) => {
   if (typeof input.url !== "string" || !input.url.trim()) throw new Error("url is required");
   const request = {
     action: "scrape",
-    url: input.url,
-    response_mode: "path"
+    inputs: [{ input: input.url }]
   };
   const result = await callTool("Axon::axon", request);
   return {
