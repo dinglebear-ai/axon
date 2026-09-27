@@ -37,6 +37,7 @@ pub(crate) fn spawn_artifact_candidate_outbox_drain(
 ) {
     executor::artifact_candidates::spawn_outbox_drain(runtime);
 }
+pub(crate) mod diagnostics;
 pub mod foreground_progress;
 pub mod graph;
 pub mod job_tracking;

@@ -202,9 +202,9 @@ async fn merge_pipeline_results(
         (Err(error), Err(status_error), Ok(_)) => Err(error.context(format!(
             "terminal job status update also failed: {status_error}"
         ))),
-        (Ok(_), Err(status_error), Err(release_error)) => Err(anyhow::anyhow!(
-            "terminal job status update failed: {status_error}; adapter cleanup also failed: {release_error}"
-        )),
+        (Ok(_), Err(status_error), Err(release_error)) => Err(status_error.context(format!(
+            "terminal job status update failed; adapter cleanup also failed: {release_error}"
+        ))),
         (Err(error), Err(status_error), Err(release_error)) => Err(error.context(format!(
             "terminal job status update also failed: {status_error}; adapter cleanup also failed: {release_error}"
         ))),

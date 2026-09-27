@@ -17,19 +17,9 @@ pub(crate) async fn pipeline_failed(emitter: &SourceEventEmitter, error: &anyhow
         .await;
 }
 
-/// Build the terminal `ApiError` for a failed pipeline run.
-///
-/// Uses `{error:#}` (anyhow's alternate `Display`) rather than `{error}` so
-/// the full `.context()` chain survives into `message` — plain `Display`
-/// only prints the outermost context frame, which previously made every
-/// pipeline failure surface as an undiagnosable generic string (e.g. "web
-/// source indexing failed") with the real cause silently discarded.
+/// Preserve the same structured diagnostic used by terminal job summaries.
 fn pipeline_failed_error(error: &anyhow::Error) -> ApiError {
-    ApiError::new(
-        "source.index_failed",
-        ErrorStage::Internal,
-        format!("{error:#}"),
-    )
+    super::diagnostics::api_error(error)
 }
 
 #[cfg(test)]

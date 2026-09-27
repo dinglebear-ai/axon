@@ -182,7 +182,7 @@ impl UnifiedJobRunner for SourceRunner {
                     .await?;
                 outcome_from_result(source_result)
             }
-            Err(error) => Err(source_error(error.to_string())),
+            Err(error) => Err(crate::source::diagnostics::api_error(&error)),
         }
     }
 }
@@ -300,7 +300,7 @@ fn source_error(message: impl Into<String>) -> ApiError {
     ApiError::new(
         "job_runner.source_failed",
         ErrorStage::Fetching,
-        message.into(),
+        axon_core::redact::public_diagnostic_text(&message.into(), 4096),
     )
 }
 

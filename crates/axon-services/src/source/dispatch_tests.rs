@@ -1664,3 +1664,6 @@ async fn local_total_budget_exhaustion_preserves_committed_generation_in_both_mo
 
 #[path = "refresh_inventory_tests.rs"]
 mod refresh_inventory_tests;
+
+#[path = "failure_diagnostics_tests.rs"]
+mod failure_diagnostics_tests;

@@ -202,3 +202,28 @@ fn preparation_test_document(content: ContentRef) -> SourceDocument {
         parser_hints: Vec::new(),
     }
 }
+
+#[tokio::test]
+async fn preparation_error_retains_stage_and_item_identity() {
+    let document = preparation_test_document(ContentRef::InlineBytes {
+        bytes_base64: "not-base64!".into(),
+        mime_type: "application/octet-stream".into(),
+    });
+    let error = prepare_documents(
+        vec![document],
+        &SourceGenerationId::from("gen_error"),
+        &BTreeMap::new(),
+        DocumentPreparer::default(),
+        1,
+        4096,
+        None,
+    )
+    .await
+    .unwrap_err();
+    let typed = error
+        .downcast_ref::<ApiError>()
+        .expect("structured preparation failure");
+    assert_eq!(typed.code.0, "document.prepare_failed");
+    assert_eq!(typed.stage, ErrorStage::Preparing);
+    assert_eq!(typed.source_item_key.as_deref(), Some("item-limit"));
+}

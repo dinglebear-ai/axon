@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 
 mod cleanup;
 mod document;
+mod failure_injection;
 mod generation;
 mod lease;
 
@@ -47,6 +48,8 @@ enum FakeLedgerMode {
     ReleaseFailure,
     CommittedGenerationFailure,
     CleanupDebtWriteFailure,
+    ManifestWriteFailure,
+    FailGenerationFailure,
 }
 
 #[derive(Debug, Default)]
@@ -215,6 +218,7 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
+        self.inject_failure(FakeLedgerMode::ManifestWriteFailure, "manifest_write")?;
         validate_manifest(&manifest)?;
         let mut state = self.state.lock().await;
         if !state.sources.contains_key(&manifest.source_id) {
@@ -358,6 +362,7 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
+        self.inject_failure(FakeLedgerMode::FailGenerationFailure, "fail_generation")?;
         generation::fail_generation(&self.state, generation).await
     }
 

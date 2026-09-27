@@ -86,3 +86,44 @@ async fn wait_for_acquisitions(adapter: &FakeSourceAdapter, expected: usize) {
     .await
     .expect("producer advances to its bounded send");
 }
+
+#[test]
+fn acquisition_error_wins_over_derived_stream_settlement() {
+    for settlement in [
+        anyhow::Error::new(ApiError::new(
+            "source.acquire.incomplete",
+            ErrorStage::Fetching,
+            "incomplete",
+        )),
+        anyhow::anyhow!("prepared work send canceled"),
+    ] {
+        let mut acquired = ApiError::new(
+            "adapter.test.read_failed",
+            ErrorStage::Fetching,
+            "read failed",
+        )
+        .with_source_item_key("src/file.rs");
+        acquired.retryable = true;
+        let error = settle_results(Err(settlement), Err(acquired.clone())).unwrap_err();
+        assert_eq!(error.downcast_ref::<ApiError>(), Some(&acquired));
+    }
+}
+
+#[test]
+fn genuine_preparation_error_wins_over_acquisition_settlement_error() {
+    let prepared = ApiError::new(
+        "document.prepare_failed",
+        ErrorStage::Preparing,
+        "invalid document",
+    )
+    .with_source_item_key("first/file.rs");
+    let acquired = ApiError::new(
+        "source.acquire.canceled",
+        ErrorStage::Fetching,
+        "wave canceled",
+    );
+    let error =
+        settle_results(Err(anyhow::Error::new(prepared.clone())), Err(acquired)).unwrap_err();
+    assert_eq!(error.downcast_ref::<ApiError>(), Some(&prepared));
+    assert!(format!("{error:#}").contains("wave canceled"));
+}

@@ -46,7 +46,21 @@ pub(super) async fn prepare(
     if let Ok(documents) = consumed.as_ref() {
         reporter.complete(*documents).await;
     }
+    settle_results(consumed, acquired)
+}
+
+fn settle_results(
+    consumed: anyhow::Result<u64>,
+    acquired: Result<(), ApiError>,
+) -> anyhow::Result<()> {
     match (consumed, acquired) {
+        (Err(settlement), Err(acquisition))
+            if is_incomplete(&settlement) || super::is_cancellation_error(&settlement) =>
+        {
+            Err(anyhow::Error::new(acquisition).context(format!(
+                "stream preparation could not settle after acquisition failure: {settlement:#}"
+            )))
+        }
         (Err(primary), Err(secondary)) => Err(primary.context(format!(
             "streamed acquisition also failed while settling: {secondary}"
         ))),
@@ -54,6 +68,12 @@ pub(super) async fn prepare(
         (Ok(_), Err(error)) => Err(error.into()),
         (Ok(_), Ok(())) => Ok(()),
     }
+}
+
+fn is_incomplete(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<ApiError>()
+        .is_some_and(|error| error.code.0.as_str() == "source.acquire.incomplete")
 }
 
 struct ChannelStreamSink(mpsc::Sender<StreamedAcquisition>);
@@ -242,11 +262,17 @@ impl Preparation<'_, '_> {
         if let Some(error) = first_error {
             return Err(error);
         }
-        anyhow::ensure!(
-            items_done == self.context.changed_total,
-            "acquisition settled {items_done} of {} changed items",
-            self.context.changed_total
-        );
+        if items_done != self.context.changed_total {
+            return Err(ApiError::new(
+                "source.acquire.incomplete",
+                ErrorStage::Fetching,
+                format!(
+                    "acquisition settled {items_done} of {} changed items",
+                    self.context.changed_total
+                ),
+            )
+            .into());
+        }
         Ok(documents_done)
     }
 }

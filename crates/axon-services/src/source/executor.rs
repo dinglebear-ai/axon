@@ -14,6 +14,7 @@ mod preparation;
 mod progress;
 mod publish;
 pub(super) use index::index_materialized_source;
+mod finalization;
 mod retention;
 mod reuse;
 mod vector_points;
@@ -249,27 +250,29 @@ async fn run_generation(
         .await?;
     diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
-    runtime.ledger.put_manifest_ref(&manifest).await?;
-
     // Boxed: this is by far the largest future in the pipeline, and holding
     // it inline alongside the cancellation select overflows the default test
     // stack in debug builds.
-    let run = Box::pin(created_generation::run_created_generation(
-        runtime,
-        input,
-        emitter,
-        lease,
-        manifest,
-        diff,
-        generation.clone(),
-        previous,
-        &coordinator,
-    ));
+    let run = Box::pin(async {
+        runtime.ledger.put_manifest_ref(&manifest).await?;
+        created_generation::run_created_generation(
+            runtime,
+            input,
+            emitter,
+            lease,
+            manifest,
+            diff,
+            generation.clone(),
+            previous,
+            &coordinator,
+        )
+        .await
+    });
     // Cooperative cancellation: resolve to an error instead of letting the
     // caller drop the pipeline future mid-flight, so the failed-generation
     // cleanup below (vector cleanup + `fail_generation`) still runs for the
     // uncommitted generation (2026-08-23 adversarial pipeline review, M3).
-    let mut result = match input.execution.cancellation.as_ref() {
+    let result = match input.execution.cancellation.as_ref() {
         Some(cancel) => {
             tokio::select! {
                 biased;
@@ -282,37 +285,12 @@ async fn run_generation(
         }
         None => run.await,
     };
-    if result.is_err() {
-        let committed = runtime
-            .ledger
-            .committed_generation(generation.source_id.clone())
-            .await?
-            .is_some_and(|current| current == generation.generation);
-        if !committed
-            && input.plan.request.embed
-            && let Err(cleanup_error) = publish::cleanup_failed_generation_vectors(
-                runtime,
-                input,
-                input.collection,
-                &generation,
-            )
-            .await
-        {
-            result = result.map_err(|error| {
-                error.context(format!(
-                    "failed-generation vector cleanup also failed: {cleanup_error:#}"
-                ))
-            });
-        }
-        if !committed && let Err(fail_error) = runtime.ledger.fail_generation(generation).await {
-            return result.map_err(|error| {
-                error.context(format!(
-                    "also failed to mark source generation failed: {fail_error}"
-                ))
-            });
+    match result {
+        Ok(counts) => Ok(counts),
+        Err(error) => {
+            Err(finalization::finalize_failed_generation(runtime, input, generation, error).await)
         }
     }
-    result
 }
 
 fn job_create_request(input: &SourcePipelineInput<'_>) -> JobCreateRequest {

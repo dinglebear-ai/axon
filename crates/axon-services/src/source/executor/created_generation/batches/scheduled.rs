@@ -131,10 +131,31 @@ fn resolve_scheduler_results(
     match (first, counterpart) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(primary), Ok(())) | (Ok(()), Err(primary)) => Err(primary),
-        (Err(primary), Err(secondary)) => Err(anyhow::anyhow!(
-            "{primary:#}; generation scheduler {counterpart_name} also failed after {first_name} failure: {secondary:#}"
-        )),
+        (Err(primary), Err(secondary)) if is_cancellation_error(&primary) && !is_cancellation_error(&secondary) => {
+            Err(secondary.context(format!("generation scheduler {first_name} stopped: {primary:#}")))
+        }
+        (Err(primary), Err(secondary)) => Err(primary.context(format!(
+            "generation scheduler {counterpart_name} also failed after {first_name} failure: {secondary:#}"
+        ))),
     }
+}
+
+fn is_cancellation_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        if let Some(error) = cause.downcast_ref::<axon_api::source::ApiError>() {
+            return matches!(
+                error.code.0.as_str(),
+                "source.acquire.canceled" | "source.acquire.stream_closed"
+            );
+        }
+        matches!(
+            cause.to_string().as_str(),
+            "generation scheduler producer canceled"
+                | "generation scheduler canceled before vectorization"
+                | "prepared work send canceled"
+                | "prepared work receiver closed"
+        )
+    })
 }
 
 async fn produce(

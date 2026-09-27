@@ -61,7 +61,14 @@ pub(super) async fn prepare_documents(
                     warnings: Vec::new(),
                     errors: Vec::new(),
                 })
-                .map_err(|error| anyhow::anyhow!("failed to prepare {item_key}: {error}"))?)
+                .map_err(|error| {
+                    ApiError::new(
+                        "document.prepare_failed",
+                        ErrorStage::Preparing,
+                        format!("failed to prepare document: {error}"),
+                    )
+                    .with_source_item_key(item_key)
+                })?)
         },
     )
     .await

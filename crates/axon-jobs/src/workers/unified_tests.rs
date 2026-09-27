@@ -902,3 +902,38 @@ fn panic_message_extracts_str_and_string_payloads() {
         "non-string panic payload"
     );
 }
+
+#[tokio::test]
+async fn detached_terminal_summary_keeps_structured_item_and_sanitized_cause() {
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
+    let claimed = claim_next_unified_job(&pool).await.unwrap().unwrap();
+    let secret = format!("sk-{}", "a".repeat(32));
+    let mut error = ApiError::new(
+        "adapter.git.read_failed",
+        ErrorStage::Fetching,
+        "git read failed",
+    )
+    .with_source_item_key("src/readme.rs\r\n")
+    .with_context(
+        "cause",
+        format!("fetch failed: authorization: Bearer {secret}"),
+    );
+    error.retryable = true;
+    terminal::fail_unified_claimed(&pool, &claimed, error).await;
+    let store = SqliteUnifiedJobStore::new(pool);
+    let last = store
+        .get(job_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .last_error
+        .unwrap();
+    assert_eq!(last.code.to_string(), "adapter.git.read_failed");
+    assert!(last.retryable);
+    assert_eq!(
+        last.source_item_key.as_ref().map(|key| key.0.as_str()),
+        Some("src/readme.rs  ")
+    );
+    assert!(!last.cause.as_ref().unwrap().contains(&secret));
+}
