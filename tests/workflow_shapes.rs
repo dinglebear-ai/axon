@@ -16,7 +16,7 @@ fn architecture_docs_delegate_volatile_workspace_facts_to_cargo_manifest() {
 
 #[test]
 fn contributor_guide_matches_local_and_external_qdrant_recipes() {
-    let guide = fs::read_to_string("CLAUDE.md").unwrap();
+    let guide = fs::read_to_string("AGENTS.md").unwrap();
     assert!(
         guide.contains(
             "just services-up # start self-contained local infra (Qdrant + TEI + Chrome)"

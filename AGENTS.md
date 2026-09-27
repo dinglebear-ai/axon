@@ -485,8 +485,8 @@ just fix         # cargo fmt and clippy auto-fixes; review the resulting diff
 just precommit   # broad staged gate, including secret/legacy/fetch checks
 just watch-check # check, test compilation, and library tests on save
 just rebuild     # check + test
-just services-up # local provider infrastructure
-just services-up-external-qdrant # providers with an external Qdrant
+just services-up # start self-contained local infra (Qdrant + TEI + Chrome)
+just services-up-external-qdrant # start TEI + Chrome with external Qdrant
 ```
 
 For prose-only changes, follow the verification scope guard above instead of
@@ -603,7 +603,7 @@ publication is requested, fetch the remote, reconcile concurrent updates
 without discarding changes, and use a normal non-force push. Verify remote
 HEAD and local status. Do not delete unrelated worktrees, stashes, branches,
 or running processes as cleanup. Never force-add ignored local instructions,
-credentials, or runtime data.>
+credentials, or runtime data.
 
 ## Release Pipeline
 
