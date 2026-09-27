@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-2");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-3");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -1107,6 +1107,49 @@ fn redacted_content_parses_and_validates_after_scrub() {
             .map(|candidate| candidate.merge_key.clone())
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn manifest_graph_evidence_survives_real_document_preparation() {
+    let samples = [
+        (
+            "package.json",
+            ContentKind::Json,
+            "{\n  \"dependencies\": {\n    \"react\": \"19\"\n  },\n  \"scripts\": {\"build\": \"vite build\"}\n}",
+            "manifest_dependency",
+        ),
+        (
+            "pom.xml",
+            ContentKind::Xml,
+            "<project>\n<dependencies><dependency>\n<groupId>org.example</groupId>\n<artifactId>demo</artifactId>\n</dependency></dependencies>\n</project>",
+            "manifest_dependency",
+        ),
+        (
+            "deploy.yaml",
+            ContentKind::Yaml,
+            "apiVersion: apps/v1\nkind:   'Deployment'\nmetadata:\n  name: demo\n",
+            "iac_resource",
+        ),
+    ];
+    for (path, kind, text, graph_kind) in samples {
+        let mut request = request(kind, text, "gen-manifest", ChunkingProfile::AtomicMetadata);
+        request.document.path = Some(path.to_string());
+        request.document.canonical_uri = format!("file:///repo/{path}");
+        request.profile = None;
+        let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+            .prepare(request)
+            .unwrap_or_else(|error| panic!("{path}: {error}"))
+        else {
+            panic!("{path}: expected prepared document")
+        };
+        assert!(
+            prepared
+                .graph_candidates
+                .iter()
+                .any(|candidate| candidate.kind == graph_kind),
+            "{path}: expected {graph_kind} graph evidence"
+        );
+    }
 }
 
 #[test]

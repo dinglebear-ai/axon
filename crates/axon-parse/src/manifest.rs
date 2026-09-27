@@ -217,10 +217,6 @@ fn line_for_offset(text: &str, offset: usize) -> u32 {
         + 1
 }
 
-fn compact_quote(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 fn yaml_scalar<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let value = line.strip_prefix(key)?.strip_prefix(':')?.trim();
     let value = value.trim_matches('"').trim_matches('\'');
@@ -240,3 +236,7 @@ fn warning(input: &ParseInput, code: &str, message: String) -> SourceWarning {
 #[cfg(test)]
 #[path = "manifest_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "manifest_regression_tests.rs"]
+mod regression_tests;
