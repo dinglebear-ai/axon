@@ -5119,6 +5119,18 @@
             "null"
           ]
         },
+        "limits": {
+          "$ref": "#/$defs/SourceRequest_SourceLimits",
+          "default": {},
+          "description": "Shared source item, byte, and provider limits. Omitted values keep server defaults."
+        },
+        "options": {
+          "$ref": "#/$defs/SourceRequest_AdapterOptions",
+          "default": {
+            "values": {}
+          },
+          "description": "Adapter options validated by the canonical source router."
+        },
         "priority": {
           "anyOf": [
             {
@@ -5162,6 +5174,19 @@
       "title": "SourceRequest",
       "type": "object"
     },
+    "SourceRequest_AdapterOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "type": "object"
+    },
     "SourceRequest_JobPriority": {
       "enum": [
         "interactive",
@@ -5180,6 +5205,68 @@
         "auto_inline"
       ],
       "type": "string"
+    },
+    "SourceRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "SourceRequest_SourceScope": {
       "enum": [
@@ -5694,7 +5781,7 @@
         "path": "crates/axon-api/src/action/requests/watch.rs"
       },
       {
-        "checksum": "sha256:6c5ca1c0ac07f585648fd7023b872833799f1af3f186e09010cf8db1bd6d027f",
+        "checksum": "sha256:622c9ebbf4795bf032a0f45f53c1699f8c0d69585e459a2fa94d67c9b164aed0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/action/utility.rs"
       },

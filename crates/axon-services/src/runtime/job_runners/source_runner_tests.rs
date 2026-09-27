@@ -452,3 +452,46 @@ async fn source_runner_context_reuses_the_worker_pool() {
         "the source runner must reuse the process writer gate"
     );
 }
+
+#[test]
+fn skipped_source_counts_survive_canonical_result_and_runner_outcome() {
+    use crate::source::result_map::{IndexCounts, adapter_ref, to_source_result};
+    use axon_api::source::{
+        GraphWriteSummary, JobId, SourceGenerationId, SourceId, SourceKind, SourceScope,
+    };
+    let counts = IndexCounts {
+        documents_skipped: 2,
+        job_id: JobId::new(uuid::Uuid::nil()),
+        source_id: SourceId::new("src_skipped"),
+        generation: SourceGenerationId::new("gen_skipped"),
+        items_discovered: 2,
+        documents_prepared: 0,
+        chunks_prepared: 0,
+        vector_points_written: 0,
+        removed: 0,
+        published_manifest: None,
+        graph_candidates: vec![],
+        warnings: vec![],
+        artifacts: vec![],
+        inline: None,
+    };
+    let result = to_source_result(
+        SourceKind::Git,
+        adapter_ref("git"),
+        SourceScope::Repo,
+        "https://example.test/project.git".into(),
+        counts,
+        GraphWriteSummary {
+            nodes_upserted: 0,
+            edges_upserted: 0,
+            evidence_records: 0,
+            degraded: false,
+        },
+    );
+    let outcome = outcome_from_result(result).unwrap();
+    assert_eq!(outcome.status, LifecycleStatus::Completed);
+    let persisted: SourceResult = serde_json::from_str(&outcome.result_json.unwrap()).unwrap();
+    assert_eq!(persisted.counts.documents_skipped, 2);
+    assert_eq!(persisted.counts.chunks_total, 0);
+    assert!(persisted.errors.is_empty());
+}

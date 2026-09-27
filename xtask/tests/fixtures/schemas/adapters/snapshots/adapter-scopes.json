@@ -449,6 +449,7 @@
       },
       {
         "allowed_option_keys": [
+          "exclude_paths",
           "include_globs",
           "exclude_globs",
           "respect_gitignore",
@@ -1652,12 +1653,12 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:a2d9a3420aa34de7f9a39de80df1408219cc6a3d3225708208c88bf896b1eae9",
+        "checksum": "sha256:e2ea3ea7700b0dc705d6cb57a2a2f04db699c59ea71cea5705d6ab62f742a126",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:6d78cd541cd082c93d3cf5ae4b3e67d648f8bd9d450468410ea8fbb5671dc9af",
+        "checksum": "sha256:0023d1c7dcf7ef10535e8993af3edabd1333bf856185854c9e36fda1451e9150",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },

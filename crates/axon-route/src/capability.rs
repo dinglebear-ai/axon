@@ -228,6 +228,7 @@ impl AdapterRegistry {
                 .with_scope(SourceScope::Repo)
                 .with_scope(SourceScope::Map)
                 .with_options(&[
+                    "exclude_paths",
                     "include_globs",
                     "exclude_globs",
                     "respect_gitignore",

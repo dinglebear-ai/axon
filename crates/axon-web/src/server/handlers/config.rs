@@ -381,6 +381,8 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                 priority: None,
                 response_mode: Some(ResponseMode::Inline),
                 detached: None,
+                limits: Default::default(),
+                options: Default::default(),
             }))
         }
         "crawl" => {
@@ -392,6 +394,8 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                 priority: None,
                 response_mode: Some(ResponseMode::Inline),
                 detached: None,
+                limits: Default::default(),
+                options: Default::default(),
             }))
         }
         "ask" => {

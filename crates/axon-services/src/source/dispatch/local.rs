@@ -177,12 +177,7 @@ async fn local_source_plan(
         scope,
         ..route.clone()
     };
-    if !exclude_paths.is_empty() {
-        routed_route.validated_options.values.insert(
-            "exclude_paths".to_string(),
-            serde_json::json!(exclude_paths),
-        );
-    }
+    super::merge_exclude_paths(&mut routed_route.validated_options, exclude_paths);
     let mut request = SourceRequest::local_path(root.to_string_lossy().to_string(), !root_is_file);
     request.embed = embed;
     request.limits = limits.clone();

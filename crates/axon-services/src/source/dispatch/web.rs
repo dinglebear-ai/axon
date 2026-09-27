@@ -26,12 +26,13 @@ pub(crate) async fn dispatch_web(
     scope: SourceScope,
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
-    max_pages: Option<u64>,
-    max_depth: Option<u32>,
+    limits: &axon_api::source::SourceLimits,
     output: &axon_api::source::OutputPolicy,
     route: &axon_api::source::RoutePlan,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
+    let max_pages = limits.max_pages;
+    let max_depth = limits.max_depth;
     log_info(&format!(
         "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?} max_depth={max_depth:?}"
     ));
@@ -46,10 +47,16 @@ pub(crate) async fn dispatch_web(
         input,
         &canonical_route,
         embed && scope != SourceScope::Map,
-        max_pages,
+        limits.max_items.or(max_pages),
         None,
     );
     plan.request.output = output.clone();
+    plan.request.limits = limits.clone();
+    plan.limits.request = limits.clone();
+    plan.limits.effective = axon_api::source::SourceLimits {
+        max_items: limits.max_items.or(max_pages),
+        ..limits.clone()
+    };
     let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,

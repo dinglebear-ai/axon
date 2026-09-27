@@ -458,3 +458,6 @@ pub(crate) async fn open_cleanup_debt_stores(
 
     (graph_store, memory_store)
 }
+
+#[cfg(test)]
+mod byte_policy_tests;

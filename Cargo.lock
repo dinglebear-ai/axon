@@ -694,6 +694,7 @@ dependencies = [
  "axon-api",
  "axon-authz",
  "axon-core",
+ "axon-jobs",
  "axon-services",
  "axum",
  "base64 0.22.1",

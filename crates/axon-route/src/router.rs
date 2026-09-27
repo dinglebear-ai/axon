@@ -192,8 +192,8 @@ impl SourceRouter {
 
         // Web is the first adapter with a real (non-legacy) per-option value
         // schema (adapter-scopes.md "Web Adapter" table); see `web_options.rs`.
-        // Git validates its path-selection option below.
-        if adapter.source_kind == SourceKind::Git
+        // File-backed adapters validate their path-selection option below.
+        if matches!(adapter.source_kind, SourceKind::Git | SourceKind::Local)
             && let Some(value) = request.options.values.get("exclude_paths")
             && !value
                 .as_array()

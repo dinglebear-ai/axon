@@ -94,8 +94,11 @@ impl UnifiedJobRunner for ResultRunner {
         _store: &SqliteUnifiedJobStore,
         _shutdown: &CancellationToken,
     ) -> Result<UnifiedJobOutcome, ApiError> {
-        Ok(UnifiedJobOutcome::completed_without_counts()
-            .with_result_json(r#"{"canonical":"result"}"#.to_string()))
+        Ok(
+            UnifiedJobOutcome::completed_without_counts().with_result_json(
+                r#"{"counts":{"documents_skipped":2,"documents_total":2}}"#.to_string(),
+            ),
+        )
     }
 }
 
@@ -118,8 +121,12 @@ async fn completed_runner_persists_canonical_typed_result() {
     .await;
     let store = SqliteUnifiedJobStore::new(pool);
     assert_eq!(
+        store.get(job_id).await.unwrap().unwrap().status,
+        LifecycleStatus::Completed
+    );
+    assert_eq!(
         store.result_json(job_id).await.unwrap(),
-        Some(serde_json::json!({"canonical": "result"}))
+        Some(serde_json::json!({"counts": {"documents_skipped": 2, "documents_total": 2}}))
     );
 }
 
