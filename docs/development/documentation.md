@@ -1,3 +1,9 @@
+---
+title: "Maintaining Axon documentation"
+created: 2026-09-27
+updated: 2026-09-27
+---
+
 # Maintaining Axon documentation
 
 Last reviewed: 2026-09-27
@@ -50,6 +56,13 @@ support before editing; do not commit those placeholder files as replacements.
 The compatibility-named cargo xtask check-claude-symlinks command enforces this
 AGENTS-first contract. The crate-structure validator calls the same directory
 validator. Other worktrees and immutable review snapshots are excluded.
+
+The fleet workflow uses `scripts/check_repository_contract.py` around its
+immutable upstream validator. That adapter replaces only the obsolete
+CLAUDE-first symlink rule with an index-mode/blob check for canonical AGENTS.md.
+It does not filter failures or disable any unrelated fleet checks. Its tests
+cover malformed aliases, staged-versus-working-tree differences, and preservation
+of unrelated failures and upstream exceptions.
 
 Keep inherited guidance concise. Codex defaults to a 32 KiB project instruction
 budget; a large root guide can prevent a nested guide from loading fully.

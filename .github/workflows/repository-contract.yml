@@ -13,7 +13,8 @@ permissions: {}
 jobs:
   contract:
     # The pinned reusable workflow hardcodes an unavailable ci-pool-ops runner.
-    # Keep its exact validator and inputs while using an ephemeral hosted runner.
+    # Keep its immutable checks while adapting only the agent-file ownership
+    # convention to this repository; all unrelated findings still fail.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -31,9 +32,12 @@ jobs:
           ref: d1a41a7af9c41189e0f1062234364f5814bda99d # fleet-2026-07-31
           path: workflow-library
           persist-credentials: false
+      - name: Test Axon agent policy adapter
+        run: python3 -m unittest discover -s target/tests -p test_repository_contract.py
       - name: Validate repository contract
         run: >-
-          python3 workflow-library/scripts/fleet_contract.py check
+          python3 target/scripts/check_repository_contract.py
+          --implementation workflow-library/scripts/fleet_contract.py
           --repo target
           --profile rust
 

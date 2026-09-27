@@ -1877,7 +1877,13 @@ fn repository_contract_keeps_pinned_validation_on_available_hosted_runners() {
     assert!(!workflow.contains("runs-on: ci-pool-ops"));
     assert!(workflow.contains("repository: dinglebear-ai/workflows"));
     assert!(workflow.contains("ref: d1a41a7af9c41189e0f1062234364f5814bda99d"));
-    assert!(workflow.contains("python3 workflow-library/scripts/fleet_contract.py check"));
+    assert!(workflow.contains("python3 target/scripts/check_repository_contract.py"));
+    assert!(workflow.contains("--implementation workflow-library/scripts/fleet_contract.py"));
+    assert!(
+        workflow.contains(
+            "python3 -m unittest discover -s target/tests -p test_repository_contract.py"
+        )
+    );
     assert!(workflow.contains("--repo target"));
     assert!(workflow.contains("--profile rust"));
     assert_eq!(workflow.matches("persist-credentials: false").count(), 2);
