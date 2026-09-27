@@ -14,6 +14,120 @@ pub(super) struct ChunkBuild {
     pub(super) warnings: Vec<SourceWarning>,
 }
 
+/// Keep every prepared text fragment below the embedding provider's per-input
+/// limit, including records produced by structural parsers and atomic profiles.
+/// Source-backed fragments retain exact positions; synthetic JSON records keep
+/// their JSON pointer because they have no literal source byte span.
+pub(super) fn bound_embedding_chunks(
+    chunks: Vec<DocumentChunk>,
+    source: &str,
+) -> (Vec<DocumentChunk>, bool) {
+    let mut bounded = Vec::new();
+    let mut split_any = false;
+    for chunk in chunks {
+        if chunk.content.len() <= text::MAX_PLAIN_TEXT_CHUNK_BYTES
+            && chunk.content.chars().count() <= text::MAX_PLAIN_TEXT_CHUNK_CHARS
+        {
+            bounded.push(chunk);
+            continue;
+        }
+        split_any = true;
+        split_chunk_streaming(&chunk, source, &mut bounded);
+    }
+    (bounded, split_any)
+}
+
+fn split_chunk_streaming(chunk: &DocumentChunk, source: &str, output: &mut Vec<DocumentChunk>) {
+    let literal_start = chunk
+        .range
+        .byte_start
+        .map(|start| start as usize)
+        .filter(|&start| {
+            chunk.range.char_start.is_some()
+                && chunk.range.line_start.is_some()
+                && source.get(start..start.saturating_add(chunk.content.len()))
+                    == Some(chunk.content.as_str())
+        });
+    let mut start_byte = 0;
+    let mut start_char = 0_u64;
+    let mut start_line = 1_u32;
+    let mut line = 1_u32;
+    let mut last_line = 1_u32;
+    let mut char_index = 0_u64;
+    for (byte, ch) in chunk.content.char_indices() {
+        if byte > start_byte
+            && (byte + ch.len_utf8() - start_byte > text::MAX_PLAIN_TEXT_CHUNK_BYTES
+                || char_index - start_char >= text::MAX_PLAIN_TEXT_CHUNK_CHARS as u64)
+        {
+            push_bounded_window(
+                chunk,
+                literal_start,
+                start_byte,
+                byte,
+                start_char,
+                char_index,
+                start_line,
+                last_line,
+                output,
+            );
+            start_byte = byte;
+            start_char = char_index;
+            start_line = line;
+        }
+        last_line = line;
+        if ch == '\n' {
+            line = line.saturating_add(1);
+        }
+        char_index += 1;
+    }
+    push_bounded_window(
+        chunk,
+        literal_start,
+        start_byte,
+        chunk.content.len(),
+        start_char,
+        char_index,
+        start_line,
+        last_line,
+        output,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_bounded_window(
+    chunk: &DocumentChunk,
+    literal_start: Option<usize>,
+    start_byte: usize,
+    end_byte: usize,
+    start_char: u64,
+    end_char: u64,
+    start_line: u32,
+    end_line: u32,
+    output: &mut Vec<DocumentChunk>,
+) {
+    if start_byte == end_byte || chunk.content[start_byte..end_byte].trim().is_empty() {
+        return;
+    }
+    let mut part = DocumentChunk::new(&chunk.content[start_byte..end_byte], chunk.range.clone());
+    part.title = chunk.title.clone();
+    part.heading_path = chunk.heading_path.clone();
+    part.symbol = chunk.symbol.clone();
+    part.metadata = chunk.metadata.clone();
+    part.metadata
+        .insert("chunking_fallback".into(), "embedding_size_backstop".into());
+    part.metadata
+        .insert("actual_chunking_method".into(), "plain_text_windows".into());
+    if let Some(base) = literal_start {
+        part.range.byte_start = Some((base + start_byte) as u64);
+        part.range.byte_end = Some((base + end_byte) as u64);
+        part.range.char_start = chunk.range.char_start.map(|n| n + start_char);
+        part.range.char_end = chunk.range.char_start.map(|n| n + end_char);
+        part.range.line_start = chunk.range.line_start.map(|n| n + start_line - 1);
+        part.range.line_end = chunk.range.line_start.map(|n| n + end_line - 1);
+    }
+    output.push(part);
+}
+
 /// Profiles whose primary chunker is a structural parser (tree-sitter,
 /// markdown heading walker) with a generic windowed-text fallback in its
 /// chain. When the router decided a size/adapter fallback applies

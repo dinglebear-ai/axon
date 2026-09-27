@@ -25,7 +25,9 @@ pub(super) fn estimated_tokens(text: &str) -> usize {
             (counts.0, counts.1 + ch.len_utf8())
         }
     });
-    ascii.div_ceil(2).saturating_add(non_ascii_bytes).max(1)
+    // A character can be a token on code, JSON, or punctuation-heavy input.
+    // Counting every ASCII character keeps the request below TEI's token cap.
+    ascii.saturating_add(non_ascii_bytes).max(1)
 }
 
 pub(super) fn pack_batches(
@@ -46,11 +48,7 @@ pub(super) fn pack_batches(
             return Err("one embedding input exceeds the configured payload limit");
         }
         if tokens > limits.max_input_tokens {
-            push_batch(&mut batches, &mut indices, &mut texts);
-            batches.push((vec![index], vec![text.as_str()]));
-            batch_tokens = 0;
-            batch_bytes = 0;
-            continue;
+            return Err("one embedding input exceeds the configured token limit");
         }
         if !texts.is_empty()
             && (texts.len() >= limits.max_inputs

@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-3");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-4");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -985,11 +985,9 @@ fn structured_payload_is_not_projected_outside_the_web_family() {
 }
 
 #[test]
-fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
-    // StructuredRecords has no wired size fallback: even past the threshold,
-    // both the reported method and the actual chunker stay on the profile's
-    // primary structured parser (this fixture is valid JSON, so it does not
-    // hit the separate parse-failure fallback path either).
+fn oversized_structured_record_is_bounded_before_embedding() {
+    // A valid JSON record can contain one very large array. Its structural
+    // identity survives while the embedding inputs remain bounded.
     let mut body = String::from("{\"items\":[");
     for i in 0..20_000 {
         if i > 0 {
@@ -1013,7 +1011,119 @@ fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
     };
 
     assert_eq!(prepared.chunking_profile, "structured_records");
-    assert_eq!(prepared.chunking_method, "structured_records");
+    assert_eq!(prepared.chunking_method, "plain_text_windows");
+    assert!(prepared.chunks.len() > 1);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.content.len() <= 4096)
+    );
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.source_range.json_pointer.as_deref() == Some("/items"))
+    );
+}
+
+#[test]
+fn oversized_manifest_line_keeps_exact_source_ranges() {
+    let body = format!("name = \"{}\"", "x".repeat(12_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Toml,
+            &body,
+            "gen-large-manifest",
+            ChunkingProfile::CodeManifest,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+
+    assert!(prepared.chunks.len() > 1);
+    for chunk in &prepared.chunks {
+        assert!(chunk.content.len() <= 4096);
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert_eq!(&body[start..end], chunk.content);
+    }
+}
+
+#[test]
+fn oversized_session_turn_keeps_turn_id_and_exact_ranges() {
+    let body = format!("{}\nsecond turn", "α".repeat(4_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Transcript,
+            &body,
+            "gen-large-session",
+            ChunkingProfile::SessionTurns,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+
+    let first_turn = prepared
+        .chunks
+        .iter()
+        .filter(|chunk| chunk.source_range.session_turn_id.as_deref() == Some("turn-0"))
+        .collect::<Vec<_>>();
+    assert!(first_turn.len() > 1);
+    for chunk in first_turn {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert_eq!(&body[start..end], chunk.content);
+        assert!(chunk.content.len() <= 4096);
+    }
+}
+
+#[test]
+fn multi_megabyte_json_record_has_bounded_embedding_chunks() {
+    let body = format!("{{\"payload\":\"{}\"}}", "x".repeat(3_000_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Json,
+            &body,
+            "gen-large-json",
+            ChunkingProfile::StructuredRecords,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+    assert!(prepared.chunks.len() > 700);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.content.len() <= 4096)
+    );
+}
+
+#[test]
+fn embedding_backstop_drops_whitespace_only_windows() {
+    let body = format!("start{}end", " ".repeat(6_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            &body,
+            "gen-spaced-metadata",
+            ChunkingProfile::AtomicMetadata,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+    assert!(prepared.chunks.len() > 1);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| !chunk.content.trim().is_empty())
+    );
 }
 
 fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {

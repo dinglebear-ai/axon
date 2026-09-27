@@ -17,7 +17,7 @@ use crate::source_range::bounds_for_text;
 
 mod chunk_build;
 mod validation;
-use chunk_build::{build_chunks, warning};
+use chunk_build::{bound_embedding_chunks, build_chunks, warning};
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document;
 #[cfg(test)]
@@ -26,7 +26,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-3";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-4";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -216,7 +216,7 @@ impl DocumentPreparer {
             use_size_or_adapter_fallback,
             self.config.markdown_limits(),
         );
-        let chunks = build.chunks;
+        let (chunks, size_backstop) = bound_embedding_chunks(build.chunks, &content.text);
         let parsed_code_method = (profile == ChunkingProfile::CodeSymbol
             && !use_size_or_adapter_fallback)
             .then(|| {
@@ -231,7 +231,9 @@ impl DocumentPreparer {
             .flatten();
         let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
             .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
-        let chunking_method = if !build.warnings.is_empty() {
+        let chunking_method = if size_backstop {
+            "plain_text_windows"
+        } else if !build.warnings.is_empty() {
             // `structured_or_fallback` degraded to atomic text.
             "atomic_fallback"
         } else if let Some(method) = parsed_code_method.as_deref() {
