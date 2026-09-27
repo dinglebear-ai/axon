@@ -6,6 +6,31 @@ use super::enums::*;
 use super::graph::*;
 use super::ids::*;
 
+/// Stable, content-free reasons why an acquired item has no searchable document.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentSkipReason {
+    UnsupportedBinary,
+    UnsupportedEncoding,
+    EmptyContent,
+    UnresolvedContentReference,
+    SizeLimitExceeded,
+}
+
+impl ContentSkipReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedBinary => "unsupported_binary",
+            Self::UnsupportedEncoding => "unsupported_encoding",
+            Self::EmptyContent => "empty_content",
+            Self::UnresolvedContentReference => "unresolved_content_reference",
+            Self::SizeLimitExceeded => "size_limit_exceeded",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceDocument {

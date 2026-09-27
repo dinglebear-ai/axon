@@ -537,6 +537,7 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-parse",
+ "base64 0.22.1",
  "serde_json",
  "tokio",
  "tracing",
