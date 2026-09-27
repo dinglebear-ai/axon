@@ -192,8 +192,19 @@ impl SourceRouter {
 
         // Web is the first adapter with a real (non-legacy) per-option value
         // schema (adapter-scopes.md "Web Adapter" table); see `web_options.rs`.
-        // Other adapters only get the key-membership check above until they
-        // grow their own typed option schemas.
+        // Git validates its path-selection option below.
+        if adapter.source_kind == SourceKind::Git
+            && let Some(value) = request.options.values.get("exclude_paths")
+            && !value
+                .as_array()
+                .is_some_and(|items| items.iter().all(|item| item.is_string()))
+        {
+            return Err(ApiError::new(
+                "route.options.invalid",
+                ErrorStage::Routing,
+                "exclude_paths must be an array of strings",
+            ));
+        }
         if adapter.adapter.name == "web" {
             crate::web_options::validate(&request.options.values)?;
         }

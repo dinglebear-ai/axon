@@ -76,8 +76,11 @@ async fn upload_single_file_round_trips_to_a_source_document() {
         Some(&serde_json::json!(true))
     );
     match &doc.content {
-        ContentRef::InlineText { text } => assert_eq!(text, "# staged upload"),
-        other => panic!("expected inline text content, got {other:?}"),
+        ContentRef::InlineBytes { bytes_base64, .. } => {
+            use base64::{Engine as _, engine::general_purpose::STANDARD};
+            assert_eq!(STANDARD.decode(bytes_base64).unwrap(), b"# staged upload");
+        }
+        other => panic!("expected raw inline bytes, got {other:?}"),
     }
 }
 

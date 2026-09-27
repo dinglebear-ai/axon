@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use axon_api::source::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -229,11 +230,22 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
             .clone()
             .unwrap_or_else(|| item.source_item_key.0.clone());
         let path = safe_item_path(&root, &key)?;
-        let text = fs::read_to_string(&path).map_err(|err| fs_error("read_failed", &path, err))?;
+        let bytes = fs::read(&path).map_err(|err| {
+            ApiError::new(
+                "adapter.git.read_failed",
+                ErrorStage::Fetching,
+                "failed to read repository item",
+            )
+            .with_context("source_item_key", item.source_item_key.0.clone())
+            .with_context("io_kind", format!("{:?}", err.kind()))
+        })?;
         fetched_items.push(AcquiredSourceItem {
             manifest_item: item.clone(),
             fetch_status: LifecycleStatus::Completed,
-            content_ref: ContentRef::InlineText { text },
+            content_ref: ContentRef::InlineBytes {
+                bytes_base64: STANDARD.encode(bytes),
+                mime_type: "application/octet-stream".to_owned(),
+            },
             raw_artifact_id: None,
             headers: RedactedHeaders {
                 headers: Vec::new(),

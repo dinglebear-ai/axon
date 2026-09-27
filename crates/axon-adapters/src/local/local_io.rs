@@ -237,23 +237,13 @@ pub(crate) fn read_content_ref_from_file(
     enforce_read_size_from_file(&file, path_hint, options)?;
     let bytes = read_bounded(file, path_hint, options.max_file_bytes)?;
     let fingerprint = format!("sha256:{:x}", Sha256::digest(&bytes));
-    if options.includes_binary_body(path_hint) {
-        return Ok((
-            ContentRef::InlineBytes {
-                bytes_base64: BASE64_STANDARD.encode(&bytes),
-                mime_type: "application/octet-stream".to_string(),
-            },
-            fingerprint,
-        ));
-    }
-    let text = String::from_utf8(bytes).map_err(|err| {
-        fs_error(
-            "adapter.local.read_failed",
-            path_hint,
-            std::io::Error::new(std::io::ErrorKind::InvalidData, err),
-        )
-    })?;
-    Ok((ContentRef::InlineText { text }, fingerprint))
+    Ok((
+        ContentRef::InlineBytes {
+            bytes_base64: BASE64_STANDARD.encode(&bytes),
+            mime_type: "application/octet-stream".to_string(),
+        },
+        fingerprint,
+    ))
 }
 
 fn read_bounded(reader: impl Read, path_hint: &Path, max_file_bytes: u64) -> Result<Vec<u8>> {

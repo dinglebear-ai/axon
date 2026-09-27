@@ -8,7 +8,7 @@ use axon_api::source::*;
 use ignore::{DirEntry, WalkBuilder, WalkState};
 
 use crate::adapter::Result;
-use crate::local_select::{LocalOptions, is_binary_path};
+use crate::local_select::LocalOptions;
 use crate::manifest::item_identity;
 
 use super::LOCAL_DISCOVERY_HASH_MAX_THREADS;
@@ -400,9 +400,6 @@ pub(super) fn public_base_uri(canonical_uri: &str) -> String {
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {
-    if is_binary_path(path) {
-        return ContentKind::BinaryMetadata;
-    }
     match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
         "md" | "markdown" => ContentKind::Markdown,
         "html" | "htm" => ContentKind::Html,

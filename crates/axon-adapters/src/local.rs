@@ -90,9 +90,10 @@ impl SourceAdapter for LocalSourceAdapter {
             fetched_items,
             ..
         } = acquisition;
+        let binary_policy = validate_options(&plan.route.validated_options)?.binary_policy;
         let documents = fetched_items
             .into_iter()
-            .map(|item| local_source_document(plan, &source_id, item))
+            .map(|item| local_source_document(plan, &source_id, item, binary_policy.as_str()))
             .collect::<Vec<_>>();
         Ok(StageExecutionResult {
             header: stage_header(
@@ -269,9 +270,6 @@ fn acquire_sync(
         // must still supply contained logical keys before selecting spool data.
         local_io::validate_item_key(&item.source_item_key.0)?;
         let path = root_for_keys.join(&item.source_item_key.0);
-        if !options.fetches_body(&path) {
-            continue;
-        }
         let file = std::fs::File::open(discovery::spool_path(spool_dir, &item.source_item_key.0))
             .map_err(|error| {
             local_io::fs_error("adapter.local.spool_read_failed", &path, error)
@@ -362,10 +360,13 @@ fn local_source_document(
     plan: &SourcePlan,
     source_id: &SourceId,
     item: AcquiredSourceItem,
+    binary_policy: &str,
 ) -> SourceDocument {
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("code"));
     metadata.insert("source_kind".to_string(), json!("local"));
+    // Selection and acquisition do not interpret this as permission to embed bytes.
+    metadata.insert("binary_policy".to_string(), json!(binary_policy));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
     metadata.insert(

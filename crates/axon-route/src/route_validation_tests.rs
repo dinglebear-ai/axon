@@ -13,6 +13,45 @@ fn resolver() -> SourceResolver {
 }
 
 #[test]
+fn router_accepts_git_exclude_paths() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    for name in ["git", "github", "gitlab", "gitea"] {
+        let mut request = SourceRequest::new("https://github.com/unraid/core");
+        request
+            .options
+            .values
+            .insert("exclude_paths".into(), json!(["vendor/", ".png"]));
+        let mut resolved = resolver.resolve(&request).unwrap();
+        resolved.adapter.name = name.into();
+        let route = router.route(&request, resolved.clone()).unwrap();
+        assert_eq!(
+            route.validated_options.values.get("exclude_paths"),
+            Some(&json!(["vendor/", ".png"]))
+        );
+        for invalid in [json!("vendor/"), json!(["vendor/", 1]), json!(null)] {
+            request
+                .options
+                .values
+                .insert("exclude_paths".into(), invalid);
+            assert_eq!(
+                router.route(&request, resolved.clone()).unwrap_err().code.0,
+                "route.options.invalid"
+            );
+        }
+        request.options.values.clear();
+        request
+            .options
+            .values
+            .insert("repo_root".into(), json!("/tmp/private"));
+        assert_eq!(
+            router.route(&request, resolved).unwrap_err().code.0,
+            "route.options.unsupported"
+        );
+    }
+}
+
+#[test]
 fn router_rejects_unknown_route_options() {
     let resolver = resolver();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());

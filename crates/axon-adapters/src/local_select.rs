@@ -27,6 +27,16 @@ pub(crate) enum BinaryPolicy {
     Include,
 }
 
+impl BinaryPolicy {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Skip => "skip",
+            Self::Metadata => "metadata",
+            Self::Include => "include",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct LocalOptions {
     pub(crate) follow_symlinks: bool,
@@ -70,21 +80,10 @@ impl LocalOptions {
         {
             return false;
         }
-        if self.binary_policy == BinaryPolicy::Skip && is_binary_path(path) {
-            return false;
-        }
         if scope == SourceScope::Repo {
             return is_code_search_file(path);
         }
         !is_generated_filename(file_name(path))
-    }
-
-    pub(crate) fn fetches_body(&self, path: &Path) -> bool {
-        self.binary_policy != BinaryPolicy::Metadata || !is_binary_path(path)
-    }
-
-    pub(crate) fn includes_binary_body(&self, path: &Path) -> bool {
-        self.binary_policy == BinaryPolicy::Include && is_binary_path(path)
     }
 
     pub(crate) fn should_prune_default_dirs(&self) -> bool {

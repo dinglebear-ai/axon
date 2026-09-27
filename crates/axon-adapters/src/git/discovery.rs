@@ -276,6 +276,7 @@ pub(super) fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
     Ok(root.join(key))
 }
 
+// Hash raw bytes; shared document preparation decides indexing eligibility.
 fn content_fingerprint(path: &Path) -> Result<String> {
     let mut file = File::open(path).map_err(|err| fs_error("read_failed", path, err))?;
     let mut hasher = Sha256::new();

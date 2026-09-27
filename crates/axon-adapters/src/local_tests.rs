@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::fs;
 
 use axon_api::source::*;
@@ -199,7 +200,7 @@ async fn local_adapter_acquires_and_normalizes_source_documents() {
     assert_eq!(acquisition.fetched_items.len(), 2);
     assert!(matches!(
         acquisition.fetched_items[0].content_ref,
-        ContentRef::InlineText { .. }
+        ContentRef::InlineBytes { .. }
     ));
 
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
@@ -326,7 +327,7 @@ async fn local_acquire_preserves_discovery_snapshot_after_directory_symlink_swap
         .expect("acquisition reads its private immutable discovery snapshot");
     assert_eq!(acquisition.fetched_items.len(), 1);
     assert!(matches!(&acquisition.fetched_items[0].content_ref,
-        ContentRef::InlineText { text } if text == "# safe"));
+        ContentRef::InlineBytes { bytes_base64, .. } if STANDARD.decode(bytes_base64).unwrap() == b"# safe"));
     let serialized = serde_json::to_string(&acquisition).unwrap();
     assert!(
         !serialized.contains("# secret"),
@@ -361,7 +362,7 @@ async fn contained_local_adapter_holds_allowed_root_across_path_replacement() {
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
     assert!(matches!(
         &acquisition.fetched_items[0].content_ref,
-        ContentRef::InlineText { text } if text == "# safe"
+        ContentRef::InlineBytes { bytes_base64, .. } if STANDARD.decode(bytes_base64).unwrap() == b"# safe"
     ));
 }
 
@@ -392,7 +393,7 @@ async fn overlapping_local_jobs_keep_distinct_root_handles() {
     let acquisition = adapter.acquire(&first, &first_diff).await.unwrap();
     assert!(matches!(
         &acquisition.fetched_items[0].content_ref,
-        ContentRef::InlineText { text } if text == "# first"
+        ContentRef::InlineBytes { bytes_base64, .. } if STANDARD.decode(bytes_base64).unwrap() == b"# first"
     ));
 }
 
@@ -552,8 +553,9 @@ async fn local_acquisition_uses_verified_discovery_spool_after_source_changes() 
     let fetched = acquisition.fetched_items.first().unwrap();
     assert_eq!(
         fetched.content_ref,
-        ContentRef::InlineText {
-            text: "abcd".to_string()
+        ContentRef::InlineBytes {
+            bytes_base64: STANDARD.encode(b"abcd"),
+            mime_type: "application/octet-stream".into(),
         }
     );
     assert_eq!(
@@ -760,7 +762,7 @@ async fn local_repo_scope_respects_gitignore_by_default() {
 }
 
 #[tokio::test]
-async fn local_binary_policy_metadata_keeps_manifest_but_skips_document_body() {
+async fn local_binary_policy_metadata_retains_raw_inventory_for_shared_disposition() {
     let adapter = LocalSourceAdapter::new();
     let root = temp_source_dir();
     fs::write(root.join("image.png"), [0, 159, 146, 150]).unwrap();
@@ -773,11 +775,13 @@ async fn local_binary_policy_metadata_keeps_manifest_but_skips_document_body() {
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
 
     assert_eq!(manifest.items.len(), 1);
-    assert_eq!(
-        manifest.items[0].content_kind,
-        Some(ContentKind::BinaryMetadata)
-    );
-    assert!(normalized.data.is_empty());
+    assert_eq!(manifest.items[0].content_kind, Some(ContentKind::PlainText));
+    assert_eq!(normalized.data.len(), 1);
+    assert!(matches!(
+        normalized.data[0].content,
+        ContentRef::InlineBytes { .. }
+    ));
+    assert_eq!(normalized.data[0].metadata["binary_policy"], "metadata");
 }
 
 #[tokio::test]
@@ -793,10 +797,7 @@ async fn local_binary_policy_include_acquires_inline_bytes() {
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
 
     assert_eq!(acquisition.fetched_items.len(), 1);
-    assert_eq!(
-        manifest.items[0].content_kind,
-        Some(ContentKind::BinaryMetadata)
-    );
+    assert_eq!(manifest.items[0].content_kind, Some(ContentKind::PlainText));
     assert!(matches!(
         acquisition.fetched_items[0].content_ref,
         ContentRef::InlineBytes { .. }
@@ -835,4 +836,79 @@ async fn local_map_scope_discovers_manifest_but_acquires_no_documents() {
 
     assert_eq!(manifest.items.len(), 1);
     assert!(normalized.data.is_empty());
+}
+
+#[tokio::test]
+async fn local_unknown_binary_acquisition_preserves_raw_bytes() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    let bytes = b"\xff\xfe\xfd\0opaque";
+    fs::write(root.join("payload.unknown"), bytes).unwrap();
+    let plan = source_plan(root, SourceScope::Directory);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let acquisition = adapter
+        .acquire(&plan, &manifest_diff(&plan, manifest.items))
+        .await
+        .unwrap();
+    let ContentRef::InlineBytes { bytes_base64, .. } = &acquisition.fetched_items[0].content_ref
+    else {
+        panic!("raw source bytes must reach shared preparation")
+    };
+    assert_eq!(STANDARD.decode(bytes_base64).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn local_binary_options_preserve_raw_bodies_and_source_selection() {
+    let fixtures: &[(&str, &[u8])] = &[
+        ("archive.txz", b"\xfd7zXZ\0archive"),
+        ("audio.mp3", b"ID3audio"),
+        ("audio.oga", b"OggSaudio"),
+        ("extensionless", b"\0\xffbinary"),
+        ("renamed.txt", b"%PDF-1.7 ASCII binary format"),
+        ("source.rs", b"fn main() {}"),
+        ("text.png", b"ordinary supported text"),
+    ];
+    for policy in ["skip", "metadata", "include"] {
+        for scope in [SourceScope::File, SourceScope::Directory, SourceScope::Repo] {
+            let root = temp_source_dir();
+            for (name, bytes) in fixtures {
+                fs::write(root.join(name), bytes).unwrap();
+            }
+            let input = if scope == SourceScope::File {
+                root.join("text.png")
+            } else {
+                root.clone()
+            };
+            let adapter = LocalSourceAdapter::new();
+            let mut plan = source_plan(input, scope);
+            plan.route.validated_options.values = binary_options(policy);
+            let manifest = adapter.discover(&plan).await.unwrap();
+            let expected = match scope {
+                SourceScope::File => 1,
+                SourceScope::Repo => 2,
+                _ => fixtures.len(),
+            };
+            assert_eq!(manifest.items.len(), expected, "{policy} {scope:?}");
+            let acquisition = adapter
+                .acquire(&plan, &manifest_diff(&plan, manifest.items))
+                .await
+                .unwrap();
+            assert_eq!(acquisition.fetched_items.len(), expected);
+            let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
+            for document in normalized.data {
+                let expected = fixtures
+                    .iter()
+                    .find(|(name, _)| *name == document.source_item_key.0)
+                    .unwrap()
+                    .1;
+                let ContentRef::InlineBytes { bytes_base64, .. } = &document.content else {
+                    panic!("raw bytes required")
+                };
+                assert_eq!(STANDARD.decode(bytes_base64).unwrap(), expected);
+                assert_ne!(document.content_kind, ContentKind::BinaryMetadata);
+                assert_eq!(document.metadata["binary_policy"], policy);
+            }
+        }
+    }
 }

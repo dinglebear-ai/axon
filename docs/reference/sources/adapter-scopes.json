@@ -351,7 +351,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -371,7 +373,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -394,7 +398,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -417,7 +423,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -1644,7 +1652,7 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:71dceaa183dd7564fbbb9d00c6221a69d342f63e965ebeb0a2cab1077b51c40b",
+        "checksum": "sha256:a2d9a3420aa34de7f9a39de80df1408219cc6a3d3225708208c88bf896b1eae9",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

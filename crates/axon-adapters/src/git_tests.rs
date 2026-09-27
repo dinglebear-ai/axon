@@ -138,6 +138,61 @@ async fn discover_lists_repo_files_and_excludes_git_dir() {
 }
 
 #[tokio::test]
+async fn discover_and_acquire_preserve_mixed_content() {
+    let repo = fixture_repo();
+    fs::write(repo.join("image.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    fs::write(repo.join("unknown.dat"), b"text\0binary").unwrap();
+    fs::write(repo.join("document.pdf"), b"%PDF-1.7 all ASCII").unwrap();
+    fs::write(repo.join("utf16.txt"), [0xff, 0xfe, 0x41, 0]).unwrap();
+    let mut late_invalid = vec![b'a'; 70_000];
+    late_invalid.push(0xff);
+    fs::write(repo.join("late.txt"), late_invalid).unwrap();
+    let mut unicode = "a".repeat(65_535);
+    unicode.push_str("🌍\n");
+    fs::write(repo.join("unicode.txt"), &unicode).unwrap();
+    for limit in [None, Some(100)] {
+        let mut plan = git_plan(&repo, SourceScope::Repo, true);
+        plan.limits.effective.max_items = limit;
+        let adapter = GitSourceAdapter::new();
+        let manifest = adapter.discover(&plan).await.unwrap();
+        let keys = manifest
+            .items
+            .iter()
+            .map(|item| item.display_path.as_deref().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            keys,
+            vec![
+                "README.md",
+                "document.pdf",
+                "image.png",
+                "late.txt",
+                "src/lib.rs",
+                "unicode.txt",
+                "unknown.dat",
+                "utf16.txt"
+            ]
+        );
+        let acquisition = adapter
+            .acquire(&plan, &diff_from(&plan, manifest.items))
+            .await
+            .unwrap();
+        assert_eq!(acquisition.fetched_items.len(), 8);
+        for item in &acquisition.fetched_items {
+            let ContentRef::InlineBytes { bytes_base64, .. } = &item.content_ref else {
+                panic!("raw repository file must remain bytes")
+            };
+            use base64::Engine as _;
+            assert_eq!(
+                STANDARD.decode(bytes_base64).unwrap(),
+                fs::read(repo.join(item.manifest_item.display_path.as_ref().unwrap())).unwrap()
+            );
+        }
+    }
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[tokio::test]
 async fn discover_applies_max_items_before_hashing_the_full_repo() {
     let repo = fixture_repo();
     fs::write(
@@ -220,7 +275,15 @@ async fn acquire_then_normalize_stamps_git_metadata() {
         readme.metadata.get("git_owner").and_then(|v| v.as_str()),
         Some("jmagar")
     );
-    assert!(matches!(&readme.content, ContentRef::InlineText { text } if text.contains("Fixture")));
+    let ContentRef::InlineBytes { bytes_base64, .. } = &readme.content else {
+        panic!("repository content remains raw bytes")
+    };
+    use base64::Engine as _;
+    assert!(
+        String::from_utf8(STANDARD.decode(bytes_base64).unwrap())
+            .unwrap()
+            .contains("Fixture")
+    );
     fs::remove_dir_all(&repo).ok();
 }
 
