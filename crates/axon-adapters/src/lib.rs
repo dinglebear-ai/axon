@@ -51,6 +51,7 @@ pub use artifact_candidates::{
 pub use capability::{AdapterCapability, AdapterVersion};
 pub use enrichment::{NoopSourceEnricher, SourceEnricher};
 pub use family_matrix::{SourceFamilyMatrix, source_family_matrix};
+pub use local_select::DEFAULT_LOCAL_MAX_FILE_BYTES;
 pub use onboarding::{OnboardingRow, SourceOnboardingStatus, onboarding_rows, onboarding_status};
 pub use registry::SourceAdapterRegistry;
 pub use spec::{

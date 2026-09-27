@@ -324,7 +324,7 @@ async fn prepare_acquired_components(
     } = batch;
     source_progress::acquired(emitter, &acquisition).await;
 
-    let resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
+    let mut resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
     // Track in-batch artifacts with the cleanup guard as they are produced,
     // not only after batch success in `GenerationAccumulator::absorb` — a
     // later in-batch failure would otherwise orphan them (2026-08-23
@@ -340,16 +340,21 @@ async fn prepare_acquired_components(
         Vec::new()
     };
 
+    let mut enrichment_items = std::mem::take(&mut resolved.acquisition.fetched_items);
+    let fetched_count = enrichment_items.len();
+    enrichment_items.extend(resolved.cached_items_to_enrich);
     let mut enrichments = enrich_changed_items(
         runtime,
         input,
         emitter,
         coordinator,
         stage,
-        &resolved.acquisition.fetched_items,
+        &enrichment_items,
         is_final_batch,
     )
     .await?;
+    enrichment_items.truncate(fetched_count);
+    resolved.acquisition.fetched_items = enrichment_items;
     for enrichment in enrichments.values() {
         artifact_cleanup.track(&enrichment.artifacts).await?;
     }
@@ -370,8 +375,11 @@ async fn prepare_acquired_components(
             "normalizing source documents",
         )
         .await;
-    let normalized =
+    let mut normalized =
         reuse::normalize_acquisition(runtime, input, &batch_diff, resolved.acquisition).await?;
+    normalized.data.extend(resolved.cached_documents_to_prepare);
+    normalized.header.counts.documents_done = normalized.data.len() as u64;
+    normalized.header.counts.documents_total = Some(normalized.data.len() as u64);
     source_progress::normalized(emitter, generation, &normalized.header).await;
     let mut warnings = normalized.header.warnings.clone();
     let mut documents = normalized.data;

@@ -176,6 +176,18 @@ async fn discover_and_diff(
     Ok((manifest, diff, unvisited))
 }
 
+fn require_compatible_inventory(
+    diff: &SourceManifestDiff,
+    compatible: bool,
+    retains_unvisited: bool,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        compatible || diff.previous_generation.is_none() || !retains_unvisited,
+        "partial refresh cannot change processing configuration; complete refresh required"
+    );
+    Ok(())
+}
+
 async fn run_generation(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
@@ -202,10 +214,7 @@ async fn run_generation(
             }),
         None => false,
     };
-    anyhow::ensure!(
-        publication_config_unchanged || diff.previous_generation.is_none() || unvisited.is_empty(),
-        "partial refresh cannot change processing configuration; complete refresh required"
-    );
+    require_compatible_inventory(&diff, publication_config_unchanged, !unvisited.is_empty())?;
     retention::validate_retained(runtime.ledger.as_ref(), &mut diff, &unvisited).await?;
     if !manifest_has_changes(&diff) && publication_config_unchanged {
         return unchanged_result(

@@ -7,7 +7,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::adapter::Result;
 
-pub(crate) const DEFAULT_LOCAL_MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+pub const DEFAULT_LOCAL_MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 const ALLOWED_OPTIONS: &[&str] = &[
     "include_globs",

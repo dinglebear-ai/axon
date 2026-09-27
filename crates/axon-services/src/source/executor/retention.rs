@@ -3,24 +3,9 @@ use axon_api::source::*;
 use axon_ledger::store::LedgerStore;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Candidate count changes scan coverage, not the processing of each item.
-pub(super) fn processing_identity(
-    runtime: &crate::context::TargetLocalSourceRuntime,
-    input: &super::SourcePipelineInput<'_>,
-) -> ConfigSnapshotId {
-    let snapshot = crate::config_snapshot_hash::JobConfigSnapshot {
-        source_kind: input.adapter.name(),
-        source_ref: &input.plan.route.source.canonical_uri,
-        collection: input.collection,
-        embedding_provider_id: &runtime.embedding_provider_id.0,
-        vector_provider_id: &runtime.vector_provider_id.0,
-        embedding_model: &runtime.embedding_model,
-        embedding_dimensions: runtime.embedding_dimensions,
-        embed: input.plan.request.embed,
-        max_items: None,
-    };
-    crate::config_snapshot_hash::config_snapshot_id(&snapshot)
-}
+#[path = "retention/processing_identity.rs"]
+mod identity;
+pub(super) use identity::processing_identity;
 
 pub(super) async fn merge_inventory(
     ledger: &dyn LedgerStore,
@@ -56,7 +41,7 @@ pub(super) async fn merge_inventory(
     Ok(unvisited)
 }
 
-fn eligible(status: &DocumentStatus, generation: &SourceGenerationId) -> bool {
+pub(super) fn eligible(status: &DocumentStatus, generation: &SourceGenerationId) -> bool {
     status.generation.as_ref() == Some(generation)
         && matches!(
             status.status,

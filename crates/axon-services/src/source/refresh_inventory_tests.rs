@@ -247,3 +247,105 @@ async fn complete_feed_refresh_still_removes_absent_entries() {
         .unwrap();
     assert_eq!(summary.counts.documents_total, 1);
 }
+
+#[tokio::test]
+async fn incompatible_partial_refresh_rejects_then_complete_reprepares_every_item() {
+    let fixture = LocalRefresh::new();
+    fixture.write("a.txt", "first unchanged body");
+    fixture.write("b.txt", "second unchanged body");
+    let initial = fixture.run(None).await.unwrap();
+    let mut manifest = initial.published_manifest.unwrap();
+    manifest.metadata.insert(
+        "axon_publication_config_snapshot_id".into(),
+        "legacy-policy".into(),
+    );
+    fixture.ledger.put_manifest(manifest).await.unwrap();
+    let error = fixture.run(Some(1)).await.unwrap_err();
+    assert!(format!("{error:#}").contains("complete refresh required"));
+    assert_eq!(
+        fixture
+            .ledger
+            .committed_generation(&initial.source_id)
+            .await,
+        Some(initial.generation)
+    );
+    let fixed = fixture.run(None).await.unwrap();
+    assert_eq!(fixed.documents_prepared, 2);
+    let unchanged = fixture.run(None).await.unwrap();
+    assert_eq!(unchanged.documents_prepared, 0);
+    assert_eq!(unchanged.generation, fixed.generation);
+}
+
+#[tokio::test]
+async fn old_placeholder_is_retired_even_when_binary_manifest_is_unchanged() {
+    use sha2::{Digest, Sha256};
+    for scheduled in [false, true] {
+        let mut fixture = LocalRefresh::new();
+        fixture.runtime.embed_scheduler_enabled = scheduled;
+        fixture.write(
+            "asset.txt",
+            "binary file placeholder from legacy preparation",
+        );
+        let initial = fixture.run(None).await.unwrap();
+        assert!(initial.vector_points_written > 0);
+        let bytes = b"\x00\x01\x02";
+        fixture.write("asset.txt", bytes);
+        let mut manifest = initial.published_manifest.unwrap();
+        // Model a legacy acquisition: its inventory describes raw binary bytes,
+        // while the committed vector output contains synthetic placeholder text.
+        manifest.items[0].content_hash = Some(format!("sha256:{:x}", Sha256::digest(bytes)));
+        manifest.items[0].size_bytes = Some(bytes.len() as u64);
+        manifest.items[0].mtime = Some(Timestamp(
+            chrono::DateTime::<chrono::Utc>::from(
+                std::fs::metadata(fixture.root.path().join("asset.txt"))
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+            )
+            .to_rfc3339(),
+        ));
+        manifest.metadata.insert(
+            "axon_publication_config_snapshot_id".into(),
+            "legacy-policy".into(),
+        );
+        fixture.ledger.put_manifest(manifest).await.unwrap();
+        let fixed = fixture.run(None).await.unwrap();
+        assert_eq!(fixed.documents_prepared, 0);
+        assert_eq!(fixed.documents_skipped, 1);
+        assert!(
+            fixture
+                .vectors
+                .points("refresh")
+                .await
+                .iter()
+                .all(|point| !point.payload["retired_epoch"].is_null())
+        );
+        let repeated = fixture.run(None).await.unwrap();
+        assert_eq!(repeated.generation, fixed.generation);
+        assert_eq!(repeated.documents_prepared, 0);
+    }
+}
+
+#[tokio::test]
+async fn partial_policy_upgrade_is_safe_when_every_previous_item_was_visited() {
+    let fixture = LocalRefresh::new();
+    fixture.write("a.txt", "existing text body");
+    let initial = fixture.run(None).await.unwrap();
+    let mut manifest = initial.published_manifest.unwrap();
+    manifest.metadata.insert(
+        "axon_publication_config_snapshot_id".into(),
+        "legacy-policy".into(),
+    );
+    fixture.ledger.put_manifest(manifest).await.unwrap();
+    fixture.write("b.txt", "new unvisited body has no previous output");
+    let partial = fixture.run(Some(1)).await.unwrap();
+    assert_eq!(partial.documents_prepared, 1);
+    assert_eq!(partial.items_discovered, 1);
+    assert_eq!(
+        partial.published_manifest.unwrap().inventory_completeness(),
+        axon_api::source::InventoryCompleteness::Partial
+    );
+    let full = fixture.run(None).await.unwrap();
+    assert_eq!(full.documents_prepared, 1);
+    assert_eq!(full.items_discovered, 2);
+}

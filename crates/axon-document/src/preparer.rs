@@ -77,6 +77,17 @@ impl DocumentPreparer {
         }
     }
 
+    /// Effective preparation settings after the chunker normalizes its limits.
+    pub fn semantic_config(&self) -> DocumentPreparerConfig {
+        let limits = self.config.markdown_limits();
+        DocumentPreparerConfig {
+            max_content_bytes: self.config.max_content_bytes,
+            markdown_max_chars: limits.max_chars(),
+            markdown_min_chars: limits.min_chars(),
+            markdown_overlap_chars: limits.overlap_chars(),
+        }
+    }
+
     /// Restrict this preparer without raising its configured safety ceiling.
     pub fn with_content_byte_limit(mut self, limit: usize) -> Self {
         self.config.max_content_bytes = self.config.max_content_bytes.min(limit);

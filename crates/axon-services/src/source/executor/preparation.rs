@@ -8,6 +8,20 @@ use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest, PrepareSourc
 use futures_util::{StreamExt, stream};
 use tokio::sync::Semaphore;
 
+/// Shared by execution and publication compatibility; only the derived ceiling
+/// affects prepared output, not concurrency or the raw admission budget.
+pub(super) fn effective_content_limit(
+    preparer: &DocumentPreparer,
+    max_in_flight_bytes: usize,
+    max_bytes_per_item: Option<u64>,
+) -> usize {
+    max_bytes_per_item
+        .and_then(|limit| usize::try_from(limit).ok())
+        .unwrap_or(usize::MAX)
+        .min(max_in_flight_bytes / 5)
+        .min(preparer.semantic_config().max_content_bytes)
+}
+
 pub(super) async fn prepare_documents(
     documents: Vec<SourceDocument>,
     generation: &SourceGenerationId,
@@ -17,10 +31,7 @@ pub(super) async fn prepare_documents(
     max_in_flight_bytes: usize,
     max_bytes_per_item: Option<u64>,
 ) -> anyhow::Result<Vec<PrepareSourceDocumentResult>> {
-    let content_limit = max_bytes_per_item
-        .and_then(|limit| usize::try_from(limit).ok())
-        .unwrap_or(usize::MAX)
-        .min(max_in_flight_bytes / 5);
+    let content_limit = effective_content_limit(&preparer, max_in_flight_bytes, max_bytes_per_item);
     let preparer = preparer.with_content_byte_limit(content_limit);
     let generation = generation.clone();
     let work_items = documents
