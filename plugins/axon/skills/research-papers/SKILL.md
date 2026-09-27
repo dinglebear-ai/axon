@@ -117,4 +117,3 @@ output: [markdown/brief]
 - Every major claim should trace to a source.
 - Note inaccessible or failed PDFs.
 - Distinguish peer-reviewed work from blogs and vendor reports.
-- For current Axon capture patterns, see [capture-recipes.md](../../references/capture-recipes.md).

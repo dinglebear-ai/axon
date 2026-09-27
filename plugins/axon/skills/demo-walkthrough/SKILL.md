@@ -76,5 +76,3 @@ focus: [full/signup/pricing/docs/dashboard]
 - Be specific about screens, CTAs, forms, and transitions.
 - Separate observation from opinion.
 - Preserve every page visited.
-- For examples, see [workflow-output-templates.md](../../examples/workflow-output-templates.md).
-- For Axon/browser routing, see [capture-recipes.md](../../references/capture-recipes.md).

@@ -5,8 +5,7 @@ Use these recipes when a workflow needs concrete Axon evidence.
 ## Command Selection
 
 All indexing goes through the unified source command — `axon <source>` — with
-`--scope` only when the family default is wrong. `axon crawl`, `axon ingest`,
-and `axon embed` do not exist.
+`--scope` only when the family default is wrong. `axon crawl`, `axon ingest`, and `axon embed` are supported focused projections over the same source pipeline.
 
 | Need | Prefer |
 |---|---|

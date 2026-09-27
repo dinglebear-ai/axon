@@ -1,0 +1,3 @@
+interface:
+  display_name: "Axon Snippets"
+  short_description: "Find and run reusable Axon Code Mode snippets"

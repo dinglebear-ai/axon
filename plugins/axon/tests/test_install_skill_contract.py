@@ -14,8 +14,8 @@ class InstallAxonContractTest(unittest.TestCase):
         for value in required:
             self.assertIn(value, text)
 
-    def test_skill_is_explicit(self):
-        self.assertIn("allow_implicit_invocation: false", OPENAI.read_text())
+    def test_skill_is_discoverable(self):
+        self.assertIn("allow_implicit_invocation: true", OPENAI.read_text())
 
     def test_setup_cli_does_not_expose_google_secret(self):
         args = (ROOT / "crates" / "axon-core" / "src" / "config" / "cli" / "setup_args.rs").read_text()

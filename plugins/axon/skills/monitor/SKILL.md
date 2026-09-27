@@ -1,6 +1,6 @@
 ---
 name: monitor
-description: Use Axon source watches and job monitoring to track recurring source changes and observe durable job activity.
+description: Use when tracking recurring source changes with Axon watches or inspecting durable job activity.
 ---
 
 # Axon Monitor

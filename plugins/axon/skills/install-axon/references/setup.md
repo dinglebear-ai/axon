@@ -1,5 +1,7 @@
 # Axon setup
 
+Load when installing, configuring authentication, or deploying Axon for the first time.
+
 ## Install
 
 Current release trust is fail-closed. From reviewed source:

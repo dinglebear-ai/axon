@@ -1,6 +1,6 @@
 ---
 name: market-research
-description: Use for informational market, industry, company, earnings, or public financial research with Axon, not personalized investment advice.
+description: Use when researching a market, industry, company, earnings report, or public financial information with Axon.
 ---
 
 # Axon Market Research
@@ -70,4 +70,3 @@ output: [json/markdown]
 - Include period, unit, currency, source date, and observed date for every metric.
 - Separate reported facts, analyst estimates, and model-derived synthesis.
 - Do not provide personalized investment, trading, tax, legal, or financial advice.
-- For current Axon capture patterns, see [capture-recipes.md](../../references/capture-recipes.md).

@@ -92,9 +92,10 @@ Default `response_mode: "path"` writes large outputs under the configured Axon a
 
 ## Skills
 
-The plugin ships 26 plain-name Axon skills under `skills/`, including the first-run `install-axon` workflow. Because these
-skills already live inside the Axon plugin namespace, folder names do not carry
-an `axon-` prefix. Every skill includes `agents/openai.yaml` metadata.
+The plugin currently ships 27 Axon skills under `skills/`. The target surface is
+`install-axon`, `using-axon`, and `axon-snippets`; the other 24 remain installed
+while their replacement snippets are reviewed. Every skill includes
+`agents/openai.yaml` metadata.
 
 Action skills cover the core CLI/MCP surfaces; workflow skills cover
 outcome-focused research, monitoring, QA, shopping, and design deliverables.
@@ -103,6 +104,7 @@ outcome-focused research, monitoring, QA, shopping, and design deliverables.
 |-------|---------|
 | `install-axon` | Install, secure, deploy, connect, and verify an Axon runtime. |
 | `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
+| `axon-snippets` | Catalog and instructions for 24 checked-in Labby Code Mode snippets bundled under `skills/axon-snippets/snippets/`. |
 | `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
 | `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |
 
