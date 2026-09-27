@@ -311,17 +311,43 @@ pub(crate) fn content_fingerprint_and_spool_from_file(
     path_hint: &Path,
     spool_path: &Path,
     max_file_bytes: u64,
-) -> Result<String> {
+) -> Result<Option<String>> {
     file.rewind()
         .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
+    if file
+        .metadata()
+        .map_err(|err| fs_error("adapter.local.stat_failed", path_hint, err))?
+        .len()
+        > max_file_bytes
+    {
+        return Ok(None);
+    }
+    spool_bounded(file, path_hint, spool_path, max_file_bytes)
+}
+
+fn spool_bounded(
+    mut reader: impl Read,
+    path_hint: &Path,
+    spool_path: &Path,
+    max_file_bytes: u64,
+) -> Result<Option<String>> {
     let mut spool = File::create(spool_path)
         .map_err(|err| fs_error("adapter.local.spool_write_failed", path_hint, err))?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     let mut total = 0_u64;
     loop {
-        let read = file
-            .read(&mut buffer)
+        if max_file_bytes == 0 {
+            break;
+        }
+        let read = reader
+            .read(
+                &mut buffer[..usize::try_from(
+                    max_file_bytes.saturating_sub(total).saturating_add(1),
+                )
+                .unwrap_or(usize::MAX)
+                .min(64 * 1024)],
+            )
             .map_err(|err| fs_error("adapter.local.read_failed", path_hint, err))?;
         if read == 0 {
             break;
@@ -330,20 +356,14 @@ pub(crate) fn content_fingerprint_and_spool_from_file(
         if total > max_file_bytes {
             drop(spool);
             let _ = fs::remove_file(spool_path);
-            return Err(ApiError::new(
-                "adapter.local.file_too_large",
-                axon_error::ErrorStage::Fetching,
-                "local source item exceeds max_file_bytes while spooling",
-            )
-            .with_context("path_hint", public_path_hint(path_hint))
-            .with_context("max_file_bytes", max_file_bytes.to_string()));
+            return Ok(None);
         }
         hasher.update(&buffer[..read]);
         spool
             .write_all(&buffer[..read])
             .map_err(|err| fs_error("adapter.local.spool_write_failed", path_hint, err))?;
     }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(Some(format!("sha256:{:x}", hasher.finalize())))
 }
 
 fn enforce_read_size_from_file(

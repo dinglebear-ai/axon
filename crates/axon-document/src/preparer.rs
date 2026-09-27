@@ -77,13 +77,32 @@ impl DocumentPreparer {
         }
     }
 
+    /// Restrict this preparer without raising its configured safety ceiling.
+    pub fn with_content_byte_limit(mut self, limit: usize) -> Self {
+        self.config.max_content_bytes = self.config.max_content_bytes.min(limit);
+        self
+    }
+
+    fn classify_document(&self, document: &SourceDocument) -> Result<ContentDisposition, String> {
+        if document
+            .metadata
+            .get(axon_api::source::CONTENT_OMISSION_METADATA_KEY)
+            .and_then(serde_json::Value::as_str)
+            == Some("size_limit_exceeded")
+        {
+            return Ok(ContentDisposition::Skipped(
+                ContentSkipReason::SizeLimitExceeded,
+            ));
+        }
+        classify_content(&document.content, self.config.max_content_bytes)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn prepare(
         &self,
         mut request: PrepareSourceDocumentRequest,
     ) -> Result<PrepareSourceDocumentResult, String> {
-        let text = match classify_content(&request.document.content, self.config.max_content_bytes)
-            .map_err(|error| error.to_string())?
-        {
+        let text = match self.classify_document(&request.document)? {
             ContentDisposition::Text(text) => text,
             ContentDisposition::Skipped(reason) => {
                 return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
@@ -91,6 +110,8 @@ impl DocumentPreparer {
                 )));
             }
         };
+        // Acquisition policy remains in source provenance, outside vector metadata.
+        request.document.metadata.remove("binary_policy");
         // Release the transport body before redaction and parsing allocate output.
         request.document.content = ContentRef::InlineText {
             text: String::new(),

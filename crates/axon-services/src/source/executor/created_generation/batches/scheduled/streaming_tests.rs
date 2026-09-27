@@ -1,0 +1,88 @@
+use super::*;
+use axon_adapters::{FakeSourceAdapter, SourceAdapter};
+use axon_ledger::store::{FakeLedgerStore, LedgerStore};
+use std::sync::Arc;
+
+#[tokio::test]
+async fn slow_consumer_bounds_completed_file_acquisitions() {
+    let source = "https://example.com/bounded";
+    let route =
+        crate::source::routing::resolve_source_route(&SourceRequest::new(source.to_owned()))
+            .unwrap()
+            .route;
+    let mut plan = crate::source::dispatch::family_source_plan(source, &route, false, None, None);
+    let mut adapter = FakeSourceAdapter::new(plan.route.adapter.clone());
+    for i in 0..8 {
+        adapter = adapter.with_item(format!("item-{i}"), ContentKind::PlainText, "body");
+    }
+    let adapter = Arc::new(adapter);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let mut diff = FakeLedgerStore::default()
+        .diff_manifest(manifest)
+        .await
+        .unwrap();
+    for item in &mut diff.added {
+        item.size_bytes = Some(axon_adapters::acquisition::DEFAULT_ACQUISITION_BATCH_BYTES);
+    }
+    plan.route.source.source_kind = SourceKind::Git;
+    let (tx, mut rx) = mpsc::channel(2);
+    let observed = adapter.clone();
+    let task = tokio::spawn(async move {
+        let execution =
+            crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
+        let input = SourcePipelineInput {
+            adapter: adapter.as_ref(),
+            plan,
+            collection: "bounded",
+            owner_id: "test",
+            auth_snapshot: None,
+            execution: &execution,
+        };
+        acquire_files(&input, &diff, tx, &CancellationToken::new(), 1024).await
+    });
+    wait_for_acquisitions(&observed, 3).await;
+    assert_eq!(
+        rx.len(),
+        2,
+        "two ready batches plus one producer-held batch"
+    );
+    assert_eq!(
+        observed
+            .calls()
+            .iter()
+            .filter(|&&call| call == "acquire")
+            .count(),
+        3
+    );
+    drop(rx.recv().await.unwrap());
+    wait_for_acquisitions(&observed, 4).await;
+    assert_eq!(
+        observed
+            .calls()
+            .iter()
+            .filter(|&&call| call == "acquire")
+            .count(),
+        4
+    );
+    drop(rx);
+    assert!(
+        task.await.unwrap().is_err(),
+        "producer settles when consumer closes"
+    );
+}
+
+async fn wait_for_acquisitions(adapter: &FakeSourceAdapter, expected: usize) {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while adapter
+            .calls()
+            .iter()
+            .filter(|&&call| call == "acquire")
+            .count()
+            < expected
+        {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("producer advances to its bounded send");
+}

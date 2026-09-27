@@ -1207,3 +1207,81 @@ fn markdown_windowed_fallback_honors_injected_limits() {
         "fallback windows must honor the injected markdown max_chars"
     );
 }
+
+#[test]
+fn acquisition_size_omission_preserves_identity_and_reason() {
+    use axon_api::source::{CONTENT_OMISSION_METADATA_KEY, ContentSkipReason};
+    let mut input = request(
+        ContentKind::PlainText,
+        "",
+        "gen-omitted",
+        ChunkingProfile::MarkdownSections,
+    );
+    input.document.metadata.insert(
+        CONTENT_OMISSION_METADATA_KEY.into(),
+        serde_json::json!("size_limit_exceeded"),
+    );
+    input
+        .document
+        .metadata
+        .insert("binary_policy".into(), serde_json::json!("include"));
+    let expected_id = input.document.document_id.clone();
+    let PrepareSourceDocumentResult::Skipped(skipped) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("expected size skip")
+    };
+    assert_eq!(skipped.document_id, expected_id);
+    assert_eq!(skipped.reason, ContentSkipReason::SizeLimitExceeded);
+}
+
+#[test]
+fn content_limit_override_never_raises_configured_ceiling() {
+    use axon_api::source::ContentSkipReason;
+    for limit in [0, 2, usize::MAX] {
+        let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+            max_content_bytes: 2,
+            ..Default::default()
+        })
+        .with_content_byte_limit(limit);
+        let input = request(
+            ContentKind::PlainText,
+            "abc",
+            "gen-limit",
+            ChunkingProfile::MarkdownSections,
+        );
+        let PrepareSourceDocumentResult::Skipped(skipped) = preparer.prepare(input).unwrap() else {
+            panic!("expected size skip")
+        };
+        assert_eq!(skipped.reason, ContentSkipReason::SizeLimitExceeded);
+    }
+}
+
+#[test]
+fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
+    for policy in ["skip", "metadata", "include"] {
+        let mut input = request(
+            ContentKind::PlainText,
+            "Local text remains searchable.",
+            "gen-local-policy",
+            ChunkingProfile::MarkdownSections,
+        );
+        input
+            .document
+            .metadata
+            .insert("binary_policy".into(), serde_json::json!(policy));
+        let PrepareSourceDocumentResult::Prepared(prepared) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("expected supported Local text")
+        };
+        assert!(!prepared.metadata.contains_key("binary_policy"));
+        assert!(!prepared.chunks.is_empty());
+        assert!(
+            prepared
+                .chunks
+                .iter()
+                .all(|chunk| !chunk.metadata.contains_key("binary_policy"))
+        );
+    }
+}

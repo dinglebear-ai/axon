@@ -1,5 +1,6 @@
 //! Local filesystem source adapter.
 
+mod acquisition;
 mod discovery;
 pub(crate) mod local_io;
 mod root_state;
@@ -22,7 +23,7 @@ use self::discovery::{
     collect_capped_file_candidates, collect_manifest_items_parallel, hash_file_candidates_parallel,
     manifest_item_from_path, public_base_uri, root_for_item_keys,
 };
-use self::local_io::{LocalRootHandle, read_content_ref_from_file};
+use self::local_io::LocalRootHandle;
 pub use self::root_state::LocalSourceAdapter;
 
 pub const MODULE_NAME: &str = "local";
@@ -135,7 +136,9 @@ fn discover_sync(
     let capability = local_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION);
     capability.validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
-    let options = validate_options(&plan.route.validated_options)?;
+    let mut options = validate_options(&plan.route.validated_options)?;
+    options.max_file_bytes =
+        crate::file_payload::effective_item_limit(plan, options.max_file_bytes);
     if options.follow_symlinks {
         return Err(ApiError::new(
             "adapter.local.symlinks_unsupported",
@@ -257,56 +260,36 @@ fn acquire_sync(
     }
     let root = PathBuf::from(&plan.request.source);
     let root_for_keys = root_for_item_keys(&root, plan.route.scope);
-    let manifest_items = diff
+    let mut manifest_items = diff
         .added
         .iter()
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let options = validate_options(&plan.route.validated_options)?;
+    let mut options = validate_options(&plan.route.validated_options)?;
+    options.max_file_bytes =
+        crate::file_payload::effective_item_limit(plan, options.max_file_bytes);
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
-    for item in &manifest_items {
-        // Discovery snapshots avoid reopening mutable source paths, but callers
-        // must still supply contained logical keys before selecting spool data.
-        local_io::validate_item_key(&item.source_item_key.0)?;
-        let path = root_for_keys.join(&item.source_item_key.0);
-        let file = std::fs::File::open(discovery::spool_path(spool_dir, &item.source_item_key.0))
-            .map_err(|error| {
-            local_io::fs_error("adapter.local.spool_read_failed", &path, error)
-        })?;
-        let acquired_size = file
-            .metadata()
-            .map_err(|error| local_io::fs_error("adapter.local.stat_failed", &path, error))?
-            .len();
-        let (content_ref, acquired_hash) = read_content_ref_from_file(file, &path, &options)?;
-        if item.size_bytes != Some(acquired_size)
-            || item.content_hash.as_deref() != Some(&acquired_hash)
-        {
-            let mut error = ApiError::new(
-                "adapter.local.source_changed",
+    let allowance = crate::file_payload::batch_byte_limit(plan)
+        .min(plan.limits.effective.max_total_bytes.unwrap_or(u64::MAX));
+    let mut bytes_done = 0u64;
+    for item in &mut manifest_items {
+        let (fetched, bytes) = acquisition::acquire_item(
+            item,
+            root_for_keys,
+            spool_dir,
+            &options,
+            allowance.saturating_sub(bytes_done),
+        )?;
+        bytes_done = bytes_done.checked_add(bytes).ok_or_else(|| {
+            ApiError::new(
+                "source.acquire.byte_budget_exceeded",
                 ErrorStage::Fetching,
-                "local source changed between discovery and acquisition; retry the source job",
+                "acquisition byte count overflow",
             )
-            .with_context("source_item_key", item.source_item_key.0.clone())
-            .with_context(
-                "discovered_hash",
-                item.content_hash.clone().unwrap_or_default(),
-            )
-            .with_context("acquired_hash", acquired_hash);
-            error.retryable = true;
-            return Err(error);
-        }
-        fetched_items.push(AcquiredSourceItem {
-            manifest_item: item.clone(),
-            fetch_status: LifecycleStatus::Completed,
-            content_ref,
-            raw_artifact_id: None,
-            headers: RedactedHeaders {
-                headers: Vec::new(),
-            },
-            fetched_at: timestamp(),
-            metadata: MetadataMap::new(),
-        });
+        })?;
+        *item = fetched.manifest_item.clone();
+        fetched_items.push(fetched);
     }
 
     let manifest = SourceManifest {
@@ -319,13 +302,16 @@ fn acquire_sync(
         metadata: MetadataMap::new(),
     };
 
+    let mut header = stage_header(
+        plan.job_id,
+        "local_fetch",
+        PipelinePhase::Fetching,
+        fetched_items.len(),
+    );
+    header.counts.bytes_done = bytes_done;
+    header.counts.bytes_total = Some(bytes_done);
     Ok(SourceAcquisition {
-        header: stage_header(
-            plan.job_id,
-            "local_fetch",
-            PipelinePhase::Fetching,
-            fetched_items.len(),
-        ),
+        header,
         source_id: manifest.source_id.clone(),
         generation: manifest.generation.clone(),
         adapter: manifest.adapter.clone(),
@@ -363,6 +349,13 @@ fn local_source_document(
     binary_policy: &str,
 ) -> SourceDocument {
     let mut metadata = MetadataMap::new();
+    if let Some(reason) = item
+        .manifest_item
+        .metadata
+        .get(CONTENT_OMISSION_METADATA_KEY)
+    {
+        metadata.insert(CONTENT_OMISSION_METADATA_KEY.into(), reason.clone());
+    }
     metadata.insert("source_family".to_string(), json!("code"));
     metadata.insert("source_kind".to_string(), json!("local"));
     // Selection and acquisition do not interpret this as permission to embed bytes.

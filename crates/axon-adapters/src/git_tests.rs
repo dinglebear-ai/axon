@@ -338,3 +338,109 @@ async fn discover_rejects_non_git_source_kind() {
     assert_eq!(err.code.to_string(), "adapter.git.mismatch");
     fs::remove_dir_all(&repo).ok();
 }
+
+#[tokio::test]
+async fn oversized_git_items_remain_inventoried_without_hash_or_payload() {
+    let repo = fixture_repo();
+    fs::write(repo.join("large.bin"), b"12345").unwrap();
+    let mut plan = git_plan(&repo, SourceScope::Repo, true);
+    plan.limits.effective.max_bytes_per_item = Some(4);
+    let adapter = GitSourceAdapter::new();
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let item = manifest
+        .items
+        .iter()
+        .find(|i| i.display_path.as_deref() == Some("large.bin"))
+        .unwrap();
+    assert!(item.content_hash.is_none());
+    assert_eq!(
+        item.metadata.get(CONTENT_OMISSION_METADATA_KEY),
+        Some(&json!("size_limit_exceeded"))
+    );
+    let acquisition = adapter
+        .acquire(&plan, &diff_from(&plan, vec![item.clone()]))
+        .await
+        .unwrap();
+    assert_eq!(acquisition.header.counts.bytes_done, 0);
+    let documents = adapter.normalize(&plan, acquisition).await.unwrap();
+    assert_eq!(
+        documents.data[0]
+            .metadata
+            .get(CONTENT_OMISSION_METADATA_KEY),
+        Some(&json!("size_limit_exceeded"))
+    );
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[tokio::test]
+async fn git_acquisition_enforces_actual_total_and_batch_allowance() {
+    let repo = fixture_repo();
+    fs::write(repo.join("a.txt"), b"abc").unwrap();
+    fs::write(repo.join("b.txt"), b"def").unwrap();
+    let mut plan = git_plan(&repo, SourceScope::Repo, true);
+    let adapter = GitSourceAdapter::new();
+    let items = adapter
+        .discover(&plan)
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .filter(|i| matches!(i.display_path.as_deref(), Some("a.txt" | "b.txt")))
+        .collect::<Vec<_>>();
+    let diff = diff_from(&plan, items);
+    plan.limits.effective.max_total_bytes = Some(6);
+    assert_eq!(
+        adapter
+            .acquire(&plan, &diff)
+            .await
+            .unwrap()
+            .header
+            .counts
+            .bytes_done,
+        6
+    );
+    plan.limits.effective.max_total_bytes = Some(5);
+    assert_eq!(
+        adapter.acquire(&plan, &diff).await.unwrap_err().code.0,
+        "source.acquire.byte_budget_exceeded"
+    );
+    plan.limits.effective.max_total_bytes = None;
+    plan.route.source.metadata.insert(
+        crate::acquisition::ACQUISITION_BATCH_BYTES_KEY.into(),
+        json!(5),
+    );
+    assert!(adapter.acquire(&plan, &diff).await.is_err());
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[tokio::test]
+async fn git_growth_after_discovery_obeys_acquisition_limit() {
+    let repo = fixture_repo();
+    fs::write(repo.join("growing.txt"), b"abc").unwrap();
+    let mut plan = git_plan(&repo, SourceScope::Repo, true);
+    plan.limits.effective.max_bytes_per_item = Some(4);
+    let adapter = GitSourceAdapter::new();
+    let item = adapter
+        .discover(&plan)
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .find(|i| i.display_path.as_deref() == Some("growing.txt"))
+        .unwrap();
+    assert!(item.content_hash.is_some());
+    fs::write(repo.join("growing.txt"), b"abcde").unwrap();
+    let acquisition = adapter
+        .acquire(&plan, &diff_from(&plan, vec![item]))
+        .await
+        .unwrap();
+    assert_eq!(acquisition.header.counts.bytes_done, 0);
+    assert!(acquisition.manifest.items[0].content_hash.is_none());
+    assert_eq!(
+        acquisition.manifest.items[0]
+            .metadata
+            .get(CONTENT_OMISSION_METADATA_KEY),
+        Some(&json!("size_limit_exceeded"))
+    );
+    fs::remove_dir_all(repo).unwrap();
+}

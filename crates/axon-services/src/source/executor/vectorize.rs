@@ -82,6 +82,7 @@ pub(super) async fn prepare_embed_publish(
                         document_preparer,
                         runtime.document_prepare_concurrency,
                         runtime.document_prepare_max_in_flight_bytes,
+                        input.plan.limits.effective.max_bytes_per_item,
                     )
                 }
             },
@@ -214,6 +215,7 @@ pub(super) async fn prepare_generation_documents(
                     document_preparer,
                     concurrency,
                     max_in_flight_bytes,
+                    input.plan.limits.effective.max_bytes_per_item,
                 )
                 .await
             }

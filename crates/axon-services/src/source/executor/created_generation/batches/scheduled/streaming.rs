@@ -27,7 +27,13 @@ pub(super) async fn prepare(
     // Two ready acquisitions may queue while one is prepared. The acquisition
     // future owns the last sender so completion always closes this channel.
     let (tx, rx) = mpsc::channel(2);
-    let acquire = acquire_waves(context.input, context.diff, tx, cancel);
+    let acquire = acquire_waves(
+        context.input,
+        context.diff,
+        tx,
+        cancel,
+        context.runtime.document_prepare_max_in_flight_bytes,
+    );
     let mut state = Preparation {
         context,
         stage,
@@ -69,7 +75,11 @@ async fn acquire_waves(
     diff: &SourceManifestDiff,
     tx: mpsc::Sender<StreamedAcquisition>,
     cancel: &CancellationToken,
+    preparation_bytes: usize,
 ) -> Result<(), ApiError> {
+    if super::super::budget::file_backed(&input.plan) {
+        return acquire_files(input, diff, tx, cancel, preparation_bytes).await;
+    }
     let size = acquire_batch_size();
     let waves = batch_changed_diff_ramped(diff, first_acquire_batch_size(size), size);
     // One next-wave prefetch only for adapters that opt into it. Both waves
@@ -105,6 +115,52 @@ async fn acquire_waves(
         }
     }
     first_error.map_or(Ok(()), Err)
+}
+
+async fn acquire_files(
+    input: &SourcePipelineInput<'_>,
+    diff: &SourceManifestDiff,
+    tx: mpsc::Sender<StreamedAcquisition>,
+    cancel: &CancellationToken,
+    preparation_bytes: usize,
+) -> Result<(), ApiError> {
+    let size = acquire_batch_size();
+    let mut budget = super::super::budget::AcquisitionBudget::new(&input.plan, preparation_bytes);
+    for (ordinal, batch) in super::super::budget::changed_batches(
+        &input.plan,
+        diff,
+        first_acquire_batch_size(size),
+        size,
+    )
+    .enumerate()
+    {
+        if cancel.is_cancelled() {
+            return Err(ApiError::new(
+                "source.acquire.canceled",
+                ErrorStage::Fetching,
+                "acquisition canceled before wave admission",
+            ));
+        }
+        let items_attempted = (batch.diff.added.len() + batch.diff.modified.len()) as u64;
+        let plan = budget.plan(&input.plan);
+        let acquisition = input.adapter.acquire(&plan, &batch.diff).await?;
+        budget.charge(&acquisition)?;
+        tx.send(StreamedAcquisition {
+            ordinal,
+            is_final: batch.is_final,
+            items_attempted,
+            acquisition,
+        })
+        .await
+        .map_err(|_| {
+            ApiError::new(
+                "source.acquire.stream_closed",
+                ErrorStage::Fetching,
+                "scheduled acquisition stream closed before provider settlement",
+            )
+        })?;
+    }
+    Ok(())
 }
 
 struct Preparation<'a, 'input> {
@@ -251,3 +307,7 @@ impl<'a> DiffIndex<'a> {
         diff
     }
 }
+
+#[cfg(test)]
+#[path = "streaming_tests.rs"]
+mod tests;

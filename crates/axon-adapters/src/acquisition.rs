@@ -3,6 +3,11 @@
 use axon_api::source::*;
 use std::path::{Path, PathBuf};
 
+/// Internal scheduler hint for finite acquisition batches.
+pub const ACQUISITION_BATCH_BYTES_KEY: &str = "axon.acquisition_batch_max_bytes";
+pub const DEFAULT_ACQUISITION_BATCH_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_FILE_CONTENT_BYTES: u64 = 64 * 1024 * 1024;
+
 pub type AcquisitionManifest = SourceManifest;
 pub type AcquiredItem = AcquiredSourceItem;
 pub type FetchStatus = LifecycleStatus;

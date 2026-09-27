@@ -201,10 +201,22 @@ fn git_manifest_item(
     if !meta.is_file() {
         return Ok(None);
     }
-    let content_hash = content_fingerprint(&path)?;
+    let cap =
+        crate::file_payload::effective_item_limit(plan, crate::acquisition::MAX_FILE_CONTENT_BYTES);
+    let content_hash = if meta.len() > cap {
+        None
+    } else {
+        content_fingerprint(&path, cap)?
+    };
     let identity = item_identity(SourceKind::Git, base_uri, key)?;
     let mut item_metadata = MetadataMap::new();
     item_metadata.insert("git_relative_path".to_string(), json!(key));
+    if content_hash.is_none() {
+        item_metadata.insert(
+            CONTENT_OMISSION_METADATA_KEY.to_owned(),
+            json!("size_limit_exceeded"),
+        );
+    }
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),
         source_item_key: identity.source_item_key,
@@ -214,7 +226,7 @@ fn git_manifest_item(
         display_path: Some(key.to_string()),
         parent_key: None,
         size_bytes: Some(meta.len()),
-        content_hash: Some(content_hash),
+        content_hash,
         mtime: None,
         version: None,
         fetch_plan: None,
@@ -277,8 +289,10 @@ pub(super) fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
 }
 
 // Hash raw bytes; shared document preparation decides indexing eligibility.
-fn content_fingerprint(path: &Path) -> Result<String> {
-    let mut file = File::open(path).map_err(|err| fs_error("read_failed", path, err))?;
+fn content_fingerprint(path: &Path, cap: u64) -> Result<Option<String>> {
+    let file = File::open(path).map_err(|err| fs_error("read_failed", path, err))?;
+    let mut file = file.take(cap.saturating_add(1));
+    let mut bytes_read = 0u64;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
@@ -288,9 +302,13 @@ fn content_fingerprint(path: &Path) -> Result<String> {
         if read == 0 {
             break;
         }
+        bytes_read += read as u64;
+        if bytes_read > cap {
+            return Ok(None);
+        }
         hasher.update(&buffer[..read]);
     }
-    Ok(hex_prefix(&hasher.finalize(), 16))
+    Ok(Some(hex_prefix(&hasher.finalize(), 16)))
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {

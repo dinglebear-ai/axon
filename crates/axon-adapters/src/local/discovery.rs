@@ -267,7 +267,7 @@ fn local_file_candidate(
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", &path, err))?;
-    if !metadata.is_file() || metadata.len() > options.max_file_bytes {
+    if !metadata.is_file() {
         return Ok(None);
     }
     Ok(Some(LocalFileCandidate { key, path }))
@@ -321,15 +321,26 @@ fn manifest_item_from_open_path(
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", path, err))?;
-    if !metadata.is_file() || metadata.len() > options.max_file_bytes {
+    if !metadata.is_file() {
         return Ok(None);
     }
-    let content_hash = content_fingerprint_and_spool_from_file(
-        file,
-        path,
-        &spool_path(spool_dir, key),
-        options.max_file_bytes,
-    )?;
+    let content_hash = if metadata.len() > options.max_file_bytes {
+        None
+    } else {
+        content_fingerprint_and_spool_from_file(
+            file,
+            path,
+            &spool_path(spool_dir, key),
+            options.max_file_bytes,
+        )?
+    };
+    let mut resource_metadata = MetadataMap::new();
+    if content_hash.is_none() {
+        resource_metadata.insert(
+            CONTENT_OMISSION_METADATA_KEY.into(),
+            "size_limit_exceeded".into(),
+        );
+    }
     let identity = item_identity(SourceKind::Local, base_uri, key)?;
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),
@@ -340,11 +351,11 @@ fn manifest_item_from_open_path(
         display_path: Some(key.to_string()),
         parent_key: None,
         size_bytes: Some(metadata.len()),
-        content_hash: Some(content_hash),
+        content_hash,
         mtime: modified_at(metadata.modified().ok()),
         version: None,
         fetch_plan: None,
-        metadata: MetadataMap::new(),
+        metadata: resource_metadata,
         graph_hints: Vec::new(),
     }))
 }

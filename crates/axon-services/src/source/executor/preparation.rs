@@ -15,7 +15,13 @@ pub(super) async fn prepare_documents(
     preparer: DocumentPreparer,
     concurrency: usize,
     max_in_flight_bytes: usize,
+    max_bytes_per_item: Option<u64>,
 ) -> anyhow::Result<Vec<PrepareSourceDocumentResult>> {
+    let content_limit = max_bytes_per_item
+        .and_then(|limit| usize::try_from(limit).ok())
+        .unwrap_or(usize::MAX)
+        .min(max_in_flight_bytes / 5);
+    let preparer = preparer.with_content_byte_limit(content_limit);
     let generation = generation.clone();
     let work_items = documents
         .into_iter()
@@ -52,8 +58,15 @@ pub(super) async fn prepare_documents(
 
 fn source_document_bytes(document: &SourceDocument) -> usize {
     let content_bytes = match &document.content {
-        ContentRef::InlineText { text } => text.len(),
-        ContentRef::InlineBytes { bytes_base64, .. } => bytes_base64.len(),
+        ContentRef::InlineText { text } => text.len().saturating_mul(2),
+        ContentRef::InlineBytes { bytes_base64, .. } => {
+            // Transport plus decoded bytes and worst-case UTF-16 to UTF-8 output.
+            let decoded = bytes_base64.len().saturating_add(3) / 4 * 3;
+            bytes_base64
+                .len()
+                .saturating_add(decoded)
+                .saturating_add(decoded.saturating_mul(2))
+        }
         ContentRef::Artifact { artifact_id } => artifact_id.0.len(),
         ContentRef::External { uri, integrity } => {
             uri.len() + integrity.as_ref().map_or(0, String::len)
@@ -79,12 +92,15 @@ where
     W: Fn(&T) -> usize,
     F: Fn(T) -> anyhow::Result<R> + Send + Sync + 'static,
 {
-    let byte_budget = byte_budget.max(1).min(u32::MAX as usize);
+    let byte_budget = byte_budget.min(u32::MAX as usize);
+    if items.iter().any(|item| weight(item).max(1) > byte_budget) {
+        anyhow::bail!("document preparation item exceeds resident byte budget");
+    }
     let byte_slots = Arc::new(Semaphore::new(byte_budget));
     let work = Arc::new(work);
     let mut output = stream::iter(items.into_iter().enumerate())
         .map(|(index, item)| {
-            let permits = weight(&item).max(1).min(byte_budget) as u32;
+            let permits = weight(&item).max(1) as u32;
             let byte_slots = Arc::clone(&byte_slots);
             let work = Arc::clone(&work);
             async move {

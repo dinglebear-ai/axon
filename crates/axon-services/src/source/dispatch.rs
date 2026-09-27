@@ -148,6 +148,7 @@ pub(crate) async fn dispatch_git(
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
+    limits: &SourceLimits,
     route: &axon_api::source::RoutePlan,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
@@ -156,6 +157,9 @@ pub(crate) async fn dispatch_git(
     ));
     let materializer = Arc::clone(&adapter);
     let mut plan = family_source_plan(input, route, embed, None, None);
+    plan.request.limits = limits.clone();
+    plan.limits.request = limits.clone();
+    plan.limits.effective = limits.clone();
     if !cfg.ingest_exclude_paths.is_empty() {
         plan.request.options.values.insert(
             "exclude_paths".to_string(),

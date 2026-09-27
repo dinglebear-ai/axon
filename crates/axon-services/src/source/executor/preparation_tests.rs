@@ -33,16 +33,16 @@ async fn bounded_blocking_map_runs_concurrently_and_preserves_input_order() {
 }
 
 #[tokio::test]
-async fn bounded_blocking_map_allows_one_oversized_item_to_make_progress() {
+async fn bounded_blocking_map_rejects_oversized_item_without_deadlock() {
     let output = tokio::time::timeout(
         Duration::from_secs(1),
         bounded_blocking_map_in_order(vec![8_usize], 2, 4, |item| *item, Ok),
     )
     .await
     .expect("oversized item must not deadlock")
-    .expect("bounded blocking map");
+    .expect_err("overweight item must be rejected");
 
-    assert_eq!(output, vec![8]);
+    assert!(output.to_string().contains("exceeds resident byte budget"));
 }
 
 #[tokio::test]
@@ -116,6 +116,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
         preparer,
         1,
         64 * 1024 * 1024,
+        None,
     )
     .await
     .expect("prepare documents");
@@ -130,4 +131,74 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
             .iter()
             .all(|chunk| chunk.content.chars().count() <= 48)
     );
+}
+
+#[tokio::test]
+async fn zero_preparation_budget_starts_no_work() {
+    let started = Arc::new(AtomicUsize::new(0));
+    let observed = started.clone();
+    let result = bounded_blocking_map_in_order(
+        vec![0],
+        1,
+        0,
+        |_| 0,
+        move |item| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(item)
+        },
+    )
+    .await;
+    assert!(result.is_err());
+    assert_eq!(started.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn request_zero_content_limit_produces_explicit_size_skip() {
+    let document = preparation_test_document(ContentRef::InlineText {
+        text: "text".into(),
+    });
+    let output = prepare_documents(
+        vec![document],
+        &SourceGenerationId::from("generation-limit"),
+        &BTreeMap::new(),
+        DocumentPreparer::default(),
+        1,
+        1024,
+        Some(0),
+    )
+    .await
+    .unwrap();
+    assert!(
+        matches!(&output[0], PrepareSourceDocumentResult::Skipped(skipped) if skipped.reason == ContentSkipReason::SizeLimitExceeded)
+    );
+}
+
+#[test]
+fn raw_body_admission_covers_transport_decode_and_utf8_expansion() {
+    let document = preparation_test_document(ContentRef::InlineBytes {
+        bytes_base64: "AAAAAAAA".into(),
+        mime_type: "application/octet-stream".into(),
+    });
+    // Eight transport bytes, six decoded bytes, twelve output bytes.
+    assert!(source_document_bytes(&document) >= 8 + 6 + 12);
+}
+
+fn preparation_test_document(content: ContentRef) -> SourceDocument {
+    SourceDocument {
+        document_id: DocumentId::from("doc-limit"),
+        source_id: SourceId::from("source-limit"),
+        source_item_key: SourceItemKey::from("item-limit"),
+        canonical_uri: "local://limit".into(),
+        content_kind: ContentKind::PlainText,
+        content,
+        metadata: MetadataMap::new(),
+        title: None,
+        language: None,
+        path: None,
+        mime_type: None,
+        structured_payload: None,
+        artifact_id: None,
+        chunk_hints: Vec::new(),
+        parser_hints: Vec::new(),
+    }
 }

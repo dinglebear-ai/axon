@@ -18,6 +18,7 @@ pub mod cli_tool;
 pub mod enrichment;
 pub mod family_matrix;
 pub mod feed;
+mod file_payload;
 pub mod git;
 pub mod local;
 mod local_select;

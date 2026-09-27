@@ -912,3 +912,84 @@ async fn local_binary_options_preserve_raw_bodies_and_source_selection() {
         }
     }
 }
+
+#[tokio::test]
+async fn local_oversized_sparse_file_retains_inventory_without_hash_or_spool() {
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    fs::File::create(root.join("large.txt"))
+        .unwrap()
+        .set_len(1 << 30)
+        .unwrap();
+    let mut plan = source_plan(root, SourceScope::Directory);
+    plan.limits.effective.max_bytes_per_item = Some(4);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    assert_eq!(manifest.items.len(), 1);
+    assert!(manifest.items[0].content_hash.is_none());
+    assert_eq!(
+        manifest.items[0].metadata[CONTENT_OMISSION_METADATA_KEY],
+        "size_limit_exceeded"
+    );
+    assert_eq!(adapter.discovery_spool_file_count(plan.job_id), 0);
+    let acquisition = adapter
+        .acquire(&plan, &manifest_diff(&plan, manifest.items))
+        .await
+        .unwrap();
+    assert_eq!(acquisition.header.counts.bytes_done, 0);
+    let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
+    assert_eq!(
+        normalized.data[0].metadata[CONTENT_OMISSION_METADATA_KEY],
+        "size_limit_exceeded"
+    );
+}
+
+#[tokio::test]
+async fn local_acquisition_byte_limits_are_exact_and_zero_does_not_fetch() {
+    for limit in [0, 3, 4, u64::MAX] {
+        let adapter = LocalSourceAdapter::new();
+        let root = temp_source_dir();
+        fs::write(root.join("body.txt"), b"1234").unwrap();
+        let mut plan = source_plan(root, SourceScope::Directory);
+        plan.limits.effective.max_bytes_per_item = Some(limit);
+        let manifest = adapter.discover(&plan).await.unwrap();
+        let acquisition = adapter
+            .acquire(&plan, &manifest_diff(&plan, manifest.items))
+            .await
+            .unwrap();
+        assert_eq!(
+            acquisition.header.counts.bytes_done,
+            if limit < 4 { 0 } else { 4 }
+        );
+        let item = &acquisition.fetched_items[0];
+        assert_eq!(
+            item.manifest_item
+                .metadata
+                .contains_key(CONTENT_OMISSION_METADATA_KEY),
+            limit < 4
+        );
+    }
+}
+
+#[tokio::test]
+async fn local_acquisition_fails_when_job_or_resident_batch_budget_is_exhausted() {
+    for (total, batch) in [(Some(0), None), (Some(5), None), (None, Some(5))] {
+        let adapter = LocalSourceAdapter::new();
+        let root = temp_source_dir();
+        fs::write(root.join("a.txt"), b"abc").unwrap();
+        fs::write(root.join("b.txt"), b"def").unwrap();
+        let mut plan = source_plan(root, SourceScope::Directory);
+        plan.limits.effective.max_total_bytes = total;
+        if let Some(batch) = batch {
+            plan.route.source.metadata.insert(
+                crate::acquisition::ACQUISITION_BATCH_BYTES_KEY.into(),
+                serde_json::json!(batch),
+            );
+        }
+        let manifest = adapter.discover(&plan).await.unwrap();
+        let error = adapter
+            .acquire(&plan, &manifest_diff(&plan, manifest.items))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code.0, "source.acquire.byte_budget_exceeded");
+    }
+}

@@ -4,6 +4,10 @@ use crate::source::executor::generation_work::PreparedBatchSideEffects;
 use std::future::Future;
 use std::time::Instant;
 
+#[path = "batches/budget.rs"]
+mod budget;
+use budget::AcquisitionBudget;
+
 #[path = "batches/scheduled.rs"]
 mod scheduled;
 
@@ -20,7 +24,7 @@ struct AcquiredChangedBatch {
 }
 
 async fn process_and_acquire_next<P, A, Process, Acquire>(
-    adapter: &dyn axon_adapters::SourceAdapter,
+    prefetch: bool,
     process: Process,
     acquire: Acquire,
 ) -> (anyhow::Result<P>, Option<anyhow::Result<A>>)
@@ -28,7 +32,7 @@ where
     Process: Future<Output = anyhow::Result<P>>,
     Acquire: Future<Output = anyhow::Result<A>>,
 {
-    if adapter.supports_acquisition_prefetch() {
+    if prefetch {
         let (processed, acquired) = tokio::join!(process, acquire);
         (processed, Some(acquired))
     } else {
@@ -110,18 +114,10 @@ pub(super) async fn process_generation_batches(
     }
     let acquire_batch_size = acquire_batch_size();
     let first_batch_size = first_acquire_batch_size(acquire_batch_size);
-    let changed = usize::try_from(changed_total).unwrap_or(usize::MAX);
-    let batch_count = if changed <= first_batch_size {
-        usize::from(changed > 0)
-    } else {
-        1 + (changed - first_batch_size).div_ceil(acquire_batch_size)
-    };
-    let mut batches = batch_changed_diff_ramped(diff, first_batch_size, acquire_batch_size)
-        .enumerate()
-        .map(|(index, diff)| ChangedBatch {
-            diff,
-            is_final: index + 1 == batch_count,
-        });
+    let mut batches =
+        budget::changed_batches(&input.plan, diff, first_batch_size, acquire_batch_size);
+    let mut byte_budget =
+        AcquisitionBudget::new(&input.plan, runtime.document_prepare_max_in_flight_bytes);
     let Some(first) = batches.next() else {
         // Removal-only and failed-only diffs pass `manifest_has_changes` but
         // yield no added/modified acquisition batches. Skip acquisition and
@@ -132,6 +128,7 @@ pub(super) async fn process_generation_batches(
     };
     let acquired = acquire_changed_batch(
         input,
+        &mut byte_budget,
         first,
         changed_total,
         stage.acquired_items,
@@ -153,6 +150,7 @@ pub(super) async fn process_generation_batches(
         artifact_cleanup,
         acquired,
         batches,
+        byte_budget,
     ))
     .await
 }
@@ -171,6 +169,7 @@ async fn process_acquired_batches(
     artifact_cleanup: &mut ArtifactCleanupGuard,
     mut acquired: AcquiredChangedBatch,
     mut batches: impl Iterator<Item = ChangedBatch>,
+    mut byte_budget: AcquisitionBudget,
 ) -> anyhow::Result<()> {
     let mut vector_state = vectorize::GenerationVectorState::default();
     let result = async {
@@ -200,6 +199,7 @@ async fn process_acquired_batches(
             };
             let next_acquisition = acquire_changed_batch(
                 input,
+                &mut byte_budget,
                 next_batch,
                 changed_total,
                 stage.acquired_items,
@@ -208,7 +208,7 @@ async fn process_acquired_batches(
                 !input.adapter.supports_acquisition_prefetch(),
             );
             let (processed, prefetched) = process_and_acquire_next(
-                input.adapter,
+                input.adapter.supports_acquisition_prefetch() && !budget::file_backed(&input.plan),
                 process_acquired_batch(
                     runtime,
                     input,
@@ -252,6 +252,7 @@ mod tests;
 
 async fn acquire_changed_batch(
     input: &SourcePipelineInput<'_>,
+    byte_budget: &mut AcquisitionBudget,
     batch: ChangedBatch,
     changed_total: u64,
     acquired_items: u64,
@@ -272,10 +273,12 @@ async fn acquire_changed_batch(
         acquired_documents,
         publish_fetching_phase,
     );
+    let plan = byte_budget.plan(&input.plan);
     let acquisition = input
         .adapter
-        .acquire_with_progress(&input.plan, &batch.diff, Some(&reporter))
+        .acquire_with_progress(&plan, &batch.diff, Some(&reporter))
         .await?;
+    byte_budget.charge(&acquisition)?;
     let documents = acquisition.fetched_items.len() as u64;
     reporter.complete(documents).await;
     tracing::info!(

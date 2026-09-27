@@ -63,6 +63,7 @@ pub(crate) async fn dispatch_local(
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
+    limits: &SourceLimits,
     route: &RoutePlan,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
@@ -74,7 +75,7 @@ pub(crate) async fn dispatch_local(
         .unwrap_or(true);
     enforce_local_source_policy(input, has_local_scope)?;
 
-    let plan = local_source_plan(input, route, embed, &cfg.ingest_exclude_paths).await?;
+    let plan = local_source_plan(input, route, embed, limits, &cfg.ingest_exclude_paths).await?;
     // Trusted local execution uses the shared registry adapter as-is. Every
     // other caller gets a per-request contained instance: containment is keyed
     // to this request's path and scope, which a shared instance cannot carry.
@@ -123,6 +124,7 @@ async fn local_source_plan(
     input: &str,
     route: &RoutePlan,
     embed: bool,
+    limits: &SourceLimits,
     exclude_paths: &[String],
 ) -> anyhow::Result<SourcePlan> {
     let raw_root = std::path::PathBuf::from(input);
@@ -183,6 +185,7 @@ async fn local_source_plan(
     }
     let mut request = SourceRequest::local_path(root.to_string_lossy().to_string(), !root_is_file);
     request.embed = embed;
+    request.limits = limits.clone();
     request.options = routed_route.validated_options.clone();
     Ok(SourcePlan {
         job_id: placeholder_job_id(),
@@ -190,10 +193,10 @@ async fn local_source_plan(
         route: routed_route,
         stage_plan: super::source_stage_plan(embed),
         limits: EffectiveLimits {
-            request: SourceLimits::default(),
+            request: limits.clone(),
             adapter_defaults: SourceLimits::default(),
             config_defaults: SourceLimits::default(),
-            effective: SourceLimits::default(),
+            effective: limits.clone(),
         },
         config_snapshot_id: ConfigSnapshotId::new("cfg_local_source"),
         provider_reservations: Vec::new(),
@@ -219,3 +222,7 @@ fn public_path_hint(path: &std::path::Path) -> String {
         .map(ToString::to_string)
         .unwrap_or_else(|| "local-source".to_string())
 }
+
+#[cfg(test)]
+#[path = "local_tests.rs"]
+mod tests;

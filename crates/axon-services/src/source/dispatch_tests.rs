@@ -133,6 +133,7 @@ async fn dispatch_local_denies_secret_like_path_before_bridge() {
         "test-owner",
         Some(&snapshot),
         true,
+        &request.limits,
         &routed.route,
         &test_execution("./.env"),
     )
@@ -1576,4 +1577,87 @@ async fn unscheduled_multibatch_ingestion_enters_bulk_loading_once() {
             .count(),
         1
     );
+}
+
+#[tokio::test]
+async fn local_total_budget_exhaustion_preserves_committed_generation_in_both_modes() {
+    for scheduled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..33 {
+            std::fs::write(
+                root.path().join(format!("item-{index:02}.txt")),
+                "initial body",
+            )
+            .unwrap();
+        }
+        let source = root.path().to_string_lossy().into_owned();
+        let request = SourceRequest::local_path(&source, true);
+        let route = crate::source::routing::resolve_source_route(&request)
+            .unwrap()
+            .route;
+        let ledger = Arc::new(FakeLedgerStore::new());
+        let vectors = Arc::new(FakeVectorStore::new("budget-vectors"));
+        let mut runtime = test_runtime(vectors.clone(), ledger.clone());
+        runtime.embed_scheduler_enabled = scheduled;
+        let mut cfg = axon_core::config::Config::default();
+        cfg.source_local_allowed_roots = vec![root.path().to_path_buf()];
+        let snapshot = AuthSnapshot {
+            auth_mode: axon_api::source::AuthMode::TrustedLocal,
+            granted_scopes: vec![AuthScope::Read, AuthScope::Write, AuthScope::Local],
+            ..Default::default()
+        };
+        let initial = dispatch_local(
+            Arc::new(LocalSourceAdapter::new()),
+            &cfg,
+            &runtime,
+            &source,
+            "axon-budget",
+            "budget-owner",
+            Some(&snapshot),
+            true,
+            &request.limits,
+            &route,
+            &test_execution(&source),
+        )
+        .await
+        .expect("initial local generation publishes");
+        for index in 0..33 {
+            std::fs::write(
+                root.path().join(format!("item-{index:02}.txt")),
+                "changed body",
+            )
+            .unwrap();
+        }
+        let limits = axon_api::source::SourceLimits {
+            max_total_bytes: Some(16 * "changed body".len() as u64),
+            ..Default::default()
+        };
+        let error = dispatch_local(
+            Arc::new(LocalSourceAdapter::new()),
+            &cfg,
+            &runtime,
+            &source,
+            "axon-budget",
+            "budget-owner",
+            Some(&snapshot),
+            true,
+            &limits,
+            &route,
+            &test_execution(&source),
+        )
+        .await
+        .expect_err("total budget spans every acquisition batch");
+        assert!(
+            format!("{error:#}").contains("byte_budget_exceeded"),
+            "{error:#}"
+        );
+        assert_eq!(
+            ledger.committed_generation(&initial.source_id).await,
+            Some(initial.generation)
+        );
+        assert_eq!(
+            vectors.points("axon-budget").await.len() as u64,
+            initial.vector_points_written
+        );
+    }
 }

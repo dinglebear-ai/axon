@@ -56,9 +56,56 @@ fn discovery_spool_rejects_content_past_the_file_budget_and_removes_partial_spoo
     let spool = spool_dir.path().join("growing.content");
     let file = File::open(input.path()).expect("open input");
 
-    let error = content_fingerprint_and_spool_from_file(file, Path::new("growing.txt"), &spool, 5)
-        .expect_err("spooling must enforce the byte budget");
+    let hash = content_fingerprint_and_spool_from_file(file, Path::new("growing.txt"), &spool, 5)
+        .expect("oversized inventory is a resource omission");
 
-    assert_eq!(error.code.to_string(), "adapter.local.file_too_large");
+    assert!(hash.is_none());
     assert!(!spool.exists(), "partial spool must be removed on overflow");
+}
+
+#[test]
+fn spool_stream_reads_at_most_cap_plus_one_and_removes_partial_output() {
+    struct CountingReader {
+        bytes: std::io::Cursor<Vec<u8>>,
+        count: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+    impl Read for CountingReader {
+        fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+            let read = self.bytes.read(output)?;
+            self.count.set(self.count.get() + read);
+            Ok(read)
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("partial");
+    let count = std::rc::Rc::new(std::cell::Cell::new(0));
+    let reader = CountingReader {
+        bytes: std::io::Cursor::new(vec![b'x'; 100]),
+        count: count.clone(),
+    };
+    assert!(
+        spool_bounded(reader, Path::new("growth"), &path, 5)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(count.get(), 6);
+    assert!(!path.exists());
+}
+
+#[test]
+fn zero_spool_limit_never_reads_a_body() {
+    struct NoRead;
+    impl Read for NoRead {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            panic!("zero cap must not read")
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty");
+    assert!(
+        spool_bounded(NoRead, Path::new("empty"), &path, 0)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(fs::metadata(path).unwrap().len(), 0);
 }

@@ -161,7 +161,7 @@ pub(super) fn batch_changed_diff_ramped(
     })
 }
 
-fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
+pub(super) fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
     SourceManifestDiff {
         header: diff.header.clone(),
         source_id: diff.source_id.clone(),

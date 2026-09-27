@@ -6,6 +6,9 @@ use super::enums::*;
 use super::graph::*;
 use super::ids::*;
 
+/// Internal acquisition marker for a body omitted by a resource limit.
+pub const CONTENT_OMISSION_METADATA_KEY: &str = "axon.acquisition_omission";
+
 /// Stable, content-free reasons why an acquired item has no searchable document.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,

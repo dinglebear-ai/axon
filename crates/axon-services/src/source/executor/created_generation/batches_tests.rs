@@ -804,7 +804,7 @@ async fn opt_in_step_overlaps_exactly_one_next_acquisition() {
     let adapter = WebSourceAdapter::new(providers.clone(), providers);
     let step = tokio::spawn(async move {
         process_and_acquire_next(
-            &adapter,
+            adapter.supports_acquisition_prefetch(),
             controlled(process_started_tx, process_release_rx, Ok("processed")),
             controlled(acquire_started_tx, acquire_release_rx, Ok("acquired")),
         )
@@ -847,7 +847,7 @@ async fn non_opt_in_step_does_not_poll_acquisition_until_processing_finishes() {
     });
     let step = tokio::spawn(async move {
         process_and_acquire_next(
-            &adapter,
+            adapter.supports_acquisition_prefetch(),
             controlled(process_started_tx, process_release_rx, Ok("processed")),
             controlled(acquire_started_tx, acquire_release_rx, Ok("acquired")),
         )
