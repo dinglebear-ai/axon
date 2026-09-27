@@ -52,7 +52,7 @@ use axon_api::source::{
     AdapterReleaseRequest, ArtifactHandle, ArtifactKind, CleanupDebt, CleanupDebtKind,
     CleanupSelector, DocumentCacheInvalidation, DocumentCacheKey, GraphDeleteResult, GraphEdgeId,
     JobId, MemoryForgetRequest, ProviderId, Severity, SourceError, SourceGenerationId, SourceId,
-    Timestamp, VectorDeleteSelector, VectorStoreDeleteResult,
+    SourceItemKey, Timestamp, VectorDeleteSelector, VectorStoreDeleteResult,
 };
 use axon_core::boundary::DocumentCache;
 use axon_jobs::boundary::{JobDeleteResult, JobStore};
@@ -95,6 +95,12 @@ pub(crate) trait CleanupProviderOps: Send + Sync {
         &self,
         selector: VectorDeleteSelector,
     ) -> Result<VectorStoreDeleteResult, axon_api::source::ApiError>;
+    async fn graph_retire_item(
+        &self,
+        source: SourceId,
+        item: SourceItemKey,
+        generation: SourceGenerationId,
+    ) -> Result<GraphDeleteResult, axon_api::source::ApiError>;
     async fn graph_delete_nodes(
         &self,
         stable_keys: Vec<String>,

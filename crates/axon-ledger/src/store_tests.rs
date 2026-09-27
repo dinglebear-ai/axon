@@ -217,3 +217,6 @@ mod store_lease_tests;
 mod store_listing_tests;
 #[path = "store_tests/store_manifest_tests.rs"]
 mod store_manifest_tests;
+
+#[path = "store_tests/graph_retirement_tests.rs"]
+mod graph_retirement_tests;

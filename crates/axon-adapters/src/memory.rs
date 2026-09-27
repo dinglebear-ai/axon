@@ -133,7 +133,7 @@ impl SourceAdapter for MemorySourceAdapter {
         } else {
             Vec::new()
         };
-        Ok(SourceManifest {
+        let mut manifest = SourceManifest {
             source_id: plan.route.source.source_id.clone(),
             generation: SourceGenerationId::new("gen_memory_discovery"),
             adapter: plan.route.adapter.clone(),
@@ -141,7 +141,9 @@ impl SourceAdapter for MemorySourceAdapter {
             items,
             created_at: timestamp(),
             metadata: memory_metadata(&record),
-        })
+        };
+        manifest.set_inventory_completeness(InventoryCompleteness::Complete);
+        Ok(manifest)
     }
 
     async fn acquire(

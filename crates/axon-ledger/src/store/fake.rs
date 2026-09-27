@@ -108,23 +108,6 @@ impl FakeLedgerStore {
         self.state.lock().await.committed.get(source_id).cloned()
     }
 
-    pub async fn document_status(&self, document_id: &DocumentId) -> Option<DocumentStatus> {
-        self.state
-            .lock()
-            .await
-            .document_statuses
-            .get(document_id)
-            .cloned()
-    }
-
-    pub async fn document_status_update_batches(&self) -> Vec<Vec<DocumentId>> {
-        self.state
-            .lock()
-            .await
-            .document_status_update_batches
-            .clone()
-    }
-
     pub async fn cleanup_debt(&self, debt_id: &CleanupDebtId) -> Option<CleanupDebt> {
         self.state.lock().await.cleanup_debt.get(debt_id).cloned()
     }
@@ -402,6 +385,31 @@ impl LedgerStore for FakeLedgerStore {
         document::publish_document_statuses(&self.state, source_id, generation, updated_at).await
     }
 
+    async fn document_statuses_for_items(
+        &self,
+        source_id: SourceId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<DocumentStatus>> {
+        document::document_statuses_for_items(&self.state, source_id, item_keys).await
+    }
+    async fn carry_document_statuses(
+        &self,
+        source_id: SourceId,
+        expected_generation: SourceGenerationId,
+        next_generation: SourceGenerationId,
+        expected_statuses: Vec<DocumentStatus>,
+        updated_at: Timestamp,
+    ) -> Result<u64> {
+        document::carry_document_statuses(
+            &self.state,
+            source_id,
+            expected_generation,
+            next_generation,
+            expected_statuses,
+            updated_at,
+        )
+        .await
+    }
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
         let remaining = self
             .cleanup_debt_successes_before_failure

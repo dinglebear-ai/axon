@@ -1967,7 +1967,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/CleanupDebt_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -2292,7 +2317,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/CleanupSelector_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/CleanupSelector_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -12074,7 +12124,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -17321,7 +17396,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -29258,7 +29358,7 @@
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:b908d2c4ea4961ca70e29f8169d5becbea30851834de01db9c3832c974a5d53b",
+        "checksum": "sha256:a336d5bd224aa9072bbb581f339bb27085e59c5db83ba771dfed42995bdc589d",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -29358,7 +29458,7 @@
         "path": "crates/axon-api/src/source/service_ids.rs"
       },
       {
-        "checksum": "sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8",
+        "checksum": "sha256:5d1d7ff7c594bc450d8eb13e889c793b98bbffff1683d887aaf8137aecdf7339",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/stage.rs"
       },

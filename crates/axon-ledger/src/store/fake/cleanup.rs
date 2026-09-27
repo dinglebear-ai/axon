@@ -243,15 +243,28 @@ pub(super) fn record_graph_prune_cleanup_debt(
         .get(&(generation.source_id.clone(), generation.generation.clone()))
         .map(|manifest| keyed_manifest_items(manifest.items.clone()))
         .unwrap_or_default();
+    let skipped: std::collections::BTreeSet<_> = state
+        .document_statuses
+        .values()
+        .filter(|status| {
+            status.source_id == generation.source_id
+                && status.generation.as_ref() == Some(&generation.generation)
+                && status.status == DocumentLifecycleStatus::Skipped
+        })
+        .map(|status| status.source_item_key.clone())
+        .collect();
     let mut debts = Vec::new();
     for item in previous_items {
-        if next_by_key.contains_key(&item.source_item_key) {
-            continue; // still present (unchanged or modified) — graph node stays
+        if next_by_key.contains_key(&item.source_item_key)
+            && !skipped.contains(&item.source_item_key)
+        {
+            continue; // supported present item
         }
         let debt = graph_prune_debt(
             &generation.source_id,
             previous_generation,
             &item.source_item_key,
+            &generation.generation,
         );
         let stored = state
             .cleanup_debt

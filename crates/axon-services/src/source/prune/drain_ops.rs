@@ -22,6 +22,28 @@ pub(super) async fn drain_one_debt(
     adapter_registry: Option<&SourceAdapterRegistry>,
     summary: &mut DebtDrainSummary,
 ) {
+    if let CleanupSelector::GraphItemEvidence {
+        source_id,
+        source_item_key,
+        retirement_generation,
+    } = &debt.selector
+    {
+        match provider_ops
+            .graph_retire_item(
+                source_id.clone(),
+                source_item_key.clone(),
+                retirement_generation.clone(),
+            )
+            .await
+        {
+            Ok(_) => resolve_debt(ledger, debt, summary).await,
+            Err(error) => {
+                summary.failed += 1;
+                tracing::warn!(debt_id = %debt.debt_id.0, error = %error, "graph item retirement deferred");
+            }
+        }
+        return;
+    }
     match debt.kind {
         CleanupDebtKind::VectorDelete
         | CleanupDebtKind::LedgerPrune

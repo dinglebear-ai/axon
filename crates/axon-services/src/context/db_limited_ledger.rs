@@ -158,6 +158,37 @@ impl LedgerStore for DbLimitedLedgerStore {
         self.inner.update_document_statuses(statuses).await
     }
 
+    async fn document_statuses_for_items(
+        &self,
+        source_id: SourceId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<DocumentStatus>> {
+        let _permit = self.permit().await?;
+        self.inner
+            .document_statuses_for_items(source_id, item_keys)
+            .await
+    }
+
+    async fn carry_document_statuses(
+        &self,
+        source_id: SourceId,
+        expected_generation: SourceGenerationId,
+        next_generation: SourceGenerationId,
+        expected_statuses: Vec<DocumentStatus>,
+        updated_at: Timestamp,
+    ) -> Result<u64> {
+        let _permit = self.permit().await?;
+        self.inner
+            .carry_document_statuses(
+                source_id,
+                expected_generation,
+                next_generation,
+                expected_statuses,
+                updated_at,
+            )
+            .await
+    }
+
     async fn publish_document_statuses(
         &self,
         source_id: SourceId,

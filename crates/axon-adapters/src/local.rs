@@ -156,9 +156,11 @@ fn discover_sync(
         .max_items
         .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
 
+    let mut truncated = false;
     let mut items = match plan.route.scope {
         SourceScope::File => {
             if max_items == Some(0) {
+                truncated = true;
                 Vec::new()
             } else {
                 manifest_item_from_path(
@@ -176,7 +178,7 @@ fn discover_sync(
         }
         SourceScope::Directory | SourceScope::Workspace | SourceScope::Repo | SourceScope::Map => {
             if let Some(limit) = max_items {
-                let candidates = collect_capped_file_candidates(
+                let (candidates, was_truncated) = collect_capped_file_candidates(
                     &root,
                     root_for_keys,
                     plan.route.scope,
@@ -184,6 +186,7 @@ fn discover_sync(
                     root_handle,
                     limit,
                 )?;
+                truncated = was_truncated;
                 hash_file_candidates_parallel(
                     plan,
                     root_handle,
@@ -215,7 +218,7 @@ fn discover_sync(
     };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_local_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -223,7 +226,13 @@ fn discover_sync(
         items,
         created_at: timestamp(),
         metadata: MetadataMap::new(),
-    })
+    };
+    manifest.set_inventory_completeness(if truncated {
+        InventoryCompleteness::Partial
+    } else {
+        InventoryCompleteness::Complete
+    });
+    Ok(manifest)
 }
 
 fn acquire_sync(

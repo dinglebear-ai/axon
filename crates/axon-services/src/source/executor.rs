@@ -7,13 +7,14 @@ mod generation_state;
 mod generation_work;
 mod helpers;
 mod index;
-mod lease_heartbeat;
+pub(super) mod lease_heartbeat;
 use lease_heartbeat::run_with_lease;
 mod metadata;
 mod preparation;
 mod progress;
 mod publish;
 pub(super) use index::index_materialized_source;
+mod retention;
 mod reuse;
 mod vector_points;
 mod vectorize;
@@ -126,7 +127,11 @@ async fn discover_and_diff(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     coordinator: &progress::ProgressCoordinator,
-) -> anyhow::Result<(SourceManifest, SourceManifestDiff)> {
+) -> anyhow::Result<(
+    SourceManifest,
+    SourceManifestDiff,
+    std::collections::BTreeSet<SourceItemKey>,
+)> {
     coordinator
         .report(
             emitter,
@@ -148,7 +153,7 @@ async fn discover_and_diff(
     source_progress::discovered(emitter, &manifest).await;
     manifest.metadata.insert(
         PUBLICATION_CONFIG_KEY.to_string(),
-        serde_json::json!(input.plan.config_snapshot_id.0.clone()),
+        serde_json::json!(retention::processing_identity(runtime, input).0),
     );
     coordinator
         .report(
@@ -158,6 +163,7 @@ async fn discover_and_diff(
             "diffing source manifest",
         )
         .await;
+    let unvisited = retention::merge_inventory(runtime.ledger.as_ref(), &mut manifest).await?;
     let diff = runtime.ledger.diff_manifest_ref(&manifest).await?;
     coordinator
         .checkpoint(
@@ -167,7 +173,7 @@ async fn discover_and_diff(
         )
         .await;
     source_progress::diffed(emitter, &diff).await;
-    Ok((manifest, diff))
+    Ok((manifest, diff, unvisited))
 }
 
 async fn run_generation(
@@ -178,7 +184,7 @@ async fn run_generation(
     previous: Option<SourceSummary>,
 ) -> anyhow::Result<IndexCounts> {
     let coordinator = progress::ProgressCoordinator::new(runtime, input);
-    let (mut manifest, mut diff) = lease_heartbeat::until_cancelled(
+    let (mut manifest, mut diff, unvisited) = lease_heartbeat::until_cancelled(
         input.execution,
         discover_and_diff(runtime, input, emitter, &coordinator),
     )
@@ -189,10 +195,18 @@ async fn run_generation(
             .get_manifest_metadata(manifest.source_id.clone(), generation.clone())
             .await?
             .is_some_and(|metadata| {
-                publication_config_metadata_matches(&metadata, &input.plan.config_snapshot_id)
+                publication_config_metadata_matches(
+                    &metadata,
+                    &retention::processing_identity(runtime, input),
+                )
             }),
         None => false,
     };
+    anyhow::ensure!(
+        publication_config_unchanged || diff.previous_generation.is_none() || unvisited.is_empty(),
+        "partial refresh cannot change processing configuration; complete refresh required"
+    );
+    retention::validate_retained(runtime.ledger.as_ref(), &mut diff, &unvisited).await?;
     if !manifest_has_changes(&diff) && publication_config_unchanged {
         return unchanged_result(
             runtime.ledger.as_ref(),

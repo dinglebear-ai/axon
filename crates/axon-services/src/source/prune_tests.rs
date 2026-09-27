@@ -42,6 +42,18 @@ impl CleanupProviderOps for TestCleanupProviderOps<'_> {
         self.vector.delete(selector).await
     }
 
+    async fn graph_retire_item(
+        &self,
+        source: SourceId,
+        item: SourceItemKey,
+        _generation: SourceGenerationId,
+    ) -> Result<axon_api::source::GraphDeleteResult, ApiError> {
+        self.graph
+            .ok_or_else(|| ApiError::new("test.graph_unwired", ErrorStage::Cleaning, "unwired"))?
+            .retire_item_evidence(source, item)
+            .await
+    }
+
     async fn graph_delete_nodes(
         &self,
         stable_keys: Vec<String>,

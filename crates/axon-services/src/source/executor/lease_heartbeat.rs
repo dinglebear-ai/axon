@@ -89,7 +89,7 @@ where
 /// SQLite writer admission. The final publication check remains authoritative:
 /// renewal never reacquires an expired or stolen lease. Dropping the operation
 /// also aborts its renewal task; normal completion joins it before lease release.
-pub(super) async fn maintain<T>(
+pub(in crate::source) async fn maintain<T>(
     ledger: Arc<dyn LedgerStore>,
     lease: &LeaseGuard,
     ttl_seconds: u64,
@@ -121,7 +121,11 @@ pub(super) async fn maintain<T>(
                 }
                 Err(error) => {
                     tracing::warn!(lease_key = %lease.lease_key, error = %error,
-                        "source lease renewal failed; publication will revalidate ownership");
+                        "source lease renewal failed; canceling guarded work");
+                    if let Some(cancel) = &cancellation {
+                        cancel.cancel();
+                        return;
+                    }
                 }
             }
         }

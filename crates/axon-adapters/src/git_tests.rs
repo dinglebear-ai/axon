@@ -205,6 +205,10 @@ async fn discover_applies_max_items_before_hashing_the_full_repo() {
     plan.limits.effective.max_items = Some(1);
 
     let manifest = GitSourceAdapter::new().discover(&plan).await.unwrap();
+    assert_eq!(
+        manifest.inventory_completeness(),
+        InventoryCompleteness::Partial
+    );
     let keys = manifest
         .items
         .iter()
@@ -442,5 +446,23 @@ async fn git_growth_after_discovery_obeys_acquisition_limit() {
             .get(CONTENT_OMISSION_METADATA_KEY),
         Some(&json!("size_limit_exceeded"))
     );
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[tokio::test]
+async fn git_inventory_completeness_distinguishes_exact_cap_from_truncation() {
+    let repo = fixture_repo();
+    for (cap, expected) in [
+        (None, InventoryCompleteness::Complete),
+        (Some(0), InventoryCompleteness::Partial),
+        (Some(1), InventoryCompleteness::Partial),
+        (Some(2), InventoryCompleteness::Complete),
+        (Some(3), InventoryCompleteness::Complete),
+    ] {
+        let mut plan = git_plan(&repo, SourceScope::Repo, true);
+        plan.limits.effective.max_items = cap;
+        let manifest = GitSourceAdapter::new().discover(&plan).await.unwrap();
+        assert_eq!(manifest.inventory_completeness(), expected, "cap={cap:?}");
+    }
     fs::remove_dir_all(repo).unwrap();
 }

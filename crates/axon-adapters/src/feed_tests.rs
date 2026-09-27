@@ -153,6 +153,10 @@ async fn discover_rss_lists_one_item_per_entry() {
     let path = fixture_feed_file(RSS_TWO_ITEMS);
     let plan = feed_plan(&path, SourceScope::Feed, true);
     let manifest = FeedSourceAdapter::new().discover(&plan).await.unwrap();
+    assert_eq!(
+        manifest.inventory_completeness(),
+        InventoryCompleteness::Complete
+    );
 
     assert_eq!(manifest.items.len(), 2);
     assert!(

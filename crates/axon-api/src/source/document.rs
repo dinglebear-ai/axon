@@ -165,6 +165,12 @@ pub enum CleanupSelector {
     /// delete. Added so `GraphStore::delete_nodes` has an identity to target
     /// (`docs/pipeline-unification/runtime/pruning-contract.md`, "graph orphan
     /// cleanup").
+    /// Retire one item's graph contribution under the source publication lease.
+    GraphItemEvidence {
+        source_id: SourceId,
+        source_item_key: SourceItemKey,
+        retirement_generation: SourceGenerationId,
+    },
     GraphNodes {
         stable_keys: Vec<String>,
     },

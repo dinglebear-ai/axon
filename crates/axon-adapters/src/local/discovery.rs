@@ -28,15 +28,16 @@ pub(super) fn collect_capped_file_candidates(
     options: &LocalOptions,
     root_handle: &LocalRootHandle,
     limit: usize,
-) -> Result<Vec<LocalFileCandidate>> {
+) -> Result<(Vec<LocalFileCandidate>, bool)> {
     if limit == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), true));
     }
 
     // The executor historically sorted the full manifest and truncated it after
     // discovery. Keep those exact deterministic first-N semantics without
     // retaining or hashing every file: a max-heap retains only the N smallest
     // source item keys seen during the walk.
+    let mut truncated = false;
     let mut selected = BinaryHeap::with_capacity(limit.min(4096));
     visit_local_files(root, options, |path| {
         let Some(candidate) =
@@ -44,6 +45,7 @@ pub(super) fn collect_capped_file_candidates(
         else {
             return Ok(());
         };
+        truncated |= selected.len() == limit;
         if selected.len() < limit {
             selected.push(candidate);
         } else if selected.peek().is_some_and(|largest| candidate < *largest) {
@@ -55,7 +57,7 @@ pub(super) fn collect_capped_file_candidates(
 
     let mut selected = selected.into_vec();
     selected.sort();
-    Ok(selected)
+    Ok((selected, truncated))
 }
 
 fn local_walk_builder(root: &Path, options: &LocalOptions) -> WalkBuilder {

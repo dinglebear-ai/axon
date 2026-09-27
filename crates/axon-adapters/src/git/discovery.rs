@@ -41,10 +41,11 @@ pub(super) fn collect_capped_git_keys(
     root: &Path,
     exclude_paths: &[String],
     limit: usize,
-) -> Result<Vec<String>> {
+) -> Result<(Vec<String>, bool)> {
     if limit == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), true));
     }
+    let mut truncated = false;
     let mut selected = BinaryHeap::with_capacity(limit.min(4096));
     for entry in git_walk_builder(root).build() {
         let entry = entry.map_err(git_walk_error)?;
@@ -58,6 +59,7 @@ pub(super) fn collect_capped_git_keys(
         if git_key_excluded(&key, exclude_paths) {
             continue;
         }
+        truncated |= selected.len() == limit;
         if selected.len() < limit {
             selected.push(key);
         } else if selected.peek().is_some_and(|largest| key < *largest) {
@@ -67,7 +69,7 @@ pub(super) fn collect_capped_git_keys(
     }
     let mut selected = selected.into_vec();
     selected.sort();
-    Ok(selected)
+    Ok((selected, truncated))
 }
 
 pub(super) fn hash_git_keys_parallel(

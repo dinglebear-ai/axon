@@ -137,6 +137,10 @@ async fn local_directory_discovery_applies_max_items_before_hashing_the_full_tre
     plan.limits.effective.max_items = Some(2);
 
     let manifest = adapter.discover(&plan).await.unwrap();
+    assert_eq!(
+        manifest.inventory_completeness(),
+        InventoryCompleteness::Partial
+    );
     let keys = manifest
         .items
         .iter()
@@ -991,5 +995,24 @@ async fn local_acquisition_fails_when_job_or_resident_batch_budget_is_exhausted(
             .await
             .unwrap_err();
         assert_eq!(error.code.0, "source.acquire.byte_budget_exceeded");
+    }
+}
+
+#[tokio::test]
+async fn local_inventory_completeness_distinguishes_exact_cap_from_truncation() {
+    let root = temp_source_dir();
+    fs::write(root.join("a.txt"), "a").unwrap();
+    fs::write(root.join("b.txt"), "b").unwrap();
+    for (cap, expected) in [
+        (None, InventoryCompleteness::Complete),
+        (Some(0), InventoryCompleteness::Partial),
+        (Some(1), InventoryCompleteness::Partial),
+        (Some(2), InventoryCompleteness::Complete),
+        (Some(3), InventoryCompleteness::Complete),
+    ] {
+        let mut plan = source_plan(root.clone(), SourceScope::Directory);
+        plan.limits.effective.max_items = cap;
+        let manifest = LocalSourceAdapter::new().discover(&plan).await.unwrap();
+        assert_eq!(manifest.inventory_completeness(), expected, "cap={cap:?}");
     }
 }

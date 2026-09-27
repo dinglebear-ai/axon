@@ -170,15 +170,17 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         .effective
         .max_items
         .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
+    let mut truncated = false;
     let mut items = if let Some(limit) = max_items {
-        let keys = collect_capped_git_keys(&root, &exclude_paths, limit)?;
+        let (keys, was_truncated) = collect_capped_git_keys(&root, &exclude_paths, limit)?;
+        truncated = was_truncated;
         hash_git_keys_parallel(plan, &root, &base_uri, &keys)?
     } else {
         collect_git_manifest_items_parallel(plan, &root, &base_uri, &exclude_paths)?
     };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_git_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -186,7 +188,13 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         items,
         created_at: timestamp(),
         metadata: manifest_metadata(&target),
-    })
+    };
+    manifest.set_inventory_completeness(if truncated {
+        InventoryCompleteness::Partial
+    } else {
+        InventoryCompleteness::Complete
+    });
+    Ok(manifest)
 }
 
 fn option_string_array(options: &AdapterOptions, key: &str) -> Result<Vec<String>> {

@@ -641,3 +641,6 @@ async fn unchanged_item_reuse_does_not_double_write() {
     assert_eq!(node_count, 4);
     assert_eq!(edge_count, 2);
 }
+
+#[path = "graph/retirement_tests.rs"]
+mod retirement_tests;

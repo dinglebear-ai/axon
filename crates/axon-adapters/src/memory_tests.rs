@@ -125,6 +125,10 @@ async fn terminal_memory_discovers_empty_manifest_for_ledger_cleanup() {
 
     let materialized = adapter.materialize(plan).await.unwrap();
     let manifest = adapter.discover(&materialized.plan).await.unwrap();
+    assert_eq!(
+        manifest.inventory_completeness(),
+        InventoryCompleteness::Complete
+    );
     assert!(manifest.items.is_empty());
     assert_eq!(
         manifest.metadata.get("memory_status"),

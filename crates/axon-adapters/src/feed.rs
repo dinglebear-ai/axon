@@ -171,7 +171,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     }
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_feed_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -179,7 +179,9 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         items,
         created_at: timestamp(),
         metadata: manifest_metadata(&feed),
-    })
+    };
+    manifest.set_inventory_completeness(InventoryCompleteness::Complete);
+    Ok(manifest)
 }
 
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {

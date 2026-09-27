@@ -49,6 +49,29 @@ impl CleanupProviderOps for ScheduledCleanupProviderOps {
         .await
     }
 
+    async fn graph_retire_item(
+        &self,
+        source: SourceId,
+        item: SourceItemKey,
+        generation: SourceGenerationId,
+    ) -> Result<GraphDeleteResult, ApiError> {
+        let store = self.graph_store.clone().ok_or_else(missing_graph_store)?;
+        let ledger = self.runtime.ledger.clone();
+        let job = self.job_id;
+        graph_cleanup_call(
+            self.runtime.as_ref(),
+            self.context("graph-retire-item"),
+            move || async move {
+                crate::source::graph::lease::retire_under_lease(
+                    ledger, source, item, generation, job,
+                    move |source, item| async move { store.retire_item_evidence(source, item).await },
+                )
+                .await
+            },
+        )
+        .await
+    }
+
     async fn graph_delete_nodes(
         &self,
         stable_keys: Vec<String>,

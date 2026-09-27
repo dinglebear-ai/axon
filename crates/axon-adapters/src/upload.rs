@@ -164,6 +164,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     let base_uri = public_base_uri(&plan.route.source.canonical_uri);
     let root_for_keys = root_for_item_keys(&root, plan.route.scope);
     let mut items = Vec::new();
+    let mut truncated = false;
     let mut sorted_files = files;
     sorted_files.sort();
     for file in sorted_files {
@@ -174,6 +175,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         let metadata = fs::metadata(&file)
             .map_err(|err| fs_error("adapter.upload.stat_failed", &file, err))?;
         if metadata.len() > options.max_file_bytes {
+            truncated = true;
             continue;
         }
         if !metadata.is_file() {
@@ -206,7 +208,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     }
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_upload_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -214,7 +216,13 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         items,
         created_at: timestamp(),
         metadata: MetadataMap::new(),
-    })
+    };
+    manifest.set_inventory_completeness(if truncated {
+        InventoryCompleteness::Partial
+    } else {
+        InventoryCompleteness::Complete
+    });
+    Ok(manifest)
 }
 
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {

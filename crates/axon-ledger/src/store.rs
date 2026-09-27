@@ -113,6 +113,21 @@ pub trait LedgerStore: Send + Sync {
         generation: SourceGenerationId,
         updated_at: Timestamp,
     ) -> Result<u64>;
+    /// Read every latest status for these items, including non-committed provenance.
+    async fn document_statuses_for_items(
+        &self,
+        source_id: SourceId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<DocumentStatus>>;
+    /// Carry an exact committed snapshot atomically; reject changed or extra siblings.
+    async fn carry_document_statuses(
+        &self,
+        source_id: SourceId,
+        expected_generation: SourceGenerationId,
+        next_generation: SourceGenerationId,
+        expected_statuses: Vec<DocumentStatus>,
+        updated_at: Timestamp,
+    ) -> Result<u64>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
     /// List every not-yet-resolved cleanup-debt entry for a source, oldest
     /// first. Used by `axon-prune` to drain superseded-generation debt after a

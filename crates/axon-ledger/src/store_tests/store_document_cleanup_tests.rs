@@ -478,8 +478,10 @@ async fn fake_publish_creates_cleanup_debt_for_removed_items() {
     assert_eq!(graph_debt.generation.as_ref(), Some(&gen1.generation));
     assert_eq!(
         graph_debt.selector,
-        CleanupSelector::GraphNodes {
-            stable_keys: vec!["src/old.rs".to_string()],
+        CleanupSelector::GraphItemEvidence {
+            source_id: SourceId::new("src_a"),
+            source_item_key: SourceItemKey::new("src/old.rs"),
+            retirement_generation: published.generation.clone(),
         }
     );
 }

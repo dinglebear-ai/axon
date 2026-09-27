@@ -87,3 +87,26 @@ pub(super) async fn publish_document_statuses(
     }
     Ok(updated)
 }
+
+#[path = "document_carry.rs"]
+mod carry;
+pub(super) use carry::{carry_document_statuses, document_statuses_for_items};
+
+impl super::FakeLedgerStore {
+    pub async fn document_status(&self, document_id: &DocumentId) -> Option<DocumentStatus> {
+        self.state
+            .lock()
+            .await
+            .document_statuses
+            .get(document_id)
+            .cloned()
+    }
+
+    pub async fn document_status_update_batches(&self) -> Vec<Vec<DocumentId>> {
+        self.state
+            .lock()
+            .await
+            .document_status_update_batches
+            .clone()
+    }
+}

@@ -120,6 +120,7 @@ pub(crate) fn graph_prune_debt(
     source_id: &SourceId,
     previous_generation: &SourceGenerationId,
     source_item_key: &SourceItemKey,
+    retirement_generation: &SourceGenerationId,
 ) -> CleanupDebt {
     CleanupDebt {
         debt_id: CleanupDebtId::new(format!(
@@ -138,8 +139,10 @@ pub(crate) fn graph_prune_debt(
         source_id: source_id.clone(),
         generation: Some(previous_generation.clone()),
         kind: CleanupDebtKind::GraphPrune,
-        selector: CleanupSelector::GraphNodes {
-            stable_keys: vec![source_item_key.0.clone()],
+        selector: CleanupSelector::GraphItemEvidence {
+            source_id: source_id.clone(),
+            source_item_key: source_item_key.clone(),
+            retirement_generation: retirement_generation.clone(),
         },
         vector_collection: None,
         status: LifecycleStatus::Pending,

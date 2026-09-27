@@ -237,3 +237,7 @@ pub(super) async fn document_status(
     })
     .transpose()
 }
+
+#[path = "document_carry.rs"]
+mod carry;
+pub(super) use carry::{carry_document_statuses, document_statuses_for_items};

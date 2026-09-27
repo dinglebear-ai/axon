@@ -276,3 +276,6 @@ mod sqlite_lease_tests;
 mod sqlite_listing_tests;
 #[path = "sqlite_tests/sqlite_source_manifest_tests.rs"]
 mod sqlite_source_manifest_tests;
+
+#[path = "sqlite_tests/document_carry_tests.rs"]
+mod document_carry_tests;

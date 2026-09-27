@@ -175,7 +175,7 @@ async fn index_source_inner(
     };
 
     let collection = source_collection(&request, ctx);
-    let owner_id = DEFAULT_OWNER_ID;
+    let owner_id = format!("{}:{}", DEFAULT_OWNER_ID, uuid::Uuid::new_v4());
 
     // Boxed: `dispatch_kind` owns the entire source pipeline (adapter
     // acquisition through vector publish); polled inline, the nested debug
@@ -189,7 +189,7 @@ async fn index_source_inner(
         runtime,
         &input,
         &collection,
-        owner_id,
+        &owner_id,
         execution.auth_snapshot.as_ref(),
         request.embed,
         &request.output,
