@@ -279,3 +279,6 @@ mod sqlite_source_manifest_tests;
 
 #[path = "sqlite_tests/document_carry_tests.rs"]
 mod document_carry_tests;
+
+#[path = "sqlite_tests/bulk_lookup_tests.rs"]
+pub(crate) mod bulk_lookup_tests;

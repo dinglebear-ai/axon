@@ -40,6 +40,8 @@ async fn read_statuses(
             list.push_bind(&key.0);
         }
         list.push_unseparated(")");
+        #[cfg(test)]
+        crate::sqlite_tests::bulk_lookup_tests::record_query(source);
         for row in query
             .build()
             .fetch_all(&mut *connection)
