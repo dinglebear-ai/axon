@@ -1,6 +1,6 @@
 ---
 name: crawl
-description: Use Axon site-scope source indexing to capture many pages from a site or scoped documentation section.
+description: Use when capturing many pages from a site or documentation section through Axon site-scope source indexing.
 ---
 
 # Axon Site Capture
@@ -58,6 +58,6 @@ above is the same thing.
 
 ## See Also
 
-- [map](../map/SKILL.md)
-- [scrape](../scrape/SKILL.md)
-- [extract](../extract/SKILL.md)
+- `map`
+- `scrape`
+- `extract`

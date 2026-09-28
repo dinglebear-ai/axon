@@ -140,4 +140,3 @@ If the user asks to implement, first produce or update `DESIGN.md`, then use it 
 - Distinguish observed facts from inferred approximations.
 - Keep the output compact enough that another agent can paste it into context and build from it.
 - Preserve source URLs and scrape artifacts for review.
-- For Axon/browser routing, see [capture-recipes.md](../../references/capture-recipes.md).

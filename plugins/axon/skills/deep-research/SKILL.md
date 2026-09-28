@@ -96,4 +96,3 @@ output: [markdown/json/brief]
 - Prefer primary sources when available.
 - Flag uncertainty and conflicting evidence.
 - Synthesize instead of listing scrape summaries.
-- For current Axon capture patterns, see [capture-recipes.md](../../references/capture-recipes.md).

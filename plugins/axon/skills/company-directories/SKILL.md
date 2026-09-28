@@ -75,5 +75,3 @@ Use `source`, `filters`, `extractedAt`, `totalResults`, and `companies[]` with `
 - Respect source terms, rate limits, and robots directives where applicable. Axon does not enforce robots.txt for you — keep capture bounded with explicit page/depth/budget caps.
 - Stop at login walls, paywalls, or CAPTCHA blocks unless authorized and allowed.
 - Record filters/query/date plus a rerun command or structured rerun config.
-- For examples, see [workflow-output-templates.md](../../examples/workflow-output-templates.md).
-- For Axon/browser routing, see [capture-recipes.md](../../references/capture-recipes.md).

@@ -1,6 +1,6 @@
 ---
 name: workflows
-description: Route outcome-focused Axon requests only when no more specific bundled workflow skill is already selected.
+description: Use when routing an outcome-focused Axon request and no more specific bundled workflow skill is selected.
 ---
 
 # Axon Workflows
@@ -9,21 +9,23 @@ Use this when the user asks which Axon workflow to use, or when the user wants a
 
 ## Choose The Workflow
 
-- Use [website-design-clone](../website-design-clone/SKILL.md) to extract a website's colors, fonts, spacing, components, and layout patterns into an agent-ready `DESIGN.md`.
-- Use [deep-research](../deep-research/SKILL.md) for sourced multi-source research reports.
-- Use [seo-audit](../seo-audit/SKILL.md) for site structure, on-page SEO, keyword, and SERP audits.
-- Use [lead-research](../lead-research/SKILL.md) for pre-meeting company/person intelligence briefs.
-- Use [qa](../qa/SKILL.md) for live-site QA testing and bug reports.
-- Use [competitive-intel](../competitive-intel/SKILL.md) for recurring pricing, feature, and changelog monitoring.
-- Use [company-directories](../company-directories/SKILL.md) for directory extraction into company lists.
-- Use [dashboard-reporting](../dashboard-reporting/SKILL.md) for dashboard metrics extraction.
-- Use [knowledge-base](../knowledge-base/SKILL.md) for LLM-ready docs, RAG chunks, training data, or docs mirrors.
-- Use [knowledge-ingest](../knowledge-ingest/SKILL.md) for auth-gated or JS-heavy docs portal ingestion.
-- Use [lead-gen](../lead-gen/SKILL.md) for prospect list generation.
-- Use [market-research](../market-research/SKILL.md) for market, financial, and industry research.
-- Use [research-papers](../research-papers/SKILL.md) for literature reviews from papers, PDFs, and whitepapers.
-- Use [demo-walkthrough](../demo-walkthrough/SKILL.md) for product flow walkthroughs and UX teardown reports.
-- Use [shop](../shop/SKILL.md) for product research and shopping recommendations.
+Load a named sibling skill only when it is installed; otherwise use the generic process below.
+
+- Use `website-design-clone` to extract a website's colors, fonts, spacing, components, and layout patterns into an agent-ready `DESIGN.md`.
+- Use `deep-research` for sourced multi-source research reports.
+- Use `seo-audit` for site structure, on-page SEO, keyword, and SERP audits.
+- Use `lead-research` for pre-meeting company/person intelligence briefs.
+- Use `qa` for live-site QA testing and bug reports.
+- Use `competitive-intel` for recurring pricing, feature, and changelog monitoring.
+- Use `company-directories` for directory extraction into company lists.
+- Use `dashboard-reporting` for dashboard metrics extraction.
+- Use `knowledge-base` for LLM-ready docs, RAG chunks, training data, or docs mirrors.
+- Use `knowledge-ingest` for auth-gated or JS-heavy docs portal ingestion.
+- Use `lead-gen` for prospect list generation.
+- Use `market-research` for market, financial, and industry research.
+- Use `research-papers` for literature reviews from papers, PDFs, and whitepapers.
+- Use `demo-walkthrough` for product flow walkthroughs and UX teardown reports.
+- Use `shop` for product research and shopping recommendations.
 
 If no existing workflow fits, use this generic process and produce a reusable pattern that could become a new skill.
 
@@ -68,6 +70,3 @@ Every workflow should return:
 - the analysis or artifact requested by the user
 - recommendations or next actions when useful
 - automation inputs for reruns
-
-For authoring new workflow skills, see [workflow-authoring.md](../../references/workflow-authoring.md).
-For current Axon capture patterns, see [capture-recipes.md](../../references/capture-recipes.md).

@@ -10,9 +10,9 @@ Use this reference when adding or reviewing workflow skills.
   surfaces: `map` discovers URLs, `scrape` fetches one page, `source`
   (`axon <source> [--scope …]`) indexes every source family through the one
   unified pipeline, `search` discovers and auto-indexes web results, `research`
-  synthesizes, and `extract` produces structured fields. Never write `crawl`,
-  `ingest`, or `embed` as commands — they were removed; site capture is
-  `--scope site` on `source`.
+  synthesizes, and `extract` produces structured fields. Focused `crawl`,
+  `ingest`, and `embed` commands remain projections over the same pipeline;
+  prefer `--scope site` on `source` for generic site capture.
 - Specify the final deliverable shape.
 - Include an evidence or citation expectation when claims come from websites.
 - Identify work that can run in parallel.

@@ -1,6 +1,6 @@
 ---
 name: map
-description: Use Axon map to discover URLs on a site before scraping, crawling, or extracting.
+description: Use when discovering URLs on a site with Axon before capture, indexing, or extraction.
 ---
 
 # Axon Map
@@ -24,6 +24,6 @@ axon map "https://docs.example.com" --limit 500 --json > .axon/docs-map.json
 
 ## See Also
 
-- [search](../search/SKILL.md)
-- [scrape](../scrape/SKILL.md)
-- [crawl](../crawl/SKILL.md)
+- `search`
+- `scrape`
+- `crawl`

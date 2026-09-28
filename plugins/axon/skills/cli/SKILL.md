@@ -1,6 +1,6 @@
 ---
 name: cli
-description: Route web search, source indexing, extraction, RAG, jobs, and watch tasks through the local Axon CLI.
+description: Use when operating Axon from a shell for web search, source indexing, extraction, RAG, jobs, or watches.
 ---
 
 # Axon CLI
@@ -23,7 +23,8 @@ Every source family — web pages, whole sites, local paths, git repos, feeds,
 Reddit, YouTube, packages, AI sessions — enters through **`axon <source>`**
 (equivalently `axon source <source>`), optionally narrowed with `--scope`.
 
-`axon crawl`, `axon ingest`, `axon embed`, and `axon refresh` **do not exist**.
+`axon crawl`, `axon ingest`, and `axon embed` remain focused projections over
+the same source pipeline. `axon refresh` is not a current CLI command.
 
 **Scope gotcha:** a bare web URL resolves to the web family, whose default scope
 is `site` — `axon "https://example.com/some/article"` indexes the whole domain.
