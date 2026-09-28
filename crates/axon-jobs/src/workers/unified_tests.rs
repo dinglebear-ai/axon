@@ -3,8 +3,8 @@ use super::*;
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
 use axon_api::source::{
-    JobCancelRequest, JobCreateRequest, JobIntent, JobPriority, JobRecoveryRequest, JobStagePlan,
-    LifecycleStatus, MetadataMap, Timestamp,
+    ConfigSnapshotId, JobCancelRequest, JobCreateRequest, JobIntent, JobPriority,
+    JobRecoveryRequest, JobStagePlan, LifecycleStatus, MetadataMap, Timestamp,
 };
 use tempfile::TempDir;
 use tokio::sync::{Notify, Semaphore};
@@ -45,6 +45,28 @@ async fn enqueue_test_job(pool: &SqlitePool, kind: UnifiedJobKind) -> JobId {
         .await
         .unwrap();
     descriptor.job_id
+}
+
+#[tokio::test]
+async fn claim_preserves_config_snapshot_id() {
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
+    sqlx::query("UPDATE jobs SET config_snapshot_id = ? WHERE job_id = ?")
+        .bind("cfg_claim_projection")
+        .bind(job_id.0.to_string())
+        .execute(&pool)
+        .await
+        .expect("persist snapshot id");
+
+    let claimed = claim_next_unified_job(&pool)
+        .await
+        .expect("claim source job")
+        .expect("source job should be claimable");
+
+    assert_eq!(
+        claimed.config_snapshot_id,
+        Some(ConfigSnapshotId::new("cfg_claim_projection"))
+    );
 }
 
 #[tokio::test]
