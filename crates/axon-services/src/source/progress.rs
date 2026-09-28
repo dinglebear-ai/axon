@@ -17,19 +17,9 @@ pub(crate) async fn pipeline_failed(emitter: &SourceEventEmitter, error: &anyhow
         .await;
 }
 
-/// Build the terminal `ApiError` for a failed pipeline run.
-///
-/// Uses `{error:#}` (anyhow's alternate `Display`) rather than `{error}` so
-/// the full `.context()` chain survives into `message` — plain `Display`
-/// only prints the outermost context frame, which previously made every
-/// pipeline failure surface as an undiagnosable generic string (e.g. "web
-/// source indexing failed") with the real cause silently discarded.
+/// Preserve the same structured diagnostic used by terminal job summaries.
 fn pipeline_failed_error(error: &anyhow::Error) -> ApiError {
-    ApiError::new(
-        "source.index_failed",
-        ErrorStage::Internal,
-        format!("{error:#}"),
-    )
+    super::diagnostics::api_error(error)
 }
 
 #[cfg(test)]
@@ -167,4 +157,31 @@ fn diff_stage_counts(diff: &SourceManifestDiff) -> StageCounts {
         .saturating_add(diff.counts.skipped)
         .saturating_add(diff.counts.failed);
     item_counts(items)
+}
+
+pub(crate) async fn preparation_skipped(emitter: &SourceEventEmitter, statuses: &[DocumentStatus]) {
+    for status in statuses {
+        let reason = status
+            .error
+            .as_ref()
+            .map_or("content_skipped", |error| error.code.as_str());
+        emitter
+            .completed_with(
+                PipelinePhase::Preparing,
+                reason,
+                SourceEventDetails {
+                    generation: status.generation.clone(),
+                    current: Some(ProgressCurrent {
+                        source_item_key: Some(status.source_item_key.clone()),
+                        document_id: Some(status.document_id.clone()),
+                        chunk_id: None,
+                        adapter: None,
+                        provider: None,
+                        message: Some(reason.to_owned()),
+                    }),
+                    ..SourceEventDetails::default()
+                },
+            )
+            .await;
+    }
 }

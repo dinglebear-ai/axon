@@ -59,6 +59,40 @@ pub struct SourceManifest {
     pub metadata: MetadataMap,
 }
 
+/// Whether discovery visited the complete candidate inventory for its source scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InventoryCompleteness {
+    Complete,
+    Partial,
+    Unknown,
+}
+
+pub const INVENTORY_COMPLETENESS_METADATA_KEY: &str = "axon.inventory_completeness";
+
+impl SourceManifest {
+    pub fn inventory_completeness(&self) -> InventoryCompleteness {
+        match self
+            .metadata
+            .get(INVENTORY_COMPLETENESS_METADATA_KEY)
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("complete") => InventoryCompleteness::Complete,
+            Some("partial") => InventoryCompleteness::Partial,
+            _ => InventoryCompleteness::Unknown,
+        }
+    }
+
+    pub fn set_inventory_completeness(&mut self, value: InventoryCompleteness) {
+        let value = match value {
+            InventoryCompleteness::Complete => "complete",
+            InventoryCompleteness::Partial => "partial",
+            InventoryCompleteness::Unknown => "unknown",
+        };
+        self.metadata
+            .insert(INVENTORY_COMPLETENESS_METADATA_KEY.into(), value.into());
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestItem {
@@ -244,3 +278,7 @@ pub struct DiffCounts {
     pub skipped: u64,
     pub failed: u64,
 }
+
+#[cfg(test)]
+#[path = "stage_completeness_tests.rs"]
+mod completeness_tests;

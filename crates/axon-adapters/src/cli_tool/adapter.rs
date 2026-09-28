@@ -150,7 +150,7 @@ async fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
         graph_hints: Vec::new(),
     };
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_cli_tool_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -158,7 +158,9 @@ async fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
         items: vec![item],
         created_at: timestamp(),
         metadata: MetadataMap::new(),
-    })
+    };
+    manifest.set_inventory_completeness(InventoryCompleteness::Complete);
+    Ok(manifest)
 }
 
 async fn acquire_plan(

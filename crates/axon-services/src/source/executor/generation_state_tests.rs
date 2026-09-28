@@ -106,3 +106,31 @@ async fn ambiguous_spool_failure_replays_exactly_once_and_preserves_the_budget()
         .unwrap();
     assert_eq!(state.warnings.len(), 2);
 }
+
+#[tokio::test]
+async fn skipped_status_accounting_survives_spill_and_memory_paths() {
+    for spill in [false, true] {
+        let mut state = GenerationAccumulator::default();
+        if spill {
+            state.spool = Some(GenerationSpool::temporary("skip-test").unwrap());
+        }
+        let mut batch = PreparedBatchSideEffects::empty();
+        batch.skipped_statuses.push(DocumentStatus {
+            document_id: DocumentId::new("skip-document"),
+            source_id: SourceId::new("skip-source"),
+            source_item_key: SourceItemKey::new("asset"),
+            generation: Some(SourceGenerationId::new("1")),
+            status: DocumentLifecycleStatus::Skipped,
+            updated_at: Timestamp("2026-01-01T00:00:00Z".into()),
+            chunk_count: 0,
+            vector_point_count: 0,
+            error: None,
+            cleanup_status: None,
+        });
+        state.absorb_pretracked_side_effects(batch).await.unwrap();
+        state.replay_spool().unwrap();
+        assert_eq!(state.vectorized.documents_skipped, 1);
+        assert_eq!(state.vectorized.documents_prepared, 0);
+        assert_eq!(state.vectorized.points_written, 0);
+    }
+}

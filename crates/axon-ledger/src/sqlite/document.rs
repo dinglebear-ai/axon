@@ -62,6 +62,7 @@ pub(super) async fn publish_document_statuses(
             status_json = json_set(status_json, '$.status', ?1, '$.updated_at', ?2),
             updated_at = ?2
         WHERE source_id = ?3 AND generation = ?4
+          AND status IN ('prepared', 'embedded', 'vectorized', 'published')
         "#,
     )
     .bind(published)
@@ -236,3 +237,7 @@ pub(super) async fn document_status(
     })
     .transpose()
 }
+
+#[path = "document_carry.rs"]
+mod carry;
+pub(super) use carry::{carry_document_statuses, document_statuses_for_items};

@@ -35,16 +35,19 @@ fn push_resource(resources: &mut Vec<IacResource>, start_line: u32, lines: &[&st
     let mut metadata_indent: Option<usize> = None;
     let mut metadata_name: Option<String> = None;
     let mut top_level_name: Option<String> = None;
-    let mut kind_line = start_line;
+    let mut evidence = (start_line, String::new());
 
     for (offset, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         let indent = line.len() - line.trim_start().len();
         if let Some(value) = yaml_scalar(trimmed, "apiVersion") {
             api_version = Some(value.to_string());
+            if kind.is_none() {
+                evidence = (start_line + offset as u32, trimmed.to_owned());
+            }
         } else if let Some(value) = yaml_scalar(trimmed, "kind") {
             kind = Some(value.to_string());
-            kind_line = start_line + offset as u32;
+            evidence = (start_line + offset as u32, trimmed.to_owned());
         } else if trimmed == "metadata:" {
             metadata_indent = Some(indent);
         } else if let Some(value) = yaml_scalar(trimmed, "name") {
@@ -74,7 +77,7 @@ fn push_resource(resources: &mut Vec<IacResource>, start_line: u32, lines: &[&st
         api_version,
         kind: kind.clone(),
         resource_name,
-        line: kind_line,
-        quote: format!("kind: {kind}"),
+        line: evidence.0,
+        quote: evidence.1,
     });
 }

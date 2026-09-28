@@ -51,10 +51,11 @@ pub(super) fn collect_capped_session_candidates(
     project_filter: Option<&str>,
     root: &Path,
     limit: usize,
-) -> Result<Vec<SessionFileCandidate>> {
+) -> Result<(Vec<SessionFileCandidate>, bool)> {
     if limit == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), true));
     }
+    let mut truncated = false;
     let mut selected = BinaryHeap::with_capacity(limit.min(4096));
     for entry in session_walk_builder(root).build() {
         let entry = entry.map_err(session_walk_error)?;
@@ -73,6 +74,7 @@ pub(super) fn collect_capped_session_candidates(
             continue;
         }
         let candidate = SessionFileCandidate { key };
+        truncated |= selected.len() == limit;
         if selected.len() < limit {
             selected.push(candidate);
         } else if selected.peek().is_some_and(|largest| candidate < *largest) {
@@ -82,7 +84,7 @@ pub(super) fn collect_capped_session_candidates(
     }
     let mut selected = selected.into_vec();
     selected.sort();
-    Ok(selected)
+    Ok((selected, truncated))
 }
 
 pub(super) fn hash_session_candidates_parallel(

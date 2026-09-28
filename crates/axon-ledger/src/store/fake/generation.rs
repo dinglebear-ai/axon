@@ -58,6 +58,7 @@ pub(super) async fn create_generation(
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: 0,
             prepared: 0,
             embedded: 0,

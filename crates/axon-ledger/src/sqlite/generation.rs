@@ -59,6 +59,7 @@ pub(super) async fn create_generation(
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: 0,
             prepared: 0,
             embedded: 0,
@@ -419,6 +420,7 @@ pub(super) async fn ensure_generation_for_manifest_in_tx(
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: manifest.items.len() as u64,
             prepared: 0,
             embedded: 0,

@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 fn counts(source_id: &str, generation: &str) -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(Uuid::from_u128(7)),
         source_id: SourceId::new(source_id),
         generation: SourceGenerationId::new(generation),
@@ -139,6 +140,7 @@ fn source_summary(source_id: &str, uri: &str) -> SourceSummary {
         authority: AuthorityLevel::Inferred,
         status: LifecycleStatus::Completed,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 0,
             items_changed: 0,
             documents_total: 0,
@@ -639,3 +641,6 @@ async fn unchanged_item_reuse_does_not_double_write() {
     assert_eq!(node_count, 4);
     assert_eq!(edge_count, 2);
 }
+
+#[path = "graph/retirement_tests.rs"]
+mod retirement_tests;

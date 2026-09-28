@@ -111,12 +111,60 @@ pub(crate) async fn write_baseline_graph_with_db_gate(
     extra_candidates: Vec<GraphCandidate>,
     db_stage_slots: Option<Arc<Semaphore>>,
 ) -> GraphWriteSummary {
+    let operation = write_baseline_graph_inner(
+        runtime,
+        graph_context,
+        kind,
+        pool,
+        ledger,
+        counts,
+        canonical_uri,
+        published_manifest,
+        extra_candidates,
+        db_stage_slots,
+    );
+    if let Some(runtime) = runtime {
+        return lease::with_source_lease(
+            runtime.ledger.clone(),
+            counts.source_id.clone(),
+            counts.job_id,
+            async {
+                if runtime
+                    .ledger
+                    .committed_generation(counts.source_id.clone())
+                    .await?
+                    .as_ref()
+                    != Some(&counts.generation)
+                {
+                    return Ok(degraded_summary());
+                }
+                Ok(operation.await)
+            },
+        )
+        .await
+        .unwrap_or_else(|_| degraded_summary());
+    }
+    operation.await
+}
+
+pub(crate) async fn write_baseline_graph_inner(
+    runtime: Option<&TargetLocalSourceRuntime>,
+    graph_context: Option<ProviderCallContext>,
+    kind: SourceKind,
+    pool: Option<Arc<SqlitePool>>,
+    ledger: &dyn LedgerStore,
+    counts: &IndexCounts,
+    canonical_uri: &str,
+    published_manifest: Option<SourceManifest>,
+    extra_candidates: Vec<GraphCandidate>,
+    db_stage_slots: Option<Arc<Semaphore>>,
+) -> GraphWriteSummary {
     let Some(pool) = pool else {
         tracing::debug!("no unified sqlite pool; skipping baseline graph write");
         return degraded_summary();
     };
 
-    let manifest = if let Some(manifest) = published_manifest {
+    let mut manifest = if let Some(manifest) = published_manifest {
         manifest
     } else {
         match ledger
@@ -142,6 +190,13 @@ pub(crate) async fn write_baseline_graph_with_db_gate(
             }
         }
     };
+
+    if runtime.is_some()
+        && let Err(error) = lease::filter_skipped(ledger, &mut manifest).await
+    {
+        tracing::warn!(error = %error, "cannot establish graph item dispositions");
+        return degraded_summary();
+    }
 
     // Enriching-stage observability is derived directly from the borrowed
     // candidates. Do not clone the generation's graph payload into a temporary
@@ -492,3 +547,5 @@ fn containment_edge_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
 #[cfg(test)]
 #[path = "graph_tests.rs"]
 mod tests;
+
+pub(crate) mod lease;

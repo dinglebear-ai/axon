@@ -486,6 +486,7 @@ fn ledger_source_summary(source_id: &str) -> SourceSummary {
         authority: AuthorityLevel::Verified,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,

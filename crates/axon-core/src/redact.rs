@@ -194,3 +194,6 @@ pub use detectors::{
 #[cfg(test)]
 #[path = "redact_tests.rs"]
 mod tests;
+
+mod diagnostic;
+pub use diagnostic::public_diagnostic_text;

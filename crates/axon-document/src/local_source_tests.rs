@@ -112,7 +112,7 @@ fn local_manifest_document_routes_to_code_manifest_profile() {
 }
 
 fn prepare(document: SourceDocument) -> PreparedDocument {
-    DocumentPreparer::default()
+    let crate::PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document,
             generation: SourceGenerationId::new("gen_local_test"),
@@ -123,7 +123,10 @@ fn prepare(document: SourceDocument) -> PreparedDocument {
             errors: Vec::new(),
         })
         .unwrap()
-        .document
+    else {
+        panic!("expected prepared document")
+    };
+    prepared
 }
 
 fn local_doc(path: &str, content_kind: ContentKind, text: &str) -> SourceDocument {

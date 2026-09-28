@@ -51,7 +51,7 @@ use support::{
 };
 pub use vector::{
     begin_bulk_load, delete_vectors, drain_bulk_load_cleanups, mark_generation_committed,
-    mark_unchanged_items_committed, retire_generation, vector_operation, with_bulk_load,
+    mark_unchanged_items_committed, retire_generation, vector_operation,
 };
 #[cfg(test)]
 pub(crate) use vector::{test_bulk_load_cleanup_lifecycle, test_bulk_load_finish_handoff};
@@ -147,24 +147,40 @@ struct ParseLane;
 struct GraphLane;
 struct ArtifactLane;
 
-pub async fn ensure_source_providers_ready(
+pub async fn ensure_source_embedding_ready(
     runtime: &TargetLocalSourceRuntime,
 ) -> Result<(), ApiError> {
-    let embedding = runtime.embedding_provider.capabilities().await?;
+    let capability = runtime.embedding_provider.capabilities().await?;
+    if !matches!(
+        capability.health,
+        HealthStatus::Healthy | HealthStatus::Degraded
+    ) {
+        return Err(capability.last_error.clone().unwrap_or_else(|| {
+            ApiError::new(
+                "provider.not_ready",
+                ErrorStage::Planning,
+                format!("provider {} is not ready", capability.provider_id.0),
+            )
+        }));
+    }
+    Ok(())
+}
+
+pub async fn ensure_source_vectors_ready(
+    runtime: &TargetLocalSourceRuntime,
+) -> Result<(), ApiError> {
     let vector = runtime.vector_store.capabilities().await?;
-    for capability in [&embedding, &vector] {
-        if !matches!(
-            capability.health,
-            HealthStatus::Healthy | HealthStatus::Degraded
-        ) {
-            return Err(capability.last_error.clone().unwrap_or_else(|| {
-                ApiError::new(
-                    "provider.not_ready",
-                    ErrorStage::Planning,
-                    format!("provider {} is not ready", capability.provider_id.0),
-                )
-            }));
-        }
+    if !matches!(
+        vector.health,
+        HealthStatus::Healthy | HealthStatus::Degraded
+    ) {
+        return Err(vector.last_error.clone().unwrap_or_else(|| {
+            ApiError::new(
+                "provider.not_ready",
+                ErrorStage::Planning,
+                format!("provider {} is not ready", vector.provider_id.0),
+            )
+        }));
     }
     if !vector
         .vector_store
@@ -458,3 +474,5 @@ pub async fn put_artifact_bytes(
         "artifact",
     )
 }
+
+pub(crate) use vector::{BulkLoadCompletionGuard, start_bulk_load_guard};

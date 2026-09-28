@@ -6,7 +6,7 @@ use axon_api::source::{
 };
 
 use super::{ChunkRouter, DocumentPreparer};
-use crate::PrepareSourceDocumentRequest;
+use crate::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 
 fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
     SourceDocument {
@@ -56,6 +56,9 @@ async fn concrete_document_preparer_satisfies_boundary_trait() {
         .await
         .expect("boundary prepare should preserve required generation lineage");
 
+    let PrepareSourceDocumentResult::Prepared(prepared) = prepared else {
+        panic!("expected prepared document")
+    };
     assert!(!prepared.chunks.is_empty());
     assert_eq!(
         prepared.generation,
@@ -120,6 +123,9 @@ fn fake_document_preparer_records_calls_and_supports_modes() {
         prepare_request(source_doc(ContentKind::PlainText, "hello"), "g"),
     )
     .expect("degraded mode still returns Ok with a warning");
+    let PrepareSourceDocumentResult::Prepared(ok) = ok else {
+        panic!("expected prepared document")
+    };
     assert!(
         ok.warnings
             .iter()
@@ -146,9 +152,39 @@ fn fake_chunk_router_records_calls_and_supports_fixed_profile() {
 fn tokio_test_prepare(
     preparer: &dyn DocumentPreparer,
     request: PrepareSourceDocumentRequest,
-) -> super::Result<axon_api::source::PreparedDocument> {
+) -> super::Result<PrepareSourceDocumentResult> {
     tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("build current-thread runtime")
         .block_on(preparer.prepare(request))
+}
+
+#[tokio::test]
+async fn concrete_and_fake_boundaries_preserve_skips_in_mixed_batches() {
+    use axon_api::source::ContentSkipReason;
+    let preparers: Vec<Box<dyn DocumentPreparer>> = vec![
+        Box::new(crate::preparer::DocumentPreparer::default()),
+        Box::new(crate::testing::FakeDocumentPreparer::default()),
+    ];
+    for preparer in preparers {
+        let mut skipped = source_doc(ContentKind::BinaryMetadata, "");
+        skipped.content = ContentRef::External {
+            uri: "https://example.test/body".into(),
+            integrity: None,
+        };
+        let results = preparer
+            .prepare_many(vec![
+                prepare_request(source_doc(ContentKind::PlainText, "hello"), "g-mixed"),
+                prepare_request(skipped, "g-mixed"),
+            ])
+            .await
+            .unwrap();
+        assert!(matches!(
+            &results[0],
+            PrepareSourceDocumentResult::Prepared(_)
+        ));
+        assert!(
+            matches!(&results[1], PrepareSourceDocumentResult::Skipped(s) if s.reason == ContentSkipReason::UnresolvedContentReference && s.generation == SourceGenerationId::new("g-mixed"))
+        );
+    }
 }

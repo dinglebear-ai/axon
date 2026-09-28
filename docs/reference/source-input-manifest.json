@@ -27,17 +27,17 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:c842e2c74426d6bd1d8af9379d7ab8b6cf40b6d1a41a6b00b8b2cf80ed94bb25"
+          "checksum": "sha256:4d06c11b5dd034ce1f2cf4d32dd9de77a2d1b0911503f98eefaaf8a0b76d6cb8"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
           "kind": "rust_module",
-          "checksum": "sha256:71dceaa183dd7564fbbb9d00c6221a69d342f63e965ebeb0a2cab1077b51c40b"
+          "checksum": "sha256:e2ea3ea7700b0dc705d6cb57a2a2f04db699c59ea71cea5705d6ab62f742a126"
         },
         {
           "path": "docs/pipeline-unification/sources/adapter-scopes.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:6d78cd541cd082c93d3cf5ae4b3e67d648f8bd9d450468410ea8fbb5671dc9af"
+          "checksum": "sha256:0023d1c7dcf7ef10535e8993af3edabd1333bf856185854c9e36fda1451e9150"
         },
         {
           "path": "docs/pipeline-unification/sources/new-source-contract.md",
@@ -45,7 +45,7 @@
           "checksum": "sha256:0468d29d96b581762ceee6f32adb7b3b091d1fa0af4b6d71c33b7c4e2819ac7f"
         }
       ],
-      "manifest_checksum": "c351e73ad160543452f9a948a9772e93a5089cc9d67174b095e5760b90cf05b7"
+      "manifest_checksum": "e7e50415fd55a9f9952f317a81ec2c1d38c8f16a4bf0fe0a4561bc4d68a145f2"
     },
     {
       "family": "api",
@@ -89,12 +89,12 @@
         {
           "path": "crates/axon-api/src/source/common.rs",
           "kind": "rust_module",
-          "checksum": "sha256:2f90a731c1891edc3d44faa45b95f560914598cd7ccfaf98350d2748bbfb38da"
+          "checksum": "sha256:2db23f4eb4efec88fa9bdca8193417034204baf476f8000bee116cf8ef4a26b1"
         },
         {
           "path": "crates/axon-api/src/source/document.rs",
           "kind": "rust_module",
-          "checksum": "sha256:f60074bd1841a702461c9bc3ed4887612e4159dfda20690b21909a6097995e84"
+          "checksum": "sha256:a336d5bd224aa9072bbb581f339bb27085e59c5db83ba771dfed42995bdc589d"
         },
         {
           "path": "crates/axon-api/src/source/embedding_cache.rs",
@@ -194,12 +194,12 @@
         {
           "path": "crates/axon-api/src/source/stage.rs",
           "kind": "rust_module",
-          "checksum": "sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8"
+          "checksum": "sha256:5d1d7ff7c594bc450d8eb13e889c793b98bbffff1683d887aaf8137aecdf7339"
         },
         {
           "path": "crates/axon-api/src/source/state.rs",
           "kind": "rust_module",
-          "checksum": "sha256:0e0a13dd0acbdaf8b4de2a8b309a279a3a423d286a0bad6133461c7be99bd860"
+          "checksum": "sha256:cf05bfb9ef97b6a20138646cfb0e929b5ee1b0e362b00cfec28ea33a39c28c48"
         },
         {
           "path": "crates/axon-api/src/source/status.rs",
@@ -317,7 +317,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "d34d698bfe8ec0ac0919727acf13c596e6baa66d13787e98071e665a3a9bd43c"
+      "manifest_checksum": "c506126cd9f430711e0d8ec1a7865954286abbfc758d8da64c9a713e4bb73506"
     },
     {
       "family": "cli",
@@ -420,7 +420,7 @@
         {
           "path": "crates/axon-ledger/src/migrations",
           "kind": "sql_migration_directory",
-          "checksum": "sha256:0414a82d0bc32cf9f1b877828f9faf6262796af088e86f041be619fc0ed205a8"
+          "checksum": "sha256:95f984814ad431c9296e239e8b6961259022666c2819d53327953125b3fdc6f3"
         },
         {
           "path": "crates/axon-memory/src/migrations",
@@ -448,7 +448,7 @@
           "checksum": "sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b"
         }
       ],
-      "manifest_checksum": "0e98d3e7fd773d25e0ca258c2576cfcbf142dcd101dca8a14292da727d63b3cf"
+      "manifest_checksum": "71a238ba17cccdb60f7dc496f89edbebe07ecdb91a370cf0e97cff415aeb8dfb"
     },
     {
       "family": "errors",
@@ -583,7 +583,7 @@
         {
           "path": "crates/axon-api/src/action/utility.rs",
           "kind": "rust_module",
-          "checksum": "sha256:6c5ca1c0ac07f585648fd7023b872833799f1af3f186e09010cf8db1bd6d027f"
+          "checksum": "sha256:622c9ebbf4795bf032a0f45f53c1699f8c0d69585e459a2fa94d67c9b164aed0"
         },
         {
           "path": "crates/axon-mcp/src/schema.rs",
@@ -616,7 +616,7 @@
           "checksum": "sha256:b54190a8b9c46db3306558115e2955830ede6eff6b25e62df3205aac66c400e3"
         }
       ],
-      "manifest_checksum": "94dd3ee341e510a2d6011997298b13a26ca9d16699228996566400289c6e8d06"
+      "manifest_checksum": "8dd59129840d9a7c5ad971c7142bfd4f347b83f282f43ba2d7bb85710bd1e767"
     },
     {
       "family": "openapi",

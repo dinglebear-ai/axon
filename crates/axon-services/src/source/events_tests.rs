@@ -270,3 +270,43 @@ async fn recorded_progress(
     )
     .expect("deserialize progress event")
 }
+
+#[tokio::test]
+async fn structured_pipeline_failure_matches_foreground_persisted_and_terminal_projections() {
+    let (store, job_id) = store_with_job().await;
+    let (tx, mut rx) = crate::source::foreground_progress::foreground_progress_channel();
+    let emitter = emitter(store.clone(), job_id).with_optional_foreground(Some(tx));
+    let secret = format!("sk-{}", "a".repeat(32));
+    let mut root = ApiError::new(
+        "adapter.git.read_failed",
+        ErrorStage::Fetching,
+        format!("open failed: /tmp/axon-private/repo; authorization: Bearer {secret}"),
+    )
+    .with_context("source_item_key", "src/file.rs\r\n");
+    root.retryable = true;
+    let error = anyhow::Error::new(root).context("git source indexing failed");
+    let terminal = crate::source::diagnostics::source_error(&error);
+    crate::source::progress::pipeline_failed(&emitter, &error).await;
+    let foreground = rx.events.recv().await.unwrap();
+    let persisted = recorded_progress(store.as_ref(), job_id, 0).await;
+    for event in [foreground, persisted] {
+        let diagnostic = event.error.unwrap();
+        assert_eq!(diagnostic.code.to_string(), terminal.code);
+        assert_eq!(diagnostic.stage, ErrorStage::Fetching);
+        assert_eq!(diagnostic.retryable, terminal.retryable);
+        assert_eq!(
+            diagnostic.source_item_key.as_deref(),
+            terminal.source_item_key.as_ref().map(|key| key.0.as_str())
+        );
+        assert_eq!(diagnostic.message, terminal.message);
+        assert!(!diagnostic.message.contains(&secret));
+        assert!(!diagnostic.message.contains("/tmp/axon-private/repo"));
+        assert!(
+            !diagnostic
+                .source_item_key
+                .unwrap()
+                .chars()
+                .any(char::is_control)
+        );
+    }
+}

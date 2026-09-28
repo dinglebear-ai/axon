@@ -19,6 +19,7 @@ fn runtime() -> TargetLocalSourceRuntime {
 
 fn counts() -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(uuid::Uuid::new_v4()),
         source_id: SourceId::new("source-release-debt"),
         generation: SourceGenerationId::new("generation-release-debt"),
@@ -73,4 +74,24 @@ async fn adapter_release_and_debt_persistence_failure_remains_an_error() {
         result.is_err(),
         "untracked cleanup work must fail the pipeline"
     );
+}
+
+#[tokio::test]
+async fn status_and_release_failure_preserves_typed_status_error() {
+    let status = ApiError::new(
+        "job.status_write_failed",
+        ErrorStage::Publishing,
+        "status unavailable",
+    )
+    .with_source_item_key("src/file.rs");
+    let error = merge_pipeline_results(
+        &runtime(),
+        Ok(counts()),
+        Err(anyhow::Error::new(status.clone())),
+        Err(anyhow::anyhow!("adapter release failure")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.downcast_ref::<ApiError>(), Some(&status));
+    assert!(format!("{error:#}").contains("adapter release failure"));
 }

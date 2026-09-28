@@ -207,3 +207,33 @@ async fn definitive_lease_loss_cancels_work_and_allows_its_cleanup_to_finish() {
             .is_some()
     );
 }
+
+#[tokio::test]
+async fn renewal_storage_error_cancels_guarded_graph_work() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = format!(
+        "sqlite://{}?mode=rwc",
+        directory.path().join("lease.db").display()
+    );
+    let ledger = Arc::new(SqliteLedgerStore::connect(&database).await.unwrap());
+    let lease = ledger
+        .acquire_lease(request("graph-worker"))
+        .await
+        .unwrap()
+        .unwrap();
+    let connection = sqlx::SqlitePool::connect(&database).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_heartbeat BEFORE UPDATE ON leases BEGIN SELECT RAISE(FAIL, 'renewal unavailable'); END").execute(&connection).await.unwrap();
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        maintain(
+            ledger,
+            &lease,
+            1,
+            Some(cancellation.clone()),
+            cancellation.cancelled(),
+        ),
+    )
+    .await
+    .expect("renewal error must cancel before lease expiry");
+}

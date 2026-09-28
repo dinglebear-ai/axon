@@ -13,6 +13,45 @@ fn resolver() -> SourceResolver {
 }
 
 #[test]
+fn router_accepts_git_exclude_paths() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    for name in ["git", "github", "gitlab", "gitea"] {
+        let mut request = SourceRequest::new("https://github.com/unraid/core");
+        request
+            .options
+            .values
+            .insert("exclude_paths".into(), json!(["vendor/", ".png"]));
+        let mut resolved = resolver.resolve(&request).unwrap();
+        resolved.adapter.name = name.into();
+        let route = router.route(&request, resolved.clone()).unwrap();
+        assert_eq!(
+            route.validated_options.values.get("exclude_paths"),
+            Some(&json!(["vendor/", ".png"]))
+        );
+        for invalid in [json!("vendor/"), json!(["vendor/", 1]), json!(null)] {
+            request
+                .options
+                .values
+                .insert("exclude_paths".into(), invalid);
+            assert_eq!(
+                router.route(&request, resolved.clone()).unwrap_err().code.0,
+                "route.options.invalid"
+            );
+        }
+        request.options.values.clear();
+        request
+            .options
+            .values
+            .insert("repo_root".into(), json!("/tmp/private"));
+        assert_eq!(
+            router.route(&request, resolved).unwrap_err().code.0,
+            "route.options.unsupported"
+        );
+    }
+}
+
+#[test]
 fn router_rejects_unknown_route_options() {
     let resolver = resolver();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());
@@ -445,5 +484,38 @@ fn router_does_not_force_source_kind_as_a_web_parser() {
     assert!(
         route.parser_hints.is_empty(),
         "web documents must select parsers from content, MIME type, path, or sniffing"
+    );
+}
+
+#[test]
+fn router_accepts_local_exclude_paths_and_rejects_malformed_values() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::local_path("/tmp/source", true);
+    request
+        .options
+        .values
+        .insert("exclude_paths".into(), json!(["configured/", "requested/"]));
+    let resolved = resolver.resolve(&request).unwrap();
+    let route = router.route(&request, resolved.clone()).unwrap();
+    assert_eq!(route.validated_options, request.options);
+    for invalid in [json!("vendor/"), json!(["vendor/", 1]), json!(null)] {
+        request
+            .options
+            .values
+            .insert("exclude_paths".into(), invalid);
+        assert_eq!(
+            router.route(&request, resolved.clone()).unwrap_err().code.0,
+            "route.options.invalid"
+        );
+    }
+    request.options.values.clear();
+    request
+        .options
+        .values
+        .insert("repo_root".into(), json!("/tmp/private"));
+    assert_eq!(
+        router.route(&request, resolved).unwrap_err().code.0,
+        "route.options.unsupported"
     );
 }

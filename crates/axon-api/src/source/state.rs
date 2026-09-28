@@ -64,6 +64,8 @@ pub struct ItemCounts {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentCounts {
+    #[serde(default)]
+    pub skipped: u64,
     pub discovered: u64,
     pub prepared: u64,
     pub embedded: u64,

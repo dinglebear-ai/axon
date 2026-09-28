@@ -7,6 +7,8 @@ use axon_api::source::*;
 use tokio::sync::Mutex;
 
 mod cleanup;
+mod document;
+mod failure_injection;
 mod generation;
 mod lease;
 
@@ -46,6 +48,8 @@ enum FakeLedgerMode {
     ReleaseFailure,
     CommittedGenerationFailure,
     CleanupDebtWriteFailure,
+    ManifestWriteFailure,
+    FailGenerationFailure,
 }
 
 #[derive(Debug, Default)]
@@ -105,23 +109,6 @@ impl FakeLedgerStore {
 
     pub async fn committed_generation(&self, source_id: &SourceId) -> Option<SourceGenerationId> {
         self.state.lock().await.committed.get(source_id).cloned()
-    }
-
-    pub async fn document_status(&self, document_id: &DocumentId) -> Option<DocumentStatus> {
-        self.state
-            .lock()
-            .await
-            .document_statuses
-            .get(document_id)
-            .cloned()
-    }
-
-    pub async fn document_status_update_batches(&self) -> Vec<Vec<DocumentId>> {
-        self.state
-            .lock()
-            .await
-            .document_status_update_batches
-            .clone()
     }
 
     pub async fn cleanup_debt(&self, debt_id: &CleanupDebtId) -> Option<CleanupDebt> {
@@ -231,6 +218,7 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
+        self.inject_failure(FakeLedgerMode::ManifestWriteFailure, "manifest_write")?;
         validate_manifest(&manifest)?;
         let mut state = self.state.lock().await;
         if !state.sources.contains_key(&manifest.source_id) {
@@ -256,6 +244,7 @@ impl LedgerStore for FakeLedgerStore {
                     failed: 0,
                 },
                 document_counts: DocumentCounts {
+                    skipped: 0,
                     discovered: manifest.items.len() as u64,
                     prepared: 0,
                     embedded: 0,
@@ -373,6 +362,7 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
+        self.inject_failure(FakeLedgerMode::FailGenerationFailure, "fail_generation")?;
         generation::fail_generation(&self.state, generation).await
     }
 
@@ -384,48 +374,11 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()> {
-        let mut state = self.state.lock().await;
-        if !state.sources.contains_key(&status.source_id) {
-            return Err(source_missing_error(&status.source_id));
-        }
-        if state
-            .document_statuses
-            .get(&status.document_id)
-            .is_some_and(|existing| existing.updated_at.0 > status.updated_at.0)
-        {
-            return Ok(());
-        }
-        state
-            .document_statuses
-            .insert(status.document_id.clone(), status);
-        Ok(())
+        document::update_document_status(&self.state, status).await
     }
 
     async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
-        let mut state = self.state.lock().await;
-        for status in &statuses {
-            if !state.sources.contains_key(&status.source_id) {
-                return Err(source_missing_error(&status.source_id));
-            }
-        }
-        state.document_status_update_batches.push(
-            statuses
-                .iter()
-                .map(|status| status.document_id.clone())
-                .collect(),
-        );
-        for status in statuses {
-            if state
-                .document_statuses
-                .get(&status.document_id)
-                .is_none_or(|existing| existing.updated_at.0 <= status.updated_at.0)
-            {
-                state
-                    .document_statuses
-                    .insert(status.document_id.clone(), status);
-            }
-        }
-        Ok(())
+        document::update_document_statuses(&self.state, statuses).await
     }
 
     async fn publish_document_statuses(
@@ -434,21 +387,34 @@ impl LedgerStore for FakeLedgerStore {
         generation: SourceGenerationId,
         updated_at: Timestamp,
     ) -> Result<u64> {
-        let mut state = self.state.lock().await;
-        if !state.sources.contains_key(&source_id) {
-            return Err(source_missing_error(&source_id));
-        }
-        let mut updated = 0u64;
-        for status in state.document_statuses.values_mut() {
-            if status.source_id == source_id && status.generation.as_ref() == Some(&generation) {
-                status.status = DocumentLifecycleStatus::Published;
-                status.updated_at = updated_at.clone();
-                updated = updated.saturating_add(1);
-            }
-        }
-        Ok(updated)
+        document::publish_document_statuses(&self.state, source_id, generation, updated_at).await
     }
 
+    async fn document_statuses_for_items(
+        &self,
+        source_id: SourceId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<DocumentStatus>> {
+        document::document_statuses_for_items(&self.state, source_id, item_keys).await
+    }
+    async fn carry_document_statuses(
+        &self,
+        source_id: SourceId,
+        expected_generation: SourceGenerationId,
+        next_generation: SourceGenerationId,
+        expected_statuses: Vec<DocumentStatus>,
+        updated_at: Timestamp,
+    ) -> Result<u64> {
+        document::carry_document_statuses(
+            &self.state,
+            source_id,
+            expected_generation,
+            next_generation,
+            expected_statuses,
+            updated_at,
+        )
+        .await
+    }
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
         let remaining = self
             .cleanup_debt_successes_before_failure

@@ -6,6 +6,34 @@ use super::enums::*;
 use super::graph::*;
 use super::ids::*;
 
+/// Internal acquisition marker for a body omitted by a resource limit.
+pub const CONTENT_OMISSION_METADATA_KEY: &str = "axon.acquisition_omission";
+
+/// Stable, content-free reasons why an acquired item has no searchable document.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentSkipReason {
+    UnsupportedBinary,
+    UnsupportedEncoding,
+    EmptyContent,
+    UnresolvedContentReference,
+    SizeLimitExceeded,
+}
+
+impl ContentSkipReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedBinary => "unsupported_binary",
+            Self::UnsupportedEncoding => "unsupported_encoding",
+            Self::EmptyContent => "empty_content",
+            Self::UnresolvedContentReference => "unresolved_content_reference",
+            Self::SizeLimitExceeded => "size_limit_exceeded",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceDocument {
@@ -30,6 +58,17 @@ pub struct SourceDocument {
     pub artifact_id: Option<ArtifactId>,
     pub chunk_hints: Vec<ChunkHint>,
     pub parser_hints: Vec<ParserHint>,
+}
+
+/// Identity retained when preparation intentionally produces no searchable output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkippedDocument {
+    pub document_id: DocumentId,
+    pub source_id: SourceId,
+    pub source_item_key: SourceItemKey,
+    pub generation: SourceGenerationId,
+    pub reason: ContentSkipReason,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
@@ -126,6 +165,12 @@ pub enum CleanupSelector {
     /// delete. Added so `GraphStore::delete_nodes` has an identity to target
     /// (`docs/pipeline-unification/runtime/pruning-contract.md`, "graph orphan
     /// cleanup").
+    /// Retire one item's graph contribution under the source publication lease.
+    GraphItemEvidence {
+        source_id: SourceId,
+        source_item_key: SourceItemKey,
+        retirement_generation: SourceGenerationId,
+    },
     GraphNodes {
         stable_keys: Vec<String>,
     },

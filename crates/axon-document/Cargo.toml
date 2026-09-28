@@ -13,6 +13,7 @@ publish = false
 
 [dependencies]
 async-trait = "0.1"
+base64 = "0.22"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-parse = { path = "../axon-parse" }

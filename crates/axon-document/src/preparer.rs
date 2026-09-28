@@ -1,13 +1,14 @@
 //! Source document preparation entry point.
 
 use axon_api::source::{
-    ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
-    SourceDocument, SourceItemKey, SourceWarning,
+    ChunkId, ChunkLocator, CleanupKey, ContentRef, ContentSkipReason, MetadataMap, PreparedChunk,
+    PreparedDocument, SkippedDocument, SourceDocument, SourceItemKey, SourceWarning,
 };
 use axon_parse::vertical::take_metadata_artifacts;
 
 use crate::chunk::DocumentChunk;
 use crate::chunk_router::{ChunkRouter, decision_for_profile, source_adapter, source_scope};
+use crate::content_policy::{ContentDisposition, DEFAULT_CONTENT_BYTE_LIMIT, classify_content};
 use crate::markdown::MarkdownChunkLimits;
 use crate::parse::{DocumentParse, parse_document_owned};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
@@ -16,7 +17,9 @@ use crate::source_range::bounds_for_text;
 
 mod chunk_build;
 mod validation;
-use chunk_build::{build_chunks, warning};
+use chunk_build::{
+    bound_or_fallback, build_chunks, empty_fallback_warning, parsed_code_method, warning,
+};
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document;
 #[cfg(test)]
@@ -25,10 +28,11 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-1";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-5";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
+    pub max_content_bytes: usize,
     pub markdown_max_chars: usize,
     pub markdown_min_chars: usize,
     pub markdown_overlap_chars: usize,
@@ -37,6 +41,7 @@ pub struct DocumentPreparerConfig {
 impl Default for DocumentPreparerConfig {
     fn default() -> Self {
         Self {
+            max_content_bytes: DEFAULT_CONTENT_BYTE_LIMIT,
             markdown_max_chars: 2_000,
             markdown_min_chars: 500,
             markdown_overlap_chars: 200,
@@ -74,10 +79,56 @@ impl DocumentPreparer {
         }
     }
 
+    /// Effective preparation settings after the chunker normalizes its limits.
+    pub fn semantic_config(&self) -> DocumentPreparerConfig {
+        let limits = self.config.markdown_limits();
+        DocumentPreparerConfig {
+            max_content_bytes: self.config.max_content_bytes,
+            markdown_max_chars: limits.max_chars(),
+            markdown_min_chars: limits.min_chars(),
+            markdown_overlap_chars: limits.overlap_chars(),
+        }
+    }
+
+    /// Restrict this preparer without raising its configured safety ceiling.
+    pub fn with_content_byte_limit(mut self, limit: usize) -> Self {
+        self.config.max_content_bytes = self.config.max_content_bytes.min(limit);
+        self
+    }
+
+    fn classify_document(&self, document: &SourceDocument) -> Result<ContentDisposition, String> {
+        if document
+            .metadata
+            .get(axon_api::source::CONTENT_OMISSION_METADATA_KEY)
+            .and_then(serde_json::Value::as_str)
+            == Some("size_limit_exceeded")
+        {
+            return Ok(ContentDisposition::Skipped(
+                ContentSkipReason::SizeLimitExceeded,
+            ));
+        }
+        classify_content(&document.content, self.config.max_content_bytes)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn prepare(
         &self,
         mut request: PrepareSourceDocumentRequest,
     ) -> Result<PrepareSourceDocumentResult, String> {
+        let text = match self.classify_document(&request.document)? {
+            ContentDisposition::Text(text) => text,
+            ContentDisposition::Skipped(reason) => {
+                return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
+                    request, reason,
+                )));
+            }
+        };
+        // Acquisition policy remains in source provenance, outside vector metadata.
+        request.document.metadata.remove("binary_policy");
+        // Release the transport body before redaction and parsing allocate output.
+        request.document.content = ContentRef::InlineText {
+            text: String::new(),
+        };
         // Dead-code recovery (#298 alignment): mirror any off-band
         // structured-data extraction into ordinary metadata *before* routing/
         // chunking, so it survives into the vector payload instead of being
@@ -98,7 +149,10 @@ impl DocumentPreparer {
         // and fail preparation with "quote outside source range" (seen live
         // with fenced `Authorization: Bearer …` examples in docs).
         let mut content = redact_pre_chunk(
-            content_text(&request.document),
+            PreparedContentText {
+                text,
+                warnings: Vec::new(),
+            },
             &request.document.source_item_key,
         );
         // Activate axon-parse on the acquisition path: when the caller did not
@@ -111,9 +165,6 @@ impl DocumentPreparer {
             // Clone only lightweight identity/metadata. Move the redacted body
             // through the synchronous parser and recover it afterward so no
             // full source-body clone is live before parsing.
-            request.document.content = ContentRef::InlineText {
-                text: String::new(),
-            };
             let mut parse_doc = request.document.clone();
             parse_doc.content = ContentRef::InlineText {
                 text: std::mem::take(&mut content.text),
@@ -140,15 +191,12 @@ impl DocumentPreparer {
                 .unwrap_or_else(|| self.router.route(&request.document))?,
         };
         let bounds = bounds_for_text(&content.text);
-        let effective_profile = content.force_profile.unwrap_or(profile);
         // Concrete method distinct from the profile name: routes through the
         // same size/adapter/scope-aware decision `ChunkRouter::route_decision`
         // uses (adapter/scope read from the same shared metadata envelope),
-        // keyed off the *effective* profile (which may differ from the
-        // router's raw pick when the content ref forces atomic metadata) and
-        // the post-redaction content length actually handed to the chunker.
+        // keyed off the selected profile and the post-redaction content length.
         let decision = decision_for_profile(
-            effective_profile,
+            profile,
             content.text.len(),
             source_adapter(&request.document),
             source_scope(&request.document),
@@ -159,7 +207,7 @@ impl DocumentPreparer {
         // so `chunking_method` never claims a method that did not run.
         let use_size_or_adapter_fallback = decision.method != decision.fallback_chain[0];
         let build = build_chunks(
-            effective_profile,
+            profile,
             &content.text,
             request.document.structured_payload.as_ref(),
             &request.document.source_item_key,
@@ -170,35 +218,30 @@ impl DocumentPreparer {
             use_size_or_adapter_fallback,
             self.config.markdown_limits(),
         );
-        let chunks = build.chunks;
-        let parsed_code_method = (effective_profile == ChunkingProfile::CodeSymbol
-            && !use_size_or_adapter_fallback)
-            .then(|| {
-                chunks.first().and_then(|chunk| {
-                    chunk
-                        .metadata
-                        .get("actual_chunking_method")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_string)
-                })
-            })
-            .flatten();
+        let bounded = bound_or_fallback(build.chunks, &content.text);
+        let chunks = bounded.chunks;
+        if chunks.is_empty() {
+            return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
+                request,
+                ContentSkipReason::EmptyContent,
+            )));
+        }
+        let parsed_code_method = parsed_code_method(profile, use_size_or_adapter_fallback, &chunks);
         let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
             .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
-        let chunking_method = if content.force_profile.is_some() {
-            "atomic_metadata"
-        } else if !build.warnings.is_empty() {
-            // `structured_or_fallback` degraded to atomic text.
-            "atomic_fallback"
-        } else if let Some(method) = parsed_code_method.as_deref() {
-            method
-        } else {
-            decision.method
-        };
-        let prepared_chunks = prepare_chunks(&request, effective_profile, chunks, parser_stamp);
+        let chunking_method = actual_chunking_method(
+            bounded.size_backstop || bounded.empty_fallback,
+            !build.warnings.is_empty(),
+            parsed_code_method.as_deref(),
+            decision.method,
+        );
+        let prepared_chunks = prepare_chunks(&request, profile, chunks, parser_stamp);
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
         warnings.extend(build.warnings);
+        if bounded.empty_fallback {
+            warnings.push(empty_fallback_warning(&request.document.source_item_key));
+        }
         let document_metadata = request.document.metadata;
         let document = PreparedDocument {
             document_id: request.document.document_id,
@@ -207,7 +250,7 @@ impl DocumentPreparer {
             generation: request.generation,
             canonical_uri: request.document.canonical_uri,
             prepare_version: PREPARATION_SCHEMA_VERSION.to_string(),
-            chunking_profile: effective_profile.as_str().to_string(),
+            chunking_profile: profile.as_str().to_string(),
             chunking_method: chunking_method.to_string(),
             chunks: prepared_chunks,
             metadata: document_metadata,
@@ -219,7 +262,35 @@ impl DocumentPreparer {
             errors: request.errors,
         };
         validate_prepared_document_with_bounds(&document, &bounds, &content.text)?;
-        Ok(PrepareSourceDocumentResult { document })
+        Ok(PrepareSourceDocumentResult::Prepared(document))
+    }
+}
+
+fn actual_chunking_method<'a>(
+    windowed: bool,
+    atomic_fallback: bool,
+    parsed_code_method: Option<&'a str>,
+    routed_method: &'a str,
+) -> &'a str {
+    if windowed {
+        "plain_text_windows"
+    } else if atomic_fallback {
+        "atomic_fallback"
+    } else {
+        parsed_code_method.unwrap_or(routed_method)
+    }
+}
+
+fn skipped_document(
+    request: PrepareSourceDocumentRequest,
+    reason: ContentSkipReason,
+) -> SkippedDocument {
+    SkippedDocument {
+        document_id: request.document.document_id,
+        source_id: request.document.source_id,
+        source_item_key: request.document.source_item_key,
+        generation: request.generation,
+        reason,
     }
 }
 
@@ -324,7 +395,6 @@ fn merge_parse_artifacts(request: &mut PrepareSourceDocumentRequest, parse: &Doc
 struct PreparedContentText {
     text: String,
     warnings: Vec<SourceWarning>,
-    force_profile: Option<ChunkingProfile>,
 }
 
 /// Redaction pass 1 of 2: scrubs detector-confirmed secret spans out of the
@@ -352,53 +422,6 @@ fn redact_pre_chunk(
     PreparedContentText {
         text: redacted,
         warnings,
-        force_profile: content.force_profile,
-    }
-}
-
-fn content_text(document: &SourceDocument) -> PreparedContentText {
-    match &document.content {
-        ContentRef::InlineText { text } => PreparedContentText {
-            text: text.clone(),
-            warnings: Vec::new(),
-            force_profile: None,
-        },
-        ContentRef::InlineBytes {
-            bytes_base64,
-            mime_type,
-        } => PreparedContentText {
-            text: format!(
-                "inline bytes omitted from text preparation\nmime_type: {mime_type}\nencoded_bytes: {}",
-                bytes_base64.len()
-            ),
-            warnings: vec![warning(
-                "document.content.inline_bytes_fallback",
-                "inline bytes prepared as bounded metadata text",
-                &document.source_item_key,
-            )],
-            force_profile: Some(ChunkingProfile::AtomicMetadata),
-        },
-        ContentRef::Artifact { artifact_id } => PreparedContentText {
-            text: format!("artifact content reference\nartifact_id: {}", artifact_id.0),
-            warnings: vec![warning(
-                "document.content.artifact_fallback",
-                "artifact content prepared as metadata reference",
-                &document.source_item_key,
-            )],
-            force_profile: Some(ChunkingProfile::AtomicMetadata),
-        },
-        ContentRef::External { uri, integrity } => PreparedContentText {
-            text: format!(
-                "external content reference\nuri: {uri}\nintegrity: {}",
-                integrity.as_deref().unwrap_or("unknown")
-            ),
-            warnings: vec![warning(
-                "document.content.external_fallback",
-                "external content prepared as metadata reference",
-                &document.source_item_key,
-            )],
-            force_profile: Some(ChunkingProfile::AtomicMetadata),
-        },
     }
 }
 

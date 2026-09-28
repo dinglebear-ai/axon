@@ -275,3 +275,18 @@ async fn normalize_channel_scope_video() {
     );
     fs::remove_dir_all(dump.parent().unwrap()).ok();
 }
+
+#[tokio::test]
+async fn youtube_collection_inventory_is_partial_even_below_upstream_cap() {
+    let dump = dump_file(DUMP_WITH_TWO_VIDEOS);
+    for (scope, expected) in [
+        (SourceScope::Video, InventoryCompleteness::Complete),
+        (SourceScope::Playlist, InventoryCompleteness::Partial),
+        (SourceScope::Channel, InventoryCompleteness::Partial),
+    ] {
+        let plan = youtube_plan(&dump, scope, true);
+        let manifest = YoutubeSourceAdapter::new().discover(&plan).await.unwrap();
+        assert_eq!(manifest.inventory_completeness(), expected);
+    }
+    fs::remove_dir_all(dump.parent().unwrap()).unwrap();
+}

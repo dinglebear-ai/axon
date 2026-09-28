@@ -111,6 +111,7 @@ async fn reused_document_is_retargeted_into_the_next_cache_generation() {
         reuse_cached_document(&runtime, &diff, &item_key)
             .await
             .unwrap()
+            .is_some()
     );
     let copied = core
         .get(DocumentCacheKey {
@@ -257,3 +258,6 @@ fn acquisition_fixture(
         artifacts,
     }
 }
+
+#[path = "reuse_resolution_tests.rs"]
+mod resolution;

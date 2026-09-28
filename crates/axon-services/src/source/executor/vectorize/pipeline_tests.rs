@@ -803,6 +803,9 @@ async fn prepared_pool_checkpoints_successful_upsert_before_next_embedding_failu
     let mut next_document = axon_vectors::testing::test_prepared_document();
     next_document.metadata.remove("embedding_batch_id");
     let mut vectorizer = super::super::PreparedPoolVectorizer {
+        providers_ready: false,
+        bulk_guard: None,
+        bulk_collection: None,
         ready: Some(current),
         cumulative: std::collections::HashMap::new(),
     };

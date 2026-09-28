@@ -23,20 +23,10 @@ pub(super) async fn unchanged_result(
         .previous_generation
         .clone()
         .ok_or_else(|| anyhow::anyhow!("unchanged source has no committed generation"))?;
-    let counts = previous
-        .map(preserved_source_counts)
-        .unwrap_or(SourceCounts {
-            items_total: manifest.items.len() as u64,
-            items_changed: 0,
-            documents_total: manifest.items.len() as u64,
-            chunks_total: 0,
-            vector_points_total: 0,
-            bytes_total: manifest
-                .items
-                .iter()
-                .map(|item| item.size_bytes.unwrap_or(0))
-                .sum(),
-        });
+    let retained = super::retention::retained_statuses(ledger, diff).await?;
+    let counts =
+        super::retention::source_counts(&manifest, diff, &retained, &VectorizeResult::default());
+    let skipped = counts.documents_skipped;
     ledger
         .upsert_source(super::metadata::source_summary(
             input,
@@ -46,6 +36,7 @@ pub(super) async fn unchanged_result(
         ))
         .await?;
     Ok(IndexCounts {
+        documents_skipped: skipped,
         job_id: input.plan.job_id,
         source_id: manifest.source_id.clone(),
         generation,
@@ -100,7 +91,10 @@ pub(super) fn payload_index(field_name: &str) -> PayloadIndexSpec {
 
 pub(super) fn apply_max_items(manifest: &mut SourceManifest, max_items: Option<u64>) {
     if let Some(limit) = max_items.and_then(|value| usize::try_from(value).ok()) {
-        manifest.items.truncate(limit);
+        if manifest.items.len() > limit {
+            manifest.items.truncate(limit);
+            manifest.set_inventory_completeness(InventoryCompleteness::Partial);
+        }
     }
 }
 
@@ -159,7 +153,7 @@ pub(super) fn batch_changed_diff_ramped(
     })
 }
 
-fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
+pub(super) fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
     SourceManifestDiff {
         header: diff.header.clone(),
         source_id: diff.source_id.clone(),
@@ -214,55 +208,9 @@ pub(super) fn force_publication_refresh(diff: &mut SourceManifestDiff) {
     diff.modified.extend(unchanged);
 }
 
-pub(super) fn terminal_source_counts(
-    previous: Option<&SourceSummary>,
-    manifest: &SourceManifest,
-    diff: &SourceManifestDiff,
-    vectorized: &VectorizeResult,
-) -> SourceCounts {
-    let changed = diff.counts.added + diff.counts.modified + diff.counts.removed;
-    let bytes_total = manifest
-        .items
-        .iter()
-        .map(|item| item.size_bytes.unwrap_or(0))
-        .sum();
-    if diff.counts.unchanged == 0 {
-        return SourceCounts {
-            items_total: manifest.items.len() as u64,
-            items_changed: changed,
-            documents_total: vectorized.documents_prepared,
-            chunks_total: vectorized.chunks_prepared,
-            vector_points_total: vectorized.points_written,
-            bytes_total,
-        };
-    }
-
-    let prior = previous.map(|source| &source.counts);
-    let previous_items = prior.map_or(0, |counts| counts.items_total);
-    let retained = |value: u64| {
-        if previous_items == 0 {
-            return 0;
-        }
-        let numerator = u128::from(value)
-            .saturating_mul(u128::from(diff.counts.unchanged))
-            .saturating_add(u128::from(previous_items / 2));
-        u64::try_from(numerator / u128::from(previous_items)).unwrap_or(u64::MAX)
-    };
-    SourceCounts {
-        items_total: manifest.items.len() as u64,
-        items_changed: changed,
-        documents_total: retained(prior.map_or(0, |counts| counts.documents_total))
-            .saturating_add(vectorized.documents_prepared),
-        chunks_total: retained(prior.map_or(0, |counts| counts.chunks_total))
-            .saturating_add(vectorized.chunks_prepared),
-        vector_points_total: retained(prior.map_or(0, |counts| counts.vector_points_total))
-            .saturating_add(vectorized.points_written),
-        bytes_total,
-    }
-}
-
 pub(super) fn empty_source_counts() -> SourceCounts {
     SourceCounts {
+        documents_skipped: 0,
         items_total: 0,
         items_changed: 0,
         documents_total: 0,
@@ -282,7 +230,7 @@ pub(super) fn preserved_source_counts(source: &SourceSummary) -> SourceCounts {
 pub(super) async fn ensure_providers_ready(
     runtime: &TargetLocalSourceRuntime,
 ) -> anyhow::Result<()> {
-    crate::reserved_call::ensure_source_providers_ready(runtime).await?;
+    crate::reserved_call::ensure_source_embedding_ready(runtime).await?;
     Ok(())
 }
 
@@ -383,26 +331,7 @@ pub(super) fn take_enrichment_graph_candidates(
         .collect()
 }
 
-/// Build the terminal `SourceError` for a failed canonical source pipeline run.
-///
-/// This is persisted straight into `jobs.last_error_json` — a column with no
-/// automatic redaction pass (unlike `job_events`/`details_json`, which run
-/// through `redact_metadata`) — so secrets must be scrubbed here before
-/// either field is populated. `message` keeps anyhow's top-context frame
-/// only (unchanged shape from before); `cause` carries the full `.context()`
-/// chain via `{error:#}`, and only when it actually adds something beyond
-/// `message`, so a single-frame error doesn't get a pointless duplicate.
+/// Project diagnostics before direct persistence to jobs.last_error_json.
 pub(super) fn terminal_source_error(error: &anyhow::Error) -> SourceError {
-    let message = axon_core::redact::redact_operational_secrets(&error.to_string());
-    let full_chain = axon_core::redact::redact_operational_secrets(&format!("{error:#}"));
-    let cause = (full_chain != message).then_some(full_chain);
-    SourceError {
-        code: "source.index_failed".to_string(),
-        severity: Severity::Failed,
-        message,
-        source_item_key: None,
-        retryable: false,
-        provider_id: None,
-        cause,
-    }
+    crate::source::diagnostics::source_error(error)
 }

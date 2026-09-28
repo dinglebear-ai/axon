@@ -44,6 +44,9 @@ fn request() -> PrepareSourceDocumentRequest {
 async fn fake_document_preparer_default_is_success() {
     let fake = FakeDocumentPreparer::new();
     let prepared = fake.prepare(request()).await.expect("default success");
+    let PrepareSourceDocumentResult::Prepared(prepared) = prepared else {
+        panic!("expected prepared document")
+    };
     assert!(prepared.warnings.is_empty());
     assert_eq!(fake.calls().len(), 1);
 }

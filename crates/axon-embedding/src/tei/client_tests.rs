@@ -372,7 +372,7 @@ async fn embed_all_overlaps_independent_client_batches() {
 }
 
 #[tokio::test]
-async fn embed_all_sends_a_long_singleton_for_provider_tokenization() {
+async fn embed_all_rejects_a_long_singleton_before_provider_submission() {
     let server = MockServer::start_async().await;
     let endpoint = server
         .mock_async(|when, then| {
@@ -394,12 +394,12 @@ async fn embed_all_sends_a_long_singleton_for_provider_tokenization() {
     })
     .expect("client");
 
-    let outcome = client
+    let error = client
         .embed_all(&["12345".to_string()])
         .await
-        .expect("a conservative estimate must not reject a valid singleton");
-    assert_eq!(outcome.vectors.len(), 1);
-    endpoint.assert_calls_async(1).await;
+        .expect_err("oversized singleton must not reach the provider");
+    assert_eq!(error.code.to_string(), "embedding.tei.input_too_large");
+    endpoint.assert_calls_async(0).await;
 }
 
 #[tokio::test]
@@ -435,9 +435,9 @@ async fn embed_all_splits_batches_at_the_configured_token_boundary() {
 }
 
 #[test]
-fn token_estimate_batches_ascii_efficiently_and_non_ascii_conservatively() {
-    assert_eq!(estimated_tokens("abcdefgh"), 4);
-    assert_eq!(estimated_tokens("fn main()"), 5);
+fn token_estimate_bounds_ascii_and_non_ascii_conservatively() {
+    assert_eq!(estimated_tokens("abcdefgh"), 8);
+    assert_eq!(estimated_tokens("fn main()"), 9);
     assert_eq!(estimated_tokens("漢字"), 6);
     assert_eq!(estimated_tokens("😀"), 4);
 
@@ -458,14 +458,14 @@ fn token_estimate_batches_ascii_efficiently_and_non_ascii_conservatively() {
             .iter()
             .map(|(_, texts)| texts.clone())
             .collect::<Vec<_>>(),
-        vec![vec!["abcdefgh", "ijklmnop"], vec!["漢字"]]
+        vec![vec!["漢字"], vec!["abcdefgh"], vec!["ijklmnop"]]
     );
 }
 
 #[test]
-fn batch_packer_isolates_oversize_input_from_following_normal_input() {
+fn batch_packer_rejects_oversize_input() {
     let inputs = ["oversized".into(), "ok".into()];
-    let batches = pack_batches(
+    let error = pack_batches(
         &inputs,
         BatchLimits {
             max_inputs: 8,
@@ -474,19 +474,10 @@ fn batch_packer_isolates_oversize_input_from_following_normal_input() {
             max_batch_bytes: MAX_BATCH_BYTES,
         },
     )
-    .expect("provider-authoritative token overflow is not a client error");
-
-    assert_eq!(batches.len(), 2);
-    assert!(batches.iter().all(|(_, texts)| texts.len() == 1));
-    assert!(
-        batches
-            .iter()
-            .any(|(_, texts)| texts == &["oversized".to_string()])
-    );
-    assert!(
-        batches
-            .iter()
-            .any(|(_, texts)| texts == &["ok".to_string()])
+    .expect_err("oversized input is rejected before making an HTTP request");
+    assert_eq!(
+        error,
+        "one embedding input exceeds the configured token limit"
     );
 }
 
