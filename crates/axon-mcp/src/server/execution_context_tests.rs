@@ -20,7 +20,7 @@ fn every_leaf_and_aggregate_call_has_identical_authorization() {
         mcp_tool_projection: McpToolProjection::Both,
         ..Config::default()
     });
-    for operation in operations::operation_registry() {
+    for operation in operation_registry() {
         for scopes in [
             vec![],
             vec!["axon:read"],
