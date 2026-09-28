@@ -84,6 +84,15 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-mcp/src/schema_registry.rs",
         "xtask/src/schemas/mcp_action_registry.rs",
         "crates/axon-mcp/src/server/authz.rs",
+        "crates/axon-mcp/src/server/action_specs.rs",
+        "crates/axon-mcp/src/server/operations.rs",
+        "crates/axon-mcp/src/server/operation_schema.rs",
+        "crates/axon-mcp/src/server/tool_schema.rs",
+        "crates/axon-mcp/src/server/system_requests.rs",
+        "xtask/src/schemas/mcp_schema_build.rs",
+        "xtask/src/schemas/mcp_action_registry/request_schemas.rs",
+        "xtask/src/schemas/families/mcp_artifacts.rs",
+        "xtask/src/schemas/families/mcp_markdown.rs",
         "crates/axon-mcp/src/server.rs",
         "crates/axon-mcp/src/schema.rs",
         "crates/axon-api/src/action/requests.rs",
@@ -1209,19 +1218,34 @@ fn mcp_schema_is_registry_backed_and_validates_action_branches() {
             "removed action {removed:?} must not appear in the Action enum"
         );
     }
-    // Contract-only actions with no live DTO surface as `deferred_actions`,
-    // not fabricated schemas.
     let deferred = value["x-axon"]["deferred_actions"].as_array().unwrap();
     assert!(
-        deferred
-            .iter()
-            .any(|entry| entry["action"] == "chat" || entry["action"] == "watches")
+        deferred.is_empty(),
+        "chat and artifacts are live, not deferred"
     );
-    // Every live action has an if/then discriminator branch.
-    let branches = value["$defs"]["ActionDiscriminatorRules"]["oneOf"]
-        .as_array()
-        .unwrap();
+    let branches = value["$defs"]["AxonToolInput"]["oneOf"].as_array().unwrap();
     assert_eq!(branches.len(), action_enum.len());
+    assert_eq!(
+        value["$defs"]["ActionDiscriminatorRules"]["$ref"],
+        "#/$defs/AxonToolInput"
+    );
+    let operations = value["x-axon"]["operations"].as_array().unwrap();
+    let names: std::collections::BTreeSet<_> = operations
+        .iter()
+        .map(|op| op["name"].as_str().unwrap())
+        .collect();
+    let runtime: std::collections::BTreeSet<_> = axon_mcp::server::operation_registry()
+        .iter()
+        .map(|op| op.name.as_str())
+        .collect();
+    assert_eq!(names.len(), operations.len());
+    assert_eq!(names, runtime);
+    let mut canonical = value["$defs"]["AxonToolInput"].clone();
+    canonical["$defs"] = value["$defs"].clone();
+    let validator = jsonschema::validator_for(&canonical).unwrap();
+    assert!(validator.is_valid(&serde_json::json!({"action":"query", "query":"owned test"})));
+    assert!(!validator.is_valid(&serde_json::json!({"action":"query", "query":7})));
+    assert!(!validator.is_valid(&serde_json::json!({"action":"unknown"})));
 }
 
 #[test]

@@ -16,14 +16,22 @@ use rmcp::{ErrorData, RoleServer, service::RequestContext};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+/// Shared task admission by canonical identity, not transport tool name.
+/// A source job is not automatically an MCP task: only extract.start currently
+/// implements the task lifecycle contract.
+pub(super) fn supports_operation(action: &str, subaction: &str) -> bool {
+    action == "extract" && matches!(subaction, "" | "start")
+}
+
 pub(super) async fn enqueue_task(
     server: &AxonMcpServer,
     request: CallToolRequestParams,
     context: RequestContext<RoleServer>,
 ) -> Result<CreateTaskResult, ErrorData> {
-    if request.name.as_ref() != "axon" {
+    let (action, subaction) = action_pair_from_arguments(request.arguments.as_ref());
+    if !supports_operation(&action, &subaction) {
         return Err(invalid_params(format!(
-            "tool `{}` does not support task execution",
+            "tool {} operation {action}.{subaction} does not support task execution",
             request.name
         )));
     }
@@ -114,7 +122,8 @@ fn authorize_task_tool_call<'a>(
     // mutates_if (axon #298 follow-up): mirrors the upgrade applied in
     // `server.rs::call_tool` so the deferred-task path enforces the same
     // effective scope as the synchronous dispatch path.
-    let base_required_scope = server_authz::required_scope_for_tool("axon", &action, &subaction);
+    let base_required_scope =
+        server_authz::required_scope_for_tool(request.name.as_ref(), &action, &subaction);
     let required_scope = server_authz::required_scope_with_mutates_if(&action, base_required_scope);
     // CWE-863 fix: mirrors the `is_elevated` branch in `server.rs::call_tool`
     // — when `mutates_if_upgrade` elevated the requirement, this deferred

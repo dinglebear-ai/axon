@@ -2,7 +2,7 @@
 
 Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.
 
-Version: 7.4.0
+Version: 7.5.0
 
 Every source — a web page, a site, a local checkout, a Git repo, a package, a
 Reddit subreddit, a YouTube transcript, or an AI session export — enters
@@ -422,13 +422,17 @@ tree. Per-command flags: `axon <cmd> --help`.
 ## MCP
 
 Axon supports three MCP tool projections controlled by
-`AXON_MCP_PROJECTION=legacy|atomic|both`. The default, `legacy`, exposes the
-single compatibility tool `axon` with `action` / optional `subaction`
-routing. `atomic` exposes one focused `axon_<action>` tool per live MCP
-action, and `both` publishes both surfaces during migration. All projections
-route into the same dispatcher and authorization path. `axon mcp` defaults to
-stdio; `--transport http` (or `both`) and `axon serve mcp` expose the
-selected projection over HTTP on the same listener as `axon serve`.
+`AXON_MCP_TOOL_PROJECTION=legacy|atomic|both`, or
+`--mcp-tool-projection` on `axon mcp` / `axon serve mcp`. The default,
+`legacy`, exposes the compatible `axon` aggregate with `action`/`subaction`
+routing. `atomic` exposes unprefixed canonical operations such as `query`,
+`jobs_get`, `jobs_cancel` and `uploads_create`; their fixed routing fields
+are not caller arguments. `both` publishes both forms, using the same
+scope checks, task admission and dispatcher. The dedicated
+`axon_status_dashboard` tool remains unchanged in every mode.
+CLI selection overrides `AXON_MCP_TOOL_PROJECTION`, which overrides the
+deprecated `AXON_MCP_PROJECTION` fallback. See the
+[MCP reference](docs/reference/mcp/overview.md).
 
 ```json
 { "action": "doctor" }

@@ -1,5 +1,5 @@
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, McpProjection, McpTransport, PerformanceProfile,
+    CommandKind, EvaluateResponsesMode, McpToolProjection, McpTransport, PerformanceProfile,
     RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 use crate::llm::LlmBackendKind;
@@ -1239,8 +1239,8 @@ pub struct Config {
 
     /// MCP tool projection. `legacy` publishes the aggregate `axon` router,
     /// `atomic` publishes one `axon_<action>` tool per live action, and
-    /// `both` publishes both surfaces during migration. Env: `AXON_MCP_PROJECTION`.
-    pub mcp_projection: McpProjection,
+    /// `both` publishes both surfaces during migration. Env: `AXON_MCP_TOOL_PROJECTION`.
+    pub mcp_tool_projection: McpToolProjection,
 
     /// Host interface for MCP HTTP transport. Env: `AXON_HTTP_HOST`. Default: `127.0.0.1`.
     pub mcp_http_host: String,

@@ -11,7 +11,7 @@ pub use parse::{build_cli_command, parse_args};
 pub use secret::Secret;
 pub use types::{
     AdaptiveConcurrencyConfig, CodeSearchWatchConfig, ColorChoice, CommandKind, Config,
-    ConfigOverrides, EvaluateResponsesMode, McpProjection, McpTransport, MotionChoice,
+    ConfigOverrides, EvaluateResponsesMode, McpToolProjection, McpTransport, MotionChoice,
     PerformanceProfile, ProjectionBatchConfig, RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 pub use validation::{CollectionNameError, validate_collection_name};

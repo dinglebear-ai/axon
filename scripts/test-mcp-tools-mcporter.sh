@@ -6,7 +6,8 @@ BASE_CONFIG_PATH="${MCPORTER_CONFIG:-$REPO_ROOT/config/mcporter.json}"
 CATALOG_PATH="${AXON_E2E_CATALOG:-$REPO_ROOT/tests/e2e/catalog/catalog.json}"
 MCP_ADAPTER="$REPO_ROOT/scripts/e2e/adapters/mcp.py"
 SERVER="${MCP_SERVER:-axon}"
-MCP_PROJECTION="${MCP_PROJECTION:-${AXON_MCP_PROJECTION:-legacy}}"
+MCP_PROJECTION="${MCP_PROJECTION:-${AXON_MCP_TOOL_PROJECTION:-${AXON_MCP_PROJECTION:-legacy}}}"
+MCP_CALL_FORM="${MCP_CALL_FORM:-$MCP_PROJECTION}"
 SELECTOR="${SERVER}.axon"
 
 case "$MCP_PROJECTION" in
@@ -19,6 +20,9 @@ esac
 
 BASE_OUTDIR="${MCPORTER_OUTDIR:-$REPO_ROOT/.cache/mcporter-test}"
 SUMMARY="$BASE_OUTDIR/summary.txt"
+MCP_E2E_OWNED_COLLECTION="${MCP_E2E_OWNED_COLLECTION:-axon_e2e_mcporter_$(date +%s)_$$}"
+[[ "$MCP_E2E_OWNED_COLLECTION" == axon_e2e_* ]] || { echo "FAIL: collection must be owned axon_e2e_* test data" >&2; exit 2; }
+export MCP_E2E_OWNED_COLLECTION
 mkdir -p "$BASE_OUTDIR"
 : >"$SUMMARY"
 
@@ -26,6 +30,9 @@ REAL_PAGE_URL="${REAL_PAGE_URL:-https://www.rust-lang.org/learn/get-started}"
 MAP_URL="${MAP_URL:-https://gofastmcp.com/}"
 pass=0
 fail=0
+skip=0
+expected_error=0
+handled_error=0
 
 OUTDIR=""
 CONFIG_PATH=""
@@ -57,111 +64,7 @@ if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "
   URL_MODE=1
 fi
 
-record_pass() {
-  local name="$1"
-  echo "PASS $name" | tee -a "$SUMMARY"
-  pass=$((pass + 1))
-}
-
-record_fail() {
-  local name="$1"
-  local logfile="$2"
-  echo "FAIL $name (see $logfile)" | tee -a "$SUMMARY"
-  fail=$((fail + 1))
-}
-
-run_case() {
-  local name="$1"
-  shift
-  local logfile="$OUTDIR/${name}.log"
-  if "$@" >"$logfile" 2>&1; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-run_json_case() {
-  local name="$1"
-  local filter="$2"
-  shift 2
-  local logfile="$OUTDIR/${name}.log"
-  if "$@" >"$logfile" 2>&1 && json_payload "$logfile" | jq -e "$filter" >/dev/null; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-run_error_case() {
-  local name="$1"
-  local expected="$2"
-  shift 2
-  local logfile="$OUTDIR/${name}.log"
-  "$@" >"$logfile" 2>&1 || true
-  if json_payload "$logfile" | jq -er --arg expected "$expected" '.error | type == "string" and contains($expected)' >/dev/null; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-# Like run_json_case but tolerant of mcporter's non-zero exit on MCP error
-# responses: asserts the filter against whatever envelope came back (a valid
-# `ok:true` success OR a structured `error` string both count as "the tool
-# responded"). Use for routes whose success depends on non-deterministic state
-# (job phase, provider availability) where either a success or a structured
-# error is an acceptable, non-crashing response.
-run_envelope_case() {
-  local name="$1"
-  local filter="$2"
-  shift 2
-  local logfile="$OUTDIR/${name}.log"
-  "$@" >"$logfile" 2>&1 || true
-  if json_payload "$logfile" | jq -e "$filter" >/dev/null 2>&1; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-
-call_tool() {
-  local action=""
-  local arg
-  for arg in "$@"; do
-    if [[ "$arg" == action:* && -z "$action" ]]; then
-      action="${arg#action:}"
-    fi
-  done
-  [[ -n "$action" ]] || { echo "FAIL: call_tool requires action:<name>" >&2; return 2; }
-
-  local -a command=("${MCPORTER[@]}" call "$(tool_selector_for_action "$action")")
-  for arg in "$@"; do
-    if [[ "$arg" == action:* && "$MCP_PROJECTION" == "atomic" ]]; then
-      continue
-    fi
-    command+=("$arg")
-  done
-  command+=(--output json)
-  "${command[@]}"
-}
-
-call_tool_json() {
-  local payload="$1"
-  local action
-  action="$(jq -er '.action | select(type == "string" and length > 0)' <<<"$payload")"
-  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
-    payload="$(jq -c 'del(.action)' <<<"$payload")"
-  fi
-  "${MCPORTER[@]}" call "$(tool_selector_for_action "$action")" --args "$payload" --output json
-}
-
-call_tool_with_timeout() {
-  local timeout_ms="$1"
-  shift
-  MCPORTER_CALL_TIMEOUT="$timeout_ms" call_tool "$@"
-}
+. "$REPO_ROOT/scripts/e2e/lib/mcporter-results.sh"
 
 json_payload() {
   local file="$1"
@@ -196,25 +99,6 @@ normalize_help_top_actions() {
   ' | sort -u
 }
 
-normalize_description_actions() {
-  local schema_file="$1"
-  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
-    json_payload "$schema_file" | jq -r '
-      .tools[]
-      | select(.name | startswith("axon_"))
-      | .name
-      | sub("^axon_"; "")
-    ' | sort -u | grep -Fxf <(printf '%s
-' "$EXPECTED_TOP_LEVEL_ACTIONS") || true
-  else
-    json_payload "$schema_file" | jq -r '
-      .tools[]
-      | select(.name == "axon")
-      | .inputSchema.properties.action.enum[]
-    ' | sort -u
-  fi
-}
-
 assert_sorted_equals() {
   local expected="$1"
   local actual="$2"
@@ -229,17 +113,19 @@ extract_json_field() {
 
 build_suite_config() {
   local mode="$1"
-  local runtime_root="$BASE_OUTDIR/runtime-$mode"
-  local suite_config="$BASE_OUTDIR/mcporter-$mode.json"
+  local runtime_root="$BASE_OUTDIR/runtime-$mode-$MCP_CALL_FORM"
+  local suite_config="$BASE_OUTDIR/mcporter-$mode-$MCP_CALL_FORM.json"
   mkdir -p "$runtime_root/logs"
   jq \
     --arg server "$SERVER" \
     --arg repo_root "$REPO_ROOT" \
-    --arg axon_home "$HOME/.axon" \
+    --arg axon_home "$runtime_root" \
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/logs/axon.log" \
     --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
     --arg projection "$MCP_PROJECTION" \
+    --arg binary "${AXON_MCP_BINARY:-$REPO_ROOT/target/debug/axon}" \
+    --arg collection "$MCP_E2E_OWNED_COLLECTION" \
     '.mcpServers[$server].command = ($repo_root + "/scripts/mcporter-axon")
     | .mcpServers[$server].args = []
     | .mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
@@ -250,7 +136,9 @@ build_suite_config() {
         AXON_SOURCE_LOCAL_ALLOWED_ROOTS: $repo_root,
         AXON_LOG_FILE: $log_file,
         AXON_SQLITE_PATH: $sqlite_path,
-        AXON_MCP_PROJECTION: $projection
+        AXON_MCP_TOOL_PROJECTION: $projection,
+        AXON_MCP_BINARY: $binary,
+        AXON_COLLECTION: $collection
       })
     ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
@@ -335,12 +223,12 @@ run_catalog_scenarios() {
 
 run_suite() {
   local mode="$1"
-  local prefix="$mode"
+  local prefix="$mode-$MCP_CALL_FORM"
   local expected_routes="$EXPECTED_ROUTES"
   local expected_top_level_actions="$EXPECTED_TOP_LEVEL_ACTIONS"
 
   CONFIG_PATH="$(build_suite_config "$mode")"
-  OUTDIR="$BASE_OUTDIR/$mode"
+  OUTDIR="$BASE_OUTDIR/$mode-$MCP_CALL_FORM"
   mkdir -p "$OUTDIR"
   MCPORTER=(mcporter --config "$CONFIG_PATH")
 
@@ -364,14 +252,14 @@ run_suite() {
 
   echo "== $mode parity checks ==" | tee -a "$SUMMARY"
   if [[ "$MCP_PROJECTION" == "atomic" ]]; then
-    run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon_status") and any(.tools[]; .name == "axon_status_dashboard") and all(.tools[]; .name != "axon")'
+    run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "status") and any(.tools[]; .name == "axon_status_dashboard") and all(.tools[]; .name != "axon")'
   else
     run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon")'
   fi
   run_case "${prefix}_help_has_resource" assert_ok "$help_file" '.ok == true and (.data.inline.resources | index("axon://schema/mcp-tool")) != null'
+  run_case "${prefix}_complete_leaf_inventory" assert_complete_tool_inventory "$schema_file" "$help_file"
   run_case "${prefix}_help_routes_match_expected" assert_sorted_equals "$expected_routes" "$(normalize_discovered_routes "$help_file")"
-  run_case "${prefix}_tool_description_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_description_actions "$schema_file")"
-  run_case "${prefix}_help_top_actions_match_description" assert_sorted_equals "$(normalize_description_actions "$schema_file")" "$(normalize_help_top_actions "$help_file")"
+  run_case "${prefix}_help_top_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_help_top_actions "$help_file")"
   echo "== $mode catalog scenarios ==" | tee -a "$SUMMARY"
   run_catalog_scenarios "$mode"
 
@@ -459,7 +347,7 @@ run_suite() {
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_jobs_recover" '.ok == true and .action == "jobs" and .subaction == "recover" and ((.data.data.recovered | type) == "number" or (.data.data.recovered_jobs | type) == "number")' call_tool_json '{"action":"jobs","subaction":"recover","dry_run":true,"limit":5,"stale_before":"2020-01-01T00:00:00Z"}'
   run_json_case "${prefix}_jobs_cleanup" '.ok == true and .action == "jobs" and .subaction == "cleanup" and ((.data.data.deleted | type) == "number" or (.data.data.deleted_jobs | type) == "number")' call_tool action:jobs subaction:cleanup dry_run:true limit:5
-  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and ((.data.data.plan // .data.inline.plan) | type == "object")' call_tool action:prune subaction:plan target:collection:axon response_mode:inline
+  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and ((.data.data.plan // .data.inline.plan) | type == "object")' call_tool action:prune subaction:plan target:"collection:$MCP_E2E_OWNED_COLLECTION" response_mode:inline
 
   # --- Full route coverage: every remaining action:subaction is called and its
   # response asserted (success shape where deterministic, otherwise a valid
@@ -563,15 +451,17 @@ run_suite() {
 }
 
 if [[ "$URL_MODE" == "1" ]]; then
-  # URL-mode configs target an already-running MCP HTTP server.
-  run_suite url
+  TRANSPORT=url
+  [[ "${MCP_E2E_ISOLATED_HTTP:-0}" == "1" ]] || { echo "FAIL: HTTP sweeps require an explicitly owned isolated instance (MCP_E2E_ISOLATED_HTTP=1)" >&2; exit 2; }
 else
-  run_suite stdio
+  TRANSPORT=stdio
+fi
+if [[ "$MCP_PROJECTION" == "both" ]]; then
+  for MCP_CALL_FORM in legacy atomic; do run_suite "$TRANSPORT"; done
+else
+  run_suite "$TRANSPORT"
 fi
 echo "" | tee -a "$SUMMARY"
-echo "Results: PASS=$pass FAIL=$fail" | tee -a "$SUMMARY"
+echo "Results: PASS=$pass EXPECTED_ERROR=$expected_error HANDLED_ERROR=$handled_error SKIP=$skip FAIL=$fail" | tee -a "$SUMMARY"
 echo "Summary: $SUMMARY"
-
-if [[ "$fail" -gt 0 ]]; then
-  exit 1
-fi
+[[ "$fail" -eq 0 ]]
