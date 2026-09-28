@@ -394,6 +394,7 @@ impl fmt::Debug for Config {
             .field("viewport_width", &self.viewport_width)
             .field("viewport_height", &self.viewport_height)
             .field("mcp_transport", &self.mcp_transport)
+            .field("mcp_projection", &self.mcp_projection)
             .field("mcp_http_host", &self.mcp_http_host)
             .field("mcp_http_port", &self.mcp_http_port)
             .field(

@@ -34,12 +34,58 @@ impl ActionScope {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct McpSafetyHints {
+    pub read_only: bool,
+    pub destructive: bool,
+    pub idempotent: Option<bool>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct McpActionSpec {
     pub name: &'static str,
     pub scope: ActionScope,
     pub description: &'static str,
     pub cost: &'static str,
+}
+
+impl McpActionSpec {
+    /// Conservative MCP safety annotations for the whole atomic action.
+    /// These are deliberately independent from authorization scope because
+    /// some read-gated actions can enqueue indexing work and mixed subaction
+    /// families contain both reads and mutations.
+    pub(super) fn safety_hints(self) -> McpSafetyHints {
+        let read_only = matches!(
+            self.name,
+            "code_search"
+                | "help"
+                | "status"
+                | "doctor"
+                | "query"
+                | "retrieve"
+                | "resolve"
+                | "capabilities"
+                | "providers"
+                | "map"
+                | "collections"
+                | "evaluate"
+                | "suggest"
+                | "summarize"
+                | "graph"
+                | "artifacts"
+                | "chat"
+        );
+        let destructive = matches!(
+            self.name,
+            "codex" | "jobs" | "prune" | "reset" | "memory" | "watch" | "uploads"
+        );
+
+        McpSafetyHints {
+            read_only,
+            destructive,
+            idempotent: if read_only { Some(true) } else { None },
+        }
+    }
 }
 
 pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[

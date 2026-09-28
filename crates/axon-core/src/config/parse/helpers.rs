@@ -1,8 +1,9 @@
 use super::super::cli::{JobSubcommand, WatchSubcommand};
-use super::super::types::McpTransport;
+use super::super::types::{McpProjection, McpTransport};
 use std::env;
 
 pub(super) const MCP_TRANSPORT_ENV: &str = "AXON_MCP_TRANSPORT";
+pub(super) const MCP_PROJECTION_ENV: &str = "AXON_MCP_PROJECTION";
 
 /// Like `env_bool` but returns `None` when the env var is absent, empty, or unrecognized.
 ///
@@ -175,6 +176,24 @@ pub(super) fn resolve_mcp_transport(
         };
     }
     default_transport
+}
+
+pub(super) fn resolve_mcp_projection() -> McpProjection {
+    let Some(raw) = read_env(MCP_PROJECTION_ENV) else {
+        return McpProjection::Legacy;
+    };
+    match raw.to_ascii_lowercase().as_str() {
+        "legacy" => McpProjection::Legacy,
+        "atomic" => McpProjection::Atomic,
+        "both" => McpProjection::Both,
+        _ => {
+            eprintln!(
+                "axon: warning: unrecognized value for {MCP_PROJECTION_ENV}={raw:?}; \
+                 expected legacy/atomic/both. Falling back to legacy."
+            );
+            McpProjection::Legacy
+        }
+    }
 }
 
 pub(super) fn env_port(env_var: &str, default: u16) -> Result<u16, String> {

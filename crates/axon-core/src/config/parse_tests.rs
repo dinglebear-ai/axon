@@ -1,6 +1,6 @@
 use super::build_config::tests::{env_guard, with_env_saved};
 use super::docker::is_docker_service_host;
-use crate::config::types::{CommandKind, McpTransport, MotionChoice};
+use crate::config::types::{CommandKind, McpProjection, McpTransport, MotionChoice};
 use clap::Parser;
 use std::env;
 
@@ -1015,6 +1015,54 @@ fn parse_mcp_transport_env_overrides_command_default() {
     let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
     unsafe { env::remove_var(TRANSPORT) };
     assert_eq!(cfg.mcp_transport, McpTransport::Both);
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_mcp_projection_env_selects_atomic_and_both() {
+    let _guard = env_guard();
+    const PROJECTION: &str = "AXON_MCP_PROJECTION";
+
+    for (raw, expected) in [
+        ("atomic", McpProjection::Atomic),
+        ("both", McpProjection::Both),
+        ("legacy", McpProjection::Legacy),
+    ] {
+        unsafe { env::set_var(PROJECTION, raw) };
+        let cli = super::Cli::parse_from([
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "mcp",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
+        assert_eq!(cfg.mcp_projection, expected, "{raw}");
+    }
+
+    unsafe { env::remove_var(PROJECTION) };
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_mcp_projection_invalid_value_falls_back_to_legacy() {
+    let _guard = env_guard();
+    const PROJECTION: &str = "AXON_MCP_PROJECTION";
+    unsafe { env::set_var(PROJECTION, "definitely-not-a-projection") };
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "mcp",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
+    unsafe { env::remove_var(PROJECTION) };
+
+    assert_eq!(cfg.mcp_projection, McpProjection::Legacy);
 }
 
 #[allow(unsafe_code)]

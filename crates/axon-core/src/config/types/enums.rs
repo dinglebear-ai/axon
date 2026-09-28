@@ -251,6 +251,27 @@ impl fmt::Display for McpTransport {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, Default, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum McpProjection {
+    #[default]
+    Legacy,
+    Atomic,
+    Both,
+}
+
+impl fmt::Display for McpProjection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Legacy => "legacy",
+            Self::Atomic => "atomic",
+            Self::Both => "both",
+        })
+    }
+}
+
 /// Terminal color override. Wired through `Config::color_choice` to both
 /// `core::ui::color_enabled()` and `core::logging::should_use_ansi()` so the
 /// runtime override is single-source.

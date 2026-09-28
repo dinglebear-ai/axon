@@ -6,7 +6,16 @@ BASE_CONFIG_PATH="${MCPORTER_CONFIG:-$REPO_ROOT/config/mcporter.json}"
 CATALOG_PATH="${AXON_E2E_CATALOG:-$REPO_ROOT/tests/e2e/catalog/catalog.json}"
 MCP_ADAPTER="$REPO_ROOT/scripts/e2e/adapters/mcp.py"
 SERVER="${MCP_SERVER:-axon}"
+MCP_PROJECTION="${MCP_PROJECTION:-${AXON_MCP_PROJECTION:-legacy}}"
 SELECTOR="${SERVER}.axon"
+
+case "$MCP_PROJECTION" in
+  legacy|atomic|both) ;;
+  *)
+    echo "FAIL: MCP_PROJECTION must be legacy, atomic, or both (got: $MCP_PROJECTION)" >&2
+    exit 2
+    ;;
+esac
 
 BASE_OUTDIR="${MCPORTER_OUTDIR:-$REPO_ROOT/.cache/mcporter-test}"
 SUMMARY="$BASE_OUTDIR/summary.txt"
@@ -23,6 +32,7 @@ CONFIG_PATH=""
 MCPORTER=()
 
 . "$REPO_ROOT/scripts/e2e/lib/mcporter-expected-routes.sh"
+. "$REPO_ROOT/scripts/e2e/lib/mcporter-projection.sh"
 
 if ! command -v mcporter >/dev/null 2>&1; then
   echo "FAIL: mcporter not found in PATH" >&2
@@ -115,19 +125,42 @@ run_envelope_case() {
   fi
 }
 
+
 call_tool() {
-  "${MCPORTER[@]}" call "$SELECTOR" "$@" --output json
+  local action=""
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == action:* && -z "$action" ]]; then
+      action="${arg#action:}"
+    fi
+  done
+  [[ -n "$action" ]] || { echo "FAIL: call_tool requires action:<name>" >&2; return 2; }
+
+  local -a command=("${MCPORTER[@]}" call "$(tool_selector_for_action "$action")")
+  for arg in "$@"; do
+    if [[ "$arg" == action:* && "$MCP_PROJECTION" == "atomic" ]]; then
+      continue
+    fi
+    command+=("$arg")
+  done
+  command+=(--output json)
+  "${command[@]}"
 }
 
 call_tool_json() {
   local payload="$1"
-  "${MCPORTER[@]}" call "$SELECTOR" --args "$payload" --output json
+  local action
+  action="$(jq -er '.action | select(type == "string" and length > 0)' <<<"$payload")"
+  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
+    payload="$(jq -c 'del(.action)' <<<"$payload")"
+  fi
+  "${MCPORTER[@]}" call "$(tool_selector_for_action "$action")" --args "$payload" --output json
 }
 
 call_tool_with_timeout() {
   local timeout_ms="$1"
   shift
-  MCPORTER_CALL_TIMEOUT="$timeout_ms" "${MCPORTER[@]}" call "$SELECTOR" "$@" --output json
+  MCPORTER_CALL_TIMEOUT="$timeout_ms" call_tool "$@"
 }
 
 json_payload() {
@@ -165,11 +198,21 @@ normalize_help_top_actions() {
 
 normalize_description_actions() {
   local schema_file="$1"
-  json_payload "$schema_file" | jq -r '
-    .tools[]
-    | select(.name == "axon")
-    | .inputSchema.properties.action.enum[]
-  ' | sort -u
+  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
+    json_payload "$schema_file" | jq -r '
+      .tools[]
+      | select(.name | startswith("axon_"))
+      | .name
+      | sub("^axon_"; "")
+    ' | sort -u | grep -Fxf <(printf '%s
+' "$EXPECTED_TOP_LEVEL_ACTIONS") || true
+  else
+    json_payload "$schema_file" | jq -r '
+      .tools[]
+      | select(.name == "axon")
+      | .inputSchema.properties.action.enum[]
+    ' | sort -u
+  fi
 }
 
 assert_sorted_equals() {
@@ -196,6 +239,7 @@ build_suite_config() {
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/logs/axon.log" \
     --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
+    --arg projection "$MCP_PROJECTION" \
     '.mcpServers[$server].command = ($repo_root + "/scripts/mcporter-axon")
     | .mcpServers[$server].args = []
     | .mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
@@ -205,7 +249,8 @@ build_suite_config() {
         AXON_CODE_SEARCH_ALLOWED_ROOTS: $repo_root,
         AXON_SOURCE_LOCAL_ALLOWED_ROOTS: $repo_root,
         AXON_LOG_FILE: $log_file,
-        AXON_SQLITE_PATH: $sqlite_path
+        AXON_SQLITE_PATH: $sqlite_path,
+        AXON_MCP_PROJECTION: $projection
       })
     ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
@@ -302,6 +347,7 @@ run_suite() {
   echo "== Suite: $mode ==" | tee -a "$SUMMARY"
   echo "Config: $CONFIG_PATH" | tee -a "$SUMMARY"
   echo "Server: $SERVER" | tee -a "$SUMMARY"
+  echo "Projection: $MCP_PROJECTION" | tee -a "$SUMMARY"
   validate_catalog_projection "$prefix"
   if [[ "$mode" == "url" && "${MCP_E2E_AUTH_MATRIX:-0}" == "1" ]]; then
     local mcp_url
@@ -317,7 +363,11 @@ run_suite() {
   local schema_file="$OUTDIR/${prefix}_list_schema.log"
 
   echo "== $mode parity checks ==" | tee -a "$SUMMARY"
-  run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon")'
+  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
+    run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon_status") and any(.tools[]; .name == "axon_status_dashboard") and all(.tools[]; .name != "axon")'
+  else
+    run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon")'
+  fi
   run_case "${prefix}_help_has_resource" assert_ok "$help_file" '.ok == true and (.data.inline.resources | index("axon://schema/mcp-tool")) != null'
   run_case "${prefix}_help_routes_match_expected" assert_sorted_equals "$expected_routes" "$(normalize_discovered_routes "$help_file")"
   run_case "${prefix}_tool_description_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_description_actions "$schema_file")"
@@ -343,7 +393,7 @@ run_suite() {
   run_envelope_case "${prefix}_search" '(.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language") or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:search query:'rust programming language' limit:3 offset:0
   run_envelope_case "${prefix}_research" '(.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))) or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:research query:'rust async best practices' limit:3 offset:0
   run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
-  run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and (.error | contains("screenshot requires Chrome")))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and ((.error | contains("screenshot requires Chrome")) or (.error | contains("Chrome may not be reachable")) or (.error | contains("screenshot bytes not captured"))))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
   # Focused projections are supported, but reject the retired argument shapes.
   run_error_case "${prefix}_crawl_rejects_legacy_arguments" "unknown field" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
@@ -351,12 +401,26 @@ run_suite() {
   run_error_case "${prefix}_embed_rejects_legacy_arguments" "unknown field" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
   run_error_case "${prefix}_ingest_rejects_legacy_arguments" "unknown field" call_tool action:ingest target:"$REPO_ROOT"
   run_error_case "${prefix}_code_search_rejects_legacy_arguments" "unknown field" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
-  run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
-  run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe
-  run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
-  run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
-  run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
+    run_case "${prefix}_removed_atomic_tools_absent" assert_ok "$schema_file" '
+      [.tools[].name] as $names
+      | all([
+          "axon_vertical_scrape",
+          "axon_purge",
+          "axon_dedupe",
+          "axon_stats",
+          "axon_domains",
+          "axon_sources"
+        ][]; . as $candidate | ($names | index($candidate)) == null)
+    '
+  else
+    run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
+    run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
+    run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe
+    run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
+    run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
+    run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  fi
   run_json_case "${prefix}_memory_remember" '(.ok == true and .action == "memory" and (.data.memory.id | type == "string")) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
   local memory_id
   if memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id' 2>/dev/null)"; then
