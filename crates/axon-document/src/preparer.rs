@@ -17,7 +17,9 @@ use crate::source_range::bounds_for_text;
 
 mod chunk_build;
 mod validation;
-use chunk_build::{bound_embedding_chunks, build_chunks, warning};
+use chunk_build::{
+    bound_or_fallback, build_chunks, empty_fallback_warning, parsed_code_method, warning,
+};
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document;
 #[cfg(test)]
@@ -26,7 +28,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-4";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-5";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -216,35 +218,30 @@ impl DocumentPreparer {
             use_size_or_adapter_fallback,
             self.config.markdown_limits(),
         );
-        let (chunks, size_backstop) = bound_embedding_chunks(build.chunks, &content.text);
-        let parsed_code_method = (profile == ChunkingProfile::CodeSymbol
-            && !use_size_or_adapter_fallback)
-            .then(|| {
-                chunks.first().and_then(|chunk| {
-                    chunk
-                        .metadata
-                        .get("actual_chunking_method")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_string)
-                })
-            })
-            .flatten();
+        let bounded = bound_or_fallback(build.chunks, &content.text);
+        let chunks = bounded.chunks;
+        if chunks.is_empty() {
+            return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
+                request,
+                ContentSkipReason::EmptyContent,
+            )));
+        }
+        let parsed_code_method = parsed_code_method(profile, use_size_or_adapter_fallback, &chunks);
         let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
             .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
-        let chunking_method = if size_backstop {
-            "plain_text_windows"
-        } else if !build.warnings.is_empty() {
-            // `structured_or_fallback` degraded to atomic text.
-            "atomic_fallback"
-        } else if let Some(method) = parsed_code_method.as_deref() {
-            method
-        } else {
-            decision.method
-        };
+        let chunking_method = actual_chunking_method(
+            bounded.size_backstop || bounded.empty_fallback,
+            !build.warnings.is_empty(),
+            parsed_code_method.as_deref(),
+            decision.method,
+        );
         let prepared_chunks = prepare_chunks(&request, profile, chunks, parser_stamp);
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
         warnings.extend(build.warnings);
+        if bounded.empty_fallback {
+            warnings.push(empty_fallback_warning(&request.document.source_item_key));
+        }
         let document_metadata = request.document.metadata;
         let document = PreparedDocument {
             document_id: request.document.document_id,
@@ -266,6 +263,21 @@ impl DocumentPreparer {
         };
         validate_prepared_document_with_bounds(&document, &bounds, &content.text)?;
         Ok(PrepareSourceDocumentResult::Prepared(document))
+    }
+}
+
+fn actual_chunking_method<'a>(
+    windowed: bool,
+    atomic_fallback: bool,
+    parsed_code_method: Option<&'a str>,
+    routed_method: &'a str,
+) -> &'a str {
+    if windowed {
+        "plain_text_windows"
+    } else if atomic_fallback {
+        "atomic_fallback"
+    } else {
+        parsed_code_method.unwrap_or(routed_method)
     }
 }
 

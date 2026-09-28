@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-4");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-5");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -191,6 +191,32 @@ fn preparer_skips_whitespace_only_content() {
     assert!(
         matches!(DocumentPreparer::default().prepare(request).unwrap(),
         PrepareSourceDocumentResult::Skipped(skipped) if skipped.reason == axon_api::source::ContentSkipReason::EmptyContent)
+    );
+}
+
+#[test]
+fn preparer_indexes_nonempty_html_when_visible_projection_has_no_chunks() {
+    let body = "<script>window.example = 42;</script>";
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Html,
+            body,
+            "gen-empty-html-projection",
+            ChunkingProfile::HtmlArticle,
+        ))
+        .unwrap()
+    else {
+        panic!("expected source-text fallback")
+    };
+    assert_eq!(prepared.chunking_method, "plain_text_windows");
+    assert_eq!(prepared.chunks.len(), 1);
+    assert_eq!(prepared.chunks[0].content, body);
+    assert_eq!(prepared.chunks[0].source_range.byte_start, Some(0));
+    assert!(
+        prepared
+            .warnings
+            .iter()
+            .any(|w| w.code == "chunk.empty_fallback")
     );
 }
 

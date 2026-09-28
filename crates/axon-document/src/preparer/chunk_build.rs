@@ -14,6 +14,60 @@ pub(super) struct ChunkBuild {
     pub(super) warnings: Vec<SourceWarning>,
 }
 
+pub(super) struct BoundedChunks {
+    pub(super) chunks: Vec<DocumentChunk>,
+    pub(super) size_backstop: bool,
+    pub(super) empty_fallback: bool,
+}
+
+pub(super) fn bound_or_fallback(chunks: Vec<DocumentChunk>, source: &str) -> BoundedChunks {
+    let (mut chunks, size_backstop) = bound_embedding_chunks(chunks, source);
+    let empty_fallback = chunks.is_empty();
+    if empty_fallback {
+        // Structural chunkers can find no records in otherwise useful text.
+        chunks = text::plain_text_windows(source)
+            .into_iter()
+            .filter(|chunk| !chunk.content.trim().is_empty())
+            .map(|chunk| {
+                chunk
+                    .with_metadata("chunking_fallback", "empty_structural_result".into())
+                    .with_metadata("actual_chunking_method", "plain_text_windows".into())
+            })
+            .collect();
+    }
+    BoundedChunks {
+        chunks,
+        size_backstop,
+        empty_fallback,
+    }
+}
+
+pub(super) fn empty_fallback_warning(source_item_key: &SourceItemKey) -> SourceWarning {
+    warning(
+        "chunk.empty_fallback",
+        "structural chunker produced no chunks; indexed bounded source text instead",
+        source_item_key,
+    )
+}
+
+pub(super) fn parsed_code_method(
+    profile: ChunkingProfile,
+    use_fallback: bool,
+    chunks: &[DocumentChunk],
+) -> Option<String> {
+    (profile == ChunkingProfile::CodeSymbol && !use_fallback)
+        .then(|| {
+            chunks.first().and_then(|chunk| {
+                chunk
+                    .metadata
+                    .get("actual_chunking_method")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            })
+        })
+        .flatten()
+}
+
 /// Keep every prepared text fragment below the embedding provider's per-input
 /// limit, including records produced by structural parsers and atomic profiles.
 /// Source-backed fragments retain exact positions; synthetic JSON records keep
