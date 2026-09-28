@@ -1,61 +1,23 @@
-# CLAUDE.md — Axon Palette (Tauri frontend)
+# Axon Palette
 
-Contributor guide for `apps/palette-tauri` — the desktop command palette for the Axon HTTP API. This is the **frontend / React side** of the app; the Rust desktop shell lives in `src-tauri/`. Read `README.md` first for the runtime/security model (CSP, IPC networking, frozen lockfile); this file covers architecture and the conventions you must follow when changing the UI.
+Read [README](README.md), [frontend scripts](package.json), [desktop shell](src-tauri/), and [palette testing](../../docs/development/desktop-palette-testing.md). This app has a separate Rust workspace and independently managed release version; do not synchronize it to the CLI version.
 
-> The palette is versioned independently from the CLI (`package.json` / `tauri.conf.json` carry the palette version; the CLI's `Cargo.toml` version is unrelated). Do not sync them.
+## UI and action ownership
 
-## Architecture — unidirectional data flow with an `App.tsx` orchestrator
+[App.tsx](src/App.tsx) orchestrates cross-cutting view state and passes props/callbacks to presentational components. Put reusable business logic in [src/lib](src/lib/), not duplicated conditionals across views.
 
-The frontend is deliberately a **single stateful orchestrator (`src/App.tsx`) over stateless/business-logic helpers**. This is intentional, not tech debt — keep it unless a refactor is explicitly tracked.
+New actions must update [actions](src/lib/actions.ts), [behavior registry](src/lib/actionRegistry.ts), [request builders](src/lib/actionRequest.ts), [formatters](src/lib/actionFormat.ts), and [display metadata](src/lib/actionMeta.ts). Add a structured renderer only when required in [OperationResultView](src/components/palette/OperationResultView.tsx). Registry exhaustiveness and shim parity must continue to catch missing behavior; do not silently fall back to raw JSON for an unsupported action.
 
-- **`src/App.tsx` owns view state and orchestration.** All cross-cutting UI state (`query`, `modeAction`, `selected`, `config`, `run`, the `settingsOpen`/`browseOpen`/`historyOpen` overlay flags, etc.) lives in `useState` flags in `App`. `App` wires user input → action selection → execution → result rendering, and threads state down to presentational components (`PaletteCommandBar`, `ActionList`, `OutputPanel`, `SettingsPanel`, `HistoryPanel`, `PaletteFooter`) via props. Data flows **down** as props; events flow **up** as callbacks. Child components do not own app state.
-- **Business logic lives in `src/lib/*`, not in components.** Pure functions and typed models live under `src/lib/` (e.g. `actions.ts`, `actionRegistry.ts` — the per-action behavior source of truth, `actionRequest.ts` — request/route builders, `actionFormat.ts` — text formatters, `actionMeta.ts`, `actionHelp.ts`, `paletteView.ts`, `format.ts`, `payload.ts`, `url.ts`, `axonClient.ts`, `configModel.ts`, `historyRun.ts`, `runState.ts`). Hooks that encapsulate stateful side effects also live there: `useActionRunner.ts` (request/response + streaming dispatch), `useJobPoll.ts` (unified source-job polling), `useWindowChrome.ts` (window sizing). Prefer adding logic to a `src/lib` helper with a unit test over inlining it in a component.
-- **Presentational components live in `src/components/`.** `components/palette/*` are app-specific views; `components/ui/aurora/*` and `components/ui/*` are the design-system primitives (see below). Components should be thin renderers over props.
+## Runtime seam and security
 
-### The dev/prod invoke seam — `src/lib/invoke.ts`
+Use [invoke.ts](src/lib/invoke.ts) rather than importing Tauri APIs throughout app code. Tauri uses Rust IPC networking; browser development uses the same-origin request fallback. Test both paths and do not mistake the browser fixture's stubbed events for working production streaming.
 
-Every backend call goes through the single wrapper in `src/lib/invoke.ts` — read its header comment, it is the canonical explanation. Summary:
+Keep API credential handling, panel unlock, CSP, IPC boundaries, and URL validation aligned with [server security](../../docs/operations/security.md) and [HTTP contracts](../../docs/reference/http-api.md). Errors shown to agents/users need failed operation, safe reason, partial state, and a retry or correction path; never expose secrets or write masked placeholders back as credentials.
 
-- In the **Tauri runtime**, `invoke()` forwards to the real `@tauri-apps/api/core` invoke, and `appWindow` is the real window (event listeners wired). All HTTP goes through the Rust IPC bridge.
-- In a **plain browser** (`pnpm vite:dev` / the fixture harness — used for design iteration and screenshots), `invoke()` falls back to same-origin `fetch` for `axon_http_request` (the Vite proxy forwards `/v1/*` to a live `axon serve`), and `appWindow.listen` is a no-op stub so streaming callers stay callable.
-- `isTauriRuntime` distinguishes the two. **Never import `@tauri-apps/api/*` directly in app code** — go through `invoke.ts` so the browser dev path keeps working.
+## Components and tests
 
-## Test convention — co-located `*.test.ts(x)` (NOT the Rust sidecar rule)
+Use existing Aurora tokens/primitives from [components](src/components/) and [registry configuration](components.json). Reuse the canonical button and shared interactive controls; keep one-off layout in semantic styles rather than creating competing primitives.
 
-The repo-root `CLAUDE.md` mandates a `_tests.rs` sidecar convention with `#[path]` declarations. **That rule applies only to Rust crates — `apps/palette-tauri/src-tauri/` and the root workspace crates — NOT to this TypeScript frontend.**
+TypeScript uses colocated *.test.ts(x) Vitest tests, not Rust *_tests.rs naming. Rust shell code follows Rust sidecar conventions. Add result cases to [OperationResultFixture](src/components/palette/OperationResultFixture.tsx); this fixture has no backend and cannot prove a real API call succeeds.
 
-The TS frontend uses **co-located Vitest test files**: a source file `foo.ts(x)` has its tests in a sibling `foo.test.ts(x)` next to it (e.g. `src/lib/format.ts` → `src/lib/format.test.ts`, `src/components/palette/OperationResultView.tsx` → `OperationResultView.test.tsx`). Run with `pnpm test` (`vitest run`). Component render tests use `@testing-library/react`; jsdom is opted into per file. When adding a source file with logic, add its co-located `*.test.ts(x)` in the same directory.
-
-## Design system — canonical layer + decision rule
-
-Token discipline is **already good and centralized**: every color/spacing value flows through `var(--aurora-*)` custom properties (rooted in `src/components/aurora.css` and `src/styles.css`), used in 600+ places. Do not introduce raw hex — use the Aurora tokens. (A Tailwind v4 `@theme` bridge is being added so utility classes like `text-text-primary` / `ring-accent-primary` resolve to those same tokens; the `--aurora-*` aliases stay — the bridge is additive.)
-
-The one ambiguity worth a rule is **component abstraction**. Decision rule for adding UI:
-
-- **Recurring interactive atom** (a button, input, badge, toggle that will appear more than once) → use or extend an Aurora primitive in `src/components/ui/aurora/`. There is exactly **one** canonical button (`ui/aurora/button.tsx`) — **never add a second button form**.
-- **One-off layout / page-specific structure** → use semantic classes in `src/styles.css` (e.g. `.action-row-main`, `.command-input`, `.idle-tray`). Do not promote a one-off into a primitive.
-
-Aurora primitives are installed from the `@aurora` shadcn registry configured in `components.json`; see README for the install path. Keep environment-specific registry addresses out of shared agent instructions.
-
-## How to add a new palette action
-
-Per-action behavior is consolidated into a single **action-behavior registry** (finding A-H1): `src/lib/actionRegistry.ts` exports `ACTION_REGISTRY: Record<PaletteSubcommand, ActionBehavior>`. Because it is keyed by the full `PaletteSubcommand` union, **a new subcommand fails to type-check until it has a complete behavior entry** — there is no silent degrade to raw `<pre>` JSON. The old scattered dispatch functions (`bodyFor`, `actionRouteTemplate`, `outputKindFor`, `formatPayload`, `outputIcon`, `actionIcon`, `hasStructuredOperationView`) are now thin shims that derive from this registry.
-
-To add an action, edit, in order:
-
-1. **`src/lib/actions.ts`** — add the action entry to the `ACTIONS` array, and add the subcommand to the `PaletteSubcommand` union type. (Job-lifecycle `${family}-${operation}` members are generated, not hand-listed.)
-2. **`src/lib/actionRegistry.ts`** — add one `ActionBehavior` entry to `STATIC_REGISTRY`. This is the single source of truth and carries everything per-action: `route` (method + templated path, e.g. `/v1/foo/{id}`), optional `routeFor` (id-aware route resolver), `buildBody` (request body builder), `outputKind` (`"markdown"`/`"code"`), `formatText` (fallback/copy text formatter), `actionIcon`, `outputIcon`, and `structuredView` (a `StructuredViewKey` or `null`).
-   - Request body/route helpers live in **`src/lib/actionRequest.ts`** — add a new `BodyBuilder` there if the existing ones don't fit, then reference it from the registry entry.
-   - Text formatters live in **`src/lib/actionFormat.ts`** — add a pure `(record) => string` formatter there and bind it via `recordFormatter(...)` in the registry entry.
-3. **`src/lib/actionMeta.ts`** — add display metadata to `ACTION_META` (category/input/output labels for the action detail row). The endpoint + method are derived from the registry; only the human-facing labels live here.
-4. **`src/components/palette/OperationResultView.tsx`** — *only if the action needs a structured view.* Add the new view key to the `StructuredViewKey` union (in `actionRegistry.ts`) and a matching renderer in the `STRUCTURED_VIEWS` map. The map is typed `Record<StructuredViewKey, …>`, so a new key fails to compile until rendered. `hasStructuredOperationView` and the dispatch both derive from `ACTION_REGISTRY[subcommand].structuredView` — they cannot drift. (Top-level views handled directly by `OutputPanel` — evaluate/stats/status — keep `structuredView: null`.)
-
-Icons (`actionIcon`/`outputIcon`) and output classification (`outputKindFor`/`formatPayload`) require **no** component or `format.ts` edits — they read straight from the registry entry. The exhaustiveness + shim-parity tests live in `src/lib/actionRegistry.test.ts`.
-
-## Result-view fixture harness
-
-`pnpm fixture:operation-results` opens the app in a browser at `/?fixture=operation-results`, which renders `src/components/palette/OperationResultFixture.tsx` instead of `App` (see `src/main.tsx`). This iterates the structured result views (`JobProgressView`, `EvaluateView`, `StatsView`, `StatusView`, `HelpResultView`, `OperationResultViewShared`, etc.) against representative payloads **with no backend**. Add a new case by adding a fixture payload in `OperationResultFixture.tsx`. The same fixture payloads are the source for component render tests (see the test convention above).
-
-## Commands
-
-See `README.md` for the full command reference. Quick map: `pnpm dev` (Tauri shell), `pnpm vite:dev` (browser dev via the invoke seam), `pnpm fixture:operation-results` (no-backend result-view harness), `pnpm test`, `pnpm typecheck`, `pnpm verify`. Rust tests for the shell: `cargo test --manifest-path apps/palette-tauri/src-tauri/Cargo.toml`.
+For UI/action changes run pnpm test and pnpm typecheck; use pnpm verify for full frontend validation. Check the independent shell with its src-tauri manifest when Rust changes. Keep generated API types synchronized through the app's generate:api/check:api scripts and current server OpenAPI. See [release checklist](../../docs/development/release-checklist.md) before version changes.

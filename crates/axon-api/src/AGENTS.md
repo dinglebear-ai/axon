@@ -1,68 +1,30 @@
-# axon-api — Agent Guide
+# axon-api
 
-`axon-api` is the **transport-neutral DTO / enum / envelope / schema hub**. CLI,
-REST, MCP, jobs, watches, apps, and services speak through these types instead of
-inventing surface-local shapes. It currently depends on serialization/schema
-helpers only and must not depend on Axon domain crates, so the retrieval/vector
-layer and the services facade can depend on it without a cycle. Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-api/README.md](../../../docs/pipeline-unification/crates/axon-api/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/foundation/api-contract.md](../../../docs/pipeline-unification/foundation/api-contract.md).
+Own transport-neutral operation DTOs, identities, enums, envelopes, and deterministic schema inputs.
 
-## Status — live transport contract
-The full transport-neutral DTO/enum spine is real and tested, not a marker:
-`source.rs` (`SourceIntent`, `SourceRefreshPolicy`, source request/result
-shapes), `action.rs` (shared operation request DTOs), `result.rs`,
-job/status/reset/route-inventory DTOs, and the schema/enum registries used by
-`xtask schemas` generation. Do not add provider clients, stores, or runtime
-side effects.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `source.rs` + `source/` | `SourceIntent`, `SourceRefreshPolicy`, source/job/watch/artifact/graph/memory DTOs and opaque IDs; `source/artifact_candidate.rs` projects frozen neutral `dinglebear.artifact-candidate/v1` plus Axon-only batch/sink DTOs |
-| `result.rs` | ask/query/evaluate result contracts (former `services::types::service::query`) |
-| `explain.rs` | ask-explain trace types (former `core::ask_explain`) |
-| `diff.rs` | diff DTOs |
-| `job_dto.rs` / `job_status.rs` / `job_progress.rs` | `JobRequest`, `JobStatus`, `JobEvent`, `JobProgress`, `JobHeartbeat` |
-| `service_job.rs` | `ServiceJob` — the job-runtime handoff shape |
-| `action.rs` + `action/` | Shared operation request DTOs used by service and transport adapters; MCP routing and response envelopes live in `axon-mcp` |
-| `schema_registry.rs` | shared schema-registry helpers for schema-contract generation + runtime tool-schema publication |
-| `migration.rs` | transport-neutral migration descriptors shared by every SQLite-backed crate |
-| `reset.rs` | reset plan/execute DTOs, canonical store selectors, `TARGET_PAYLOAD_CONTRACT_VERSION` |
+[api parity](../../../docs/reference/api-parity.md) · [vector payload](../../../docs/reference/sources/vector-payload.md) · [artifact candidate pipeline](../../../docs/architecture/specs/artifact-candidate-pipeline.md)
 
-## Boundary — keep OUT of this crate
-- provider clients, stores, routing behavior, parsing, chunking, embedding, orchestration.
-- CLI formatting, MCP server registration, Axum routes, app state.
-- concrete Qdrant / SQLite / TEI / Gemini / Codex types.
-- filesystem / network / process side effects.
+## Implementation map
 
-## Dependencies
-- **Currently allowed by manifest:** serde/schemars/utoipa, `uuid`, `chrono`,
-  `percent-encoding`, `serde_json`, `similar`, and tracing/value-object helpers
-  with no runtime side effects.
-- **Target direction:** `axon-error` may become the only Axon dependency when
-  shared `ErrorEnvelope` / `SuccessEnvelope<T>` shapes move here.
-- **Forbidden:** Axum, rmcp, clap, Qdrant/SQLite/TEI/LLM clients, and Axon
-  domain crates. Treat this as a target dependency contract; PR0 only enforces
-  empty dependencies for the new marker crates.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[action.rs](action.rs) · [source.rs](source.rs) · [source/artifact_candidate.rs](source/artifact_candidate.rs) · [job_dto.rs](job_dto.rs) · [reset.rs](reset.rs) · [migration.rs](migration.rs) · [loadout.rs](loadout.rs)
 
-## Invariants (review checklist)
-- **No transport, provider, store, or domain-crate imports.**
-- Every DTO serializes/deserializes with **stable JSON names**; schema generation is deterministic.
-- The individual `ArtifactCandidate` payload must remain exact-parity with the frozen cross-repo `dinglebear.artifact-candidate/v1` fixture; Axon-specific delivery metadata belongs only in `ArtifactCandidateBatch`.
-- **Enum additions fail** unless schema fixtures are updated; transport fixtures share the same DTO snapshots.
-- Implementation crates **depend on these DTOs** rather than redefining the same concept.
+## Change requirements
 
-## DTO ownership
-This **is** the DTO home. Wire DTOs for every surface live here — including the
-serializable projection of `axon-error::ApiError` (`ErrorEnvelope`) and the
-`SuccessEnvelope<T>` wrapper. If a domain crate needs a shared type, move the type
-here rather than duplicating it.
+- axon-error is already a direct dependency, not a future migration. Keep the dependency direction below domain/services/transports; do not introduce provider clients, persistence, HTTP frameworks, or filesystem/process side effects.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `foundation/api-contract.md` ·
-`foundation/types/dto-contract.md` · `schemas/api-dto-schema.md` (OpenAPI + MCP
-schemas + transport-parity fixtures). Keep JSON names stable unless the
-clean-break contract explicitly changes them.
+- Preserve serialized enum names and request/result semantics. Update schema fixtures and transport consumers when fields or variants change; Rust compilation alone does not establish wire compatibility.
+
+- The MCP-only tagged router and server envelopes live in axon-mcp; do not infer the entire MCP catalog from shared action DTOs.
+
+- Preserve exact neutral dinglebear.artifact-candidate/v1 parity. Delivery and batch metadata belong in Axon-specific wrappers, not the shared candidate payload.
+
+## Verification for code changes
+
+source_* and service_job/job_status/result sidecars; regenerate affected API, CLI, MCP, and OpenAPI contracts and test parity.
+
+Use focused `cargo test -p axon-api` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

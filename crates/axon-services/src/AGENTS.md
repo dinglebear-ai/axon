@@ -1,55 +1,30 @@
-# axon-services — Agent Guide
+# axon-services
 
-`axon-services` owns **transport-neutral orchestration** — the use-case / facade
-layer. It composes the domain crates (routing, adapters, ledger, parse, graph,
-document, embedding, vector, retrieval, LLM, memory, prune, jobs, authz, observe)
-behind typed service entrypoints, owns `ServiceContext`, and converts `axon-api`
-requests into domain boundary calls. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-services/README.md](../../../docs/pipeline-unification/crates/axon-services/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/foundation/types/service-contract.md](../../../docs/pipeline-unification/foundation/types/service-contract.md).
+Compose typed use cases, ServiceContext, providers/stores, source execution, and control runtimes across domains.
 
-## Status — unified composition layer
-The service registry exposes the canonical action set (source/map/extract/ask/
-query/retrieve/search/memory/graph/jobs/providers/config/status/prune), so each
-CLI, MCP, and REST action maps to one typed service entrypoint. It is a **facade,
-not a mandatory reimplementation hop**: single-domain logic stays in its domain
-crate; only cross-domain or job-runtime orchestration lives here.
+## Read before changing
 
-## Module map
-Current groups from `crates/axon-services/src/`:
-| Area | Owns |
-|---|---|
-| `lib.rs` · `context.rs` · `runtime.rs` | crate root + `ServiceContext` / dependency container + job runtime wiring |
-| `source.rs` · `source/` · `source_jobs.rs` · `map.rs` · `scrape.rs` | unified `SourceRequest` orchestration, shared adapter/executor composition, source jobs, map, and the one-page adapter projection |
-| `search.rs` · `search/` · `search_crawl.rs` · `search_source_index.rs` | search/research plus bounded Source-job indexing for result URLs |
-| `query.rs` · `summarize.rs` · `document.rs` · `service_traits.rs` · `service_traits/` | retrieval/RAG, synthesis, and typed service boundaries |
-| `extract.rs` · `brand.rs` · `endpoints/` · `diff.rs` · `screenshot.rs` | structured extraction + derived-content actions |
-| `memory.rs` · `memory/` · `watch.rs` | memory and source-watch use-cases |
-| `jobs.rs` · `migrate.rs` · `system/` · `config.rs` · `action_api/` · `client_contract/` · `transport.rs` · `types/` | job/system/config services + shared action/result assembly |
+[crate ownership](../../../docs/architecture/crate-ownership.md) · [source pipeline](../../../docs/architecture/source-pipeline.md) · [adding source](../../../docs/development/adding-source.md) · [pipeline performance boundaries](../../../docs/guides/pipeline-performance-boundaries.md)
 
-## Boundary — keep OUT of this crate
-- Transport-specific parsing/rendering, stdout/stderr output, HTTP route or MCP tool registration.
-- Domain internals that belong in lower crates; duplicate DTOs instead of `axon-api`.
-- Provider clients or stores outside injected boundaries.
+## Implementation map
 
-## Dependencies
-- **Allowed:** all lower domain and provider-boundary crates, plus `axon-api`/`axon-error`/`axon-core`/`axon-authz`/`axon-observe`/`axon-jobs`.
-- **Forbidden:** `axon-cli`, `axon-mcp`, `axon-web`; stdout/stderr rendering; HTTP/MCP registration. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[context.rs](context.rs) · [runtime.rs](runtime.rs) · [source.rs](source.rs) · [source_jobs.rs](source_jobs.rs) · [service_traits.rs](service_traits.rs) · [projections.rs](projections.rs) · [reserved_call.rs](reserved_call.rs) · [codex_control.rs](codex_control.rs) · [artifact_candidate_outbox.rs](artifact_candidate_outbox.rs)
 
-## Invariants (review checklist)
-- Every transport action has exactly one service entrypoint; adding a source/action changes service registration once, not per transport.
-- Source pipeline stage order matches `foundation/source-pipeline.md`; stage results are explicit and observable.
-- Errors, progress, document status, and cleanup debt are emitted consistently (via `axon-error`/`axon-observe`).
-- No service writes around injected stores/providers.
+## Change requirements
 
-## DTO ownership
-Every service function returns an **`axon-api`** result DTO — no raw JSON printing
-or stdout side-effects. Transports call these service entrypoints and the
-`axon-api` DTOs, never a domain crate's `::ops::*` or internals; this crate is the
-one hop allowed to reach into domain crates.
+- Keep single-domain implementation in its owning crate; services coordinate, inject boundaries, and manage cross-domain lifecycle. Do not duplicate handlers separately for CLI/MCP/HTTP.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `foundation/types/service-contract.md` ·
-`foundation/source-pipeline.md` · the CLI/MCP/REST surface contracts · the
-request/result DTOs in `axon-api`.
+- Source execution preserves one job ID and explicit stage outputs, generation fencing, document status, cleanup debt, and provider reservation cleanup. Cancellation and failed acquisition must not publish partial generations.
+
+- Keep artifact candidate delivery/outbox independent from source publication authority. Record retriable sink failures without silently losing evidence or rerunning acquisition unnecessarily.
+
+- Trusted Codex control is separate from synthesis. Memory publication, watches, and source projections reuse shared pipeline/job semantics. Errors and warnings identify stage, partial effects, and a concrete recovery path.
+
+## Verification for code changes
+
+Affected use-case and source integration sidecars, including source_pipeline_differential, source_security, source observability, cancellation/reuse, memory sync, and codex_control tests.
+
+Use focused `cargo test -p axon-services` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

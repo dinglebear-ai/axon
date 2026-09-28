@@ -1,64 +1,30 @@
-# axon-mcp — Agent Guide
+# axon-mcp
 
-This scoped guide extends the root AGENTS.md. CLAUDE.md and GEMINI.md are
-direct relative aliases of this file. Last reviewed: 2026-09-27.
+Own MCP discovery, schemas, request routing, auth integration, task protocol handling, resources, and envelopes.
 
-axon-mcp owns the MCP transport: tool discovery, request routing, task
-protocol handling, resources, auth integration, and transport envelopes.
-Domain operations remain in typed services and their owning crates.
+## Read before changing
 
-## Current catalog and contracts
+[overview](../../../docs/reference/mcp/overview.md) · [tool schema](../../../docs/reference/mcp/tool-schema.md) · [adding mcp action](../../../docs/development/adding-mcp-action.md) · [api parity](../../../docs/reference/api-parity.md)
 
-The primary axon tool uses action/subaction routing. The catalog also contains
-axon_status_dashboard, an auxiliary MCP App tool. Source acquisition and the
-focused scrape/crawl/embed/ingest projections share the canonical source/job
-services; code_search queries committed state.
+## Implementation map
 
-server.rs owns the advertised tool catalog and routes. The primary request
-schema is assembled by server/tool_schema.rs. Ordinary action DTOs route
-through AxonRequest; system operations including reset, collections, uploads,
-and artifacts use McpSystemRequest; watch uses McpWatchRequest. Do not infer
-that reset is absent merely because it is outside the narrower AxonRequest
-enum. Preserve validation and confirmation requirements in those request types.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[server.rs](server.rs) · [server/tool_schema.rs](server/tool_schema.rs) · [server/system_requests.rs](server/system_requests.rs) · [server/tasks.rs](server/tasks.rs) · [server/authz.rs](server/authz.rs) · [server/http.rs](server/http.rs) · [schema.rs](schema.rs)
 
-The [generated MCP reference](../../../docs/reference/mcp/tool-schema.md)
-and matching runtime tools/list describe the current surface. The
-[design packet](../../../docs/pipeline-unification/surfaces/tool-contract.md)
-is historical design context, not permission to remove working runtime tools.
-Unmerged atomic-projection work must not be documented as main behavior.
+## Change requirements
 
-## Module map
+- The catalog includes primary axon and auxiliary axon_status_dashboard tools. Ordinary actions, system requests, and watches use distinct request routing types; absence from AxonRequest alone does not imply unsupported.
 
-| Area | Responsibility |
-|---|---|
-| lib.rs | Crate exports and bootstrap |
-| server.rs | Server composition, tool registration, and dispatch |
-| server/handlers_*.rs | Typed operation handlers |
-| server/tool_schema.rs and schema.rs | Runtime input schema and MCP action router |
-| server/system_requests.rs | System/watch transport request types |
-| server/tasks.rs and task_* modules | MCP task lifecycle and progress |
-| server/handler_meta.rs and assets/ | Resource and MCP App metadata/assets |
-| auth.rs and server/authz.rs | Caller extraction and authorization |
-| cors.rs, server/http.rs, server/stdio.rs | Transport-specific wiring |
+- Keep discovery, schema acceptance, dispatch, auth, task completion/cancellation, and resource metadata synchronized. New projections reuse canonical services rather than creating parallel pipelines.
 
-## Boundaries and invariants
+- Tool/resource errors must preserve safe actionable cause, correlation IDs, retry information, and partial-effect status. Return opaque artifact IDs, never server paths.
 
-- Keep source pipeline behavior, provider retries, store clients, and domain
-  internals out of this crate. Use the shared service boundaries.
-- Shared operation DTOs belong in axon-api; the MCP-only tagged router and
-  envelopes belong here. Do not duplicate clap or Axum request types.
-- Keep tool discovery, runtime dispatch, schemas, auth requirements, task
-  behavior, and error envelopes consistent. An auxiliary tool must not bypass
-  the same security and service rules as the primary tool.
-- Return opaque artifact IDs, not server filesystem paths. Preserve structured
-  envelopes and stdout/stderr separation for protocol clients.
-- Do not restore removed code_search_watch, purge, dedupe, or vertical_scrape
-  pipelines. New projections must reuse canonical services and job semantics.
+- Do not infer shipped projection behavior from an unmerged worktree or from a narrower generated schema. Inspect the matching build’s tools/list and representative actual calls.
 
-## Verification
+## Verification for code changes
 
-Use the neighboring sidecar tests for schema, discovery, routing, authorization,
-and task changes. Update generator inputs, then run generated-contracts refresh
-and check; do not hand-edit generated Markdown. Exercise real tools/list and
-representative calls against the matching build when changing the wire surface.
-A mock-only test does not prove compatibility with an actual MCP client.
+Schema and server sidecars plus real MCP discovery/calls, including invalid input, unauthorized tools/resources, task cancellation/recovery, and artifact responses.
+
+Use focused `cargo test -p axon-mcp` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

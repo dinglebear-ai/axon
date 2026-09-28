@@ -1,19 +1,13 @@
-# Technology Stack Documentation -- Axon
+# Stack documentation
 
-Reference documentation for the technology choices, architecture, and prerequisites.
+[Architecture](arch.md), [technology choices](tech.md), and [prerequisites](pre-reqs.md) must describe the same runtime as the [current crate map](../crate-structure.md) and [source pipeline](../source-pipeline.md).
 
-## File index
+## Review requirements
 
-| File | Purpose |
-|------|---------|
-| [CLAUDE.md](CLAUDE.md) | This file -- index for stack/ documentation |
-| [ARCH.md](arch.md) | Architecture overview -- CLI, MCP, HTTP server, SQLite worker runtime, data flow |
-| [TECH.md](tech.md) | Technology choices -- Rust, Spider, Qdrant, hybrid search, Gemini headless LLM |
-| [PRE-REQS.md](pre-reqs.md) | Prerequisites -- tools and versions for development |
+Axon has CLI, MCP, and HTTP/web projections; do not call it a two-mode application. Source jobs use a unified SQLite/in-process runtime, not separate crawl/embed/ingest worker services. Provider clients and stores retain their crate boundaries.
 
-## Cross-references
+Verify build prerequisites against [Cargo.toml](../../../Cargo.toml), [the toolchain](../../../rust-toolchain.toml), and [contributing](../../development/contributing.md). Host-specific linker/cache settings are not universal prerequisites.
 
-- [../repo/REPO.md](../../development/repo/repo.md) -- repository structure
-- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes
-- [../CONFIG.md](../../guides/configuration.md) -- configuration reference
-- [../mcp/DEPLOY.md](../../reference/mcp/deploy.md) -- deployment patterns
+Use [deployment](../../operations/deployment.md) for the supported systemd/Incus contract and [configuration](../../guides/configuration.md) for provider options. Describe Compose as a development/reference surface in shared docs; actual local exceptions belong in private deployment notes. Do not assume a particular GPU, LLM backend, or service address.
+
+Link architecture changes to the actual modules and [ownership rules](../crate-ownership.md). Keep historical cutover diagrams labeled as history rather than claiming a live system still uses removed crates.

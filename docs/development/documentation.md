@@ -69,6 +69,9 @@ budget; a large root guide can prevent a nested guide from loading fully.
 The operational documentation check caps each tracked root-to-scope chain at
 30 KiB, leaving space for loader separators. Move detailed reference prose
 into linked guides rather than requiring every user to raise a local limit.
+The root guide is limited to 7,500 characters; every scoped guide must have at
+least three working references. The operational documentation check enforces
+these constraints across all tracked scopes, not only the root.
 
 ## Local, untracked instructions
 

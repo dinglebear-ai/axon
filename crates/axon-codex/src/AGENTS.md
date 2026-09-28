@@ -1,15 +1,30 @@
-# axon-codex maintenance contract
+# axon-codex
 
-`axon-codex` owns the typed Codex app-server protocol and the dedicated trusted-control runtime. It does not own synthesis; `axon-llm` keeps the isolated completion pool.
+Own typed Codex app-server protocol and trusted-control runtime, separate from LLM synthesis.
 
-Public modules cover typed actions, capability drift, control-home validation, bounded/redacted events, durable approval and operation state, JSON-RPC framing, and supervised subprocess transport. Transport crates consume this domain through `axon-services::codex_control`; they must not depend on `axon-codex` directly.
+## Read before changing
 
-Safety invariants:
+[codex control](../../../docs/guides/codex-control.md) · [auth](../../../docs/reference/runtime/auth.md) · [observability](../../../docs/reference/runtime/observability.md)
 
-- Never expose a generic JSON-RPC or shell passthrough.
-- Mutations require policy authorization, semantic secret validation, revision binding, an expiring single-use approval capability, audit persistence, and action-specific reconciliation.
-- Recovery is exact-ID addressed and must revalidate home identity, runtime boot, and policy version.
-- Event payloads, pending requests, frames, concurrency, and timeouts remain bounded.
-- The control home/process is separate from the synthesis home/process by default.
+## Implementation map
 
-Run `cargo test -p axon-codex` and `cargo test -p axon-services codex_control` after changes. Protocol inventory changes require `cargo xtask generated-contracts refresh` followed by `cargo xtask generated-contracts check`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[api.rs](api.rs) · [protocol.rs](protocol.rs) · [transport.rs](transport.rs) · [control.rs](control.rs) · [approval.rs](approval.rs) · [operations.rs](operations.rs) · [events.rs](events.rs) · [capabilities.rs](capabilities.rs)
+
+## Change requirements
+
+- Transports reach trusted control through axon-services::codex_control, not direct generic JSON-RPC or shell passthrough.
+
+- Mutations require authorization, secret validation, revision binding, expiring single-use approval, durable audit state, and operation-specific reconciliation. A transport timeout does not prove nothing committed.
+
+- Recovery addresses exact IDs and revalidates control-home identity, runtime boot, and policy version. Bound frames, events, pending requests, concurrency, and timeouts.
+
+- Keep control processes, homes, queues, and lifecycle separate from the completion pool in axon-llm. Shared protocol primitives do not authorize shared runtime state.
+
+## Verification for code changes
+
+cargo test -p axon-codex and axon-services codex_control tests; include approval replay, interrupted mutations, stale runtime identity, and capability drift.
+
+Use focused `cargo test -p axon-codex` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

@@ -45,7 +45,27 @@ def validate_instruction_budget(scopes: list[Path], limit_bytes: int = 30 * 1024
             )
 
 
+def validate_agent_references(scopes: list[Path]) -> None:
+    """Keep scoped instructions navigable without duplicating reference pages."""
+    link_pattern = re.compile(r"\[[^\]\n]+\]\(([^)\s]+)\)")
+    for guide in scopes:
+        text = guide.read_text(encoding="utf-8")
+        links = link_pattern.findall(text)
+        if len(links) < 3:
+            raise SystemExit(f"agent guide needs at least three useful references: {guide}")
+        for link in links:
+            target = link.split("#", 1)[0]
+            if not target or ":" in target:
+                continue
+            if not (guide.parent / target).exists():
+                raise SystemExit(f"broken agent reference in {guide}: {link}")
+
+
+root_characters = len((root / "AGENTS.md").read_text(encoding="utf-8"))
+if root_characters > 7500:
+    raise SystemExit(f"root AGENTS.md exceeds 7500 characters: {root_characters}")
 validate_instruction_budget(agent_scopes)
+validate_agent_references(agent_scopes)
 
 active = [
     root / "README.md",

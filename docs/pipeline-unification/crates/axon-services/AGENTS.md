@@ -1,18 +1,31 @@
-# axon-services Agent Instructions
+# axon-services design-contract maintenance
 
-This file is the agent-facing contract for the `axon-services` crate docs.
+This directory documents the `axon-services` boundary: Compose typed use cases, ServiceContext, providers/stores, source execution, and control runtimes across domains.
+Rust implementations belong in the crate, not in this documentation directory.
 
-## When Editing
+## Read together
 
-- Keep transport-neutral orchestration and service entrypoints here.
-- Compose lower crates; do not duplicate their internals.
-- Do not add CLI formatting, MCP registration, or REST routing.
-- Update `README.md`, `../../foundation/types/service-contract.md`,
-  `../../foundation/source-pipeline.md`, and surface contracts together.
-- Ensure every CLI/MCP/REST action maps to a service request/result.
+[Design contract](README.md) · [Current implementation guide](../../../../crates/axon-services/src/AGENTS.md) · [Crate exports](../../../../crates/axon-services/src/lib.rs)
 
-## Review Checklist
+[crate ownership](../../../../docs/architecture/crate-ownership.md) · [source pipeline](../../../../docs/architecture/source-pipeline.md) · [adding source](../../../../docs/development/adding-source.md) · [pipeline performance boundaries](../../../../docs/guides/pipeline-performance-boundaries.md)
 
-- Service stage order matches the source pipeline contract.
-- Service results are `axon-api` DTOs.
-- Errors and progress use `axon-error` and `axon-observe`.
+## Review the actual boundary
+
+- Keep single-domain implementation in its owning crate; services coordinate, inject boundaries, and manage cross-domain lifecycle. Do not duplicate handlers separately for CLI/MCP/HTTP.
+
+- Trusted Codex control is separate from synthesis. Memory publication, watches, and source projections reuse shared pipeline/job semantics. Errors and warnings identify stage, partial effects, and a concrete recovery path.
+
+For implementation evidence, inspect [context.rs](../../../../crates/axon-services/src/context.rs), [runtime.rs](../../../../crates/axon-services/src/runtime.rs), [source.rs](../../../../crates/axon-services/src/source.rs).
+Check the manifest and actual callers before describing a dependency or API as
+shipped. Distinguish current behavior, intended constraints, and remaining work;
+historical phase/cutover prose is not authority to restore removed runtime paths
+or to assume that existing databases are empty. Preserve dated outcomes.
+
+## Verification and paired edits
+
+Affected use-case and source integration sidecars, including source_pipeline_differential, source_security, source observability, cancellation/reuse, memory sync, and codex_control tests.
+
+When shapes or behavior change, update this contract and its linked live guide.
+Regenerate schema projections from owning inputs rather than hand-editing them;
+see [documentation validation](../../../development/documentation.md).
+Documentation-only edits need link/structural checks, not provider deployment.

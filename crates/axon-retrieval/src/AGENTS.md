@@ -1,71 +1,30 @@
-# axon-retrieval — Agent Guide
+# axon-retrieval
 
-`axon-retrieval` owns **query understanding and context assembly**: the
-`RetrievalEngine`, retrieval planning, dense/sparse/hybrid ranking and fusion,
-filters, citations, and context budgets shared by `query`/`search`/`retrieve`
-and the retrieval part of `ask`. Final LLM synthesis stays outside. Full
-contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-retrieval/README.md](../../../docs/pipeline-unification/crates/axon-retrieval/README.md)
-· boundary spec:
-[../../../docs/pipeline-unification/foundation/boundary-map.md](../../../docs/pipeline-unification/foundation/boundary-map.md).
+Own committed-state retrieval planning, dense/sparse fusion, filters, ranking, context budgets, and citations.
 
-## Status — live crate, ask/evaluate/query/retrieve read-plane cutover for #298
-`RetrievalEngine`/`run_query` is real and wired: `axon-services::query::
-query_via_retrieval` routes plain `query` (no LLM) through it, and
-`axon-services::query::ask_retrieval::retrieval_ask_context` routes the
-SEARCH + CONTEXT half of `ask`/`evaluate` through it too, embedding +
-dense/sparse hybrid-searching via injected `VectorStore`/`EmbeddingProvider`
-trait objects. `retrieve.rs` owns the transport-neutral `FullDocumentStore`
-port and `RetrievedDocument` result; the Qdrant implementation is an adapter
-owned by the composition layer behind that boundary. LLM synthesis for `ask`/`evaluate` stays OUT of
-this crate per its charter below — it lives in
-`axon-services::query::synthesis`/`query::evaluate`. The legacy
-`build_ask_context` reranker (`ask --explain`, used by `train`) was
-deliberately left out of this crate — it depends on qdrant/tei/ranking dispatch
-internals shared with `code_search`/legacy `query_hits`, which live in
-`axon-services` (with vector-store internals in `axon-vectors`); porting it here
-would mean either duplicating that shared dispatch layer or changing its ranking
-algorithm. Memory isolation
-between plain `query`/`ask` and `memory search` is enforced here via
-`RetrievalPlan.excluded_source_kinds`. `filter.rs`, `rank.rs`, and `graph.rs`
-remain marker files — filtering lives in `engine.rs`'s `search_filters`/
-`excluded_by_source_kind`, ranking is delegated to the vector store's hybrid
-RRF fusion, not reimplemented here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `engine.rs` | `RetrievalEngine` — the boundary all retrieval callers use; namespace/visibility/generation filter construction |
-| `service.rs` | `run_query`/`QueryServiceRequest`/`QueryServiceHit` — the public entrypoint `axon-services` calls |
-| `plan.rs` | `RetrievalPlan` — dense/sparse/hybrid planning DTOs |
-| `query.rs` | `RetrievalRequest`/`RetrievalMatch`/`RetrievalResult` shaping |
-| `context.rs` | `ContextBundle` — context budgets, source grouping, result explanation |
-| `citation.rs` | `Citation` assembly mapped to stored source metadata/chunk spans |
-| `retrieve.rs` | `retrieve_document`/`RetrievedDocument`/`FullDocumentStore` — transport-neutral full-document fetch by URL; concrete adapters live outside this crate |
-| `memory.rs` | `MEMORY_SOURCE_KIND`/`memory_retrieval_filter()` — the memory-source opt-in boundary |
-| `testing.rs` | shared test fixtures |
-| `filter.rs` / `rank.rs` / `graph.rs` | marker files — logic lives in `engine.rs` and the injected vector store; do not duplicate |
+[ask query retrieve search](../../../docs/guides/ask-query-retrieve-search.md) · [ask rag](../../../docs/guides/ask-rag.md) · [vector payload](../../../docs/reference/sources/vector-payload.md) · [ledger](../../../docs/reference/runtime/ledger.md)
 
-## Boundary — keep OUT of this crate
-- Source ingestion, vector-store implementation, embedding provider implementation, LLM provider implementation, final answer generation.
-- CLI/MCP/REST formatting.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-observe`, `axon-embedding`, `axon-vectors`, `axon-graph`, `axon-memory`, and `axon-llm` **types**.
-- **Forbidden:** concrete Qdrant/TEI clients (reach them via provider/store traits), `axon-llm` final-synthesis implementation, transport crates. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[engine.rs](engine.rs) · [service.rs](service.rs) · [filter.rs](filter.rs) · [rank.rs](rank.rs) · [ask_context.rs](ask_context.rs) · [context.rs](context.rs) · [citation.rs](citation.rs) · [publish.rs](publish.rs) · [retrieve.rs](retrieve.rs)
 
-## Invariants (review checklist)
-- Filters **preserve source visibility and generation constraints**.
-- Ranking is **deterministic** given fixed store/provider fakes.
-- Context assembly **respects token/byte budgets**.
-- Citations **always map** to stored source metadata and chunk spans.
-- `query`, `search`, `retrieve`, and the retrieval part of `ask` **share this engine**; final synthesis stays out.
+## Change requirements
 
-## DTO ownership
-Serializable wire shapes (`RetrievalResult`, `SearchResult`, `ContextBundle`,
-`Citation`, ranking/fusion DTOs) are defined in **`axon-api`**; this crate
-computes and returns them — it does not redefine transport-facing shapes.
+- Inspect run_query and the concrete engine as well as boundary traits. Historical scaffolding comments do not prove the live service is absent.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `foundation/boundary-map.md` · the retrieval /
-citation / context DTO components in `axon-api` (REST/MCP/CLI parity fixtures).
+- Preserve visibility, source/path/content-kind, and committed-generation constraints. Test removed/updated content and never expose an unpublished generation.
+
+- Ranking/fusion must be deterministic under fixed providers/stores; context respects byte/token budgets and citation spans still map to stored source metadata after reranking/deduplication.
+
+- Keep final synthesis in axon-llm/service composition and provider storage mechanics behind their boundaries. Distinguish query/retrieve/indexed RAG from external web search orchestration.
+
+## Verification for code changes
+
+engine_tests, generation_tests, memory_tests and rank/context/citation sidecars plus service ask/query regressions; exercise empty results, budgets, and generation filtering.
+
+Use focused `cargo test -p axon-retrieval` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

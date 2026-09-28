@@ -1,42 +1,17 @@
-# MCP Server Documentation -- Axon
+# MCP documentation maintenance
 
-Documentation for the Axon MCP server (`axon mcp`).
+Read [overview](overview.md), [tool reference](tools.md), [transport](transport.md), [environment](env.md), and [client connection guide](connect.md).
 
-This canonical scoped guide describes the primary action-dispatched axon
-tool, the auxiliary axon_status_dashboard tool, resources, and tasks.
-The server implementation and matching runtime catalog own discovery and
-dispatch. Generated tool-schema.md describes the primary tool contract, not
-the complete catalog. Dated design documents do not override shipped behavior.
+For implementation work, pair [MCP action development](../../development/adding-mcp-action.md), [patterns](patterns.md), [developer notes](dev.md), and the [actual transport guide](../../../crates/axon-mcp/src/AGENTS.md).
 
-## Files
+## Catalog and routing accuracy
 
-| File | Description |
-|------|-------------|
-| [TOOLS.md](tools.md) | Tool actions, subactions, parameters, and response format |
-| [ENV.md](env.md) | MCP-specific environment variables |
-| [TRANSPORT.md](transport.md) | stdio, HTTP, and streamable-http transport configuration |
-| [DEPLOY.md](deploy.md) | Deployment patterns -- local dev, Docker, SQLite runtime |
-| [CONNECT.md](connect.md) | Connect from Claude Code, Codex CLI, Gemini CLI |
-| [DEV.md](dev.md) | MCP development workflow and adding new actions |
-| [PATTERNS.md](patterns.md) | Code patterns -- dispatch, artifacts, error handling |
+The primary action schema is not the entire tool catalog. Inspect [server registration](../../../crates/axon-mcp/src/server.rs), [runtime schema assembly](../../../crates/axon-mcp/src/server/tool_schema.rs), and [system/watch requests](../../../crates/axon-mcp/src/server/system_requests.rs). Include the dashboard tool, resources, and task protocol behavior when relevant.
 
-## Reading order
+Do not infer operation absence from AxonRequest alone, document unmerged projection work as shipped, or claim a schema snapshot proves a live call works. Keep examples aligned with current accepted input, auth, artifact IDs, task IDs, and error envelopes.
 
-**New to the Axon MCP server:**
-1. ENV.md -- understand required configuration
-2. TRANSPORT.md -- choose stdio or HTTP
-3. CONNECT.md -- wire up your MCP client
-4. TOOLS.md -- learn the action/subaction API surface
+## Verification
 
-**Adding or modifying MCP actions:**
-1. PATTERNS.md -- dispatch and artifact patterns
-2. DEV.md -- step-by-step workflow
-3. TOOLS.md -- existing API surface
+Wire changes need real discovery/calls and failure paths, not only mock fixtures. Use the [MCP qualification harness](../../../tests/e2e/mcp/) and [task wire test](../../../scripts/test-mcp-tasks-wire.py) with the matching build and explicitly configured test target.
 
-## Cross-references
-
-- [../CONFIG.md](../../guides/configuration.md) -- full environment variable reference
-- [../stack/ARCH.md](../../architecture/stack/arch.md) -- trimodal architecture overview
-- [../repo/REPO.md](../../development/repo/repo.md) -- repository structure
-- [../MCP.md](overview.md) -- MCP runtime internals
-- [../MCP-TOOL-SCHEMA.md](tool-schema.md) -- current generated runtime snapshot
+Regenerate [tool schema](tool-schema.md) from owning inputs; follow [documentation validation](../../development/documentation.md). Deployment examples follow [the supported deployment contract](../../operations/deployment.md); private topology is not a shared default.

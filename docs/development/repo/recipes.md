@@ -1,7 +1,7 @@
 ---
 title: "Justfile Recipes -- Axon"
 created: 2026-04-04
-updated: 2026-07-30
+updated: 2026-09-27
 ---
 
 # Justfile Recipes -- Axon
@@ -29,17 +29,18 @@ Run `just --list` to see all available recipes.
 
 | Recipe | Purpose |
 |--------|---------|
-| `just verify` | Full CI gate: legacy-runtime-check + validate-plugin + web-check + fmt-check + clippy + check + test |
+| `just verify` | Broad integration gate; see [Justfile](../../../Justfile) for the complete ordered checks, including operational regressions |
 | `just ci` | Alias for verify |
-| `just precommit` | Full pre-commit: monolith check + verify |
+| `just precommit` | Broad staged gate, including secrets, structural checks, formatting, and tests; not identical to installed Git hooks |
 | `just lint-all` | Rust fmt-check + clippy + web lint |
 
 ## Docker
 
 | Recipe | Purpose |
 |--------|---------|
-| `just services-up` | Start infrastructure (Qdrant, TEI, Chrome) |
-| `just services-down` | Stop infrastructure |
+| `just services-up` | Start self-contained local infrastructure (Qdrant, TEI, Chrome) |
+| `just services-up-external-qdrant` | Start TEI + Chrome with external Qdrant; requires `AXON_EXTERNAL_QDRANT_URL` |
+| `just services-down` | Stop the local provider infrastructure |
 | `just rebuild` | check + test |
 
 ## Local stack
@@ -79,7 +80,7 @@ Run `just --list` to see all available recipes.
 
 ```bash
 just fmt clippy check test    # Run quality checks in sequence
-just verify                    # Same as above, single command
+just verify                    # Broader integration checks, not just the four above
 ```
 
 The `verify` recipe is the standard pre-PR gate.

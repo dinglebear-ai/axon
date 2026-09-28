@@ -1,57 +1,30 @@
-# axon-cli — Agent Guide
+# axon-cli
 
-`axon-cli` owns the human command-line **transport**: clap parsing, help text,
-progress display, human/JSON rendering, and process exit codes. It converts argv
-into `axon-api` request DTOs, calls `axon-services`, and renders the result —
-nothing more. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-cli/README.md](../../../docs/pipeline-unification/crates/axon-cli/README.md)
-· surface spec:
-[../../../docs/pipeline-unification/surfaces/command-contract.md](../../../docs/pipeline-unification/surfaces/command-contract.md)
-· help text:
-[../../../docs/pipeline-unification/surfaces/axon-help.md](../../../docs/pipeline-unification/surfaces/axon-help.md).
+Dispatch CLI operations and render human/JSON output, progress, and exit status over shared services.
 
-## Status — focused projections over the unified pipeline
-`scrape`, `crawl`, `embed`, `ingest`, and `code-search` are supported focused
-commands backed by the shared projection DTOs and services. They are not
-alternate pipelines or compatibility aliases. `code-search-watch`, `purge`,
-`dedupe`, `refresh`, and `fresh` remain removed. The target `axon <source>` grammar is
-implemented: the parser (`route_bare_source` in
-`crates/axon-core/src/config/source_routing.rs`) routes any first positional
-that is not a canonical/removed command or global flag to the `source`
-subcommand (a `SourceRequest`). Do not add back-compat aliases for removed
-commands.
+## Read before changing
 
-## Module map
-Current groups from `crates/axon-cli/src/`:
-| Area | Owns |
-|---|---|
-| `lib.rs` | `run` / `run_once` entrypoints + top-level dispatch |
-| `commands.rs` + `commands/` | per-command handlers (argv → request DTO → service call) |
-| clap args / render / progress / json / exit | parser tree, human renderers, progress, `--json` envelope, exit-code mapping (arg/render/progress/json helpers live under `commands/` and `axon-core`; `app.rs`/`args.rs`/`exit.rs`/`help.rs` are not yet split out) |
-| `*_tests.rs` sidecars | CLI tests (e.g. `json_tests.rs`) — `_tests.rs` sidecar convention, no dedicated `testing.rs` |
+[commands](../../../docs/reference/cli/commands.md) · [api parity](../../../docs/reference/api-parity.md) · [testing](../../../docs/development/testing.md)
 
-## Boundary — keep OUT of this crate
-- Source pipeline logic, provider/store/domain internals — always go through `axon-services`.
-- Duplicate DTOs or an alternate job/status model — reuse `axon-api`.
-- MCP/REST compatibility aliases; ad-hoc stdout emitted from lower crates.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-authz`, `axon-observe`, `axon-services`, clap + terminal rendering crates; optionally `axon-web`/`axon-mcp` only to bootstrap the `serve`/`mcp` subcommands.
-- **Forbidden:** domain crate internals bypassing services, direct provider/store clients, compat aliases for removed commands. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[lib.rs](lib.rs) · [commands.rs](commands.rs) · [json.rs](json.rs) · [ui.rs](ui.rs) · [schema_registry.rs](schema_registry.rs)
 
-## Invariants (review checklist)
-- `axon <source>` is the default pipeline command; `ask`/`query`/`retrieve`/`search` keep clear, non-overlapping semantics.
-- Every command maps to exactly one service request/result path — the CLI is a transport, not the pipeline owner.
-- `--json` emits the shared `axon-api` envelope; human progress renders from shared `axon-observe` progress events.
-- No removed command (`code-search-watch`/`purge`/`dedupe`/`refresh`/`fresh`) survives in help, completions, or the parser.
+## Change requirements
 
-## DTO ownership
-Wire DTOs (`SourceRequest`/`SourceResult`, `AskRequest`, `QueryResult`, the
-shared JSON envelope, …) live in **`axon-api`**; this crate constructs and
-renders them. Transports call `axon-services`/`axon-api`, never a domain crate's
-`::ops::*` or internals.
+- Argument/config definitions and bare-source routing also live in axon-core/src/config; inspect that implementation when changing parsing instead of assuming all clap code lives here.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `surfaces/command-contract.md` ·
-`surfaces/axon-help.md` · `schemas/cli-schema.md` · the request/result and
-envelope DTOs in `axon-api`.
+- Focused scrape/crawl/embed/ingest commands reuse SourceRequest and unified jobs; code-search reads committed state. Do not restore removed per-family queues or legacy commands.
+
+- Map commands through the shared service boundary. Keep JSON on stdout, progress on stderr, and failures visible through a non-success exit and actionable structured context.
+
+- Distinguish detached submission from completion. Worker startup, cancellation, and job lifecycle output must agree with service behavior and other transports.
+
+## Verification for code changes
+
+Affected command sidecars plus CLI help/registry and output-parity tests. Exercise malformed arguments, detached work, and failure exits.
+
+Use focused `cargo test -p axon-cli` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

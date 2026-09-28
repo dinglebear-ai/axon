@@ -1,54 +1,30 @@
-# axon-authz — Agent Guide
+# axon-authz
 
-`axon-authz` owns **caller identity, scope checks, execution-affinity policy, and
-security decisions** shared across CLI, REST, MCP, jobs, and apps. Transports
-*authenticate* callers; this crate *authorizes* them — they must not duplicate
-policy logic. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-authz/README.md](../../../docs/pipeline-unification/crates/axon-authz/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/runtime/auth-contract.md](../../../docs/pipeline-unification/runtime/auth-contract.md).
+Evaluate caller scopes, execution affinity, visibility, and security decisions independently of transport authentication.
 
-## Status — live crate
-The OAuth scope constants (`AXON_READ_SCOPE`/`axon:read`, `AXON_WRITE_SCOPE`/
-`axon:write`, `AXON_FULL_ACCESS_SCOPE`) and the full auth/scope-checking policy
-surface (`policy.rs`, `http.rs` bearer/OAuth bind-mode gating) are real and
-tested, not markers — these strings are embedded in issued OAuth tokens, so
-changing the literals invalidates every existing token (a hard security
-invariant). Do not add source fetching or redaction detectors here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `lib.rs` | OAuth scope constants + scope-satisfaction logic; the crate's public surface |
-| `http.rs` | scope checks against required-scope for Axon read/write routes |
-| `caller.rs` | `CallerContext` + constructors (`trusted_local_caller`, `system_caller`, `scoped_caller`) |
-| `decision.rs` | `PolicyEvaluator` trait + `ScopePolicyEvaluator` |
-| `policy.rs` | `SecurityPolicy` / `CredentialProvider` traits |
-| `visibility.rs` | `VisibilityPolicy` + `ceiling_for(caller)` |
-| `affinity.rs` | `AffinityPolicy` + `required_scope_for_safety_class` |
-| `lib_tests.rs` | scope-matching + satisfaction tests (tests are `_tests.rs` sidecars) |
+[auth](../../../docs/reference/runtime/auth.md) · [security](../../../docs/reference/runtime/security.md) · [mcp auth](../../../docs/operations/auth/mcp-auth.md)
 
-## Boundary — keep OUT of this crate
-- OAuth / bearer-token HTTP middleware, MCP transport auth handshake.
-- source acquisition, SSRF HTTP client implementation, redaction detectors.
-- persistence of user accounts or secrets.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core` value helpers; serde/schema crates for policy DTOs.
-- **Forbidden:** transport frameworks, provider clients, stores, source adapters; `axon-services`, `axon-jobs`, `axon-cli`, `axon-mcp`, `axon-web`. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[lib.rs](lib.rs) · [caller.rs](caller.rs) · [decision.rs](decision.rs) · [http.rs](http.rs) · [policy.rs](policy.rs) · [visibility.rs](visibility.rs) · [affinity.rs](affinity.rs)
 
-## Invariants (review checklist)
-- **Do not alter the literal scope strings** — they are baked into issued tokens.
-- Scope matching is **deterministic and closed by default**; ambiguous security decisions **fail closed**.
-- Denied decisions carry **stable machine-readable reasons**.
-- Job propagation preserves **enough caller context to re-check policy later, without secrets**.
-- Fake policies can force allow / deny / degrade paths.
+## Change requirements
 
-## DTO ownership
-Serializable auth/visibility/policy DTOs and their OpenAPI components are defined
-in **`axon-api`**; this crate evaluates policy and returns those shapes — it does
-not redefine transport-facing schemas.
+- Keep shipped scope literals and the actual compatibility behavior in lib.rs/http.rs aligned with issued tokens. Do not equate a string rename with a harmless refactor or assume every operation uses identical read/write/admin semantics.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `runtime/auth-contract.md` ·
-`runtime/security-contract.md` · the auth/visibility DTO components in `axon-api`.
+- Transports authenticate; this crate evaluates policy. Keep OAuth middleware, token parsing, credential storage, SSRF clients, and source acquisition out of policy evaluation.
+
+- Fail closed on ambiguous caller/affinity decisions. Propagate sufficient non-secret caller context to jobs for later checks; do not silently share a different user’s authority.
+
+- Denied decisions need stable reasons, required scope/target, and a safe corrective action. Test allowed, denied, anonymous, trusted-local, and compatibility-token paths.
+
+## Verification for code changes
+
+lib_tests, caller_tests, decision_tests, policy_tests, affinity_tests, visibility_tests, and transport authorization regressions.
+
+Use focused `cargo test -p axon-authz` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

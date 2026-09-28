@@ -1,57 +1,30 @@
-# axon-prune — Agent Guide
+# axon-prune
 
-`axon-prune` owns **destructive and semi-destructive cleanup execution**: cleanup
-debt processing, old-generation pruning, orphan cleanup, duplicate policy, and dry-run
-plans. It answers "what would be deleted, is it safe, and what was actually
-removed." It executes against ledger/graph/memory/artifact/vector boundaries via
-trait calls — it never owns those stores. Full contract (owns / API / deps /
-tests):
-[../../../docs/pipeline-unification/crates/axon-prune/README.md](../../../docs/pipeline-unification/crates/axon-prune/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/runtime/pruning-contract.md](../../../docs/pipeline-unification/runtime/pruning-contract.md).
+Produce reviewed cleanup plans, generation-fenced execution, authorization decisions, and deletion receipts.
 
-## Status — live crate, Phase 11 landed
-Cleanup-debt-driven plan/executor/safety-gating (`plan.rs`/`executor.rs`/
-`safety.rs`) is real and tested, not markers. Do not add ledger record
-ownership, source acquisition, embedding, or transport rendering here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `plan.rs` | `PrunePlanner`, `PrunePlan`, `PruneTarget`, `PruneImpact` — dry-run + impact counts |
-| `executor.rs` | `PruneExecutor` — applies a plan against store boundaries |
-| `debt.rs` | cleanup-debt execution (recorded by `axon-ledger`, run here) |
-| `generation.rs` | old-generation pruning policy |
-| `orphan.rs` | vector/artifact orphan cleanup policy |
-| `dedupe.rs` | `DedupePlan` — internal near-duplicate cleanup policy, not a public action |
-| `receipt.rs` | `PruneReceipt` — source ids, generations, counts, skipped reasons |
-| `safety.rs` | safety checks + broad-destructive request gating |
-| `testing.rs` | `FakePruneExecutor` + debt/generation/orphan/dedupe fixtures |
+[pruning](../../../docs/reference/runtime/pruning.md) · [ledger](../../../docs/reference/runtime/ledger.md) · [operations](../../../docs/operations/operations.md)
 
-## Boundary — keep OUT of this crate
-- Ledger record ownership — `axon-ledger` records `CleanupDebt`; this crate executes it.
-- Vector store implementation detail beyond trait calls.
-- Source acquisition, embedding, parsing, transport rendering.
-- Legacy-data migration — this is a clean-break, empty-DB target.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-observe`, `axon-ledger`, `axon-graph`, `axon-memory`, `axon-vectors`.
-- **Forbidden:** source adapters, embedding providers, LLM providers, transport crates. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[plan.rs](plan.rs) · [executor.rs](executor.rs) · [safety.rs](safety.rs) · [receipt.rs](receipt.rs) · [debt.rs](debt.rs) · [generation.rs](generation.rs) · [orphan.rs](orphan.rs) · [dedupe.rs](dedupe.rs)
 
-## Invariants (review checklist)
-- **Dry-run and execute report the same targets** before any mutation.
-- **Cleanup debt execution is idempotent** — re-running a cleanup is safe.
-- **Deletion receipts include** source ids, generations, counts, and skipped reasons.
-- **Broad destructive cleanup requires explicit request flags** at the service boundary.
-- All stale cleanup paths converge here; old generations are pruned intentionally through ledger cleanup debt.
-- **Empty-DB reset is simple** — no migration/tombstone behavior.
+## Change requirements
 
-## DTO ownership
-Wire DTOs (`PrunePlan`, `PruneTarget`, `PruneImpact`, `PruneReceipt`,
-`DedupePlan`) are defined in **`axon-api`**; this crate produces and returns them —
-it does not redefine transport-facing shapes.
+- Operate against existing state; the historical empty-database cutover is not a runtime assumption. Do not discard migration, recovery, or tombstone requirements.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `runtime/pruning-contract.md` ·
-`runtime/ledger-contract.md` + `schemas/database-schema.md` (cleanup-debt tables) ·
-the prune DTO components in `axon-api`.
+- Plans and execution must resolve the same targets. Revalidate generation/safety before applying each step through PruneTarget, and preserve cleanup-debt order.
+
+- Receipts identify actual deletions, skipped reasons, partial progress, and source/generation scope. A failed step is not an empty successful cleanup, and retry guidance must account for already-applied effects.
+
+- Keep stores injected and ownership in ledger/graph/memory/vector/artifact domains. Broad or destructive operations require the service’s explicit confirmation and authorization boundary.
+
+## Verification for code changes
+
+Plan/executor/safety/receipt sidecars and service prune/reset integrations; test stale plans, denied execution, partial failures, replay, and current-generation protection.
+
+Use focused `cargo test -p axon-prune` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

@@ -1,68 +1,32 @@
-# axon-adapters — Agent Guide
+# axon-adapters
 
-`axon-adapters` owns **source acquisition**. Each adapter turns a `ResolvedSource`
-(from `axon-route`) into an `AcquisitionManifest` and `SourceDocument` values —
-without bypassing the shared pipeline. Artifact-aware adapters may additionally
-emit neutral `ArtifactCandidate` evidence beside normalized changed documents;
-that evidence never replaces `SourceDocument` or grants publication authority. It
-answers "how do I fetch this source family, at what declared scope, and what did
-the fetch return." Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-adapters/README.md](../../../docs/pipeline-unification/crates/axon-adapters/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/sources/adapter-scopes.md](../../../docs/pipeline-unification/sources/adapter-scopes.md)
-· [../../../docs/pipeline-unification/sources/new-source-contract.md](../../../docs/pipeline-unification/sources/new-source-contract.md).
+Acquire and normalize source content through SourceAdapter; do not own the downstream ingestion pipeline.
 
-## Status — live crate, Phase 4 + Phase 9 landed
-The adapter framework (trait, registry, capability, manifest) and per-source
-ports (git, web, local, sessions, reddit, youtube, registry, cli_tool, mcp_tool,
-feed, memory, upload — see `family_matrix.rs`) are real and tested, not markers. Do not add
-ledger, embedding, vector, or transport behavior here — adapters classify and
-normalize; they don't own storage.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `adapter.rs` | `SourceAdapter` trait, including additive `artifact_candidates` evidence hook |
-| `artifact_candidates.rs` | `ArtifactCandidateSink` boundary, no-op sink, deterministic Axon dedupe/idempotency helpers |
-| `registry.rs` | `AdapterRegistry` — registration + lookup |
-| `capability.rs` | `AdapterCapability`, `AdapterVersion`, declared scopes |
-| `acquisition.rs` | `AcquiredItem`, `FetchStatus`, `MaterializedSource` (`SourceAcquisition` is an `axon-api::source::stage` DTO) |
-| `memory.rs` / `upload.rs` | `MemorySourceAdapter` / `UploadSourceAdapter` — memory + upload source families |
-| `manifest.rs` | `AcquisitionManifest` (added/changed/removed) |
-| `web.rs` / `local.rs` / `git.rs` | web page/site, local file/dir, git repo adapters |
-| `registry_sources.rs` / `feed.rs` | package registries plus bounded `skills.sh` catalog API, RSS/Atom/JSON feed adapters |
-| `youtube.rs` / `reddit.rs` / `sessions.rs` | media/social/session-export adapters |
-| `cli_tool.rs` / `mcp_tool.rs` | CLI-tool and MCP-tool call adapters |
-| `testing.rs` | `FakeSourceAdapter` + happy/auth/degraded/failure fixtures |
+[adding source](../../../docs/development/adding-source.md) · [adding source adapter](../../../docs/development/adding-source-adapter.md) · [adapter scopes](../../../docs/reference/sources/adapter-scopes.md) · [metadata payload](../../../docs/reference/sources/metadata-payload.md)
 
-## Boundary — keep OUT of this crate
-- Source id / canonical URI construction (that is `axon-route`).
-- Ledger persistence, generation publishing, final chunking, embedding, vector writes, search/RAG.
-- Direct Qdrant upserts or embedding-provider calls; direct job-store ownership.
-- CLI/MCP/REST rendering.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-route`, `axon-authz`, `axon-observe`, and acquisition libs (HTTP/git/feed/transcript/archive/tool clients) hidden behind adapter impls.
-- **Forbidden:** `axon-vectors`/`axon-embedding`/`axon-retrieval`/`axon-services`, direct job store, transport crates. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[adapter.rs](adapter.rs) · [family_matrix.rs](family_matrix.rs) · [onboarding.rs](onboarding.rs) · [artifact_candidates.rs](artifact_candidates.rs) · [vertical_registry.rs](vertical_registry.rs) · [web_engine.rs](web_engine.rs)
 
-## Invariants (review checklist)
-- **Every adapter emits `SourceDocument`, never `PreparedDocument`** or vector points.
-- `artifact_candidates` is additive and defaults empty; candidates are bounded evidence tied to the same changed documents/job/generation, never a second crawl path.
-- Candidate/sink types cannot claim Depot publication/revision authority; the individual payload stays `dinglebear.artifact-candidate/v1`.
-- **Every adapter declares scopes and required auth/secrets.** `skills.sh` is `registry + api`, uses only its bounded structured API with a short-lived bearer token, and must not persist or log that token.
-- `skills.sh` catalog acquisition is metadata-only: do not call detail/file endpoints or mirror third-party skill bytes before explicit license/right gates exist. Audit enrichment is separately authenticated, defaults off (`audit_limit = 0`), is hard-capped at 25 sequential lookups, and may add evidence only after strict identity/shape validation.
-- **Acquisition never writes to ledger or vector store directly** — all acquired content re-enters the shared pipeline afterward.
-- Adapter failures carry `FetchStatus` plus a retry/degradation policy.
-- Bringing a new source online = register adapter + scope + parser + metadata + tests + docs per `sources/new-source-contract.md`.
+## Change requirements
 
-## DTO ownership
-Wire DTOs (`SourceDocument`, `AcquisitionManifest`, `AcquiredItem`,
-`FetchStatus`, `AdapterCapability`, `AdapterVersion`, neutral `ArtifactCandidate`,
-and the Axon candidate batch/sink receipts) are defined in **`axon-api`**; this
-crate emits/consumes them — it does not redefine transport-facing shapes.
+- Reuse local/upload, web/feed, registry, cli_tool, or mcp_tool before introducing a new source family. Register SourceAdapterSpec, stable identity, scopes, capabilities, auth requirements, and fixtures; onboarding_status checks declarations, not execution correctness.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `sources/new-source-contract.md` ·
-`sources/adapter-scopes.md` · `sources/metadata-payload.md` (source-specific
-metadata) · the adapter DTO/capability components in `axon-api`.
+- Emit SourceDocument and acquisition/manifest metadata. Chunking, embeddings, ledger writes, graph persistence, and transport envelopes belong elsewhere. materialize/discover/acquire/normalize must consume a consistent snapshot; streaming must preserve ordinal/final and progress semantics.
+
+- Test unchanged, added, modified, removed, partial-page, and interrupted snapshots. Never infer deletion from incomplete acquisition. Temporary sensitive materializations require private permissions and cleanup on every exit.
+
+- Artifact candidates are bounded evidence associated with changed documents, not a second acquisition path or Depot publication authority. Keep neutral candidate shape separate from Axon batch/sink receipts.
+
+- Keep skills.sh catalog acquisition metadata-only until licensing/right gates authorize content retrieval. Authenticated enrichment is opt-in and bounded; never persist its bearer token. CLI/MCP execution requires explicit policy, allowlists, timeout/output limits, and redaction.
+
+## Verification for code changes
+
+adapter_tests, family_matrix_tests, onboarding_tests, source-specific sidecars, and the source-job integration tests in axon-services. Include denied execution, SSRF, cancellation, and retry/degradation cases.
+
+Use focused `cargo test -p axon-adapters` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

@@ -1,19 +1,31 @@
-# axon-document Agent Instructions
+# axon-document design-contract maintenance
 
-This file is the agent-facing contract for the `axon-document` crate docs.
+This directory documents the `axon-document` boundary: Turn acquired SourceDocument values into deterministic prepared chunks and preparation results.
+Rust implementations belong in the crate, not in this documentation directory.
 
-## When Editing
+## Read together
 
-- Keep document preparation, chunk routing, chunking profiles, prepared chunks,
-  and chunk metadata here.
-- Consume `SourceParseFacts`; do not implement parser ownership here.
-- Do not add embedding calls, vector writes, source acquisition, or transport
-  rendering.
-- Update `README.md`, `../../sources/chunking-contract.md`, and
-  `../../sources/metadata-payload.md` together.
+[Design contract](README.md) · [Current implementation guide](../../../../crates/axon-document/src/AGENTS.md) · [Crate exports](../../../../crates/axon-document/src/lib.rs)
 
-## Review Checklist
+[chunking](../../../../docs/reference/sources/chunking.md) · [parsing](../../../../docs/reference/sources/parsing.md) · [metadata payload](../../../../docs/reference/sources/metadata-payload.md) · [adding parser](../../../../docs/development/adding-parser.md)
 
-- All adapters still emit `SourceDocument`; this crate emits `PreparedDocument`.
-- Chunk ids are stable for unchanged source items.
-- Unsupported content has a bounded fallback profile.
+## Review the actual boundary
+
+- Consume parser output through axon-parse; do not move parser ownership, acquisition, embedding, or publication into preparation.
+
+- Changing profiles can alter index identity and retrieval quality; verify reindex/update behavior rather than only standalone string splitting.
+
+For implementation evidence, inspect [preparer.rs](../../../../crates/axon-document/src/preparer.rs), [prepared.rs](../../../../crates/axon-document/src/prepared.rs), [chunk_router.rs](../../../../crates/axon-document/src/chunk_router.rs).
+Check the manifest and actual callers before describing a dependency or API as
+shipped. Distinguish current behavior, intended constraints, and remaining work;
+historical phase/cutover prose is not authority to restore removed runtime paths
+or to assume that existing databases are empty. Preserve dated outcomes.
+
+## Verification and paired edits
+
+preparer_tests, chunk_router_tests, local_source_tests and content-specific sidecars; cover empty/oversized input, deterministic IDs, spans, and fallback diagnostics.
+
+When shapes or behavior change, update this contract and its linked live guide.
+Regenerate schema projections from owning inputs rather than hand-editing them;
+see [documentation validation](../../../development/documentation.md).
+Documentation-only edits need link/structural checks, not provider deployment.

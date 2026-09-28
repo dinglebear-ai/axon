@@ -1,78 +1,25 @@
-# docs/ — Documentation Instructions
+# Axon documentation maintenance
 
-Last reviewed: 2026-09-27
+Start with the [documentation index](README.md) and [maintenance workflow](development/documentation.md).
 
-This scoped guide extends the root [AGENTS.md](../AGENTS.md). This file is
-canonical; the sibling CLAUDE.md and GEMINI.md files are direct symlinks.
-The [documentation index](README.md) is the navigation entry point and
-[documentation maintenance](development/documentation.md) defines the audit
-and verification workflow.
+## Place material by purpose
 
-## Authority
+[Guides](guides/) explain tasks and configuration; [reference](reference/) describes current public shapes; [architecture](architecture/) explains boundaries; [development](development/) covers contribution/testing; [operations](operations/) covers deployment and recovery. [Testing](testing/) holds qualification material and [ADRs](adr/) record decisions.
 
-Describe the implementation on the branch being edited, not an unmerged PR.
-Generated references describe the public contracts; source manifests own
-versions, dependencies, and configuration. The unified SourceRequest pipeline
-is implemented. Dated pipeline-unification plans explain its design, not a
-future migration that users still need to perform.
+The [pipeline-unification packet](pipeline-unification/README.md) contains implemented design contracts and historical delivery notes. Preserve dated sessions, reports, investigations, plans, and archive records; do not present their future-tense implementation steps as current deployment instructions.
 
-Do not hand-edit generated schema or Markdown projections. When their owning
-inputs change, run the aggregate generated-contract refresh/check in the
-order documented by the root guide. For prose-only changes, use scoped
-structural checks instead of rebuilding the product.
+## Keep related documents connected
 
-## Directory layout
+An operation page belongs in [action reference](reference/actions/). A source guide explains acquisition, prerequisites, identity, scope, limitations, and troubleshooting. Adding a provider does not automatically create another command: follow [source onboarding](development/adding-source.md) and [adapter guidance](development/adding-source-adapter.md).
 
-| Directory | What belongs here |
-|---|---|
-| guides/ | Getting started, configuration, and task-oriented how-to |
-| guides/ingest/ | Source acquisition setup, behavior, limitations, and troubleshooting |
-| reference/ | Current CLI, REST, MCP, config, runtime, and wire contracts |
-| reference/actions/ | Operation usage and generated surface mappings |
-| architecture/ | Current crate ownership, dependencies, and runtime design |
-| development/ | Contribution, testing, extension points, release, and documentation workflows |
-| development/repo/ | Repository/tooling navigation and conventions |
-| operations/ | Deployment, security, recovery, and performance runbooks |
-| testing/ | Test qualification and execution documentation |
-| adr/ | Architectural decision records |
-| pipeline-unification/ | Implemented clean-break design contract and dated delivery records |
-| sessions/, reports/, investigations/, plans/, superpowers/, perf/ | Point-in-time records; retain historical context |
-| archive/ | Removed-runtime history; do not rewrite as current instructions |
-| eval/ | Evaluation data and fixtures |
+Link current source guides, generated references, implementation modules, and applicable tests. A reference to a basename without a resolvable link is not sufficient navigation. Verify paths and headings in the branch being edited.
 
-The old docs/contributing/ directory is not the current layout; use development/.
+Use [database provenance](reference/runtime/database-schema.json), [CLI registry](reference/cli/commands.md), and [MCP reference](reference/mcp/overview.md) instead of reproducing changing inventories. Generated output must follow changes to its owning inputs, not manual prose patches.
 
-## Action references versus source guides
+## Check claims and examples
 
-An action reference answers how to invoke an operation. Keep its generated
-surface block, arguments, flags, examples, and lifecycle contract aligned with
-current CLI/MCP/REST registries. Use the unified jobs lifecycle rather than
-inventing source-family queues or worker commands.
+Separate supported deployment contracts from a particular installation. An example env file is not a running process configuration. A container healthcheck is not dependency readiness. Record private observations in local instructions, not shared documentation.
 
-A source guide answers what is acquired, how to configure it, how its adapter
-uses the shared pipeline, and how to debug it. Link to the existing source
-operation reference; do not create a new CLI command or action page merely
-because a new SourceAdapter was added. Follow
-[adding a source](development/adding-source.md) and
-[adding a source adapter](development/adding-source-adapter.md).
+For agent-facing errors and warnings, explain affected operations, safe cause, partial effects, retryability, and corrective action. Keep command examples valid for the actual transport and avoid retired per-family worker or queue commands.
 
-Only create cross-links to real files. Do not add placeholder action stubs for
-operations that do not have an independent deep-dive. Keep implementation
-ownership in the appropriate domain crate; transport projections are not
-separate pipelines.
-
-## Maintaining documentation
-
-Update the affected guide and its index in the same change as a renamed flag,
-new extension point, changed deployment path, or changed default. Cite the
-repo-relative source/registry owning any implementation-specific assertion.
-Avoid copying complete flag, environment-variable, migration, or dependency
-inventories into prose when generated references already own them.
-
-Plans, reports, and session logs are dated evidence. Preserve them rather than
-rewriting old outcomes or presenting planned capabilities as shipped. A live
-summary may link to historical evidence while stating current behavior.
-
-SQLite migrations belong to their owning crates. The generated database
-reference is reference/runtime/database-schema.json; consult its provenance
-instead of maintaining another table count here.
+Run documentation/link/scope checks from the [maintenance guide](development/documentation.md). Code or schema changes need their corresponding tests; prose-only edits do not need provider startup.

@@ -1,52 +1,30 @@
-# axon-embedding — Agent Guide
+# axon-embedding
 
-`axon-embedding` owns the **embedding provider boundary**: the
-`EmbeddingProvider` trait, batch formation, provider capabilities, throughput
-reservations/cooling, and provider clients (TEI, OpenAI-compatible). It returns
-embeddings only — it never persists them. Full contract (owns / API / deps /
-tests):
-[../../../docs/pipeline-unification/crates/axon-embedding/README.md](../../../docs/pipeline-unification/crates/axon-embedding/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/runtime/provider-contract.md](../../../docs/pipeline-unification/runtime/provider-contract.md).
+Own embedding provider calls, batching, capabilities, reservations, cooldown, and cache behavior.
 
-## Status — live crate, Phase 7 landed
-`TeiEmbeddingProvider` (real TEI HTTP client + identity derivation) and
-`FakeEmbeddingProvider` are real and tested, not markers. Do not add
-vector-store writes, Qdrant point construction, or LLM chat behavior here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `provider.rs` | `EmbeddingProvider` trait — the durable boundary all callers use |
-| `batch.rs` | `EmbeddingBatch`, `EmbeddingInput`/`EmbeddingOutput`/`EmbeddingVector`; order-preserving batch formation + response normalization |
-| `capability.rs` | `EmbeddingCapability` — dimensions, model identity, vector names |
-| `reservation.rs` | `EmbeddingReservation` — throughput reservations, cooling, retries, timeout classification |
-| `tei.rs` | TEI provider client |
-| `openai_compat.rs` | OpenAI-compatible provider client |
-| `fake.rs` / `testing.rs` | `FakeEmbeddingProvider` + saturation/outage/mixed-dimension fixtures |
+[adding provider](../../../docs/development/adding-provider.md) · [providers](../../../docs/reference/runtime/providers.md) · [provider capabilities](../../../docs/reference/runtime/provider-capabilities.md) · [pipeline performance boundaries](../../../docs/guides/pipeline-performance-boundaries.md)
 
-## Boundary — keep OUT of this crate
-- Source acquisition, document chunking, vector-store upserts, retrieval ranking, job scheduling, CLI/MCP/REST rendering.
-- Qdrant point construction.
-- LLM chat/completion behavior.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-observe`, HTTP clients for provider impls.
-- **Forbidden:** `axon-vectors`, `axon-retrieval`, `axon-services`, transport crates, Qdrant clients, LLM provider clients (unless the API is also an embedding API behind this trait). Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[provider.rs](provider.rs) · [batch.rs](batch.rs) · [tei.rs](tei.rs) · [openai_compat.rs](openai_compat.rs) · [cache.rs](cache.rs) · [reservation.rs](reservation.rs) · [capability.rs](capability.rs)
 
-## Invariants (review checklist)
-- Batches **preserve input order and ids**.
-- Provider dimensions/model identity are **explicit** and match vector-store collection requirements.
-- Reservations **prevent overload** and expose wait/cooling reasons.
-- Provider failure can **degrade or retry** without corrupting document status.
-- All embedding throughput knobs **converge on this boundary**; callers never know TEI/OpenAI internals.
+## Change requirements
 
-## DTO ownership
-Serializable wire shapes (`EmbeddingCapability`, `EmbeddingProviderHealth`, batch
-DTOs) are defined in **`axon-api`**; this crate produces and returns them — it
-does not redefine transport-facing shapes.
+- Preserve input IDs/order and validate model identity, dimensions, response cardinality, and vector validity. Do not let source adapters implement TEI/OpenAI retry policy.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `runtime/provider-contract.md` ·
-`schemas/provider-capability-schema.md` · the embedding capability/health DTO
-components in `axon-api`.
+- CachedEmbeddingProvider is real behavior, not a stateless-only contract. Cache storage is injected; the durable implementation is in axon-jobs/embedding_cache_store.rs. Keep cache identity tied to model/input and bound store operations.
+
+- Respect batch/concurrency/in-flight limits and provider reservations. Oversized request splitting, cooldown, and partial failures need bounded retries with useful machine-readable reasons.
+
+- Embedding output is not a Qdrant publication receipt. Keep vector point construction, collection management, and vector persistence outside this crate.
+
+## Verification for code changes
+
+provider_tests, tei_client_tests, reservation_compat_tests, capability_tests, and cache sidecars; include mixed hits/misses, timeout, dimension mismatch, and retry exhaustion.
+
+Use focused `cargo test -p axon-embedding` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

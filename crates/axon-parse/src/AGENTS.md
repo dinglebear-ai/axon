@@ -1,67 +1,30 @@
-# axon-parse — Agent Guide
+# axon-parse
 
-`axon-parse` owns **source parsing and fact extraction**: it turns
-`SourceDocument` content into `SourceParseFacts` and `GraphCandidate` values that
-downstream graph and chunking stages consume. It is the home of source-specific
-intelligence — code AST facts, dependency manifests, schemas/OpenAPI, sessions,
-tool calls, skills/agents, env examples, Docker Compose, and config — **before**
-graph persistence or chunking. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-parse/README.md](../../../docs/pipeline-unification/crates/axon-parse/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/sources/parsing-contract.md](../../../docs/pipeline-unification/sources/parsing-contract.md).
+Convert SourceDocument content into parser facts and evidence-backed graph candidates before preparation/persistence.
 
-## Status — Phase 7 (wired)
-The parser families below are implemented and now **consumed on the acquisition
-path**: `axon-document`'s `parse.rs` bridge runs `builtins::production_registry()`
-over each `SourceDocument`, so `SourceParseFacts`/`GraphCandidate` flow into
-`PreparedDocument` and drive parser-aware chunk routing. Code symbol extraction
-uses tree-sitter for Rust, Python, JavaScript, TypeScript, and TSX, with an
-explicit regex fallback for unsupported or parse-failed input. Do not add
-acquisition, graph persistence, chunking, or vector-write behavior here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `parser.rs` | `SourceParser` trait + `ParserCapability` — parser capability declarations |
-| `registry.rs` | `ParserRegistry` — language/filetype parser selection |
-| `facts.rs` | `SourceParseFacts`, `ParseEvidence` — extracted facts with evidence spans |
-| `graph_candidate.rs` | `GraphCandidate` — evidence-backed candidate edges/nodes for `axon-graph` |
-| `code.rs` | `CodeSymbolFact` — AST-backed code symbol facts (tree-sitter) |
-| `manifest.rs` | `DependencyFact` — Cargo/npm/Python dependency manifests |
-| `schema.rs` | `ApiSchemaFact` — schemas + REST/OpenAPI specs |
-| `session.rs` | `SessionFact` — AI session transcripts |
-| `tool.rs` | tool-call / MCP tool schema, skills, agents parsers |
-| `env.rs` / `docker.rs` / `config.rs` | env-example, Docker Compose, and config facts |
-| `builtins.rs` | `production_registry()` — assembles the built-in parser set |
-| `markdown.rs` | markdown parser |
-| `vertical.rs` | parser-facing facts derived from vertical-extractor metadata |
-| `tool_schema.rs` / `validate.rs` | tool-schema parsing + parse validation |
-| `testing.rs` | `FakeParser` + parse fixtures (Cargo/npm/Python/compose/env/OpenAPI/JSONL/code) |
+[adding parser](../../../docs/development/adding-parser.md) · [parsing](../../../docs/reference/sources/parsing.md) · [source graph](../../../docs/reference/sources/source-graph.md) · [chunking](../../../docs/reference/sources/chunking.md)
 
-## Boundary — keep OUT of this crate
-- Acquisition, ledger persistence, **graph persistence**, chunking output, vector writes, LLM extraction commands.
-- Source routing or canonical source identity.
-- IDE/LSP live query behavior.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-observe`; tree-sitter and format-specific parser crates behind parser modules; `axon-document` types only if needed.
-- **Forbidden:** Qdrant/TEI/LLM clients, ledger or graph store implementations, transport crates. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[parser.rs](parser.rs) · [registry.rs](registry.rs) · [builtins.rs](builtins.rs) · [facts.rs](facts.rs) · [graph_candidate.rs](graph_candidate.rs) · [code.rs](code.rs) · [manifest.rs](manifest.rs) · [schema.rs](schema.rs) · [tool_schema.rs](tool_schema.rs)
 
-## Invariants (review checklist)
-- Every parser **reports its capability and version**.
-- Parse facts **include evidence spans** where the parser can produce them.
-- Dependency and schema parsers **emit graph candidates**.
-- Every graph candidate carries **enough evidence to audit why the edge exists**.
-- **Unsupported content degrades cleanly** — never blocks ingestion.
-- Code parsing is **AST-backed** wherever a parser exists.
+## Change requirements
 
-## DTO ownership
-Wire DTOs (`SourceParseFacts`, `GraphCandidate`, `ParseEvidence`,
-`CodeSymbolFact`, `DependencyFact`, `ApiSchemaFact`, `SessionFact`, …) are defined
-in **`axon-api`**; this crate produces and returns them — it does not redefine
-transport-facing shapes.
+- Register capability/version and supported input selection. Use existing AST-backed code parsers where available; never manufacture unsupported semantic facts from weak text matches.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `sources/parsing-contract.md` ·
-`sources/source-graph.md` · `schemas/graph-schema.md` (candidate examples) ·
-`sources/metadata-payload.md` · the parse/candidate DTO components in `axon-api`.
+- Preserve evidence spans and source identity in facts and GraphCandidate output. Graph persistence, chunk production, fetching, and vectors remain outside this crate.
+
+- Make unsupported or malformed content follow explicit bounded fallback/degradation policy with useful diagnostics; do not silently claim full parsing or expose secrets from env/config inputs.
+
+- Version changes that alter facts must be reflected in preparation/reindex tests and schema/capability references.
+
+## Verification for code changes
+
+parser_tests and code/config/docker/env/manifest/schema/session/tool sidecars; cover invalid formats, unsupported inputs, evidence spans, and deterministic facts.
+
+Use focused `cargo test -p axon-parse` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

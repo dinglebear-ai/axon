@@ -1,59 +1,30 @@
-# axon-document — Agent Guide
+# axon-document
 
-`axon-document` owns **document preparation**: routing source documents to the
-right chunking strategy and producing `PreparedDocument`/`PreparedChunk` values
-for embedding. It consumes `SourceParseFacts`; it does not embed, persist, or
-acquire. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-document/README.md](../../../docs/pipeline-unification/crates/axon-document/README.md)
-· chunking profile registry:
-[../../../docs/pipeline-unification/sources/chunking-contract.md](../../../docs/pipeline-unification/sources/chunking-contract.md).
+Turn acquired SourceDocument values into deterministic prepared chunks and preparation results.
 
-## Status — Phase 7 (wired)
-`DocumentPreparer` is live and now activates `axon-parse` on the acquisition
-path: when a caller supplies no `parse_facts`, `parse.rs` runs the shared
-`axon-parse` production registry over each `SourceDocument`, flowing real
-`parse_facts`/`graph_candidates` into `PreparedDocument` and using the selected
-parser to inform chunk routing (code → `CodeSymbol`, manifest → `CodeManifest`,
-schema → `ApiSchema`, …). Do not add embedding-provider calls, vector writes, or
-acquisition behavior here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `preparer.rs` | `DocumentPreparer` — the one boundary that emits `PreparedDocument` |
-| `parse.rs` | parse bridge — runs `axon-parse`'s production registry on each document (when the caller supplies no facts), stamping real `parse_facts`/`graph_candidates` and a parser-driven profile override onto the request |
-| `chunk_router.rs` | `ChunkRouter` — routes source-kind/content-kind to a profile |
-| `profile.rs` | `ChunkingProfile` — per-content-kind chunking strategy |
-| `prepared.rs` | `PreparedDocument`, `PreparedChunk` construction helpers |
-| `chunk.rs` / `metadata.rs` | chunk builders + `ChunkMetadata` normalization + payload preflight |
-| `code.rs` | code-aware (AST/symbol-boundary) chunking |
-| `markdown.rs` | markdown/heading-aware chunking |
-| `transcript.rs` / `session.rs` | transcript- and session-turn/tool-call chunking |
-| `schema.rs` | OpenAPI/schema-aware chunking |
-| `text.rs` | generic bounded text fallback |
-| `testing.rs` | `FakeDocumentPreparer` — deterministic chunk ids/fixtures |
+[chunking](../../../docs/reference/sources/chunking.md) · [parsing](../../../docs/reference/sources/parsing.md) · [metadata payload](../../../docs/reference/sources/metadata-payload.md) · [adding parser](../../../docs/development/adding-parser.md)
 
-## Boundary — keep OUT of this crate
-- Source acquisition, parse-facts persistence, embedding provider calls, vector store writes, retrieval ranking.
-- Transport rendering and job scheduling.
-- AST parser implementation details beyond consuming `SourceParseFacts`.
+## Implementation map
 
-## Dependencies
-- **Allowed:** `axon-api`, `axon-error`, `axon-core`, `axon-parse`, `axon-observe`, tokenizer/text-splitting crates.
-- **Forbidden:** embedding providers (`axon-embedding`), vector stores, LLM providers, job runtime, transport crates, acquisition adapters as concrete deps. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[preparer.rs](preparer.rs) · [prepared.rs](prepared.rs) · [chunk_router.rs](chunk_router.rs) · [profile.rs](profile.rs) · [source_range.rs](source_range.rs) · [metadata.rs](metadata.rs) · [parse.rs](parse.rs)
 
-## Invariants (review checklist)
-- All adapters still emit `SourceDocument`; **only this crate emits `PreparedDocument`**.
-- **Chunk ids are stable** for unchanged source items.
-- Chunk metadata carries source id, item key, generation, content kind, parser version, chunking method, and line/span info when available.
-- Every supported content kind routes to an **explicit profile**; unsupported content degrades to **bounded text chunking**.
-- Source-specific optimization stays hidden behind this single preparation boundary.
+## Change requirements
 
-## DTO ownership
-Serializable wire shapes (`PreparedDocument`/`PreparedChunk`/`ChunkMetadata`
-components) are defined in **`axon-api`**; this crate builds and returns them via
-constructors/builders — it does not redefine transport-facing shapes.
+- Consume parser output through axon-parse; do not move parser ownership, acquisition, embedding, or publication into preparation.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `sources/chunking-contract.md` (profile registry) ·
-`sources/metadata-payload.md` · the prepared-document DTO components in `axon-api`.
+- Route content kinds through explicit profiles. Keep chunk identity stable for unchanged content and carry source/item/generation, content kind, parser/chunking version, and available source spans.
+
+- Make fallback chunking bounded and observable. Do not silently discard evidence spans, split UTF-8 incorrectly, or pretend malformed input produced a complete document.
+
+- Changing profiles can alter index identity and retrieval quality; verify reindex/update behavior rather than only standalone string splitting.
+
+## Verification for code changes
+
+preparer_tests, chunk_router_tests, local_source_tests and content-specific sidecars; cover empty/oversized input, deterministic IDs, spans, and fallback diagnostics.
+
+Use focused `cargo test -p axon-document` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.

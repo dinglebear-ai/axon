@@ -1,22 +1,19 @@
-# Repository Documentation -- Axon
+# Repository-reference maintenance
 
-Reference documentation for the repository structure, conventions, and tooling.
+Keep this directory an index of Axon-specific tooling and conventions, not a copy of personal/global agent instructions.
 
-## File index
+## Read the related pages
 
-| File | Purpose |
-|------|---------|
-| [CLAUDE.md](CLAUDE.md) | This file -- index for repo/ documentation |
-| [REPO.md](repo.md) | Repository structure -- directory tree, runtime modules, root files |
-| [RECIPES.md](recipes.md) | Justfile recipes -- dev, infra, quality, build |
-| [SCRIPTS.md](scripts.md) | Scripts reference -- maintenance, hooks, testing |
-| [RULES.md](rules.md) | Coding rules -- git workflow, versioning, monolith policy |
-| [MEMORY.md](memory.md) | Memory files -- beads issue tracker and knowledge persistence |
+[Repository layout](repo.md) · [recipes](recipes.md) · [scripts](scripts.md) · [coding rules](rules.md) · [memory/tracking background](memory.md)
 
-## Cross-references
+[Contributing](../contributing.md) · [testing](../testing.md) · [release checklist](../release-checklist.md) · [documentation maintenance](../documentation.md)
 
-- [../SETUP.md](../../guides/getting-started.md) -- step-by-step setup guide
-- [../CONFIG.md](../../guides/configuration.md) -- environment variable reference
-- [Security](../../operations/security.md) -- security guardrails
-- [../stack/TECH.md](../../architecture/stack/tech.md) -- technology stack
-- [../stack/ARCH.md](../../architecture/stack/arch.md) -- architecture overview
+## Verify references against execution
+
+Check recipes against [Justfile](../../../Justfile), hooks against [lefthook.yml](../../../lefthook.yml), and tooling against [scripts](../../../scripts/) and [xtask](../../../xtask/). Distinguish a command's documented capability from evidence that it actually ran.
+
+Do not prescribe full builds for documentation or assume every workstation uses the same task tracker, compiler cache, deployment host, or global Cargo settings. Keep task-specific host observations in the local override.
+
+When a recipe or path moves, update its links and workflow-shape tests together. Preserve the difference between provider infrastructure, development binaries, and supported production deployment. Follow [deployment](../../operations/deployment.md) instead of duplicating service lifecycle instructions here.
+
+Track shipped source changes separately from development-only tooling for release decisions. Links to live code and generated contracts must use current paths, not retired uppercase filenames or old docs/contributing locations.

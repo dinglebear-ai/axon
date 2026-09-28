@@ -1,59 +1,30 @@
-# axon-error — Agent Guide
+# axon-error
 
-`axon-error` is the **lowest shared error boundary** for the unified pipeline:
-the typed error taxonomy (`ApiError`, `ErrorCode`, `ErrorStage`, `ErrorSeverity`)
-plus retry / cooling / degradation classifications and redaction-aware context.
-Every crate reports failures through it so CLI, REST, MCP, jobs, logs, and
-progress streams render one error shape. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-error/README.md](../../../docs/pipeline-unification/crates/axon-error/README.md)
-· behavior spec:
-[../../../docs/pipeline-unification/runtime/error-handling.md](../../../docs/pipeline-unification/runtime/error-handling.md).
+Own the lowest shared typed error taxonomy and safe retry/cooling/degradation context.
 
-## Status — live crate, Phase 1 landed
-`ApiError`/`ErrorCode`/`ErrorStage`/retry-policy taxonomy are real and tested,
-not markers. Do not add transport rendering, provider clients, stores, or job
-scheduling here.
+## Read before changing
 
-## Module map
-| File | Owns |
-|---|---|
-| `api_error.rs` | `ApiError` — the shared error type; `ApiError::new` / `with_context` / `with_source_id` / `with_job_id` |
-| `code.rs` | `ErrorCode` — closed error-code enum with stable JSON names |
-| `stage.rs` | `ErrorStage` — pipeline stage each error is attributed to |
-| `severity.rs` | `ErrorSeverity` — severity classification per code |
-| `retry.rs` | `RetryPolicy` — machine-readable retry/fail-fast classification |
-| `degradation.rs` | `DegradationPolicy` — graceful-degradation decisions |
-| `cooling.rs` | `ProviderCooling` — provider saturation / cool-down classification |
-| `context.rs` | structured context attachments with redaction hints + secret classifications |
-| `conversion.rs` | provider/store/parser/vector/job/source → `ApiError` conversion helpers |
-| `testing.rs` | fixture errors + `test_error(code, stage)` fakes for tests and schema snapshots |
+[error handling](../../../docs/pipeline-unification/runtime/error-handling.md) · [redaction](../../../docs/reference/runtime/redaction.md) · [observability](../../../docs/reference/runtime/observability.md)
 
-## Boundary — keep OUT of this crate
-- CLI / MCP / REST response rendering.
-- tracing / log emission.
-- provider clients, store clients, source adapters, job scheduling.
-- secret **detection** or redaction **implementation** — this crate carries
-  redaction *hints* only; the implementation lives in `axon-core` or the renderer.
+## Implementation map
 
-## Dependencies
-- **Allowed:** external crates only — `serde`, `thiserror`, `uuid`, `time`/`chrono`, small utility crates.
-- **Forbidden:** every Axon crate (including `axon-api`, `axon-core`, `axon-observe`, `axon-services`, `axon-jobs`, transports); concrete providers (Qdrant, TEI, Gemini, Codex, OpenAI, Spider); SQLite clients or transport frameworks. Enforced by `cargo xtask check-layering`.
+[Crate exports](lib.rs) and [manifest](../Cargo.toml); focused entry points:
+[api_error.rs](api_error.rs) · [code.rs](code.rs) · [stage.rs](stage.rs) · [severity.rs](severity.rs) · [retry.rs](retry.rs) · [cooling.rs](cooling.rs) · [degradation.rs](degradation.rs) · [context.rs](context.rs) · [conversion.rs](conversion.rs)
 
-## Invariants (review checklist)
-- **Below `axon-api`** — every crate can depend on it without cycles; it depends on no higher crate.
-- Every `ErrorCode` maps to a **severity, retry policy, and stage** — every retry/degrade/cool decision is machine-readable.
-- Enum JSON names are **stable**; schema snapshots match generated docs.
-- **Display/Debug is redaction-safe** — context marked secret never leaks.
-- Conversions preserve root-cause class **without exposing provider internals**.
-- Every emitted error is convertible into the shared envelope in `axon-api`.
+## Change requirements
 
-## DTO ownership
-The serializable envelope/projection (`ErrorEnvelope`, `ErrorProjection`) lives in
-**`axon-api`**; this crate defines the taxonomy and exposes `ErrorProjection` for
-`axon-api` envelopes — it does not own transport-facing response shapes.
+- Do not depend on higher Axon crates or add logging, response rendering, clients, stores, or scheduling here. axon-api owns shared transport projections.
 
-## Keep in sync when shapes change
-`README.md` (crate contract) · `runtime/error-handling.md` ·
-`schemas/error-schema.md` (generated `ApiError`/`ErrorCode`/`ErrorStage`/
-`ErrorSeverity`/`RetryPolicy`/`DegradationPolicy` schemas + fixtures) · the error
-projection components in `axon-api`.
+- ALL failures and warnings must enable agent course-correction: stable code/stage/severity, affected IDs/provider, safe cause and expected-versus-observed context, retry policy, and concrete recovery guidance.
+
+- Preserve known partial effects and mark unknown commit status explicitly. Do not turn provider timeouts into permission for blind mutation retries or flatten useful causes into an unclassified string.
+
+- Keep JSON names stable and redaction safe in every projection. A context field or derived Debug implementation is not evidence that all supplied text is safe; test representative secret-bearing causes.
+
+## Verification for code changes
+
+Taxonomy, conversion, retry/degradation, schema, and redaction sidecars. Assert recovery data and visibility, not only is_err().
+
+Use focused `cargo test -p axon-error` targets. For contract changes, follow
+[generated-contract validation](../../../docs/development/documentation.md);
+update the linked references and affected transport consumers together.
