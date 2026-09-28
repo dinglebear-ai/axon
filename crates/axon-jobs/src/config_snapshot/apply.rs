@@ -101,6 +101,7 @@ impl ConfigSnapshot {
             sessions_claude,
             sessions_codex,
             sessions_gemini,
+            ingest_exclude_paths,
             github_include_source,
             github_max_issues,
             github_max_prs,

@@ -174,6 +174,7 @@ impl SourceWebJobIdentityHarness {
             kind: JobKind::Source,
             attempt: 1,
             request_json: Some(request_json),
+            config_snapshot_id: None,
             auth_snapshot,
         })
     }

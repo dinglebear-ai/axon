@@ -13,6 +13,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     submitted.render_mode = RenderMode::Chrome;
     submitted.max_pages = 37;
     submitted.max_depth = 4;
+    submitted.ingest_exclude_paths = vec!["vendor/".to_string(), ".png".to_string()];
     submitted.embed = false;
     submitted.query = Some("submitted prompt".to_string());
     submitted.request_timeout_ms = Some(12_345);
@@ -84,6 +85,7 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     worker.render_mode = RenderMode::Http;
     worker.max_pages = 1;
     worker.max_depth = 1;
+    worker.ingest_exclude_paths = vec!["worker-only/".to_string()];
     worker.embed = true;
     worker.query = Some("worker prompt".to_string());
     worker.request_timeout_ms = Some(999);
@@ -122,6 +124,10 @@ fn config_snapshot_applies_submitted_non_secret_values() {
     assert_eq!(effective.render_mode, RenderMode::Chrome);
     assert_eq!(effective.max_pages, 37);
     assert_eq!(effective.max_depth, 4);
+    assert_eq!(
+        effective.ingest_exclude_paths,
+        vec!["vendor/".to_string(), ".png".to_string()]
+    );
     assert!(!effective.embed);
     assert_eq!(effective.query.as_deref(), Some("submitted prompt"));
     assert_eq!(effective.request_timeout_ms, Some(12_345));

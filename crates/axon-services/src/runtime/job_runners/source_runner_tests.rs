@@ -8,6 +8,8 @@ use axon_api::source::{
 };
 use axon_jobs::SqliteJobBackend;
 use axon_jobs::boundary::JobStore;
+use axon_jobs::config_snapshot::config_snapshot_json;
+use axon_jobs::config_snapshot_store::config_snapshot_id_from_json;
 
 #[tokio::test(start_paused = true)]
 async fn heartbeat_waiting_for_writer_must_keep_polling_source() {
@@ -183,7 +185,7 @@ fn source_job_request(source_request: &SourceRequest) -> JobCreateRequest {
             "source_request": source_request,
         })),
         auth_snapshot: AuthSnapshot::trusted_system("test"),
-        config_snapshot_id: Some(ConfigSnapshotId::new("cfg_source_runner_test")),
+        config_snapshot_id: None,
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
         warnings: Vec::new(),
@@ -227,6 +229,32 @@ async fn claim_source_job(
         kind: UnifiedJobKind::Source,
         attempt: 1,
         request_json: Some(request_payload),
+        config_snapshot_id: None,
+        auth_snapshot: AuthSnapshot::trusted_system("test"),
+    }
+}
+
+async fn source_job_with_snapshot(
+    store: &SqliteUnifiedJobStore,
+    cfg: &Config,
+) -> UnifiedClaimedJob {
+    let source_request = SourceRequest::new("https://example.com/snapshot");
+    let request_payload = serde_json::json!({"source_request": source_request});
+    let config_json = config_snapshot_json(cfg).expect("snapshot should serialize");
+    let snapshot_id = ConfigSnapshotId::new(config_snapshot_id_from_json(&config_json));
+    let mut create_request = source_job_request(&source_request);
+    create_request.request = Some(request_payload.clone());
+    create_request.config_snapshot_id = Some(snapshot_id.clone());
+    let created = store
+        .create_with_config_snapshot(create_request, Some(&config_json))
+        .await
+        .expect("create source job with config snapshot");
+    UnifiedClaimedJob {
+        job_id: created.job_id,
+        kind: UnifiedJobKind::Source,
+        attempt: 1,
+        request_json: Some(request_payload),
+        config_snapshot_id: Some(snapshot_id),
         auth_snapshot: AuthSnapshot::trusted_system("test"),
     }
 }
@@ -349,6 +377,7 @@ async fn source_runner_honors_cancellation_before_running() {
         kind: UnifiedJobKind::Source,
         attempt: 1,
         request_json: Some(serde_json::json!({"source_request": request})),
+        config_snapshot_id: None,
         auth_snapshot: AuthSnapshot::trusted_system("test"),
     };
 
@@ -415,6 +444,69 @@ async fn build_registry_registers_source() {
     let (_tmp, cfg) = test_cfg().await;
     let registry = build_registry(&cfg).expect("build registry");
     assert!(registry.contains(UnifiedJobKind::Source));
+}
+
+#[tokio::test]
+async fn source_runner_context_is_scoped_to_each_config_snapshot() {
+    let (_tmp, process_cfg) = test_cfg().await;
+    let runner = SourceRunner::new(Arc::clone(&process_cfg));
+    let backend = SqliteJobBackend::new(Arc::clone(&process_cfg))
+        .await
+        .expect("enqueue-only backend");
+    let store = SqliteUnifiedJobStore::new(Arc::clone(backend.pool()).as_ref().clone());
+
+    let mut first_cfg = process_cfg.as_ref().clone();
+    first_cfg.embed_scheduler_enabled = false;
+    first_cfg.embed_tei_max_batch_tokens = 24_000;
+    first_cfg.ingest_exclude_paths = vec![".png".to_string()];
+    let first = source_job_with_snapshot(&store, &first_cfg).await;
+
+    let mut second_cfg = process_cfg.as_ref().clone();
+    second_cfg.embed_scheduler_enabled = true;
+    second_cfg.embed_tei_max_batch_tokens = 32_000;
+    second_cfg.ingest_exclude_paths = vec![".woff2".to_string()];
+    let second = source_job_with_snapshot(&store, &second_cfg).await;
+
+    let first_ctx = runner
+        .service_context(&first, &store)
+        .await
+        .expect("first snapshotted context");
+    let second_ctx = runner
+        .service_context(&second, &store)
+        .await
+        .expect("second snapshotted context");
+
+    assert!(!first_ctx.cfg.embed_scheduler_enabled);
+    assert_eq!(first_ctx.cfg.embed_tei_max_batch_tokens, 24_000);
+    assert_eq!(first_ctx.cfg.ingest_exclude_paths, vec![".png".to_string()]);
+    assert!(second_ctx.cfg.embed_scheduler_enabled);
+    assert_eq!(second_ctx.cfg.embed_tei_max_batch_tokens, 32_000);
+    assert_eq!(
+        second_ctx.cfg.ingest_exclude_paths,
+        vec![".woff2".to_string()]
+    );
+    assert!(
+        !Arc::ptr_eq(&first_ctx, &second_ctx),
+        "different config snapshots must not share one config-bound source context"
+    );
+
+    let unsnapshotted = claim_source_job(
+        &store,
+        serde_json::json!({"source_request": SourceRequest::new("https://example.com/process")}),
+    )
+    .await;
+    let process_ctx_a = runner
+        .service_context(&unsnapshotted, &store)
+        .await
+        .expect("process context");
+    let process_ctx_b = runner
+        .service_context(&unsnapshotted, &store)
+        .await
+        .expect("cached process context");
+    assert!(
+        Arc::ptr_eq(&process_ctx_a, &process_ctx_b),
+        "jobs without a snapshot may keep using the cached process context"
+    );
 }
 
 #[tokio::test]
