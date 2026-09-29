@@ -47,6 +47,25 @@ pub fn source_result_payload(result: &axon_api::source::SourceResult) -> serde_j
     serde_json::to_value(result).expect("SourceResult is a serializable transport contract")
 }
 
+fn canonical_source_request(
+    req: &SourceRequest,
+    source: String,
+) -> Result<ApiSourceRequest, ErrorData> {
+    let mut request = ApiSourceRequest::new(source);
+    request.scope = req.scope;
+    request.collection = req
+        .collection
+        .as_deref()
+        .map(validate_mcp_collection)
+        .transpose()?;
+    request.limits = req.limits.clone();
+    request.options = req.options.clone();
+    if let Some(priority) = req.priority {
+        request.execution.priority = priority;
+    }
+    Ok(request)
+}
+
 impl AxonMcpServer {
     pub(super) async fn handle_source(
         &self,
@@ -62,18 +81,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let detached = req.detached.unwrap_or(false);
 
-        let collection = req
-            .collection
-            .as_deref()
-            .map(validate_mcp_collection)
-            .transpose()?;
-
-        let mut api_request = ApiSourceRequest::new(source.clone());
-        api_request.scope = req.scope;
-        api_request.collection = collection;
-        if let Some(priority) = req.priority {
-            api_request.execution.priority = priority;
-        }
+        let api_request = canonical_source_request(&req, source.clone())?;
 
         // Real caller-derived AuthSnapshot, resolved once in `call_tool`'s
         // scope gate and threaded through via task-local (see
@@ -125,12 +133,6 @@ impl AxonMcpServer {
             .await;
         }
 
-        // `index_source` threads a non-`Send` error chain (`Box<dyn Error>`
-        // through the crawl_sync ledger), so its future is not `Send` and cannot
-        // be awaited directly inside the rmcp `#[tool]` wrapper's `Send` future.
-        // Isolate it on a blocking thread with its own current-thread runtime —
-        // the same pattern the `evaluate` handler uses. `SourceResult` and the
-        // error string both cross the boundary as `Send` values.
         let result = axon_services::source::index_source_with_auth(
             api_request,
             service_context.as_ref(),

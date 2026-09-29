@@ -45,6 +45,7 @@ pub(super) async fn dispatch_kind(
                 owner_id,
                 auth_snapshot,
                 embed,
+                limits,
                 route,
                 execution,
             )
@@ -157,6 +158,7 @@ async fn dispatch_local_or_git(
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
+    limits: &SourceLimits,
     route: &RoutePlan,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
@@ -171,6 +173,7 @@ async fn dispatch_local_or_git(
                 owner_id,
                 auth_snapshot,
                 embed,
+                limits,
                 route,
                 execution,
             )
@@ -186,6 +189,7 @@ async fn dispatch_local_or_git(
                 owner_id,
                 auth_snapshot,
                 embed,
+                limits,
                 route,
                 execution,
             )

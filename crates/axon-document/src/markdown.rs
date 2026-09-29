@@ -38,6 +38,14 @@ impl MarkdownChunkLimits {
         }
     }
 
+    pub(crate) fn min_chars(self) -> usize {
+        self.min_chars
+    }
+
+    pub(crate) fn overlap_chars(self) -> usize {
+        self.overlap_chars
+    }
+
     pub(crate) fn max_chars(self) -> usize {
         self.max_chars
     }

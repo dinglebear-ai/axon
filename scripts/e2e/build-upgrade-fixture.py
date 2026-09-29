@@ -79,8 +79,12 @@ def seed(conn: sqlite3.Connection, fixture_id: str) -> None:
                  (source_id, "generation-upgrade", json.dumps({"items": ["document.md"]}), NOW))
     conn.execute("INSERT INTO source_items(source_id,source_item_key,generation,item_canonical_uri,content_hash,item_json) VALUES(?,?,?,?,?,?)",
                  (source_id, "document.md", "generation-upgrade", REFRESH_FIXTURE.resolve().as_uri(), "sha256:synthetic", json.dumps({"path": "document.md"})))
+    document_status = {"document_id": "document-upgrade", "source_id": source_id,
+                       "source_item_key": "document.md", "generation": "generation-upgrade",
+                       "status": "published", "updated_at": NOW, "chunk_count": 1,
+                       "vector_point_count": 0}
     conn.execute("INSERT INTO document_status(document_id,source_id,source_item_key,generation,status,status_json,updated_at) VALUES(?,?,?,?,?,?,?)",
-                 ("document-upgrade", source_id, "document.md", "generation-upgrade", "published", '{"synthetic":true}', NOW))
+                 ("document-upgrade", source_id, "document.md", "generation-upgrade", "published", json.dumps(document_status), NOW))
     conn.execute("INSERT INTO axon_source_watches(watch_id,source,source_id,canonical_uri,adapter_name,adapter_version,scope,embed,options_json,collection,enabled,every_seconds,next_run_at,created_at,updated_at,auth_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                  ("watch-upgrade", str(REFRESH_FIXTURE.resolve()), source_id, canonical_uri, "local", "1", "file", 0, "{}", "axon_e2e_upgrade", 1, 3600, 1893456000000, 1767225600000, 1767225600000, '{}'))
     conn.execute("INSERT INTO jobs(job_id,kind,status,phase,priority,source_id,watch_id,created_at,updated_at,last_event_sequence) VALUES(?,?,?,?,?,?,?,?,?,?)",

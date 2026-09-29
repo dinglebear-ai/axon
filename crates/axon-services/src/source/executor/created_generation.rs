@@ -24,7 +24,7 @@ use crate::source::result_map::IndexCounts;
 mod batches;
 mod candidate_delivery;
 mod scheduler;
-mod setup;
+pub(super) mod setup;
 
 use batches::process_generation_batches;
 use candidate_delivery::{finish_candidate_delivery, stage_candidate_delivery};
@@ -101,8 +101,8 @@ async fn run_created_generation_inner(
     coordinator: &ProgressCoordinator,
     artifact_cleanup: &mut ArtifactCleanupGuard,
 ) -> anyhow::Result<IndexCounts> {
-    let verified_embedding = runtime.verified_embedding_plane().await?;
-    let collection = collection_spec(input.collection, verified_embedding.identity.dimensions);
+    // Resolve the verified embedding dimensions only when a prepared batch needs vectors.
+    let collection = collection_spec(input.collection, runtime.embedding_dimensions);
     output::initialize_durable_export(&input.plan).await?;
     let archive_requested = input.adapter.wants_archive(&input.plan);
     let mut accumulated = GenerationAccumulator::new(&generation.generation).await?;
@@ -317,7 +317,7 @@ async fn publish_created_generation_under_finalizer(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     lease: &LeaseGuard,
-    manifest: SourceManifest,
+    mut manifest: SourceManifest,
     diff: SourceManifestDiff,
     generation: SourceGeneration,
     previous: Option<SourceSummary>,
@@ -327,6 +327,18 @@ async fn publish_created_generation_under_finalizer(
     inline: Option<InlineSourceResult>,
 ) -> anyhow::Result<IndexCounts> {
     publish::ensure_lease(runtime.ledger.as_ref(), input, lease).await?;
+    let (counts, retained_statuses) =
+        super::retention::carry_and_count(runtime.ledger.as_ref(), &manifest, &diff, &vectorized)
+            .await?;
+    let previous_vectors_empty = record_vector_emptiness(
+        runtime,
+        input,
+        &generation,
+        &diff,
+        &mut manifest,
+        vectorized.points_written,
+    )
+    .await?;
     let generation = publish::complete_generation(
         runtime.ledger.as_ref(),
         generation,
@@ -341,7 +353,8 @@ async fn publish_created_generation_under_finalizer(
         &collection,
         &generation,
         &diff,
-        input.plan.request.embed,
+        &retained_statuses,
+        input.plan.request.embed && (vectorized.points_written > 0 || !previous_vectors_empty),
         vectorized.points_written,
     )
     .await?;
@@ -364,7 +377,6 @@ async fn publish_created_generation_under_finalizer(
             ),
         ));
     }
-    let counts = terminal_source_counts(previous.as_ref(), &manifest, &diff, &vectorized);
     if let Err(error) = runtime
         .ledger
         .upsert_source(metadata::source_summary(
@@ -395,6 +407,7 @@ async fn publish_created_generation_under_finalizer(
     let items_discovered = manifest.items.len() as u64;
     let source_id = manifest.source_id.clone();
     Ok(IndexCounts {
+        documents_skipped: vectorized.documents_skipped,
         job_id: input.plan.job_id,
         source_id,
         generation: published.generation,
@@ -409,6 +422,41 @@ async fn publish_created_generation_under_finalizer(
         artifacts,
         inline,
     })
+}
+
+async fn record_vector_emptiness(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    generation: &SourceGeneration,
+    diff: &SourceManifestDiff,
+    manifest: &mut SourceManifest,
+    points_written: u64,
+) -> anyhow::Result<bool> {
+    // Source summaries can lag publication. Only committed generation metadata
+    // can prove there was no vector output to carry forward or retire.
+    const EMPTY_VECTORS_KEY: &str = "axon.vector_output_empty";
+    let previous_vectors_empty = match generation.previous_generation.as_ref() {
+        None => true,
+        Some(previous_generation) => runtime
+            .ledger
+            .get_manifest_metadata(generation.source_id.clone(), previous_generation.clone())
+            .await?
+            .is_some_and(|metadata| {
+                metadata
+                    .get(EMPTY_VECTORS_KEY)
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+            }),
+    };
+    let current_vectors_empty = points_written == 0
+        && (previous_vectors_empty || (input.plan.request.embed && diff.unchanged.is_empty()));
+    manifest.metadata.insert(
+        EMPTY_VECTORS_KEY.to_owned(),
+        serde_json::json!(current_vectors_empty),
+    );
+    runtime.ledger.put_manifest_ref(manifest).await?;
+
+    Ok(previous_vectors_empty)
 }
 
 fn post_publish_warning(code: &str, message: String) -> SourceWarning {

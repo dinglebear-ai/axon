@@ -10,6 +10,7 @@ pub mod boundary;
 pub mod chunk;
 pub mod chunk_router;
 pub mod code;
+pub mod content_policy;
 pub mod markdown;
 pub mod metadata;
 mod parse;

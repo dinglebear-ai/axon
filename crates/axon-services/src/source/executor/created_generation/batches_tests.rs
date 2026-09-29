@@ -41,33 +41,6 @@ async fn controlled<T>(
     result
 }
 
-#[tokio::test]
-async fn collection_setup_overlaps_first_acquisition() {
-    let (setup_started_tx, setup_started_rx) = oneshot::channel();
-    let (setup_release_tx, setup_release_rx) = oneshot::channel();
-    let (acquire_started_tx, acquire_started_rx) = oneshot::channel();
-    let (acquire_release_tx, acquire_release_rx) = oneshot::channel();
-
-    let joined = tokio::spawn(join_collection_setup_and_first_acquisition(
-        controlled(setup_started_tx, setup_release_rx, Ok(())),
-        controlled(acquire_started_tx, acquire_release_rx, Ok(42_u64)),
-    ));
-    tokio::time::timeout(std::time::Duration::from_secs(1), setup_started_rx)
-        .await
-        .expect("collection setup must start")
-        .expect("collection setup start signal");
-    tokio::time::timeout(std::time::Duration::from_secs(1), acquire_started_rx)
-        .await
-        .expect("first acquisition must start before collection setup completes")
-        .expect("first acquisition start signal");
-
-    setup_release_tx.send(()).expect("release collection setup");
-    acquire_release_tx
-        .send(())
-        .expect("release first acquisition");
-    assert_eq!(joined.await.expect("join task").expect("joined calls"), 42);
-}
-
 #[derive(Clone, Copy, Default)]
 struct AdapterFailures {
     acquire_call: Option<usize>,
@@ -472,9 +445,9 @@ async fn scheduled_generation_drops_its_sender_after_production_finishes() {
     .expect("the scheduler must close its channel after the producer finishes");
 
     completed.0.expect("scheduled generation");
-    assert_eq!(
-        completed.3.calls().await,
-        vec!["begin_bulk_load", "finish_bulk_load"]
+    assert!(
+        completed.3.calls().await.is_empty(),
+        "non-embedding generation must not enter vector bulk loading"
     );
 }
 
@@ -831,7 +804,7 @@ async fn opt_in_step_overlaps_exactly_one_next_acquisition() {
     let adapter = WebSourceAdapter::new(providers.clone(), providers);
     let step = tokio::spawn(async move {
         process_and_acquire_next(
-            &adapter,
+            adapter.supports_acquisition_prefetch(),
             controlled(process_started_tx, process_release_rx, Ok("processed")),
             controlled(acquire_started_tx, acquire_release_rx, Ok("acquired")),
         )
@@ -874,7 +847,7 @@ async fn non_opt_in_step_does_not_poll_acquisition_until_processing_finishes() {
     });
     let step = tokio::spawn(async move {
         process_and_acquire_next(
-            &adapter,
+            adapter.supports_acquisition_prefetch(),
             controlled(process_started_tx, process_release_rx, Ok("processed")),
             controlled(acquire_started_tx, acquire_release_rx, Ok("acquired")),
         )

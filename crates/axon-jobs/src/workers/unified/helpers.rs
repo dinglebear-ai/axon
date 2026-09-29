@@ -40,14 +40,20 @@ pub(super) fn source_error_from_api(error: &ApiError, severity: Severity) -> Sou
     SourceError {
         code: error.code.to_string(),
         severity,
-        message: error.message.clone(),
-        source_item_key: None,
+        message: public_diagnostic(&error.message, 4096),
+        source_item_key: error
+            .source_item_key
+            .as_deref()
+            .map(|item| axon_api::source::SourceItemKey::new(public_diagnostic(item, 512))),
         retryable: error.retryable,
         provider_id: error
             .provider_id
-            .clone()
-            .map(axon_api::source::ProviderId::new),
-        cause: None,
+            .as_deref()
+            .map(|provider| axon_api::source::ProviderId::new(public_diagnostic(provider, 512))),
+        cause: error
+            .details
+            .get("cause")
+            .map(|cause| public_diagnostic(cause, 4096)),
     }
 }
 
@@ -63,3 +69,9 @@ pub(super) fn empty_counts() -> StageCounts {
         bytes_done: 0,
     }
 }
+
+#[cfg(test)]
+#[path = "helpers_tests.rs"]
+mod tests;
+
+use axon_core::redact::public_diagnostic_text as public_diagnostic;

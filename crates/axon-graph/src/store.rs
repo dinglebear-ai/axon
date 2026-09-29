@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 mod limits;
+mod retirement;
 pub use limits::{
     DEFAULT_GRAPH_EDGE_LIMIT, MAX_GRAPH_DEPTH, MAX_GRAPH_EDGE_KINDS, MAX_GRAPH_EDGE_LIMIT,
     MAX_GRAPH_IDENTIFIER_BYTES, bounded_limits, bounded_query,
@@ -51,6 +52,14 @@ pub trait GraphStore: Send + Sync {
     /// blanket `reset()`. Idempotent: deleting an unknown stable key is a
     /// no-op.
     async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult>;
+
+    /// Retire item evidence and unsupported incident output. The caller must
+    /// hold the source publication lease and verify the current item disposition.
+    async fn retire_item_evidence(
+        &self,
+        source_id: SourceId,
+        item: SourceItemKey,
+    ) -> Result<GraphDeleteResult>;
 
     /// Delete graph edges by id. Idempotent: deleting an unknown edge id is a
     /// no-op.
@@ -386,6 +395,18 @@ impl GraphStore for FakeGraphStore {
     async fn reset(&self) -> Result<()> {
         *self.state.lock().await = FakeGraphState::default();
         Ok(())
+    }
+
+    async fn retire_item_evidence(
+        &self,
+        source_id: SourceId,
+        item: SourceItemKey,
+    ) -> Result<GraphDeleteResult> {
+        Ok(retirement::retire(
+            &mut *self.state.lock().await,
+            &source_id,
+            &item,
+        ))
     }
 
     async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {

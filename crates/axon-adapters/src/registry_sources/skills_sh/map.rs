@@ -45,7 +45,7 @@ pub(crate) fn discover(plan: &SourcePlan, dump: &SkillsShDump) -> Result<SourceM
         });
     }
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_skills_sh_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -53,7 +53,9 @@ pub(crate) fn discover(plan: &SourcePlan, dump: &SkillsShDump) -> Result<SourceM
         items,
         created_at: dump.observed_at.clone(),
         metadata: MetadataMap::new(),
-    })
+    };
+    manifest.set_inventory_completeness(InventoryCompleteness::Partial);
+    Ok(manifest)
 }
 
 #[cfg(test)]

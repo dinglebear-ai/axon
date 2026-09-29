@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::common::*;
-use super::document::CleanupSelector;
+use super::document::{CleanupSelector, DocumentStatus};
 use super::enums::*;
 use super::ids::*;
 
@@ -23,7 +23,7 @@ pub struct SourceGeneration {
     pub previous_generation: Option<SourceGenerationId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PublishGenerationRequest {
     pub job_id: JobId,
@@ -32,6 +32,9 @@ pub struct PublishGenerationRequest {
     pub generation: SourceGenerationId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_previous_generation: Option<SourceGenerationId>,
+    /// Exact committed status snapshot to carry in the publication transaction.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retained_statuses: Vec<DocumentStatus>,
 }
 
 /// Result of `GenerationPublisher::validate_publish` — a dry-run readiness
@@ -64,6 +67,8 @@ pub struct ItemCounts {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentCounts {
+    #[serde(default)]
+    pub skipped: u64,
     pub discovered: u64,
     pub prepared: u64,
     pub embedded: u64,

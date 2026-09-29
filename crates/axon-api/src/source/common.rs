@@ -439,6 +439,8 @@ pub struct SourceRange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceCounts {
+    #[serde(default)]
+    pub documents_skipped: u64,
     pub items_total: u64,
     pub items_changed: u64,
     pub documents_total: u64,

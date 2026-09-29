@@ -351,7 +351,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -371,7 +373,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -394,7 +398,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -417,7 +423,9 @@
         "watch_supported": false
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "exclude_paths"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "repo",
@@ -441,6 +449,7 @@
       },
       {
         "allowed_option_keys": [
+          "exclude_paths",
           "include_globs",
           "exclude_globs",
           "respect_gitignore",
@@ -1639,17 +1648,17 @@
         "path": "crates/axon-adapters/src/spec.rs"
       },
       {
-        "checksum": "sha256:c842e2c74426d6bd1d8af9379d7ab8b6cf40b6d1a41a6b00b8b2cf80ed94bb25",
+        "checksum": "sha256:4d06c11b5dd034ce1f2cf4d32dd9de77a2d1b0911503f98eefaaf8a0b76d6cb8",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:71dceaa183dd7564fbbb9d00c6221a69d342f63e965ebeb0a2cab1077b51c40b",
+        "checksum": "sha256:e2ea3ea7700b0dc705d6cb57a2a2f04db699c59ea71cea5705d6ab62f742a126",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:6d78cd541cd082c93d3cf5ae4b3e67d648f8bd9d450468410ea8fbb5671dc9af",
+        "checksum": "sha256:0023d1c7dcf7ef10535e8993af3edabd1333bf856185854c9e36fda1451e9150",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },

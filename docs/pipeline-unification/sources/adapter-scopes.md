@@ -237,11 +237,20 @@ Options:
 
 - `include_globs`
 - `exclude_globs`
+- `exclude_paths`
 - `respect_gitignore`
 - `follow_symlinks`
 - `max_file_bytes`
 - `binary_policy`
 - `watch_policy`
+
+`exclude_paths` is a string array of path substrings. Configured ingest
+exclusions and caller exclusions are combined in deterministic order.
+
+`binary_policy` still accepts `skip`, `metadata`, and `include` for compatibility.
+All three retain raw acquired content for the shared preparation policy. Unsupported
+bytes remain inventoried and are reported as skipped; `include` does not force
+binary extraction, and `metadata` does not create searchable placeholder records.
 
 ## Git Adapters
 

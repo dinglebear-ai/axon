@@ -1967,7 +1967,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/CleanupDebt_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupDebt_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/CleanupDebt_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -2292,7 +2317,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/CleanupSelector_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/CleanupSelector_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/CleanupSelector_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -3144,6 +3194,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -4014,6 +4070,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -11193,6 +11255,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -12056,7 +12124,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/PreparedDocument_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/PreparedDocument_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/PreparedDocument_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -14793,6 +14886,13 @@
         "job_id": {
           "$ref": "#/$defs/PublishGenerationRequest_JobId"
         },
+        "retained_statuses": {
+          "description": "Exact committed status snapshot to carry in the publication transaction.",
+          "items": {
+            "$ref": "#/$defs/PublishGenerationRequest_DocumentStatus"
+          },
+          "type": "array"
+        },
         "source_id": {
           "$ref": "#/$defs/PublishGenerationRequest_SourceId"
         }
@@ -14806,14 +14906,189 @@
       "title": "PublishGenerationRequest",
       "type": "object"
     },
+    "PublishGenerationRequest_DocumentId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "PublishGenerationRequest_DocumentStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cleanup_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_DocumentId"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/PublishGenerationRequest_DocumentLifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "vector_point_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "status",
+        "updated_at"
+      ],
+      "type": "object"
+    },
     "PublishGenerationRequest_JobId": {
       "format": "uuid",
       "type": "string"
+    },
+    "PublishGenerationRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "PublishGenerationRequest_ProviderId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "PublishGenerationRequest_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/PublishGenerationRequest_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
     },
     "PublishGenerationRequest_SourceGenerationId": {
       "type": "string"
     },
     "PublishGenerationRequest_SourceId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_SourceItemKey": {
       "type": "string"
     },
     "ResolvedSource": {
@@ -17303,7 +17578,32 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").\nRetire one item's graph contribution under the source publication lease.",
+          "properties": {
+            "kind": {
+              "const": "graph_item_evidence",
+              "type": "string"
+            },
+            "retirement_generation": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceGenerationId"
+            },
+            "source_id": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceId"
+            },
+            "source_item_key": {
+              "$ref": "#/$defs/SourceGenerationDetail_SourceItemKey"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "source_item_key",
+            "retirement_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -17596,6 +17896,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -17954,6 +18260,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -18018,6 +18330,12 @@
           "type": "integer"
         },
         "published": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -24648,6 +24966,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "documents_skipped": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "documents_total": {
           "format": "uint64",
           "minimum": 0,
@@ -25069,6 +25393,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -25689,6 +26019,12 @@
           "type": "integer"
         },
         "chunks_total": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "documents_skipped": {
+          "default": 0,
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -29199,12 +29535,12 @@
         "path": "crates/axon-api/src/source/capability.rs"
       },
       {
-        "checksum": "sha256:2f90a731c1891edc3d44faa45b95f560914598cd7ccfaf98350d2748bbfb38da",
+        "checksum": "sha256:2db23f4eb4efec88fa9bdca8193417034204baf476f8000bee116cf8ef4a26b1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:f60074bd1841a702461c9bc3ed4887612e4159dfda20690b21909a6097995e84",
+        "checksum": "sha256:a336d5bd224aa9072bbb581f339bb27085e59c5db83ba771dfed42995bdc589d",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -29304,12 +29640,12 @@
         "path": "crates/axon-api/src/source/service_ids.rs"
       },
       {
-        "checksum": "sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8",
+        "checksum": "sha256:5d1d7ff7c594bc450d8eb13e889c793b98bbffff1683d887aaf8137aecdf7339",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:0e0a13dd0acbdaf8b4de2a8b309a279a3a423d286a0bad6133461c7be99bd860",
+        "checksum": "sha256:c0f679a6e75d0a63651db69bec2064a7005d7651e91b39699aa9c316ab799bc5",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },
@@ -29399,7 +29735,7 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:0aaf932d940307911b67c90b53dabdd226786c26effe7aabb323495e90795679",
+        "checksum": "sha256:b7980465d395972da926d562615d9d7074a25d6facd50766717291e838f18def",
         "kind": "rust_module",
         "path": "xtask/src/schemas/families.rs"
       },

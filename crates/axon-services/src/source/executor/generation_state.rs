@@ -123,6 +123,7 @@ impl GenerationAccumulator {
         self.artifacts.extend(batch.enrichment_artifacts);
         self.output.merge(batch.clean_output);
         let record = SideEffectsSpoolRecord {
+            skipped_statuses: batch.skipped_statuses,
             archive_items: batch.archive_items,
             artifact_candidates: batch.artifact_candidates,
             warnings: batch.warnings,
@@ -158,6 +159,11 @@ impl GenerationAccumulator {
     }
 
     fn absorb_side_effect_record(&mut self, record: SideEffectsSpoolRecord) {
+        for status in record.skipped_statuses {
+            if self.document_ids.insert(status.document_id) {
+                self.vectorized.documents_skipped += 1;
+            }
+        }
         self.archive_items.extend(record.archive_items);
         self.artifact_candidates.extend(record.artifact_candidates);
         self.warnings.extend(record.warnings);
@@ -181,8 +187,12 @@ impl GenerationAccumulator {
         // document identities for generation-wide deduplication.
         for status in &vectorized.document_statuses {
             if self.document_ids.insert(status.document_id.clone()) {
-                self.vectorized.documents_prepared =
-                    self.vectorized.documents_prepared.saturating_add(1);
+                if status.status == DocumentLifecycleStatus::Skipped {
+                    self.vectorized.documents_skipped += 1;
+                } else {
+                    self.vectorized.documents_prepared =
+                        self.vectorized.documents_prepared.saturating_add(1);
+                }
             }
         }
         self.vectorized.chunks_prepared = self

@@ -8,7 +8,7 @@ use axon_api::source::*;
 use ignore::{DirEntry, WalkBuilder, WalkState};
 
 use crate::adapter::Result;
-use crate::local_select::{LocalOptions, is_binary_path};
+use crate::local_select::LocalOptions;
 use crate::manifest::item_identity;
 
 use super::LOCAL_DISCOVERY_HASH_MAX_THREADS;
@@ -28,15 +28,16 @@ pub(super) fn collect_capped_file_candidates(
     options: &LocalOptions,
     root_handle: &LocalRootHandle,
     limit: usize,
-) -> Result<Vec<LocalFileCandidate>> {
+) -> Result<(Vec<LocalFileCandidate>, bool)> {
     if limit == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), true));
     }
 
     // The executor historically sorted the full manifest and truncated it after
     // discovery. Keep those exact deterministic first-N semantics without
     // retaining or hashing every file: a max-heap retains only the N smallest
     // source item keys seen during the walk.
+    let mut truncated = false;
     let mut selected = BinaryHeap::with_capacity(limit.min(4096));
     visit_local_files(root, options, |path| {
         let Some(candidate) =
@@ -44,6 +45,7 @@ pub(super) fn collect_capped_file_candidates(
         else {
             return Ok(());
         };
+        truncated |= selected.len() == limit;
         if selected.len() < limit {
             selected.push(candidate);
         } else if selected.peek().is_some_and(|largest| candidate < *largest) {
@@ -55,7 +57,7 @@ pub(super) fn collect_capped_file_candidates(
 
     let mut selected = selected.into_vec();
     selected.sort();
-    Ok(selected)
+    Ok((selected, truncated))
 }
 
 fn local_walk_builder(root: &Path, options: &LocalOptions) -> WalkBuilder {
@@ -267,7 +269,7 @@ fn local_file_candidate(
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", &path, err))?;
-    if !metadata.is_file() || metadata.len() > options.max_file_bytes {
+    if !metadata.is_file() {
         return Ok(None);
     }
     Ok(Some(LocalFileCandidate { key, path }))
@@ -321,15 +323,26 @@ fn manifest_item_from_open_path(
     let metadata = file
         .metadata()
         .map_err(|err| fs_error("adapter.local.stat_failed", path, err))?;
-    if !metadata.is_file() || metadata.len() > options.max_file_bytes {
+    if !metadata.is_file() {
         return Ok(None);
     }
-    let content_hash = content_fingerprint_and_spool_from_file(
-        file,
-        path,
-        &spool_path(spool_dir, key),
-        options.max_file_bytes,
-    )?;
+    let content_hash = if metadata.len() > options.max_file_bytes {
+        None
+    } else {
+        content_fingerprint_and_spool_from_file(
+            file,
+            path,
+            &spool_path(spool_dir, key),
+            options.max_file_bytes,
+        )?
+    };
+    let mut resource_metadata = MetadataMap::new();
+    if content_hash.is_none() {
+        resource_metadata.insert(
+            CONTENT_OMISSION_METADATA_KEY.into(),
+            "size_limit_exceeded".into(),
+        );
+    }
     let identity = item_identity(SourceKind::Local, base_uri, key)?;
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),
@@ -340,11 +353,11 @@ fn manifest_item_from_open_path(
         display_path: Some(key.to_string()),
         parent_key: None,
         size_bytes: Some(metadata.len()),
-        content_hash: Some(content_hash),
+        content_hash,
         mtime: modified_at(metadata.modified().ok()),
         version: None,
         fetch_plan: None,
-        metadata: MetadataMap::new(),
+        metadata: resource_metadata,
         graph_hints: Vec::new(),
     }))
 }
@@ -400,9 +413,6 @@ pub(super) fn public_base_uri(canonical_uri: &str) -> String {
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {
-    if is_binary_path(path) {
-        return ContentKind::BinaryMetadata;
-    }
     match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
         "md" | "markdown" => ContentKind::Markdown,
         "html" | "htm" => ContentKind::Html,

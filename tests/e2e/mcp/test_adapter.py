@@ -13,6 +13,31 @@ SPEC.loader.exec_module(adapter)
 
 
 class McpAdapterTests(unittest.TestCase):
+    def test_atomic_projected_call_uses_leaf_name_and_drops_only_fixed_fields(self):
+        arguments = {"action": "jobs", "subaction": "get", "job_id": "owned", "payload": {"action": "user data"}}
+        leaf = adapter.project_call(arguments, "atomic", "test-server.axon")
+        self.assertEqual("jobs_get", leaf["name"])
+        self.assertEqual("test-server.jobs_get", leaf["selector"])
+        self.assertEqual({"job_id": "owned", "payload": {"action": "user data"}}, leaf["arguments"])
+        self.assertEqual(arguments, adapter.project_call(arguments)["arguments"])
+        self.assertEqual("axon", adapter.project_call(arguments)["name"])
+        for bad in [{"action": 7}, {"action": "jobs", "subaction": 7}, {"action": "$(rm -rf)"}]:
+            with self.assertRaises(adapter.McpAdapterError): adapter.project_call(bad, "atomic")
+
+    def test_inventory_rejects_extras_duplicates_and_missing_tools_in_every_mode(self):
+        operations = [{"name": "query", "action": "query", "subaction": None},
+                      {"name": "jobs_get", "action": "jobs", "subaction": "get"}]
+        for projection in ("legacy", "atomic", "both"):
+            names = ["axon_status_dashboard"]
+            if projection != "atomic": names += ["axon"]
+            if projection != "legacy": names += ["query", "jobs_get"]
+            tools = [{"name": name, "inputSchema": {"type": "object", "properties": {}}} for name in names]
+            self.assertTrue(adapter.assert_inventory(tools, operations, projection)["success"])
+            for invalid in [tools + [{"name": "surprise"}], tools + [tools[0]], tools[1:]]:
+                with self.assertRaises(adapter.McpAdapterError): adapter.assert_inventory(invalid, operations, projection)
+            with self.assertRaises(adapter.McpAdapterError): adapter.assert_inventory(tools, operations + [operations[0]], projection)
+
+
     def run_adapter(self, command, *envelopes):
         with tempfile.TemporaryDirectory() as directory:
             paths = []

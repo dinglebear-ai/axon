@@ -23,11 +23,21 @@ def parse_schema(source: str) -> tuple[dict[str, StructDef], dict[str, EnumDef]]
         body = m.group(2)
         fields: list[FieldDef] = []
         pending_aliases: list[str] = []
+        pending_default = False
+        serde_attribute = ""
         for line in body.splitlines():
             stripped = line.strip()
-            alias_match = re.search(r'#\[serde\([^]]*alias\s*=\s*"([^"]+)"', stripped)
-            if alias_match:
-                pending_aliases.append(alias_match.group(1))
+            if stripped.startswith("#[serde(") or serde_attribute:
+                serde_attribute += stripped
+                if "]" not in serde_attribute:
+                    continue
+                pending_aliases.extend(
+                    re.findall(r'\balias\s*=\s*"([^"]+)"', serde_attribute)
+                )
+                pending_default |= bool(
+                    re.search(r"(?:\(|,)\s*default\s*(?:=|,|\))", serde_attribute)
+                )
+                serde_attribute = ""
                 continue
             field_match = re.match(r"pub\s+(\w+)\s*:\s*([^,\n]+)", stripped)
             if not field_match:
@@ -35,9 +45,13 @@ def parse_schema(source: str) -> tuple[dict[str, StructDef], dict[str, EnumDef]]
             fname = field_match.group(1)
             ftype = field_match.group(2).strip().rstrip(",").strip()
             fields.append(
-                FieldDef(name=fname, rust_type=ftype, aliases=pending_aliases)
+                FieldDef(
+                    name=fname, rust_type=ftype, aliases=pending_aliases,
+                    has_default=pending_default,
+                )
             )
             pending_aliases = []
+            pending_default = False
         structs[name] = StructDef(name=name, fields=fields)
 
     # Parse enums

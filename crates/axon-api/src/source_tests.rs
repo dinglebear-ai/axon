@@ -571,6 +571,7 @@ fn source_generation_and_cleanup_debt_round_trip() {
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: 7,
             prepared: 3,
             embedded: 3,

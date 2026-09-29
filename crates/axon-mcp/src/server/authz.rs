@@ -3,292 +3,11 @@ use axon_authz::{has_explicit_scope, scope_satisfies};
 use lab_auth::AuthContext;
 use rmcp::{ErrorData, RoleServer, service::RequestContext};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ActionScope {
-    Read,
-    Write,
-    /// Destructive/admin-gated action. Per the auth contract, `axon:write`
-    /// does NOT imply `axon:admin` — the caller must hold the fine-grained
-    /// scope explicitly.
-    Admin,
-    InfoOnly,
-}
+#[path = "action_specs.rs"]
+mod action_specs;
+pub(crate) use action_specs::{MCP_ACTION_SPECS, McpActionSpec, McpSafetyHints};
 
-impl ActionScope {
-    pub(super) fn as_scope(self, _subaction: &str) -> Option<&'static str> {
-        match self {
-            Self::Read => Some("axon:read"),
-            Self::Write => Some("axon:write"),
-            Self::Admin => Some("axon:admin"),
-            Self::InfoOnly => None,
-        }
-    }
-
-    pub(super) fn as_label(self) -> &'static str {
-        match self {
-            Self::Read => "read",
-            Self::Write => "write",
-            Self::Admin => "admin",
-            Self::InfoOnly => "info",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct McpActionSpec {
-    pub name: &'static str,
-    pub scope: ActionScope,
-    pub description: &'static str,
-    pub cost: &'static str,
-}
-
-pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
-    McpActionSpec {
-        name: "codex",
-        scope: ActionScope::Admin,
-        description: "Inspect and operate the approval-gated Codex app-server control plane",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "scrape",
-        scope: ActionScope::Write,
-        description: "Project one or more page acquisitions onto the canonical source pipeline",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "crawl",
-        scope: ActionScope::Write,
-        description: "Project one or more site crawls onto the canonical source pipeline",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "embed",
-        scope: ActionScope::Write,
-        description: "Project one or more embedding requests onto the canonical source pipeline",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "ingest",
-        scope: ActionScope::Write,
-        description: "Project one or more ingestion requests onto the canonical source pipeline",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "code_search",
-        scope: ActionScope::Read,
-        description: "Search committed code vectors without refreshing the index",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "help",
-        scope: ActionScope::InfoOnly,
-        description: "List actions, subactions, defaults, and schema resource links",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "status",
-        scope: ActionScope::Read,
-        description: "Show job queue, worker, and service status",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "jobs",
-        scope: ActionScope::Write,
-        description: "List, inspect, page events, cancel, retry, recover, cleanup, or clear unified durable jobs",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "doctor",
-        scope: ActionScope::Read,
-        description: "Diagnose Axon service connectivity",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "source",
-        scope: ActionScope::Write,
-        description: "Acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry target) through the unified pipeline",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "query",
-        scope: ActionScope::Read,
-        description: "Run semantic vector search over indexed content",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "retrieve",
-        scope: ActionScope::Read,
-        description: "Fetch stored document chunks by URL",
-        cost: "cheap",
-    },
-    // resolve/capabilities/providers (contract's `resolve`/`capabilities`/
-    // `providers` actions, WS-G #298): read-only discovery surfaces backed by
-    // real data — `resolve` calls `axon_services::source::routing::
-    // resolve_source_route`, `providers` reshapes `system::doctor`'s per-
-    // service payload (mirroring the REST `/v1/providers` resource-tier
-    // routes), and `capabilities` reports the live `MCP_ACTION_SPECS`
-    // registry plus provider health. None of these mutate state.
-    McpActionSpec {
-        name: "resolve",
-        scope: ActionScope::Read,
-        description: "Resolve source identity and adapter route without acquiring content",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "capabilities",
-        scope: ActionScope::Read,
-        description: "Machine-readable server capability document: actions, scopes, providers",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "providers",
-        scope: ActionScope::Read,
-        description: "List or inspect provider capability/health (list|get subactions)",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "search",
-        scope: ActionScope::Read,
-        description: "Run SearXNG/Tavily web search and optionally queue source auto-index jobs for results",
-        cost: "moderate",
-    },
-    McpActionSpec {
-        name: "map",
-        scope: ActionScope::Read,
-        description: "Discover URLs for a site without scraping page content",
-        cost: "moderate",
-    },
-    McpActionSpec {
-        name: "prune",
-        scope: ActionScope::Admin,
-        description: "Plan or execute source, generation, or collection cleanup behind axon-prune",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "collections",
-        scope: ActionScope::Read,
-        description: "List or inspect configured vector collections",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "reset",
-        scope: ActionScope::Admin,
-        description: "Plan or execute an explicit clean-slate store reset",
-        cost: "write",
-    },
-    // U2-20/C6-20: ask/evaluate/suggest/research/summarize default to
-    // `axon:read` — they're query-shaped surfaces, even though research (and
-    // occasionally ask/summarize) may enqueue a background source/index job as
-    // a side effect. No `mutates_if`/conditional-upgrade metadata exists yet
-    // (tracked as a follow-up); until it lands these stay read-gated rather
-    // than write-gated, matching the contract's stated default.
-    McpActionSpec {
-        name: "ask",
-        scope: ActionScope::Read,
-        description: "Answer a question with RAG over indexed content",
-        cost: "moderate",
-    },
-    McpActionSpec {
-        name: "evaluate",
-        scope: ActionScope::Read,
-        description: "Evaluate RAG quality against a baseline and judge diagnostics",
-        cost: "expensive",
-    },
-    McpActionSpec {
-        name: "suggest",
-        scope: ActionScope::Read,
-        description: "Suggest new documentation URLs to index",
-        cost: "moderate",
-    },
-    McpActionSpec {
-        name: "research",
-        scope: ActionScope::Read,
-        description: "Run SearXNG/Tavily research with synthesis and auto-indexing",
-        cost: "expensive",
-    },
-    McpActionSpec {
-        name: "screenshot",
-        scope: ActionScope::Write,
-        description: "Capture a full-page screenshot through headless Chrome",
-        cost: "moderate",
-    },
-    McpActionSpec {
-        name: "brand",
-        scope: ActionScope::Write,
-        description: "Extract brand identity metadata from a URL",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "diff",
-        scope: ActionScope::Write,
-        description: "Compare two URLs for content, metadata, and link changes",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "extract",
-        scope: ActionScope::Write,
-        description: "Start async structured extraction jobs; use action=jobs for lifecycle",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "memory",
-        scope: ActionScope::Write,
-        description: "Remember, search, and show persistent agent memory",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "summarize",
-        scope: ActionScope::Read,
-        description: "Fetch URL context and summarize it with the configured LLM",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "endpoints",
-        scope: ActionScope::Write,
-        description: "Discover and optionally verify static site endpoints",
-        cost: "write",
-    },
-    // `watch` (issue #298 WS-B): source-request-backed watch subactions mirror
-    // the REST `/v1/watches` surface. Per-subaction scope is enforced in
-    // `required_scope_for` below (`list`/`get`/`history` read; mutating
-    // lifecycle operations write).
-    McpActionSpec {
-        name: "watch",
-        scope: ActionScope::Write,
-        description: "Create, list, inspect, update, pause, resume, or delete source-request-backed watches",
-        cost: "write",
-    },
-    // `graph` (issue #298 GQ): read-only SourceGraph query surface mirroring
-    // the REST `/v1/graph/*` routes. All subactions (`kinds`/`resolve`/
-    // `query`/`node`/`edge`/`source`) are pure reads — graph writes stay
-    // parser/source-job owned, never caller-provided through this action.
-    McpActionSpec {
-        name: "graph",
-        scope: ActionScope::Read,
-        description: "Query the read-only SourceGraph: kinds, resolve, query, node, edge, source subgraph",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "uploads",
-        scope: ActionScope::Write,
-        description: "Stage, inspect, complete, list, or abort durable uploads",
-        cost: "write",
-    },
-    McpActionSpec {
-        name: "artifacts",
-        scope: ActionScope::Read,
-        description: "List, inspect, or read artifacts by opaque artifact id",
-        cost: "cheap",
-    },
-    McpActionSpec {
-        name: "chat",
-        scope: ActionScope::Read,
-        description: "Send a direct prompt to the configured chat-purpose LLM",
-        cost: "moderate",
-    },
-];
-
-pub(super) fn mcp_action_names() -> Vec<&'static str> {
+pub(crate) fn mcp_action_names() -> Vec<&'static str> {
     MCP_ACTION_SPECS.iter().map(|spec| spec.name).collect()
 }
 
@@ -296,7 +15,7 @@ pub(super) fn mcp_action_names() -> Vec<&'static str> {
 ///
 /// `LoopbackDev` trusts process isolation. Mounted HTTP mode requires the auth
 /// middleware to have inserted an `AuthContext` into request extensions.
-pub(super) fn require_auth_context<'a>(
+pub(crate) fn require_auth_context<'a>(
     policy: &AuthPolicy,
     ctx: &'a RequestContext<RoleServer>,
 ) -> Result<Option<&'a AuthContext>, ErrorData> {
@@ -328,7 +47,7 @@ pub(super) fn require_auth_context<'a>(
 ///
 /// OAuth email allowlisting is the access boundary. Any valid Axon OAuth scope
 /// grants full Axon server access; scope names remain for client compatibility.
-pub(super) fn check_scope(
+pub(crate) fn check_scope(
     auth: &AuthContext,
     required_scope: &str,
     action: &str,
@@ -367,7 +86,7 @@ pub(super) fn check_scope(
 /// only where [`required_scope_with_mutates_if`] actually applied an
 /// elevation — use `check_scope` for every ordinary action/subaction scope
 /// check.
-pub(super) fn check_scope_explicit(
+pub(crate) fn check_scope_explicit(
     auth: &AuthContext,
     required_scope: &str,
     action: &str,
@@ -391,7 +110,7 @@ pub(super) fn check_scope_explicit(
 pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
     if action == "reset" {
         return match subaction {
-            "" | "plan" | "exec" => Some("axon:admin"),
+            "" | "plan" | "get" | "exec" => Some("axon:admin"),
             _ => Some("__deny__"),
         };
     }
@@ -458,7 +177,7 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
 #[path = "authz_tests.rs"]
 mod tests;
 
-pub(super) fn required_scope_for_tool(
+pub(crate) fn required_scope_for_tool(
     tool_name: &str,
     action: &str,
     subaction: &str,
@@ -533,7 +252,7 @@ pub fn required_scope_with_mutates_if(
 ///
 /// `auth` is `None` under `AuthPolicy::LoopbackDev`, which is locally-trusted
 /// and enforces nothing.
-pub(super) fn enforce_call_tool_scope(
+pub(crate) fn enforce_call_tool_scope(
     auth: Option<&AuthContext>,
     tool_name: &str,
     action: &str,

@@ -1,20 +1,4 @@
-//! `GraphPrune` cleanup-debt production for genuinely removed manifest items.
-//!
-//! Unlike `VectorDelete` (which must fire for both modified *and* removed
-//! items, since vector points are always regenerated per-generation), a graph
-//! node's `stable_key` is identity, not generation-scoped — the baseline
-//! document node for an item is keyed by the item's own `source_item_key`
-//! (see `crates/axon-services/src/source/graph.rs::document_stable_key`). A
-//! merely *modified* item keeps the same key into the new generation, so its
-//! graph node must stay; only an item entirely absent from the new manifest
-//! should have its graph node pruned.
-//!
-//! This only prunes the conservative, deterministically-known identity: the
-//! removed item's own document-node stable key. Parser-produced graph nodes
-//! (extra candidates from `enriching`) are not derivable here and are left
-//! alone — see the module-level note in `docs/pipeline-unification/runtime/
-//! pruning-contract.md` ("graph orphan cleanup").
-
+//! Retire graph contributions for absent items and persisted content skips.
 use std::collections::BTreeSet;
 
 use axon_api::source::*;
@@ -41,17 +25,20 @@ pub(super) async fn graph_prune_cleanup_debt_in_tx(
             .map(|item| item.source_item_key)
             .collect();
 
+    let skipped: BTreeSet<String> = sqlx::query_scalar("SELECT source_item_key FROM document_status WHERE source_id = ?1 AND generation = ?2 AND status = 'skipped'")
+        .bind(&generation.source_id.0).bind(&generation.generation.0)
+        .fetch_all(&mut *tx).await.map_err(crate::migration::sqlite_error)?.into_iter().collect();
     let mut cleanup_debt = Vec::new();
     for item in previous_items {
-        if next_keys.contains(&item.source_item_key) {
-            // Still present (unchanged or modified) — same stable key, same
-            // graph node. Only a true removal prunes the node.
+        if next_keys.contains(&item.source_item_key) && !skipped.contains(&item.source_item_key.0) {
+            // Supported present items retain their graph contributions.
             continue;
         }
         cleanup_debt.push(graph_prune_debt(
             &generation.source_id,
             previous_generation,
             &item.source_item_key,
+            &generation.generation,
         ));
     }
     Ok(cleanup_debt)

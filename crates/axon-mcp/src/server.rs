@@ -29,8 +29,20 @@ mod handlers_system;
 mod handlers_watch;
 #[path = "server/http.rs"]
 mod http;
+#[path = "server/operation_schema.rs"]
+pub(crate) mod operation_schema;
+#[path = "server/operations.rs"]
+mod operations;
+pub use operations::{McpOperationDescriptor, operation_registry};
+#[path = "server/projection.rs"]
+mod projection;
+#[path = "server/projection_call.rs"]
+mod projection_call;
+#[cfg(test)]
+#[path = "server/projection_call_tests.rs"]
+mod projection_call_tests;
 #[path = "server/authz.rs"]
-mod server_authz;
+pub(crate) mod server_authz;
 #[cfg(test)]
 #[path = "server/services_migration_tests.rs"]
 mod services_migration_tests;
@@ -47,7 +59,7 @@ mod task_status;
 #[path = "server/tasks.rs"]
 mod tasks;
 #[path = "server/tool_schema.rs"]
-mod tool_schema;
+pub(crate) mod tool_schema;
 #[cfg(test)]
 #[path = "server/tool_schema_tests.rs"]
 mod tool_schema_tests;
@@ -67,11 +79,11 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams, GetTaskParams,
         GetTaskResult, InitializeRequestParams, InitializeResult, ListResourcesResult,
-        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, RequestMetaObject,
-        ServerInfo, TASKS_EXTENSION_ID, UpdateTaskParams,
+        ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
+        RequestMetaObject, ServerInfo, TASKS_EXTENSION_ID, Tool, UpdateTaskParams,
     },
     service::RequestContext,
-    tool, tool_handler, tool_router,
+    tool, tool_router,
 };
 use serde_json::Value;
 pub use server_authz::{mutates_if_upgrade, required_scope_for, required_scope_with_mutates_if};
@@ -84,6 +96,7 @@ use tokio::{
 
 #[derive(Clone)]
 pub struct AxonMcpServer {
+    projected_router: Arc<rmcp::handler::server::tool::ToolRouter<Self>>,
     cfg: Arc<Config>,
     service_context: Arc<OnceCell<Arc<ServiceContext>>>,
     codex_control: Arc<OnceCell<Option<Arc<axon_services::codex_control::CodexControlService>>>>,
@@ -102,6 +115,7 @@ impl AxonMcpServer {
         // Default to LoopbackDev; the HTTP server overrides this via
         // `new_with_auth_policy` when auth is configured.
         Self {
+            projected_router: Arc::new(projection::build_router(cfg.mcp_tool_projection)),
             cfg: Arc::new(cfg),
             service_context: Arc::new(OnceCell::new()),
             codex_control: Arc::new(OnceCell::new()),
@@ -118,6 +132,7 @@ impl AxonMcpServer {
         >,
     ) -> Self {
         Self {
+            projected_router: Arc::new(projection::build_router(cfg.mcp_tool_projection)),
             cfg: Arc::new(cfg),
             service_context,
             codex_control,
@@ -319,178 +334,36 @@ impl AxonMcpServer {
     }
 }
 
-#[tool_handler(router = Self::tool_router())]
 impl ServerHandler for AxonMcpServer {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            result_type: Some(rmcp::model::ResultType::COMPLETE),
+            tools: {
+                let mut tools = self.projected_router.list_all();
+                tools.sort_by(|left, right| left.name.cmp(&right.name));
+                tools
+            },
+            meta: None,
+            next_cursor: None,
+            ttl_ms: Some(30_000),
+            cache_scope: Some(rmcp::model::CacheScope::Private),
+        })
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.projected_router.get(name).cloned()
+    }
+
     async fn call_tool(
         &self,
-        mut request: CallToolRequestParams,
+        request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        // rmcp strips wire `params._meta` from the typed params and moves it
-        // into `RequestContext::meta` before dispatch. Rehydrate the params so
-        // task augmentation and progress-token handling below see the actual
-        // wire metadata (typed params metadata remains useful for direct SDK
-        // callers that bypass the transport loop).
-        rehydrate_request_meta(&mut request, &context.meta);
-        // SEP-2663: rmcp 3.x removed the dedicated `ServerHandler::enqueue_task`
-        // hook and the typed `CallToolRequestParams::task` field that rmcp 1.x
-        // used to route task-augmented `tools/call` requests. Task augmentation
-        // is now opt-in through the request's `_meta` extension key, and the
-        // server materializes the task by returning `CallToolResponse::Task`
-        // from `call_tool` itself. `tasks::enqueue_task` runs its own authz
-        // (`authorize_task_tool_call`), exactly as it did when the SDK routed
-        // to it directly, so this branch stays ahead of the synchronous gate.
-        if is_task_augmented(&request) {
-            // The SDK rejects a `CallToolResponse::Task` outright when the
-            // client never declared the tasks extension. Check first so a
-            // capability-less client is refused *before* a job is enqueued
-            // rather than after the side effect has already landed.
-            if !context
-                .client_capabilities()
-                .is_some_and(|caps| caps.supports_tasks())
-            {
-                return Err(invalid_params(
-                    "task-augmented tools/call requires the client to declare the \
-                     `io.modelcontextprotocol/tasks` extension capability",
-                ));
-            }
-            return tasks::enqueue_task(self, request, context)
-                .await
-                .map(Into::into);
-        }
-
-        // Extract action and subaction for scope check before any processing.
-        let action: String = request
-            .arguments
-            .as_ref()
-            .and_then(|m| m.get("action"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_owned();
-        let subaction: String = request
-            .arguments
-            .as_ref()
-            .and_then(|m| m.get("subaction"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_owned();
-
-        // Fail-closed auth check: require AuthContext when Mounted, then scope.
-        // LoopbackDev returns None — no scope enforcement applies.
-        let auth = server_authz::require_auth_context(&self.auth_policy, &context)?;
-        server_authz::enforce_call_tool_scope(auth, request.name.as_ref(), &action, &subaction)?;
-
-        // `prune` needs a real PruneAuthz derived from the caller's resolved
-        // scopes, never hardcoded. By the time we reach this point the scope
-        // gate above has already enforced `axon:admin` for Mounted callers
-        // (see server_authz::MCP_ACTION_SPECS / required_scope_for), so
-        // re-deriving `is_admin` here from the same `auth` value is honest,
-        // not a rubber stamp — LoopbackDev has no AuthContext at all and is
-        // treated as locally-trusted, matching the CLI's own local-trust
-        // rationale (crates/axon-cli/src/commands/prune.rs).
-        let prune_authz = if action == "prune" {
-            axon_services::prune::PruneAuthz {
-                is_admin: match auth {
-                    None => true,
-                    Some(auth_ctx) => {
-                        axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE)
-                    }
-                },
-            }
-        } else {
-            axon_services::prune::PruneAuthz::anonymous()
-        };
-
-        // `memory`'s router-level scope gate only requires `axon:write`, but
-        // `MemorySubaction::Import` with `mode: replace_scope` requires
-        // `axon:admin` (`axon_api::source::MemoryImportMode::ReplaceScope`).
-        // Resolve the real caller-derived authz here, never hardcoded;
-        // `LoopbackDev` has no `AuthContext` and is locally-trusted, matching
-        // the CLI's own local-trust rationale.
-        let memory_authz = if action == "memory" {
-            axon_services::memory::MemoryAuthz {
-                is_admin: match auth {
-                    None => true,
-                    Some(auth_ctx) => {
-                        axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE)
-                    }
-                },
-            }
-        } else {
-            axon_services::memory::MemoryAuthz::anonymous()
-        };
-
-        // Real caller-derived AuthSnapshot for job-submission handlers
-        // such as extract.start and future source-backed starts.
-        // — `None` in LoopbackDev mode, where there is no per-caller identity
-        // to snapshot and the loopback bind is the trust boundary itself.
-        //
-        // Visibility ceiling comes from `axon_authz::VisibilityPolicy`, not a
-        // hardcoded `Internal` — mirrors `axon-web`'s
-        // `caller_context_from_auth` (crates/axon-web/src/server/handlers/sources.rs).
-        // A remote MCP caller is never `trusted_local`, so only callers who
-        // additionally hold `axon:admin` get `Internal`; every other remote
-        // caller is capped at `Public`, matching the identical REST caller.
-        let caller_auth_snapshot = auth.map(|auth_ctx| {
-            let auth_mode = if auth_ctx.sub == "static-bearer" {
-                axon_api::source::AuthMode::StaticToken
-            } else {
-                axon_api::source::AuthMode::Oauth
-            };
-            let mut caller = axon_api::source::CallerContext {
-                caller_id: Some(auth_ctx.sub.clone()),
-                transport: axon_api::source::TransportKind::Mcp,
-                trusted_local: false,
-                scopes: auth_ctx.scopes.clone(),
-                visibility_ceiling: axon_api::source::Visibility::Public,
-                auth_mode,
-                token_id: None,
-                display_name: None,
-            };
-            let ceiling = axon_authz::VisibilityPolicy::new().ceiling_for(&caller);
-            caller.visibility_ceiling = ceiling;
-            axon_api::source::AuthSnapshot::from_caller(&caller, ceiling, "runtime")
-        });
-
-        // Delegate to the tool router generated by #[tool_router], with the
-        // resolved prune/memory authz and caller auth snapshot available to
-        // handlers via task-local (see `common.rs` module docs).
-        let reset_authz = axon_services::reset::ResetAuthz {
-            is_admin: action == "reset"
-                && match auth {
-                    None => true,
-                    Some(auth_ctx) => {
-                        axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE)
-                    }
-                },
-        };
-        let codex_caller = auth.map_or_else(
-            || common::CodexCaller {
-                actor: "trusted-loopback".to_string(),
-                scopes: "local-trusted".to_string(),
-            },
-            |auth_ctx| common::CodexCaller {
-                actor: auth_ctx.sub.clone(),
-                scopes: auth_ctx.scopes.join(" "),
-            },
-        );
-        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        common::CURRENT_PRUNE_AUTHZ
-            .scope(
-                prune_authz,
-                common::CURRENT_RESET_AUTHZ.scope(
-                    reset_authz,
-                    common::CURRENT_MEMORY_AUTHZ.scope(
-                        memory_authz,
-                        common::CURRENT_CALLER_AUTH_SNAPSHOT.scope(
-                            caller_auth_snapshot,
-                            common::CURRENT_CODEX_CALLER
-                                .scope(codex_caller, Self::tool_router().call(tcc)),
-                        ),
-                    ),
-                ),
-            )
-            .await
+        projection_call::call(self, request, context).await
     }
 
     /// SEP-2663 `tasks/get`. Replaces rmcp 1.x's split `get_task_info`

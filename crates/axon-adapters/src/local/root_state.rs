@@ -123,6 +123,14 @@ impl LocalSourceAdapter {
     }
 
     #[cfg(test)]
+    pub(crate) fn discovery_spool_file_count(&self, job_id: JobId) -> usize {
+        let spool = self.discovery_spool(job_id).expect("discovery spool");
+        std::fs::read_dir(spool.path())
+            .expect("spool contents")
+            .count()
+    }
+
+    #[cfg(test)]
     pub(crate) fn discovery_spool_count(&self) -> usize {
         self.discovery_spools
             .lock()

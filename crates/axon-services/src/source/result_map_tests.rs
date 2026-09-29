@@ -6,6 +6,7 @@ use axon_api::source::{
 
 fn counts(warnings: Vec<SourceWarning>) -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(uuid::Uuid::nil()),
         source_id: SourceId::new("src_result_status"),
         generation: SourceGenerationId::new("gen_result_status"),

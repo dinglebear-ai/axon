@@ -5,7 +5,7 @@ use axon_api::source::{CollectionSpec, PipelinePhase};
 use super::{SourcePipelineInput, TargetLocalSourceRuntime};
 use crate::reserved_call::{self, ProviderCallContext};
 
-pub(super) async fn ensure_generation_collection(
+pub(in crate::source::executor) async fn ensure_generation_collection(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     collection: &CollectionSpec,

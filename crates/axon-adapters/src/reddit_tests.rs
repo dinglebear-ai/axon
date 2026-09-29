@@ -159,6 +159,10 @@ async fn discover_lists_posts_from_valid_dump() {
     let dump_path = write_dump(&dir, &sample_dump());
     let plan = reddit_plan(Some(&dump_path), SourceScope::Subreddit, TARGET_SUBREDDIT);
     let manifest = RedditSourceAdapter::new().discover(&plan).await.unwrap();
+    assert_eq!(
+        manifest.inventory_completeness(),
+        InventoryCompleteness::Partial
+    );
 
     assert_eq!(manifest.items.len(), 2);
     let keys: Vec<_> = manifest

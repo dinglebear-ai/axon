@@ -24,6 +24,7 @@ fn cleanup_source() -> SourceSummary {
         authority: AuthorityLevel::UserPinned,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 0,
             items_changed: 0,
             documents_total: 0,
@@ -95,6 +96,15 @@ impl CleanupProviderOps for ArtifactRecoveryOps {
         unreachable!("artifact recovery does not delete vectors")
     }
 
+    async fn graph_retire_item(
+        &self,
+        _source: SourceId,
+        _item: axon_api::source::SourceItemKey,
+        _generation: SourceGenerationId,
+    ) -> Result<GraphDeleteResult, ApiError> {
+        unreachable!("artifact recovery does not retire graph items")
+    }
+
     async fn graph_delete_nodes(
         &self,
         _stable_keys: Vec<String>,
@@ -116,6 +126,7 @@ impl CleanupProviderOps for ArtifactRecoveryOps {
 
 fn cleanup_counts() -> IndexCounts {
     IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(uuid::Uuid::nil()),
         source_id: SourceId::new("src_cleanup_guard"),
         generation: SourceGenerationId::new("gen_uncommitted"),

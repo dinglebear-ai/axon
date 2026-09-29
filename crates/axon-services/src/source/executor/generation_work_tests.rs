@@ -114,6 +114,7 @@ async fn oversized_batch_splits_losslessly_and_marks_only_last_envelope_final() 
                 .send_final(
                     vec![prepared_document(5)],
                     PreparedBatchSideEffects {
+                        skipped_statuses: Vec::new(),
                         reused_item_keys: vec![SourceItemKey::new("retained-side-effect")],
                         ..empty_side_effects()
                     },

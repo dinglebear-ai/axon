@@ -136,6 +136,8 @@ from the current env registry before treating it as operational truth.
 | `AXON_HTTP_HOST` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_HTTP_PORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_MCP_TRANSPORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_MCP_TOOL_PROJECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_MCP_PROJECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_NEO4J_URL` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_OUTPUT_DIR` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_REPO_ROOT` | trusted-bootstrap | host-only | — | no | advanced.rs |

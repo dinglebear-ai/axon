@@ -104,12 +104,28 @@ pub trait LedgerStore: Send + Sync {
     /// must roll back the current batch when any status is invalid, rather than
     /// leaving a prefix of a pipeline stage visible.
     async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()>;
-    /// Mark every durable document status for one source generation published
+    /// Mark prepared/embedded/vectorized document statuses for a generation published.
+    /// Skipped, failed and other non-publishable states retain their disposition
     /// without materializing the generation's status rows in the caller.
     async fn publish_document_statuses(
         &self,
         source_id: SourceId,
         generation: SourceGenerationId,
+        updated_at: Timestamp,
+    ) -> Result<u64>;
+    /// Read every latest status for these items, including non-committed provenance.
+    async fn document_statuses_for_items(
+        &self,
+        source_id: SourceId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<DocumentStatus>>;
+    /// Carry an exact committed snapshot atomically; reject changed or extra siblings.
+    async fn carry_document_statuses(
+        &self,
+        source_id: SourceId,
+        expected_generation: SourceGenerationId,
+        next_generation: SourceGenerationId,
+        expected_statuses: Vec<DocumentStatus>,
         updated_at: Timestamp,
     ) -> Result<u64>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;

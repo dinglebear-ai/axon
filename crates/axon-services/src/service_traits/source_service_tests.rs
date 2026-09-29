@@ -97,6 +97,7 @@ async fn fake_source_service_list_reflects_seeded_sources() {
         authority: axon_api::source::AuthorityLevel::Unknown,
         status: axon_api::source::LifecycleStatus::Completed,
         counts: axon_api::source::SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,

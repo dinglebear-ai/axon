@@ -5,6 +5,9 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Default)]
 pub(in crate::source::executor) struct PreparedPoolVectorizer {
+    pub(super) providers_ready: bool,
+    pub(super) bulk_guard: Option<reserved_call::BulkLoadCompletionGuard>,
+    pub(super) bulk_collection: Option<CollectionSpec>,
     pub(super) ready: Option<pipeline::BuiltVectorBatch>,
     pub(super) cumulative: HashMap<DocumentId, DocumentStatus>,
 }
@@ -27,7 +30,7 @@ impl PreparedPoolVectorizer {
         &mut self,
         runtime: &TargetLocalSourceRuntime,
         input: &SourcePipelineInput<'_>,
-        collection: CollectionSpec,
+        mut collection: CollectionSpec,
         emitter: &SourceEventEmitter,
         coordinator: &ProgressCoordinator,
         pools: Vec<Vec<PreparedDocument>>,
@@ -35,35 +38,108 @@ impl PreparedPoolVectorizer {
         progress: &mut PipelineProgress,
         cancel: &CancellationToken,
     ) -> anyhow::Result<Vec<PushOutcome>> {
-        let mut outcomes = Vec::new();
-        let mut embedding_work = Vec::new();
-        for (sequence, prepared) in pools.into_iter().enumerate() {
-            anyhow::ensure!(
-                !cancel.is_cancelled(),
-                "generation scheduler canceled before vectorization"
-            );
-            let chunks = prepared
-                .iter()
-                .map(|document| document.chunks.len() as u64)
-                .sum();
-            if !input.plan.request.embed || chunks == 0 {
-                let result = statuses_only(prepared, DocumentLifecycleStatus::Prepared);
-                self.checkpoint(runtime, &result).await?;
-                outcomes.push(PushOutcome::StatusesOnly(result));
-                continue;
+        let result = async {
+            let mut outcomes = Vec::new();
+            let mut embedding_work = Vec::new();
+            for (sequence, prepared) in pools.into_iter().enumerate() {
+                anyhow::ensure!(
+                    !cancel.is_cancelled(),
+                    "generation scheduler canceled before vectorization"
+                );
+                let chunks = prepared
+                    .iter()
+                    .map(|document| document.chunks.len() as u64)
+                    .sum();
+                if !input.plan.request.embed || chunks == 0 {
+                    let result = statuses_only(prepared, DocumentLifecycleStatus::Prepared);
+                    self.checkpoint(runtime, &result).await?;
+                    outcomes.push(PushOutcome::StatusesOnly(result));
+                    continue;
+                }
+                coordinator
+                    .report(
+                        emitter,
+                        PipelinePhase::Batching,
+                        progress.batched(chunks),
+                        "batching prepared chunks",
+                    )
+                    .await;
+                let counts = pipeline::begin_embedding(emitter, coordinator, progress).await;
+                embedding_work.push((sequence, prepared, counts));
             }
-            coordinator
-                .report(
+
+            if !embedding_work.is_empty() {
+                if !self.providers_ready {
+                    super::super::helpers::ensure_providers_ready(runtime).await?;
+                }
+                let plane = runtime.verified_embedding_plane().await?;
+                collection = super::super::helpers::collection_spec(
+                    input.collection,
+                    plane.identity.dimensions,
+                );
+                if !self.providers_ready {
+                    super::super::created_generation::setup::ensure_generation_collection(
+                        runtime,
+                        input,
+                        &collection,
+                    )
+                    .await?;
+                    self.bulk_guard = Some(
+                        reserved_call::start_bulk_load_guard(
+                            runtime,
+                            bulk_context(input, &collection, "begin-bulk-load"),
+                            collection.collection.clone(),
+                        )
+                        .await?,
+                    );
+                    self.bulk_collection = Some(collection.clone());
+                    self.providers_ready = true;
+                }
+            }
+            outcomes.extend(
+                self.embed_pools(
+                    runtime,
+                    input,
+                    &collection,
                     emitter,
-                    PipelinePhase::Batching,
-                    progress.batched(chunks),
-                    "batching prepared chunks",
+                    coordinator,
+                    embedding_work,
+                    is_final_group,
+                    progress,
+                )
+                .await?,
+            );
+            Ok(outcomes)
+        }
+        .await;
+        if result.is_err() {
+            if let Some(collection) = self.bulk_collection.take() {
+                return finish_bulk_result(
+                    runtime,
+                    input,
+                    &collection,
+                    self.bulk_guard.take(),
+                    result,
                 )
                 .await;
-            let counts = pipeline::begin_embedding(emitter, coordinator, progress).await;
-            embedding_work.push((sequence, prepared, counts));
+            }
         }
+        result
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    async fn embed_pools(
+        &mut self,
+        runtime: &TargetLocalSourceRuntime,
+        input: &SourcePipelineInput<'_>,
+        collection: &CollectionSpec,
+        emitter: &SourceEventEmitter,
+        coordinator: &ProgressCoordinator,
+        embedding_work: Vec<(usize, Vec<PreparedDocument>, StageCounts)>,
+        is_final_group: bool,
+        progress: &mut PipelineProgress,
+    ) -> anyhow::Result<Vec<PushOutcome>> {
+        let mut outcomes = Vec::new();
         let final_sequence = embedding_work
             .last()
             .map(|(sequence, _, _)| *sequence)
@@ -142,13 +218,21 @@ impl PreparedPoolVectorizer {
         coordinator: &ProgressCoordinator,
         progress: &mut PipelineProgress,
     ) -> anyhow::Result<Option<VectorizeResult>> {
-        let Some(ready) = self.ready.take() else {
-            return Ok(None);
-        };
-        let result =
-            publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
-        self.checkpoint(runtime, &result).await?;
-        Ok(Some(result))
+        let result = async {
+            let Some(ready) = self.ready.take() else {
+                return Ok(None);
+            };
+            let result =
+                publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
+            self.checkpoint(runtime, &result).await?;
+            Ok(Some(result))
+        }
+        .await;
+        if let Some(collection) = self.bulk_collection.take() {
+            finish_bulk_result(runtime, input, &collection, self.bulk_guard.take(), result).await
+        } else {
+            result
+        }
     }
 
     async fn checkpoint(

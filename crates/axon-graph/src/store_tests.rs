@@ -312,3 +312,6 @@ async fn fake_graph_store_nodes_for_source_filters_by_source_id() {
         .unwrap();
     assert!(none.is_empty());
 }
+
+#[path = "retirement_tests.rs"]
+mod retirement_tests;

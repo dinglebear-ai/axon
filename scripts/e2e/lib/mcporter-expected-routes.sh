@@ -8,8 +8,9 @@ artifacts:list
 ask
 brand
 capabilities
-chat:chat
+chat
 code_search
+codex:cancel
 codex:approve
 codex:events
 codex:execute
@@ -65,10 +66,12 @@ memory:import
 memory:export
 providers:get
 providers:list
+prune:get
 prune:exec
 prune:plan
 query
 research
+reset:get
 reset:exec
 reset:plan
 resolve

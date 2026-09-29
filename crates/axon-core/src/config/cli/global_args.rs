@@ -1,5 +1,5 @@
 use crate::config::types::{
-    ColorChoice, MotionChoice, PerformanceProfile, RenderMode, ScrapeFormat,
+    ColorChoice, McpToolProjection, MotionChoice, PerformanceProfile, RenderMode, ScrapeFormat,
 };
 use clap::{ArgAction, Args};
 use std::path::PathBuf;
@@ -8,6 +8,10 @@ pub(in crate::config) const DEFAULT_OUTPUT_DIR: &str = ".cache/axon-rust/output"
 
 #[derive(Debug, Args)]
 pub(in crate::config) struct GlobalArgs {
+    /// MCP tool surface: legacy aggregate, atomic operations, or both (startup-static).
+    #[arg(global = true, long, value_enum)]
+    pub(in crate::config) mcp_tool_projection: Option<McpToolProjection>,
+
     /// Maximum pages to crawl per job (crawl defaults to 2000; 0 = unlimited)
     #[arg(global = true, long)]
     pub(in crate::config) max_pages: Option<u32>,

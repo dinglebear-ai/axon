@@ -280,6 +280,7 @@ fn sample_publish_request() -> PublishGenerationRequest {
         source_id: SourceId::new("src-docs"),
         generation: SourceGenerationId::from("gen_1"),
         expected_previous_generation: None,
+        retained_statuses: Vec::new(),
     }
 }
 

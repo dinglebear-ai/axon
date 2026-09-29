@@ -7,7 +7,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::adapter::Result;
 
-pub(crate) const DEFAULT_LOCAL_MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+pub const DEFAULT_LOCAL_MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 const ALLOWED_OPTIONS: &[&str] = &[
     "include_globs",
@@ -25,6 +25,16 @@ pub(crate) enum BinaryPolicy {
     Skip,
     Metadata,
     Include,
+}
+
+impl BinaryPolicy {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Skip => "skip",
+            Self::Metadata => "metadata",
+            Self::Include => "include",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -70,21 +80,10 @@ impl LocalOptions {
         {
             return false;
         }
-        if self.binary_policy == BinaryPolicy::Skip && is_binary_path(path) {
-            return false;
-        }
         if scope == SourceScope::Repo {
             return is_code_search_file(path);
         }
         !is_generated_filename(file_name(path))
-    }
-
-    pub(crate) fn fetches_body(&self, path: &Path) -> bool {
-        self.binary_policy != BinaryPolicy::Metadata || !is_binary_path(path)
-    }
-
-    pub(crate) fn includes_binary_body(&self, path: &Path) -> bool {
-        self.binary_policy == BinaryPolicy::Include && is_binary_path(path)
     }
 
     pub(crate) fn should_prune_default_dirs(&self) -> bool {

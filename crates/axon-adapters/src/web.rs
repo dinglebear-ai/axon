@@ -202,6 +202,16 @@ impl SourceAdapter for WebSourceAdapter {
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
         web_capability(self.version()).validate_scope(plan.route.scope)?;
         validate_adapter(plan)?;
+        // Site enumeration is bounded upstream (sitemaps, llms.txt and anchors).
+        // A page or explicit URL list is the complete requested inventory.
+        let completeness = if plan.route.scope == SourceScope::Page
+            || (plan.route.scope == SourceScope::Map
+                && plan.route.validated_options.values.contains_key("map_urls"))
+        {
+            InventoryCompleteness::Complete
+        } else {
+            InventoryCompleteness::Partial
+        };
         let (items, discovery_metadata) = match plan.route.scope {
             SourceScope::Map => {
                 if plan.route.validated_options.values.contains_key("map_urls") {
@@ -234,7 +244,7 @@ impl SourceAdapter for WebSourceAdapter {
         };
         let mut metadata = manifest_metadata(plan);
         metadata.0.extend(discovery_metadata.0);
-        Ok(SourceManifest {
+        let mut manifest = SourceManifest {
             source_id: plan.route.source.source_id.clone(),
             generation: SourceGenerationId::from("gen_web_discovery"),
             adapter: plan.route.adapter.clone(),
@@ -242,7 +252,9 @@ impl SourceAdapter for WebSourceAdapter {
             items,
             created_at: timestamp(),
             metadata,
-        })
+        };
+        manifest.set_inventory_completeness(completeness);
+        Ok(manifest)
     }
 
     async fn acquire(

@@ -148,6 +148,7 @@ pub(crate) async fn dispatch_git(
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
+    limits: &SourceLimits,
     route: &axon_api::source::RoutePlan,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
@@ -155,14 +156,7 @@ pub(crate) async fn dispatch_git(
         "command=source collection={collection} kind=git embed={embed}"
     ));
     let materializer = Arc::clone(&adapter);
-    let mut plan = family_source_plan(input, route, embed, None, None);
-    if !cfg.ingest_exclude_paths.is_empty() {
-        plan.request.options.values.insert(
-            "exclude_paths".to_string(),
-            serde_json::json!(cfg.ingest_exclude_paths),
-        );
-        plan.route.validated_options = plan.request.options.clone();
-    }
+    let plan = git_source_plan(input, route, embed, limits, &cfg.ingest_exclude_paths);
     dispatch_materialized(
         runtime,
         adapter.as_ref(),
@@ -460,3 +454,47 @@ mod tool_tests;
 #[cfg(test)]
 #[path = "dispatch/progress_tests.rs"]
 mod progress_tests;
+
+fn git_source_plan(
+    input: &str,
+    route: &axon_api::source::RoutePlan,
+    embed: bool,
+    limits: &SourceLimits,
+    exclude_paths: &[String],
+) -> SourcePlan {
+    let mut plan = family_source_plan(input, route, embed, None, None);
+    plan.request.limits = limits.clone();
+    plan.limits.request = limits.clone();
+    plan.limits.effective = limits.clone();
+    merge_exclude_paths(&mut plan.request.options, exclude_paths);
+    plan.route.validated_options = plan.request.options.clone();
+    plan
+}
+
+/// Configuration restrictions and accepted caller restrictions both select inventory.
+fn merge_exclude_paths(options: &mut axon_api::source::AdapterOptions, configured: &[String]) {
+    let requested = options
+        .values
+        .get("exclude_paths")
+        .and_then(serde_json::Value::as_array);
+    let mut merged = Vec::new();
+    for path in configured.iter().map(String::as_str).chain(
+        requested
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str),
+    ) {
+        if !merged.iter().any(|existing| existing == path) {
+            merged.push(path.to_owned());
+        }
+    }
+    if !merged.is_empty() {
+        options
+            .values
+            .insert("exclude_paths".into(), serde_json::json!(merged));
+    }
+}
+
+#[cfg(test)]
+#[path = "dispatch/exclusion_tests.rs"]
+mod exclusion_tests;

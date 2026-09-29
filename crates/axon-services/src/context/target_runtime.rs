@@ -364,6 +364,7 @@ async fn build_target_runtime(
         embedding_dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
         verified_embedding,
         document_preparer: DocumentPreparer::new(DocumentPreparerConfig {
+            max_content_bytes: axon_document::content_policy::DEFAULT_CONTENT_BYTE_LIMIT,
             markdown_max_chars: cfg.chunking_markdown_max_chars,
             markdown_min_chars: cfg.chunking_markdown_min_chars,
             markdown_overlap_chars: cfg.chunking_overlap_chars,

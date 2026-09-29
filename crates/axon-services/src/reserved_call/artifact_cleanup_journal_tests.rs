@@ -82,6 +82,7 @@ async fn seeded_counting_work(
             authority: AuthorityLevel::UserPinned,
             status: LifecycleStatus::Running,
             counts: SourceCounts {
+                documents_skipped: 0,
                 items_total: 0,
                 items_changed: 0,
                 documents_total: 0,
@@ -838,6 +839,7 @@ async fn fresh_root_and_reconstructed_runtime_replay_exactly_once() {
             authority: AuthorityLevel::UserPinned,
             status: LifecycleStatus::Running,
             counts: SourceCounts {
+                documents_skipped: 0,
                 items_total: 0,
                 items_changed: 0,
                 documents_total: 0,

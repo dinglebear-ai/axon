@@ -34,10 +34,8 @@ impl QdrantVectorStore {
     pub async fn service_ready(&self) -> Result<bool> {
         let http = self.http()?;
         let url = http.endpoint().service_path("readyz");
-        Ok(http
-            .get_json(ErrorStage::Observing, &url, "qdrant_ready")
-            .await?
-            .is_some())
+        http.get_success(ErrorStage::Observing, &url, "qdrant_ready")
+            .await
     }
 
     pub async fn list_collections_json(&self) -> Result<serde_json::Value> {

@@ -199,6 +199,7 @@ fn fake_source_result(request: &SourceRequest) -> SourceResult {
             committed_generation: None,
             status: LifecycleStatus::Completed,
             counts: SourceCounts {
+                documents_skipped: 0,
                 items_total: 1,
                 items_changed: 1,
                 documents_total: 1,
@@ -214,6 +215,7 @@ fn fake_source_result(request: &SourceRequest) -> SourceResult {
             degraded: false,
         },
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,

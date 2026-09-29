@@ -11,7 +11,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "7.4.0"
+    "version": "7.5.0"
   },
   "paths": {
     "/healthz": {
@@ -17883,6 +17883,11 @@
             "minimum": 0
           },
           "chunks_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "documents_skipped": {
             "type": "integer",
             "format": "int64",
             "minimum": 0

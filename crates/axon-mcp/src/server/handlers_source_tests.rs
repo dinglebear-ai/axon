@@ -98,6 +98,19 @@ async fn source_blank_input_returns_invalid_params() {
 
 #[test]
 fn source_without_data_plane_fails_at_provider_boundary() {
+    // src/main.rs runs Axon on a 64 MiB main thread with 8 MiB Tokio workers.
+    // block_on polls on its caller: configuring only workers leaves libtest's
+    // smaller outer stack, which already overflows on the pre-change baseline.
+    std::thread::Builder::new()
+        .name("source-provider-boundary".into())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(check_source_provider_boundary)
+        .expect("spawn production-sized source thread")
+        .join()
+        .expect("source provider boundary assertion");
+}
+
+fn check_source_provider_boundary() {
     // Provider construction is lazy (`ServiceContext::build_target_local_source`),
     // so with no qdrant/tei configured an indexing request still routes through
     // `axon_services::index_source` and fails at the provider boundary (fetch or
@@ -119,9 +132,7 @@ fn source_without_data_plane_fails_at_provider_boundary() {
         ..Default::default()
     };
 
-    // This deliberately enters the full web acquisition pipeline. Give the
-    // Tokio worker/blocking pool explicit stack headroom rather than relying
-    // on the test macro's small default worker stack.
+    // Match the existing production worker allowance too.
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .max_blocking_threads(2)
@@ -139,3 +150,6 @@ fn source_without_data_plane_fails_at_provider_boundary() {
         err.message
     );
 }
+
+#[path = "handlers_source_parity_tests.rs"]
+mod parity;

@@ -286,6 +286,7 @@ fn source_job_and_watch_management_dtos_round_trip() {
         authority: AuthorityLevel::UserPinned,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 2,
             items_changed: 1,
             documents_total: 1,

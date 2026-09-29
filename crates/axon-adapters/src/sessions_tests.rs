@@ -230,6 +230,10 @@ async fn discover_applies_max_items_before_hashing_full_session_tree() {
     plan.limits.effective.max_items = Some(2);
 
     let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+    assert_eq!(
+        manifest.inventory_completeness(),
+        InventoryCompleteness::Partial
+    );
     let keys = manifest
         .items
         .iter()
@@ -566,4 +570,21 @@ async fn discover_rejects_malformed_session_target() {
         .unwrap_err();
     assert!(err.code.to_string().starts_with("adapter.session.target"));
     fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn session_inventory_completeness_distinguishes_exact_cap_from_truncation() {
+    let root = fixture_claude_dir();
+    for (cap, expected) in [
+        (None, InventoryCompleteness::Complete),
+        (Some(0), InventoryCompleteness::Partial),
+        (Some(1), InventoryCompleteness::Complete),
+        (Some(2), InventoryCompleteness::Complete),
+    ] {
+        let mut plan = session_plan(CLAUDE_TARGET, &root, SourceScope::Thread, true);
+        plan.limits.effective.max_items = cap;
+        let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+        assert_eq!(manifest.inventory_completeness(), expected, "cap={cap:?}");
+    }
+    fs::remove_dir_all(root).unwrap();
 }

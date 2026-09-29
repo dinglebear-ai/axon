@@ -84,6 +84,7 @@ async fn local_source_exposes_durable_progress_across_multiple_acquisition_and_c
         "progress-owner",
         Some(&auth),
         true,
+        &request.limits,
         &routed.route,
         &execution,
     )
@@ -224,6 +225,7 @@ async fn embed_false_skips_vector_phases_without_stale_fetching_counts() {
         "progress-owner",
         Some(&auth),
         false,
+        &request.limits,
         &routed.route,
         &execution,
     )

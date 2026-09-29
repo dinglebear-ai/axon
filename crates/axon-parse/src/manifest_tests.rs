@@ -264,3 +264,82 @@ fn malformed_package_json_degrades_with_warning() {
     assert_eq!(result.warnings.len(), 1);
     assert_eq!(result.warnings[0].code, "parse.manifest.invalid");
 }
+
+#[test]
+fn npm_evidence_quotes_match_real_pretty_and_minified_source_lines() {
+    let pretty = r#"{
+  "name": "core-ui",
+  "dependencies": {
+    "@scope/pkg": "^1.2.3",
+    "same": "production"
+  },
+  "devDependencies": {"same": "development"},
+  "scripts": {
+    "build": "node -e \"console.log('hello')\""
+  },
+  "engines": {"node": ">=20"}
+}"#;
+    let minified =
+        serde_json::to_string(&serde_json::from_str::<serde_json::Value>(pretty).unwrap()).unwrap();
+    for text in [pretty, minified.as_str()] {
+        let result = dependency_parse_result(&input("package.json", ContentKind::Json, text));
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.facts.len(), 5);
+        assert_eq!(result.graph_candidates.len(), 5);
+        for candidate in result.graph_candidates {
+            for evidence in candidate.evidence {
+                let range = evidence.range.as_ref().unwrap();
+                let line = range.line_start.unwrap();
+                assert_eq!(range.line_end, Some(line));
+                let actual = text.lines().nth(line as usize - 1).unwrap();
+                assert!(
+                    actual.contains(evidence.quote.as_deref().unwrap()),
+                    "{evidence:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn npm_evidence_resolves_duplicate_keys_to_the_effective_scope_and_value() {
+    let text = r#"{
+  "dependencies": {"same":"discarded scope"},
+  "nested": {"dependencies":{"same":"not root"}},
+  "dependencies": {
+    "same": "discarded member",
+    "sa\u006de": "effective"
+  },
+  "devDependencies": {"same":"development"},
+  "scripts": {"same":"run"}
+}"#;
+    let result = dependency_parse_result(&input("package.json", ContentKind::Json, text));
+    assert!(result.warnings.is_empty());
+    assert_eq!(result.facts.len(), 3);
+    for (fact, candidate) in result.facts.iter().zip(&result.graph_candidates) {
+        let evidence = &candidate.evidence[0];
+        let line = evidence.range.as_ref().unwrap().line_start.unwrap() as usize;
+        let quote = evidence.quote.as_ref().unwrap();
+        assert!(text.lines().nth(line - 1).unwrap().contains(quote));
+        let expected = match fact.value["scope"].as_str().unwrap() {
+            "dependencies" => (6, "effective"),
+            "devDependencies" => (8, "development"),
+            "scripts" => (9, "run"),
+            scope => panic!("unexpected scope {scope}"),
+        };
+        assert_eq!(line, expected.0);
+        assert_eq!(fact.value["version"], expected.1);
+        assert!(quote.contains(expected.1));
+    }
+}
+
+#[test]
+fn npm_multiline_values_use_the_actual_opening_line() {
+    let text =
+        "{\n  \"dependencies\": {\n    \"metadata\": {\n      \"version\": \"1\"\n    }\n  }\n}";
+    let (facts, candidates) = dependency_facts(&input("package.json", ContentKind::Json, text));
+    assert_eq!(facts.len(), 1);
+    let evidence = &candidates[0].evidence[0];
+    assert_eq!(evidence.range.as_ref().unwrap().line_start, Some(3));
+    assert_eq!(evidence.quote.as_deref(), Some("\"metadata\": {"));
+}

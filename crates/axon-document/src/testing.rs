@@ -80,7 +80,7 @@ impl boundary::DocumentPreparer for FakeDocumentPreparer {
     async fn prepare(
         &self,
         request: PrepareSourceDocumentRequest,
-    ) -> boundary::Result<PreparedDocument> {
+    ) -> boundary::Result<PrepareSourceDocumentResult> {
         let document = request.document;
         self.calls
             .lock()
@@ -91,6 +91,29 @@ impl boundary::DocumentPreparer for FakeDocumentPreparer {
                 "document.prepare.fake_failure",
                 ErrorStage::Preparing,
                 "FakeDocumentPreparer configured to fail",
+            ));
+        }
+        if let crate::content_policy::ContentDisposition::Skipped(reason) =
+            crate::content_policy::classify_content(
+                &document.content,
+                crate::content_policy::DEFAULT_CONTENT_BYTE_LIMIT,
+            )
+            .map_err(|error| {
+                ApiError::new(
+                    "document.prepare.failed",
+                    ErrorStage::Preparing,
+                    error.to_string(),
+                )
+            })?
+        {
+            return Ok(PrepareSourceDocumentResult::Skipped(
+                axon_api::source::SkippedDocument {
+                    document_id: document.document_id,
+                    source_id: document.source_id,
+                    source_item_key: document.source_item_key,
+                    generation: request.generation,
+                    reason,
+                },
             ));
         }
         let mut prepared = PreparedDocument {
@@ -124,13 +147,13 @@ impl boundary::DocumentPreparer for FakeDocumentPreparer {
                 retryable: false,
             });
         }
-        Ok(prepared)
+        Ok(PrepareSourceDocumentResult::Prepared(Box::new(prepared)))
     }
 
     async fn prepare_many(
         &self,
         requests: Vec<PrepareSourceDocumentRequest>,
-    ) -> boundary::Result<Vec<PreparedDocument>> {
+    ) -> boundary::Result<Vec<PrepareSourceDocumentResult>> {
         let mut prepared = Vec::with_capacity(requests.len());
         for request in requests {
             prepared.push(boundary::DocumentPreparer::prepare(self, request).await?);
