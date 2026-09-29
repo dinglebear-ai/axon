@@ -780,12 +780,9 @@ fn decoded_utf16_is_redacted_before_parsing_and_range_validation() {
             .as_deref()
             .is_some_and(|key| key.contains("After the secret"))
     }));
-    assert!(
-        prepared
-            .warnings
-            .iter()
-            .any(|warning| warning.code == "document.content.pre_chunk_redacted")
-    );
+    assert!(prepared.warnings.iter().any(|warning| {
+        warning.code == "document.content.pre_chunk_redacted" && warning.severity == Severity::Info
+    }));
 }
 
 #[test]

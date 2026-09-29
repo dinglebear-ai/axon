@@ -5,6 +5,18 @@ use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::FakeVectorStore;
 use std::sync::Arc;
 
+#[test]
+fn informational_notice_does_not_degrade_completion() {
+    let notice = SourceWarning {
+        code: "document.content.pre_chunk_redacted".to_string(),
+        severity: Severity::Info,
+        message: "content was scrubbed".to_string(),
+        source_item_key: None,
+        retryable: false,
+    };
+    assert_eq!(successful_status(&[notice]), LifecycleStatus::Completed);
+}
+
 fn runtime() -> TargetLocalSourceRuntime {
     TargetLocalSourceRuntime::new(
         Arc::new(FakeJobWatchStore::new()),

@@ -173,10 +173,15 @@ impl SourceEventEmitter {
                 provider: None,
                 message: Some(message.clone()),
             });
+        let (status, severity) = if warning.degrades_completion() {
+            (LifecycleStatus::CompletedDegraded, Severity::Degraded)
+        } else {
+            (LifecycleStatus::Running, warning.severity)
+        };
         self.emit(
             phase,
-            LifecycleStatus::CompletedDegraded,
-            Severity::Degraded,
+            status,
+            severity,
             message,
             SourceEventDetails {
                 generation,

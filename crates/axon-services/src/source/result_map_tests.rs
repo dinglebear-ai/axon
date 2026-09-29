@@ -69,6 +69,28 @@ fn warning_free_source_result_is_completed() {
 }
 
 #[test]
+fn informational_notice_does_not_degrade_source_result() {
+    let result = to_source_result(
+        SourceKind::Git,
+        adapter_ref("git"),
+        SourceScope::Repo,
+        "github://example/repo".to_string(),
+        counts(vec![SourceWarning {
+            code: "document.content.pre_chunk_redacted".to_string(),
+            severity: Severity::Info,
+            message: "content was scrubbed".to_string(),
+            source_item_key: None,
+            retryable: false,
+        }]),
+        graph(),
+    );
+
+    assert_eq!(result.status, LifecycleStatus::Completed);
+    assert_eq!(result.ledger.status, LifecycleStatus::Completed);
+    assert_eq!(result.warnings.len(), 1);
+}
+
+#[test]
 fn fallback_source_counts_preserve_discovered_items() {
     let mut counts = counts(Vec::new());
     counts.items_discovered = 7;
