@@ -1,7 +1,7 @@
 //! Sources facet — list of indexed item canonical URIs with chunk counts.
 
 use crate::system::PayloadParseError;
-use crate::types::{DomainSourcesResult, Pagination, SourcesResult};
+use crate::types::{DomainSourceItem, DomainSourcesResult, Pagination, SourcesResult};
 use axon_core::config::Config;
 use axon_core::env::env_usize_clamped;
 use axon_vectors::qdrant::QdrantVectorStore;
@@ -101,12 +101,17 @@ pub fn normalize_domain_query(input: &str) -> Result<String, PayloadParseError> 
 
 pub fn domain_sources_from_urls(
     domain: String,
-    urls: Vec<String>,
+    items: Vec<(String, Option<String>)>,
     limit: usize,
     cursor: Option<String>,
     next_cursor: Option<String>,
 ) -> DomainSourcesResult {
     let truncated = next_cursor.is_some();
+    let urls = items.iter().map(|(url, _)| url.clone()).collect::<Vec<_>>();
+    let items = items
+        .into_iter()
+        .map(|(url, title)| DomainSourceItem { url, title })
+        .collect();
     DomainSourcesResult {
         domain,
         count: urls.len(),
@@ -115,6 +120,7 @@ pub fn domain_sources_from_urls(
         next_cursor,
         truncated,
         urls,
+        items,
     }
 }
 
