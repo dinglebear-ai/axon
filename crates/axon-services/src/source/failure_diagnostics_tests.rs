@@ -110,7 +110,10 @@ fn assert_diagnostic(error: &impl serde::Serialize, retryable: bool) {
         "synthetic-token",
         "synthetic-body-secret",
     ] {
-        assert!(!serialized.contains(secret), "diagnostic leaked {secret}");
+        assert!(
+            !serialized.contains(secret),
+            "diagnostic included a hidden value"
+        );
     }
     assert!(!value["message"].as_str().unwrap().contains(['\r', '\n']));
 }

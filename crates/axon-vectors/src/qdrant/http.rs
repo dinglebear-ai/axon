@@ -158,7 +158,15 @@ impl QdrantHttp {
             .get(url)
             .send()
             .await
-            .map_err(|err| self.transport(stage, context, &err))?;
+            .map_err(|_| {
+                ApiError::new(
+                    "vector.qdrant.transport",
+                    stage,
+                    "qdrant health request failed",
+                )
+                .with_context("endpoint", ENDPOINT_MARKER)
+                .with_provider_id(&self.provider_id)
+            })?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(false);
         }

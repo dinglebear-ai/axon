@@ -57,7 +57,7 @@ fn projections_scrub_secrets_paths_controls_and_bound_utf8_without_changing_iden
         "synthetic-token",
         "/tmp/axon-checkout/private.rs",
     ] {
-        assert!(!wire.contains(hidden), "leaked {hidden}");
+        assert!(!wire.contains(hidden), "diagnostic included a hidden value");
     }
     assert!(api.message.len() <= MESSAGE_BYTES);
     let item = api.source_item_key.unwrap();
