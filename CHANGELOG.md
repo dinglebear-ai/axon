@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Include indexed `web_title` values alongside URLs in domain source pages, preserving the existing `urls` field for clients that only need canonical addresses.
+- Include indexed `web_title` values alongside URLs in domain source pages and their HTTP response, preserving the existing `urls` field for clients that only need canonical addresses.
 
 ## [7.5.0] - 2026-09-28
 

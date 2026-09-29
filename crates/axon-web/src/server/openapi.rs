@@ -193,6 +193,7 @@ use super::{handlers, routing};
         axon_api::source::SourcesResponse,
         axon_api::source::IndexedSourcesResponse,
         axon_api::source::DomainSourcesResponse,
+        axon_api::source::DomainSourceItem,
         axon_api::source::RoutePlan,
         handlers::providers::ProviderListResponse,
         handlers::providers::ProviderSummary,
