@@ -360,7 +360,7 @@ fn skipped_preparation_keeps_identity_without_prepared_counts_or_warnings() {
         reason: ContentSkipReason::UnsupportedBinary,
     };
     let (prepared, skips) = partition_prepared(vec![
-        axon_document::PrepareSourceDocumentResult::Prepared(prepared_document(2)),
+        axon_document::PrepareSourceDocumentResult::Prepared(Box::new(prepared_document(2))),
         axon_document::PrepareSourceDocumentResult::Skipped(skipped),
     ]);
     assert_eq!(prepared.len(), 1);

@@ -262,7 +262,7 @@ impl DocumentPreparer {
             errors: request.errors,
         };
         validate_prepared_document_with_bounds(&document, &bounds, &content.text)?;
-        Ok(PrepareSourceDocumentResult::Prepared(document))
+        Ok(PrepareSourceDocumentResult::Prepared(Box::new(document)))
     }
 }
 

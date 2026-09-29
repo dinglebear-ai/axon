@@ -20,6 +20,6 @@ pub struct PrepareSourceDocumentRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrepareSourceDocumentResult {
-    Prepared(PreparedDocument),
+    Prepared(Box<PreparedDocument>),
     Skipped(SkippedDocument),
 }

@@ -126,7 +126,7 @@ fn prepare(document: SourceDocument) -> PreparedDocument {
     else {
         panic!("expected prepared document")
     };
-    prepared
+    *prepared
 }
 
 fn local_doc(path: &str, content_kind: ContentKind, text: &str) -> SourceDocument {

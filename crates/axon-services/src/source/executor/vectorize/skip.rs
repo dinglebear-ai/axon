@@ -9,7 +9,7 @@ pub(super) fn partition_prepared(
     for outcome in outcomes {
         match outcome {
             axon_document::PrepareSourceDocumentResult::Prepared(document) => {
-                prepared.push(document)
+                prepared.push(*document)
             }
             axon_document::PrepareSourceDocumentResult::Skipped(document) => {
                 let status = DocumentStatus {

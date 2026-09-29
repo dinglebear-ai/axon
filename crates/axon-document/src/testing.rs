@@ -147,7 +147,7 @@ impl boundary::DocumentPreparer for FakeDocumentPreparer {
                 retryable: false,
             });
         }
-        Ok(PrepareSourceDocumentResult::Prepared(prepared))
+        Ok(PrepareSourceDocumentResult::Prepared(Box::new(prepared)))
     }
 
     async fn prepare_many(
