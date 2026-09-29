@@ -90,7 +90,9 @@ pub(super) async fn publish_document_statuses(
 
 #[path = "document_carry.rs"]
 mod carry;
-pub(super) use carry::{carry_document_statuses, document_statuses_for_items};
+pub(super) use carry::{
+    carry_document_statuses, carry_document_statuses_locked, document_statuses_for_items,
+};
 
 impl super::FakeLedgerStore {
     pub async fn document_status(&self, document_id: &DocumentId) -> Option<DocumentStatus> {

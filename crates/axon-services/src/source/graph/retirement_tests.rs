@@ -58,6 +58,7 @@ async fn publish(ledger: &FakeLedgerStore, present: bool, skipped: bool) -> Sour
             source_id: generation.source_id,
             generation: generation.generation.clone(),
             expected_previous_generation: generation.previous_generation,
+            retained_statuses: Vec::new(),
         })
         .await
         .unwrap();

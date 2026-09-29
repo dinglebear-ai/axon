@@ -240,4 +240,6 @@ pub(super) async fn document_status(
 
 #[path = "document_carry.rs"]
 mod carry;
-pub(super) use carry::{carry_document_statuses, document_statuses_for_items};
+pub(super) use carry::{
+    carry_document_statuses, carry_document_statuses_in_tx, document_statuses_for_items,
+};

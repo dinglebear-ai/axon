@@ -195,6 +195,22 @@ pub(super) async fn publish_generation(
         )
         .with_source_id(generation.source_id.0));
     }
+    if let Some(previous) = committed.as_ref() {
+        super::document::carry_document_statuses_locked(
+            &mut state,
+            &request.source_id,
+            previous,
+            &request.generation,
+            request.retained_statuses.clone(),
+            &timestamp(),
+        )?;
+    } else if !request.retained_statuses.is_empty() {
+        return Err(ApiError::new(
+            "source.ledger.status_provenance_changed",
+            ErrorStage::Publishing,
+            "initial publication cannot carry retained statuses",
+        ));
+    }
     let mut new_debt = record_removed_item_cleanup_debt(&mut state, &generation);
     new_debt.extend(record_graph_prune_cleanup_debt(&mut state, &generation));
     new_debt.extend(record_ledger_prune_cleanup_debt(&mut state, &generation));

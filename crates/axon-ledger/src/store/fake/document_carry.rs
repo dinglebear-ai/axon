@@ -27,13 +27,34 @@ pub(in crate::store::fake) async fn carry_document_statuses(
     source_id: SourceId,
     expected_generation: SourceGenerationId,
     next_generation: SourceGenerationId,
-    mut expected: Vec<DocumentStatus>,
+    expected: Vec<DocumentStatus>,
     updated_at: Timestamp,
 ) -> Result<u64> {
     if expected.is_empty() {
         return Ok(0);
     }
     let mut state = state.lock().await;
+    carry_document_statuses_locked(
+        &mut state,
+        &source_id,
+        &expected_generation,
+        &next_generation,
+        expected,
+        &updated_at,
+    )
+}
+
+pub(in crate::store::fake) fn carry_document_statuses_locked(
+    state: &mut FakeLedgerState,
+    source_id: &SourceId,
+    expected_generation: &SourceGenerationId,
+    next_generation: &SourceGenerationId,
+    mut expected: Vec<DocumentStatus>,
+    updated_at: &Timestamp,
+) -> Result<u64> {
+    if expected.is_empty() {
+        return Ok(0);
+    }
     if state.committed.get(&source_id) != Some(&expected_generation) {
         return Err(conflict());
     }
@@ -54,7 +75,7 @@ pub(in crate::store::fake) async fn carry_document_statuses(
     let actual = state
         .document_statuses
         .values()
-        .filter(|s| s.source_id == source_id && keys.contains(&s.source_item_key))
+        .filter(|s| &s.source_id == source_id && keys.contains(&s.source_item_key))
         .cloned()
         .collect::<Vec<_>>();
     if actual != expected
@@ -66,7 +87,7 @@ pub(in crate::store::fake) async fn carry_document_statuses(
                     | DocumentLifecycleStatus::Vectorized
                     | DocumentLifecycleStatus::Published
                     | DocumentLifecycleStatus::Skipped
-            ) || s.source_id != source_id
+            ) || &s.source_id != source_id
                 || s.generation.as_ref() != Some(&expected_generation)
                 || s.updated_at.0 > updated_at.0
         })

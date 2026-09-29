@@ -72,12 +72,19 @@ pub(super) async fn publish(
     collection: &CollectionSpec,
     generation: &SourceGeneration,
     diff: &SourceManifestDiff,
+    retained_statuses: &[DocumentStatus],
     embed: bool,
     expected_new_points: u64,
 ) -> anyhow::Result<PublishOutcome> {
     if !embed || (expected_new_points == 0 && generation.previous_generation.is_none()) {
         return Ok(PublishOutcome {
-            generation: publish_ledger(runtime.ledger.as_ref(), input, generation).await?,
+            generation: publish_ledger(
+                runtime.ledger.as_ref(),
+                input,
+                generation,
+                retained_statuses,
+            )
+            .await?,
             warnings: Vec::new(),
         });
     }
@@ -97,7 +104,14 @@ pub(super) async fn publish(
         );
     }
 
-    let published = match publish_ledger(runtime.ledger.as_ref(), input, generation).await {
+    let published = match publish_ledger(
+        runtime.ledger.as_ref(),
+        input,
+        generation,
+        retained_statuses,
+    )
+    .await
+    {
         Ok(published) => published,
         Err(error) => {
             return Err(rollback_new_generation_vectors(
@@ -185,6 +199,7 @@ async fn publish_ledger(
     ledger: &dyn LedgerStore,
     input: &SourcePipelineInput<'_>,
     generation: &SourceGeneration,
+    retained_statuses: &[DocumentStatus],
 ) -> anyhow::Result<SourceGeneration> {
     Ok(ledger
         .publish_generation(PublishGenerationRequest {
@@ -193,6 +208,7 @@ async fn publish_ledger(
             source_id: generation.source_id.clone(),
             generation: generation.generation.clone(),
             expected_previous_generation: generation.previous_generation.clone(),
+            retained_statuses: retained_statuses.to_vec(),
         })
         .await?)
 }

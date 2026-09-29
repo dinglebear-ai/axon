@@ -327,7 +327,7 @@ async fn publish_created_generation_under_finalizer(
     inline: Option<InlineSourceResult>,
 ) -> anyhow::Result<IndexCounts> {
     publish::ensure_lease(runtime.ledger.as_ref(), input, lease).await?;
-    let counts =
+    let (counts, retained_statuses) =
         super::retention::carry_and_count(runtime.ledger.as_ref(), &manifest, &diff, &vectorized)
             .await?;
     let previous_vectors_empty = record_vector_emptiness(
@@ -353,6 +353,7 @@ async fn publish_created_generation_under_finalizer(
         &collection,
         &generation,
         &diff,
+        &retained_statuses,
         input.plan.request.embed && (vectorized.points_written > 0 || !previous_vectors_empty),
         vectorized.points_written,
     )

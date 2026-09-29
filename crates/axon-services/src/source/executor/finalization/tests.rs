@@ -117,6 +117,7 @@ impl Fixture {
                 source_id: generation.source_id.clone(),
                 generation: generation.generation.clone(),
                 expected_previous_generation: generation.previous_generation.clone(),
+                retained_statuses: Vec::new(),
             })
             .await
             .unwrap()

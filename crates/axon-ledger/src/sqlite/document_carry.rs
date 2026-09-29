@@ -72,6 +72,30 @@ pub(in crate::sqlite) async fn carry_document_statuses(
     let mut tx = ImmediateTx::begin_with_gate(&store.pool, &store.write_gate)
         .await
         .map_err(sqlite_error)?;
+    let count = carry_document_statuses_in_tx(
+        &mut tx,
+        &source_id,
+        &expected_generation,
+        &next_generation,
+        &mut expected_statuses,
+        &updated_at,
+    )
+    .await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(count)
+}
+
+pub(in crate::sqlite) async fn carry_document_statuses_in_tx(
+    tx: &mut sqlx::SqliteConnection,
+    source_id: &SourceId,
+    expected_generation: &SourceGenerationId,
+    next_generation: &SourceGenerationId,
+    expected_statuses: &mut Vec<DocumentStatus>,
+    updated_at: &Timestamp,
+) -> Result<u64> {
+    if expected_statuses.is_empty() {
+        return Ok(0);
+    }
     let committed: Option<String> =
         sqlx::query_scalar("SELECT committed_generation FROM sources WHERE source_id = ?")
             .bind(&source_id.0)
@@ -106,7 +130,7 @@ pub(in crate::sqlite) async fn carry_document_statuses(
                 | DocumentLifecycleStatus::Vectorized
                 | DocumentLifecycleStatus::Published
                 | DocumentLifecycleStatus::Skipped
-        ) || s.source_id != source_id
+        ) || &s.source_id != source_id
             || s.generation.as_ref() != Some(&expected_generation)
             || s.updated_at.0 > updated_at.0
     }) || expected_statuses
@@ -119,18 +143,17 @@ pub(in crate::sqlite) async fn carry_document_statuses(
         .iter()
         .map(|s| s.source_item_key.clone())
         .collect::<Vec<_>>();
-    if read_statuses(&mut tx, &source_id, &keys).await? != expected_statuses {
+    if read_statuses(tx, source_id, &keys).await? != *expected_statuses {
         return Err(conflict());
     }
-    for status in &mut expected_statuses {
+    for status in expected_statuses.iter_mut() {
         status.generation = Some(next_generation.clone());
         status.updated_at = updated_at.clone();
     }
     for statuses in expected_statuses.chunks(DOCUMENT_STATUS_TX_BATCH_SIZE) {
         let writes = status_writes(statuses)?;
-        validate_status_items(&mut tx, &writes).await?;
-        upsert_status_batch(&mut tx, &writes).await?;
+        validate_status_items(tx, &writes).await?;
+        upsert_status_batch(tx, &writes).await?;
     }
-    tx.commit().await.map_err(sqlite_error)?;
     Ok(expected_statuses.len() as u64)
 }
