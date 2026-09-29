@@ -18,6 +18,14 @@ pub struct DomainSourcesResult {
     pub next_cursor: Option<String>,
     pub truncated: bool,
     pub urls: Vec<String>,
+    /// Crawled page titles, aligned with the canonical URLs above when present.
+    pub items: Vec<DomainSourceItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DomainSourceItem {
+    pub url: String,
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
