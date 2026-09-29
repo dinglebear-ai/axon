@@ -93,25 +93,21 @@ Default `response_mode: "path"` writes large outputs under the configured Axon a
 
 ## Skills
 
-The usage plugin ships 26 Axon skills under `skills/`. The installer plugin ships `install-axon`. The target usage surface is
-`using-axon` and `axon-snippets`; the other 24 remain installed
-while their replacement snippets are reviewed. Every skill includes
-`agents/openai.yaml` metadata.
-
-Action skills cover the core CLI/MCP surfaces; workflow skills cover
-outcome-focused research, monitoring, QA, shopping, and design deliverables.
+The usage plugin ships two skills under `skills/`: `using-axon` and
+`axon-snippets`. The installer plugin ships `install-axon`. The 24
+task-specific workflows are bundled as Labby Code Mode snippet sources under
+`axon-snippets/snippets/` and can be saved with `labby snippet add`.
+Every shipped skill includes `agents/openai.yaml` metadata.
 
 | Skill | Purpose |
 |-------|---------|
 | `install-axon` (separate plugin) | Install, secure, deploy, connect, and verify an Axon runtime. |
 | `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
 | `axon-snippets` | Catalog and instructions for 24 checked-in Labby Code Mode snippets bundled under `skills/axon-snippets/snippets/`. |
-| `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
-| `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |
 
-The `download` skill documents Axon's current composed capture workflow:
-`scrape`, `crawl --output-dir`, and `screenshot`. It is not a promise that Axon
-already has a single offline-site mirroring command that rewrites linked assets
+The `axon-download` snippet captures one page. `using-axon` documents the
+composed `scrape`, `crawl --output-dir`, and `screenshot` workflows. Axon does
+not expose a single offline-site mirroring command that rewrites linked assets
 for fully browsable local copies.
 
 The runtime RAG synthesis prompt is stored under
@@ -149,13 +145,7 @@ plugins/axon/
     ├── using-axon/
     │   ├── SKILL.md          — meta-skill
     │   └── agents/openai.yaml
-    ├── cli/SKILL.md
-    ├── crawl/SKILL.md
-    ├── download/SKILL.md
-    ├── extract/SKILL.md
-    ├── map/SKILL.md
-    ├── scrape/SKILL.md
-    ├── search/SKILL.md
-    ├── monitor/SKILL.md
-    └── <workflow-name>/SKILL.md
+    └── axon-snippets/
+        ├── SKILL.md          — snippet catalog and installation guide
+        └── snippets/         — 24 Labby Code Mode sources
 ```
