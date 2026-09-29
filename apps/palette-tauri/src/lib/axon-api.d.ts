@@ -3757,6 +3757,8 @@ export interface components {
             /** Format: int64 */
             chunks_total: number;
             /** Format: int64 */
+            documents_skipped?: number;
+            /** Format: int64 */
             documents_total: number;
             /** Format: int64 */
             items_changed: number;

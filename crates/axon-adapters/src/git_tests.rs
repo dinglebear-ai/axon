@@ -138,7 +138,36 @@ async fn discover_lists_repo_files_and_excludes_git_dir() {
 }
 
 #[tokio::test]
-async fn discover_and_acquire_preserve_mixed_content() {
+async fn discover_keeps_only_code_and_documentation_before_applying_item_cap() {
+    let repo = fixture_repo();
+    fs::create_dir_all(repo.join("docs")).unwrap();
+    for (path, contents) in [
+        ("000.log", "runtime output"),
+        ("AAA.json", "{\"debug\":true}"),
+        ("Cargo.lock", "lockfile"),
+        ("README.png", "image bytes"),
+        ("docs/guide.mdx", "# Guide"),
+        ("src/settings.yaml", "secret: false"),
+    ] {
+        fs::write(repo.join(path), contents).unwrap();
+    }
+    let plan = git_plan(&repo, SourceScope::Repo, true);
+    let manifest = GitSourceAdapter::new().discover(&plan).await.unwrap();
+    let keys: Vec<_> = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect();
+    assert_eq!(keys, ["README.md", "docs/guide.mdx", "src/lib.rs"]);
+
+    let (capped, truncated) = collect_capped_git_keys(&repo, &[], 2).unwrap();
+    assert_eq!(capped, ["README.md", "docs/guide.mdx"]);
+    assert!(truncated);
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[tokio::test]
+async fn discover_excludes_mixed_content_and_acquires_allowed_raw_bytes() {
     let repo = fixture_repo();
     fs::write(repo.join("image.png"), b"\x89PNG\r\n\x1a\n").unwrap();
     fs::write(repo.join("unknown.dat"), b"text\0binary").unwrap();
@@ -160,24 +189,12 @@ async fn discover_and_acquire_preserve_mixed_content() {
             .iter()
             .map(|item| item.display_path.as_deref().unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(
-            keys,
-            vec![
-                "README.md",
-                "document.pdf",
-                "image.png",
-                "late.txt",
-                "src/lib.rs",
-                "unicode.txt",
-                "unknown.dat",
-                "utf16.txt"
-            ]
-        );
+        assert_eq!(keys, vec!["README.md", "src/lib.rs"]);
         let acquisition = adapter
             .acquire(&plan, &diff_from(&plan, manifest.items))
             .await
             .unwrap();
-        assert_eq!(acquisition.fetched_items.len(), 8);
+        assert_eq!(acquisition.fetched_items.len(), 2);
         for item in &acquisition.fetched_items {
             let ContentRef::InlineBytes { bytes_base64, .. } = &item.content_ref else {
                 panic!("raw repository file must remain bytes")
@@ -346,7 +363,7 @@ async fn discover_rejects_non_git_source_kind() {
 #[tokio::test]
 async fn oversized_git_items_remain_inventoried_without_hash_or_payload() {
     let repo = fixture_repo();
-    fs::write(repo.join("large.bin"), b"12345").unwrap();
+    fs::write(repo.join("large.rs"), b"12345").unwrap();
     let mut plan = git_plan(&repo, SourceScope::Repo, true);
     plan.limits.effective.max_bytes_per_item = Some(4);
     let adapter = GitSourceAdapter::new();
@@ -354,7 +371,7 @@ async fn oversized_git_items_remain_inventoried_without_hash_or_payload() {
     let item = manifest
         .items
         .iter()
-        .find(|i| i.display_path.as_deref() == Some("large.bin"))
+        .find(|i| i.display_path.as_deref() == Some("large.rs"))
         .unwrap();
     assert!(item.content_hash.is_none());
     assert_eq!(
@@ -379,8 +396,8 @@ async fn oversized_git_items_remain_inventoried_without_hash_or_payload() {
 #[tokio::test]
 async fn git_acquisition_enforces_actual_total_and_batch_allowance() {
     let repo = fixture_repo();
-    fs::write(repo.join("a.txt"), b"abc").unwrap();
-    fs::write(repo.join("b.txt"), b"def").unwrap();
+    fs::write(repo.join("a.rs"), b"abc").unwrap();
+    fs::write(repo.join("b.rs"), b"def").unwrap();
     let mut plan = git_plan(&repo, SourceScope::Repo, true);
     let adapter = GitSourceAdapter::new();
     let items = adapter
@@ -389,7 +406,7 @@ async fn git_acquisition_enforces_actual_total_and_batch_allowance() {
         .unwrap()
         .items
         .into_iter()
-        .filter(|i| matches!(i.display_path.as_deref(), Some("a.txt" | "b.txt")))
+        .filter(|i| matches!(i.display_path.as_deref(), Some("a.rs" | "b.rs")))
         .collect::<Vec<_>>();
     let diff = diff_from(&plan, items);
     plan.limits.effective.max_total_bytes = Some(6);
@@ -420,7 +437,7 @@ async fn git_acquisition_enforces_actual_total_and_batch_allowance() {
 #[tokio::test]
 async fn git_growth_after_discovery_obeys_acquisition_limit() {
     let repo = fixture_repo();
-    fs::write(repo.join("growing.txt"), b"abc").unwrap();
+    fs::write(repo.join("growing.rs"), b"abc").unwrap();
     let mut plan = git_plan(&repo, SourceScope::Repo, true);
     plan.limits.effective.max_bytes_per_item = Some(4);
     let adapter = GitSourceAdapter::new();
@@ -430,10 +447,10 @@ async fn git_growth_after_discovery_obeys_acquisition_limit() {
         .unwrap()
         .items
         .into_iter()
-        .find(|i| i.display_path.as_deref() == Some("growing.txt"))
+        .find(|i| i.display_path.as_deref() == Some("growing.rs"))
         .unwrap();
     assert!(item.content_hash.is_some());
-    fs::write(repo.join("growing.txt"), b"abcde").unwrap();
+    fs::write(repo.join("growing.rs"), b"abcde").unwrap();
     let acquisition = adapter
         .acquire(&plan, &diff_from(&plan, vec![item]))
         .await

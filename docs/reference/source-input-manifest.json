@@ -648,7 +648,7 @@
         {
           "path": "xtask/src/schemas/mcp_action_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:b89ca9446a594064b59f11bd8bdd5de9883f92c8581d18e320118e3058227174"
+          "checksum": "sha256:c6a04b45139c1bf9abad46f5c84e0cdc00c2681e24e1234b70a02cd2f8b2ebcc"
         },
         {
           "path": "xtask/src/schemas/mcp_action_registry/request_schemas.rs",
@@ -661,7 +661,7 @@
           "checksum": "sha256:99732a3eeb6720e2c6c39e68ef9926b93578191b2a5eb2d5a22e660f92c4d8e6"
         }
       ],
-      "manifest_checksum": "e67976ef28ec20466f4386c32dd7bc2f84c764931dd80180504fd131e9626755"
+      "manifest_checksum": "ac451fc8740adf5919b17b84a5b7e7327906605c27705f457ad4027de60f04f0"
     },
     {
       "family": "openapi",

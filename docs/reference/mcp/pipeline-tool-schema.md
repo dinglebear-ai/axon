@@ -202,7 +202,7 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024` |
 | `xtask/src/schemas/families/mcp_artifacts.rs` | `sha256:c06cd1747d51d50552051b5b8c35548894a5215fe03fd7a6f860527fd2ad3914` |
 | `xtask/src/schemas/families/mcp_markdown.rs` | `sha256:9b8a25d15150868293fbe2071e49914a55b63fda3351347fbcf2a8710d33c2ca` |
-| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:b89ca9446a594064b59f11bd8bdd5de9883f92c8581d18e320118e3058227174` |
+| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:c6a04b45139c1bf9abad46f5c84e0cdc00c2681e24e1234b70a02cd2f8b2ebcc` |
 | `xtask/src/schemas/mcp_action_registry/request_schemas.rs` | `sha256:260a3b1ab92d4b279d0e6d74a306f17b76cf16e689e4d62e2a2be1fce575d2f4` |
 | `xtask/src/schemas/mcp_schema_build.rs` | `sha256:99732a3eeb6720e2c6c39e68ef9926b93578191b2a5eb2d5a22e660f92c4d8e6` |
 

@@ -17887,6 +17887,11 @@
             "format": "int64",
             "minimum": 0
           },
+          "documents_skipped": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "documents_total": {
             "type": "integer",
             "format": "int64",

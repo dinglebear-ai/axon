@@ -40,6 +40,7 @@ pub(super) static LIVE_ACTIONS: LazyLock<Vec<ActionSpec>> = LazyLock::new(|| {
         .collect()
 });
 
+#[cfg(test)]
 pub(super) const KNOWN_NON_LIVE_ACTIONS: &[&str] = &[
     "config",
     "vertical_scrape",

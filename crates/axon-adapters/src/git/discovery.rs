@@ -56,7 +56,7 @@ pub(super) fn collect_capped_git_keys(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if git_key_excluded(&key, exclude_paths) {
+        if git_key_excluded(&key, exclude_paths) || !is_code_or_documentation(&key) {
             continue;
         }
         truncated |= selected.len() == limit;
@@ -161,7 +161,7 @@ pub(super) fn collect_git_manifest_items_parallel(
                     return WalkState::Quit;
                 }
             };
-            if git_key_excluded(&key, exclude_paths) {
+            if git_key_excluded(&key, exclude_paths) || !is_code_or_documentation(&key) {
                 return WalkState::Continue;
             }
             match git_manifest_item(plan, root, base_uri, &key) {
@@ -198,6 +198,9 @@ fn git_manifest_item(
     base_uri: &str,
     key: &str,
 ) -> Result<Option<ManifestItem>> {
+    if !is_code_or_documentation(key) {
+        return Ok(None);
+    }
     let path = safe_item_path(root, key)?;
     let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
     if !meta.is_file() {
@@ -239,6 +242,85 @@ fn git_manifest_item(
 
 fn git_key_excluded(key: &str, exclude_paths: &[String]) -> bool {
     exclude_paths.iter().any(|excluded| key.contains(excluded))
+}
+
+fn is_code_or_documentation(key: &str) -> bool {
+    let path = Path::new(key);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    let name = name.to_ascii_lowercase();
+    if matches!(name.as_str(), "dockerfile" | "makefile" | "justfile") {
+        return true;
+    }
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("");
+    let extension = extension.to_ascii_lowercase();
+    if (extension.is_empty() || extension == "txt")
+        && [
+            "readme",
+            "license",
+            "licence",
+            "changelog",
+            "contributing",
+            "authors",
+            "notice",
+        ]
+        .iter()
+        .any(|prefix| name == *prefix || name.starts_with(&format!("{prefix}.")))
+    {
+        return true;
+    }
+    matches!(
+        extension.as_str(),
+        "md" | "markdown"
+            | "mdx"
+            | "rst"
+            | "adoc"
+            | "asciidoc"
+            | "rs"
+            | "go"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "ts"
+            | "tsx"
+            | "py"
+            | "java"
+            | "kt"
+            | "kts"
+            | "swift"
+            | "c"
+            | "cc"
+            | "cpp"
+            | "h"
+            | "hpp"
+            | "cs"
+            | "rb"
+            | "php"
+            | "sh"
+            | "zsh"
+            | "fish"
+            | "ex"
+            | "exs"
+            | "erl"
+            | "hrl"
+            | "hs"
+            | "scala"
+            | "sc"
+            | "sql"
+            | "lua"
+            | "pl"
+            | "r"
+            | "jl"
+            | "dart"
+            | "vue"
+            | "svelte"
+    )
 }
 
 fn record_git_parallel_error(slot: &Mutex<Option<ApiError>>, error: ApiError) {

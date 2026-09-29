@@ -1533,6 +1533,7 @@ export type components = {
         "SourceCounts": {
             "bytes_total": number;
             "chunks_total": number;
+            "documents_skipped"?: number;
             "documents_total": number;
             "items_changed": number;
             "items_total": number;

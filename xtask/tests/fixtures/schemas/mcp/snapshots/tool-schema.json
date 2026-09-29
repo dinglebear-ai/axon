@@ -37813,7 +37813,7 @@
         "path": "xtask/src/schemas/families/mcp_markdown.rs"
       },
       {
-        "checksum": "sha256:b89ca9446a594064b59f11bd8bdd5de9883f92c8581d18e320118e3058227174",
+        "checksum": "sha256:c6a04b45139c1bf9abad46f5c84e0cdc00c2681e24e1234b70a02cd2f8b2ebcc",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       },
