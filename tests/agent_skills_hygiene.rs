@@ -15,7 +15,6 @@ const EXPECTED_SKILLS: &[&str] = &[
     "demo-walkthrough",
     "download",
     "extract",
-    "install-axon",
     "knowledge-base",
     "knowledge-ingest",
     "lead-gen",
@@ -78,6 +77,14 @@ fn agent_skills_are_portable_and_well_formed() {
         .map(|name| name.to_string())
         .collect();
     assert_eq!(skill_names, expected, "unexpected Axon skill inventory");
+}
+
+#[test]
+fn installer_skill_is_separate_and_well_formed() {
+    let skill = Path::new("plugins/install-axon/skills/install-axon/SKILL.md");
+    assert!(skill.is_file());
+    assert!(Path::new("plugins/install-axon/skills/install-axon/agents/openai.yaml").is_file());
+    assert!(!Path::new("plugins/axon/skills/install-axon").exists());
 }
 
 #[test]

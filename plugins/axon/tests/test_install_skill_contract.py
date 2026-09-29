@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-PLUGIN = Path(__file__).resolve().parents[1]
+PLUGIN = Path(__file__).resolve().parents[2] / "install-axon"
 ROOT = PLUGIN.parents[1]
 SKILL = PLUGIN / "skills" / "install-axon" / "SKILL.md"
 REF = PLUGIN / "skills" / "install-axon" / "references" / "setup.md"

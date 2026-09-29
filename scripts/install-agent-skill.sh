@@ -4,9 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_SKILL_DIR="${REPO_ROOT}/plugins/axon/skills"
+INSTALL_SKILL_DIR="${REPO_ROOT}/plugins/install-axon/skills/install-axon"
 
-if [[ ! -d "${SOURCE_SKILL_DIR}" ]]; then
-  echo "[error] source skill directory not found: ${SOURCE_SKILL_DIR}" >&2
+if [[ ! -d "${SOURCE_SKILL_DIR}" || ! -d "${INSTALL_SKILL_DIR}" ]]; then
+  echo "[error] source skill directory not found" >&2
   exit 1
 fi
 
@@ -22,10 +23,10 @@ install_for_root() {
 
   mkdir -p "${target_skills_dir}" "${target_skill_dir}"
   cp -a "${SOURCE_SKILL_DIR}/." "${target_skill_dir}/"
+  cp -a "${INSTALL_SKILL_DIR}" "${target_skill_dir}/"
   echo "[ok] installed to ${target_skill_dir}"
 }
 
 install_for_root "${HOME}/.claude"
 install_for_root "${HOME}/.codex"
 install_for_root "${HOME}/.gemini"
-

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Split the guided installer skill and MCP connection into the separate `install-axon` plugin; this plugin now contains usage skills only.
+
 ### Added
 - Added `axon-snippets` and 24 portable, skill-bundled Labby Code Mode snippet sources, one for each legacy skill planned for retirement. The legacy skills remain available; snippets require explicit installation into a selected Labby home.
 - Added `install-axon` as the first-class guided installer/repair skill, covering reviewed-source installation, Incus or bare-metal deployment, bearer/OAuth dual-mode auth, Codex app-server synthesis, agent connection, and live verification.

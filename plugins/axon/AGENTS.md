@@ -4,7 +4,7 @@ The plugin is a client package for an existing Axon runtime, not the owner of th
 
 ## Read before changing
 
-[Plugin README](README.md) · [manifest](.claude-plugin/plugin.json) · [MCP configuration](.mcp.json) · [installation skill](skills/install-axon/SKILL.md)
+[Plugin README](README.md) · [manifest](.claude-plugin/plugin.json) · [MCP configuration](../install-axon/.mcp.json) · [installation skill](../install-axon/skills/install-axon/SKILL.md)
 
 [Setup reference](../../docs/reference/actions/setup.md) · [deployment](../../docs/operations/deployment.md) · [API authentication](../../docs/operations/auth/api-token.md) · [MCP connections](../../docs/reference/mcp/connect.md)
 
