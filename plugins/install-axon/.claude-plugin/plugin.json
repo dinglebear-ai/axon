@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "axon",
-  "description": "Axon research, ingestion, retrieval, and operator skills for an existing service.",
+  "name": "install-axon",
+  "description": "Install, configure, connect, and verify Axon with the guided installer skill and MCP connection.",
   "author": {
     "name": "dinglebear.ai",
     "email": "hello@dinglebear.ai",
@@ -23,8 +23,7 @@
     "hybrid-search"
   ],
   "skills": "./skills",
-  "commands": "./commands/",
-  "agents": "./agents/researcher.md",
+  "mcpServers": "./.mcp.json",
   "userConfig": {
     "server_url": {
       "type": "string",

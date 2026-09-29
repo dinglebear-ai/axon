@@ -18,13 +18,14 @@ npx skills add dinglebear-ai/axon --skill install-axon
 
 Then invoke `$install-axon`. It drives Axon's canonical binary/setup/deployment surfaces and can configure the full client plugin after the server is healthy.
 
-To install the complete Claude plugin from a checkout:
+To install the two Claude plugins from a checkout:
 
 ```bash
-claude plugin install <path>
+claude plugin install <path>/plugins/install-axon
+claude plugin install <path>/plugins/axon
 ```
 
-The plugin manifest declares a minimal `userConfig` block. Claude Code prompts
+The installer plugin manifest declares a minimal `userConfig` block. Claude Code prompts
 only for connection details for an already-running Axon server.
 
 The current plugin prompt surface is intentionally small:
@@ -46,7 +47,7 @@ axon memory context      # recall memories for the current git project
 
 To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 
-The `.mcp.json` uses HTTP transport and connects Claude Code to
+The installer plugin `.mcp.json` uses HTTP transport and connects Claude Code to
 `${user_config.server_url}/mcp` with the configured bearer token. Supported
 production runtimes are bare-metal systemd and native systemd inside Incus.
 Docker Compose is limited to local/reference infrastructure; see the root
@@ -92,8 +93,8 @@ Default `response_mode: "path"` writes large outputs under the configured Axon a
 
 ## Skills
 
-The plugin currently ships 27 Axon skills under `skills/`. The target surface is
-`install-axon`, `using-axon`, and `axon-snippets`; the other 24 remain installed
+The usage plugin ships 26 Axon skills under `skills/`. The installer plugin ships `install-axon`. The target usage surface is
+`using-axon` and `axon-snippets`; the other 24 remain installed
 while their replacement snippets are reviewed. Every skill includes
 `agents/openai.yaml` metadata.
 
@@ -102,7 +103,7 @@ outcome-focused research, monitoring, QA, shopping, and design deliverables.
 
 | Skill | Purpose |
 |-------|---------|
-| `install-axon` | Install, secure, deploy, connect, and verify an Axon runtime. |
+| `install-axon` (separate plugin) | Install, secure, deploy, connect, and verify an Axon runtime. |
 | `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
 | `axon-snippets` | Catalog and instructions for 24 checked-in Labby Code Mode snippets bundled under `skills/axon-snippets/snippets/`. |
 | `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
@@ -129,7 +130,6 @@ plugins/axon/
 ├── CHANGELOG.md
 ├── .claude-plugin/
 │   └── plugin.json            — plugin manifest and userConfig
-├── .mcp.json                  — MCP server config (HTTP, ${user_config.*})
 ├── agents/
 │   └── researcher.md
 ├── commands/

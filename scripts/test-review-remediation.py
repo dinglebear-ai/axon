@@ -21,6 +21,8 @@ class ReviewRegressions(unittest.TestCase):
             subprocess.run(['bash', str(ROOT / 'scripts/install-agent-skill.sh')], env={**os.environ, 'HOME': d}, check=True, capture_output=True)
             source = ROOT / 'plugins/axon/skills'
             expected = sorted(str(p.relative_to(source)) for p in source.rglob('SKILL.md'))
+            expected.append('install-axon/SKILL.md')
+            expected.sort()
             actual = sorted(str(p.relative_to(home / '.codex/skills')) for p in (home / '.codex/skills').rglob('SKILL.md'))
             self.assertTrue(expected)
             self.assertEqual(actual, expected)
