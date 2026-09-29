@@ -153,20 +153,17 @@ impl QdrantHttp {
         url: &str,
         context: &str,
     ) -> Result<bool, ApiError> {
-        let response = self
-            .request(Method::GET)
-            .get(url)
-            .send()
-            .await
-            .map_err(|_| {
-                ApiError::new(
-                    "vector.qdrant.transport",
-                    stage,
-                    "qdrant health request failed",
-                )
-                .with_context("endpoint", ENDPOINT_MARKER)
-                .with_provider_id(&self.provider_id)
-            })?;
+        // Qdrant's readiness endpoint is public. Do not attach the API key to
+        // a health probe or allow a transport's request logging to see it.
+        let response = self.client.get(url).send().await.map_err(|_| {
+            ApiError::new(
+                "vector.qdrant.transport",
+                stage,
+                "qdrant health request failed",
+            )
+            .with_context("endpoint", ENDPOINT_MARKER)
+            .with_provider_id(&self.provider_id)
+        })?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(false);
         }
