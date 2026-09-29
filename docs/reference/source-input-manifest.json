@@ -199,7 +199,7 @@
         {
           "path": "crates/axon-api/src/source/state.rs",
           "kind": "rust_module",
-          "checksum": "sha256:cf05bfb9ef97b6a20138646cfb0e929b5ee1b0e362b00cfec28ea33a39c28c48"
+          "checksum": "sha256:c0f679a6e75d0a63651db69bec2064a7005d7651e91b39699aa9c316ab799bc5"
         },
         {
           "path": "crates/axon-api/src/source/status.rs",
@@ -317,7 +317,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "6ba25532062563559d73ece93e1e858a9761bd41a88c550ba7619197efca3a20"
+      "manifest_checksum": "f4a31744e5eb9ad034587228fab625eacc1b116ffc63f06773d5325bd75289d1"
     },
     {
       "family": "cli",

@@ -14886,6 +14886,13 @@
         "job_id": {
           "$ref": "#/$defs/PublishGenerationRequest_JobId"
         },
+        "retained_statuses": {
+          "description": "Exact committed status snapshot to carry in the publication transaction.",
+          "items": {
+            "$ref": "#/$defs/PublishGenerationRequest_DocumentStatus"
+          },
+          "type": "array"
+        },
         "source_id": {
           "$ref": "#/$defs/PublishGenerationRequest_SourceId"
         }
@@ -14899,14 +14906,189 @@
       "title": "PublishGenerationRequest",
       "type": "object"
     },
+    "PublishGenerationRequest_DocumentId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_DocumentLifecycleStatus": {
+      "enum": [
+        "discovered",
+        "fetched",
+        "normalized",
+        "enriched",
+        "parsed",
+        "prepared",
+        "embedded",
+        "vectorized",
+        "published",
+        "cleaned",
+        "degraded",
+        "failed",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "PublishGenerationRequest_DocumentStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cleanup_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_LifecycleStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_DocumentId"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_id": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceId"
+        },
+        "source_item_key": {
+          "$ref": "#/$defs/PublishGenerationRequest_SourceItemKey"
+        },
+        "status": {
+          "$ref": "#/$defs/PublishGenerationRequest_DocumentLifecycleStatus"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "vector_point_count": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "document_id",
+        "source_id",
+        "source_item_key",
+        "status",
+        "updated_at"
+      ],
+      "type": "object"
+    },
     "PublishGenerationRequest_JobId": {
       "format": "uuid",
       "type": "string"
+    },
+    "PublishGenerationRequest_LifecycleStatus": {
+      "enum": [
+        "queued",
+        "pending",
+        "running",
+        "waiting",
+        "blocked",
+        "canceling",
+        "completed",
+        "completed_degraded",
+        "failed",
+        "canceled",
+        "expired",
+        "skipped"
+      ],
+      "type": "string"
+    },
+    "PublishGenerationRequest_ProviderId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "PublishGenerationRequest_SourceError": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_ProviderId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/PublishGenerationRequest_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublishGenerationRequest_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
     },
     "PublishGenerationRequest_SourceGenerationId": {
       "type": "string"
     },
     "PublishGenerationRequest_SourceId": {
+      "type": "string"
+    },
+    "PublishGenerationRequest_SourceItemKey": {
       "type": "string"
     },
     "ResolvedSource": {
@@ -29463,7 +29645,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:cf05bfb9ef97b6a20138646cfb0e929b5ee1b0e362b00cfec28ea33a39c28c48",
+        "checksum": "sha256:c0f679a6e75d0a63651db69bec2064a7005d7651e91b39699aa9c316ab799bc5",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },

@@ -147,6 +147,9 @@ async fn discover_keeps_only_code_and_documentation_before_applying_item_cap() {
         ("Cargo.lock", "lockfile"),
         ("README.png", "image bytes"),
         ("docs/guide.mdx", "# Guide"),
+        ("docs/page.html", "<h1>Guide</h1>"),
+        ("src/api.proto", "syntax = \"proto3\";"),
+        ("src/app.css", "body { color: black; }"),
         ("src/settings.yaml", "secret: false"),
     ] {
         fs::write(repo.join(path), contents).unwrap();
@@ -158,11 +161,44 @@ async fn discover_keeps_only_code_and_documentation_before_applying_item_cap() {
         .iter()
         .filter_map(|item| item.display_path.as_deref())
         .collect();
-    assert_eq!(keys, ["README.md", "docs/guide.mdx", "src/lib.rs"]);
+    assert_eq!(
+        keys,
+        [
+            "README.md",
+            "docs/guide.mdx",
+            "docs/page.html",
+            "src/api.proto",
+            "src/app.css",
+            "src/lib.rs"
+        ]
+    );
 
     let (capped, truncated) = collect_capped_git_keys(&repo, &[], 2).unwrap();
     assert_eq!(capped, ["README.md", "docs/guide.mdx"]);
     assert!(truncated);
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[tokio::test]
+async fn retained_paths_follow_current_ignore_rules_and_deletions() {
+    let repo = fixture_repo();
+    let plan = git_plan(&repo, SourceScope::Repo, true);
+    let wanted = ["README.md", "src/lib.rs", "old.png"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    fs::write(repo.join(".gitignore"), "src/lib.rs\n").unwrap();
+    let existing = retained_repository_paths(plan.clone(), wanted)
+        .await
+        .unwrap();
+    assert_eq!(
+        existing,
+        ["README.md"].into_iter().map(str::to_string).collect()
+    );
+
+    fs::remove_file(repo.join("README.md")).unwrap();
+    let existing = retained_repository_paths(plan, existing).await.unwrap();
+    assert!(existing.is_empty());
     fs::remove_dir_all(repo).unwrap();
 }
 

@@ -164,7 +164,8 @@ async fn discover_and_diff(
             "diffing source manifest",
         )
         .await;
-    let unvisited = retention::merge_inventory(runtime.ledger.as_ref(), &mut manifest).await?;
+    let unvisited =
+        retention::merge_inventory(runtime.ledger.as_ref(), &input.plan, &mut manifest).await?;
     let diff = runtime.ledger.diff_manifest_ref(&manifest).await?;
     coordinator
         .checkpoint(

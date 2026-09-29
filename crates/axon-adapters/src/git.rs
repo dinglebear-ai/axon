@@ -10,6 +10,7 @@ mod metadata;
 mod target;
 mod vertical;
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -23,6 +24,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 
 pub use self::acquire::{clone_git_repo, is_git_target};
+pub use self::discovery::repository_path_allowed;
 use self::discovery::{
     collect_capped_git_keys, collect_git_manifest_items_parallel, hash_git_keys_parallel,
     safe_item_path,
@@ -31,6 +33,20 @@ use self::metadata::git_source_document;
 pub use self::target::{GitTarget, parse_git_target};
 
 pub const MODULE_NAME: &str = "git";
+
+/// Recheck retained paths against the current checkout and its ignore rules.
+pub async fn retained_repository_paths(
+    plan: SourcePlan,
+    wanted: BTreeSet<String>,
+) -> Result<BTreeSet<String>> {
+    tokio::task::spawn_blocking(move || {
+        let root = repo_root(&plan)?;
+        let excludes = option_string_array(&plan.request.options, "exclude_paths")?;
+        discovery::existing_repository_paths(&root, &wanted, &excludes)
+    })
+    .await
+    .map_err(blocking_join_error)?
+}
 
 const ADAPTER_NAME: &str = "git";
 const GIT_DISCOVERY_HASH_MAX_THREADS: usize = 8;

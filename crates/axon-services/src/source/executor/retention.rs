@@ -9,9 +9,10 @@ pub(super) use identity::processing_identity;
 
 pub(super) async fn merge_inventory(
     ledger: &dyn LedgerStore,
+    plan: &SourcePlan,
     manifest: &mut SourceManifest,
 ) -> anyhow::Result<BTreeSet<SourceItemKey>> {
-    let mut unvisited = BTreeSet::new();
+    let unvisited = BTreeSet::new();
     if manifest.inventory_completeness() == InventoryCompleteness::Complete {
         return Ok(unvisited);
     }
@@ -27,13 +28,42 @@ pub(super) async fn merge_inventory(
         .ok_or_else(|| {
             anyhow::anyhow!("committed source inventory is missing; complete refresh required")
         })?;
+    let git_repo = plan.route.source.source_kind == SourceKind::Git
+        && matches!(plan.route.scope, SourceScope::Repo | SourceScope::Directory);
+    let existing_paths = if git_repo {
+        let wanted = prior
+            .items
+            .iter()
+            .filter_map(|item| item.display_path.clone())
+            .collect();
+        Some(axon_adapters::git::retained_repository_paths(plan.clone(), wanted).await?)
+    } else {
+        None
+    };
+    retain_unvisited(plan, manifest, prior, existing_paths.as_ref())
+}
+
+fn retain_unvisited(
+    plan: &SourcePlan,
+    manifest: &mut SourceManifest,
+    prior: SourceManifest,
+    existing_paths: Option<&BTreeSet<String>>,
+) -> anyhow::Result<BTreeSet<SourceItemKey>> {
+    let mut unvisited = BTreeSet::new();
     let visited: BTreeSet<_> = manifest
         .items
         .iter()
         .map(|item| item.source_item_key.clone())
         .collect();
+    let git_repo = plan.route.source.source_kind == SourceKind::Git
+        && matches!(plan.route.scope, SourceScope::Repo | SourceScope::Directory);
     for item in prior.items {
-        if !visited.contains(&item.source_item_key) {
+        let allowed = !git_repo
+            || item
+                .display_path
+                .as_deref()
+                .is_some_and(|path| existing_paths.is_some_and(|paths| paths.contains(path)));
+        if allowed && !visited.contains(&item.source_item_key) {
             unvisited.insert(item.source_item_key.clone());
             manifest.items.push(item);
         }
@@ -132,21 +162,10 @@ pub(super) async fn carry_and_count(
     manifest: &SourceManifest,
     diff: &SourceManifestDiff,
     vectorized: &super::vectorize::VectorizeResult,
-) -> anyhow::Result<SourceCounts> {
+) -> anyhow::Result<(SourceCounts, Vec<DocumentStatus>)> {
     let retained = retained_statuses(ledger, diff).await?;
     let counts = source_counts(manifest, diff, &retained, vectorized);
-    if let Some(previous) = diff.previous_generation.clone() {
-        ledger
-            .carry_document_statuses(
-                manifest.source_id.clone(),
-                previous,
-                manifest.generation.clone(),
-                retained,
-                super::timestamp(),
-            )
-            .await?;
-    }
-    Ok(counts)
+    Ok((counts, retained))
 }
 
 pub(super) fn source_counts(

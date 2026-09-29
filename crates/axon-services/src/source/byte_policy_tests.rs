@@ -148,7 +148,7 @@ fn check(document: SourceDocument, expected: &Expected, context: &str) {
 async fn real_git_local_and_http_bytes_share_decoding_and_skip_policy() {
     for (name, bytes, expected) in fixtures() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join("payload.txt"), &bytes).unwrap();
+        std::fs::write(root.path().join("payload.md"), &bytes).unwrap();
         let status = std::process::Command::new("git")
             .args(["init", "--quiet"])
             .arg(root.path())

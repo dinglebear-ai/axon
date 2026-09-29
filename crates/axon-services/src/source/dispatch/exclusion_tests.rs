@@ -5,9 +5,9 @@ use serde_json::json;
 pub(super) fn fixture() -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     for (directory, file) in [
-        ("configured", "one.txt"),
-        ("requested", "two.txt"),
-        ("kept", "three.txt"),
+        ("configured", "one.md"),
+        ("requested", "two.md"),
+        ("kept", "three.md"),
     ] {
         std::fs::create_dir(root.path().join(directory)).unwrap();
         std::fs::write(root.path().join(directory).join(file), "supported text").unwrap();
@@ -64,7 +64,7 @@ async fn routed_git_discovery_keeps_configured_and_requested_exclusions() {
         .iter()
         .filter_map(|item| item.display_path.as_deref())
         .collect();
-    assert_eq!(paths, ["kept/three.txt"]);
+    assert_eq!(paths, ["kept/three.md"]);
 }
 
 #[test]

@@ -76,6 +76,61 @@ async fn fixture() -> (FakeLedgerStore, SourceManifest, SourceManifestDiff) {
 }
 
 #[tokio::test]
+async fn partial_git_refresh_drops_previously_indexed_non_code_items() {
+    let (_, mut manifest, _) = fixture().await;
+    let mut request = SourceRequest::new("https://github.com/pallets/flask".to_string());
+    request
+        .options
+        .values
+        .insert("exclude_paths".to_string(), serde_json::json!(["vendor/"]));
+    let route = crate::source::routing::resolve_source_route(&request).unwrap();
+    let plan = SourcePlan {
+        job_id: JobId::new(uuid::Uuid::nil()),
+        request,
+        route: route.route,
+        limits: EffectiveLimits {
+            request: Default::default(),
+            adapter_defaults: Default::default(),
+            config_defaults: Default::default(),
+            effective: Default::default(),
+        },
+        stage_plan: Vec::new(),
+        config_snapshot_id: ConfigSnapshotId::new("test"),
+        provider_reservations: Vec::new(),
+    };
+    let template = manifest.items[0].clone();
+    let mut prior = manifest.clone();
+    prior.items = [
+        "assets/logo.png",
+        "Cargo.lock",
+        "src/lib.rs",
+        "docs/guide.md",
+        "vendor/dep.rs",
+    ]
+    .into_iter()
+    .map(|path| {
+        let mut item = template.clone();
+        item.source_item_key = SourceItemKey::new(path);
+        item.display_path = Some(path.to_string());
+        item
+    })
+    .collect();
+    manifest.items.clear();
+    let existing = ["src/lib.rs", "docs/guide.md"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    let unvisited = retain_unvisited(&plan, &mut manifest, prior, Some(&existing)).unwrap();
+    let paths: Vec<_> = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect();
+    assert_eq!(paths, ["src/lib.rs", "docs/guide.md"]);
+    assert_eq!(unvisited.len(), 2);
+}
+
+#[tokio::test]
 async fn retained_totals_use_uneven_document_counts_and_skips() {
     let (_, manifest, diff) = fixture().await;
     let retained = [status("small", 2, false), status("binary", 0, true)];

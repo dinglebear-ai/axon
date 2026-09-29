@@ -1,5 +1,6 @@
 //! Git checkout discovery, bounded hashing, and manifest construction.
 
+use std::collections::BTreeSet;
 use std::collections::BinaryHeap;
 use std::fs::{self, File};
 use std::io::Read;
@@ -56,7 +57,7 @@ pub(super) fn collect_capped_git_keys(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if git_key_excluded(&key, exclude_paths) || !is_code_or_documentation(&key) {
+        if !repository_path_allowed(&key, exclude_paths) {
             continue;
         }
         truncated |= selected.len() == limit;
@@ -161,7 +162,7 @@ pub(super) fn collect_git_manifest_items_parallel(
                     return WalkState::Quit;
                 }
             };
-            if git_key_excluded(&key, exclude_paths) || !is_code_or_documentation(&key) {
+            if !repository_path_allowed(&key, exclude_paths) {
                 return WalkState::Continue;
             }
             match git_manifest_item(plan, root, base_uri, &key) {
@@ -244,6 +245,30 @@ fn git_key_excluded(key: &str, exclude_paths: &[String]) -> bool {
     exclude_paths.iter().any(|excluded| key.contains(excluded))
 }
 
+/// Apply the same repository inventory policy to both new and retained items.
+pub fn repository_path_allowed(key: &str, exclude_paths: &[String]) -> bool {
+    is_code_or_documentation(key) && !git_key_excluded(key, exclude_paths)
+}
+
+pub(super) fn existing_repository_paths(
+    root: &Path,
+    wanted: &BTreeSet<String>,
+    exclude_paths: &[String],
+) -> Result<BTreeSet<String>> {
+    let mut existing = BTreeSet::new();
+    for entry in git_walk_builder(root).build() {
+        let entry = entry.map_err(git_walk_error)?;
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let key = relative_key(root, entry.path())?;
+        if wanted.contains(&key) && repository_path_allowed(&key, exclude_paths) {
+            existing.insert(key);
+        }
+    }
+    Ok(existing)
+}
+
 fn is_code_or_documentation(key: &str) -> bool {
     let path = Path::new(key);
     let name = path
@@ -275,51 +300,8 @@ fn is_code_or_documentation(key: &str) -> bool {
         return true;
     }
     matches!(
-        extension.as_str(),
-        "md" | "markdown"
-            | "mdx"
-            | "rst"
-            | "adoc"
-            | "asciidoc"
-            | "rs"
-            | "go"
-            | "js"
-            | "jsx"
-            | "mjs"
-            | "cjs"
-            | "ts"
-            | "tsx"
-            | "py"
-            | "java"
-            | "kt"
-            | "kts"
-            | "swift"
-            | "c"
-            | "cc"
-            | "cpp"
-            | "h"
-            | "hpp"
-            | "cs"
-            | "rb"
-            | "php"
-            | "sh"
-            | "zsh"
-            | "fish"
-            | "ex"
-            | "exs"
-            | "erl"
-            | "hrl"
-            | "hs"
-            | "scala"
-            | "sc"
-            | "sql"
-            | "lua"
-            | "pl"
-            | "r"
-            | "jl"
-            | "dart"
-            | "vue"
-            | "svelte"
+        content_kind_for(path),
+        ContentKind::Code | ContentKind::Markdown | ContentKind::Html
     )
 }
 
@@ -396,15 +378,19 @@ fn content_fingerprint(path: &Path, cap: u64) -> Result<Option<String>> {
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {
-    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
-        "md" | "markdown" => ContentKind::Markdown,
+    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    match extension.to_ascii_lowercase().as_str() {
+        "md" | "markdown" | "mdx" | "rst" | "adoc" | "asciidoc" => ContentKind::Markdown,
         "html" | "htm" => ContentKind::Html,
         "json" => ContentKind::Json,
         "yaml" | "yml" => ContentKind::Yaml,
         "toml" => ContentKind::Toml,
         "xml" => ContentKind::Xml,
-        "rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "py" | "java" | "kt" | "swift" | "c" | "cc"
-        | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh" | "zsh" | "fish" => ContentKind::Code,
+        "rs" | "go" | "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "py" | "java" | "kt"
+        | "kts" | "swift" | "c" | "cc" | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh"
+        | "zsh" | "fish" | "ex" | "exs" | "erl" | "hrl" | "hs" | "scala" | "sc" | "sql" | "lua"
+        | "pl" | "r" | "jl" | "dart" | "vue" | "svelte" | "proto" | "css" | "scss" | "less"
+        | "tf" | "nix" => ContentKind::Code,
         _ => ContentKind::PlainText,
     }
 }
