@@ -557,6 +557,6 @@ async fn canonical_pipeline_failure_emits_one_structured_terminal_failure() {
     assert_eq!(failed[0].phase, PipelinePhase::Complete);
     assert_eq!(
         failed[0].error.as_ref().map(|error| error.code.0.as_str()),
-        Some("source.index_failed")
+        Some("provider.partial_failure")
     );
 }

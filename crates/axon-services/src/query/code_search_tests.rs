@@ -328,10 +328,10 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs,
-            ledger,
-            embedder,
-            vectors,
+            source_jobs.clone(),
+            ledger.clone(),
+            embedder.clone(),
+            vectors.clone(),
             ProviderId::new("fake-embedding"),
             "fake-embedding",
             8,
@@ -340,11 +340,27 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await
         .expect("initial target refresh");
-    std::fs::write(repo.path().join("bad.rs"), [0xff, 0xfe, 0xfd]).expect("bad source file");
+    std::fs::write(repo.path().join("new.rs"), "pub fn fresh() {}\n").expect("new source file");
+    let failing_ctx = ctx
+        .clone()
+        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
+            source_jobs,
+            ledger,
+            embedder,
+            Arc::new(
+                vectors
+                    .as_ref()
+                    .clone()
+                    .with_mode(axon_vectors::store::FakeVectorMode::PartialFailure),
+            ),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        ));
     let progress = Arc::new(RecordingReindexProgress::default());
 
     let searched = code_search_with_progress(
-        ctx.clone(),
+        failing_ctx,
         "target_answer".to_string(),
         CodeSearchOptions {
             collection: None,
@@ -366,7 +382,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             .freshness
             .warning
             .as_deref()
-            .is_some_and(|warning| warning.to_ascii_lowercase().contains("utf-8")),
+            .is_some_and(|warning| warning.contains("partial")),
         "refresh failure warning should mention the indexing failure: {searched:#?}"
     );
     assert_eq!(searched.results.len(), 1);

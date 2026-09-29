@@ -55,14 +55,14 @@ pub(in crate::store::fake) fn carry_document_statuses_locked(
     if expected.is_empty() {
         return Ok(0);
     }
-    if state.committed.get(&source_id) != Some(&expected_generation) {
+    if state.committed.get(source_id) != Some(expected_generation) {
         return Err(conflict());
     }
     let target = state
         .generations
         .get(&(source_id.clone(), next_generation.clone()))
         .ok_or_else(conflict)?;
-    if target.previous_generation.as_ref() != Some(&expected_generation)
+    if target.previous_generation.as_ref() != Some(expected_generation)
         || next_generation == expected_generation
     {
         return Err(conflict());
@@ -88,7 +88,7 @@ pub(in crate::store::fake) fn carry_document_statuses_locked(
                     | DocumentLifecycleStatus::Published
                     | DocumentLifecycleStatus::Skipped
             ) || &s.source_id != source_id
-                || s.generation.as_ref() != Some(&expected_generation)
+                || s.generation.as_ref() != Some(expected_generation)
                 || s.updated_at.0 > updated_at.0
         })
         || expected

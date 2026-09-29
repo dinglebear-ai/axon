@@ -116,7 +116,7 @@ pub(in crate::sqlite) async fn carry_document_statuses_in_tx(
     .map_err(sqlite_error)?;
     let target: SourceGeneration =
         serde_json::from_str(&target_json.ok_or_else(conflict)?).map_err(json_error)?;
-    if target.previous_generation.as_ref() != Some(&expected_generation)
+    if target.previous_generation.as_ref() != Some(expected_generation)
         || next_generation == expected_generation
     {
         return Err(conflict());
@@ -131,7 +131,7 @@ pub(in crate::sqlite) async fn carry_document_statuses_in_tx(
                 | DocumentLifecycleStatus::Published
                 | DocumentLifecycleStatus::Skipped
         ) || &s.source_id != source_id
-            || s.generation.as_ref() != Some(&expected_generation)
+            || s.generation.as_ref() != Some(expected_generation)
             || s.updated_at.0 > updated_at.0
     }) || expected_statuses
         .windows(2)
