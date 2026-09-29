@@ -11552,6 +11552,24 @@
       "DocumentId": {
         "type": "string"
       },
+      "DomainSourceItem": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "DomainSourcesResponse": {
         "type": "object",
         "required": [
@@ -11559,7 +11577,8 @@
           "count",
           "limit",
           "truncated",
-          "urls"
+          "urls",
+          "items"
         ],
         "properties": {
           "count": {
@@ -11574,6 +11593,12 @@
           },
           "domain": {
             "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainSourceItem"
+            }
           },
           "limit": {
             "type": "integer",
