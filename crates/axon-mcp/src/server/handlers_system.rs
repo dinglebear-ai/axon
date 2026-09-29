@@ -40,7 +40,19 @@ impl AxonMcpServer {
             "help",
             req.response_mode,
             "help-actions",
-            help_payload(),
+            {
+                let mut payload = help_payload();
+                payload["projection"] = serde_json::json!(self.cfg.mcp_tool_projection.to_string());
+                payload["operations"] = serde_json::json!(
+                    super::operations::operation_registry()
+                        .iter()
+                        .map(|op| op.metadata())
+                        .collect::<Vec<_>>()
+                );
+                payload["operation_schema_resource"] =
+                    serde_json::json!(super::handler_meta::MCP_OPERATION_SCHEMA_URI);
+                payload
+            },
             InlineHint::Default,
         )
         .await
@@ -51,6 +63,8 @@ impl AxonMcpServer {
         req: PruneMcpRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.as_deref().unwrap_or("plan");
+        let _: super::system_requests::PruneSubaction =
+            super::system_requests::parse_selector("prune", subaction)?;
 
         if subaction == "get" {
             let plan_id = req
@@ -406,50 +420,19 @@ fn prune_selector_from_request(req: &PruneMcpRequest) -> Result<PruneSelector, E
 }
 
 fn help_payload() -> Value {
+    let actions: serde_json::Map<String, Value> = super::server_authz::MCP_ACTION_SPECS
+        .iter()
+        .map(|spec| {
+            (
+                spec.name.to_owned(),
+                serde_json::json!(crate::schema_registry::subaction_variants(spec.name)),
+            )
+        })
+        .collect();
     serde_json::json!({
         "tool": "axon",
-        "actions": {
-            "status": [],
-            "help": [],
-            "source": ["source"],
-            "scrape": [],
-            "crawl": [],
-            "embed": [],
-            "ingest": [],
-            "code_search": [],
-            "summarize": ["summarize"],
-            "research": ["research"],
-            "ask": ["ask"],
-            "evaluate": ["evaluate"],
-            "suggest": ["suggest"],
-            "screenshot": ["screenshot"],
-            "endpoints": ["endpoints"],
-            "extract": ["start"],
-            "artifacts": ["list", "get", "content"],
-            "chat": ["chat"],
-            "codex": ["snapshot", "resource", "events", "operations", "prepare", "approve", "execute", "reconcile", "respond"],
-            "jobs": ["list", "get", "status", "events", "stream", "cancel", "retry", "recover", "cleanup", "clear"],
-            "memory": ["remember", "list", "search", "show", "link", "supersede", "context", "reinforce", "contradict", "pin", "archive", "forget", "review", "compact", "import", "export"],
-            "query": ["query"],
-            "retrieve": ["retrieve"],
-            "search": ["search"],
-            "map": ["map"],
-            "prune": ["plan", "exec"],
-            "collections": ["list", "get"],
-            "uploads": ["list", "create", "get", "put_content", "complete", "abort"],
-            "reset": ["plan", "exec"],
-            "doctor": ["doctor"],
-            "resolve": ["resolve"],
-            "capabilities": ["capabilities"],
-            "providers": ["list", "get"],
-            "diff": ["diff"],
-            "brand": ["brand"],
-            "watch": ["create", "list", "get", "status", "exec", "history", "update", "pause", "resume", "delete"],
-            "graph": ["kinds", "resolve", "query", "node", "edge", "source"]
-        },
-        "resources": [
-            MCP_TOOL_SCHEMA_URI
-        ],
+        "actions": actions,
+        "resources": [MCP_TOOL_SCHEMA_URI, super::handler_meta::MCP_OPERATION_SCHEMA_URI],
         "defaults": {
             "response_mode": "path",
             "artifact_dir": artifact_root(),

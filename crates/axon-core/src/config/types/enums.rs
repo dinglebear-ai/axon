@@ -255,14 +255,14 @@ impl fmt::Display for McpTransport {
     Debug, Clone, Copy, Default, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq,
 )]
 #[serde(rename_all = "kebab-case")]
-pub enum McpProjection {
+pub enum McpToolProjection {
     #[default]
     Legacy,
     Atomic,
     Both,
 }
 
-impl fmt::Display for McpProjection {
+impl fmt::Display for McpToolProjection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Legacy => "legacy",

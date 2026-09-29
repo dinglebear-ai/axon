@@ -7,7 +7,7 @@ use super::*;
 /// action without a matching edit to `LIVE_ACTIONS` here, this fails.
 #[test]
 fn every_live_action_is_accepted_by_the_real_dispatcher_authz() {
-    for spec in LIVE_ACTIONS {
+    for spec in LIVE_ACTIONS.iter() {
         let sample_subaction = match spec.subaction {
             SubactionKind::None => "",
             SubactionKind::TypedEnum => {
@@ -18,14 +18,6 @@ fn every_live_action_is_accepted_by_the_real_dispatcher_authz() {
                     spec.name
                 );
                 Box::leak(variants[0].clone().into_boxed_str())
-            }
-            SubactionKind::InformalStrings(values) => {
-                assert!(
-                    !values.is_empty(),
-                    "action {} declares InformalStrings subactions but the list is empty",
-                    spec.name
-                );
-                values[0]
             }
         };
         let resolved = axon_mcp::server::required_scope_for(spec.name, sample_subaction);
@@ -78,7 +70,7 @@ fn live_and_non_live_action_name_sets_are_disjoint() {
 /// subaction enum must resolve through `typed_subaction_variants`.
 #[test]
 fn every_live_action_request_and_subaction_schema_resolves() {
-    for spec in LIVE_ACTIONS {
+    for spec in LIVE_ACTIONS.iter() {
         let schema = request_schema_for(spec.request_dto);
         assert!(
             schema.get("type").is_some() || schema.get("$ref").is_some() || schema.is_object(),
@@ -124,28 +116,31 @@ fn deferred_actions_covers_exactly_the_contract_minus_live_delta() {
 
 #[test]
 fn clean_break_system_actions_have_only_canonical_subactions() {
-    let subactions = |action| {
-        let spec = LIVE_ACTIONS
-            .iter()
-            .find(|spec| spec.name == action)
-            .expect("live system action");
-        match spec.subaction {
-            SubactionKind::InformalStrings(values) => values,
-            _ => panic!("{action} must use an explicit static subaction set"),
-        }
-    };
-
-    assert_eq!(subactions("prune"), ["plan", "exec"]);
-    assert_eq!(subactions("reset"), ["plan", "exec"]);
-    assert_eq!(subactions("collections"), ["list", "get"]);
-    assert_eq!(
-        subactions("uploads"),
-        ["list", "create", "get", "put_content", "complete", "abort"]
-    );
-    for restored in ["scrape", "crawl", "embed", "ingest", "code_search"] {
+    let expected = [
+        ("prune", vec!["exec", "get", "plan"]),
+        ("reset", vec!["exec", "get", "plan"]),
+        ("collections", vec!["get", "list"]),
+        (
+            "uploads",
+            vec!["abort", "complete", "create", "get", "list", "put_content"],
+        ),
+        ("artifacts", vec!["content", "get", "list"]),
+    ];
+    for (action, selectors) in expected {
+        assert_eq!(typed_subaction_variants(action), selectors);
+    }
+    for restored in [
+        "scrape",
+        "crawl",
+        "embed",
+        "ingest",
+        "code_search",
+        "artifacts",
+        "chat",
+    ] {
         assert!(live_action_names().contains(&restored));
     }
-    for removed in ["dedupe", "purge"] {
+    for removed in ["dedupe", "purge", "config"] {
         assert!(!live_action_names().contains(&removed));
     }
 }
@@ -158,21 +153,20 @@ fn codex_action_publishes_its_typed_control_contract() {
         .expect("codex must be a live MCP action");
     assert_eq!(spec.scope, "admin");
     assert_eq!(spec.request_dto, "CodexRequest");
-    assert_eq!(
-        typed_subaction_variants("codex"),
-        [
-            "snapshot",
-            "resource",
-            "events",
-            "operations",
-            "prepare",
-            "approve",
-            "execute",
-            "cancel",
-            "reconcile",
-            "respond",
-        ]
-    );
+    let mut expected = vec![
+        "snapshot",
+        "resource",
+        "events",
+        "operations",
+        "prepare",
+        "approve",
+        "execute",
+        "cancel",
+        "reconcile",
+        "respond",
+    ];
+    expected.sort_unstable();
+    assert_eq!(typed_subaction_variants("codex"), expected);
 
     let schema = request_schema_for("CodexRequest");
     let properties = schema["properties"]
@@ -202,15 +196,20 @@ fn codex_action_publishes_its_typed_control_contract() {
 
 #[test]
 fn only_unimplemented_contract_actions_are_deferred() {
-    let names = deferred_actions()
-        .into_iter()
-        .map(|value| value["action"].as_str().unwrap().to_string())
-        .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(
-        names,
-        ["artifacts", "chat"]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
+    assert!(
+        deferred_actions().is_empty(),
+        "every currently contracted action is live"
     );
+}
+
+#[test]
+fn generator_inventory_equals_complete_runtime_inventory() {
+    let generated: std::collections::BTreeSet<_> =
+        LIVE_ACTIONS.iter().map(|spec| spec.name).collect();
+    let runtime: std::collections::BTreeSet<_> = axon_mcp::schema_registry::action_registry()
+        .iter()
+        .map(|spec| spec.action)
+        .collect();
+    assert_eq!(generated.len(), LIVE_ACTIONS.len());
+    assert_eq!(generated, runtime);
 }

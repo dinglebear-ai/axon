@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import secrets
 import uuid
@@ -116,6 +117,58 @@ def tool_arguments(item: dict[str, Any]) -> dict[str, Any]:
         target = "collection:${E2E_FOREIGN_COLLECTION}" if item["polarity"] == "negative" else "collection:${E2E_OWNED_COLLECTION}"
         return {"action": "prune", "subaction": subaction, "target": target}
     raise McpAdapterError(f"{item['id']}: unsupported MCP capability {capability!r}")
+
+
+def project_call(arguments: dict[str, Any], form: str = "legacy", selector: str = "axon.axon") -> dict[str, Any]:
+    """Project a canonical request without duplicating the execution contract."""
+    if form not in {"legacy", "atomic"}:
+        raise McpAdapterError("call form must be legacy or atomic; both is a server projection")
+    if not isinstance(arguments, dict):
+        raise McpAdapterError("tool arguments must be an object")
+    action, subaction = arguments.get("action"), arguments.get("subaction")
+    if not isinstance(action, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", action):
+        raise McpAdapterError("canonical action must be a nonempty operation identifier")
+    if subaction is not None and (not isinstance(subaction, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", subaction)):
+        raise McpAdapterError("canonical subaction must be an operation identifier")
+    if not selector.endswith(".axon"):
+        raise McpAdapterError("aggregate selector must end in .axon")
+    if form == "legacy":
+        return {"name": "axon", "selector": selector, "arguments": dict(arguments)}
+    name = action + (f"_{subaction}" if subaction is not None else "")
+    return {"name": name, "selector": selector[:-4] + name,
+            "arguments": {key: value for key, value in arguments.items() if key not in {"action", "subaction"}}}
+
+
+def assert_inventory(tools: list[dict[str, Any]], operations: list[dict[str, Any]], projection: str) -> dict[str, Any]:
+    """Compare complete actual membership, never intersect it with an allowlist."""
+    if projection not in {"legacy", "atomic", "both"}:
+        raise McpAdapterError("unknown projection")
+    names = [tool.get("name") for tool in tools]
+    canonical = [operation.get("name") for operation in operations]
+    if any(not isinstance(name, str) for name in names + canonical):
+        raise McpAdapterError("tool and operation names must be strings")
+    if len(set(names)) != len(names) or len(set(canonical)) != len(canonical):
+        raise McpAdapterError("duplicate actual or canonical tool names")
+    for operation in operations:
+        identity = project_call({"action": operation["action"], "subaction": operation.get("subaction")}, "atomic")
+        if identity["name"] != operation["name"]:
+            raise McpAdapterError("canonical operation name disagrees with its identity")
+    expected = {"axon_status_dashboard"}
+    if projection != "atomic":
+        expected.add("axon")
+    if projection != "legacy":
+        expected.update(canonical)
+    actual = set(names)
+    if actual != expected:
+        raise McpAdapterError(f"tool inventory drift: missing={sorted(expected-actual)} extra={sorted(actual-expected)}")
+    if projection != "legacy":
+        for tool in tools:
+            if tool["name"] in {"axon", "axon_status_dashboard"}:
+                continue
+            properties = tool.get("inputSchema", {}).get("properties", {})
+            if "action" in properties or "subaction" in properties:
+                raise McpAdapterError(f"fixed discriminator advertised by {tool['name']}")
+    return {"success": True, "projection": projection, "tools": sorted(actual), "operation_count": len(canonical)}
 
 
 def mcporter_argv(selector: str, arguments: dict[str, Any]) -> list[str]:
@@ -286,7 +339,44 @@ def main() -> int:
     registrar.add_argument("evidence", type=Path)
     registrar.add_argument("envelope", type=Path)
     registrar.add_argument("--owned-collection")
+    invocation = sub.add_parser("project-call")
+    invocation.add_argument("arguments")
+    invocation.add_argument("--form", choices=("legacy", "atomic"), default="legacy")
+    invocation.add_argument("--selector", default="axon.axon")
+    inventory = sub.add_parser("inventory")
+    inventory.add_argument("tools", type=Path)
+    inventory.add_argument("help", type=Path)
+    inventory.add_argument("--projection", choices=("legacy", "atomic", "both"), required=True)
+    smoke = sub.add_parser("smoke", help="real stdio/HTTP projection contracts using the existing wire transport")
+    smoke.add_argument("--transport", choices=("stdio", "http"), required=True)
+    smoke.add_argument("--projection", choices=("legacy", "atomic", "both"), required=True)
+    smoke.add_argument("--call-form", choices=("legacy", "atomic"), required=True)
+    smoke.add_argument("--binary", type=Path, default=ROOT / "target/debug/axon")
+    smoke.add_argument("--base-url", default="http://127.0.0.1:8080/mcp")
+    smoke.add_argument("--token", default=os.getenv("AXON_HTTP_TOKEN"))
+    smoke.add_argument("--origin", default=os.getenv("AXON_MCP_ORIGIN"))
+    smoke.add_argument("--outdir", type=Path, required=True)
+    smoke.add_argument("--manifest", type=Path)
     args = parser.parse_args()
+    if args.command == "smoke":
+        if args.projection != "both" and args.call_form != args.projection:
+            raise McpAdapterError("call form is not advertised by this projection")
+        import mcp_projection_smoke
+        evidence = mcp_projection_smoke.run(args)
+        print(json.dumps({key:evidence[key] for key in ("transport", "projection", "call_form", "success", "results")}, sort_keys=True))
+        return 0
+    if args.command == "project-call":
+        print(json.dumps(project_call(json.loads(args.arguments), args.form, args.selector), sort_keys=True))
+        return 0
+    if args.command == "inventory":
+        tools = json.loads(args.tools.read_text())["tools"]
+        help_ = json.loads(args.help.read_text())
+        data = help_.get("data", {})
+        payload = data.get("inline", data.get("data", data))
+        if payload.get("projection") != args.projection:
+            raise McpAdapterError("observed remote projection does not match requested projection")
+        print(json.dumps(assert_inventory(tools, payload["operations"], args.projection), sort_keys=True))
+        return 0
     if args.command == "job-id":
         print(source_job_id(json.loads(args.envelope.read_text(encoding="utf-8"))))
         return 0

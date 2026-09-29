@@ -1,5 +1,5 @@
 # src/mcp
-Last Modified: 2026-03-10
+Last Modified: 2026-09-28
 
 Axon MCP server crate backing the `axon mcp` command.
 
@@ -9,14 +9,15 @@ Axon MCP server crate backing the `axon mcp` command.
 - Runtime config loading (`config.rs`)
 
 ## Public Contract
-- MCP projection: `legacy`, `atomic`, or `both` via `AXON_MCP_PROJECTION`
+- MCP projection: `legacy`, `atomic`, or `both` via `AXON_MCP_TOOL_PROJECTION`
 - Legacy compatibility tool: `axon`
-- Atomic tools: one `axon_<action>` tool per live action
+- Atomic tools: unprefixed canonical leaf tools such as `query`, `jobs_get` and `jobs_cancel`
 - Transport: `http`, `stdio`, or `both` via `axon mcp --transport ...`
 - Legacy request shape: action-routed requests via `action` + `subaction`
 - Parser is strict (no fallback action keys, no alias remapping)
 - Context-safe default: large payloads written artifact-first to `~/.axon/artifacts/<context>/` (small payloads return inline)
-- Resource exposed: `axon://schema/mcp-tool`
+- Canonical operations resource: `axon://schema/mcp-operations` (schemas, safety, task support and active names)
+- Legacy resource preserved: `axon://schema/mcp-tool`
 - MCP App resource exposed: `ui://axon/status-dashboard`
 - MCP Apps capability is advertised so compatible hosts can render the dashboard widget
 
@@ -62,3 +63,15 @@ When changing tool behavior, update in the same commit:
 - [Repository README](../../../README.md)
 - [Architecture](../../../docs/architecture/overview.md)
 - [MCP Runtime Guide](../../../docs/reference/mcp/overview.md)
+
+The runtime `server/action_specs.rs` table owns action metadata and request-schema
+callbacks. `server/tool_schema.rs` checks that it matches the typed request enum;
+`server/operations.rs` derives finite leaves. `server/projection.rs` composes
+routes by cloning the original dispatcher handler, while
+`server/projection_call.rs` resolves fixed selectors before shared authorization,
+task admission and caller-local execution context. `schema_registry.rs` exposes
+these views to xtask; do not add a separate generator name list.
+
+Read [Adding an MCP action](../../../docs/development/adding-mcp-action.md) before
+extending this surface. The compatibility environment spelling
+`AXON_MCP_PROJECTION` is a deprecated fallback, not another setting.

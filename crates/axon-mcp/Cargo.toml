@@ -61,6 +61,7 @@ workspace = true
 test-util = []
 
 [dev-dependencies]
+jsonschema = "0.37"
 axon-core = { path = "../axon-core", features = ["test-util"] }
 httpmock = "0.8"
 serial_test = "3"

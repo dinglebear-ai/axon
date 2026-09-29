@@ -13,6 +13,7 @@ use rmcp::{
 };
 use std::sync::LazyLock;
 
+pub(crate) const MCP_OPERATION_SCHEMA_URI: &str = "axon://schema/mcp-operations";
 pub(crate) const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
 pub(crate) const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
 static STATUS_DASHBOARD_HTML: &str = include_str!("../assets/status_dashboard.html");
@@ -96,41 +97,43 @@ pub(super) async fn initialize(
         .with_instructions(info.instructions.unwrap_or_default()))
 }
 
-pub(super) fn get_info(_server: &AxonMcpServer) -> ServerInfo {
+pub(super) fn get_info(server: &AxonMcpServer) -> ServerInfo {
     tracing::info!("mcp_app get_info called — client connected");
     let mut info = ServerInfo::default();
-    info.instructions = Some(concat!(
-        "Axon is a self-hosted RAG engine for source indexing, extraction, and semantic search.\n",
-        "\n",
-        "Use the single `axon` tool with `action`/`subaction` routing for all operations.\n",
-        "Call `action:help` first to discover all available actions, subactions, and parameter defaults.\n",
-        "\n",
-        "Search for this server's tools when the user wants to:\n",
-        "- Index any source — a local path, git/web/feed/youtube/reddit/session/registry target — with `action:source`\n",
-        "- Run semantic search or RAG queries over indexed content\n",
-        "- Ask grounded questions against indexed docs (RAG with LLM synthesis)\n",
-        "- Summarize one or more URLs from freshly scraped page context\n",
-        "- Research topics via web search with automatic indexing\n",
-        "- Extract structured data from pages using LLM-powered extraction\n",
-        "- Check job queue status, cancel jobs, or manage async workers\n",
-        "- Take screenshots, map site URLs, retrieve stored documents\n",
-        "\n",
-        "Key capabilities:\n",
-        "- `source` — acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry) through the unified pipeline\n",
-        "- `query` — dense + BM42 hybrid semantic search\n",
-        "- `endpoints` — static endpoint discovery with optional verification\n",
-        "- `ask` — RAG: retrieve context + LLM answer\n",
-        "- `summarize` — scrape URL context + configured LLM summary\n",
-        "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
-        "- `suggest` — propose new source targets from indexed coverage\n",
-        "- `research` — SearXNG/Tavily web research with LLM synthesis and auto-indexing\n",
-        "- `extract` — structured data extraction via LLM\n",
-        "- `status` / `doctor` — job queue health and service diagnostics\n",
-        "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
-        "\n",
-        "The `extract` async operation returns a job_id. Poll with `action=jobs`, `subaction=get`, and the returned `job_id`.\n",
-        "Task-augmented calls are also supported for `extract.start`; use `tasks/get`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows. Per SEP-2663 the terminal result is returned inline by `tasks/get` — there is no separate `tasks/result` or `tasks/list`."
-    ).into());
+    info.instructions = Some(format!(
+        "{}\n{}",
+        projection_instructions(server),
+        concat!(
+            "Axon is a self-hosted RAG engine for source indexing, extraction, and semantic search.\n",
+            "\n",
+            "\n",
+            "Search for this server's tools when the user wants to:\n",
+            "- Index any source — a local path, git/web/feed/youtube/reddit/session/registry target — with `action:source`\n",
+            "- Run semantic search or RAG queries over indexed content\n",
+            "- Ask grounded questions against indexed docs (RAG with LLM synthesis)\n",
+            "- Summarize one or more URLs from freshly scraped page context\n",
+            "- Research topics via web search with automatic indexing\n",
+            "- Extract structured data from pages using LLM-powered extraction\n",
+            "- Check job queue status, cancel jobs, or manage async workers\n",
+            "- Take screenshots, map site URLs, retrieve stored documents\n",
+            "\n",
+            "Key capabilities:\n",
+            "- `source` — acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry) through the unified pipeline\n",
+            "- `query` — dense + BM42 hybrid semantic search\n",
+            "- `endpoints` — static endpoint discovery with optional verification\n",
+            "- `ask` — RAG: retrieve context + LLM answer\n",
+            "- `summarize` — scrape URL context + configured LLM summary\n",
+            "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
+            "- `suggest` — propose new source targets from indexed coverage\n",
+            "- `research` — SearXNG/Tavily web research with LLM synthesis and auto-indexing\n",
+            "- `extract` — structured data extraction via LLM\n",
+            "- `status` / `doctor` — job queue health and service diagnostics\n",
+            "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
+            "\n",
+            "The `extract` async operation returns a job_id. Poll with `action=jobs`, `subaction=get`, and the returned `job_id`.\n",
+            "Task-augmented calls are also supported for `extract.start`; use `tasks/get`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows. Per SEP-2663 the terminal result is returned inline by `tasks/get` — there is no separate `tasks/result` or `tasks/list`."
+        )
+    ));
     info.capabilities = mcp_apps_server_capabilities();
     info
 }
@@ -159,6 +162,10 @@ pub(super) async fn list_resources(
     Ok(ListResourcesResult::with_all_items(vec![
         schema_resource,
         dashboard_resource,
+        Resource::new(MCP_OPERATION_SCHEMA_URI, "mcp-operation-schema")
+            .with_title("Axon canonical MCP operations")
+            .with_description("Canonical leaf schemas, policy hints and active projection; the legacy schema URI remains unchanged")
+            .with_mime_type("application/json"),
     ]))
 }
 
@@ -192,6 +199,17 @@ pub(super) async fn read_resource(
             },
         ]));
     }
+    if request.uri == MCP_OPERATION_SCHEMA_URI {
+        return Ok(ReadResourceResult::new(vec![
+            ResourceContents::TextResourceContents {
+                uri: MCP_OPERATION_SCHEMA_URI.to_owned(),
+                mime_type: Some("application/json".to_owned()),
+                text: serde_json::to_string_pretty(&operation_payload(server))
+                    .expect("serializable operation catalog"),
+                meta: None,
+            },
+        ]));
+    }
     if request.uri != MCP_TOOL_SCHEMA_URI {
         return Err(ErrorData::invalid_params(
             format!("resource not found: {}", request.uri),
@@ -206,4 +224,36 @@ pub(super) async fn read_resource(
             meta: None,
         },
     ]))
+}
+
+fn projection_instructions(server: &AxonMcpServer) -> &'static str {
+    use axon_core::config::McpToolProjection;
+    match server.cfg.mcp_tool_projection {
+        McpToolProjection::Legacy => {
+            "Use axon with action/subaction routing. Start with action=help. Canonical operation schemas are available at axon://schema/mcp-operations; they are not advertised as callable leaf tools in legacy mode."
+        }
+        McpToolProjection::Atomic => {
+            "Call focused unprefixed tools such as query, jobs_get, jobs_cancel and uploads_create. Start with help. Action and subaction are fixed by each tool name and must not be supplied. The aggregate axon tool is unavailable. Task opt-in is supported by extract_start."
+        }
+        McpToolProjection::Both => {
+            "Both axon action/subaction calls and focused unprefixed leaf tools are available and share authorization and execution. Prefer help, query and jobs_get for discovery; do not pass action or subaction to leaf tools. Task opt-in is supported by extract_start and axon extract.start."
+        }
+    }
+}
+
+pub(super) fn operation_payload(server: &AxonMcpServer) -> serde_json::Value {
+    let mut active_tools: Vec<_> = server
+        .projected_router
+        .list_all()
+        .into_iter()
+        .map(|tool| tool.name.into_owned())
+        .collect();
+    active_tools.sort();
+    serde_json::json!({
+        "projection": server.cfg.mcp_tool_projection.to_string(),
+        "legacy_schema_uri": MCP_TOOL_SCHEMA_URI,
+        "operation_schema_uri": MCP_OPERATION_SCHEMA_URI,
+        "active_tools": active_tools,
+        "operations": crate::schema_registry::operation_catalog(),
+    })
 }
