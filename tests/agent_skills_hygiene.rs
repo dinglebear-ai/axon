@@ -4,34 +4,7 @@ use std::path::{Path, PathBuf};
 
 const SKILLS_ROOT: &str = "plugins/axon/skills";
 const RESOURCE_ROOTS: &[&str] = &["plugins/axon/references", "plugins/axon/examples"];
-const EXPECTED_SKILLS: &[&str] = &[
-    "axon-snippets",
-    "cli",
-    "company-directories",
-    "competitive-intel",
-    "crawl",
-    "dashboard-reporting",
-    "deep-research",
-    "demo-walkthrough",
-    "download",
-    "extract",
-    "knowledge-base",
-    "knowledge-ingest",
-    "lead-gen",
-    "lead-research",
-    "map",
-    "market-research",
-    "monitor",
-    "qa",
-    "research-papers",
-    "scrape",
-    "search",
-    "seo-audit",
-    "shop",
-    "using-axon",
-    "website-design-clone",
-    "workflows",
-];
+const EXPECTED_SKILLS: &[&str] = &["axon-snippets", "using-axon"];
 
 #[test]
 fn agent_skills_are_portable_and_well_formed() {
