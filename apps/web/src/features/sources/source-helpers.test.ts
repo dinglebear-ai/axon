@@ -37,7 +37,8 @@ describe('generated SourcesResponse projection', () => {
   it('projects domain source strings into display entries', () => {
     const response = {
       domain: 'example.com', count: 1, limit: 50, cursor: null, next_cursor: null,
-      truncated: false, urls: ['https://example.com/docs']
+      truncated: false, urls: ['https://example.com/docs'],
+      items: [{ url: 'https://example.com/docs', title: 'Docs' }]
     };
     expect(normalizeSourceEntries(response)).toEqual([{ url: 'https://example.com/docs' }]);
   });
