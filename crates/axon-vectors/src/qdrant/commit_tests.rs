@@ -335,3 +335,76 @@ async fn mark_unchanged_items_committed_rejects_upsert_conflict() {
     scroll.assert_calls_async(1).await;
     conflict.assert_calls_async(1).await;
 }
+
+#[tokio::test]
+async fn generation_publish_waits_for_async_qdrant_payload_update() {
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock Qdrant");
+    let address = listener.local_addr().expect("mock address");
+    let server = tokio::spawn(async move {
+        let responses = [
+            ("/collections/axon-test/points/count", 2),
+            ("/collections/axon-test/points/payload?wait=false", 0),
+            ("/collections/axon-test/points/count", 0),
+            ("/collections/axon-test/points/count", 2),
+        ];
+        for (expected_path, count) in responses {
+            let (mut stream, _) = listener.accept().await.expect("accept request");
+            let mut request = [0_u8; 8192];
+            let read = stream.read(&mut request).await.expect("read request");
+            let request_line = String::from_utf8_lossy(&request[..read]);
+            let actual_path = request_line
+                .split_whitespace()
+                .nth(1)
+                .expect("request path");
+            let (status, body) = if actual_path == expected_path {
+                if expected_path.contains("/payload") {
+                    (
+                        200,
+                        r#"{"result":{"operation_id":1,"status":"acknowledged"}}"#.to_string(),
+                    )
+                } else {
+                    (200, format!(r#"{{"result":{{"count":{count}}}}}"#))
+                }
+            } else {
+                (
+                    400,
+                    format!(r#"{{"error":"unexpected path: {actual_path}"}}"#),
+                )
+            };
+            let response = format!(
+                "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("write response");
+        }
+    });
+
+    let store = QdrantVectorStore::new(format!("http://{address}"), "qdrant-test");
+    store
+        .cache_collection_spec(collection_spec("axon-test"))
+        .await;
+    let http = store.http().expect("Qdrant transport");
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        mark_generation_committed_rest(
+            &store,
+            &http,
+            "axon-test".to_string(),
+            SourceId::new("src-test"),
+            SourceGenerationId::new("gen_1"),
+        ),
+    )
+    .await
+    .expect("publish did not hang")
+    .expect("publish succeeded");
+    assert_eq!(result.points_written, 2);
+    server.await.expect("mock Qdrant finished");
+}
