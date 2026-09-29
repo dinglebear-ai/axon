@@ -5,7 +5,7 @@ description: Use when discovering, reviewing, installing, or running reusable La
 
 # Axon Snippets
 
-This skill routes the checked-in Labby Code Mode snippet sources in `snippets/`. They cover every existing Axon plugin skill outside `install-axon` and `using-axon`. The old skills remain available during migration. A snippet performs its stated Axon call and returns an evidence receipt; it does not produce the entire human-facing report or replace browser interaction where that is needed.
+This skill routes the checked-in Labby Code Mode snippet sources in `snippets/`. They replace the 24 task-specific Axon plugin skills. A snippet performs its stated Axon call and returns an evidence receipt; it does not produce the entire human-facing report or replace browser interaction where that is needed.
 
 ## Workflow
 
@@ -52,6 +52,6 @@ All snippets declare only `Axon::axon` in `tools`. This narrows an existing call
 
 ## Coverage and limits
 
-The 24 entries map one to one to the existing skills planned for retirement. Simple action skills map to one action; outcome-oriented skills gather an Axon evidence input for a later report. `dashboard-reporting`, `demo-walkthrough`, `qa`, and `website-design-clone` require browser or visual review for interactive claims. `company-directories` and `extract` require source-level field checks. `monitor` only inspects existing watches; scheduling and destructive watch operations remain deliberate manual steps. Keep the legacy skills until the user confirms the replacements meet their workflows.
+The 24 entries map one to one to the retired task-specific skills. Simple action snippets map to one action; outcome-oriented snippets gather an Axon evidence input for a later report. `dashboard-reporting`, `demo-walkthrough`, `qa`, and `website-design-clone` require browser or visual review for interactive claims. `company-directories` and `extract` require source-level field checks. `monitor` only inspects existing watches; scheduling and destructive watch operations remain deliberate manual steps.
 
 The source files are portable authoring artifacts, not auto-installed Labby built-ins. Installing them modifies the selected Labby home; publishing the Axon plugin alone does not deploy them into a gateway. See `using-axon` for the live action map and `install-axon` for first-run setup.
