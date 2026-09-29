@@ -288,7 +288,11 @@ async fn publish_created_generation(
         .await;
     match (result, release) {
         (Ok(mut counts), Ok(())) => {
-            if !counts.warnings.is_empty() {
+            if counts
+                .warnings
+                .iter()
+                .any(SourceWarning::degrades_completion)
+            {
                 super::persist_degraded_summary(runtime, &mut counts).await;
             }
             Ok(counts)

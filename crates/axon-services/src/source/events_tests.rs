@@ -70,6 +70,33 @@ async fn running_event_carries_the_authoritative_progress_counts() {
 }
 
 #[tokio::test]
+async fn informational_source_notice_is_not_a_degraded_progress_event() {
+    let (store, job_id) = store_with_job().await;
+    let emitter = emitter(store.clone(), job_id);
+    emitter
+        .warning(
+            PipelinePhase::Publishing,
+            SourceWarning {
+                code: "document.content.pre_chunk_redacted".to_string(),
+                severity: Severity::Info,
+                message: "content was scrubbed".to_string(),
+                source_item_key: Some(SourceItemKey::new("test/fixture.ts")),
+                retryable: false,
+            },
+            Some(SourceGenerationId::new("gen_1")),
+        )
+        .await;
+
+    let event = recorded_progress(&store, job_id, 0).await;
+    assert_eq!(event.status, LifecycleStatus::Running);
+    assert_eq!(event.severity, Severity::Info);
+    assert_eq!(
+        event.warning.expect("notice remains visible").code,
+        "document.content.pre_chunk_redacted"
+    );
+}
+
+#[tokio::test]
 async fn emitter_persists_item_warning_and_error_payloads() {
     let (store, job_id) = store_with_job().await;
     let emitter = emitter(store.clone(), job_id);

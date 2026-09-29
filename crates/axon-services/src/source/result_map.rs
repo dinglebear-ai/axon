@@ -85,10 +85,14 @@ pub fn to_source_result_with_counts(
         bytes_total: 0,
     });
 
-    let status = if counts.warnings.is_empty() {
-        LifecycleStatus::Completed
-    } else {
+    let status = if counts
+        .warnings
+        .iter()
+        .any(SourceWarning::degrades_completion)
+    {
         LifecycleStatus::CompletedDegraded
+    } else {
+        LifecycleStatus::Completed
     };
     let ledger = LedgerSummary {
         source_id: counts.source_id.clone(),

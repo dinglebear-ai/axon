@@ -333,10 +333,10 @@ fn job_create_request(input: &SourcePipelineInput<'_>) -> JobCreateRequest {
 }
 
 pub(super) fn successful_status(warnings: &[SourceWarning]) -> LifecycleStatus {
-    if warnings.is_empty() {
-        LifecycleStatus::Completed
-    } else {
+    if warnings.iter().any(SourceWarning::degrades_completion) {
         LifecycleStatus::CompletedDegraded
+    } else {
+        LifecycleStatus::Completed
     }
 }
 
