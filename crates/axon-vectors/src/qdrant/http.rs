@@ -146,6 +146,28 @@ impl QdrantHttp {
         Ok(Some(body))
     }
 
+    /// Probe a health endpoint by status without assuming its response is JSON.
+    pub async fn get_success(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        context: &str,
+    ) -> Result<bool, ApiError> {
+        let response = self
+            .request(Method::GET)
+            .get(url)
+            .send()
+            .await
+            .map_err(|err| self.transport(stage, context, &err))?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if !response.status().is_success() {
+            return Err(self.status_error(stage, context, response.status()));
+        }
+        Ok(true)
+    }
+
     /// PUT a JSON body. Conflict is an error for data mutations; callers that
     /// create idempotent resources must opt into conflict acceptance.
     pub async fn put_json<B: Serialize + ?Sized>(
