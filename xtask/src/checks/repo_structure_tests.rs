@@ -72,9 +72,9 @@ fn complete_fixture() -> Fixture {
             &crate_root.join("src/lib.rs"),
             "pub const CRATE_NAME: &str = \"fixture\";\n",
         );
-        write(&crate_root.join("src/CLAUDE.md"), "# Fixture\n");
-        write_symlink("CLAUDE.md", &crate_root.join("src/AGENTS.md"));
-        write_symlink("CLAUDE.md", &crate_root.join("src/GEMINI.md"));
+        write(&crate_root.join("src/AGENTS.md"), "# Fixture\n");
+        write_symlink("AGENTS.md", &crate_root.join("src/CLAUDE.md"));
+        write_symlink("AGENTS.md", &crate_root.join("src/GEMINI.md"));
     }
 
     for krate in TARGET_CRATES {

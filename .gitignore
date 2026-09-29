@@ -176,7 +176,10 @@ http-cacache/
 specs/.current-spec
 **/.progress.md
 
-# Personal local cheatsheet (never commit)
+# Machine/user-specific agent instructions (never commit)
+AGENTS.override.md
+CLAUDE.local.md
+# Legacy local cheatsheet (not an automatically discovered Claude filename)
 CLAUDE.md.local
 
 # ── Bench artifacts (numerical-only — but never commit) ──────────────────────

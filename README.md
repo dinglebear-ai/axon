@@ -489,6 +489,12 @@ credentials even though every such target now enters through `SourceRequest`.
 
 ## Development
 
+Start with [AGENTS.md](AGENTS.md), the canonical repository instructions.
+`CLAUDE.md` and `GEMINI.md` are direct relative symlinks to it; scoped guides
+use the same arrangement. See [contributing](docs/development/contributing.md)
+and [documentation maintenance](docs/development/documentation.md) for
+setup, sources of truth, and verification proportional to the changed files.
+
 ```bash
 cargo build --bin axon                 # debug
 cargo build --release --bin axon       # release
@@ -503,9 +509,11 @@ cargo clippy --workspace --all-targets --features test-helpers -- -D warnings
 cargo test --workspace --features test-helpers
 ```
 
-`just` recipes (recommended): `just verify` (fmt-check + clippy + check + test),
-`just fix` (fmt + clippy --fix), `just precommit` (full pre-PR gate),
-`just watch-check` (check + test-lib on save).
+`just --list` and the Justfile own the current recipe definitions.
+`just verify` is the broad integration gate (including operational and
+structural checks); `just fix` applies formatter/Clippy fixes; `just precommit`
+is the broad staged gate. Use scoped documentation checks for prose-only
+changes rather than rebuilding every product surface.
 
 Local dev infra is explicit about Qdrant ownership. `just services-up` (an alias
 for `just services-up-local`) starts a self-contained Qdrant/TEI/Chrome stack;

@@ -4,8 +4,69 @@
 from pathlib import Path
 import json
 import re
+import subprocess
 
 root = Path(__file__).resolve().parents[1]
+
+# Inspect tracked scopes only: unrelated worktrees and runtime caches are not
+# documentation inputs. The Rust checker separately discovers orphan aliases.
+tracked = subprocess.check_output(
+    ["git", "ls-files", "-z"], cwd=root, text=True
+).split("\0")
+local_names = {"AGENTS.override.md", "CLAUDE.local.md", "CLAUDE.md.local"}
+if any(Path(name).name in local_names for name in tracked):
+    raise SystemExit("personal agent instructions must not be tracked")
+ignore_lines = set((root / ".gitignore").read_text().splitlines())
+if not {"AGENTS.override.md", "CLAUDE.local.md"}.issubset(ignore_lines):
+    raise SystemExit("repository must ignore both canonical local instruction filenames")
+
+agent_scopes = [root / name for name in tracked if Path(name).name == "AGENTS.md"]
+if root / "AGENTS.md" not in agent_scopes:
+    raise SystemExit("root AGENTS.md must be tracked")
+for canonical in agent_scopes:
+    if canonical.is_symlink() or not canonical.is_file():
+        raise SystemExit(f"agent guide is not a regular canonical file: {canonical}")
+    for name in ("CLAUDE.md", "GEMINI.md"):
+        alias = canonical.with_name(name)
+        if not alias.is_symlink() or alias.readlink() != Path("AGENTS.md"):
+            raise SystemExit(f"agent alias must point directly to AGENTS.md: {alias}")
+
+def validate_instruction_budget(scopes: list[Path], limit_bytes: int = 30 * 1024) -> None:
+    """Leave space for loader separators below the default 32 KiB project limit."""
+    for canonical in scopes:
+        chain_bytes = sum(
+            guide.stat().st_size
+            for guide in scopes
+            if guide == canonical or guide.parent in canonical.parent.parents
+        )
+        if chain_bytes > limit_bytes:
+            raise SystemExit(
+                f"instruction chain exceeds {limit_bytes} bytes at {canonical}: {chain_bytes}"
+            )
+
+
+def validate_agent_references(scopes: list[Path]) -> None:
+    """Keep scoped instructions navigable without duplicating reference pages."""
+    link_pattern = re.compile(r"\[[^\]\n]+\]\(([^)\s]+)\)")
+    for guide in scopes:
+        text = guide.read_text(encoding="utf-8")
+        links = link_pattern.findall(text)
+        if len(links) < 3:
+            raise SystemExit(f"agent guide needs at least three useful references: {guide}")
+        for link in links:
+            target = link.split("#", 1)[0]
+            if not target or ":" in target:
+                continue
+            if not (guide.parent / target).exists():
+                raise SystemExit(f"broken agent reference in {guide}: {link}")
+
+
+root_characters = len((root / "AGENTS.md").read_text(encoding="utf-8"))
+if root_characters > 7500:
+    raise SystemExit(f"root AGENTS.md exceeds 7500 characters: {root_characters}")
+validate_instruction_budget(agent_scopes)
+validate_agent_references(agent_scopes)
+
 active = [
     root / "README.md",
     root / "docs/operations/operations.md",

@@ -2,10 +2,11 @@
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
-> Current runtime docs describe the pre-#298 implementation. The clean-break
-> source-pipeline contracts live in
-> [`pipeline-unification/`](pipeline-unification/README.md) and supersede old
-> command/action/route shapes when that refactor lands.
+> The unified `SourceRequest` pipeline is implemented. Current source and
+> generated references describe the shipped behavior;
+> [`pipeline-unification/`](pipeline-unification/README.md) preserves its design
+> contracts and dated delivery history. Agent instructions are canonical in
+> [`AGENTS.md`](../AGENTS.md), with direct `CLAUDE.md` and `GEMINI.md` aliases.
 
 ## What is Axon
 
@@ -14,7 +15,7 @@ Axon is a trimodal application:
 | Mode | Entry point | Port | Purpose |
 |------|-------------|------|---------|
 | CLI | `axon <command>` | — | Interactive command-line tool for crawl, scrape, summarize, embed, query, ask |
-| MCP server | `axon mcp` | 8001 | Single-tool MCP server exposing all CLI operations to AI agents |
+| MCP server | `axon mcp` | 8001 | Primary action-dispatched tool, auxiliary dashboard, tasks, and resources |
 | Web panel + HTTP API | `axon serve` | 8001 | Unified HTTP server for web panel, MCP, and direct `/v1` REST routes |
 
 All three modes share the same Rust binary, the same services layer, and the same infrastructure stack.
@@ -28,7 +29,7 @@ reviews, plans) live under the history directories at the bottom.
 
 | Doc | Description |
 |-----|-------------|
-| [guides/getting-started.md](guides/getting-started.md) | Step-by-step setup for local dev and Docker |
+| [guides/getting-started.md](guides/getting-started.md) | Local development setup and provider infrastructure |
 | [guides/configuration.md](guides/configuration.md) | Configuration reference — `~/.axon/config.toml` and environment variables |
 | [guides/ask-rag.md](guides/ask-rag.md) | The `ask` RAG pipeline — retrieval, synthesis, citations |
 | [guides/reindexing.md](guides/reindexing.md) | Re-indexing and payload schema upgrades |
@@ -60,7 +61,7 @@ reviews, plans) live under the history directories at the bottom.
 | [architecture/stack/](architecture/stack/) | Trimodal architecture, technology choices, prerequisites |
 | [architecture/specs/](architecture/specs/) | Feature specifications (vertical extractors, android, active design notes) |
 
-### `pipeline-unification/` — active future contract
+### `pipeline-unification/` — implemented design contract
 
 | Doc | Description |
 |-----|-------------|
@@ -81,6 +82,7 @@ reviews, plans) live under the history directories at the bottom.
 | Doc | Description |
 |-----|-------------|
 | [development/contributing.md](development/contributing.md) | Rust build setup, monolith policy, security guardrails |
+| [development/documentation.md](development/documentation.md) | Sources of truth, canonical agent files, documentation review, and scoped verification |
 | [development/testing.md](development/testing.md) | Test strategy, how to run, coverage targets |
 | [development/release-checklist.md](development/release-checklist.md) | Pre-release quality checklist |
 | [development/feature-delivery-framework.md](development/feature-delivery-framework.md) | Feature development process |

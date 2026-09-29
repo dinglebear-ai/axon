@@ -1,3 +1,6 @@
 interface:
   display_name: "Axon Snippets"
   short_description: "Find and run reusable Axon Code Mode snippets"
+  brand_color: "#29B6F6"
+policy:
+  allow_implicit_invocation: true

@@ -15,16 +15,14 @@ fn architecture_docs_delegate_volatile_workspace_facts_to_cargo_manifest() {
 }
 
 #[test]
-fn contributor_guide_matches_local_and_external_qdrant_recipes() {
-    let guide = fs::read_to_string("CLAUDE.md").unwrap();
-    assert!(
-        guide.contains(
-            "just services-up # start self-contained local infra (Qdrant + TEI + Chrome)"
-        )
-    );
+fn recipe_guide_matches_local_and_external_qdrant_recipes() {
+    let guide = fs::read_to_string("docs/development/repo/recipes.md").unwrap();
+    assert!(guide.contains(
+        "| `just services-up` | Start self-contained local infrastructure (Qdrant, TEI, Chrome) |"
+    ));
     assert!(
         guide
-            .contains("just services-up-external-qdrant # start TEI + Chrome with external Qdrant")
+            .contains("| `just services-up-external-qdrant` | Start TEI + Chrome with external Qdrant; requires `AXON_EXTERNAL_QDRANT_URL` |")
     );
     assert!(!guide.contains("services-up deliberately skips axon-qdrant"));
     assert!(!guide.contains("just services-up # start local infra (TEI + Chrome; NOT Qdrant)"));
@@ -1877,7 +1875,13 @@ fn repository_contract_keeps_pinned_validation_on_available_hosted_runners() {
     assert!(!workflow.contains("runs-on: ci-pool-ops"));
     assert!(workflow.contains("repository: dinglebear-ai/workflows"));
     assert!(workflow.contains("ref: d1a41a7af9c41189e0f1062234364f5814bda99d"));
-    assert!(workflow.contains("python3 workflow-library/scripts/fleet_contract.py check"));
+    assert!(workflow.contains("python3 target/scripts/check_repository_contract.py"));
+    assert!(workflow.contains("--implementation workflow-library/scripts/fleet_contract.py"));
+    assert!(
+        workflow.contains(
+            "python3 -m unittest discover -s target/tests -p test_repository_contract.py"
+        )
+    );
     assert!(workflow.contains("--repo target"));
     assert!(workflow.contains("--profile rust"));
     assert_eq!(workflow.matches("persist-credentials: false").count(), 2);

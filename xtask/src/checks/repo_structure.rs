@@ -91,9 +91,7 @@ fn check_target_crate(
     let src_dir = crate_root.join("src");
     let lib_rs = read(src_dir.join("lib.rs"), errors);
     require_modules(krate, &src_dir, &lib_rs, errors);
-    require_file(&src_dir.join("CLAUDE.md"), errors);
-    require_claude_symlink(&src_dir.join("AGENTS.md"), errors);
-    require_claude_symlink(&src_dir.join("GEMINI.md"), errors);
+    errors.extend(super::claude_symlinks::validate_dir(&src_dir));
 }
 
 fn require_workspace_member_path(
@@ -186,14 +184,6 @@ fn require_modules(krate: &TargetCrate, src_dir: &Path, lib_rs: &str, errors: &m
             }
         }
         Err(err) => errors.push(format!("failed to read {}: {err}", display(src_dir))),
-    }
-}
-
-fn require_claude_symlink(path: &Path, errors: &mut Vec<String>) {
-    match fs::read_link(path) {
-        Ok(target) if target == Path::new("CLAUDE.md") => {}
-        Ok(_) => errors.push(format!("{} must symlink to CLAUDE.md", display(path))),
-        Err(_) => errors.push(format!("missing required symlink: {}", display(path))),
     }
 }
 

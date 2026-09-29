@@ -179,6 +179,12 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         result["routing_fallback"] = True
         return result
 
+    # Agent guides and their aliases are documentation even inside a crate or
+    # application directory. Keep mixed code changes on their normal lanes.
+    agent_names = {"AGENTS.md", "CLAUDE.md", "GEMINI.md"}
+    agent_docs = any(p.rsplit("/", 1)[-1] in agent_names for p in paths)
+    paths = [p for p in paths if p.rsplit("/", 1)[-1] not in agent_names]
+
     workflow = any_match(
         paths,
         lambda p: starts(p, ".github/workflows/", ".github/actions/"),
@@ -198,13 +204,13 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         lambda p: p == ".github/workflows/ci.yml",
     )
     codeql_all = any_match(paths, lambda p: p == ".github/workflows/codeql.yml")
-    docs = any_match(
+    docs = agent_docs or any_match(
         paths,
         lambda p: starts(p, "docs/", "openwiki/")
         or p in {"README.md", "CHANGELOG.md"}
         or p in DOC_CI_HELPER_SCRIPTS,
     )
-    docs_contracts = any_match(
+    docs_contracts = agent_docs or any_match(
         paths,
         lambda p: starts(p, "docs/", "openwiki/", "plugins/")
         or p in {"README.md", "CHANGELOG.md", "CLAUDE.md"}
