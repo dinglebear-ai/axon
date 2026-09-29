@@ -2,7 +2,7 @@
 
 use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, ContentSkipReason, MetadataMap, PreparedChunk,
-    PreparedDocument, SkippedDocument, SourceDocument, SourceItemKey, SourceWarning,
+    PreparedDocument, Severity, SkippedDocument, SourceDocument, SourceItemKey, SourceWarning,
 };
 use axon_parse::vertical::take_metadata_artifacts;
 
@@ -414,11 +414,13 @@ fn redact_pre_chunk(
         return content;
     }
     let mut warnings = content.warnings;
-    warnings.push(warning(
+    let mut notice = warning(
         "document.content.pre_chunk_redacted",
         "pre-chunk redaction pass scrubbed sensitive values before chunking",
         source_item_key,
-    ));
+    );
+    notice.severity = Severity::Info;
+    warnings.push(notice);
     PreparedContentText {
         text: redacted,
         warnings,
