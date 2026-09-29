@@ -52,5 +52,5 @@ async fn routed_local_discovery_keeps_configured_and_requested_exclusions() {
         .iter()
         .filter_map(|item| item.display_path.as_deref())
         .collect();
-    assert_eq!(paths, ["kept/three.txt"]);
+    assert_eq!(paths, ["kept/three.md"]);
 }
