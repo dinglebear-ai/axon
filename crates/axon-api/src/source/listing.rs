@@ -37,6 +37,14 @@ pub struct DomainSourcesResponse {
     pub next_cursor: Option<String>,
     pub truncated: bool,
     pub urls: Vec<String>,
+    pub items: Vec<DomainSourceItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DomainSourceItem {
+    pub url: String,
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

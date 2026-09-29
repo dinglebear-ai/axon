@@ -52,17 +52,7 @@ pub(crate) async fn sources(
             query.cursor.as_deref(),
         )
         .await
-        .map(|result| {
-            axon_api::source::SourcesResponse::Domain(axon_api::source::DomainSourcesResponse {
-                domain: result.domain,
-                count: result.count,
-                limit: result.limit,
-                cursor: result.cursor,
-                next_cursor: result.next_cursor,
-                truncated: result.truncated,
-                urls: result.urls,
-            })
-        })
+        .map(|result| axon_api::source::SourcesResponse::Domain(domain_sources_response(result)))
         .map(Json)
         .map_err(HttpError::from_box);
     }
@@ -78,6 +68,28 @@ pub(crate) async fn sources(
         })
         .map(Json)
         .map_err(HttpError::from_box)
+}
+
+fn domain_sources_response(
+    result: services::types::DomainSourcesResult,
+) -> axon_api::source::DomainSourcesResponse {
+    axon_api::source::DomainSourcesResponse {
+        domain: result.domain,
+        count: result.count,
+        limit: result.limit,
+        cursor: result.cursor,
+        next_cursor: result.next_cursor,
+        truncated: result.truncated,
+        urls: result.urls,
+        items: result
+            .items
+            .into_iter()
+            .map(|item| axon_api::source::DomainSourceItem {
+                url: item.url,
+                title: item.title,
+            })
+            .collect(),
+    }
 }
 
 #[utoipa::path(
@@ -169,7 +181,27 @@ pub(crate) async fn doctor(
 
 #[cfg(test)]
 mod tests {
-    use super::PaginationQuery;
+    use super::{PaginationQuery, domain_sources_response};
+
+    #[test]
+    fn domain_sources_http_response_preserves_page_titles() {
+        let result = axon_services::system::domain_sources_from_urls(
+            "example.com".into(),
+            vec![(
+                "https://example.com/guide".into(),
+                Some("Guide title".into()),
+            )],
+            10,
+            None,
+            Some("next".into()),
+        );
+        let response = domain_sources_response(result);
+        assert_eq!(response.urls, vec!["https://example.com/guide"]);
+        assert_eq!(response.items[0].title.as_deref(), Some("Guide title"));
+        assert_eq!(response.next_cursor.as_deref(), Some("next"));
+        let body = serde_json::to_value(response).expect("serialize source response");
+        assert_eq!(body["items"][0]["title"], "Guide title");
+    }
 
     #[test]
     fn unfiltered_pagination_keeps_legacy_500_cap() {
