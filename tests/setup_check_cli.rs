@@ -288,5 +288,8 @@ fn setup_plugin_hook_json_reports_policy_without_setup() {
         stack == "down" || stack == "already_healthy",
         "unexpected plugin-hook payload: {payload}"
     );
+    if stack == "down" {
+        assert_eq!(payload["action"], "run axon setup");
+    }
     assert_preflight_did_not_create_runtime_dirs(home.path());
 }
