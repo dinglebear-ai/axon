@@ -9,7 +9,7 @@ updated: 2026-09-29
 Last reviewed: 2026-09-29
 
 Axon is a Cargo workspace with a thin root binary, focused product crates,
-and repository-maintenance packages. [Cargo.toml](../../Cargo.toml) defines
+and repository-maintenance packages. [`Cargo.toml`](../../Cargo.toml) defines
 membership and inherited product metadata. The Palette Tauri backend has a
 separate workspace; it is not a root-workspace crate.
 
