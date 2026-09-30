@@ -2,7 +2,9 @@
 
 pub(super) mod artifact_candidates;
 mod created_generation;
+mod generation_reservation;
 mod generation_spool;
+use generation_reservation::reserve_unoccupied_generation;
 mod generation_state;
 mod generation_work;
 mod helpers;
@@ -248,10 +250,8 @@ async fn run_generation(
         })
         .await?;
     }
-    let generation = runtime
-        .ledger
-        .create_generation(manifest.source_id.clone())
-        .await?;
+    let (generation, occupied_generations) =
+        reserve_unoccupied_generation(runtime, input, &manifest.source_id).await?;
     diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
     // Boxed: this is by far the largest future in the pipeline, and holding
@@ -290,11 +290,58 @@ async fn run_generation(
         None => run.await,
     };
     match result {
-        Ok(counts) => Ok(counts),
+        Ok(counts) => Ok(retire_imported_generations(
+            runtime,
+            input,
+            &generation,
+            occupied_generations,
+            counts,
+        )
+        .await),
         Err(error) => {
             Err(finalization::finalize_failed_generation(runtime, input, generation, error).await)
         }
     }
+}
+
+async fn retire_imported_generations(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    generation: &SourceGeneration,
+    occupied_generations: Vec<SourceGenerationId>,
+    mut counts: IndexCounts,
+) -> IndexCounts {
+    for occupied in occupied_generations {
+        if let Err(error) = crate::reserved_call::retire_generation(
+            runtime,
+            crate::reserved_call::ProviderCallContext::for_phase(
+                input.plan.job_id,
+                input.execution.attempt,
+                PipelinePhase::Publishing,
+                input.execution.priority,
+                format!("retire-imported-generation:{}", occupied.0),
+            ),
+            input.collection.to_string(),
+            generation.source_id.clone(),
+            occupied.clone(),
+            generation.generation.clone(),
+        )
+        .await
+        {
+            counts.warnings.push(
+                publish::record_retirement_debt(
+                    runtime,
+                    input,
+                    generation,
+                    occupied,
+                    input.collection,
+                    error,
+                )
+                .await,
+            );
+        }
+    }
+    counts
 }
 
 fn job_create_request(input: &SourcePipelineInput<'_>) -> JobCreateRequest {

@@ -77,6 +77,7 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     assert_eq!(
         vectors.calls().await,
         vec![
+            "count_generation_points",
             "ensure_collection",
             "begin_bulk_load",
             "upsert",
@@ -294,6 +295,7 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     assert_eq!(
         vectors.calls().await,
         vec![
+            "count_generation_points",
             "ensure_collection",
             "begin_bulk_load",
             "upsert",
