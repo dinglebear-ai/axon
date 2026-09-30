@@ -50,8 +50,8 @@ use support::{
     map_reserved, record_provider_heartbeat, record_provider_queued_heartbeat, scheduler_error,
 };
 pub use vector::{
-    begin_bulk_load, delete_vectors, drain_bulk_load_cleanups, mark_generation_committed,
-    mark_unchanged_items_committed, retire_generation, vector_operation,
+    begin_bulk_load, count_generation_points, delete_vectors, drain_bulk_load_cleanups,
+    mark_generation_committed, mark_unchanged_items_committed, retire_generation, vector_operation,
 };
 #[cfg(test)]
 pub(crate) use vector::{test_bulk_load_cleanup_lifecycle, test_bulk_load_finish_handoff};

@@ -259,6 +259,22 @@ where
     )
 }
 
+pub async fn count_generation_points(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    collection: String,
+    source_id: SourceId,
+    generation: SourceGenerationId,
+) -> Result<u64, ApiError> {
+    let store = Arc::clone(&runtime.vector_store);
+    vector_operation(runtime, context, move || async move {
+        store
+            .count_generation_points(collection, source_id, generation)
+            .await
+    })
+    .await
+}
+
 pub async fn mark_generation_committed(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
