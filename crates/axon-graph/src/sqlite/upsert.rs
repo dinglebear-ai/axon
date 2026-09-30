@@ -70,13 +70,15 @@ pub async fn upsert_candidates(
     let source_id = prevalidate_candidate_batch(&candidates)?;
     let mut totals = CandidateCounts::default();
     for batch in candidates.chunks(CANDIDATE_TRANSACTION_BATCH_SIZE) {
+        // Resolve before acquiring the shared SQLite writer lane.
+        let resolved = batch.iter().map(resolve_candidate).collect::<Vec<_>>();
         let mut tx = ImmediateTx::begin_with_gate(pool, write_gate)
             .await
             .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
         let mut batch_totals = CandidateCounts::default();
         let mut failed = false;
-        for candidate in batch {
-            match write_candidate(&mut tx, candidate).await {
+        for (candidate, (nodes, edges)) in batch.iter().zip(&resolved) {
+            match write_candidate(&mut tx, candidate, nodes, edges).await {
                 Ok(counts) => batch_totals.add(counts),
                 Err(_) => {
                     failed = true;
@@ -90,11 +92,9 @@ pub async fn upsert_candidates(
             totals.add(batch_totals);
             continue;
         }
-        // A failed batch may contain a valid prefix. Replay it candidate by
-        // candidate so that prefix stays durable and the first bad candidate
-        // retains the existing failure boundary.
-        for candidate in batch {
-            totals.add(write_one_candidate(pool, write_gate, candidate).await?);
+        // Replay a failed batch to preserve its valid committed prefix.
+        for (candidate, (nodes, edges)) in batch.iter().zip(&resolved) {
+            totals.add(write_resolved_candidate(pool, write_gate, candidate, nodes, edges).await?);
         }
     }
     Ok(totals.result(source_id))
@@ -123,7 +123,8 @@ where
         } else {
             source_id = Some(candidate.source_id.clone());
         }
-        totals.add(write_one_candidate(pool, write_gate, &candidate).await?);
+        let (nodes, edges) = resolve_candidate(&candidate);
+        totals.add(write_resolved_candidate(pool, write_gate, &candidate, &nodes, &edges).await?);
     }
     Ok(totals.result(source_id))
 }
@@ -157,15 +158,17 @@ impl CandidateCounts {
     }
 }
 
-async fn write_one_candidate(
+async fn write_resolved_candidate(
     pool: &SqlitePool,
     write_gate: &axon_core::sqlite::SqliteWriteGate,
     candidate: &GraphCandidate,
+    resolved_nodes: &[ResolvedNode],
+    resolved_edges: &[ResolvedEdgeEvidence<'_>],
 ) -> StoreResult<CandidateCounts> {
     let mut tx = ImmediateTx::begin_with_gate(pool, write_gate)
         .await
         .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
-    let counts = write_candidate(&mut tx, candidate).await?;
+    let counts = write_candidate(&mut tx, candidate, resolved_nodes, resolved_edges).await?;
     tx.commit()
         .await
         .map_err(|e| graph_storage_error(format!("failed to commit graph transaction: {e}")))?;
@@ -175,16 +178,17 @@ async fn write_one_candidate(
 async fn write_candidate(
     tx: &mut ImmediateTx,
     candidate: &GraphCandidate,
+    resolved_nodes: &[ResolvedNode],
+    resolved_edges: &[ResolvedEdgeEvidence<'_>],
 ) -> StoreResult<CandidateCounts> {
-    let (resolved_nodes, resolved_edges) = resolve_candidate(candidate);
     nodes::upsert_nodes(
         tx,
-        &resolved_nodes,
+        resolved_nodes,
         &candidate.source_id,
         candidate.confidence,
     )
     .await?;
-    upsert_aliases(tx, &resolved_nodes).await?;
+    upsert_aliases(tx, resolved_nodes).await?;
 
     let mut counts = CandidateCounts {
         seen: 1,
