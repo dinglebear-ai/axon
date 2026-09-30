@@ -314,7 +314,7 @@ pub(super) async fn cleanup_failed_generation_vectors(
     }
 }
 
-async fn record_retirement_debt(
+pub(super) async fn record_retirement_debt(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     generation: &SourceGeneration,
