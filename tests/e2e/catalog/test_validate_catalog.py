@@ -2,6 +2,7 @@ import copy
 import importlib.util
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location("validate_catalog", ROOT / "scripts/e2e/validate-catalog.py")
@@ -21,6 +22,35 @@ class CatalogValidationTests(unittest.TestCase):
 
     def test_current_catalog_reconciles_all_inventories(self):
         self.assertEqual([], validator.validate(self.catalog))
+
+    def test_inventory_reads_canonical_json_not_markdown(self):
+        fixtures = {
+            validator.CLI_REGISTRY: {"commands": [{"name": "code-search", "path": ["code-search"]}]},
+            validator.CROSS_MATRIX: {"operations": [{"op": "query"}]},
+            validator.MCP_REGISTRY: {"x-axon": {"operations": [{"action": "code_search"}, {"action": "codex"}]}},
+            validator.REST_REGISTRY: {"routes": [{"path": "/healthz"}, {"path": "/v1/agent/status"}, {"path": "/v1/memories"}]},
+        }
+        with patch.object(validator, "load", side_effect=lambda path: fixtures[path]):
+            self.assertEqual(validator.expected_operations(), {
+                "cli:code-search", "cross:query", "surface:code-search",
+                "surface:code_search", "surface:codex", "surface:agent", "surface:memories",
+            })
+
+    def test_missing_or_empty_inventory_fails_with_recovery_guidance(self):
+        original = validator.load
+        for broken in ({}, {"x-axon": {"operations": []}}, {"x-axon": {"operations": [{}]}}):
+            with self.subTest(registry=broken), patch.object(
+                validator, "load", side_effect=lambda path: broken if path == validator.MCP_REGISTRY else original(path)
+            ):
+                errors = validator.validate(self.catalog)
+                self.assertTrue(any("authoritative operation inventory unavailable" in error and "regenerate" in error for error in errors))
+
+    def test_newly_advertised_families_cannot_be_silently_omitted(self):
+        for name in ("surface:agent", "surface:codex"):
+            self.assert_rejected(
+                lambda value: value["operations"].__setitem__(slice(None), [row for row in value["operations"] if row["id"] != name]),
+                "unclassified advertised",
+            )
 
     def test_rejects_missing_and_duplicate_ids(self):
         self.assert_rejected(lambda value: value["operations"].pop(), "unclassified advertised")

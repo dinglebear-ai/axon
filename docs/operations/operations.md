@@ -70,6 +70,20 @@ axon doctor --json
 axon jobs list --json
 ```
 
+For repeated local monitoring from a repository checkout, the development
+wrapper can reuse its already-built binary without Cargo or container
+freshness work:
+
+```bash
+AXON_NO_BUILD=1 ./scripts/axon status
+```
+
+The wrapper requires an executable `debug/axon` under the effective
+`CARGO_TARGET_DIR` (or the checkout target directory). Verify that binary
+is current first; this fast path does not rebuild it or forward requests
+to a remote service. Without this opt-in, the development wrapper may
+build and synchronize its configured development container.
+
 Inspect the actual result and diagnostics. Process health, embedding/browser
 readiness, Qdrant availability, worker liveness, and authenticated client
 access are separate checks. `/healthz` or a listening port cannot prove all
