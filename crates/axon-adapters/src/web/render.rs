@@ -113,6 +113,20 @@ pub(super) fn acquired_from_rendered(
     manifest_item.version = None;
 
     let mut metadata = MetadataMap::new();
+    if let Some(title) = rendered
+        .metadata
+        .get("web_title")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            rendered
+                .html
+                .as_deref()
+                .and_then(super::metadata::title_from_html)
+        })
+    {
+        metadata.insert("web_title".to_string(), serde_json::json!(title));
+    }
     metadata.insert(
         "web_fetch_method".to_string(),
         serde_json::json!(method_tag),

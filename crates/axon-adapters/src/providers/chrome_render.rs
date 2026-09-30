@@ -291,18 +291,31 @@ impl ChromeRenderProvider {
         )
         .await
         .map_err(|err| err.to_string())
-        .map(|result| RenderedResource {
-            uri: request.uri,
-            final_uri: result.url,
-            markdown: result.markdown,
-            html: Some(result.output),
-            text: None,
-            render_mode: map_core_render_mode(render_mode),
-            captured_at: Timestamp::from(Utc::now()),
-            artifacts: Vec::new(),
-            console: Vec::new(),
-            network: Vec::new(),
-            metadata: request.metadata,
+        .map(|result| {
+            let mut metadata = request.metadata;
+            metadata.remove("web_title");
+            if let Some(title) = result
+                .payload
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+            {
+                metadata.insert("web_title".to_string(), serde_json::json!(title));
+            }
+            RenderedResource {
+                uri: request.uri,
+                final_uri: result.url,
+                markdown: result.markdown,
+                html: Some(result.output),
+                text: None,
+                render_mode: map_core_render_mode(render_mode),
+                captured_at: Timestamp::from(Utc::now()),
+                artifacts: Vec::new(),
+                console: Vec::new(),
+                network: Vec::new(),
+                metadata,
+            }
         })
     }
 }
