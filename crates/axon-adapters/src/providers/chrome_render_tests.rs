@@ -408,6 +408,7 @@ async fn render_http_mode_returns_markdown_and_html() {
         .expect("render should succeed over HTTP");
 
     assert_eq!(rendered.render_mode, RenderMode::Http);
+    assert_eq!(rendered.metadata["web_title"], "Hi");
     assert!(rendered.markdown.contains("hello render"));
     assert!(
         rendered

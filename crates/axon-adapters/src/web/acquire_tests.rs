@@ -243,18 +243,20 @@ fn require_item(outcome: AcquiredItem, message: &str) -> AcquiredSourceItem {
 
 #[test]
 fn rendered_web_page_preserves_crawled_html_title() {
+    let mut metadata = MetadataMap::new();
+    metadata.insert("web_title".to_string(), serde_json::json!("Docs & Guides"));
     let rendered = RenderedResource {
         uri: "https://example.com/docs".to_string(),
         final_uri: "https://example.com/docs".to_string(),
         markdown: "# Body".to_string(),
-        html: Some("<html><head><TITLE>Docs &amp; Guides</TITLE></head></html>".to_string()),
+        html: None,
         text: None,
         render_mode: RenderMode::Http,
         captured_at: Timestamp::from(chrono::Utc::now()),
         artifacts: Vec::new(),
         console: Vec::new(),
         network: Vec::new(),
-        metadata: MetadataMap::new(),
+        metadata,
     };
     let acquired = acquired_from_rendered(
         &item("https://example.com/docs"),
