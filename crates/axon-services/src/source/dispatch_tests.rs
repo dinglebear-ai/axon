@@ -978,11 +978,13 @@ async fn force_refresh_rebuilds_unchanged_source() {
         ),
     };
     let run = |force| {
-        let mut plan = family_source_plan(&source, &route, true, None, None);
+        let plan = family_source_plan(&source, &route, true, None, None);
+        let mut request = SourceRequest::new(source.clone());
         if force {
-            plan.request.refresh = axon_api::source::SourceRefreshPolicy::Force;
+            request.refresh = axon_api::source::SourceRefreshPolicy::Force;
         }
         async {
+            let execution = SourceExecutionContext::inline(request, None);
             dispatch_materialized(
                 &runtime,
                 &adapter,
@@ -990,7 +992,7 @@ async fn force_refresh_rebuilds_unchanged_source() {
                 "axon-test",
                 "test-owner",
                 None,
-                &test_execution(&source),
+                &execution,
                 |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
             )
             .await
