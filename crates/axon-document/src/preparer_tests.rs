@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-5");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-6");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 

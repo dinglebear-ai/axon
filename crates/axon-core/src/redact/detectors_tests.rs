@@ -118,8 +118,8 @@ fn every_known_token_family_is_classified_for_payload_guards() {
         "github_pat_abcdefghijklmnopqrstuvwxyz123456789",
         "ghp_abcdefghijklmnopqrstuvwxyz123456789",
         "xoxb-abcdefghijklmnopqrstuvwxyz123456789",
-        "glpat-abcdefghijklmnopqrstuvwxyz123456789",
-        "tvly-abcdefghijklmnopqrstuvwxyz123456789",
+        "glpat-abcdefghijklmnopqrstuvwxyz123456789", // gitleaks:allow
+        "tvly-abcdefghijklmnopqrstuvwxyz123456789",  // gitleaks:allow
         concat!("rk_", "live_abcdefghijklmnopqrstuvwxyz123456789"),
     ] {
         assert_eq!(
@@ -218,13 +218,13 @@ fn contains_bare_secret_token_matches_all_github_token_prefixes() {
 #[test]
 fn contains_pem_private_key_block_matches_common_key_headers() {
     assert!(contains_pem_private_key_block(
-        "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJ...\n-----END RSA PRIVATE KEY-----"
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJ...\n-----END RSA PRIVATE KEY-----" // gitleaks:allow
     ));
     assert!(contains_pem_private_key_block(
-        "-----BEGIN PRIVATE KEY-----\nMIIBOgIBAAJ...\n-----END PRIVATE KEY-----"
+        "-----BEGIN PRIVATE KEY-----\nMIIBOgIBAAJ...\n-----END PRIVATE KEY-----" // gitleaks:allow
     ));
     assert!(contains_pem_private_key_block(
-        "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1r...\n-----END OPENSSH PRIVATE KEY-----"
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1r...\n-----END OPENSSH PRIVATE KEY-----" // gitleaks:allow
     ));
     // Non-secret lookalikes: public keys and unrelated PEM-shaped headers.
     assert!(!contains_pem_private_key_block(
@@ -239,12 +239,31 @@ fn contains_pem_private_key_block_matches_common_key_headers() {
 }
 
 #[test]
+fn retrievable_body_scrubs_complete_pem_blocks_before_chunking() {
+    let source =
+        "before\n-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl\n-----END PRIVATE KEY-----\nafter"; // gitleaks:allow
+    let redacted = crate::redact::redact_retrievable_body_secrets(source);
+    assert!(redacted.contains("before"));
+    assert!(redacted.contains("after"));
+    assert!(!redacted.contains("ZmFrZS1maXh0dXJl"));
+    assert_eq!(retrievable_body_secret_detector(&redacted), None);
+
+    let incomplete = "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl"; // gitleaks:allow
+    assert_eq!(
+        retrievable_body_secret_detector(&crate::redact::redact_retrievable_body_secrets(
+            incomplete
+        )),
+        Some("pem_private_key")
+    );
+}
+
+#[test]
 fn contains_url_embedded_credentials_matches_user_and_password() {
     assert!(contains_url_embedded_credentials(
         "postgres://myuser:s3cr3tpass@db.internal:5432/mydb"
     ));
     assert!(contains_url_embedded_credentials(
-        "https://admin:hunter2@example.com/path"
+        "https://admin:hunter2@example.com/path" // gitleaks:allow
     ));
     // Non-secret lookalikes: bare username (no password), and a plain URL.
     assert!(!contains_url_embedded_credentials(
