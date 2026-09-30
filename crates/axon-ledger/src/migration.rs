@@ -25,6 +25,11 @@ pub const MIGRATIONS: &[SqlMigration] = &[
         name: "0002_publication_state",
         sql: include_str!("migrations/0002_publication_state.sql"),
     },
+    SqlMigration {
+        version: 3,
+        name: "0003_document_item_lookup",
+        sql: include_str!("migrations/0003_document_item_lookup.sql"),
+    },
 ];
 
 /// The ledger's [`MigrationSet`] for composition into the unified runner.

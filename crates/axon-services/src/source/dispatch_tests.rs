@@ -133,6 +133,7 @@ async fn dispatch_local_denies_secret_like_path_before_bridge() {
         "test-owner",
         Some(&snapshot),
         true,
+        &request.limits,
         &routed.route,
         &test_execution("./.env"),
     )
@@ -817,7 +818,17 @@ impl SourceAdapter for StampingSourceAdapter {
         &self,
         plan: &SourcePlan,
     ) -> std::result::Result<axon_api::source::SourceManifest, ApiError> {
-        self.inner.discover(plan).await
+        let mut manifest = self.inner.discover(plan).await?;
+        // The base fake has no content fingerprint. Give these lifecycle fixtures
+        // an explicit version so changes in kind/length exercise refresh paths.
+        for item in &mut manifest.items {
+            item.version = Some(format!(
+                "{:?}:{}",
+                item.content_kind,
+                item.size_bytes.unwrap_or(0)
+            ));
+        }
+        Ok(manifest)
     }
 
     async fn acquire(
@@ -835,6 +846,19 @@ impl SourceAdapter for StampingSourceAdapter {
     ) -> std::result::Result<axon_api::source::StageExecutionResult<Vec<SourceDocument>>, ApiError>
     {
         let mut result = self.inner.normalize(plan, acquisition).await?;
+        // Raw-binary fixtures preserve real ContentRef semantics after the text-only fake.
+        for document in &mut result.data {
+            if document.content_kind == axon_api::source::ContentKind::BinaryMetadata {
+                if let axon_api::source::ContentRef::InlineText { text } = &document.content {
+                    use base64::Engine as _;
+                    document.content = axon_api::source::ContentRef::InlineBytes {
+                        bytes_base64: base64::engine::general_purpose::STANDARD
+                            .encode(text.as_bytes()),
+                        mime_type: "application/octet-stream".into(),
+                    };
+                }
+            }
+        }
         stamp_required_payload_metadata(plan, &mut result);
         Ok(result)
     }
@@ -935,6 +959,58 @@ async fn removal_only_recrawl_publishes_generation_and_retires_removed_docs() {
             .iter()
             .any(|point| { item_key(point).as_deref() == Some("kept.md") && !retired(point) }),
         "the kept document must stay live in the published generation"
+    );
+}
+
+#[tokio::test]
+async fn force_refresh_rebuilds_unchanged_source() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors, ledger.clone());
+    let adapter = StampingSourceAdapter {
+        inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "readme.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Same content\n",
+        ),
+    };
+    let run = |force| {
+        let plan = family_source_plan(&source, &route, true, None, None);
+        let mut request = SourceRequest::new(source.clone());
+        if force {
+            request.refresh = axon_api::source::SourceRefreshPolicy::Force;
+        }
+        async {
+            let execution = SourceExecutionContext::inline(request, None);
+            dispatch_materialized(
+                &runtime,
+                &adapter,
+                plan,
+                "axon-test",
+                "test-owner",
+                None,
+                &execution,
+                |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+            )
+            .await
+            .unwrap()
+        }
+    };
+    let first = run(false).await;
+    let unchanged = run(false).await;
+    assert_eq!(unchanged.generation, first.generation);
+    assert_eq!(unchanged.documents_prepared, 0);
+
+    let forced = run(true).await;
+    assert_ne!(forced.generation, first.generation);
+    assert_eq!(forced.documents_prepared, 1);
+    assert!(forced.vector_points_written > 0);
+    assert_eq!(
+        ledger.committed_generation(&forced.source_id).await,
+        Some(forced.generation)
     );
 }
 
@@ -1111,7 +1187,7 @@ async fn canceled_generation_cleans_up(lose_lease: bool) {
     assert_eq!(
         generation.status,
         LifecycleStatus::Failed,
-        "cancel must mark the uncommitted generation row failed (M3)"
+        "cancel must mark the uncommitted generation row failed (M3); pipeline error: {error:#}"
     );
     assert!(
         vectors.points("axon-test").await.is_empty(),
@@ -1351,3 +1427,295 @@ async fn failed_generation_never_delivers_artifact_candidates() {
         "failed generation leaked a ghost candidate to the sink"
     );
 }
+
+#[tokio::test]
+async fn shared_skips_publish_without_embedding_and_retire_prior_text_in_both_modes() {
+    use axon_api::source::{ContentKind, HealthStatus};
+    for scheduled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().to_string_lossy().to_string();
+        let route = route_for(&source);
+        let ledger = Arc::new(FakeLedgerStore::new());
+        let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+        let embedding = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
+        let mut runtime = TargetLocalSourceRuntime::new(
+            Arc::new(FakeJobWatchStore::new()),
+            ledger.clone(),
+            embedding.clone(),
+            vectors.clone(),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        );
+        runtime.embed_scheduler_enabled = scheduled;
+        let mixed = StampingSourceAdapter {
+            inner: FakeSourceAdapter::new(route.adapter.clone())
+                .with_item("asset", ContentKind::BinaryMetadata, "%PDF-1.7")
+                .with_item("text", ContentKind::PlainText, "searchable words"),
+        };
+        let first = dispatch_materialized(
+            &runtime,
+            &mixed,
+            family_source_plan(&source, &route, true, None, None),
+            "axon-test",
+            "test-owner",
+            None,
+            &test_execution(&source),
+            |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+        )
+        .await
+        .unwrap();
+        assert_eq!((first.documents_prepared, first.documents_skipped), (1, 1));
+        assert!(first.warnings.is_empty());
+        assert!(!embedding.calls().await.is_empty());
+        // A tolerated post-publication summary write can leave stale zero totals.
+        // Publication must use the committed generation, not this projection.
+        let mut stale = ledger
+            .get_source(first.source_id.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        stale.counts.vector_points_total = 0;
+        stale.counts.documents_total = 0;
+        ledger.upsert_source(stale).await.unwrap();
+
+        let offline = Arc::new(
+            FakeEmbeddingProvider::new("fake-embedding", 8).with_health(HealthStatus::Unavailable),
+        );
+        runtime.embedding_provider = offline.clone();
+        let skipped = StampingSourceAdapter {
+            inner: FakeSourceAdapter::new(route.adapter.clone())
+                .with_item("asset", ContentKind::BinaryMetadata, "%PDF-1.8 changed")
+                .with_item("text", ContentKind::BinaryMetadata, "%PDF-1.9"),
+        };
+        let second = dispatch_materialized(
+            &runtime,
+            &skipped,
+            family_source_plan(&source, &route, true, None, None),
+            "axon-test",
+            "test-owner",
+            None,
+            &test_execution(&source),
+            |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (second.documents_prepared, second.documents_skipped),
+            (0, 2)
+        );
+        assert!(offline.calls().await.is_empty());
+        assert!(vectors.points("axon-test").await.iter().all(|point| {
+            point
+                .payload
+                .get("retired_epoch")
+                .is_some_and(|v| !v.is_null())
+        }));
+        assert_eq!(
+            ledger
+                .get_source(second.source_id.clone())
+                .await
+                .unwrap()
+                .unwrap()
+                .counts
+                .documents_skipped,
+            2
+        );
+    }
+}
+
+#[tokio::test]
+async fn repeated_all_skipped_generations_do_not_require_embedding_or_collection() {
+    use axon_api::source::{ContentKind, HealthStatus};
+    for scheduled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().to_string_lossy().to_string();
+        let route = route_for(&source);
+        let ledger = Arc::new(FakeLedgerStore::new());
+        let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+        let embedding = Arc::new(
+            FakeEmbeddingProvider::new("fake-embedding", 8).with_health(HealthStatus::Unavailable),
+        );
+        let mut runtime = TargetLocalSourceRuntime::new(
+            Arc::new(FakeJobWatchStore::new()),
+            ledger.clone(),
+            embedding.clone(),
+            vectors.clone(),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        );
+        runtime.embed_scheduler_enabled = scheduled;
+        for content in ["%PDF-1.7", "%PDF-1.8 changed"] {
+            let skipped = StampingSourceAdapter {
+                inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
+                    "asset",
+                    ContentKind::BinaryMetadata,
+                    content,
+                ),
+            };
+            let result = dispatch_materialized(
+                &runtime,
+                &skipped,
+                family_source_plan(&source, &route, true, None, None),
+                "axon-test",
+                "test-owner",
+                None,
+                &test_execution(&source),
+                |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                (result.documents_prepared, result.documents_skipped),
+                (0, 1)
+            );
+            assert!(result.warnings.is_empty());
+        }
+        assert!(embedding.calls().await.is_empty());
+        assert!(
+            vectors
+                .calls()
+                .await
+                .iter()
+                .all(|call| *call == "capabilities" || *call == "count_generation_points")
+        );
+    }
+}
+
+#[tokio::test]
+async fn unscheduled_multibatch_ingestion_enters_bulk_loading_once() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let mut runtime = test_runtime(vectors.clone(), ledger);
+    runtime.embed_scheduler_enabled = false;
+    let mut inner = FakeSourceAdapter::new(route.adapter.clone());
+    for index in 0..257 {
+        inner = inner.with_item(
+            format!("item-{index:03}"),
+            axon_api::source::ContentKind::PlainText,
+            format!("searchable content {index}"),
+        );
+    }
+    let adapter = StampingSourceAdapter { inner };
+    let result = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, true, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.documents_prepared, 257);
+    let calls = vectors.calls().await;
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| **call == "begin_bulk_load")
+            .count(),
+        1
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| **call == "finish_bulk_load")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn local_total_budget_exhaustion_preserves_committed_generation_in_both_modes() {
+    for scheduled in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..33 {
+            std::fs::write(
+                root.path().join(format!("item-{index:02}.txt")),
+                "initial body",
+            )
+            .unwrap();
+        }
+        let source = root.path().to_string_lossy().into_owned();
+        let request = SourceRequest::local_path(&source, true);
+        let route = crate::source::routing::resolve_source_route(&request)
+            .unwrap()
+            .route;
+        let ledger = Arc::new(FakeLedgerStore::new());
+        let vectors = Arc::new(FakeVectorStore::new("budget-vectors"));
+        let mut runtime = test_runtime(vectors.clone(), ledger.clone());
+        runtime.embed_scheduler_enabled = scheduled;
+        let mut cfg = axon_core::config::Config::default();
+        cfg.source_local_allowed_roots = vec![root.path().to_path_buf()];
+        let snapshot = AuthSnapshot {
+            auth_mode: axon_api::source::AuthMode::TrustedLocal,
+            granted_scopes: vec![AuthScope::Read, AuthScope::Write, AuthScope::Local],
+            ..Default::default()
+        };
+        let initial = dispatch_local(
+            Arc::new(LocalSourceAdapter::new()),
+            &cfg,
+            &runtime,
+            &source,
+            "axon-budget",
+            "budget-owner",
+            Some(&snapshot),
+            true,
+            &request.limits,
+            &route,
+            &test_execution(&source),
+        )
+        .await
+        .expect("initial local generation publishes");
+        for index in 0..33 {
+            std::fs::write(
+                root.path().join(format!("item-{index:02}.txt")),
+                "changed body",
+            )
+            .unwrap();
+        }
+        let limits = axon_api::source::SourceLimits {
+            max_total_bytes: Some(16 * "changed body".len() as u64),
+            ..Default::default()
+        };
+        let error = dispatch_local(
+            Arc::new(LocalSourceAdapter::new()),
+            &cfg,
+            &runtime,
+            &source,
+            "axon-budget",
+            "budget-owner",
+            Some(&snapshot),
+            true,
+            &limits,
+            &route,
+            &test_execution(&source),
+        )
+        .await
+        .expect_err("total budget spans every acquisition batch");
+        assert!(
+            format!("{error:#}").contains("byte_budget_exceeded"),
+            "{error:#}"
+        );
+        assert_eq!(
+            ledger.committed_generation(&initial.source_id).await,
+            Some(initial.generation)
+        );
+        assert_eq!(
+            vectors.points("axon-budget").await.len() as u64,
+            initial.vector_points_written
+        );
+    }
+}
+
+#[path = "refresh_inventory_tests.rs"]
+mod refresh_inventory_tests;
+
+#[path = "failure_diagnostics_tests.rs"]
+mod failure_diagnostics_tests;

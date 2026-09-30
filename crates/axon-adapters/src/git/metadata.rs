@@ -32,6 +32,13 @@ pub(super) fn git_source_document(
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     metadata.insert("redaction_status".to_string(), json!("clean"));
+    if let Some(reason) = item
+        .manifest_item
+        .metadata
+        .get(CONTENT_OMISSION_METADATA_KEY)
+    {
+        metadata.insert(CONTENT_OMISSION_METADATA_KEY.to_owned(), reason.clone());
+    }
     SourceDocument {
         document_id: git_document_id(source_id, &item.manifest_item.source_item_key),
         source_id: source_id.clone(),

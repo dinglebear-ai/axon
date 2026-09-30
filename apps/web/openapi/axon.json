@@ -11,7 +11,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "7.4.0"
+    "version": "7.5.0"
   },
   "paths": {
     "/healthz": {
@@ -11552,6 +11552,24 @@
       "DocumentId": {
         "type": "string"
       },
+      "DomainSourceItem": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "DomainSourcesResponse": {
         "type": "object",
         "required": [
@@ -11559,7 +11577,8 @@
           "count",
           "limit",
           "truncated",
-          "urls"
+          "urls",
+          "items"
         ],
         "properties": {
           "count": {
@@ -11574,6 +11593,12 @@
           },
           "domain": {
             "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainSourceItem"
+            }
           },
           "limit": {
             "type": "integer",
@@ -17883,6 +17908,11 @@
             "minimum": 0
           },
           "chunks_total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "documents_skipped": {
             "type": "integer",
             "format": "int64",
             "minimum": 0

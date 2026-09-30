@@ -9,6 +9,7 @@ fn request(source: &str, generation: &str) -> PublishGenerationRequest {
         source_id: SourceId::from(source),
         generation: SourceGenerationId::from(generation),
         expected_previous_generation: None,
+        retained_statuses: Vec::new(),
     }
 }
 

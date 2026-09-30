@@ -1,154 +1,77 @@
 # Transport Methods -- Axon MCP
 
-## Overview
+Last reviewed: 2026-09-29
 
-Axon MCP supports three transport configurations:
+Axon serves the same shared services through stdio or streamable HTTP.
+Transport selection does not create another source pipeline or job store.
 
-| Transport | Auth | Use case | Command |
-|-----------|------|----------|---------|
-| stdio | None (process isolation) | Claude Desktop, Codex CLI, local tools | `axon mcp` (default) |
-| HTTP | static bearer or OAuth | Docker, remote servers, shared access | `axon serve mcp` or `axon mcp --transport http` |
-| Both | Mixed | Serve HTTP while also accepting stdio | `axon mcp --transport both` |
+| Selection | Entry point | Boundary |
+|---|---|---|
+| Stdio | `axon mcp` | Child process stdin/stdout; no HTTP listener by default |
+| HTTP | `axon serve mcp` or `axon mcp --transport http` | Unified listener, `/mcp`, REST routes, and web panel |
+| Both | `axon mcp --transport both` | Stdio and HTTP in the same hosting runtime |
 
-`axon mcp` defaults to **stdio** and does not open an HTTP listener unless
-`--transport http` or `--transport both` is set. The HTTP transport is the
-default for `axon serve mcp`. Any HTTP MCP transport selector starts the
-unified HTTP server, so MCP, the web panel, and first-party client routes all
-share the same listener.
-See [`../auth/MCP-AUTH.md`](../../operations/auth/mcp-auth.md) for bearer and OAuth auth modes.
+## Stdio
 
-## stdio
+Configure the client with an absolute Axon executable path and `mcp` argument.
+Use the executing account's intended configuration and provider endpoints.
+Stdout is protocol output; diagnostics belong on stderr. No HTTP bearer
+handshake is required for a local child process, but local execution
+authority and source/tool access policies still matter.
 
-JSON-RPC messages over stdin/stdout. No network listener, no auth required.
+Keep workers alive when accepting detached jobs. A child process closing
+after enqueue does not guarantee that another worker will complete the job.
+See [jobs](../runtime/jobs.md) for runtime ownership and liveness.
 
-```bash
-axon mcp
-```
-
-### Claude Desktop configuration
-
-`~/.claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "command": "/path/to/axon",
-      "args": ["mcp"],
-      "env": {
-        "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000"
-      }
-    }
-  }
-}
-```
-
-MCP uses the same SQLite/in-process job runtime as the CLI and HTTP server.
-
-### Codex CLI configuration
-
-`.codex/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "command": "/path/to/axon",
-      "args": ["mcp"],
-      "env": {
-        "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000"
-      }
-    }
-  }
-}
-```
-
-### When to use
-
-- Local development with Claude Desktop or Codex CLI
-- Single-user setups where the binary runs as a child process
-- Local process isolation when each client should own its own Axon process
+Client formats differ. [Connect to Axon MCP](connect.md) contains current
+Claude Code, Codex TOML, and Gemini settings examples. Do not reuse a
+`mcpServers` JSON block as Codex configuration or assume every client
+selects HTTP with the same field.
 
 ## HTTP
 
-Streamable-HTTP transport with MCP protocol support. Uses the `rmcp` crate with `transport-streamable-http-server` feature.
+For an explicitly loopback-only development listener:
 
 ```bash
-AXON_HTTP_HOST=127.0.0.1
-AXON_HTTP_PORT=8001
-axon serve mcp
+AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT=8001 axon serve mcp
 ```
 
-Non-loopback binds such as `0.0.0.0` require either `AXON_HTTP_TOKEN` or
-`AXON_AUTH_MODE=oauth` with the OAuth env vars configured. Tokenless HTTP
-startup is limited to loopback hosts.
+A non-loopback bind requires `AXON_HTTP_TOKEN` or configured OAuth. The
+listener uses the same HTTP auth/allowed-origin boundary as the REST API.
+Panel password/session unlock is separate and cannot substitute for API/MCP
+credentials. Use [MCP authentication](../../operations/auth/mcp-auth.md).
 
-### Endpoints
+| Route | Purpose |
+|---|---|
+| `/mcp` | MCP initialization, negotiated session, tool/resource/task protocol |
+| `/healthz` | Process health, not proof of healthy providers or completed jobs |
+| `/v1/capabilities` | HTTP API capability document |
+| `/v1/*` | Direct REST routes and their own request/response contracts |
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/mcp` | POST | MCP JSON-RPC streamable-HTTP transport |
-| `/v1/capabilities` | GET | First-party CLI server capability document, when served by `axon serve` |
-| `/v1/*` | GET/POST/DELETE | First-party direct REST routes, when served by `axon serve` |
+Use a real MCP client for protocol verification. Initialization, negotiated
+capabilities, content negotiation, and session headers are part of the
+transport; a raw tool-call POST is not a complete smoke test. Respect the
+server's actual response rather than treating any successful HTTP status as
+business-operation completion.
 
-The same listener also mounts the web panel and first-party HTTP routes. Use
-`/healthz` for server health and `/mcp` for MCP protocol checks.
+## Shared server and deployment
 
-### Claude Code configuration
+`axon serve` already mounts MCP HTTP with the API and panel; it does not
+need a second stdio `axon mcp` process merely to expose `/mcp`. The configured
+port defaults to 8001, not a fixed address every installation must use.
 
-`.claude/settings.local.json`:
+Production is native Axon under systemd in Incus or bare-metal Linux, with
+external providers. Compose remains development/reference material. Inspect
+verified deployment notes for actual service names, mounts, proxy routes,
+and restart commands. See [deployment](deploy.md).
 
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "type": "http",
-      "url": "http://localhost:8001/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_AXON_HTTP_TOKEN"
-      }
-    }
-  }
-}
-```
+## Projection, tasks, and reconnects
 
-Loopback binds (`127.0.0.1`) may run without `AXON_HTTP_TOKEN`; non-loopback
-binds (e.g. `0.0.0.0`) require it or the server refuses to start.
+`AXON_MCP_TOOL_PROJECTION` selects legacy/atomic/both at startup. Reconnect
+clients and repeat discovery after changing it. All projections preserve the
+auxiliary dashboard and canonical policy checks. Schema resources include
+`axon://schema/mcp-tool` and `axon://schema/mcp-operations`.
 
-### When to use
-
-- Docker deployments (`axon` service exposes port 8001)
-- Remote/shared MCP server
-- Multiple clients connecting to one server
-- `axon serve` (automatically starts MCP HTTP on port 8001)
-
-## Both
-
-Run HTTP transport while also accepting stdio connections.
-
-```bash
-axon mcp --transport both
-```
-
-This is useful for development: serve web and MCP HTTP on port 8001 while also
-allowing local stdio connections.
-
-## Transport in `axon serve`
-
-When running `axon serve`, no separate `axon mcp` invocation is needed. The same
-listener mounts `/mcp`, the setup panel, `/v1/ask`, and first-party
-client/server routes.
-
-## Port assignments
-
-| Service | Default port | Env var |
-|---------|-------------|---------|
-| Web + MCP HTTP | 8001 | `AXON_HTTP_PORT` |
-
-## See also
-
-- [CONNECT.md](connect.md) -- client connection instructions
-- [ENV.md](env.md) -- MCP environment variables
-- [DEPLOY.md](deploy.md) -- deployment patterns
+Only extraction start currently supports negotiated task augmentation.
+Other source jobs use the durable job lifecycle, not assumed task methods.
+See [tool contract](tool-contract.md) and [environment](env.md).

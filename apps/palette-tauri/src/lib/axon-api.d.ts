@@ -2160,10 +2160,15 @@ export interface components {
         /** @enum {string} */
         DocumentBackend: "qdrant" | "stored_source" | "live_scrape";
         DocumentId: string;
+        DomainSourceItem: {
+            title?: string | null;
+            url: string;
+        };
         DomainSourcesResponse: {
             count: number;
             cursor?: string | null;
             domain: string;
+            items: components["schemas"]["DomainSourceItem"][];
             limit: number;
             next_cursor?: string | null;
             truncated: boolean;
@@ -3756,6 +3761,8 @@ export interface components {
             bytes_total: number;
             /** Format: int64 */
             chunks_total: number;
+            /** Format: int64 */
+            documents_skipped?: number;
             /** Format: int64 */
             documents_total: number;
             /** Format: int64 */

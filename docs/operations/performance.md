@@ -310,8 +310,13 @@ cargo xtask bench-source https://code.claude.com/ \
   --output target/bench-source/code-claude-baseline.json
 ```
 
-The warm scenario performs one unmeasured cache-primer crawl, then measures
-conditional recrawls using `--cache true --etag-conditional`. The cold scenario
+The warm scenario performs one unmeasured cache-primer crawl, then requests
+recrawls with `--cache true --etag-conditional`. **Conditional ETag reuse is
+currently disabled** by the runtime because missing pages cannot be safely
+distinguished from explicit 304 responses. Treat this as a warm-state run,
+not proof that unchanged HTTP bodies were skipped, and retain its warnings
+in benchmark evidence. See [Spider runtime behavior](../reference/spider-feature-flags.md).
+The cold scenario
 uses a new state directory and collection for every measured run. The harness
 removes those generated resources unless `--keep-state` is supplied.
 

@@ -6,12 +6,14 @@ Last Modified: 2026-07-15
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon setup ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
+| CLI | <code>axon setup check</code><br><code>axon setup config rewrite</code><br><code>axon setup init</code><br><code>axon setup install</code><br><code>axon setup plugin-hook</code><br><code>axon setup targets</code> |
+| REST | Not exposed in this registry |
+| MCP atomic tools | Not exposed in this registry |
+| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |
 
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+MCP names describe the atomic projection. The legacy `axon` tool uses the corresponding action/subaction selectors; `both` exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.
+
+Family-level navigation does not imply identical suboperations or request shapes across transports.
 <!-- END GENERATED ACTION SURFACES -->
 
 
@@ -47,22 +49,21 @@ axon setup plugin-hook [--json]
 | `compose rebuild` | Rebuild the Axon image and start the Docker service stack. |
 | `smoke` | Prewarm TEI, index `example.com` through the source pipeline, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
-| `setup plugin-hook` | Explicit probe-only helper. Checks `/readyz`; exits silently when the stack is up, or advises `/axon-deploy` when it is down. Never deploys. |
+| `setup plugin-hook` | Explicit probe-only helper. Checks `/readyz`; exits silently when the stack is up, or advises `axon setup` when it is down. Never deploys. |
 
 ## `setup plugin-hook` Behavior
 
 The plugin does not register this helper automatically. When invoked explicitly
-it **never deploys**—provisioning is `/axon-deploy`, `axon setup`, or
-`axon compose up`. The helper only does:
+it **never deploys**—provisioning uses `axon setup` or `axon compose up`.
+The helper only does:
 
 1. Refresh the user's `~/.local/bin/axon` copy and apply plugin env options.
 2. **Probe `/readyz` once (3s timeout)** at the configured bind (`AXON_HTTP_HOST`/`AXON_HTTP_PORT` from `~/.axon/.env`, default `127.0.0.1:8001`; bind-all hosts are probed over loopback). `/readyz` itself asserts qdrant + tei readiness, so a 200 means the whole stack is up.
    - **Up** → exit `0` immediately, **no stdout** in human mode (`--json` prints `{"stack":"already_healthy",...}`).
-   - **Down** → print one line, `axon stack not reachable on /readyz — run /axon-deploy to start it`, and exit `0` (non-blocking advisory; `--json` prints `{"stack":"down","action":"run /axon-deploy",...}`).
+   - **Down** → print one line, `axon stack not reachable on /readyz — run axon setup to start it`, and exit `0` (non-blocking advisory; `--json` prints `{"stack":"down","action":"run axon setup",...}`).
 
 The hook runs **no** preflight checks and **no** `docker compose`. To provision or
-restart the stack, use the `/axon-deploy` plugin slash command, or `axon setup` /
-`axon compose up|restart|rebuild` directly.
+restart the stack, use `axon setup` or `axon compose up|restart|rebuild` directly.
 
 ## `setup init` Options
 

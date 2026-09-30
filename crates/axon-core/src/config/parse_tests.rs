@@ -1,6 +1,6 @@
 use super::build_config::tests::{env_guard, with_env_saved};
 use super::docker::is_docker_service_host;
-use crate::config::types::{CommandKind, McpTransport, MotionChoice};
+use crate::config::types::{CommandKind, McpToolProjection, McpTransport, MotionChoice};
 use clap::Parser;
 use std::env;
 
@@ -1019,6 +1019,54 @@ fn parse_mcp_transport_env_overrides_command_default() {
 
 #[allow(unsafe_code)]
 #[test]
+fn parse_mcp_tool_projection_env_selects_atomic_and_both() {
+    let _guard = env_guard();
+    const PROJECTION: &str = "AXON_MCP_TOOL_PROJECTION";
+
+    for (raw, expected) in [
+        ("atomic", McpToolProjection::Atomic),
+        ("both", McpToolProjection::Both),
+        ("legacy", McpToolProjection::Legacy),
+    ] {
+        unsafe { env::set_var(PROJECTION, raw) };
+        let cli = super::Cli::parse_from([
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "mcp",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
+        assert_eq!(cfg.mcp_tool_projection, expected, "{raw}");
+    }
+
+    unsafe { env::remove_var(PROJECTION) };
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_mcp_tool_projection_invalid_value_falls_back_to_legacy() {
+    let _guard = env_guard();
+    const PROJECTION: &str = "AXON_MCP_TOOL_PROJECTION";
+    unsafe { env::set_var(PROJECTION, "definitely-not-a-projection") };
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "mcp",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
+    unsafe { env::remove_var(PROJECTION) };
+
+    assert_eq!(cfg.mcp_tool_projection, McpToolProjection::Legacy);
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn parse_setup_targets_does_not_require_service_urls() {
     let _guard = env_guard();
     unsafe {
@@ -1384,4 +1432,57 @@ fn quiet_conflicts_with_verbose() {
     let error = super::Cli::try_parse_from(["axon", "query", "hello", "--quiet", "-v"])
         .expect_err("quiet and verbose express conflicting operator intent");
     assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_mcp_tool_projection_cli_canonical_env_and_alias_precedence() {
+    let _guard = env_guard();
+    let canonical = "AXON_MCP_TOOL_PROJECTION";
+    let alias = "AXON_MCP_PROJECTION";
+    unsafe {
+        env::remove_var(canonical);
+        env::set_var(alias, "atomic");
+    }
+    let parse = |tail: &[&str]| {
+        let mut args = vec![
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+        ];
+        args.extend_from_slice(tail);
+        super::build_config::into_config(super::Cli::parse_from(args))
+            .unwrap()
+            .mcp_tool_projection
+    };
+    assert_eq!(parse(&["mcp"]), McpToolProjection::Atomic);
+    unsafe {
+        env::set_var(canonical, "both");
+    }
+    assert_eq!(parse(&["mcp"]), McpToolProjection::Both);
+    for tail in [
+        vec!["mcp", "--mcp-tool-projection", "legacy"],
+        vec!["serve", "mcp", "--mcp-tool-projection", "legacy"],
+        vec!["serve", "--mcp-tool-projection", "legacy"],
+    ] {
+        assert_eq!(parse(&tail), McpToolProjection::Legacy);
+    }
+    unsafe {
+        env::set_var(canonical, "invalid");
+    }
+    assert_eq!(parse(&["mcp"]), McpToolProjection::Legacy);
+    assert_eq!(
+        parse(&["mcp", "--mcp-tool-projection", "atomic"]),
+        McpToolProjection::Atomic
+    );
+    unsafe {
+        env::remove_var(canonical);
+        env::remove_var(alias);
+    }
+    assert_eq!(parse(&["mcp"]), McpToolProjection::Legacy);
+    assert!(
+        super::Cli::try_parse_from(["axon", "mcp", "--mcp-tool-projection", "invalid"]).is_err()
+    );
 }

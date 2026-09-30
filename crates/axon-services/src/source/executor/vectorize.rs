@@ -12,8 +12,13 @@ use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, t
 use crate::reserved_call::{self, ProviderCallContext};
 
 pub(super) mod batching;
+mod bulk_load;
 mod pipeline;
 mod prepared_pool;
+mod skip;
+pub(super) use bulk_load::GenerationVectorState;
+use bulk_load::{bulk_context, finish_bulk_result};
+use skip::partition_prepared;
 
 use batching::chunk_batches;
 use pipeline::{embed_and_build_batch, publish_and_build_next, publish_built_batch};
@@ -22,6 +27,7 @@ pub(super) use prepared_pool::{PreparedPoolVectorizer, PushOutcome};
 #[derive(Debug, Default)]
 pub(super) struct VectorizeResult {
     pub(super) documents_prepared: u64,
+    pub(super) documents_skipped: u64,
     pub(super) chunks_prepared: u64,
     pub(super) points_written: u64,
     pub(super) document_statuses: Vec<DocumentStatus>,
@@ -37,7 +43,7 @@ pub(super) async fn prepare_embed_publish(
     documents: Vec<SourceDocument>,
     enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
     generation: &SourceGenerationId,
-    collection: CollectionSpec,
+    vector_state: &mut GenerationVectorState,
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
@@ -76,11 +82,15 @@ pub(super) async fn prepare_embed_publish(
                         document_preparer,
                         runtime.document_prepare_concurrency,
                         runtime.document_prepare_max_in_flight_bytes,
+                        input.plan.limits.effective.max_bytes_per_item,
                     )
                 }
             },
         )
         .await?;
+        let (prepared, skips) = partition_prepared(prepared);
+        crate::source::progress::preparation_skipped(emitter, &skips.document_statuses).await;
+        merge_vectorize_result(&mut output, skips);
         let chunk_count = prepared
             .iter()
             .map(|document| document.chunks.len() as u64)
@@ -108,6 +118,7 @@ pub(super) async fn prepare_embed_publish(
         let Some((first_index, first_batch)) = batches.next() else {
             continue;
         };
+        let collection = vector_state.ensure(runtime, input).await?;
         report_batching(input, &first_batch, emitter, coordinator, progress).await;
         let mut ready = embed_and_build_batch(
             runtime,
@@ -145,6 +156,13 @@ pub(super) async fn prepare_embed_publish(
             publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
         merge_vectorize_result(&mut output, result);
     }
+    persist_vectorize_result(runtime, output).await
+}
+
+async fn persist_vectorize_result(
+    runtime: &TargetLocalSourceRuntime,
+    output: VectorizeResult,
+) -> anyhow::Result<VectorizeResult> {
     write_document_statuses(
         runtime.ledger.as_ref(),
         &output.document_statuses,
@@ -165,7 +183,7 @@ pub(super) async fn prepare_generation_documents(
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
     is_final_generation_batch: bool,
-) -> anyhow::Result<Vec<PreparedDocument>> {
+) -> anyhow::Result<(Vec<PreparedDocument>, VectorizeResult)> {
     coordinator
         .report(
             emitter,
@@ -197,10 +215,19 @@ pub(super) async fn prepare_generation_documents(
                     document_preparer,
                     concurrency,
                     max_in_flight_bytes,
+                    input.plan.limits.effective.max_bytes_per_item,
                 )
                 .await
             }
         },
+    )
+    .await?;
+    let (prepared, skipped) = partition_prepared(prepared);
+    crate::source::progress::preparation_skipped(emitter, &skipped.document_statuses).await;
+    write_document_statuses(
+        runtime.ledger.as_ref(),
+        &skipped.document_statuses,
+        runtime.document_status_batch_size,
     )
     .await?;
     let chunk_count = prepared
@@ -219,7 +246,7 @@ pub(super) async fn prepare_generation_documents(
             "prepared source documents",
         )
         .await;
-    Ok(prepared)
+    Ok((prepared, skipped))
 }
 
 pub(super) fn generation_document_batches(
@@ -280,7 +307,11 @@ pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: Vecto
                 .saturating_add(status.vector_point_count);
             existing.updated_at = status.updated_at;
         } else {
-            output.documents_prepared = output.documents_prepared.saturating_add(1);
+            if status.status == DocumentLifecycleStatus::Skipped {
+                output.documents_skipped += 1;
+            } else {
+                output.documents_prepared = output.documents_prepared.saturating_add(1);
+            }
             let position = output.document_statuses.len();
             output
                 .document_status_positions

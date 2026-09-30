@@ -34,6 +34,8 @@ use axon_api::source::{
     ApiError, AuthSnapshot, ErrorStage, LifecycleStatus, PipelinePhase, SourceRequest, SourceResult,
 };
 use axon_core::config::Config;
+use axon_jobs::config_snapshot::apply_config_snapshot;
+use axon_jobs::config_snapshot_store::get_config_snapshot;
 use axon_jobs::scheduler::SqliteWriteGate;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_jobs::workers::unified::UnifiedClaimedJob;
@@ -52,7 +54,7 @@ const CANCEL_CLEANUP_GRACE: std::time::Duration = std::time::Duration::from_secs
 pub(super) struct SourceRunner {
     cfg: Arc<Config>,
     write_gate: SqliteWriteGate,
-    ctx: OnceCell<ServiceContext>,
+    ctx: OnceCell<Arc<ServiceContext>>,
 }
 
 impl SourceRunner {
@@ -71,13 +73,49 @@ impl SourceRunner {
 
     async fn service_context(
         &self,
+        claimed: &UnifiedClaimedJob,
         store: &SqliteUnifiedJobStore,
-    ) -> Result<&ServiceContext, ApiError> {
-        self.ctx
-            .get_or_try_init(|| {
-                build_service_context_with_write_gate(&self.cfg, store, self.write_gate.clone())
-            })
+    ) -> Result<Arc<ServiceContext>, ApiError> {
+        if claimed.config_snapshot_id.is_none() {
+            let ctx = self
+                .ctx
+                .get_or_try_init(|| async {
+                    build_service_context_with_write_gate(&self.cfg, store, self.write_gate.clone())
+                        .await
+                        .map(Arc::new)
+                })
+                .await?;
+            return Ok(Arc::clone(ctx));
+        }
+
+        let cfg = self.effective_config(claimed, store).await?;
+        build_service_context_with_write_gate(&cfg, store, self.write_gate.clone())
             .await
+            .map(Arc::new)
+    }
+
+    async fn effective_config(
+        &self,
+        claimed: &UnifiedClaimedJob,
+        store: &SqliteUnifiedJobStore,
+    ) -> Result<Arc<Config>, ApiError> {
+        let Some(snapshot_id) = claimed.config_snapshot_id.as_ref() else {
+            return Ok(Arc::clone(&self.cfg));
+        };
+        let config_json = get_config_snapshot(store.sqlite_pool(), snapshot_id.0.as_str())
+            .await
+            .map_err(|error| {
+                invalid_config_snapshot(format!(
+                    "failed to read config snapshot {}: {error}",
+                    snapshot_id.0
+                ))
+            })?
+            .ok_or_else(|| {
+                invalid_config_snapshot(format!("config snapshot {} does not exist", snapshot_id.0))
+            })?;
+        let cfg = apply_config_snapshot(&self.cfg, &config_json)
+            .map_err(|error| invalid_config_snapshot(error.to_string()))?;
+        Ok(Arc::new(cfg))
     }
 }
 
@@ -157,12 +195,12 @@ impl UnifiedJobRunner for SourceRunner {
                     .map_err(|error| source_error(format!("malformed source_request: {error}")))
             })?;
 
-        let ctx = self.service_context(store).await?;
+        let ctx = self.service_context(claimed, store).await?;
         let heartbeat_interval = super::job_heartbeat_interval(&ctx.cfg);
         let run_fut = run_source_request_with_cancellation(
             claimed,
             source_request,
-            ctx,
+            ctx.as_ref(),
             Some(shutdown.clone()),
         );
         let result = drive_source_with_heartbeat(run_fut, shutdown, heartbeat_interval, || async {
@@ -182,7 +220,7 @@ impl UnifiedJobRunner for SourceRunner {
                     .await?;
                 outcome_from_result(source_result)
             }
-            Err(error) => Err(source_error(error.to_string())),
+            Err(error) => Err(crate::source::diagnostics::api_error(&error)),
         }
     }
 }
@@ -296,11 +334,19 @@ fn outcome_from_result(result: SourceResult) -> Result<UnifiedJobOutcome, ApiErr
     }
 }
 
+fn invalid_config_snapshot(message: impl Into<String>) -> ApiError {
+    ApiError::new(
+        "job_runner.invalid_config_snapshot",
+        ErrorStage::Planning,
+        message.into(),
+    )
+}
+
 fn source_error(message: impl Into<String>) -> ApiError {
     ApiError::new(
         "job_runner.source_failed",
         ErrorStage::Fetching,
-        message.into(),
+        axon_core::redact::public_diagnostic_text(&message.into(), 4096),
     )
 }
 

@@ -384,10 +384,15 @@ export type components = {
         };
         "DocumentBackend": "qdrant" | "stored_source" | "live_scrape";
         "DocumentId": string;
+        "DomainSourceItem": {
+            "title"?: string | null;
+            "url": string;
+        };
         "DomainSourcesResponse": {
             "count": number;
             "cursor"?: string | null;
             "domain": string;
+            "items": components['schemas']['DomainSourceItem'][];
             "limit": number;
             "next_cursor"?: string | null;
             "truncated": boolean;
@@ -1533,6 +1538,7 @@ export type components = {
         "SourceCounts": {
             "bytes_total": number;
             "chunks_total": number;
+            "documents_skipped"?: number;
             "documents_total": number;
             "items_changed": number;
             "items_total": number;

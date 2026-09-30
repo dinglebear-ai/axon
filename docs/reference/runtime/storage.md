@@ -30,8 +30,12 @@ SQLite binds all the store pools together so `jobs.source_id` can FK to
 
 ## What each tier must NOT hold
 
-- **SQLite must NOT store:** full large page bodies, screenshots, WARC bodies,
-  large tool outputs, embedding vectors (when Qdrant available), secrets.
+- **SQLite is not the retrieval vector store.** It should not become the
+  large-body, screenshot, WARC, raw tool-output, or secret store. It does
+  contain a content-addressed dense embedding cache, introduced by
+  [migration 0007](../../../crates/axon-jobs/src/migrations/0007_embedding_vector_cache.sql).
+  That cache persists vector blobs and provider/model identity, not raw
+  source text, and does not replace Qdrant publication or ledger authority.
 - **Qdrant must NOT be:** the source ledger, the only job-progress store, the
   only cleanup-debt tracker, a secret store, or a large-artifact store.
   Payloads must include enough ids to join back to SQLite.
@@ -51,8 +55,10 @@ SQLite binds all the store pools together so `jobs.source_id` can FK to
 └── tei/              TEI model + cache (compose bind)
 ```
 
-`AXON_DATA_DIR` defaults to `~/.axon`. Under Incus this is `/mnt/axon-data`
-(mapped from `~/.axon-incus` on the host).
+`AXON_DATA_DIR` defaults to `~/.axon`; explicit storage overrides and
+installation mounts can relocate it. An Incus deployment does not imply one
+fixed host/container path. Inspect the deployed configuration and mounts,
+including state used by optional features, before backup or maintenance.
 
 ## ArtifactStore
 
@@ -72,8 +78,10 @@ All destructive source cleanup flows through reviewed prune plans and cleanup
 debt. Job-lifecycle retention is a jobs-runtime op, **not** a source-data
 deletion path.
 
-Debt kinds (7): `vector_delete`, `artifact_delete`, `ledger_prune`,
-`graph_prune`, `memory_prune`, `job_retention`, `cache_prune`. Debt fields:
+Debt kinds include `vector_delete`, `artifact_delete`, `ledger_prune`,
+`graph_prune`, `memory_prune`, `job_retention`, `cache_prune`, and
+`adapter_release`. The source runner retries adapter release with the owning
+registry; this is distinct from plan-based store pruning. Debt fields:
 `debt_id`, `job_id`, `source_id`, `generation`, `kind`, `selector`, `status`,
 `created_at`, `attempts`, `last_error`, `next_retry_at`, `completed_at`.
 
@@ -87,7 +95,7 @@ See [pruning.md](pruning.md) for execution; `axon-ledger` records debt,
 | source generations | last 2 committed + active cleanup debt |
 | source item manifests | while source exists |
 | vector old generations | until cleanup debt succeeds |
-| artifacts | source/job policy (default 30d transient) |
+| artifact references | job policy, default 30d; not a promise that every file is deleted on that schedule |
 | job events | 14d (failed: 60d) |
 | provider health | 7d |
 | memory | memory policy (not job retention) |
@@ -95,15 +103,17 @@ See [pruning.md](pruning.md) for execution; `axon-ledger` records debt,
 
 ## Backup / restore
 
-Minimum backup set = SQLite DB + artifact dir + `config.toml` + `.env`
-(separate secret process) + Qdrant collection snapshot (if vectors must be
-restorable without reindex). Restore modes: SQLite + artifacts + reindex
-vectors; SQLite + artifacts + Qdrant snapshot; config-only fresh boot.
+Inventory every effective database and artifact/cache path, configuration,
+separate secret/auth state, and Qdrant collection needed for the recovery
+point. Back up a consistent SQLite/WAL state and a compatible publication
+boundary. See the [backup/restore runbook](../operations/backup-restore.md) for
+quiescing writers, isolated restoration, and refresh/removal validation.
+A configuration-only fresh start does not restore source or job history.
 
 ## Rule
 
 Storage paths must be configurable through the normal config model and safe to
-inspect with `axon doctor` and `axon reset plan` dry-runs.
+inspect with `axon doctor` and `axon reset --json` dry-runs.
 
 If the storage layout changes, update this file and the configuration guide in
 the same PR.

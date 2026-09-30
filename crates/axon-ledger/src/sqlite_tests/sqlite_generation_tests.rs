@@ -358,8 +358,10 @@ async fn sqlite_publish_creates_cleanup_debt_for_removed_items() {
     assert_eq!(graph_debt.generation, Some(gen1.generation.clone()));
     assert_eq!(
         graph_debt.selector,
-        CleanupSelector::GraphNodes {
-            stable_keys: vec!["src/old.rs".to_string()],
+        CleanupSelector::GraphItemEvidence {
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new("src/old.rs"),
+            retirement_generation: gen2.generation.clone(),
         }
     );
 
@@ -600,8 +602,10 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         source_item_key: SourceItemKey::new("src/old.rs"),
         generation: gen3.generation.clone(),
     }));
-    assert!(selectors.contains(&&CleanupSelector::GraphNodes {
-        stable_keys: vec!["src/old.rs".to_string()],
+    assert!(selectors.contains(&&CleanupSelector::GraphItemEvidence {
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/old.rs"),
+        retirement_generation: gen2.generation.clone(),
     }));
     let ledger_prune_targets = debts
         .iter()

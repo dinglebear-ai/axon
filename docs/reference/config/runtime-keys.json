@@ -1,0 +1,1224 @@
+{
+  "contract": "serialized configuration fields, not defaults or enforcement guarantees",
+  "generated_by": "cargo xtask generated-contracts refresh",
+  "keys": [
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "artifacts.max-artifact-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "artifacts.max-inline-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "artifacts.retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "artifacts.write-warc-by-default",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.adaptive.fulldoc-skip-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.adaptive.fulldoc-skip-min-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.adaptive.fulldoc-skip-min-urls",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.adaptive.fulldoc-skip-score-delta",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.authoritative-boost",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.authoritative-domains",
+      "rust_type": "Option<Vec<String>>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.backfill-chunks",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.cache.enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.cache.max-capacity-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.cache.ttl-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.candidate-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.chunk-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.doc-chunk-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.doc-fetch-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.full-docs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.max-context-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.min-citations-nontrivial",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "ask.min-relevance-score",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.adaptive-concurrency.enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.adaptive-concurrency.max",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.adaptive-concurrency.min",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.allow-unbounded-broad-crawl",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.antibot.cookie-warmup",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.antibot.max-body-scan-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.auto-switch-min-pages",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.auto-switch-thin-ratio",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.backfill-concurrency-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.concurrency-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.crawl-concurrency-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.discover-llms-txt",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.discover-sitemaps",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.drop-thin-markdown",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.ladder-body-multiplier",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.ladder-strategy1-threshold",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.ladder-strategy2-threshold",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.max-depth",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.max-llms-txt-urls",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.max-page-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.max-pages",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.max-sitemaps",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.memory-abort-percent",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.min-markdown-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.redirect-policy-strict",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.respect-robots",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.sitemap-since-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.url-whitelist",
+      "rust_type": "Option<Vec<String>>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.verticals.auto-dispatch-skip",
+      "rust_type": "Option<Vec<String>>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.verticals.cache-ttl-secs",
+      "rust_type": "Option<HashMap<String, u64>>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "crawl.verticals.enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "graph.auto-merge-confidence",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "graph.candidate-confidence-floor",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "graph.enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "graph.evidence-retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.artifact-retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.auto-worker",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.default-priority",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.event-retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.failed-event-retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.heartbeat-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.interactive-starvation-slo-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.max-events-per-job",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.max-job-attempts",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.provider-health-retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.retention-sweep-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.stale-after-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.stale-grace-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.terminal-retention-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.watchdog-sweep-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.worker-idle-exit-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "jobs.worker-starvation-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "memory.collection",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "memory.decay-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "memory.forget-deletes-vectors",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "memory.pin-boost",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "memory.review-interval-days",
+      "rust_type": "Option<u32>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "observability.log-level",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "observability.metrics-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "observability.progress-event-throttle-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "observability.redact-logs",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "observability.structured-logs",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.batch-yield-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.chunking.markdown-max-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.chunking.markdown-min-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.chunking.overlap-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.embed-doc-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.endpoints.bundle-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.endpoints.chrome-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.endpoints.probe-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.endpoints.verify-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.item-failure-policy",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.job-wait-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.max-active-interactive-jobs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.max-active-source-jobs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.max-document-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.publish-requires-cleanup",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.qdrant-point-buffer",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.queue-summary-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.unified-worker-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.background-max-concurrent-requests",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.batch-size",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.cache-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.cache-max-entries",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.cooldown-after-failures",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.cooldown-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.dedupe-exact-chunks",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.interactive-reserved-requests",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.maintenance-max-concurrent-requests",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.max-batch-tokens",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.max-chunks-per-doc",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.max-concurrent-requests",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.max-in-flight-inputs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.max-retries",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.max-source-chunks-per-doc",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.openai-max-client-batch-size",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.openai-max-concurrent",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.openai-max-in-flight-inputs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.openai-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.openai-pool-max-inputs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.pool-max-inputs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.prep-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.prep-max-in-flight-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.prepared-byte-budget",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.query-instruction-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.request-timeout-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.retry-backoff-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.scheduler-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.scheduler-flush-ms",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.embedding.vector-upsert-overlap-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.batch-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.delay-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.request-timeout-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.retries",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.retry-backoff-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.fetch.user-agent",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.backend",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.chat-gemini-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.chat-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.chat-openai-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.codex-pool-idle-ttl-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.completion-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.completion-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.high-context",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.synthesis-gemini-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.synthesis-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.llm.synthesis-openai-model",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.accept-invalid-certs",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.bootstrap-retries",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.bootstrap-timeout-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.bypass-csp",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.max-concurrent-pages",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.network-idle-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.page-timeout-ms",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.remote-local-policy",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.render.user-agent",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.search.default",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.search.research-full-content",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.search.result-limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.async-writes",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.bulk-indexing-threshold-kb",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.bulk-load",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.delete-batch-points",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.delete-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.hnsw-ef",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.hnsw-ef-construct",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.hnsw-m",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.hnsw-on-disk",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.hybrid-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.indexing-threshold-kb",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.payload-index-parallelism",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.payload-index-profile",
+      "rust_type": "Option<RawPayloadIndexProfile>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.quantization-always-ram",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.quantization-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.read-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.structured-data-max-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.transport",
+      "rust_type": "Option<RawQdrantTransport>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.upsert-batch-points",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "providers.vector.write-concurrency",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "prune.cleanup-retry-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "prune.delete-batch-size",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "prune.dry-run-default",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "prune.require-confirm-for-destructive",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "retrieval.ask-hybrid-candidates",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "retrieval.exclude-local-code-by-default",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "retrieval.hybrid-candidates",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "retrieval.limit",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "retrieval.min-score",
+      "rust_type": "Option<f64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "security.allow-local-paths",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "security.allow-private-network-fetch",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "security.allow-tool-execution",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "security.max-tool-output-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "security.redaction-fail-closed",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.allow-fallback-web-assets",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.default-collection",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.json-pretty",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.mcp.embed.max-local-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.mcp.embed.max-local-depth",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.mcp.embed.max-local-entries",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.mcp.task-result-wait-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.caller-max-in-flight-requests",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.caller-rate-limit-per-minute",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.global-max-in-flight-requests",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-aggregate-input-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-chunks",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-decompressed-bytes-per-item",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-documents",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-elapsed-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-fetched-bytes-per-item",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-idempotency-key-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-input-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-inputs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-manifest-items",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-pages",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-prepared-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-query-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-query-window",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-request-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-response-bytes",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.projection-batch.max-vector-points",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "server.request-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.authority-map-enabled",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.code-search.changed-file-batch-size",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.code-search.freshness-ttl-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.code-search.max-file-bytes",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.code-search.reindex-timeout-secs",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.default-scope-local",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.default-scope-web",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.embed-by-default",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.max-source-items",
+      "rust_type": "Option<u64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "sources.source-id-strategy",
+      "rust_type": "Option<String>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "watch.coalesce-source-refreshes",
+      "rust_type": "Option<bool>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "watch.lease-secs",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "watch.max-concurrent-runs",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "watch.max-due-per-tick",
+      "rust_type": "Option<i64>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "watch.tick-secs",
+      "rust_type": "Option<u64>"
+    }
+  ],
+  "source_inputs": [
+    {
+      "path": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "sha256": "9a773208f828ca94fbb632f482aff6be83cf83748a94c01bb173d4484d43bfee"
+    },
+    {
+      "path": "crates/axon-core/src/config/parse/toml_config.rs",
+      "sha256": "3dae7065dc8c7708040af0f1a2804e4381d3b4617d7451e2aae079099fdbe05d"
+    },
+    {
+      "path": "crates/axon-core/src/config/parse/toml_config/convert.rs",
+      "sha256": "3efdccd12f8c06708176c0a4ddbe213730d08a71186342f5b16aa022753bb3f9"
+    },
+    {
+      "path": "xtask/src/runtime_config_docs.rs",
+      "sha256": "703a128bdeb3beec019a1a95fe5d463cc0d5a9299bcdfabfb9088a9b2632f672"
+    }
+  ]
+}

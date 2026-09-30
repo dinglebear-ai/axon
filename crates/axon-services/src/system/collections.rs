@@ -63,6 +63,17 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn qdrant_ready_accepts_plain_text_health_response() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/readyz");
+            then.status(200).body("all shards are ready");
+        });
+        assert!(qdrant_ready(&cfg_for_qdrant(server.base_url())).await);
+        mock.assert();
+    }
+
     #[test]
     fn map_collections_payload_sorts_and_ignores_invalid_entries() {
         let payload = serde_json::json!({

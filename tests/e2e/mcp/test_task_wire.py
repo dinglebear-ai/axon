@@ -8,6 +8,14 @@ class Fake:
     def request(self, payload, timeout=30):
         response, notices = next(self.responses); response["id"] = payload["id"]; return response, notices
 class TaskWireTests(unittest.TestCase):
+    def test_task_projection_preserves_opt_in_progress_and_fixed_identity(self):
+        transport = Fake([]); transport.call_form = "atomic"
+        meta = {wire.EXTENSION: {}, "progressToken": "owned-progress"}
+        params = wire.call_params(transport, {"action":"extract", "subaction":"start", "urls":["https://example.com"]}, meta)
+        self.assertEqual("extract_start", params["name"])
+        self.assertEqual({"urls":["https://example.com"]}, params["arguments"])
+        self.assertEqual(meta, params["_meta"])
+
     def test_structured_error(self):
         self.assertEqual(-32601, wire.structured_error({"error":{"code":-32601,"message":"missing"}}, "probe")["code"])
         with self.assertRaises(wire.WireError): wire.structured_error({"error":"missing"}, "probe")

@@ -699,6 +699,16 @@
     },
     {
       "columns": [
+        "source_id",
+        "source_item_key"
+      ],
+      "name": "idx_document_status_source_item",
+      "table": "document_status",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "node_id"
       ],
       "name": "idx_graph_aliases_node",
@@ -1360,6 +1370,18 @@
         "source_publication_state"
       ],
       "version": 2
+    },
+    {
+      "checksum": "a6c3747d6f31c1a0a59f4cf7ceedea1430a29353eafeffddb01ebe8e744bfae2",
+      "file": "crates/axon-ledger/src/migrations/0003_document_item_lookup.sql",
+      "name": "0003_document_item_lookup",
+      "owner_crate": "axon-ledger",
+      "runtime_namespace": "ledger",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "document_status"
+      ],
+      "version": 3
     },
     {
       "checksum": "51b238e740621b42a5b1bc53f4f0aab0c97fa19e70168d1597742290202551bf",
@@ -4306,7 +4328,7 @@
         "path": "crates/axon-jobs/src/migrations"
       },
       {
-        "checksum": "sha256:0414a82d0bc32cf9f1b877828f9faf6262796af088e86f041be619fc0ed205a8",
+        "checksum": "sha256:95f984814ad431c9296e239e8b6961259022666c2819d53327953125b3fdc6f3",
         "kind": "sql_migration_directory",
         "path": "crates/axon-ledger/src/migrations"
       },

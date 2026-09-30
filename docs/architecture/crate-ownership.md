@@ -33,8 +33,8 @@ There are two separable concerns that "service layer" used to conflate:
 
 ## Where things go
 
-The crate layering decides what *can* live where. The current workspace has 23
-crates; the authoritative, kept-current diagram and per-crate table live in
+The crate layering decides what *can* live where. Workspace membership is
+defined by Cargo.toml; the maintained ownership map and per-crate table live in
 [`crate-structure.md`](crate-structure.md) — do not duplicate that diagram
 here, since a second copy is exactly what let this doc rot out of sync with
 the real crate list. In short: cross-cutting contract crates

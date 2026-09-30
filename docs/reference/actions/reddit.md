@@ -7,12 +7,14 @@ Last Modified: 2026-07-14
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon <source>` |
-| REST | `POST /v1/sources` |
-| MCP | `{ "action": "source" }` |
-| Service | `services::source::* via SourceRequest` |
+| CLI | <code>axon &lt;source&gt;</code> |
+| REST | <code>GET /v1/sources</code><br><code>GET /v1/sources/{source_id}</code><br><code>POST /v1/sources</code> |
+| MCP atomic tools | <code>source</code> |
+| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |
 
-Parity notes: Compatibility source page. Use the unified source action for CLI, REST, and MCP.
+MCP names describe the atomic projection. The legacy `axon` tool uses the corresponding action/subaction selectors; `both` exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.
+
+Family-level navigation does not imply identical suboperations or request shapes across transports. Source-specific guide, not a dedicated provider command. Use unified source acquisition.
 <!-- END GENERATED ACTION SURFACES -->
 
 

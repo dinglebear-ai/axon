@@ -216,3 +216,61 @@ fn parse_markers_reports_one_based_marker_line() {
     assert_eq!(found[0].marker_line, 3);
     assert_eq!(found[0].body.as_deref(), Ok("{}"));
 }
+
+#[test]
+fn bundle_definition_keeps_transitive_refs_without_bundle_root_constraints() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "docs/reference/bundle.json",
+        r##"{
+      "$schema":"https://json-schema.org/draft/2020-12/schema",
+      "type":"object","additionalProperties":false,
+      "$defs":{"Name":{"type":"string"},"Input":{"type":"object","properties":{"name":{"$ref":"#/$defs/Name"}},"required":["name"],"additionalProperties":false}}
+    }"##,
+    );
+    let root = dir.path().join("docs/reference");
+    let selected = schema_loader::load(&root, "bundle.json#/$defs/Input").unwrap();
+    let validator = jsonschema::validator_for(&selected).unwrap();
+    assert!(validator.is_valid(&serde_json::json!({"name":"valid"})));
+    assert!(!validator.is_valid(&serde_json::json!({"name":42})));
+    assert!(!validator.is_valid(&serde_json::json!({"name":"valid","extra":true})));
+    let mut cache = HashMap::new();
+    get_or_build_validator(&root, "bundle.json", &mut cache).unwrap();
+    get_or_build_validator(&root, "bundle.json#/$defs/Input", &mut cache).unwrap();
+    assert_eq!(cache.len(), 2);
+}
+
+#[test]
+fn schema_definition_and_path_errors_are_actionable() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "docs/reference/bundle.json",
+        r#"{"$defs":{"Known":{"type":"string"}}}"#,
+    );
+    let root = dir.path().join("docs/reference");
+    for reference in [
+        "bundle.json#/$defs/Unknown",
+        "bundle.json#/properties/name",
+        "../outside.json",
+        "/tmp/outside.json",
+    ] {
+        assert!(
+            schema_loader::load(&root, reference).is_err(),
+            "{reference}"
+        );
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn schema_symlink_cannot_escape_reference_tree() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "outside.json", WIDGET_SCHEMA);
+    let root = dir.path().join("docs/reference");
+    fs::create_dir_all(&root).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("outside.json"), root.join("escape.json")).unwrap();
+    let err = schema_loader::load(&root, "escape.json").unwrap_err();
+    assert!(err.contains("outside docs/reference"), "{err}");
+}

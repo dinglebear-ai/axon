@@ -1,11 +1,12 @@
 # Parsing Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-09-27
 
 ## Contract
 
-This is the target parsing boundary. The dedicated `axon-parse` crate,
-`ParserRegistry`, `SourceParseFacts`, and generalized `GraphCandidate` pipeline
-do not exist as standalone implementation boundaries today.
+`axon-document` admits and decodes acquired content, redacts text, then invokes
+`axon-parse` and chunking. `axon-services` coordinates publication through the
+ledger, vector, and graph boundaries. Adapters retain source inventory and
+acquire content; shared preparation decides whether it is indexable.
 
 `axon-parse` owns deterministic extraction of structured facts from source
 documents and source manifests. Parsing is a first-class pipeline boundary, not
@@ -21,19 +22,45 @@ Parsing turns source content into:
 Parsing does not persist graph rows, write vector points, mutate ledger
 generations, or call LLM providers unless routed through `SourceEnrichment`.
 
-## Current Implementation Snapshot
+## Content Admission and Preparation
 
-Implemented today:
+`DocumentPreparer` returns either `Prepared` or `Skipped`. Skips retain the
+source item identity and a fixed reason: `unsupported_binary`,
+`unsupported_encoding`, `empty_content`, `unresolved_content_reference`, or
+`size_limit_exceeded`. They produce no placeholder text, chunks, or embeddings.
+Intentionally authored text metadata, including memory records, remains text.
 
-- Parsing/chunking behavior lives primarily inside `axon-vector`
-  `SourceDocument` preparation and source-specific ingest helpers.
-- Current code preparation emits `PreparedDoc` and per-chunk metadata, including
-  chunk locators, source ranges, language, and code symbol metadata where the
-  current chunker can extract it.
-- Tree-sitter-backed code chunking exists, but the output is structural chunk
-  metadata rather than the target graph-ready parser facts boundary.
-- General `SourceParseFacts` and `GraphCandidate` persistence are target
-  architecture.
+Git and Local acquire raw bytes without deciding binary eligibility. Shared
+preparation recognizes unsupported byte signatures, decodes strict UTF-8 and
+BOM-marked UTF-16, and skips empty or whitespace-only text. File extensions and
+MIME hints do not override the byte policy. Artifact and external references
+that reach preparation unresolved are skipped; preparation does not fetch them.
+Decoded text is redacted before parsing and chunking. Source ranges refer to
+the resulting UTF-8 text, rather than UTF-16 transport offsets.
+
+Direct preparation defaults to a finite 64 MiB content ceiling. Production further
+bounds it by the preparation memory allowance and request per-item limit.
+Admission checks encoded allocation size before base64 alphabet validation;
+malformed admitted base64 is a contract error. Raw decoded bytes and expanded
+UTF-8 text must each fit the ceiling. Git and Local also bound discovery reads,
+individual acquisition reads and batches, and enforce requested cumulative
+acquired-byte budgets. Exhausting a job byte budget fails the attempted
+generation and preserves committed output;
+a per-item oversized file remains in inventory with an explicit skip. Discovery
+I/O is separate from the acquired-payload byte total. These Git/Local acquisition
+limits do not establish HTTP provider network-byte limits.
+
+`axon-services` persists skipped document statuses and exact `documents_skipped`
+counts. Complete inventories can authorize deletion; partial or unknown
+inventories retain unvisited prior items with validated committed provenance.
+A text-to-skipped transition retires its prior vectors and graph evidence;
+a skipped-to-text transition prepares it normally. All-skipped generations can
+complete without calling the embedding provider.
+
+Preparation schema and effective processing settings participate in reuse
+identity. A changed identity reparses unchanged content, including cached HTTP
+304 and identical-body 200 responses. A partial refresh cannot retain unvisited
+items under an incompatible identity; a complete refresh can migrate them.
 
 ## Ownership
 

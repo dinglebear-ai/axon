@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::requests::{McpRenderMode, ResponseMode, SearchTimeRange};
-use crate::source::{JobPriority, SourceScope};
+use crate::source::{AdapterOptions, JobPriority, SourceLimits, SourceScope};
 
 /// Request parameters for the unified `source` action.
 ///
@@ -21,6 +21,12 @@ pub struct SourceRequest {
     /// Optional acquisition scope override (e.g. `page`, `site`, `repo`).
     /// When omitted, the classified family's default scope is used.
     pub scope: Option<SourceScope>,
+    /// Shared source item, byte, and provider limits. Omitted values keep server defaults.
+    #[serde(default)]
+    pub limits: SourceLimits,
+    /// Adapter options validated by the canonical source router.
+    #[serde(default)]
+    pub options: AdapterOptions,
     /// Qdrant collection to index into. Defaults to the server's configured collection.
     pub collection: Option<String>,
     /// Scheduler priority for this source job. Defaults to normal.
@@ -121,3 +127,7 @@ pub struct BrandRequest {
     pub render_mode: Option<McpRenderMode>,
     pub response_mode: Option<ResponseMode>,
 }
+
+#[cfg(test)]
+#[path = "utility_tests.rs"]
+mod tests;

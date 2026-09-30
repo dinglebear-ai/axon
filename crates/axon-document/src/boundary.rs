@@ -1,31 +1,17 @@
-//! Contract-shaped `DocumentPreparer` / `ChunkRouter` traits.
+//! Async preparation and synchronous routing boundaries.
 //!
-//! `crate::preparer::DocumentPreparer` and `crate::chunk_router::ChunkRouter`
-//! are existing concrete structs whose bare names collide with the trait
-//! names the contract wants — Rust forbids a struct and a trait with the
-//! same identifier in one module, so both traits are defined here instead,
-//! in a separate module, and implemented on the existing structs.
-//!
-//! Inside each `impl boundary::Trait for ConcreteStruct` block, calling
-//! `self.method(...)` with the *original* argument shape resolves to the
-//! pre-existing inherent method (inherent methods always shadow same-named
-//! trait methods for direct dot-call resolution in Rust). That is the
-//! load-bearing trick that lets every existing caller — including the
-//! concurrent memory workflow's `DocumentPreparer::prepare(
-//! PrepareSourceDocumentRequest)` calls — keep compiling untouched while the
-//! trait-shaped methods become reachable through `&dyn Trait` / generic-bound
-//! dispatch while requiring the same lineage-bearing request as production.
-//!
+//! The concrete preparer and this trait share the same lineage-bearing request
+//! and prepared/skipped outcome. Async batch preparation preserves every outcome.
 //! Contract: `docs/pipeline-unification/foundation/types/trait-contract.md`.
 
 use async_trait::async_trait;
 use axon_api::source::{
     ApiError, ChunkProfile, ChunkProfileCapability, DocumentPreparerCapability, ErrorStage,
-    HealthStatus, MetadataMap, PreparedDocument, SourceDocument,
+    HealthStatus, MetadataMap, SourceDocument,
 };
 
-use crate::PrepareSourceDocumentRequest;
 use crate::profile::ChunkingProfile;
+use crate::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -35,11 +21,14 @@ pub type Result<T> = std::result::Result<T, ApiError>;
 /// lineage cannot be omitted or synthesized by trait-object callers.
 #[async_trait]
 pub trait DocumentPreparer: Send + Sync {
-    async fn prepare(&self, request: PrepareSourceDocumentRequest) -> Result<PreparedDocument>;
+    async fn prepare(
+        &self,
+        request: PrepareSourceDocumentRequest,
+    ) -> Result<PrepareSourceDocumentResult>;
     async fn prepare_many(
         &self,
         requests: Vec<PrepareSourceDocumentRequest>,
-    ) -> Result<Vec<PreparedDocument>>;
+    ) -> Result<Vec<PrepareSourceDocumentResult>>;
     async fn capabilities(&self) -> Result<DocumentPreparerCapability>;
 }
 
@@ -52,17 +41,20 @@ pub trait ChunkRouter: Send + Sync {
 
 #[async_trait]
 impl DocumentPreparer for crate::preparer::DocumentPreparer {
-    async fn prepare(&self, request: PrepareSourceDocumentRequest) -> Result<PreparedDocument> {
+    async fn prepare(
+        &self,
+        request: PrepareSourceDocumentRequest,
+    ) -> Result<PrepareSourceDocumentResult> {
         let result = self
             .prepare(request)
             .map_err(|err| ApiError::new("document.prepare.failed", ErrorStage::Preparing, err))?;
-        Ok(result.document)
+        Ok(result)
     }
 
     async fn prepare_many(
         &self,
         requests: Vec<PrepareSourceDocumentRequest>,
-    ) -> Result<Vec<PreparedDocument>> {
+    ) -> Result<Vec<PrepareSourceDocumentResult>> {
         let mut prepared = Vec::with_capacity(requests.len());
         for request in requests {
             prepared.push(DocumentPreparer::prepare(self, request).await?);

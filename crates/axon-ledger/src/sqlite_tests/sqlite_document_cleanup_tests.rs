@@ -666,3 +666,85 @@ async fn sqlite_recommitting_graph_and_ledger_prune_debt_does_not_duplicate() {
 
     assert_eq!(store.cleanup_debt_count().await.expect("count"), before);
 }
+
+#[tokio::test]
+async fn sqlite_publication_preserves_skipped_reason_and_zero_counts() {
+    let directory = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        directory.path().join("ledger.db").display()
+    );
+    let store = SqliteLedgerStore::connect(&url).await.unwrap();
+    store.upsert_source(source()).await.unwrap();
+    let generation = seed_item_generation(&store, "src/lib.rs").await;
+    let skipped = DocumentStatus {
+        document_id: DocumentId::new("doc-skipped"),
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: Some(generation.clone()),
+        status: DocumentLifecycleStatus::Skipped,
+        updated_at: ts(),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: Some(SourceError {
+            code: "document.skipped.unsupported_binary".into(),
+            severity: Severity::Info,
+            message: "unsupported binary".into(),
+            source_item_key: None,
+            retryable: false,
+            provider_id: None,
+            cause: None,
+        }),
+        cleanup_status: None,
+    };
+    let prepared = DocumentStatus {
+        document_id: DocumentId::new("doc-prepared"),
+        status: DocumentLifecycleStatus::Prepared,
+        error: None,
+        ..skipped.clone()
+    };
+    store
+        .update_document_statuses(vec![skipped.clone(), prepared])
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .publish_document_statuses(SourceId::new("src_sqlite"), generation.clone(), ts_at(8))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-skipped"))
+            .await
+            .unwrap()
+            .unwrap(),
+        skipped
+    );
+    assert_eq!(
+        store
+            .publish_document_statuses(SourceId::new("src_sqlite"), generation, ts_at(9))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-skipped"))
+            .await
+            .unwrap()
+            .unwrap(),
+        skipped
+    );
+    store.pool_for_tests().close().await;
+    let store = SqliteLedgerStore::connect(&url).await.unwrap();
+    assert_eq!(
+        store
+            .document_status(&DocumentId::new("doc-skipped"))
+            .await
+            .unwrap()
+            .unwrap(),
+        skipped
+    );
+}

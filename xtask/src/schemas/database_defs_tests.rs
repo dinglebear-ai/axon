@@ -84,7 +84,8 @@ fn migration_records_match_runtime_identity_and_order() {
     assert_eq!(
         namespaces,
         [
-            // Ledger/graph each carry the publication-state 0002 migration.
+            // Ledger carries the publication-state 0002 migration and the
+            // document item lookup 0003 migration.
             // Jobs now has ten ordered migrations: canonical jobs, durable
             // provider scheduling, scheduler performance indexes, parser-kind
             // capacity, provider identity cache, complete watch request
@@ -92,8 +93,9 @@ fn migration_records_match_runtime_identity_and_order() {
             // full provider-kind registry, followed by projection batch
             // correlation. Graph carries its base schema, publication state,
             // and durable write checkpoints. Memory carries three.
-            "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs",
-            "jobs", "jobs", "observe", "graph", "graph", "graph", "memory", "memory", "memory"
+            "ledger", "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs",
+            "jobs", "jobs", "jobs", "observe", "graph", "graph", "graph", "memory", "memory",
+            "memory"
         ]
     );
     for migration in &schema.migrations {

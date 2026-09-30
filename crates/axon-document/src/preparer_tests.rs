@@ -9,6 +9,7 @@ use axon_parse::vertical::{
 
 use crate::{
     ChunkingProfile, DocumentPreparer, DocumentPreparerConfig, PrepareSourceDocumentRequest,
+    PrepareSourceDocumentResult,
     preparer::{
         PREPARATION_SCHEMA_VERSION, validate_prepared_document,
         validate_prepared_document_ranges_against_bounds,
@@ -19,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-1");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-6");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -29,8 +30,9 @@ fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {
         markdown_max_chars: 48,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
+        ..DocumentPreparerConfig::default()
     });
-    let prepared = preparer
+    let PrepareSourceDocumentResult::Prepared(prepared) = preparer
         .prepare(request(
             ContentKind::Markdown,
             &format!("# Explicit\n{}", "content ".repeat(40)),
@@ -38,7 +40,9 @@ fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {
             ChunkingProfile::MarkdownSections,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert!(prepared.chunks.len() > 1);
     assert!(
@@ -68,7 +72,9 @@ fn preparer_builds_prepared_document_from_inline_source_dto() {
     );
 
     let result = DocumentPreparer::default().prepare(request).unwrap();
-    let prepared = result.document;
+    let PrepareSourceDocumentResult::Prepared(prepared) = result else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.document_id, DocumentId::from("doc-test"));
     assert_eq!(prepared.source_id, SourceId::from("src-test"));
@@ -113,10 +119,12 @@ fn self_parsed_markdown_overrides_generic_local_code_hint() {
         options: MetadataMap::new(),
     });
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request)
         .expect("self-parsed markdown should produce chunks")
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunking_profile, "markdown_sections");
     assert_eq!(prepared.chunks.len(), 1);
@@ -138,10 +146,11 @@ fn large_intact_markdown_preserves_sections_instead_of_paragraph_fallback() {
         ChunkingProfile::MarkdownSections,
     );
 
-    let prepared = DocumentPreparer::default()
-        .prepare(request)
-        .unwrap()
-        .document;
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        DocumentPreparer::default().prepare(request).unwrap()
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunking_method, "heading_sections");
     assert!(
@@ -163,12 +172,15 @@ fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
     let result = recorder.prepare(request.clone()).unwrap();
 
     assert_eq!(recorder.requests(), &[request]);
-    assert_eq!(result.document.chunking_profile, "plain_text_windows");
-    assert_eq!(result.document.chunks.len(), 2);
+    let PrepareSourceDocumentResult::Prepared(result) = result else {
+        panic!("expected prepared document")
+    };
+    assert_eq!(result.chunking_profile, "plain_text_windows");
+    assert_eq!(result.chunks.len(), 2);
 }
 
 #[test]
-fn preparer_rejects_empty_prepared_documents() {
+fn preparer_skips_whitespace_only_content() {
     let request = request(
         ContentKind::PlainText,
         " \n\n\t",
@@ -176,14 +188,41 @@ fn preparer_rejects_empty_prepared_documents() {
         ChunkingProfile::PlainTextWindows,
     );
 
-    let error = DocumentPreparer::default().prepare(request).unwrap_err();
+    assert!(
+        matches!(DocumentPreparer::default().prepare(request).unwrap(),
+        PrepareSourceDocumentResult::Skipped(skipped) if skipped.reason == axon_api::source::ContentSkipReason::EmptyContent)
+    );
+}
 
-    assert!(error.contains("prepared document has no chunks"));
+#[test]
+fn preparer_indexes_nonempty_html_when_visible_projection_has_no_chunks() {
+    let body = "<script>window.example = 42;</script>";
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Html,
+            body,
+            "gen-empty-html-projection",
+            ChunkingProfile::HtmlArticle,
+        ))
+        .unwrap()
+    else {
+        panic!("expected source-text fallback")
+    };
+    assert_eq!(prepared.chunking_method, "plain_text_windows");
+    assert_eq!(prepared.chunks.len(), 1);
+    assert_eq!(prepared.chunks[0].content, body);
+    assert_eq!(prepared.chunks[0].source_range.byte_start, Some(0));
+    assert!(
+        prepared
+            .warnings
+            .iter()
+            .any(|w| w.code == "chunk.empty_fallback")
+    );
 }
 
 #[test]
 fn validate_prepared_document_rejects_duplicate_chunk_identity() {
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
             "alpha\n\nbeta",
@@ -191,7 +230,9 @@ fn validate_prepared_document_rejects_duplicate_chunk_identity() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
     let mut invalid = prepared;
     invalid.chunks[1].chunk_id = invalid.chunks[0].chunk_id.clone();
     invalid.chunks[1].chunk_key = invalid.chunks[0].chunk_key.clone();
@@ -204,7 +245,7 @@ fn validate_prepared_document_rejects_duplicate_chunk_identity() {
 
 #[test]
 fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
             "alpha",
@@ -212,7 +253,9 @@ fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
     let mut invalid = prepared;
     invalid.chunks[0].chunk_id = ChunkId::from("manual-empty");
     invalid.chunks[0].content = " \n\t ".to_string();
@@ -230,7 +273,7 @@ fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
 
 #[test]
 fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
             "PORT=3000\n",
@@ -238,7 +281,9 @@ fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
     let mut invalid = prepared;
     invalid.chunks[0].source_range.line_start = Some(9000);
     invalid.chunks[0].source_range.line_end = Some(9001);
@@ -253,7 +298,7 @@ fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
 #[test]
 fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
     let source_text = "FROM alpine:3\n";
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
             source_text,
@@ -261,7 +306,9 @@ fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
     let mut invalid = prepared;
     invalid.graph_candidates.push(GraphCandidate {
         candidate_id: "cand-graph-range".to_string(),
@@ -321,7 +368,7 @@ fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
 
 #[test]
 fn preparer_rejects_unordered_time_and_turn_ranges() {
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
             "first\nsecond\n",
@@ -329,7 +376,9 @@ fn preparer_rejects_unordered_time_and_turn_ranges() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
     let mut invalid = prepared;
     invalid.chunks[0].source_range.time_start_ms = Some(200);
     invalid.chunks[0].source_range.time_end_ms = Some(100);
@@ -352,7 +401,7 @@ fn tool_output_chunks_promote_jsonl_record_metadata() {
     doc.metadata
         .insert("source_family".to_string(), serde_json::json!("tool"));
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: doc,
             generation: SourceGenerationId::from("gen-tool-output"),
@@ -363,7 +412,9 @@ fn tool_output_chunks_promote_jsonl_record_metadata() {
             errors: Vec::new(),
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunks.len(), 1);
     let metadata = &prepared.chunks[0].metadata;
@@ -395,7 +446,10 @@ fn main() {}\n";
         ))
         .unwrap();
 
-    let chunks = result.document.chunks;
+    let PrepareSourceDocumentResult::Prepared(prepared) = result else {
+        panic!("expected prepared document")
+    };
+    let chunks = prepared.chunks;
 
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0].metadata["original_path"], "src/lib.rs");
@@ -458,7 +512,7 @@ fn preparer_carries_parse_artifacts_to_prepared_document() {
         cause: None,
     };
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: source_doc(ContentKind::PlainText, "body"),
             generation: SourceGenerationId::from("gen-artifacts"),
@@ -469,7 +523,9 @@ fn preparer_carries_parse_artifacts_to_prepared_document() {
             errors: vec![error.clone()],
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.parse_facts, vec![fact]);
     assert_eq!(prepared.graph_candidates, vec![candidate]);
@@ -522,7 +578,7 @@ fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() 
         serde_json::to_value(vec![candidate.clone()]).unwrap(),
     );
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: doc,
             generation: SourceGenerationId::from("gen-vertical"),
@@ -533,7 +589,9 @@ fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() 
             errors: Vec::new(),
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.parse_facts, vec![fact]);
     assert_eq!(prepared.graph_candidates, vec![candidate]);
@@ -559,7 +617,7 @@ fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() 
 
 #[test]
 fn malformed_structured_text_degrades_with_fallback_warning() {
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::Json,
             "{\"broken\":",
@@ -567,7 +625,9 @@ fn malformed_structured_text_degrades_with_fallback_warning() {
             ChunkingProfile::StructuredRecords,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunks.len(), 1);
     assert_eq!(
@@ -579,36 +639,150 @@ fn malformed_structured_text_degrades_with_fallback_warning() {
 }
 
 #[test]
-fn non_inline_content_degrades_to_atomic_metadata_chunk() {
-    let mut doc = source_doc(ContentKind::BinaryMetadata, "");
-    doc.content = ContentRef::External {
-        uri: "artifact://source/raw".to_string(),
-        integrity: Some("sha256:abc".to_string()),
-    };
-    let prepared = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-external"),
-            profile: Some(ChunkingProfile::PlainTextWindows),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
-        .document;
+fn unsupported_content_returns_skipped_identity_without_a_document() {
+    use axon_api::source::{ArtifactId, ContentSkipReason};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let cases = [
+        (
+            ContentRef::External {
+                uri: "https://user:secret@example.test/body".into(),
+                integrity: None,
+            },
+            ContentSkipReason::UnresolvedContentReference,
+        ),
+        (
+            ContentRef::Artifact {
+                artifact_id: ArtifactId("secret-reference".into()),
+            },
+            ContentSkipReason::UnresolvedContentReference,
+        ),
+        (
+            ContentRef::InlineBytes {
+                bytes_base64: STANDARD.encode(b"%PDF-1.7"),
+                mime_type: "text/plain".into(),
+            },
+            ContentSkipReason::UnsupportedBinary,
+        ),
+        (
+            ContentRef::InlineText {
+                text: String::new(),
+            },
+            ContentSkipReason::EmptyContent,
+        ),
+    ];
+    for (content, reason) in cases {
+        let mut input = request(
+            ContentKind::BinaryMetadata,
+            "",
+            "gen-skipped",
+            ChunkingProfile::AtomicMetadata,
+        );
+        input.document.content = content;
+        let PrepareSourceDocumentResult::Skipped(skipped) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("expected skipped identity, never a placeholder document")
+        };
+        assert_eq!(skipped.reason, reason);
+        assert_eq!(skipped.document_id, DocumentId::from("doc-test"));
+        assert_eq!(skipped.source_id, SourceId::from("src-test"));
+        assert_eq!(skipped.source_item_key, SourceItemKey::from("item-test"));
+        assert_eq!(skipped.generation, SourceGenerationId::from("gen-skipped"));
+    }
+}
 
+#[test]
+fn authored_atomic_metadata_remains_searchable() {
+    let input = request(
+        ContentKind::BinaryMetadata,
+        "%PDF- is a documented signature",
+        "gen-authored",
+        ChunkingProfile::AtomicMetadata,
+    );
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("authored metadata should prepare")
+    };
     assert_eq!(prepared.chunking_profile, "atomic_metadata");
     assert_eq!(prepared.chunks.len(), 1);
+    assert!(prepared.chunks[0].content.contains("documented signature"));
+}
+
+#[test]
+fn preparation_enforces_content_ceiling_and_rejects_admitted_malformed_base64() {
+    use axon_api::source::ContentSkipReason;
+    let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+        max_content_bytes: 4,
+        ..DocumentPreparerConfig::default()
+    });
+    let input = request(
+        ContentKind::PlainText,
+        "large",
+        "gen-limit",
+        ChunkingProfile::PlainTextWindows,
+    );
     assert!(
-        prepared.chunks[0]
-            .content
-            .contains("external content reference")
+        matches!(preparer.prepare(input).unwrap(), PrepareSourceDocumentResult::Skipped(s) if s.reason == ContentSkipReason::SizeLimitExceeded)
     );
+    let mut input = request(
+        ContentKind::PlainText,
+        "",
+        "gen-error",
+        ChunkingProfile::PlainTextWindows,
+    );
+    input.document.content = ContentRef::InlineBytes {
+        bytes_base64: "$$$$".into(),
+        mime_type: "secret".into(),
+    };
     assert_eq!(
-        prepared.warnings[0].code,
-        "document.content.external_fallback"
+        preparer.prepare(input).unwrap_err(),
+        "malformed base64 content"
     );
+}
+
+#[test]
+fn decoded_utf16_is_redacted_before_parsing_and_range_validation() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let secret = format!("sk-{}", "a".repeat(28));
+    let text =
+        format!("# Title\nAuthorization: Bearer {secret}\n\n## After the secret\nBody text.\n");
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in text.encode_utf16() {
+        bytes.extend(unit.to_le_bytes());
+    }
+    let mut input = request(
+        ContentKind::Markdown,
+        "",
+        "gen-utf16",
+        ChunkingProfile::MarkdownSections,
+    );
+    input.profile = None;
+    input.document.content = ContentRef::InlineBytes {
+        bytes_base64: STANDARD.encode(bytes),
+        mime_type: "application/octet-stream".into(),
+    };
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("UTF16 source text should prepare")
+    };
+    assert!(!prepared.chunks.is_empty());
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| !chunk.content.contains(&secret))
+    );
+    assert!(prepared.graph_candidates.iter().any(|candidate| {
+        candidate
+            .merge_key
+            .as_deref()
+            .is_some_and(|key| key.contains("After the secret"))
+    }));
+    assert!(prepared.warnings.iter().any(|warning| {
+        warning.code == "document.content.pre_chunk_redacted" && warning.severity == Severity::Info
+    }));
 }
 
 #[test]
@@ -623,7 +797,7 @@ fn large_code_document_dispatches_to_windowed_fallback_not_code_symbols() {
     }
     assert!(body.len() > 200_000, "fixture must exceed the threshold");
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::Code,
             &body,
@@ -631,7 +805,9 @@ fn large_code_document_dispatches_to_windowed_fallback_not_code_symbols() {
             ChunkingProfile::CodeSymbol,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunking_profile, "code_symbol");
     assert_eq!(prepared.chunking_method, "code_blocks");
@@ -654,7 +830,7 @@ fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback()
         serde_json::json!("web_scrape"),
     );
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: doc,
             generation: SourceGenerationId::from("gen-fragment"),
@@ -665,7 +841,9 @@ fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback()
             errors: Vec::new(),
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunking_method, "code_blocks");
     assert_eq!(
@@ -687,10 +865,11 @@ fn large_html_document_still_removes_non_content_payloads() {
         ChunkingProfile::HtmlArticle,
     );
 
-    let prepared = DocumentPreparer::default()
-        .prepare(request)
-        .unwrap()
-        .document;
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        DocumentPreparer::default().prepare(request).unwrap()
+    else {
+        panic!("expected prepared document")
+    };
     let content = prepared
         .chunks
         .iter()
@@ -725,7 +904,7 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
         "blob": {"@type": "Article", "headline": "Intro"},
     }));
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: doc,
             generation: SourceGenerationId::from("gen-web-structured"),
@@ -736,7 +915,9 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
             errors: Vec::new(),
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunking_profile, "markdown_sections");
     assert!(prepared.chunks.len() >= 2);
@@ -770,7 +951,7 @@ fn structured_payload_kind_falls_back_when_schema_type_is_absent() {
         "blob": {"props": {}},
     }));
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: doc,
             generation: SourceGenerationId::from("gen-web-nextdata"),
@@ -781,7 +962,9 @@ fn structured_payload_kind_falls_back_when_schema_type_is_absent() {
             errors: Vec::new(),
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.metadata["web_structured_kind"], "next_data");
 }
@@ -801,7 +984,7 @@ fn structured_payload_is_not_projected_outside_the_web_family() {
         "blob": {"@type": "Article"},
     }));
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
             document: doc,
             generation: SourceGenerationId::from("gen-nonweb"),
@@ -812,7 +995,9 @@ fn structured_payload_is_not_projected_outside_the_web_family() {
             errors: Vec::new(),
         })
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert!(!prepared.metadata.contains_key("web_structured_kind"));
     assert!(!prepared.metadata.contains_key("web_structured_blob"));
@@ -823,11 +1008,9 @@ fn structured_payload_is_not_projected_outside_the_web_family() {
 }
 
 #[test]
-fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
-    // StructuredRecords has no wired size fallback: even past the threshold,
-    // both the reported method and the actual chunker stay on the profile's
-    // primary structured parser (this fixture is valid JSON, so it does not
-    // hit the separate parse-failure fallback path either).
+fn oversized_structured_record_is_bounded_before_embedding() {
+    // A valid JSON record can contain one very large array. Its structural
+    // identity survives while the embedding inputs remain bounded.
     let mut body = String::from("{\"items\":[");
     for i in 0..20_000 {
         if i > 0 {
@@ -838,7 +1021,7 @@ fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
     body.push_str("]}");
     assert!(body.len() > 200_000, "fixture must exceed the threshold");
 
-    let prepared = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::Json,
             &body,
@@ -846,10 +1029,124 @@ fn unwired_profile_ignores_size_and_keeps_reporting_its_primary_method() {
             ChunkingProfile::StructuredRecords,
         ))
         .unwrap()
-        .document;
+    else {
+        panic!("expected prepared document")
+    };
 
     assert_eq!(prepared.chunking_profile, "structured_records");
-    assert_eq!(prepared.chunking_method, "structured_records");
+    assert_eq!(prepared.chunking_method, "plain_text_windows");
+    assert!(prepared.chunks.len() > 1);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.content.len() <= 4096)
+    );
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.source_range.json_pointer.as_deref() == Some("/items"))
+    );
+}
+
+#[test]
+fn oversized_manifest_line_keeps_exact_source_ranges() {
+    let body = format!("name = \"{}\"", "x".repeat(12_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Toml,
+            &body,
+            "gen-large-manifest",
+            ChunkingProfile::CodeManifest,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+
+    assert!(prepared.chunks.len() > 1);
+    for chunk in &prepared.chunks {
+        assert!(chunk.content.len() <= 4096);
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert_eq!(&body[start..end], chunk.content);
+    }
+}
+
+#[test]
+fn oversized_session_turn_keeps_turn_id_and_exact_ranges() {
+    let body = format!("{}\nsecond turn", "α".repeat(4_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Transcript,
+            &body,
+            "gen-large-session",
+            ChunkingProfile::SessionTurns,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+
+    let first_turn = prepared
+        .chunks
+        .iter()
+        .filter(|chunk| chunk.source_range.session_turn_id.as_deref() == Some("turn-0"))
+        .collect::<Vec<_>>();
+    assert!(first_turn.len() > 1);
+    for chunk in first_turn {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert_eq!(&body[start..end], chunk.content);
+        assert!(chunk.content.len() <= 4096);
+    }
+}
+
+#[test]
+fn multi_megabyte_json_record_has_bounded_embedding_chunks() {
+    let body = format!("{{\"payload\":\"{}\"}}", "x".repeat(3_000_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Json,
+            &body,
+            "gen-large-json",
+            ChunkingProfile::StructuredRecords,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+    assert!(prepared.chunks.len() > 700);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.content.len() <= 4096)
+    );
+}
+
+#[test]
+fn embedding_backstop_drops_whitespace_only_windows() {
+    let body = format!("start{}end", " ".repeat(6_000));
+    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            &body,
+            "gen-spaced-metadata",
+            ChunkingProfile::AtomicMetadata,
+        ))
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+    assert!(prepared.chunks.len() > 1);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| !chunk.content.trim().is_empty())
+    );
 }
 
 fn source_doc(content_kind: ContentKind, text: &str) -> SourceDocument {
@@ -916,7 +1213,9 @@ fn redacted_content_parses_and_validates_after_scrub() {
     let result = DocumentPreparer::default()
         .prepare(request)
         .expect("preparation must survive pre-chunk redaction");
-    let prepared = result.document;
+    let PrepareSourceDocumentResult::Prepared(prepared) = result else {
+        panic!("expected prepared document")
+    };
 
     // The secret is scrubbed from every chunk...
     assert!(
@@ -944,6 +1243,49 @@ fn redacted_content_parses_and_validates_after_scrub() {
 }
 
 #[test]
+fn manifest_graph_evidence_survives_real_document_preparation() {
+    let samples = [
+        (
+            "package.json",
+            ContentKind::Json,
+            "{\n  \"dependencies\": {\n    \"react\": \"19\"\n  },\n  \"scripts\": {\"build\": \"vite build\"}\n}",
+            "manifest_dependency",
+        ),
+        (
+            "pom.xml",
+            ContentKind::Xml,
+            "<project>\n<dependencies><dependency>\n<groupId>org.example</groupId>\n<artifactId>demo</artifactId>\n</dependency></dependencies>\n</project>",
+            "manifest_dependency",
+        ),
+        (
+            "deploy.yaml",
+            ContentKind::Yaml,
+            "apiVersion: apps/v1\nkind:   'Deployment'\nmetadata:\n  name: demo\n",
+            "iac_resource",
+        ),
+    ];
+    for (path, kind, text, graph_kind) in samples {
+        let mut request = request(kind, text, "gen-manifest", ChunkingProfile::AtomicMetadata);
+        request.document.path = Some(path.to_string());
+        request.document.canonical_uri = format!("file:///repo/{path}");
+        request.profile = None;
+        let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+            .prepare(request)
+            .unwrap_or_else(|error| panic!("{path}: {error}"))
+        else {
+            panic!("{path}: expected prepared document")
+        };
+        assert!(
+            prepared
+                .graph_candidates
+                .iter()
+                .any(|candidate| candidate.kind == graph_kind),
+            "{path}: expected {graph_kind} graph evidence"
+        );
+    }
+}
+
+#[test]
 fn tutorial_credential_examples_are_preserved_before_chunking() {
     let text = concat!(
         "Authorization: Bearer abc123\n",
@@ -959,7 +1301,9 @@ fn tutorial_credential_examples_are_preserved_before_chunking() {
             ChunkingProfile::PlainTextWindows,
         ))
         .expect("tutorial credential syntax must remain preparable");
-    let prepared = result.document;
+    let PrepareSourceDocumentResult::Prepared(prepared) = result else {
+        panic!("expected prepared document")
+    };
     let joined = prepared
         .chunks
         .iter()
@@ -1001,22 +1345,26 @@ fn markdown_windowed_fallback_honors_injected_limits() {
         serde_json::json!("web_scrape"),
     );
 
-    let prepared = DocumentPreparer::new(DocumentPreparerConfig {
-        markdown_max_chars: 96,
-        markdown_min_chars: 1,
-        markdown_overlap_chars: 0,
-    })
-    .prepare(PrepareSourceDocumentRequest {
-        document: doc,
-        generation: SourceGenerationId::from("gen-md-fallback-limits"),
-        profile: Some(ChunkingProfile::MarkdownSections),
-        parse_facts: Vec::new(),
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        errors: Vec::new(),
-    })
-    .unwrap()
-    .document;
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        DocumentPreparer::new(DocumentPreparerConfig {
+            markdown_max_chars: 96,
+            markdown_min_chars: 1,
+            markdown_overlap_chars: 0,
+            ..DocumentPreparerConfig::default()
+        })
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-md-fallback-limits"),
+            profile: Some(ChunkingProfile::MarkdownSections),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
 
     assert!(prepared.chunks.len() > 1);
     assert_eq!(
@@ -1034,4 +1382,82 @@ fn markdown_windowed_fallback_honors_injected_limits() {
             .all(|chunk| chunk.content.chars().count() <= 96),
         "fallback windows must honor the injected markdown max_chars"
     );
+}
+
+#[test]
+fn acquisition_size_omission_preserves_identity_and_reason() {
+    use axon_api::source::{CONTENT_OMISSION_METADATA_KEY, ContentSkipReason};
+    let mut input = request(
+        ContentKind::PlainText,
+        "",
+        "gen-omitted",
+        ChunkingProfile::MarkdownSections,
+    );
+    input.document.metadata.insert(
+        CONTENT_OMISSION_METADATA_KEY.into(),
+        serde_json::json!("size_limit_exceeded"),
+    );
+    input
+        .document
+        .metadata
+        .insert("binary_policy".into(), serde_json::json!("include"));
+    let expected_id = input.document.document_id.clone();
+    let PrepareSourceDocumentResult::Skipped(skipped) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("expected size skip")
+    };
+    assert_eq!(skipped.document_id, expected_id);
+    assert_eq!(skipped.reason, ContentSkipReason::SizeLimitExceeded);
+}
+
+#[test]
+fn content_limit_override_never_raises_configured_ceiling() {
+    use axon_api::source::ContentSkipReason;
+    for limit in [0, 2, usize::MAX] {
+        let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+            max_content_bytes: 2,
+            ..Default::default()
+        })
+        .with_content_byte_limit(limit);
+        let input = request(
+            ContentKind::PlainText,
+            "abc",
+            "gen-limit",
+            ChunkingProfile::MarkdownSections,
+        );
+        let PrepareSourceDocumentResult::Skipped(skipped) = preparer.prepare(input).unwrap() else {
+            panic!("expected size skip")
+        };
+        assert_eq!(skipped.reason, ContentSkipReason::SizeLimitExceeded);
+    }
+}
+
+#[test]
+fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
+    for policy in ["skip", "metadata", "include"] {
+        let mut input = request(
+            ContentKind::PlainText,
+            "Local text remains searchable.",
+            "gen-local-policy",
+            ChunkingProfile::MarkdownSections,
+        );
+        input
+            .document
+            .metadata
+            .insert("binary_policy".into(), serde_json::json!(policy));
+        let PrepareSourceDocumentResult::Prepared(prepared) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("expected supported Local text")
+        };
+        assert!(!prepared.metadata.contains_key("binary_policy"));
+        assert!(!prepared.chunks.is_empty());
+        assert!(
+            prepared
+                .chunks
+                .iter()
+                .all(|chunk| !chunk.metadata.contains_key("binary_policy"))
+        );
+    }
 }

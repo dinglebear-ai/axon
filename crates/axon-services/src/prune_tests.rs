@@ -486,6 +486,7 @@ fn ledger_source_summary(source_id: &str) -> SourceSummary {
         authority: AuthorityLevel::Verified,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,
@@ -570,6 +571,7 @@ async fn ledger_with_committed_generation(
             source_id: SourceId::new(source_id),
             generation: completed.generation.clone(),
             expected_previous_generation: None,
+            retained_statuses: Vec::new(),
         })
         .await
         .expect("publish generation");
@@ -638,6 +640,7 @@ async fn prune_plan_reads_shared_ledger_from_enqueue_only_context() {
             source_id: SourceId::new(source_id),
             generation: completed.generation,
             expected_previous_generation: None,
+            retained_statuses: Vec::new(),
         })
         .await
         .expect("publish generation");

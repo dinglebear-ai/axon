@@ -27,6 +27,8 @@ mod graph_defs;
 mod markdown_render;
 #[path = "mcp_action_registry.rs"]
 mod mcp_action_registry;
+#[path = "families/mcp_artifacts.rs"]
+mod mcp_artifact;
 #[path = "families/mcp_markdown.rs"]
 mod mcp_markdown;
 #[path = "projections.rs"]
@@ -174,7 +176,7 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             json_string(&schema)?,
         ),
         // docs/reference/api/dto.md and api/enums.md are owned by the docs
-        // generator (`cargo xtask docs generate --family api`), which emits the
+        // generator (`the api-dto and api-enums documentation families`), which emits the
         // substantive human reference rather than the skeleton this family
         // produced. Declaring them here too made `schemas generate --check` and
         // `docs generate --check` mutually unsatisfiable as soon as the API
@@ -265,7 +267,7 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         ),
         SchemaArtifact::new(
             rel("docs/reference/api/errors.md"),
-            markdown("errors", &inputs),
+            markdown("errors", &inputs) + &crate::reference_tables::render(&schema),
         ),
     ])
 }
@@ -299,71 +301,7 @@ fn cli_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
 }
 
 fn mcp_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
-    let spec = family_specs::spec_for(SchemaFamily::Mcp);
-    let inputs = source_inputs(root, spec.source_paths)?;
-
-    // Real request-DTO + subaction-enum defs, namespaced via the shared
-    // schema_defs()/rewrite_refs() helper exactly like every other family.
-    let mut raw_defs: Vec<(&str, Value)> = mcp_action_registry::build::def_pairs();
-    raw_defs.push((
-        "ResponseMode",
-        schemars::schema_for!(axon_api::action::ResponseMode).into(),
-    ));
-    raw_defs.push((
-        "AxonToolResponse",
-        schemars::schema_for!(axon_mcp::schema::AxonToolResponse).into(),
-    ));
-    let mut defs = schema_defs(&raw_defs, None)
-        .as_object()
-        .cloned()
-        .expect("schema_defs returns an object");
-
-    // Subaction enum defs use computed (non-`&'static str`) names, so they're
-    // inserted directly rather than through the `(&str, Value)` pair list.
-    for (name, value) in mcp_action_registry::build::subaction_def_pairs() {
-        defs.insert(name, value);
-    }
-
-    // `Action`, `ActionDiscriminatorRules`, and `AxonToolInput` all embed raw
-    // `#/$defs/...` refs to the entries above by name — insert them *after*
-    // schema_defs()'s ref-rewriting pass, never through it, or their refs
-    // would be incorrectly namespaced.
-    defs.insert(
-        "Action".to_string(),
-        mcp_action_registry::build::action_enum_def(),
-    );
-    defs.insert(
-        "ActionDiscriminatorRules".to_string(),
-        mcp_action_registry::build::discriminator_rules(),
-    );
-    defs.insert(
-        "AxonToolInput".to_string(),
-        mcp_action_registry::build::root_input_schema(),
-    );
-
-    let schema = json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": schema_id(SchemaFamily::Mcp),
-        "title": spec.title,
-        "description": "Generated Axon MCP tool schema contract artifact.",
-        "type": "object",
-        "additionalProperties": false,
-        "$defs": Value::Object(defs),
-        "x-axon": {
-            "contract_version": "2026-06-30",
-            "generated_by": "cargo xtask schemas mcp",
-            "owner_crates": spec.owner_crates,
-            "source_inputs": inputs,
-            "clean_break": true,
-            "live_action_count": mcp_action_registry::live_action_names().len(),
-            "deferred_actions": mcp_action_registry::build::deferred_actions_value(),
-        }
-    });
-    Ok(vec![
-        SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
-        SchemaArtifact::new(rel(spec.extra_json.unwrap().path), json_string(&schema)?),
-        SchemaArtifact::new(rel(spec.markdown_path), mcp_markdown::mcp_markdown(&inputs)),
-    ])
+    mcp_artifact::generate(root)
 }
 
 fn openapi_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
@@ -411,11 +349,13 @@ fn openapi_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
         SchemaArtifact::new(
             rel(spec.markdown_path),
-            registry_markdown("openapi", &inputs, "Routes"),
+            registry_markdown("openapi", &inputs, "Routes")
+                + &crate::reference_tables::render(&schema),
         ),
         SchemaArtifact::new(
             rel(spec.extra_markdown_path.unwrap()),
-            registry_projection_markdown("openapi-schemas", "openapi", &inputs, "Routes"),
+            registry_projection_markdown("openapi-schemas", "openapi", &inputs, "Routes")
+                + &crate::reference_tables::render(&schema),
         ),
     ])
 }

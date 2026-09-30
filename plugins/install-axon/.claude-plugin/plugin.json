@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "install-axon",
+  "description": "Install, configure, connect, and verify Axon with the guided installer skill and MCP connection.",
+  "author": {
+    "name": "dinglebear.ai",
+    "email": "hello@dinglebear.ai",
+    "url": "https://dinglebear.ai"
+  },
+  "homepage": "https://axon.dinglebear.ai",
+  "repository": "https://github.com/dinglebear-ai/axon",
+  "license": "AGPL-3.0-only",
+  "keywords": [
+    "rag",
+    "crawl",
+    "scrape",
+    "embed",
+    "qdrant",
+    "semantic-search",
+    "mcp",
+    "spider",
+    "ingest",
+    "hybrid-search"
+  ],
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json",
+  "userConfig": {
+    "server_url": {
+      "type": "string",
+      "title": "Axon server URL",
+      "description": "Base URL of your running axon serve instance (e.g. http://localhost:8001)",
+      "required": true,
+      "default": "http://localhost:8001"
+    },
+    "api_token": {
+      "type": "string",
+      "title": "API token",
+      "description": "Bearer token (AXON_HTTP_TOKEN). Leave empty for unauthenticated/loopback instances.",
+      "sensitive": true
+    }
+  }
+}

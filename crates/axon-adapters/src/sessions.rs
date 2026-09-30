@@ -207,9 +207,11 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         .effective
         .max_items
         .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
+    let mut truncated = false;
     let mut items = if let Some(limit) = max_items {
-        let candidates =
+        let (candidates, was_truncated) =
             collect_capped_session_candidates(&target, project_filter.as_deref(), &root, limit)?;
+        truncated = was_truncated;
         hash_session_candidates_parallel(plan, &base_uri, &root, &candidates)?
     } else {
         collect_session_manifest_items_parallel(
@@ -222,7 +224,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_session_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -230,7 +232,13 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         items,
         created_at: timestamp(),
         metadata: manifest_metadata(&target),
-    })
+    };
+    manifest.set_inventory_completeness(if truncated {
+        InventoryCompleteness::Partial
+    } else {
+        InventoryCompleteness::Complete
+    });
+    Ok(manifest)
 }
 
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {

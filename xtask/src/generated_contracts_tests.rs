@@ -1,4 +1,36 @@
 use std::cell::RefCell;
+
+#[test]
+fn failed_producer_prevents_downstream_docs_in_refresh_and_check() {
+    for command in [
+        GeneratedContractsCommand::Refresh,
+        GeneratedContractsCommand::Check,
+    ] {
+        let calls = RefCell::new(Vec::new());
+        let result = run_with(
+            command,
+            |_| {
+                calls.borrow_mut().push("schemas");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("presentation");
+                Ok(())
+            },
+            |_| {
+                calls.borrow_mut().push("references");
+                anyhow::bail!("input drift")
+            },
+            |_| {
+                calls.borrow_mut().push("docs");
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(*calls.borrow(), ["schemas", "presentation", "references"]);
+    }
+}
+
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -34,6 +66,10 @@ fn generated_contracts_runs_schema_and_presentation_producers_before_dependent_d
                 Ok(())
             },
             |actual_check| {
+                calls.borrow_mut().push(("references", actual_check));
+                Ok(())
+            },
+            |actual_check| {
                 calls.borrow_mut().push(("docs", actual_check));
                 Ok(())
             },
@@ -41,7 +77,12 @@ fn generated_contracts_runs_schema_and_presentation_producers_before_dependent_d
         .unwrap();
         assert_eq!(
             *calls.borrow(),
-            [("schemas", check), ("presentation", check), ("docs", check),]
+            [
+                ("schemas", check),
+                ("presentation", check),
+                ("references", check),
+                ("docs", check),
+            ]
         );
     }
 }

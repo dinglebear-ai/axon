@@ -80,6 +80,7 @@ fn terminal_source_error_cause_is_none_for_single_frame_error() {
 #[test]
 fn terminal_stage_counts_use_discovered_items() {
     let output = IndexCounts {
+        documents_skipped: 0,
         job_id: JobId::new(uuid::Uuid::nil()),
         source_id: SourceId::new("src-stage-counts"),
         generation: SourceGenerationId::new("1"),

@@ -6,12 +6,14 @@ Last Modified: 2026-07-15
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon sessions ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
+| CLI | <code>axon sessions</code> |
+| REST | <code>GET /v1/sources</code><br><code>GET /v1/sources/{source_id}</code><br><code>POST /v1/sources</code> |
+| MCP atomic tools | <code>source</code> |
+| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |
 
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+MCP names describe the atomic projection. The legacy `axon` tool uses the corresponding action/subaction selectors; `both` exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.
+
+Family-level navigation does not imply identical suboperations or request shapes across transports. Transcript ingestion uses session:<provider>:<path> through source acquisition; mobile chat sessions are a different resource.
 <!-- END GENERATED ACTION SURFACES -->
 
 
@@ -108,7 +110,6 @@ axon 'session:codex:/home/me/.codex/sessions/2026/07/15/session.jsonl' --wait tr
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `AXON_SESSION_INGEST_MAX_BYTES` | `20971520` | Maximum bytes read from one session file before skipping it. |
 | `AXON_COLLECTION` | `axon` | Default target collection when `--collection` is not supplied. |
 | `QDRANT_URL` | `http://127.0.0.1:53333` | Vector store endpoint used by local mode and by the server process. |
 | `TEI_URL` | — | Embedding endpoint used by local mode and by the server process. |

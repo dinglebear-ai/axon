@@ -126,7 +126,7 @@ pub(super) fn discover(plan: &SourcePlan) -> Result<SourceManifest> {
         graph_hints: Vec::new(),
     };
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_git_vertical_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -134,7 +134,9 @@ pub(super) fn discover(plan: &SourcePlan) -> Result<SourceManifest> {
         items: vec![item],
         created_at: timestamp(),
         metadata: manifest_metadata(plan),
-    })
+    };
+    manifest.set_inventory_completeness(InventoryCompleteness::Complete);
+    Ok(manifest)
 }
 
 /// Fetch the sub-page through its vertical extractor and re-shape the resulting

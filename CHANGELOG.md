@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Include indexed `web_title` values alongside URLs in domain source pages and their HTTP response, preserving the existing `urls` field for clients that only need canonical addresses.
+- Capture HTML page titles during generic web acquisition so new and refreshed web sources populate `web_title` in the index.
+
+## [7.5.0] - 2026-09-28
+
 ## [7.4.0] - 2026-09-21
 
 ## [7.3.9] - 2026-09-17

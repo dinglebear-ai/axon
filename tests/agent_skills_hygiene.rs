@@ -4,35 +4,7 @@ use std::path::{Path, PathBuf};
 
 const SKILLS_ROOT: &str = "plugins/axon/skills";
 const RESOURCE_ROOTS: &[&str] = &["plugins/axon/references", "plugins/axon/examples"];
-const EXPECTED_SKILLS: &[&str] = &[
-    "axon-snippets",
-    "cli",
-    "company-directories",
-    "competitive-intel",
-    "crawl",
-    "dashboard-reporting",
-    "deep-research",
-    "demo-walkthrough",
-    "download",
-    "extract",
-    "install-axon",
-    "knowledge-base",
-    "knowledge-ingest",
-    "lead-gen",
-    "lead-research",
-    "map",
-    "market-research",
-    "monitor",
-    "qa",
-    "research-papers",
-    "scrape",
-    "search",
-    "seo-audit",
-    "shop",
-    "using-axon",
-    "website-design-clone",
-    "workflows",
-];
+const EXPECTED_SKILLS: &[&str] = &["axon-snippets", "using-axon"];
 
 #[test]
 fn agent_skills_are_portable_and_well_formed() {
@@ -78,6 +50,14 @@ fn agent_skills_are_portable_and_well_formed() {
         .map(|name| name.to_string())
         .collect();
     assert_eq!(skill_names, expected, "unexpected Axon skill inventory");
+}
+
+#[test]
+fn installer_skill_is_separate_and_well_formed() {
+    let skill = Path::new("plugins/install-axon/skills/install-axon/SKILL.md");
+    assert!(skill.is_file());
+    assert!(Path::new("plugins/install-axon/skills/install-axon/agents/openai.yaml").is_file());
+    assert!(!Path::new("plugins/axon/skills/install-axon").exists());
 }
 
 #[test]

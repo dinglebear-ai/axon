@@ -1,8 +1,9 @@
 use super::super::cli::{JobSubcommand, WatchSubcommand};
-use super::super::types::McpTransport;
+use super::super::types::{McpToolProjection, McpTransport};
 use std::env;
 
 pub(super) const MCP_TRANSPORT_ENV: &str = "AXON_MCP_TRANSPORT";
+pub(super) const MCP_TOOL_PROJECTION_ENV: &str = "AXON_MCP_TOOL_PROJECTION";
 
 /// Like `env_bool` but returns `None` when the env var is absent, empty, or unrecognized.
 ///
@@ -175,6 +176,36 @@ pub(super) fn resolve_mcp_transport(
         };
     }
     default_transport
+}
+
+/// Resolve projection using the transport-style CLI/environment precedence.
+/// The draft AXON_MCP_PROJECTION spelling is a deprecated fallback, not a
+/// second independently effective configuration setting.
+pub(super) fn resolve_mcp_tool_projection(cli: Option<McpToolProjection>) -> McpToolProjection {
+    if let Some(projection) = cli {
+        return projection;
+    }
+    let raw = read_env(MCP_TOOL_PROJECTION_ENV).or_else(|| {
+        read_env("AXON_MCP_PROJECTION").inspect(|_| {
+            eprintln!(
+                "axon: warning: AXON_MCP_PROJECTION is deprecated; use {MCP_TOOL_PROJECTION_ENV}"
+            );
+        })
+    });
+    let Some(raw) = raw else {
+        return McpToolProjection::Legacy;
+    };
+    match raw.to_ascii_lowercase().as_str() {
+        "legacy" => McpToolProjection::Legacy,
+        "atomic" => McpToolProjection::Atomic,
+        "both" => McpToolProjection::Both,
+        _ => {
+            eprintln!(
+                "axon: warning: unrecognized value for {MCP_TOOL_PROJECTION_ENV}={raw:?}; expected legacy/atomic/both. Falling back to legacy."
+            );
+            McpToolProjection::Legacy
+        }
+    }
 }
 
 pub(super) fn env_port(env_var: &str, default: u16) -> Result<u16, String> {

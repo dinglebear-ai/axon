@@ -86,7 +86,7 @@ acceptable for the target.
 
 ## 3. Pipeline
 
-`services::endpoints::discover()` (`src/services/endpoints.rs`) orchestrates the
+`services::endpoints::discover()` (`crates/axon-services/src/endpoints.rs`) orchestrates the
 stages in this fixed order:
 
 1. **Normalize + SSRF-validate** the target URL (`normalize_url` → `validate_url_with_dns`, 2 s DNS timeout).
@@ -108,12 +108,12 @@ progress/logs → stderr. Keep this split intact for server/MCP callers.
 ## 4. Module map
 
 ```
-src/core/content/endpoints.rs          # extract_endpoints(): regexes, push/normalize/dedupe, host accounting
-src/core/content/endpoints/
+crates/axon-core/src/content/endpoints.rs          # extract_endpoints(): regexes, push/normalize/dedupe, host accounting
+crates/axon-core/src/content/endpoints/
 ├── classify.rs                        # looks_like_endpoint, classify_value, is_noise_value, is_valid_absolute_host
 ├── scan.rs                            # scan_text(): relative / graphql / websocket / absolute sub-scans
 └── script_sources.rs                 # discover_script_sources(): <script src> + first-party tagging
-src/services/endpoints.rs              # discover() orchestration; bundle fetch; capture merge; first-party filter
+crates/axon-services/src/endpoints.rs              # discover() orchestration; bundle fetch; capture merge; first-party filter
 src/services/endpoints/
 ├── capture.rs                         # capture_requests_with_chrome(): CDP Network.* observation
 ├── verify.rs                          # verify_endpoints(): HEAD/OPTIONS reachability probes
@@ -122,10 +122,10 @@ src/services/endpoints/
 src/services/types/endpoints.rs        # EndpointReport, DiscoveredEndpoint, EndpointKind, EndpointSourceKind,
                                        #   EndpointVerification, RpcProbeResult, RpcProtocol, RpcTransport, EndpointOptions
 src/cli/commands/endpoints.rs          # run_endpoints(): CLI handler + human/JSON rendering
-src/mcp/server/handlers_query.rs       # handle_endpoints(): MCP action
-src/mcp/schema/requests.rs             # EndpointsRequest (MCP wire shape)
-src/web/server/handlers/exploration.rs # POST /v1/endpoints handler
-src/web/server/openapi.rs              # OpenAPI schema registration
+crates/axon-mcp/src/server/handlers_query.rs       # handle_endpoints(): MCP action
+crates/axon-mcp/src/schema.rs             # EndpointsRequest (MCP wire shape)
+crates/axon-web/src/server/handlers/exploration.rs # POST /v1/endpoints handler
+crates/axon-web/src/server/openapi.rs              # OpenAPI schema registration
 ```
 
 The pure-extraction layer (`core/content/endpoints*`) has **no** I/O — it scans
@@ -326,8 +326,8 @@ bullet per endpoint with `kind`, `source`, optional `status=…`, optional
 `rpc=<protocol>`) or `--json` (the full `EndpointReport`).
 
 ### MCP — `action: "endpoints"`
-`handle_endpoints` (`src/mcp/server/handlers_query.rs`). Request
-(`EndpointsRequest`, `src/mcp/schema/requests.rs`):
+`handle_endpoints` (`crates/axon-mcp/src/server/handlers_query.rs`). Request
+(`EndpointsRequest`, `crates/axon-mcp/src/schema.rs`):
 
 ```jsonc
 { "url": "https://example.com",
@@ -340,13 +340,13 @@ bullet per endpoint with `kind`, `source`, optional `status=…`, optional
 `url` is required and MCP-URL-validated. Unset fields fall back to
 `options_from_config`. Result is the `EndpointReport` JSON via the standard
 response-mode envelope. Authz: classified as an active/network action
-(`src/mcp/server/authz.rs`). **No `probe_rpc` field** — see §9 gap.
+(`crates/axon-mcp/src/server/authz.rs`). **No `probe_rpc` field** — see §9 gap.
 
 ### HTTP — `POST /v1/endpoints`
-`handlers::exploration::endpoints` (`src/web/server/routing.rs`,
+`handlers::exploration::endpoints` (`crates/axon-web/src/server/routing.rs`,
 `handlers/exploration.rs`). Scope: `axon:write` (active network op). Mirrors the
 MCP option set; returns the `EndpointReport` as JSON. Schemas registered in
-`src/web/server/openapi.rs` (`EndpointReport`, `DiscoveredEndpoint`,
+`crates/axon-web/src/server/openapi.rs` (`EndpointReport`, `DiscoveredEndpoint`,
 `EndpointVerification`, `RpcProbeResult`, `RpcProtocol`, `RpcTransport`,
 `EndpointKind`, `EndpointSourceKind`).
 

@@ -64,6 +64,12 @@ RUST_CI_HELPER_SCRIPTS = {
     "xtask/src/pre_push.rs",
     "scripts/enforce_monoliths.py",
     "scripts/generate_mcp_schema_doc.py",
+    "scripts/doc_schema.py",
+    "scripts/mcp_doc_renderer.py",
+    "scripts/generate_action_docs.py",
+    "scripts/check_mcp_schema_doc.sh",
+    "scripts/check-integration-contracts.py",
+    "scripts/generate-codex-app-server-methods.sh",
     "scripts/test-ask-quality-regressions.sh",
     "scripts/test-mcp-oauth-protection.sh",
     "scripts/test-mcp-tools-mcporter.sh",
@@ -71,11 +77,20 @@ RUST_CI_HELPER_SCRIPTS = {
 
 MCP_CI_HELPER_SCRIPTS = {
     "scripts/generate_mcp_schema_doc.py",
+    "scripts/doc_schema.py",
+    "scripts/mcp_doc_renderer.py",
+    "scripts/generate_action_docs.py",
+    "scripts/check_mcp_schema_doc.sh",
+    "scripts/check-integration-contracts.py",
+    "scripts/generate-codex-app-server-methods.sh",
     "scripts/test-mcp-oauth-protection.sh",
     "scripts/test-mcp-tools-mcporter.sh",
 }
 
 DOC_CI_HELPER_SCRIPTS = {
+    "scripts/audit_docs.py",
+    "scripts/test_audit_docs.py",
+    "scripts/test_operational_docs.py",
     "scripts/check_aurora_primitive_inventory.py",
 }
 

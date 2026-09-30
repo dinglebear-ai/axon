@@ -10,11 +10,13 @@ mod metadata;
 mod target;
 mod vertical;
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use axon_api::source::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -22,6 +24,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 
 pub use self::acquire::{clone_git_repo, is_git_target};
+pub use self::discovery::repository_path_allowed;
 use self::discovery::{
     collect_capped_git_keys, collect_git_manifest_items_parallel, hash_git_keys_parallel,
     safe_item_path,
@@ -30,6 +33,20 @@ use self::metadata::git_source_document;
 pub use self::target::{GitTarget, parse_git_target};
 
 pub const MODULE_NAME: &str = "git";
+
+/// Recheck retained paths against the current checkout and its ignore rules.
+pub async fn retained_repository_paths(
+    plan: SourcePlan,
+    wanted: BTreeSet<String>,
+) -> Result<BTreeSet<String>> {
+    tokio::task::spawn_blocking(move || {
+        let root = repo_root(&plan)?;
+        let excludes = option_string_array(&plan.request.options, "exclude_paths")?;
+        discovery::existing_repository_paths(&root, &wanted, &excludes)
+    })
+    .await
+    .map_err(blocking_join_error)?
+}
 
 const ADAPTER_NAME: &str = "git";
 const GIT_DISCOVERY_HASH_MAX_THREADS: usize = 8;
@@ -169,15 +186,17 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         .effective
         .max_items
         .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
+    let mut truncated = false;
     let mut items = if let Some(limit) = max_items {
-        let keys = collect_capped_git_keys(&root, &exclude_paths, limit)?;
+        let (keys, was_truncated) = collect_capped_git_keys(&root, &exclude_paths, limit)?;
+        truncated = was_truncated;
         hash_git_keys_parallel(plan, &root, &base_uri, &keys)?
     } else {
         collect_git_manifest_items_parallel(plan, &root, &base_uri, &exclude_paths)?
     };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_git_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -185,7 +204,13 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         items,
         created_at: timestamp(),
         metadata: manifest_metadata(&target),
-    })
+    };
+    manifest.set_inventory_completeness(if truncated {
+        InventoryCompleteness::Partial
+    } else {
+        InventoryCompleteness::Complete
+    });
+    Ok(manifest)
 }
 
 fn option_string_array(options: &AdapterOptions, key: &str) -> Result<Vec<String>> {
@@ -216,24 +241,64 @@ fn option_string_array(options: &AdapterOptions, key: &str) -> Result<Vec<String
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {
     validate_adapter(plan)?;
     let root = repo_root(plan)?;
-    let manifest_items = diff
+    let mut manifest_items = diff
         .added
         .iter()
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
-    for item in &manifest_items {
+    let mut bytes_done = 0u64;
+    let allowance = crate::file_payload::batch_byte_limit(plan)
+        .min(plan.limits.effective.max_total_bytes.unwrap_or(u64::MAX));
+    let item_limit =
+        crate::file_payload::effective_item_limit(plan, crate::acquisition::MAX_FILE_CONTENT_BYTES);
+    for item in &mut manifest_items {
         let key = item
             .display_path
             .clone()
             .unwrap_or_else(|| item.source_item_key.0.clone());
         let path = safe_item_path(&root, &key)?;
-        let text = fs::read_to_string(&path).map_err(|err| fs_error("read_failed", &path, err))?;
+        let omitted = item
+            .metadata
+            .get(CONTENT_OMISSION_METADATA_KEY)
+            .and_then(Value::as_str)
+            == Some("size_limit_exceeded");
+        let bytes = if omitted {
+            None
+        } else {
+            let file = fs::File::open(&path).map_err(|err| {
+                ApiError::new(
+                    "adapter.git.read_failed",
+                    ErrorStage::Fetching,
+                    "failed to open repository item",
+                )
+                .with_context("source_item_key", item.source_item_key.0.clone())
+                .with_context("io_kind", format!("{:?}", err.kind()))
+            })?;
+            let payload = crate::file_payload::read_file(
+                file,
+                &item.source_item_key.0,
+                item_limit,
+                allowance.saturating_sub(bytes_done),
+            )?;
+            bytes_done += payload.bytes_read;
+            payload.bytes
+        };
+        if bytes.is_none() {
+            item.metadata.insert(
+                CONTENT_OMISSION_METADATA_KEY.to_owned(),
+                json!("size_limit_exceeded"),
+            );
+            item.content_hash = None;
+        }
         fetched_items.push(AcquiredSourceItem {
             manifest_item: item.clone(),
             fetch_status: LifecycleStatus::Completed,
-            content_ref: ContentRef::InlineText { text },
+            content_ref: ContentRef::InlineBytes {
+                bytes_base64: STANDARD.encode(bytes.unwrap_or_default()),
+                mime_type: "application/octet-stream".to_owned(),
+            },
             raw_artifact_id: None,
             headers: RedactedHeaders {
                 headers: Vec::new(),
@@ -253,13 +318,15 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
         created_at: timestamp(),
         metadata: manifest_metadata(&target),
     };
+    let mut header = stage_header(
+        plan.job_id,
+        "git_fetch",
+        PipelinePhase::Fetching,
+        fetched_items.len(),
+    );
+    header.counts.bytes_done = bytes_done;
     Ok(SourceAcquisition {
-        header: stage_header(
-            plan.job_id,
-            "git_fetch",
-            PipelinePhase::Fetching,
-            fetched_items.len(),
-        ),
+        header,
         source_id: manifest.source_id.clone(),
         generation: manifest.generation.clone(),
         adapter: manifest.adapter.clone(),

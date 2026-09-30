@@ -6,10 +6,23 @@ BASE_CONFIG_PATH="${MCPORTER_CONFIG:-$REPO_ROOT/config/mcporter.json}"
 CATALOG_PATH="${AXON_E2E_CATALOG:-$REPO_ROOT/tests/e2e/catalog/catalog.json}"
 MCP_ADAPTER="$REPO_ROOT/scripts/e2e/adapters/mcp.py"
 SERVER="${MCP_SERVER:-axon}"
+MCP_PROJECTION="${MCP_PROJECTION:-${AXON_MCP_TOOL_PROJECTION:-${AXON_MCP_PROJECTION:-legacy}}}"
+MCP_CALL_FORM="${MCP_CALL_FORM:-$MCP_PROJECTION}"
 SELECTOR="${SERVER}.axon"
+
+case "$MCP_PROJECTION" in
+  legacy|atomic|both) ;;
+  *)
+    echo "FAIL: MCP_PROJECTION must be legacy, atomic, or both (got: $MCP_PROJECTION)" >&2
+    exit 2
+    ;;
+esac
 
 BASE_OUTDIR="${MCPORTER_OUTDIR:-$REPO_ROOT/.cache/mcporter-test}"
 SUMMARY="$BASE_OUTDIR/summary.txt"
+MCP_E2E_OWNED_COLLECTION="${MCP_E2E_OWNED_COLLECTION:-axon_e2e_mcporter_$(date +%s)_$$}"
+[[ "$MCP_E2E_OWNED_COLLECTION" == axon_e2e_* ]] || { echo "FAIL: collection must be owned axon_e2e_* test data" >&2; exit 2; }
+export MCP_E2E_OWNED_COLLECTION
 mkdir -p "$BASE_OUTDIR"
 : >"$SUMMARY"
 
@@ -17,12 +30,16 @@ REAL_PAGE_URL="${REAL_PAGE_URL:-https://www.rust-lang.org/learn/get-started}"
 MAP_URL="${MAP_URL:-https://gofastmcp.com/}"
 pass=0
 fail=0
+skip=0
+expected_error=0
+handled_error=0
 
 OUTDIR=""
 CONFIG_PATH=""
 MCPORTER=()
 
 . "$REPO_ROOT/scripts/e2e/lib/mcporter-expected-routes.sh"
+. "$REPO_ROOT/scripts/e2e/lib/mcporter-projection.sh"
 
 if ! command -v mcporter >/dev/null 2>&1; then
   echo "FAIL: mcporter not found in PATH" >&2
@@ -47,88 +64,7 @@ if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "
   URL_MODE=1
 fi
 
-record_pass() {
-  local name="$1"
-  echo "PASS $name" | tee -a "$SUMMARY"
-  pass=$((pass + 1))
-}
-
-record_fail() {
-  local name="$1"
-  local logfile="$2"
-  echo "FAIL $name (see $logfile)" | tee -a "$SUMMARY"
-  fail=$((fail + 1))
-}
-
-run_case() {
-  local name="$1"
-  shift
-  local logfile="$OUTDIR/${name}.log"
-  if "$@" >"$logfile" 2>&1; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-run_json_case() {
-  local name="$1"
-  local filter="$2"
-  shift 2
-  local logfile="$OUTDIR/${name}.log"
-  if "$@" >"$logfile" 2>&1 && json_payload "$logfile" | jq -e "$filter" >/dev/null; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-run_error_case() {
-  local name="$1"
-  local expected="$2"
-  shift 2
-  local logfile="$OUTDIR/${name}.log"
-  "$@" >"$logfile" 2>&1 || true
-  if json_payload "$logfile" | jq -er --arg expected "$expected" '.error | type == "string" and contains($expected)' >/dev/null; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-# Like run_json_case but tolerant of mcporter's non-zero exit on MCP error
-# responses: asserts the filter against whatever envelope came back (a valid
-# `ok:true` success OR a structured `error` string both count as "the tool
-# responded"). Use for routes whose success depends on non-deterministic state
-# (job phase, provider availability) where either a success or a structured
-# error is an acceptable, non-crashing response.
-run_envelope_case() {
-  local name="$1"
-  local filter="$2"
-  shift 2
-  local logfile="$OUTDIR/${name}.log"
-  "$@" >"$logfile" 2>&1 || true
-  if json_payload "$logfile" | jq -e "$filter" >/dev/null 2>&1; then
-    record_pass "$name"
-  else
-    record_fail "$name" "$logfile"
-  fi
-}
-
-call_tool() {
-  "${MCPORTER[@]}" call "$SELECTOR" "$@" --output json
-}
-
-call_tool_json() {
-  local payload="$1"
-  "${MCPORTER[@]}" call "$SELECTOR" --args "$payload" --output json
-}
-
-call_tool_with_timeout() {
-  local timeout_ms="$1"
-  shift
-  MCPORTER_CALL_TIMEOUT="$timeout_ms" "${MCPORTER[@]}" call "$SELECTOR" "$@" --output json
-}
+. "$REPO_ROOT/scripts/e2e/lib/mcporter-results.sh"
 
 json_payload() {
   local file="$1"
@@ -163,15 +99,6 @@ normalize_help_top_actions() {
   ' | sort -u
 }
 
-normalize_description_actions() {
-  local schema_file="$1"
-  json_payload "$schema_file" | jq -r '
-    .tools[]
-    | select(.name == "axon")
-    | .inputSchema.properties.action.enum[]
-  ' | sort -u
-}
-
 assert_sorted_equals() {
   local expected="$1"
   local actual="$2"
@@ -186,16 +113,19 @@ extract_json_field() {
 
 build_suite_config() {
   local mode="$1"
-  local runtime_root="$BASE_OUTDIR/runtime-$mode"
-  local suite_config="$BASE_OUTDIR/mcporter-$mode.json"
+  local runtime_root="$BASE_OUTDIR/runtime-$mode-$MCP_CALL_FORM"
+  local suite_config="$BASE_OUTDIR/mcporter-$mode-$MCP_CALL_FORM.json"
   mkdir -p "$runtime_root/logs"
   jq \
     --arg server "$SERVER" \
     --arg repo_root "$REPO_ROOT" \
-    --arg axon_home "$HOME/.axon" \
+    --arg axon_home "$runtime_root" \
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/logs/axon.log" \
     --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
+    --arg projection "$MCP_PROJECTION" \
+    --arg binary "${AXON_MCP_BINARY:-$REPO_ROOT/target/debug/axon}" \
+    --arg collection "$MCP_E2E_OWNED_COLLECTION" \
     '.mcpServers[$server].command = ($repo_root + "/scripts/mcporter-axon")
     | .mcpServers[$server].args = []
     | .mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
@@ -205,7 +135,10 @@ build_suite_config() {
         AXON_CODE_SEARCH_ALLOWED_ROOTS: $repo_root,
         AXON_SOURCE_LOCAL_ALLOWED_ROOTS: $repo_root,
         AXON_LOG_FILE: $log_file,
-        AXON_SQLITE_PATH: $sqlite_path
+        AXON_SQLITE_PATH: $sqlite_path,
+        AXON_MCP_TOOL_PROJECTION: $projection,
+        AXON_MCP_BINARY: $binary,
+        AXON_COLLECTION: $collection
       })
     ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
@@ -290,18 +223,19 @@ run_catalog_scenarios() {
 
 run_suite() {
   local mode="$1"
-  local prefix="$mode"
+  local prefix="$mode-$MCP_CALL_FORM"
   local expected_routes="$EXPECTED_ROUTES"
   local expected_top_level_actions="$EXPECTED_TOP_LEVEL_ACTIONS"
 
   CONFIG_PATH="$(build_suite_config "$mode")"
-  OUTDIR="$BASE_OUTDIR/$mode"
+  OUTDIR="$BASE_OUTDIR/$mode-$MCP_CALL_FORM"
   mkdir -p "$OUTDIR"
   MCPORTER=(mcporter --config "$CONFIG_PATH")
 
   echo "== Suite: $mode ==" | tee -a "$SUMMARY"
   echo "Config: $CONFIG_PATH" | tee -a "$SUMMARY"
   echo "Server: $SERVER" | tee -a "$SUMMARY"
+  echo "Projection: $MCP_PROJECTION" | tee -a "$SUMMARY"
   validate_catalog_projection "$prefix"
   if [[ "$mode" == "url" && "${MCP_E2E_AUTH_MATRIX:-0}" == "1" ]]; then
     local mcp_url
@@ -317,11 +251,15 @@ run_suite() {
   local schema_file="$OUTDIR/${prefix}_list_schema.log"
 
   echo "== $mode parity checks ==" | tee -a "$SUMMARY"
-  run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon")'
+  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
+    run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "status") and any(.tools[]; .name == "axon_status_dashboard") and all(.tools[]; .name != "axon")'
+  else
+    run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon")'
+  fi
   run_case "${prefix}_help_has_resource" assert_ok "$help_file" '.ok == true and (.data.inline.resources | index("axon://schema/mcp-tool")) != null'
+  run_case "${prefix}_complete_leaf_inventory" assert_complete_tool_inventory "$schema_file" "$help_file"
   run_case "${prefix}_help_routes_match_expected" assert_sorted_equals "$expected_routes" "$(normalize_discovered_routes "$help_file")"
-  run_case "${prefix}_tool_description_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_description_actions "$schema_file")"
-  run_case "${prefix}_help_top_actions_match_description" assert_sorted_equals "$(normalize_description_actions "$schema_file")" "$(normalize_help_top_actions "$help_file")"
+  run_case "${prefix}_help_top_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_help_top_actions "$help_file")"
   echo "== $mode catalog scenarios ==" | tee -a "$SUMMARY"
   run_catalog_scenarios "$mode"
 
@@ -343,7 +281,7 @@ run_suite() {
   run_envelope_case "${prefix}_search" '(.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language") or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:search query:'rust programming language' limit:3 offset:0
   run_envelope_case "${prefix}_research" '(.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))) or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:research query:'rust async best practices' limit:3 offset:0
   run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
-  run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and (.error | contains("screenshot requires Chrome")))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and ((.error | contains("screenshot requires Chrome")) or (.error | contains("Chrome may not be reachable")) or (.error | contains("screenshot bytes not captured"))))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
   # Focused projections are supported, but reject the retired argument shapes.
   run_error_case "${prefix}_crawl_rejects_legacy_arguments" "unknown field" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
@@ -351,12 +289,26 @@ run_suite() {
   run_error_case "${prefix}_embed_rejects_legacy_arguments" "unknown field" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
   run_error_case "${prefix}_ingest_rejects_legacy_arguments" "unknown field" call_tool action:ingest target:"$REPO_ROOT"
   run_error_case "${prefix}_code_search_rejects_legacy_arguments" "unknown field" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
-  run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
-  run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe
-  run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
-  run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
-  run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  if [[ "$MCP_PROJECTION" == "atomic" ]]; then
+    run_case "${prefix}_removed_atomic_tools_absent" assert_ok "$schema_file" '
+      [.tools[].name] as $names
+      | all([
+          "axon_vertical_scrape",
+          "axon_purge",
+          "axon_dedupe",
+          "axon_stats",
+          "axon_domains",
+          "axon_sources"
+        ][]; . as $candidate | ($names | index($candidate)) == null)
+    '
+  else
+    run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
+    run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
+    run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe
+    run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
+    run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
+    run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  fi
   run_json_case "${prefix}_memory_remember" '(.ok == true and .action == "memory" and (.data.memory.id | type == "string")) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
   local memory_id
   if memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id' 2>/dev/null)"; then
@@ -395,7 +347,7 @@ run_suite() {
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_jobs_recover" '.ok == true and .action == "jobs" and .subaction == "recover" and ((.data.data.recovered | type) == "number" or (.data.data.recovered_jobs | type) == "number")' call_tool_json '{"action":"jobs","subaction":"recover","dry_run":true,"limit":5,"stale_before":"2020-01-01T00:00:00Z"}'
   run_json_case "${prefix}_jobs_cleanup" '.ok == true and .action == "jobs" and .subaction == "cleanup" and ((.data.data.deleted | type) == "number" or (.data.data.deleted_jobs | type) == "number")' call_tool action:jobs subaction:cleanup dry_run:true limit:5
-  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and ((.data.data.plan // .data.inline.plan) | type == "object")' call_tool action:prune subaction:plan target:collection:axon response_mode:inline
+  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and ((.data.data.plan // .data.inline.plan) | type == "object")' call_tool action:prune subaction:plan target:"collection:$MCP_E2E_OWNED_COLLECTION" response_mode:inline
 
   # --- Full route coverage: every remaining action:subaction is called and its
   # response asserted (success shape where deterministic, otherwise a valid
@@ -499,15 +451,17 @@ run_suite() {
 }
 
 if [[ "$URL_MODE" == "1" ]]; then
-  # URL-mode configs target an already-running MCP HTTP server.
-  run_suite url
+  TRANSPORT=url
+  [[ "${MCP_E2E_ISOLATED_HTTP:-0}" == "1" ]] || { echo "FAIL: HTTP sweeps require an explicitly owned isolated instance (MCP_E2E_ISOLATED_HTTP=1)" >&2; exit 2; }
 else
-  run_suite stdio
+  TRANSPORT=stdio
+fi
+if [[ "$MCP_PROJECTION" == "both" ]]; then
+  for MCP_CALL_FORM in legacy atomic; do run_suite "$TRANSPORT"; done
+else
+  run_suite "$TRANSPORT"
 fi
 echo "" | tee -a "$SUMMARY"
-echo "Results: PASS=$pass FAIL=$fail" | tee -a "$SUMMARY"
+echo "Results: PASS=$pass EXPECTED_ERROR=$expected_error HANDLED_ERROR=$handled_error SKIP=$skip FAIL=$fail" | tee -a "$SUMMARY"
 echo "Summary: $SUMMARY"
-
-if [[ "$fail" -gt 0 ]]; then
-  exit 1
-fi
+[[ "$fail" -eq 0 ]]

@@ -8,6 +8,7 @@
 //! committed generation without mutating the previous generation's points.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axon_api::source::*;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -21,6 +22,8 @@ use crate::store::Result;
 use crate::store_helpers::{carried_point_id, stage_header};
 
 const SCROLL_PAGE_LIMIT: u64 = 256;
+const PUBLISH_VISIBILITY_TIMEOUT: Duration = Duration::from_secs(600);
+const PUBLISH_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Set `committed_generation`/`document_status` = published on every point whose
 /// `source_id` + `source_generation` match, via a filtered set-payload.
@@ -54,10 +57,39 @@ pub async fn mark_generation_committed_rest(
     });
     let url = http
         .endpoint()
-        .collection_path(&collection, "points/payload?wait=true");
+        .collection_path(&collection, "points/payload?wait=false");
     let _ack: SimpleAck = http
         .post_json(stage, &url, &body, "qdrant_mark_generation_committed")
         .await?;
+
+    let committed_filter = serde_json::json!({
+        "must": [
+            { "key": "source_id", "match": { "value": &source_id.0 } },
+            { "key": "source_generation", "match": { "value": generation_value } },
+            { "key": "committed_generation", "match": { "value": generation_value } },
+        ]
+    });
+    let mut requests = 2;
+    tokio::time::timeout(PUBLISH_VISIBILITY_TIMEOUT, async {
+        if matched > 0 {
+            loop {
+                requests += 1;
+                if count_points(http, &collection, &committed_filter, stage).await? >= matched {
+                    break;
+                }
+                tokio::time::sleep(PUBLISH_POLL_INTERVAL).await;
+            }
+        }
+        Ok::<(), ApiError>(())
+    })
+    .await
+    .map_err(|_| {
+        ApiError::new(
+            "vector.qdrant.publish_timeout",
+            stage,
+            "Qdrant did not make the published generation visible before the deadline",
+        )
+    })??;
 
     Ok(VectorStoreWriteResult {
         header: stage_header(PipelinePhase::Publishing),
@@ -65,7 +97,7 @@ pub async fn mark_generation_committed_rest(
         points_attempted: matched,
         points_written: matched,
         payload_indexes_created: Vec::new(),
-        usage: request_usage(2),
+        usage: request_usage(requests),
     })
 }
 
@@ -94,17 +126,47 @@ pub async fn retire_generation_rest(
         serde_json::json!({ "payload": { "retired_epoch": retired_value }, "filter": filter });
     let url = http
         .endpoint()
-        .collection_path(&collection, "points/payload?wait=true");
+        .collection_path(&collection, "points/payload?wait=false");
     let _ack: SimpleAck = http
         .post_json(stage, &url, &body, "qdrant_retire_generation")
         .await?;
+    // A cleanup worker may delete old points while retirement runs, so wait
+    // for no unretired points rather than a fixed count of updated points.
+    let unretired_filter = serde_json::json!({
+        "must": [
+            { "key": "source_id", "match": { "value": &source_id.0 } },
+            { "key": "committed_generation", "match": { "value": generation_value } },
+        ],
+        "must_not": [{ "key": "retired_epoch", "match": { "value": retired_value } }],
+    });
+    let mut requests = 2;
+    tokio::time::timeout(PUBLISH_VISIBILITY_TIMEOUT, async {
+        if matched > 0 {
+            loop {
+                requests += 1;
+                if count_points(http, &collection, &unretired_filter, stage).await? == 0 {
+                    break;
+                }
+                tokio::time::sleep(PUBLISH_POLL_INTERVAL).await;
+            }
+        }
+        Ok::<(), ApiError>(())
+    })
+    .await
+    .map_err(|_| {
+        ApiError::new(
+            "vector.qdrant.retire_timeout",
+            stage,
+            "Qdrant did not make the retired generation visible before the deadline",
+        )
+    })??;
     Ok(VectorStoreWriteResult {
         header: stage_header(PipelinePhase::Publishing),
         collection,
         points_attempted: matched,
         points_written: matched,
         payload_indexes_created: Vec::new(),
-        usage: request_usage(2),
+        usage: request_usage(requests),
     })
 }
 

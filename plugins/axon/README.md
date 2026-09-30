@@ -18,13 +18,14 @@ npx skills add dinglebear-ai/axon --skill install-axon
 
 Then invoke `$install-axon`. It drives Axon's canonical binary/setup/deployment surfaces and can configure the full client plugin after the server is healthy.
 
-To install the complete Claude plugin from a checkout:
+To install the two Claude plugins from a checkout:
 
 ```bash
-claude plugin install <path>
+claude plugin install <path>/plugins/install-axon
+claude plugin install <path>/plugins/axon
 ```
 
-The plugin manifest declares a minimal `userConfig` block. Claude Code prompts
+The installer plugin manifest declares a minimal `userConfig` block. Claude Code prompts
 only for connection details for an already-running Axon server.
 
 The current plugin prompt surface is intentionally small:
@@ -44,9 +45,9 @@ axon setup plugin-hook   # probe-only readiness check; never deploys
 axon memory context      # recall memories for the current git project
 ```
 
-To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
+To provision the stack for the first time, run `axon setup` or `axon compose up` on the host directly.
 
-The `.mcp.json` uses HTTP transport and connects Claude Code to
+The installer plugin `.mcp.json` uses HTTP transport and connects Claude Code to
 `${user_config.server_url}/mcp` with the configured bearer token. Supported
 production runtimes are bare-metal systemd and native systemd inside Incus.
 Docker Compose is limited to local/reference infrastructure; see the root
@@ -60,12 +61,6 @@ current git project. Nothing scans or ingests transcript files automatically at
 session startup. Index transcripts with `axon sessions` or with explicit
 `session:<provider>:<path>` selectors through the unified source pipeline; the
 old prepared-session watcher service is not part of the plugin surface.
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/axon-deploy [up\|restart\|rebuild]` | On-demand deploy/restart/rebuild of the stack (`axon compose …` + `axon doctor`). This is how you provision the stack. |
 
 `~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
 
@@ -92,25 +87,21 @@ Default `response_mode: "path"` writes large outputs under the configured Axon a
 
 ## Skills
 
-The plugin currently ships 27 Axon skills under `skills/`. The target surface is
-`install-axon`, `using-axon`, and `axon-snippets`; the other 24 remain installed
-while their replacement snippets are reviewed. Every skill includes
-`agents/openai.yaml` metadata.
-
-Action skills cover the core CLI/MCP surfaces; workflow skills cover
-outcome-focused research, monitoring, QA, shopping, and design deliverables.
+The usage plugin ships two skills under `skills/`: `using-axon` and
+`axon-snippets`. The installer plugin ships `install-axon`. The 24
+task-specific workflows are bundled as Labby Code Mode snippet sources under
+`axon-snippets/snippets/` and can be saved with `labby snippet add`.
+Every shipped skill includes `agents/openai.yaml` metadata.
 
 | Skill | Purpose |
 |-------|---------|
-| `install-axon` | Install, secure, deploy, connect, and verify an Axon runtime. |
+| `install-axon` (separate plugin) | Install, secure, deploy, connect, and verify an Axon runtime. |
 | `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
 | `axon-snippets` | Catalog and instructions for 24 checked-in Labby Code Mode snippets bundled under `skills/axon-snippets/snippets/`. |
-| `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
-| `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |
 
-The `download` skill documents Axon's current composed capture workflow:
-`scrape`, `crawl --output-dir`, and `screenshot`. It is not a promise that Axon
-already has a single offline-site mirroring command that rewrites linked assets
+The `axon-download` snippet captures one page. `using-axon` documents the
+composed `scrape`, `crawl --output-dir`, and `screenshot` workflows. Axon does
+not expose a single offline-site mirroring command that rewrites linked assets
 for fully browsable local copies.
 
 The runtime RAG synthesis prompt is stored under
@@ -129,11 +120,8 @@ plugins/axon/
 ├── CHANGELOG.md
 ├── .claude-plugin/
 │   └── plugin.json            — plugin manifest and userConfig
-├── .mcp.json                  — MCP server config (HTTP, ${user_config.*})
 ├── agents/
 │   └── researcher.md
-├── commands/
-│   └── axon-deploy.md
 ├── examples/
 │   └── workflow-output-templates.md
 ├── references/
@@ -149,13 +137,7 @@ plugins/axon/
     ├── using-axon/
     │   ├── SKILL.md          — meta-skill
     │   └── agents/openai.yaml
-    ├── cli/SKILL.md
-    ├── crawl/SKILL.md
-    ├── download/SKILL.md
-    ├── extract/SKILL.md
-    ├── map/SKILL.md
-    ├── scrape/SKILL.md
-    ├── search/SKILL.md
-    ├── monitor/SKILL.md
-    └── <workflow-name>/SKILL.md
+    └── axon-snippets/
+        ├── SKILL.md          — snippet catalog and installation guide
+        └── snippets/         — 24 Labby Code Mode sources
 ```

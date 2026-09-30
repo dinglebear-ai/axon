@@ -144,6 +144,12 @@ fn acquired_from_fetched(
     manifest_item.content_hash = Some(super::manifest_items::content_ref_hash(&fetched.content));
     manifest_item.version = None;
     let mut metadata = MetadataMap::new();
+    if let ContentRef::InlineText { text } = &fetched.content
+        && manifest_item.content_kind == Some(ContentKind::Html)
+        && let Some(title) = super::metadata::title_from_html(text)
+    {
+        metadata.insert("web_title".to_string(), serde_json::json!(title));
+    }
     metadata.insert(
         "web_fetch_method".to_string(),
         serde_json::json!("http_fetch"),

@@ -27,8 +27,15 @@ pub(in crate::redact) fn redact_operational_secret_spans(value: &str) -> String 
 }
 
 fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> String {
+    let pem_redacted = PEM_PRIVATE_KEY_BLOCK_RE.replace_all(value, |captures: &regex::Captures| {
+        if captures[0].len() <= 32_768 {
+            super::super::REDACTION_PLACEHOLDER.to_string()
+        } else {
+            captures[0].to_string()
+        }
+    });
     let bearer_redacted =
-        STANDALONE_BEARER_VALUE_RE.replace_all(value, |captures: &regex::Captures| {
+        STANDALONE_BEARER_VALUE_RE.replace_all(&pem_redacted, |captures: &regex::Captures| {
             let candidate = captures
                 .name("value")
                 .map_or("", |matched| matched.as_str());
@@ -106,7 +113,7 @@ fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> Strin
             let username = captures
                 .name("username")
                 .map_or("", |matched| matched.as_str());
-            let password = captures
+            let password = captures // gitleaks:allow
                 .name("password")
                 .map_or("", |matched| matched.as_str());
             let should_redact = if retrievable_body {
@@ -136,6 +143,11 @@ fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> Strin
         .replace_all(&url_redacted, super::super::REDACTION_PLACEHOLDER)
         .into_owned()
 }
+
+static PEM_PRIVATE_KEY_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----")
+        .expect("PEM private key block regex is valid")
+});
 
 pub(in crate::redact) fn redact_secret_spans(value: &str) -> String {
     redact_secret_spans_with_policy(value, false)

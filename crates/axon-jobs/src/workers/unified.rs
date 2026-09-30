@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axon_api::source::{
-    ApiError, AuthSnapshot, ErrorStage, JobId, JobKind as UnifiedJobKind, PipelinePhase,
+    ApiError, AuthSnapshot, ConfigSnapshotId, ErrorStage, JobId, JobKind as UnifiedJobKind,
+    PipelinePhase,
 };
 use axon_core::sqlite::SqliteWriteGate;
 use futures::FutureExt;
@@ -33,6 +34,10 @@ pub struct UnifiedClaimedJob {
     pub kind: UnifiedJobKind,
     pub attempt: u32,
     pub request_json: Option<serde_json::Value>,
+    /// Config snapshot captured at enqueue time. Runners must apply this
+    /// snapshot before composing any config-bound runtime so detached work
+    /// executes with the same effective configuration the caller submitted.
+    pub config_snapshot_id: Option<ConfigSnapshotId>,
     /// The auth snapshot recorded at enqueue time — the *only* source of
     /// truth for what this job is allowed to do. Never re-derive scope from
     /// the current process/caller: a stale reclaim or retry must run with
@@ -377,6 +382,7 @@ pub(crate) async fn mark_job_failed_for_tests(
             kind: UnifiedJobKind::Source,
             attempt: attempt.max(1) as u32,
             request_json: None,
+            config_snapshot_id: None,
             auth_snapshot: AuthSnapshot::default(),
         },
         error,

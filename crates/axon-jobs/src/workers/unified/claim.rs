@@ -2,7 +2,7 @@
 //! that flips a queued job to `running`. Split out of `unified.rs` to keep
 //! it under the monolith line cap.
 
-use axon_api::source::{ApiError, AuthSnapshot, JobId, Timestamp};
+use axon_api::source::{ApiError, AuthSnapshot, ConfigSnapshotId, JobId, Timestamp};
 use axon_core::sqlite::{ImmediateTx, SqliteWriteGate};
 use sqlx::{Row, SqlitePool};
 
@@ -85,7 +85,7 @@ async fn claim_next_unified_job_unchecked_with_write_gate(
         .map_err(sql_error)?;
     let now = chrono::Utc::now().to_rfc3339();
     let row = sqlx::query(
-        "SELECT job_id, kind, attempt, request_json, auth_snapshot_json
+        "SELECT job_id, kind, attempt, request_json, config_snapshot_id, auth_snapshot_json
          FROM jobs
          WHERE status IN ('queued', 'waiting', 'blocked')
            AND (cooldown_until IS NULL OR cooldown_until <= ?)
@@ -121,6 +121,10 @@ async fn claim_next_unified_job_unchecked_with_write_gate(
         .get::<Option<String>, _>("request_json")
         .map(|value| serde_json::from_str(&value).map_err(json_error))
         .transpose()?;
+    let config_snapshot_id = match row.get::<String, _>("config_snapshot_id") {
+        value if value.trim().is_empty() => None,
+        value => Some(ConfigSnapshotId::new(value)),
+    };
     let auth_snapshot: AuthSnapshot =
         serde_json::from_str(&row.get::<String, _>("auth_snapshot_json")).map_err(json_error)?;
     let now = Timestamp::from(chrono::Utc::now());
@@ -176,6 +180,7 @@ async fn claim_next_unified_job_unchecked_with_write_gate(
         kind,
         attempt,
         request_json,
+        config_snapshot_id,
         auth_snapshot,
     }))
 }

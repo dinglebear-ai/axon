@@ -15,13 +15,37 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERATOR_BINARY = ROOT / "target" / "debug" / ("xtask.exe" if os.name == "nt" else "xtask")
+TARGET_DIR = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
+if not TARGET_DIR.is_absolute():
+    TARGET_DIR = ROOT / TARGET_DIR
+GENERATOR_BINARY = TARGET_DIR / "debug" / ("xtask.exe" if os.name == "nt" else "xtask")
 
 GENERATED_PREFIXES = (
     "docs/reference/",
+    "docs/architecture/integrations/generated/",
     "xtask/tests/fixtures/schemas/",
     "crates/axon-mcp/tests/golden/",
 )
+
+
+GENERATED_PLATFORM_OUTPUTS = {
+    "apps/web/src/styles/axon-tokens.css",
+    "apps/palette-tauri/src/styles/axon-tokens.css",
+    "apps/chrome-extension/src/styles/axon-tokens.css",
+    "apps/android/app/src/main/java/com/axon/app/ui/theme/generated/AxonTokens.kt",
+    "crates/axon-cli/src/ui/tokens.rs",
+}
+GENERATOR_INPUTS = {
+    "xtask/src/presentation/source.json",
+    "docs/pipeline-unification/surfaces/presentation-contract.md",
+    "scripts/doc_schema.py",
+    "scripts/mcp_doc_renderer.py",
+    "scripts/generate_action_docs.py",
+    "scripts/generate_mcp_schema_doc.py",
+    "scripts/check_mcp_schema_doc.sh",
+    "scripts/check-integration-contracts.py",
+    "scripts/generate-codex-app-server-methods.sh",
+}
 
 CONTRACT_DOC_PREFIXES = (
     "docs/pipeline-unification/configuration/",
@@ -37,18 +61,20 @@ def normalized(path: str) -> str:
 
 def is_generated_output(path: str) -> bool:
     path = normalized(path)
-    return path.startswith(GENERATED_PREFIXES)
+    return path.startswith(GENERATED_PREFIXES) or path in GENERATED_PLATFORM_OUTPUTS
 
 
 def affects_generated_contracts(path: str) -> bool:
     path = normalized(path)
     if is_generated_output(path):
         return False
-    if path == "Cargo.toml" or path.endswith("/Cargo.toml"):
+    if path in GENERATOR_INPUTS or path.startswith("contracts/"):
+        return True
+    if path in {"Cargo.toml", "Cargo.lock"} or path.endswith("/Cargo.toml"):
         return True
     if path.startswith(CONTRACT_DOC_PREFIXES):
         return True
-    if path.endswith(".rs") and path.startswith(("src/", "crates/", "xtask/src/schemas/")):
+    if path.endswith(".rs") and path.startswith(("src/", "crates/", "xtask/src/")):
         return True
     if path.startswith("crates/") and ("/src/migrations/" in path or "/fixtures/" in path):
         return True

@@ -1,115 +1,80 @@
 # Deployment Guide -- Axon MCP
 
-Deployment patterns for the Axon MCP server. Choose the method that fits your environment.
+Last reviewed: 2026-09-29
+
+The supported production contract is **native `axon serve` under systemd**,
+either on bare-metal Linux or in Incus. MCP HTTP shares the listener,
+authorization boundary, and workers with REST and the web panel. Qdrant,
+TEI/embedding, and Chrome/CDP are external providers as required by the
+operation. Compose is a development/reference surface, not the production
+Axon process manager.
+
+## Choose the verified installation
+
+Use [deployment](../../operations/deployment.md),
+[bare-metal systemd](../../../deploy/systemd/README.md), or
+[Incus](../../../deploy/incus/README.md), then verify the actual service,
+executable, effective environment, data paths, mounts, and ownership. These
+examples describe different service names and layouts; do not assume
+`axon.service` and `axon-native.service` are interchangeable.
+
+The tracked Incus bootstrap defaults to a host-owned queue and leaves the
+guest Axon service disabled unless explicitly enabled for guest-exclusive
+state. That default is not proof of how another installation runs. Do not
+let host and guest workers open the same SQLite/WAL files through a bind
+mount. Confirm the actual writer and storage boundary before enabling a
+second service.
 
 ## Local development
 
-### Full stack (recommended)
-
-```bash
-just dev
-```
-
-Current repository `just dev` starts TEI + Chrome, builds the debug binary, and
-launches `axon mcp` as the local worker daemon. Use `axon serve` explicitly
-when you need the unified HTTP API, MCP HTTP endpoint, web panel, and
-in-process workers on port 8001.
-
-### MCP server only
-
-```bash
-# Start infrastructure
-just services-up
-
-# Run MCP server standalone (stdio)
-axon mcp
-
-# Or HTTP transport
-axon serve mcp
-```
-
-### Minimal local runtime
+For a foreground stdio process using existing providers:
 
 ```bash
 axon mcp
 ```
 
-Jobs use SQLite and in-process workers. Qdrant and TEI are still required for
-embedding/search paths.
-
-## Docker
-
-### Infrastructure + app containers
+For the unified loopback HTTP service:
 
 ```bash
-# Start local infrastructure (TEI + Chrome; Qdrant is remote by default)
-just services-up
+AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT=8001 axon serve
 ```
 
-Use `just qdrant-up` only for an intentional local Qdrant fallback.
+`just dev` is a broader development recipe: it calls `just stop`, builds the
+debug binary, starts the configured Compose TEI/Chrome services, then runs
+`axon mcp`. It can interrupt an existing development runtime and does not
+mean HTTP was enabled. Inspect the recipe and its environment before use.
 
-### Docker Compose split
+Use `just services-up` only for the deliberately selected development
+provider stack. Container ports, model caches, image tags, and optional
+Qdrant profiles belong to the current Compose manifests, not copied tables
+in this MCP guide.
 
-| File | Contents | Env file |
-|------|----------|----------|
-| `docker-compose.prod.yaml` | Axon server, Qdrant, TEI, Chrome | `~/.axon/.env` |
+## Configure without replacing existing state
 
-The compose file creates the `axon` bridge network. Pass `--env-file ~/.axon/.env`
-when running it directly so the canonical appdata env file is used for `${VAR}`
-interpolation.
+Non-loopback HTTP requires the configured bearer/OAuth policy. Keep panel
+unlock separate from API authorization. Set origins and local acquisition
+roots deliberately; no client registration authorizes arbitrary server
+filesystem access. See [environment](env.md) and
+[security](../../operations/security.md).
 
-### GPU acceleration
+Retain unrelated configuration and credentials. Verify the running process
+loaded the expected file and values, not merely that a template was written.
+Document a restart/reconnect requirement for startup-static projection or
+auth changes.
 
-For NVIDIA hosts with GPU-accelerated TEI:
+## Verify after installation or upgrade
 
-```bash
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
-```
+Record the installed binary version and the service executable path. Check
+process health, provider readiness, worker liveness, and a real initialized
+MCP client connection separately. Discover the full tool/resource catalog
+and make an authorized read-only call before testing writes.
 
-CPU-only hosts should override the TEI image/settings or point `TEI_URL` at an
-external CPU embedding endpoint.
+For an isolated source smoke test, retain the returned job ID and verify
+its terminal status and committed publication. A listening port, successful
+configuration write, or detached job ID is not completion. Use
+[the connection guide](connect.md) and [jobs](../runtime/jobs.md).
 
-### Local app runtime
-
-The tracked compose file starts the Axon server plus Qdrant, TEI, and Chrome.
-Run `axon serve` locally only when you want to bypass Compose and run the
-unified HTTP API, MCP HTTP endpoint, web panel, and in-process workers directly.
-
-### Build
-
-```bash
-# Build Chrome image
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml build axon-chrome
-```
-
-Run compose commands from the repo root. Host-side state defaults to
-`${HOME}/.axon` through `AXON_HOME`; the container sees that same appdata tree as
-`/home/axon/.axon`.
-
-### Health checks
-
-```bash
-# Infrastructure
-docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml ps
-
-# Service connectivity
-./scripts/axon doctor
-```
-
-## Data volumes
-
-Runtime data uses `${AXON_DATA_DIR:-~/.axon}/...`; Docker bind mounts use `${AXON_HOME:-$HOME/.axon}/...`. Keep them aligned unless relocating the entire Axon appdata tree.
-
-| Volume | Content |
-|--------|---------|
-| `$AXON_DATA_DIR/jobs.db` | SQLite job database |
-| `$AXON_DATA_DIR/qdrant` | Qdrant vector storage |
-| `$AXON_DATA_DIR/tei` | TEI model cache |
-| `$AXON_DATA_DIR/artifacts` | MCP response artifacts |
-| `$AXON_DATA_DIR/output` | CLI output files |
-
-## See also
-
-- [TRANSPORT.md](transport.md) -- transport configuration
-- [CONNECT.md](connect.md) -- client connection methods
-- [ENV.md](env.md) -- environment variables
+Back up consistent SQLite, artifacts, and compatible vectors before upgrades
+that affect durable state. Rollback uses the installation's recorded binary,
+configuration, and recovery point, not an automatic `docker compose down`.
+Follow [backup/restore](../operations/backup-restore.md).

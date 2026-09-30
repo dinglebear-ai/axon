@@ -1,399 +1,48 @@
-//! Hand-maintained mirror of the **live** MCP action surface (issue #298
-//! WS-F, `docs/pipeline-unification/schemas/mcp-tool-schema.md`).
-//!
-//! `crates/axon-mcp` is read-only territory for this generator: the real
-//! dispatcher table (`MCP_ACTION_SPECS` in
-//! `crates/axon-mcp/src/server/authz.rs`) is `pub(super)` and cannot be
-//! imported directly. This module is the generator-side registry that
-//! mirrors it by hand (the same pattern already used by
-//! `xtask/src/schemas/cli_registry.rs` for the CLI family). Two safeguards
-//! keep it from silently rotting:
-//!
-//! 1. `mcp_action_registry_tests.rs` calls the already-public
-//!    `axon_mcp::required_scope_for(action, subaction)` oracle for every
-//!    name in [`live_action_names`] (must resolve) and every name in
-//!    `known_non_live_action_names` (must resolve to `__deny__`/removed).
-//!    If a future edit to `MCP_ACTION_SPECS` adds/removes/rescoped an
-//!    action without a matching edit here, that test fails.
-//! 2. Shared action request DTOs are resolved from the real,
-//!    schemars-derived `axon_api::action` types. The two system requests
-//!    owned privately by `axon-mcp` (`reset` and `collections`) are mirrored
-//!    explicitly here and covered by focused generator expectations.
-//!
-//! Contract convergence direction: `docs/pipeline-unification/schemas/
-//! mcp-tool-schema.md`'s target `Action` enum has 31 names; the live
-//! dispatcher currently implements the 28 below. Names present only in the
-//! contract are surfaced via `deferred_action_names` / `deferred_actions`
-//! in the generated schema instead of fabricated request schemas.
-
+//! Schema-generator view of the runtime MCP registry. Names, DTOs and finite
+//! selectors are derived from axon-mcp; adding an action never requires an
+//! independent generator inventory entry.
 use serde_json::{Value, json};
+use std::sync::LazyLock;
 
-/// Subaction shape for a grouped action.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum SubactionKind {
-    /// Action takes no `subaction` (ungrouped).
     None,
-    /// `subaction` is validated against a real schemars enum type. `variants`
-    /// is produced from that enum's schema at generation time, never
-    /// hand-typed (see `subaction_variants_for`).
     TypedEnum,
-    /// `subaction` is accepted as a free string with an informal, documented
-    /// value set (the DTO does not model it as a Rust enum).
-    InformalStrings(&'static [&'static str]),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ActionSpec {
-    /// Wire action name (matches `MCP_ACTION_SPECS[i].name` in
-    /// `crates/axon-mcp/src/server/authz.rs`, read there for reference only).
     pub name: &'static str,
     pub description: &'static str,
-    /// `"read" | "write" | "admin" | "info"` — mirrors `ActionScope::as_label`.
     pub scope: &'static str,
     pub mutates: bool,
     pub async_job: bool,
-    /// The real `axon_api::action` request DTO type name for this
-    /// action, resolved to a schema via `request_schema_for`.
     pub request_dto: &'static str,
     pub subaction: SubactionKind,
 }
 
-/// The live action registry, mirroring `MCP_ACTION_SPECS` as read from
-/// `crates/axon-mcp/src/server/authz.rs` (read-only reference; do not copy
-/// scope changes here without re-reading that file, and do not edit that
-/// file from this generator).
-pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
-    ActionSpec {
-        name: "codex",
-        description: "Inspect and operate the approval-gated Codex app-server control plane",
-        scope: "admin",
-        mutates: true,
-        async_job: false,
-        request_dto: "CodexRequest",
-        subaction: SubactionKind::TypedEnum,
-    },
-    ActionSpec {
-        name: "scrape",
-        description: "Project page acquisition onto the canonical source pipeline",
-        scope: "write",
-        mutates: true,
-        async_job: true,
-        request_dto: "ScrapeRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "crawl",
-        description: "Project site crawling onto the canonical source pipeline",
-        scope: "write",
-        mutates: true,
-        async_job: true,
-        request_dto: "CrawlRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "embed",
-        description: "Project embedding onto the canonical source pipeline",
-        scope: "write",
-        mutates: true,
-        async_job: true,
-        request_dto: "EmbedRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "ingest",
-        description: "Project ingestion onto the canonical source pipeline",
-        scope: "write",
-        mutates: true,
-        async_job: true,
-        request_dto: "IngestRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "code_search",
-        description: "Search committed code vectors without refreshing the index",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "CodeSearchRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "help",
-        description: "List actions, subactions, defaults, and schema resource links",
-        scope: "info",
-        mutates: false,
-        async_job: false,
-        request_dto: "HelpRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "status",
-        description: "Show unified jobs, watches, cleanup, totals, and service status",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "StatusRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "jobs",
-        description: "List, inspect, page events, cancel, retry, recover, cleanup, or clear unified durable jobs",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "JobsRequest",
-        subaction: SubactionKind::TypedEnum,
-    },
-    ActionSpec {
-        name: "doctor",
-        description: "Diagnose Axon service connectivity",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "DoctorRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "source",
-        description: "Acquire and index one source (local path, git/web/feed/youtube/reddit/session/registry target) through the unified pipeline",
-        scope: "write",
-        mutates: true,
-        async_job: true,
-        request_dto: "SourceRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "query",
-        description: "Run semantic vector search over indexed content",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "QueryRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "retrieve",
-        description: "Fetch stored document chunks by URL",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "RetrieveRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "resolve",
-        description: "Resolve source identity and adapter route without acquiring content",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "ResolveRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "capabilities",
-        description: "Machine-readable server capability document: actions, scopes, providers",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "CapabilitiesRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "providers",
-        description: "List or inspect provider capability/health",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "ProvidersRequest",
-        subaction: SubactionKind::InformalStrings(&["list", "get"]),
-    },
-    ActionSpec {
-        name: "search",
-        description: "Run SearXNG/Tavily web search and optionally queue Source jobs for results",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "SearchRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "map",
-        description: "Discover URLs for a site without scraping page content",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "MapRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "prune",
-        description: "Plan or execute source, generation, or collection cleanup behind axon-prune",
-        scope: "admin",
-        mutates: true,
-        async_job: false,
-        request_dto: "PruneMcpRequest",
-        subaction: SubactionKind::InformalStrings(&["plan", "exec"]),
-    },
-    ActionSpec {
-        name: "collections",
-        description: "List or inspect configured vector collections",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "CollectionsMcpRequest",
-        subaction: SubactionKind::InformalStrings(&["list", "get"]),
-    },
-    ActionSpec {
-        name: "reset",
-        description: "Plan or execute an explicit clean-slate store reset",
-        scope: "admin",
-        mutates: true,
-        async_job: false,
-        request_dto: "ResetMcpRequest",
-        subaction: SubactionKind::InformalStrings(&["plan", "exec"]),
-    },
-    ActionSpec {
-        name: "uploads",
-        description: "Stage, inspect, complete, list, or abort durable uploads",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "UploadsMcpRequest",
-        subaction: SubactionKind::InformalStrings(&[
-            "list",
-            "create",
-            "get",
-            "put_content",
-            "complete",
-            "abort",
-        ]),
-    },
-    ActionSpec {
-        name: "ask",
-        description: "Answer a question with RAG over indexed content",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "AskRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "evaluate",
-        description: "Evaluate RAG quality against a baseline and judge diagnostics",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "EvaluateRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "suggest",
-        description: "Suggest new documentation URLs to index",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "SuggestRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "research",
-        description: "Run SearXNG/Tavily research with synthesis and auto-indexing",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "ResearchRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "screenshot",
-        description: "Capture a full-page screenshot through headless Chrome",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "ScreenshotRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "brand",
-        description: "Extract brand identity metadata from a URL",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "BrandRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "diff",
-        description: "Compare two URLs for content, metadata, and link changes",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "DiffRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "extract",
-        description: "Start async structured extraction jobs; use action=jobs for lifecycle",
-        scope: "write",
-        mutates: true,
-        async_job: true,
-        request_dto: "ExtractRequest",
-        subaction: SubactionKind::TypedEnum,
-    },
-    ActionSpec {
-        name: "memory",
-        description: "Remember, search, and show persistent agent memory",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "MemoryRequest",
-        subaction: SubactionKind::TypedEnum,
-    },
-    ActionSpec {
-        name: "summarize",
-        description: "Fetch URL context and summarize it with the configured LLM",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "SummarizeRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "endpoints",
-        description: "Discover and optionally verify static site endpoints",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "EndpointsRequest",
-        subaction: SubactionKind::None,
-    },
-    ActionSpec {
-        name: "watch",
-        description: "Create, list, inspect, execute, page history, update, pause, resume, or delete source-request-backed watches",
-        scope: "write",
-        mutates: true,
-        async_job: false,
-        request_dto: "WatchRequest",
-        subaction: SubactionKind::TypedEnum,
-    },
-    ActionSpec {
-        name: "graph",
-        description: "Query the read-only SourceGraph: kinds, resolve, query, node, edge, source subgraph",
-        scope: "read",
-        mutates: false,
-        async_job: false,
-        request_dto: "GraphRequest",
-        subaction: SubactionKind::TypedEnum,
-    },
-];
+pub(super) static LIVE_ACTIONS: LazyLock<Vec<ActionSpec>> = LazyLock::new(|| {
+    axon_mcp::schema_registry::action_registry()
+        .iter()
+        .map(|spec| ActionSpec {
+            name: spec.action,
+            description: spec.description,
+            scope: spec.required_scope,
+            mutates: spec.mutates,
+            async_job: spec.async_job,
+            request_dto: spec.request_dto,
+            subaction: if axon_mcp::schema_registry::subaction_variants(spec.action).is_empty() {
+                SubactionKind::None
+            } else {
+                SubactionKind::TypedEnum
+            },
+        })
+        .collect()
+});
 
-/// Action names represented by `axon_mcp::schema::AxonRequest` but rejected
-/// pre-dispatch by MCP authz
-/// (`crates/axon-mcp/src/server.rs`'s removed/HTTP-only match arms) — read
-/// there for reference. Used only by the drift test's negative-space check;
-/// not part of the generated schema.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(super) const KNOWN_NON_LIVE_ACTIONS: &[&str] = &[
+    "config",
     "vertical_scrape",
     "purge",
     "dedupe",

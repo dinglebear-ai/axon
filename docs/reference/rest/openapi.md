@@ -23,10 +23,10 @@ See the family contract for declared output paths.
 | `crates/axon-web/src/schema_registry/helpers.rs` | `sha256:2ba52309e46521a200a37950aea2edb5afc76ec1aa72417d9d0b777ed2b58856` |
 | `crates/axon-web/src/schema_registry/memory_routes.rs` | `sha256:0042da0f2f28c2e35a9e9aa620f1037c87b4634fa8ce04a411390c61b82d2c61` |
 | `docs/pipeline-unification/schemas/openapi-schema.md` | `sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7` |
-| `xtask/src/schemas/families.rs` | `sha256:0aaf932d940307911b67c90b53dabdd226786c26effe7aabb323495e90795679` |
+| `xtask/src/schemas/families.rs` | `sha256:1ce146caece97865cf0b61b18081b2c68ee86899a7418d96d996585c45d33dd7` |
 | `xtask/src/schemas/families/bundles.rs` | `sha256:b2932485a582231afb5c91e581d418e5068a8d31edbd4764decb67c20d5ca250` |
-| `xtask/src/schemas/families/family_specs.rs` | `sha256:af9f8681886459c505adf11ddb4fedeec6076cf9f403c834c6029c2c614cd30b` |
-| `xtask/src/schemas/families/markdown.rs` | `sha256:f51e765aeb416c7c457d1d8535354b5e0b380169f257da9e4f0299b8fdc8b282` |
+| `xtask/src/schemas/families/family_specs.rs` | `sha256:53ea1fdb922f3ee33393af107e211b614444af565b6c771f1474c4f8c10b4b5a` |
+| `xtask/src/schemas/families/markdown.rs` | `sha256:b3103c765d7fcbe64ae52e8f401f392ffadc67a259b3f7ecb551b74bad93ca2b` |
 | `xtask/src/schemas/schema_json.rs` | `sha256:09683a203e931d619a76fff0ab5abb04efbaac1ae9849bd763303d7f364759f8` |
 | `xtask/src/schemas/source_input.rs` | `sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da` |
 
@@ -69,3 +69,124 @@ Run `cargo xtask generated-contracts check`.
 ## Routes
 
 Generated from the owner crate schema registry.
+
+## Route Registry
+
+114 records from the linked canonical artifact.
+
+| method | path | request_dto | result_dto | requires_auth_scope | streaming |
+|---|---|---|---|---|---|
+| DELETE | /v1/jobs | JobClearRequest | JobClearResult | admin | false |
+| DELETE | /v1/memories/{memory_id} | not specified | MemoryResponse | write | false |
+| DELETE | /v1/mobile/sessions/{id} | not specified | DeleteMobileSessionResponse | write | false |
+| DELETE | /v1/uploads/{upload_id} | UploadAbortRequest | UploadAbortResult | write | false |
+| DELETE | /v1/watches/{watch_id} | not specified | WatchDeleteResponse | write | false |
+| GET | /v1/agent/turns/{id} | not specified | AgentTurnResult | read | false |
+| GET | /v1/agent/turns/{id}/events | not specified | serde_json::Value | read | false |
+| GET | /v1/artifacts | not specified | Page&lt;ArtifactSummary&gt; | read | false |
+| GET | /v1/artifacts/{artifact_id} | not specified | ArtifactDetail | read | false |
+| GET | /v1/artifacts/{artifact_id}/content | not specified | ArtifactContentDescriptor | read | false |
+| GET | /v1/capabilities | not specified | CapabilitiesResponse | read | false |
+| GET | /v1/codex | not specified | CodexControlSnapshot | read | false |
+| GET | /v1/codex/events | not specified | Vec&lt;RecordedEvent&gt; | read | false |
+| GET | /v1/codex/operations | not specified | Vec&lt;ControlOperation&gt; | read | false |
+| GET | /v1/codex/{resource} | not specified | CodexResourceResponse | read | false |
+| GET | /v1/collections | not specified | CollectionsResponse | read | false |
+| GET | /v1/doctor | not specified | DoctorResponse | read | false |
+| GET | /v1/domains | not specified | DomainListResponse | read | false |
+| GET | /v1/graph/edges/{edge_id} | not specified | GraphEdgeDetail | read | false |
+| GET | /v1/graph/kinds | not specified | GraphKindDocument | read | false |
+| GET | /v1/graph/nodes/{node_id} | not specified | GraphNodeDetail | read | false |
+| GET | /v1/graph/nodes/{node_id}/edges | not specified | GraphNodeEdges | read | false |
+| GET | /v1/graph/sources/{source_id} | not specified | GraphSourceSubgraph | read | false |
+| GET | /v1/jobs | not specified | JobListPage | read | false |
+| GET | /v1/jobs/{id} | not specified | JobSummary | read | false |
+| GET | /v1/jobs/{id}/artifacts | not specified | JobArtifactListResult | read | false |
+| GET | /v1/jobs/{id}/events | not specified | JobEventPage | read | false |
+| GET | /v1/jobs/{id}/stream | not specified | StreamEvent | read | true |
+| GET | /v1/memories | not specified | MemoryResponse | read | false |
+| GET | /v1/memories/{memory_id} | not specified | MemoryResponse | read | false |
+| GET | /v1/mobile/sessions | not specified | MobileSessionListResponse | read | false |
+| GET | /v1/mobile/sessions/{id} | not specified | MobileSessionResponse | read | false |
+| GET | /v1/providers | not specified | ProviderListResponse | read | false |
+| GET | /v1/providers/{provider} | not specified | ProviderSummary | read | false |
+| GET | /v1/prune/plans/{plan_id} | not specified | StoredPrunePlan | admin | false |
+| GET | /v1/reset/plans/{plan_id} | not specified | ResetResult | admin | false |
+| GET | /v1/sources | not specified | SourceListResponse | read | false |
+| GET | /v1/sources/{source_id} | not specified | SourceSummary | read | false |
+| GET | /v1/stats | not specified | StatsResponse | read | false |
+| GET | /v1/status | not specified | StatusResponse | read | false |
+| GET | /v1/uploads | UploadListRequest | Page&lt;UploadStatus&gt; | read | false |
+| GET | /v1/uploads/{upload_id} | not specified | UploadStatus | read | false |
+| GET | /v1/watches | not specified | Page&lt;WatchSummary&gt; | read | false |
+| GET | /v1/watches/{watch_id} | not specified | WatchResult | read | false |
+| GET | /v1/watches/{watch_id}/history | not specified | WatchHistoryResult | read | false |
+| GET | /v1/watches/{watch_id}/status | not specified | WatchStatusResult | read | false |
+| PATCH | /v1/watches/{watch_id} | WatchUpdateRequest | WatchResult | write | false |
+| POST | /v1/agent/turns/{id}/cancel | not specified | AgentTurnResult | write | false |
+| POST | /v1/agent/turns/{id}/resume | AgentResumeRequest | AgentTurnResult | write | false |
+| POST | /v1/ask | AskRequest | AskResponse | read | false |
+| POST | /v1/ask/stream | AskRequest | StreamEvent | write | true |
+| POST | /v1/brand | BrandRequest | BrandResponse | write | false |
+| POST | /v1/chat | ChatRequest | ChatResponse | read | false |
+| POST | /v1/chat/stream | ChatRequest | StreamEvent | write | true |
+| POST | /v1/code-search | CodeSearchRequest | BatchResult&lt;QueryResult&gt; | read | false |
+| POST | /v1/codex/operations | CreateOperationBody | ControlOperation | admin | false |
+| POST | /v1/codex/operations/{id}/approve | not specified | ApproveOperationResponse | admin | false |
+| POST | /v1/codex/operations/{id}/cancel | not specified | ReconcileOperationResponse | admin | false |
+| POST | /v1/codex/operations/{id}/execute | ExecuteBody | ExecuteOperationResponse | admin | false |
+| POST | /v1/codex/operations/{id}/reconcile | ReconcileOperationBody | ReconcileOperationResponse | admin | false |
+| POST | /v1/codex/read | CodexReadBody | CodexResourceResponse | read | false |
+| POST | /v1/codex/server-requests/{id}/respond | ServerRequestResponseBody | ServerRequestRespondedResponse | admin | false |
+| POST | /v1/crawl | CrawlRequest | BatchResult&lt;SourceResult&gt; | write | false |
+| POST | /v1/diff | DiffRequest | DiffResponse | write | false |
+| POST | /v1/embed | EmbedRequest | BatchResult&lt;SourceResult&gt; | write | false |
+| POST | /v1/endpoints | EndpointRequest | EndpointResponse | write | false |
+| POST | /v1/evaluate | EvaluateRequest | EvaluateResponse | read | false |
+| POST | /v1/extract | ExtractRequest | JobDescriptor | write | false |
+| POST | /v1/graph/query | GraphQueryRequest | GraphQueryResponse | read | false |
+| POST | /v1/graph/resolve | GraphResolveRequest | GraphResolveResponse | read | false |
+| POST | /v1/ingest | IngestRequest | BatchResult&lt;SourceResult&gt; | write | false |
+| POST | /v1/jobs/cleanup | JobCleanupRequest | JobCleanupResult | admin | false |
+| POST | /v1/jobs/recover | JobRecoveryRequest | JobRecoveryResult | admin | false |
+| POST | /v1/jobs/{id}/cancel | JobCancelRequest | JobCancelResult | write | false |
+| POST | /v1/jobs/{id}/retry | JobRetryRequest | JobRetryResult | write | false |
+| POST | /v1/map | MapRequest | MapResponse | read | false |
+| POST | /v1/memories | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/compact | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/context | MemoryRequest | MemoryResponse | read | false |
+| POST | /v1/memories/export | MemoryExportRequest | MemoryExportResult | write | false |
+| POST | /v1/memories/import | MemoryImportRequest | MemoryImportResult | write | false |
+| POST | /v1/memories/review | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/search | MemoryRequest | MemoryResponse | read | false |
+| POST | /v1/memories/{memory_id}/archive | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/{memory_id}/compact | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/{memory_id}/contradict | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/{memory_id}/link | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/{memory_id}/pin | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/{memory_id}/reinforce | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/memories/{memory_id}/supersede | MemoryRequest | MemoryResponse | write | false |
+| POST | /v1/prune/exec | PruneExecRequest | PruneResult | admin | false |
+| POST | /v1/prune/plan | PrunePlanRequest | PrunePlan | admin | false |
+| POST | /v1/query | VectorSearchRequest | VectorSearchResult | read | false |
+| POST | /v1/research | ResearchRequest | ResearchResponse | read | false |
+| POST | /v1/research/stream | ResearchRequest | StreamEvent | write | true |
+| POST | /v1/reset/exec | ResetExecRequest | ResetResult | admin | false |
+| POST | /v1/reset/plan | ResetPlanRequest | ResetPlan | admin | false |
+| POST | /v1/resolve | SourceRequest | RoutePlan | read | false |
+| POST | /v1/retrieve | RetrieveRequest | RetrieveResponse | read | false |
+| POST | /v1/scrape | ScrapeRequest | BatchResult&lt;SourceResult&gt; | write | false |
+| POST | /v1/screenshot | ScreenshotRequest | ScreenshotResponse | write | false |
+| POST | /v1/search | SearchRequest | SearchResponse | read | false |
+| POST | /v1/sources | SourceRequest | SourceResult | write | false |
+| POST | /v1/suggest | SuggestRequest | SuggestResponse | read | false |
+| POST | /v1/summarize | SummarizeRequest | SummarizeResponse | read | false |
+| POST | /v1/summarize/stream | SummarizeRequest | StreamEvent | write | true |
+| POST | /v1/uploads | UploadCreateRequest | UploadCreateResult | write | false |
+| POST | /v1/uploads/{upload_id}/complete | UploadCompleteRequest | UploadCompleteResult | write | false |
+| POST | /v1/watches | WatchRequest | WatchResult | write | false |
+| POST | /v1/watches/{watch_id}/exec | WatchExecRequest | JobDescriptor | write | false |
+| POST | /v1/watches/{watch_id}/pause | not specified | WatchResult | write | false |
+| POST | /v1/watches/{watch_id}/resume | not specified | WatchResult | write | false |
+| PUT | /v1/mobile/sessions/{id} | UpsertMobileSessionRequest | UpsertMobileSessionResponse | write | false |
+| PUT | /v1/uploads/{upload_id}/content | not specified | UploadStatus | write | false |

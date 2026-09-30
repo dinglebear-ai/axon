@@ -24,8 +24,11 @@ pub enum AxonRequest {
     Evaluate(EvaluateRequest),
     Suggest(SuggestRequest),
     Doctor(DoctorRequest),
+    #[schemars(skip)]
     Domains(DomainsRequest),
+    #[schemars(skip)]
     Sources(SourcesRequest),
+    #[schemars(skip)]
     Stats(StatsRequest),
     Help(HelpRequest),
     Research(ResearchRequest),
@@ -33,11 +36,14 @@ pub enum AxonRequest {
     Summarize(SummarizeRequest),
     Screenshot(ScreenshotRequest),
     Brand(BrandRequest),
+    #[schemars(skip)]
     Debug(DebugRequest),
     Prune(PruneMcpRequest),
     Diff(DiffRequest),
+    #[schemars(skip)]
     Migrate(MigrateRequest),
     Watch(WatchRequest),
+    #[schemars(skip)]
     Setup(SetupRequest),
     Source(SourceRequest),
     Resolve(ResolveRequest),

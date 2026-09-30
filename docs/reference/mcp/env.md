@@ -1,78 +1,81 @@
 # MCP Environment Variables -- Axon
 
-Environment variables specific to the Axon MCP server. The MCP server inherits all Axon stack variables (Qdrant, TEI, LLM). This page covers MCP-specific configuration.
+Last reviewed: 2026-09-29
 
-## MCP server
+MCP shares typed Axon configuration with CLI and HTTP services. The
+[generated environment inventory](../config/env.md) owns the complete names
+and parsing contract; this page describes MCP-specific behavior and migration.
+Precedence is **CLI > environment > TOML > defaults**.
 
-| Variable | Required | Default | Description | Sensitive |
-|----------|----------|---------|-------------|-----------|
-| `AXON_HTTP_HOST` | no | `127.0.0.1` | Bind address for HTTP transport; non-loopback requires `AXON_HTTP_TOKEN` | no |
-| `AXON_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
-| `AXON_HTTP_TOKEN` | no | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds | yes |
-| `AXON_AUTH_MODE` | no | `bearer` | Set to `oauth` to enable lab-auth Google OAuth/JWT mode | no |
-| `AXON_PUBLIC_URL` | oauth | -- | Public origin used in OAuth metadata and protected-resource responses | no |
-| `AXON_GOOGLE_CLIENT_ID` | oauth | -- | Google OAuth client ID | yes |
-| `AXON_GOOGLE_CLIENT_SECRET` | oauth | -- | Google OAuth client secret | yes |
-| `AXON_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer; receives full Axon OAuth scopes | yes |
-| `AXON_ALLOWED_REDIRECT_URIS` | no | Claude callback included | Additional comma-separated OAuth redirect URIs | no |
-| `AXON_ALLOWED_ORIGINS` | no | -- | Comma-separated allowed origins for MCP HTTP CORS (unset = strict default: only same-origin/loopback browser requests pass; non-browser tools unaffected) | no |
-| `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts | no |
-| `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes); set to 0 to disable | no |
-| `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS` | no | `300` | Max seconds an MCP `tasks/result` request waits for terminal task state | no |
-| `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots allowed for MCP source indexing (unset = local filesystem source indexing disabled over MCP) | no |
-| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | `10485760` | Max bytes per local file accepted by MCP source indexing | no |
-| `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | no | `16` | Max directory traversal depth for MCP local-directory source indexing | no |
-| `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | no | `10000` | Max filesystem entries visited for MCP local-directory source indexing | no |
-
-## Local execution (no CLI server mode)
-
-CLI and MCP commands always run in-process — locally against Qdrant and TEI.
-There is no client-to-server forwarding, so `AXON_SERVER_URL`, `AXON_LOCAL_MODE` /
-`--local`, and `AXON_SERVER_INSECURE` were removed in 5.0.0. To expose Axon over
-HTTP for API clients, run `axon serve` (see [SERVE.md](../actions/serve.md)).
-
-## Transport selection
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `AXON_MCP_TRANSPORT` | no | per-command | `stdio` / `http` / `both`. Overrides the per-command default (`axon mcp` defaults to stdio; `axon serve mcp` defaults to http; `axon serve` to both). |
-
-## Stack variables consumed by MCP
-
-The MCP server reads existing Axon stack variables at startup:
+## Listener, projection, and authentication
 
 | Variable | Purpose |
-|----------|---------|
-| `QDRANT_URL` | Vector search and retrieval |
-| `TEI_URL` | Embedding generation |
-| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | Model override for Gemini synthesis completions |
-| `AXON_HEADLESS_GEMINI_MODEL` | Legacy alias for `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` |
-| `AXON_LLM_BACKEND` | LLM backend selector: `gemini-headless` (default) or `openai-compat` |
-| `AXON_OPENAI_BASE_URL` | OpenAI-compatible `/v1` base URL when `AXON_LLM_BACKEND=openai-compat` |
-| `AXON_SYNTHESIS_OPENAI_MODEL` | OpenAI-compatible synthesis model name |
-| `AXON_OPENAI_MODEL` | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL` |
-| `AXON_OPENAI_API_KEY` | Optional API key for OpenAI-compatible endpoints |
-| `TAVILY_API_KEY` | Tavily fallback for web search and research when `AXON_SEARXNG_URL` is unset |
-| `AXON_COLLECTION` | Default Qdrant collection |
+|---|---|
+| `AXON_MCP_TRANSPORT` | `stdio`, `http`, or `both`; command defaults and listener behavior are described in [transport](transport.md) |
+| `AXON_MCP_TOOL_PROJECTION` | Startup-static legacy aggregate, atomic leaves, or both; reconnect clients after a change |
+| `AXON_HTTP_HOST`, `AXON_HTTP_PORT` | Unified HTTP listener, default loopback port 8001 |
+| `AXON_HTTP_TOKEN` | Static bearer/API-key authorization when using bearer mode |
+| `AXON_AUTH_MODE` | Select configured bearer or OAuth behavior |
+| `AXON_PUBLIC_URL` | Public origin for OAuth discovery and protected-resource metadata |
+| `AXON_ALLOWED_ORIGINS` | Explicit browser-origin policy; not a substitute for authorization |
 
-## Job runtime
+Non-loopback HTTP requires a bearer token or correctly configured OAuth.
+Panel unlock passwords and sessions do not authorize API/MCP calls. OAuth
+requires its configured client/secret, allowed identity, redirect, and public
+origin settings; follow [the auth guide](../../operations/auth/mcp-auth.md)
+instead of copying a token from an unrelated service. Never commit secrets.
 
-The MCP server uses SQLite for job state and runs workers in-process when the
-hosting command creates a worker-enabled service context.
+The deprecated projection alias has narrowly defined compatibility behavior;
+see [projection selection](overview.md#projection-selection-and-compatibility).
+It does not mean removed configuration keys remain valid.
 
-| Operation | Available |
-|-----------|-----------|
-| source, scrape, query, ask, search | Yes |
-| extract | Yes |
-| watch scheduler | Yes for wired subcommands (`create`, `list`, `exec`, `history`) |
+## Artifacts and local source selection
 
-## Precedence
+`AXON_MCP_ARTIFACT_DIR` selects response artifact storage;
+`AXON_INLINE_BYTES_THRESHOLD` controls auto-inline selection. Returned
+artifacts expose opaque IDs, not public server paths. Size/visibility rules
+still apply to inline responses.
 
-1. CLI flags override environment variables
-2. Environment variables override `~/.axon/config.toml` settings
-3. `~/.axon/config.toml` overrides built-in defaults
+`AXON_SOURCE_LOCAL_ALLOWED_ROOTS` is the canonical local acquisition root
+setting. `AXON_MCP_EMBED_ALLOWED_ROOTS` is rejected during configuration
+validation; rename it before restart. A client filesystem path is evaluated
+on the executing server with its authorization and containment policy.
 
-## See also
+The legacy `AXON_MCP_EMBED_MAX_LOCAL_BYTES`,
+`AXON_MCP_EMBED_MAX_LOCAL_DEPTH`, and `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES`
+values are parsed into configuration, but the current shared source pipeline
+does not consume those fields as its acquisition limits. Do not rely on the
+old per-MCP 10 MiB/16-level/10,000-entry table as an enforced safety boundary.
+Use the [local source guide](../../guides/local-sources.md), adapter policy,
+and operation diagnostics for actual limits. A configuration declaration is
+not evidence that every adapter enforces it.
 
-- [TRANSPORT.md](transport.md) -- transport-specific configuration
-- [../CONFIG.md](../../guides/configuration.md) -- full environment variable reference
+## Tasks and worker lifetime
+
+Only extraction start supports negotiated MCP protocol tasks. The current
+server returns terminal task data from `tasks/get`; it does not implement
+the old blocking `tasks/result` flow. The retained tuning helper for
+`AXON_TASK_RESULT_WAIT_TIMEOUT_SECS` has no current MCP task-handler caller.
+Do not describe it as an active result-wait deadline.
+
+Durable jobs need active workers. The long-lived hosting context controls
+workers and watch scheduling; inspect job and worker liveness rather than
+assuming a transport selection alone completes queued work. See
+[jobs](../runtime/jobs.md) and [task support](tool-contract.md#task-support).
+
+## Provider settings and removed keys
+
+MCP operations use the configured vector, embedding, synthesis, browser, and
+source providers. `QDRANT_URL`, `TEI_URL`, selected LLM settings, and
+adapter credentials are operation prerequisites, not alternative job stores.
+The complete definitions belong to [configuration](../../guides/configuration.md).
+
+`AXON_OPENAI_MODEL` is rejected: use `AXON_SYNTHESIS_OPENAI_MODEL`.
+Generic CLI forwarding keys `AXON_SERVER_URL`, `AXON_LOCAL_MODE`, and
+`AXON_SERVER_INSECURE` do not turn CLI commands into remote API calls.
+Configure remote HTTP/MCP clients through [the connection guide](connect.md).
+
+After changing a setting, verify which file/environment the actual service
+loaded, restart/reconnect where required, repeat discovery, and invoke one
+authorized read-only operation. A workstation edit does not reconfigure a
+remote server.

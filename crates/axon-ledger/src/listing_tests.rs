@@ -17,6 +17,7 @@ fn summary(id: &str, kind: SourceKind, uri: &str, tags: Vec<&str>) -> SourceSumm
         authority: AuthorityLevel::Verified,
         status: LifecycleStatus::Completed,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 0,
             documents_total: 1,

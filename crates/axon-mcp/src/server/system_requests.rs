@@ -111,7 +111,7 @@ pub(super) enum ArtifactsSubaction {
     Content,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub(super) enum McpWatchRequest {
     Watch(WatchMcpRequest),
@@ -143,3 +143,29 @@ pub(super) struct WatchMcpRequest {
 #[cfg(test)]
 #[path = "system_requests_tests.rs"]
 mod tests;
+
+/// Canonical selectors for the legacy string-backed prune/provider DTOs.
+/// Dispatch validates these enums; schemas derive from the same types.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum PruneSubaction {
+    Plan,
+    Get,
+    Exec,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ProvidersSubaction {
+    List,
+    Get,
+}
+
+pub(super) fn parse_selector<T: serde::de::DeserializeOwned>(
+    action: &str,
+    selector: &str,
+) -> Result<T, rmcp::ErrorData> {
+    serde_json::from_value(serde_json::Value::String(selector.to_owned())).map_err(|error| {
+        super::common::invalid_params(format!("unknown {action} subaction '{selector}': {error}"))
+    })
+}

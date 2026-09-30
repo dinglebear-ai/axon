@@ -26,8 +26,9 @@ Use `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` from the env layer.
 `QDRANT_URL` and `TEI_URL` also have temporary CLI overrides for one-off
 diagnostics.
 
-The clean break does not read deprecated aliases. Update live environment files
-before restarting Axon:
+Removed settings are not accepted as compatibility aliases. Migrate the keys
+below before restarting Axon. Explicitly documented deprecated fallbacks, such
+as the MCP projection alias, are a separate compatibility policy:
 
 | Remove | Canonical setting |
 |---|---|
@@ -74,17 +75,25 @@ keys fail with this migration guidance instead of being silently accepted.
 
 ### Migration from `~/.local/share/axon`
 
-If you previously stored axon data under `~/.local/share/axon/`, axon does NOT auto-migrate. Either move the directory yourself (`mv ~/.local/share/axon ~/.axon`), or set `AXON_DATA_DIR=~/.local/share/axon` explicitly to keep the old location. Tuning knobs that were previously env-only are now also accepted in `~/.axon/config.toml`.
+Axon does not automatically relocate existing data from `~/.local/share/axon/`.
+To keep that location, set `AXON_DATA_DIR` to its absolute path and verify the
+effective SQLite/artifact paths. To relocate it, first stop all writers and
+back up the existing state and configuration. Plan the destination explicitly;
+do not run a blind move over an existing `~/.axon`. Restore consistent SQLite
+and artifact state, preserve credentials and permissions, then verify the
+new paths before restarting. See [backup/restore](../reference/operations/backup-restore.md).
 
 ## Environment files
 
-Three env files are auto-loaded in this order; the first one that exists and parses wins (later files do **not** override earlier ones):
+The loader in [`src/main.rs`](../../src/main.rs) tries these locations in
+order and stops after a successful load. Existing process environment values
+retain precedence. Failure handling is not identical at every location:
 
 | Order | Path | Notes |
 |-------|------|-------|
 | 1 | `$AXON_ENV_FILE` | Explicit override; only consulted when set |
 | 2 | `~/.axon/.env` | Canonical user-level secrets, loaded automatically |
-| 3 | First `.env` found by walking ancestors of CWD (or the binary's parent) | Repo-root `.env` fallback for development only |
+| 3 | First `.env` found by walking the binary-parent ancestors, then CWD ancestors | Repo-root `.env` fallback for development only |
 
 Docker Compose also reads `~/.axon/.env` by default as the service env file and uses `AXON_HOME` for host bind mounts:
 
@@ -95,13 +104,19 @@ Docker Compose also reads `~/.axon/.env` by default as the service env file and 
 
 ```bash
 mkdir -m 700 -p ~/.axon
-cp .env.example ~/.axon/.env
+test -e ~/.axon/.env || cp .env.example ~/.axon/.env
 chmod 600 ~/.axon/.env
 ```
 
 `axon setup init` is non-destructive: it adds missing required runtime keys and fills blank generated auth tokens, but it does not prune unknown keys.
 
-If `AXON_ENV_FILE` is set, Axon treats that file as the effective env file.
+Setting `AXON_ENV_FILE` does not currently guarantee fail-closed loading: a
+missing or invalid explicit file can fall through to later locations, with a
+warning for non-missing errors. The canonical `~/.axon/.env` path rejects
+symlinks and permission/type failures without falling through; other parse
+failures can warn and continue. Check startup diagnostics and effective
+values rather than assuming the requested file was loaded. Keep explicit
+paths valid and readable, and do not use fallback behavior as secret recovery.
 
 ## Local execution and HTTP API access
 
@@ -118,20 +133,20 @@ own HTTP/MCP clients at it; the bundled CLI does not consume those routes.
 
 ## ~/.axon/config.toml
 
-`~/.axon/config.toml` holds tuning knobs — parameters that are safe to commit to source control because they contain no secrets or security toggles. Copy `config.example.toml` from the repo root and place it at `~/.axon/config.toml` (create `~/.axon/` with `chmod 700` and the file with `chmod 600`).
+`~/.axon/config.toml` holds tuning knobs — parameters that are safe to commit to source control when they contain only approved non-secret settings. Copy `config.example.toml` from the repo root and place it at `~/.axon/config.toml` (create `~/.axon/` with `chmod 700` and the file with `chmod 600`).
 
 ```bash
-mkdir -m 700 ~/.axon
-cp config.example.toml ~/.axon/config.toml
+mkdir -m 700 -p ~/.axon
+test -e ~/.axon/config.toml || cp config.example.toml ~/.axon/config.toml
 chmod 600 ~/.axon/config.toml
 ```
 
 To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
 
-**`config.example.toml` at the repo root is the single source of truth for
-every TOML key** — each entry is documented inline with its env override, its
-clamp range, and its real default. Do not hand-maintain a second copy of that
-table here; read the file directly, or use the generated registries:
+Typed configuration definitions, parsing, and runtime consumers in
+`axon-core` own accepted keys and their behavior. `config.example.toml` is an
+annotated example, not a replacement for those contracts. Consult the
+generated registries for the complete key inventory:
 
 - `docs/reference/config/config-toml.md` / `config.schema.json` — generated
   TOML key registry
@@ -208,11 +223,23 @@ not accidentally treated as disabled.
 **Worker spawn is conditional**, not unconditional. The SQLite backend has two construction modes:
 
 - `SqliteJobBackend::new(cfg)` — **enqueue-only**. No workers spawn. Used by `ServiceContext::new()` for short-lived CLI commands (status/list/cancel/fire-and-forget submit).
-- `SqliteJobBackend::new_with_workers(cfg)` — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest). Used by `ServiceContext::new_with_workers()` for long-running processes: `axon serve`, MCP server, web routes, and CLI commands that block on `--wait true`.
+- `SqliteJobBackend::new_with_workers(cfg)` creates in-process **unified**
+  workers. Shared services supply the runner registry and writer-admission
+  gate. `ServiceContext::new_with_workers()` is used for foreground queued
+  work and standalone workers; `new_with_workers_and_schedulers()` is the
+  long-lived server entry point. There are no per-family crawl/embed/ingest pools.
 
-Spawning workers in a fire-and-forget CLI process orphans claimed jobs at process exit, so the CLI defaults to enqueue-only and lets a separate `serve`/`mcp` process drain the queue.
+A short-lived enqueue-only context does not itself drain queued work. Detached
+source submission attempts to ensure a worker process exists; a running
+server advertises worker liveness so the CLI need not spawn a redundant
+worker. Inspect the actual worker and job state instead of assuming that
+printing a job ID means execution succeeded.
 
-`--wait false` is intentionally fire-and-forget for crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
+`--wait true` keeps the required runtime alive and follows the submitted work
+to completion. One source job spans acquisition, preparation, embedding, and
+publication, rather than handing off to child embedding jobs. See
+[the jobs reference](../reference/runtime/jobs.md) for wait, cancellation, and
+recovery boundaries.
 
 ### Local code search
 
@@ -224,10 +251,16 @@ Qdrant vectors with source metadata for the indexed checkout.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_CODE_SEARCH_ALLOWED_ROOTS` | -- | Colon- or comma-separated filesystem roots allowed for MCP `code_search` `cwd` resolution. `/` and `HOME` are rejected. |
-| `sources.code-search.freshness-ttl-secs` / `AXON_CODE_SEARCH_FRESHNESS_TTL_SECS` | `30` | Process-local freshness cache TTL before a new manifest check is required. |
-| `sources.code-search.reindex-timeout-secs` / `AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS` | `300` | Foreground refresh timeout. On timeout, stale vectors are returned with a freshness warning; no background refresh continues in v1. |
-| `sources.code-search.max-file-bytes` / `AXON_CODE_SEARCH_MAX_FILE_BYTES` | `10485760` | Max local source file size considered by the manifest and embed pass. Larger files are skipped. |
-| `sources.code-search.changed-file-batch-size` / `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` | `64` | Changed-file batch size for local-code embedding. |
+
+The retained tuning helpers for `AXON_CODE_SEARCH_FRESHNESS_TTL_SECS`,
+`AXON_CODE_SEARCH_REINDEX_TIMEOUT_SECS`, `AXON_CODE_SEARCH_MAX_FILE_BYTES`,
+and `AXON_CODE_SEARCH_CHANGED_FILE_BATCH_SIZE` have no current shared
+source/query runtime callers. Their parsed TOML counterparts do not establish
+automatic refresh, a stale-result timeout fallback, or acquisition byte/batch
+limits. Submit an explicit source refresh and inspect its job/generation.
+Use actual adapter limits rather than the retired local-code tuning table.
+The [serialized-field inventory](../reference/config/runtime-keys.md) separates
+accepted field shape from runtime support.
 
 ### TEI embedding
 
@@ -259,10 +292,10 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 | `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Supported: `gemini-headless`, `openai-compat`, `codex-app-server`. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
 | `providers.llm.synthesis-openai-model` / `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Synthesis model for the OpenAI-compatible endpoint (ask/evaluate/suggest/extract/research). Required when the backend is `openai-compat`. |
-| `llm.chat-openai-model` / `AXON_CHAT_OPENAI_MODEL` | -- | Direct-chat model override. Empty = use the synthesis model. |
+| `providers.llm.chat-openai-model` / `AXON_CHAT_OPENAI_MODEL` | -- | Direct-chat model override. Empty = use the synthesis model. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
-| `llm.synthesis-gemini-model` / `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | -- | Gemini synthesis model override (ask/evaluate/suggest/extract/research). Legacy env alias: `AXON_HEADLESS_GEMINI_MODEL`. |
-| `llm.chat-gemini-model` / `AXON_CHAT_HEADLESS_GEMINI_MODEL` | -- | Direct-chat Gemini model override. Empty = use the synthesis model. |
+| `providers.llm.synthesis-gemini-model` / `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | -- | Gemini synthesis model override (ask/evaluate/suggest/extract/research). Legacy env alias: `AXON_HEADLESS_GEMINI_MODEL`. |
+| `providers.llm.chat-gemini-model` / `AXON_CHAT_HEADLESS_GEMINI_MODEL` | -- | Direct-chat Gemini model override. Empty = use the synthesis model. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
 | `AXON_CODEX_CMD` | `codex` | Host-only Codex CLI command shared by the Codex synthesis backend and Palette control. Do not put host paths in the shared compose `.env`; production compose clears this variable inside the container. Explicit paths must be executable and non-symlinked; when `AXON_CODEX_CONTROL_ENABLED=true`, the value must be an absolute, service-owned path. |
@@ -290,9 +323,9 @@ remain accepted for temporary overrides and legacy scripts.
 
 `[crawl.adaptive-concurrency]` is TOML-only in this release and is disabled by default. When enabled, Axon replaces the fixed Spider crawl semaphore with Spider's adaptive semaphore on the main crawl path only. Post-crawl sitemap backfill, standalone `axon screenshot`, and non-Spider fetch helpers continue to use their existing fixed limits.
 
-HTTP `429`, HTTP `5xx`, and crawl broadcast lag reduce concurrency. HTTP `2xx` responses are the only successes: they increase the target after Spider's fixed success threshold. Other `3xx`/`4xx` responses are neutral because Axon skips them as page errors without treating them as crawler pressure. Spider 2.52.0 uses a fixed failure decrease of `0.5`; `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally unsupported here.
+HTTP `429`, HTTP `5xx`, and crawl broadcast lag reduce concurrency. HTTP `2xx` responses are the only successes: they increase the target after Spider's fixed success threshold. Other `3xx`/`4xx` responses are neutral because Axon skips them as page errors without treating them as crawler pressure. The integrated Spider controller uses a fixed failure decrease of `0.5`; `decrease-factor`, `sync-interval-ms`, and palette editing are intentionally unsupported here.
 
-Shrinks lower the controller target immediately, but they do not cancel already in-flight fetches. Spider 2.52.0 does not claw back permits already held by in-flight requests, so active requests may temporarily exceed the lower target while they finish. Axon drains that returned surplus on later pressure events.
+Shrinks lower the controller target immediately, but they do not cancel already in-flight fetches. The integrated Spider controller does not claw back permits already held by in-flight requests, so active requests may temporarily exceed the lower target while they finish. Axon drains that returned surplus on later pressure events.
 
 Pair adaptive mode with polite bounds: `respect-robots`, `delay-ms`, `max-pages`, path budgets, or `url-whitelist`. Axon logs warnings when adaptive mode is combined with uncapped or impolite settings.
 
@@ -381,6 +414,8 @@ password under `~/.axon/panel-password`. MCP and protected `/v1` routes use
 | `AXON_HTTP_HOST` | `127.0.0.1` | HTTP bind address; non-loopback requires bearer or OAuth auth |
 | `AXON_HTTP_PORT` | `8001` | HTTP listen port |
 | `AXON_MCP_TRANSPORT` | per-command | Transport override: `stdio`, `http`, or `both`. Unrecognized values fall back to the command default. Also `--transport`. |
+| `AXON_MCP_TOOL_PROJECTION` | `legacy` | Startup-static `legacy` aggregate, `atomic` unprefixed canonical leaf tools, or `both`. Typed `--mcp-tool-projection` wins; deprecated `AXON_MCP_PROJECTION` is used only when the canonical variable is unset. |
+| `AXON_MCP_PROJECTION` | -- | Deprecated fallback for `AXON_MCP_TOOL_PROJECTION`; use the canonical setting. |
 | `AXON_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; generated by `axon setup init` for local bearer mode |
 | `AXON_AUTH_MODE` | `bearer` | Set to `oauth` to enable Google OAuth + DCR through lab-auth. |
 | `AXON_PUBLIC_URL` | -- | Public origin used for OAuth metadata, e.g. `https://axon.example.com`. |
@@ -458,7 +493,6 @@ Use `-v` for operational detail, `-vv` for timestamped debug diagnostics, and
 | `AXON_SOURCES_FACET_LIMIT` | `100000` | Facet limit for `axon sources` |
 | `AXON_SOURCES_DOMAIN_LIMIT` | `10000` | Max URLs fetched for explicit `axon sources --domain <host> --all` exports |
 | `AXON_DOMAINS_FACET_LIMIT` | `100000` | Facet limit for `axon domains` |
-| `AXON_SESSION_INGEST_MAX_BYTES` | -- | Max bytes per session ingest payload |
 
 ### Miscellaneous
 
@@ -500,12 +534,20 @@ This means `.env` can use container DNS names -- `normalize_local_service_url()`
 
 ## Keeping this file in sync
 
-`docs/guides/configuration.md` is the single source of truth for env var documentation. When adding a new env variable:
+This guide explains configuration workflows and selected settings. The typed
+configuration and environment registries own the complete contract. When
+adding or changing a variable:
 
-1. Add it here in the appropriate section.
-2. Add it to `.env.example` with a sensible default or blank value and a `[OPTIONAL]`/`[REQUIRED]` comment.
-3. If it is MCP-server-specific, also add it to `docs/reference/mcp/env.md`.
-4. Do not add full env tables to `README.md` — keep that to a short essentials list with a link here.
+1. Update typed parsing, the environment/config registry, defaults, and the
+   real runtime consumer. Test CLI, environment, TOML, default, and failure
+   behavior as applicable. A declared key without a consumer is not a feature.
+2. Update the appropriate example without inserting credentials or replacing
+   an existing deployment configuration. Document renames/removals explicitly.
+3. Run `cargo xtask generated-contracts refresh`, inspect the schema and
+   Markdown diff, then run `cargo xtask generated-contracts check`.
+4. Update this guide and affected task guides for behavior, migration, and
+   reload/restart requirements. Keep exhaustive inventories in generated
+   references rather than duplicating them in README.
 
 To spot drift between `.env.example` and this file, extract keys from both and diff:
 

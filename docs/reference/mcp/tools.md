@@ -1,112 +1,87 @@
 # MCP Tools Reference -- Axon
 
-Axon exposes one MCP operation tool:
+Last reviewed: 2026-09-29
 
-| Tool | Purpose | Primary parameter |
-|------|---------|-------------------|
-| `axon` | Unified action router for source, retrieval, RAG, jobs, memory, graph, watch, provider, and prune operations | `action` |
+The complete catalog is generated in [tool-schema.json](tool-schema.json)
+and [the reference](tool-schema.md). This page explains how to use that
+catalog, not a second hand-maintained list of every leaf.
 
-The live action set is generated into [tool-schema.json](tool-schema.json) and
-mirrored in [pipeline-tool-schema.md](pipeline-tool-schema.md). Removed legacy
-actions such as `scrape`, `crawl`, `embed`, `ingest`, `code_search`,
-`vertical_scrape`, and `purge` are not valid MCP actions.
+## Discover the selected projection
 
-## Input Shape
+| Projection | Callable shape |
+|---|---|
+| `legacy` | `axon` with `action` and operation-specific arguments |
+| `atomic` | Canonical names such as `query` or `jobs_get`, without fixed `action`/`subaction` arguments |
+| `both` | Both forms, routed through the same canonical dispatcher |
 
+All three retain the auxiliary `axon_status_dashboard` tool. The operation
+schema resource `axon://schema/mcp-operations` reports canonical schemas and
+active names. Use live `tools/list` against the matching build before calling
+a tool, and inspect [projection selection](overview.md#projection-selection-and-compatibility)
+when a client sees a different catalog.
+
+## Input shape
+
+This is a valid legacy single-page source request, not a union of possible
+values pasted into one field:
+
+<!-- doc-example: kind=json schema=mcp/tool-schema.json#/$defs/AxonToolInput -->
 ```json
-{
-  "action": "source",
-  "source": "https://example.com",
-  "scope": "page|site|docs|map",
-  "embed": true,
-  "response_mode": "artifact|inline|both|auto_inline"
-}
+{ "action": "source", "source": "https://example.com", "scope": "page" }
 ```
 
-Common fields:
+Choose one supported scope and response mode. In atomic mode, use the
+discovered source leaf schema and omit its fixed routing fields. A gateway
+namespace prefix is supplied by the gateway, not part of the canonical Axon
+leaf naming rule.
 
-| Field | Meaning |
-|---|---|
-| `action` | Required live action name. |
-| `subaction` | Operation within grouped actions such as `jobs`, `extract`, `memory`, `watch`, and `graph`. |
-| `response_mode` | Optional output policy. Artifact-backed responses return an opaque `artifact_id`; `retrieve` is inline-first. |
+## Source operations
 
-## Source Action
+The universal source operation and supported focused `scrape`, `crawl`,
+`embed`, and `ingest` projections reuse one shared source pipeline. They
+are **not removed**. `code_search` is a committed-state retrieval projection.
+The adapter scope matrix defines which source family accepts which scope,
+options, authentication, and output contract.
 
-`action=source` is the single MCP indexing entrypoint. It maps to
-`SourceRequest` and can acquire/index web URLs, local paths, git repositories,
-feeds, Reddit/YouTube/session/registry targets, CLI tool output, and MCP tool
-output when the caller has the required scopes.
+Web `page` is single-page acquisition; `site` and `docs` select bounded
+multi-page workflows. Local/session/tool inputs are evaluated on the
+executing host with its access policy. A schema that accepts a source string
+does not authorize arbitrary filesystem access or execution of a discovered
+CLI/MCP tool.
 
-Examples:
+A detached descriptor means work was accepted. Use the same durable job ID
+to inspect actual completion, diagnostics, and published generation.
 
-```json
-{ "action": "source", "source": "https://example.com", "scope": "page", "embed": true }
-{ "action": "source", "source": "https://example.com", "scope": "site", "embed": true }
-{ "action": "source", "source": "/workspace/project", "scope": "directory", "embed": true }
-```
+## Retrieval, synthesis, and operations
 
-Use `scope=page` for the single-page scrape shape and `scope=site` or
-`scope=docs` for crawl-like site acquisition. There is no separate MCP
-`scrape` or `crawl` action.
+Use discovered query/retrieve/code-search operations for committed content.
+`ask` synthesizes from retrieved context. External `search` and `research`
+can have source-indexing side effects and require their explicit write
+elevation; a read-shaped result does not make an operation read-only.
 
-## Common Read Actions
+Grouped operations include durable jobs, extraction, memory, graph, watches,
+providers, and prune. System/watch requests have separate transport request
+types, so absence from the primary action enum does not prove absence from
+MCP. Use the generated operation schema for exact selectors and required
+fields instead of extrapolating CLI subcommands.
 
-| Action | Purpose |
-|---|---|
-| `query` | Semantic vector search over indexed content. |
-| `retrieve` | Fetch stored chunks/content for a known source URL. |
-| `ask` | RAG answer over indexed content. |
-| `search` | External web search with Source-backed auto-index side effects. |
-| `research` | Web research synthesis with Source-backed auto-index side effects. |
-| `map` | Discover URLs/items without embedding. |
-| `resolve` | Resolve source identity and adapter route without acquiring content. |
-| `capabilities` | Machine-readable action/provider capability document. |
-| `providers` | Provider health/capability list and detail views. |
+## Results and artifacts
 
-## Grouped Actions
+Response modes are `artifact`, `inline`, `both`, and `auto_inline`, subject
+to the supported operation shape, size, and visibility policy. Artifact
+references are opaque IDs; never reconstruct server filesystem paths.
+`retrieve` is inline-first for paged document content.
 
-| Action | Notes |
-|---|---|
-| `jobs` | List, inspect, stream/page events, cancel, retry, recover, cleanup, or clear durable jobs. |
-| `extract` | Start or manage structured extraction jobs. |
-| `memory` | Remember, search, show, link, supersede, import, and maintain agent memory. |
-| `watch` | Create, list, inspect, update, pause, resume, or delete source-backed watches. |
-| `graph` | Query SourceGraph kinds, nodes, edges, source subgraphs, and resolution results. |
-| `prune` | Plan or execute destructive cleanup by source, generation, or collection. |
+Only extraction start currently supports negotiated MCP task execution.
+Other durable source jobs are followed through the job surface, not assumed
+to support protocol task methods. See [the tool contract](tool-contract.md).
 
-## System And Utility Actions
+## Removed actions
 
-| Action | Purpose |
-|---|---|
-| `status` | Service/job queue status. |
-| `doctor` | Provider and service connectivity checks. |
-| `endpoints` | Static endpoint discovery. |
-| `screenshot` | Headless Chrome screenshot capture. |
-| `brand` | Brand metadata extraction. |
-| `diff` | URL/content comparison. |
-| `summarize` | URL-context summarization. |
-| `evaluate` | RAG quality evaluation. |
-| `suggest` | Source/acquisition suggestions. |
-| `help` | Action/subaction summary and schema resource links. |
+`vertical_scrape`, `purge`, `dedupe`, and `code_search_watch` are intentionally
+rejected. Do not extend this list using an old migration plan: supported
+focused projections and system/utility routes must remain discoverable.
 
-## Removed Actions
-
-These names are intentionally rejected before handler dispatch:
-
-- `crawl`
-- `scrape`
-- `embed`
-- `ingest`
-- `code_search`
-- `code_search_watch`
-- `vertical_scrape`
-- `purge`
-- `dedupe`
-- `sources`
-- `domains`
-- `stats`
-
-Use `action=source` for indexing and `action=prune` for destructive cleanup.
-Public callers never provide or receive server filesystem paths for artifacts;
-they use opaque artifact IDs through the artifact service or REST resource.
+Use [the overview](overview.md) for calls and transports,
+[the tool contract](tool-contract.md) for tasks/artifacts/errors, and
+[MCP development](dev.md) for implementation and validation.

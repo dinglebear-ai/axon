@@ -28,7 +28,7 @@ impl QdrantVectorStore {
         Ok(!page.points.is_empty())
     }
 
-    /// One page of the domain's unique indexed item canonical URIs
+    /// One page of the domain's unique indexed item canonical URIs and titles
     /// (`chunk_index == 0`), deduped within the page and returned alongside an
     /// opaque next-page cursor (`None` once exhausted).
     pub async fn urls_for_domain_page(
@@ -37,7 +37,7 @@ impl QdrantVectorStore {
         domain: &str,
         limit: usize,
         cursor: Option<&str>,
-    ) -> Result<(Vec<String>, Option<String>)> {
+    ) -> Result<(Vec<(String, Option<String>)>, Option<String>)> {
         let offset = cursor.map(decode_scroll_cursor);
         let page = self
             .scroll_page(
@@ -47,7 +47,8 @@ impl QdrantVectorStore {
                     "item_canonical_uri",
                     "source_canonical_uri",
                     "source_item_key",
-                    "chunk_locator"
+                    "chunk_locator",
+                    "web_title"
                 ]}),
                 limit,
                 offset,
@@ -59,7 +60,14 @@ impl QdrantVectorStore {
             if let Some(url) = canonical_uri_from_payload(&point.payload)
                 && seen.insert(url.to_string())
             {
-                urls.push(url.to_string());
+                let title = point
+                    .payload
+                    .get("web_title")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .filter(|title| !title.is_empty())
+                    .map(str::to_string);
+                urls.push((url.to_string(), title));
             }
         }
         Ok((urls, page.next_offset.map(encode_scroll_cursor)))

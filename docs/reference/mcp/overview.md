@@ -1,15 +1,17 @@
 # Axon MCP Server Guide
 Last reviewed: 2026-09-27
 
-`axon mcp` exposes the primary action-dispatched `axon` tool and the
-auxiliary `axon_status_dashboard` MCP App tool. The server tool catalog,
-not the primary action schema alone, defines discovery.
+`axon mcp` supports legacy and atomic MCP tool projections. The server tool
+catalog defines discovery, including the auxiliary `axon_status_dashboard`
+MCP App tool and transport task handlers.
 
 - Transport: stdio, streamable HTTP (`/mcp`), or both.
-- Primary tool: `axon`.
+- Projection: `AXON_MCP_TOOL_PROJECTION=legacy|atomic|both` (default `legacy`).
+- Legacy surface: one tool named `axon`, routed by `action` plus optional `subaction`.
+- Atomic surface: unprefixed canonical leaf tools such as `query`, `jobs_get` and `jobs_cancel`. Fixed `action`/`subaction` fields are omitted and rejected if supplied.
+- `both`: publishes legacy and atomic surfaces simultaneously for compatibility rollout.
 - Auxiliary tool: `axon_status_dashboard`.
 - Task handling: transport task handlers map protocol operations to durable jobs.
-- Routing fields: `action` plus optional `subaction`.
 - Schema resource: `axon://schema/mcp-tool`.
 - MCP Apps resource: `ui://axon/status-dashboard`.
 
@@ -19,11 +21,13 @@ The live machine-readable schema is generated at
 
 ## Source Indexing
 
-All MCP indexing goes through `action=source`.
+All MCP indexing uses the shared source pipeline, through the universal
+source operation or supported focused projections. The following JSON Lines
+examples are separate legacy calls, not one batch request.
 
-```json
-{ "action": "source", "source": "https://example.com", "scope": "page", "embed": true }
-{ "action": "source", "source": "https://example.com", "scope": "site", "embed": true }
+```jsonl
+{ "action": "source", "source": "https://example.com", "scope": "page" }
+{ "action": "source", "source": "https://example.com", "scope": "site" }
 ```
 
 `scope=page` is the single-page scrape shape. `scope=site` or `scope=docs` is
@@ -46,6 +50,7 @@ HTTP transport shares the same listener as `axon serve`.
 |---|---|---|
 | `AXON_HTTP_HOST` | `127.0.0.1` | Unified HTTP bind host; non-loopback requires auth. |
 | `AXON_HTTP_PORT` | `8001` | Unified HTTP bind port. |
+| `AXON_MCP_TOOL_PROJECTION` | `legacy` | `legacy`, `atomic`, or `both` MCP tool projection. |
 | `AXON_HTTP_TOKEN` | unset | Static bearer or `x-api-key` token. |
 | `AXON_AUTH_MODE` | bearer/static mode | Set `oauth` for lab-auth Google OAuth/JWT. |
 
@@ -65,7 +70,7 @@ OAuth mode or `AXON_HTTP_TOKEN`.
 
 Grouped actions use `subaction`, for example:
 
-```json
+```jsonl
 { "action": "jobs", "subaction": "events", "job_id": "..." }
 { "action": "extract", "subaction": "start", "urls": ["https://example.com"] }
 { "action": "watch", "subaction": "list" }
@@ -99,3 +104,68 @@ mcporter --config config/mcporter.json call axon.axon action:jobs subaction:list
 MCP HTTP auth uses the same Axon OAuth/static bearer policy as the unified HTTP
 server. Valid OAuth users receive Axon read/write scopes; admin-scoped actions
 such as destructive prune execution still require the admin scope.
+
+## Projection selection and compatibility
+
+`McpToolProjection` is startup-static. Precedence is typed
+`--mcp-tool-projection` (supported on `mcp`, `serve mcp` and `serve`),
+then `AXON_MCP_TOOL_PROJECTION`, then the deprecated
+`AXON_MCP_PROJECTION` alias, then `legacy`. Invalid CLI values are rejected;
+invalid environment values warn and fall back to legacy. The settings are not
+independent switches. Restart the server to change its published surface.
+
+An atomic call to `jobs_get` supplies only the request fields, for example
+`{"job_id":"<owned-job-id>"}`. It must not supply `action` or `subaction`,
+even with the same value or null. The legacy equivalent is the `axon` tool
+with `{"action":"jobs","subaction":"get","job_id":"<owned-job-id>"}`.
+Atomic tools reject fields belonging only to sibling subactions, such as
+`retry_mode` on `jobs_get`.
+Both forms enter one canonical dispatcher with the presented name retained in
+audit events. Auxiliary `axon_status_dashboard` identity, UI metadata and
+callability are unchanged in all modes.
+
+`axon://schema/mcp-tool` retains its legacy aggregate schema/Markdown contract.
+`axon://schema/mcp-operations` returns canonical leaf schemas, operation policy
+hints, the selected projection and the exact active tool names. Its canonical
+catalog includes all operations; `active_tools` distinguishes callable tools in
+legacy mode. `help` (or `axon` with `action=help`) publishes the same operation
+identities. Generated JSON and reference tables come from the runtime registry,
+not an independently maintained generator action list.
+
+Safety annotations are hints, not grants. Plans may persist records even when
+execution needs separate confirmation. Read-shaped `search` and `research`
+retain explicit write elevation. Admin scopes, caller visibility and destructive
+confirmation are checked by the existing policy/services. Only `extract_start`
+currently implements optional MCP task augmentation; in legacy form this is
+`axon` with `action=extract, subaction=start`. Progress metadata is preserved and
+a client without task capability is refused before enqueue.
+
+## Task-augmented calls
+
+Only extraction start supports negotiated MCP task execution. A durable
+source job does not automatically support protocol tasks. The current task
+handlers expose `tasks/get` with the terminal result/error inline and
+`tasks/cancel` with subsequent state observed through `tasks/get`. Do not
+use an older `tasks/result` / `tasks/list` flow against this build. Preserve
+the returned task ID and polling interval.
+
+See [the task contract](tool-contract.md#task-support) and
+[the implementation](../../../crates/axon-mcp/src/server/tasks.rs). Client
+capability refusal must happen before enqueue; task acceptance is not proof
+of completed extraction.
+
+### Real-client validation
+
+The existing `scripts/test-mcp-tools-mcporter.sh` harness accepts
+`MCP_PROJECTION=legacy|atomic|both`. Both mode runs separate aggregate and leaf
+sweeps. It compares the complete actual inventory, explicitly separates the
+dashboard, and fails on extra, missing or duplicate tools. Evidence distinguishes
+successful operations, expected denials, handled service errors, skips and failures.
+Tests create `axon_e2e_*` collections and isolated local state. HTTP runs require
+an owned disposable instance and `MCP_E2E_ISOLATED_HTTP=1`; setting a local mode
+variable is not proof that a remote server uses that mode.
+
+`scripts/test-mcp-tasks-wire.py` reuses the same canonical call projection for
+stdio and HTTP, with `--projection` and `--call-form`. It exercises actual task
+creation, progress, terminal results, cancellation and reconnection. Use owned
+input and storage; no production reset or cleanup is a test prerequisite.

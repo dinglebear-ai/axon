@@ -124,6 +124,16 @@ pub struct SourceWarning {
     pub retryable: bool,
 }
 
+impl SourceWarning {
+    /// Informational notices remain visible without downgrading a completed source.
+    pub fn degrades_completion(&self) -> bool {
+        matches!(
+            self.severity,
+            Severity::Warning | Severity::Degraded | Severity::Failed | Severity::Fatal
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceError {
@@ -439,6 +449,8 @@ pub struct SourceRange {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceCounts {
+    #[serde(default)]
+    pub documents_skipped: u64,
     pub items_total: u64,
     pub items_changed: u64,
     pub documents_total: u64,

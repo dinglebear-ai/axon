@@ -22,10 +22,11 @@ class FieldDef:
     name: str
     rust_type: str
     aliases: list[str] = field(default_factory=list)
+    has_default: bool = False
 
     @property
     def is_optional(self) -> bool:
-        return self.rust_type.startswith("Option<")
+        return self.has_default or self.rust_type.startswith("Option<")
 
     @property
     def inner_type(self) -> str:

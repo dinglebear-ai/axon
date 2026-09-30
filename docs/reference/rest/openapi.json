@@ -2308,7 +2308,7 @@
         "path": "docs/pipeline-unification/schemas/openapi-schema.md"
       },
       {
-        "checksum": "sha256:0aaf932d940307911b67c90b53dabdd226786c26effe7aabb323495e90795679",
+        "checksum": "sha256:1ce146caece97865cf0b61b18081b2c68ee86899a7418d96d996585c45d33dd7",
         "kind": "rust_module",
         "path": "xtask/src/schemas/families.rs"
       },
@@ -2318,12 +2318,12 @@
         "path": "xtask/src/schemas/families/bundles.rs"
       },
       {
-        "checksum": "sha256:af9f8681886459c505adf11ddb4fedeec6076cf9f403c834c6029c2c614cd30b",
+        "checksum": "sha256:53ea1fdb922f3ee33393af107e211b614444af565b6c771f1474c4f8c10b4b5a",
         "kind": "rust_module",
         "path": "xtask/src/schemas/families/family_specs.rs"
       },
       {
-        "checksum": "sha256:f51e765aeb416c7c457d1d8535354b5e0b380169f257da9e4f0299b8fdc8b282",
+        "checksum": "sha256:b3103c765d7fcbe64ae52e8f401f392ffadc67a259b3f7ecb551b74bad93ca2b",
         "kind": "rust_module",
         "path": "xtask/src/schemas/families/markdown.rs"
       },

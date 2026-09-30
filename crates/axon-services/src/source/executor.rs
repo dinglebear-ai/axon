@@ -2,18 +2,22 @@
 
 pub(super) mod artifact_candidates;
 mod created_generation;
+mod generation_reservation;
 mod generation_spool;
+use generation_reservation::reserve_unoccupied_generation;
 mod generation_state;
 mod generation_work;
 mod helpers;
 mod index;
-mod lease_heartbeat;
+pub(super) mod lease_heartbeat;
 use lease_heartbeat::run_with_lease;
 mod metadata;
 mod preparation;
 mod progress;
 mod publish;
 pub(super) use index::index_materialized_source;
+mod finalization;
+mod retention;
 mod reuse;
 mod vector_points;
 mod vectorize;
@@ -126,7 +130,11 @@ async fn discover_and_diff(
     input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     coordinator: &progress::ProgressCoordinator,
-) -> anyhow::Result<(SourceManifest, SourceManifestDiff)> {
+) -> anyhow::Result<(
+    SourceManifest,
+    SourceManifestDiff,
+    std::collections::BTreeSet<SourceItemKey>,
+)> {
     coordinator
         .report(
             emitter,
@@ -148,7 +156,7 @@ async fn discover_and_diff(
     source_progress::discovered(emitter, &manifest).await;
     manifest.metadata.insert(
         PUBLICATION_CONFIG_KEY.to_string(),
-        serde_json::json!(input.plan.config_snapshot_id.0.clone()),
+        serde_json::json!(retention::processing_identity(runtime, input).0),
     );
     coordinator
         .report(
@@ -158,6 +166,8 @@ async fn discover_and_diff(
             "diffing source manifest",
         )
         .await;
+    let unvisited =
+        retention::merge_inventory(runtime.ledger.as_ref(), &input.plan, &mut manifest).await?;
     let diff = runtime.ledger.diff_manifest_ref(&manifest).await?;
     coordinator
         .checkpoint(
@@ -167,7 +177,19 @@ async fn discover_and_diff(
         )
         .await;
     source_progress::diffed(emitter, &diff).await;
-    Ok((manifest, diff))
+    Ok((manifest, diff, unvisited))
+}
+
+fn require_compatible_inventory(
+    diff: &SourceManifestDiff,
+    compatible: bool,
+    retains_unvisited: bool,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        compatible || diff.previous_generation.is_none() || !retains_unvisited,
+        "partial refresh cannot change processing configuration; complete refresh required"
+    );
+    Ok(())
 }
 
 async fn run_generation(
@@ -178,7 +200,7 @@ async fn run_generation(
     previous: Option<SourceSummary>,
 ) -> anyhow::Result<IndexCounts> {
     let coordinator = progress::ProgressCoordinator::new(runtime, input);
-    let (mut manifest, mut diff) = lease_heartbeat::until_cancelled(
+    let (mut manifest, mut diff, unvisited) = lease_heartbeat::until_cancelled(
         input.execution,
         discover_and_diff(runtime, input, emitter, &coordinator),
     )
@@ -189,11 +211,19 @@ async fn run_generation(
             .get_manifest_metadata(manifest.source_id.clone(), generation.clone())
             .await?
             .is_some_and(|metadata| {
-                publication_config_metadata_matches(&metadata, &input.plan.config_snapshot_id)
+                publication_config_metadata_matches(
+                    &metadata,
+                    &retention::processing_identity(runtime, input),
+                )
             }),
         None => false,
     };
-    if !manifest_has_changes(&diff) && publication_config_unchanged {
+    require_compatible_inventory(&diff, publication_config_unchanged, !unvisited.is_empty())?;
+    retention::validate_retained(runtime.ledger.as_ref(), &mut diff, &unvisited).await?;
+    if !manifest_has_changes(&diff)
+        && publication_config_unchanged
+        && input.plan.request.refresh != SourceRefreshPolicy::Force
+    {
         return unchanged_result(
             runtime.ledger.as_ref(),
             input,
@@ -203,7 +233,7 @@ async fn run_generation(
         )
         .await;
     }
-    if !publication_config_unchanged {
+    if !publication_config_unchanged || input.plan.request.refresh == SourceRefreshPolicy::Force {
         force_publication_refresh(&mut diff);
     }
     diff = lease_heartbeat::until_cancelled(
@@ -213,30 +243,35 @@ async fn run_generation(
     .await?;
 
     if input.plan.request.embed {
-        lease_heartbeat::until_cancelled(input.execution, ensure_providers_ready(runtime)).await?;
-    }
-    let generation = runtime
-        .ledger
-        .create_generation(manifest.source_id.clone())
+        lease_heartbeat::until_cancelled(input.execution, async {
+            crate::reserved_call::ensure_source_vectors_ready(runtime)
+                .await
+                .map_err(anyhow::Error::from)
+        })
         .await?;
+    }
+    let (generation, occupied_generations) =
+        reserve_unoccupied_generation(runtime, input, &manifest.source_id).await?;
     diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
-    runtime.ledger.put_manifest_ref(&manifest).await?;
-
     // Boxed: this is by far the largest future in the pipeline, and holding
     // it inline alongside the cancellation select overflows the default test
     // stack in debug builds.
-    let run = Box::pin(created_generation::run_created_generation(
-        runtime,
-        input,
-        emitter,
-        lease,
-        manifest,
-        diff,
-        generation.clone(),
-        previous,
-        &coordinator,
-    ));
+    let run = Box::pin(async {
+        runtime.ledger.put_manifest_ref(&manifest).await?;
+        created_generation::run_created_generation(
+            runtime,
+            input,
+            emitter,
+            lease,
+            manifest,
+            diff,
+            generation.clone(),
+            previous,
+            &coordinator,
+        )
+        .await
+    });
     // Cooperative cancellation: resolve to an error instead of letting the
     // caller drop the pipeline future mid-flight, so the failed-generation
     // cleanup below (vector cleanup + `fail_generation`) still runs for the
@@ -254,37 +289,59 @@ async fn run_generation(
         }
         None => run.await,
     };
-    if result.is_err() {
-        let committed = runtime
-            .ledger
-            .committed_generation(generation.source_id.clone())
-            .await?
-            .is_some_and(|current| current == generation.generation);
-        if !committed
-            && input.plan.request.embed
-            && let Err(cleanup_error) = publish::cleanup_failed_generation_vectors(
-                runtime,
-                input,
-                input.collection,
-                &generation,
-            )
-            .await
-        {
-            return result.map_err(|error| {
-                error.context(format!(
-                    "failed-generation vector cleanup also failed: {cleanup_error:#}"
-                ))
-            });
-        }
-        if !committed && let Err(fail_error) = runtime.ledger.fail_generation(generation).await {
-            return result.map_err(|error| {
-                error.context(format!(
-                    "also failed to mark source generation failed: {fail_error}"
-                ))
-            });
+    match result {
+        Ok(counts) => Ok(retire_imported_generations(
+            runtime,
+            input,
+            &generation,
+            occupied_generations,
+            counts,
+        )
+        .await),
+        Err(error) => {
+            Err(finalization::finalize_failed_generation(runtime, input, generation, error).await)
         }
     }
-    result
+}
+
+async fn retire_imported_generations(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    generation: &SourceGeneration,
+    occupied_generations: Vec<SourceGenerationId>,
+    mut counts: IndexCounts,
+) -> IndexCounts {
+    for occupied in occupied_generations {
+        if let Err(error) = crate::reserved_call::retire_generation(
+            runtime,
+            crate::reserved_call::ProviderCallContext::for_phase(
+                input.plan.job_id,
+                input.execution.attempt,
+                PipelinePhase::Publishing,
+                input.execution.priority,
+                format!("retire-imported-generation:{}", occupied.0),
+            ),
+            input.collection.to_string(),
+            generation.source_id.clone(),
+            occupied.clone(),
+            generation.generation.clone(),
+        )
+        .await
+        {
+            counts.warnings.push(
+                publish::record_retirement_debt(
+                    runtime,
+                    input,
+                    generation,
+                    occupied,
+                    input.collection,
+                    error,
+                )
+                .await,
+            );
+        }
+    }
+    counts
 }
 
 fn job_create_request(input: &SourcePipelineInput<'_>) -> JobCreateRequest {
@@ -326,10 +383,10 @@ fn job_create_request(input: &SourcePipelineInput<'_>) -> JobCreateRequest {
 }
 
 pub(super) fn successful_status(warnings: &[SourceWarning]) -> LifecycleStatus {
-    if warnings.is_empty() {
-        LifecycleStatus::Completed
-    } else {
+    if warnings.iter().any(SourceWarning::degrades_completion) {
         LifecycleStatus::CompletedDegraded
+    } else {
+        LifecycleStatus::Completed
     }
 }
 

@@ -1,142 +1,119 @@
 ---
 title: "Crate Structure"
 created: 2026-07-15
-updated: 2026-09-03
+updated: 2026-09-29
 ---
 
 # Crate Structure
 
-Last Modified: 2026-09-03
+Last reviewed: 2026-09-29
 
-Axon is a Cargo workspace: a thin root `axon` binary that delegates to
-`axon-cli`, plus the focused crates declared by the workspace `members` in
-[`Cargo.toml`](../../Cargo.toml). All crates inherit the product version,
-edition, and minimum Rust version from `[workspace.package]`; the manifest is
-authoritative so this architecture page cannot drift from release metadata.
+Axon is a Cargo workspace with a thin root binary, focused product crates,
+and repository-maintenance packages. [`Cargo.toml`](../../Cargo.toml) defines
+membership and inherited product metadata. The Palette Tauri backend has a
+separate workspace; it is not a root-workspace crate.
 
-> The contract target for this layout lives at
-> [`docs/pipeline-unification/foundation/crate-structure.md`](../pipeline-unification/foundation/crate-structure.md).
-> This document describes the **current** workspace; the dependency-direction
-> rules are enforced by `cargo xtask check-layering` (see
-> [dependency-layering.md](dependency-layering.md)).
+This page describes responsibilities. Exact dependency edges belong to the
+[generated dependency graph](../reference/crate-dependency-graph.md), not a
+second hand-maintained dependency table. The [public API snapshot](../reference/public-api-surface.md)
+records exported surfaces. Regenerate these when their source changes.
 
 ## Layering
 
 ```text
-axon-error  ──┐
-              ├→ axon-api ──┬→ axon-core ──┐
-              │              ├→ axon-authz  │
-              │              └→ axon-observe┤
-              │                             │
-   axon-route ──────────────────────────────┤
-   axon-parse                               │
-   axon-adapters ─→ axon-extract            │
-   axon-ledger   ─→ axon-graph              ├→ axon-document
-   axon-memory                              │
-   axon-embedding ─→ axon-vectors ─→ axon-retrieval
-   axon-llm          axon-codex             │
-   axon-prune                               │
-              ↓                             │
-           axon-jobs ───────────────────────┘
-              ↓
-           axon-services  (facade: composition + job runtime)
-              ↓
-   axon-cli   axon-mcp   axon-web   (transports)
-              ↓
-            axon (root binary)
+Contracts and shared policy
+        ↓
+Domain acquisition / preparation / storage / retrieval
+        ↓
+Durable execution and cross-domain service composition
+        ↓
+CLI / MCP / HTTP projections
+        ↓
+Root binary and client applications
 ```
 
-Direction flows downward. Transport crates (cli/mcp/web) never reach into a
-domain crate's internal `::ops::*` modules — they call `axon-services` or a
-domain crate's public surface. `axon-services` is a facade, not a mandatory
-reimplementation hop: single-domain logic stays in its owning crate.
+This is an ownership sketch, not a complete Cargo graph. Dependency-direction
+rules, provider boundaries, and exact reviewed exceptions are described in
+[dependency-layering.md](dependency-layering.md) and enforced by
+`cargo xtask check-layering`. Transports call shared services/public contracts,
+not domain-internal `::ops::*`.
 
 ## Workspace members
 
-Listed in dependency-layer order (bottom to top). "Deps" shows only axon-internal
-edges, read from each crate's `Cargo.toml`.
+### Contracts and shared infrastructure
 
-### Cross-cutting (leaf contracts and shared infra)
+| Crate | Responsibility |
+|---|---|
+| `axon-error` | Typed error taxonomy, cause, stage, severity, retry, and degradation contracts |
+| `axon-api` | Transport-neutral DTOs, enums, envelopes, and schema contracts |
+| `axon-authz` | Authorization scopes, policy decisions, and execution visibility |
+| `axon-core` | Configuration, paths, HTTP safety, redaction, and common primitives |
+| `axon-observe` | Progress events, tracing, metrics, and correlated diagnostics |
 
-| Crate | Purpose | Axon deps |
-|---|---|---|
-| `axon-error` | typed error taxonomy: codes, stage/severity/retry/degradation/cooling | (leaf) |
-| `axon-api` | transport-neutral DTO/enum/envelope/schema hub (`SourceRequest`, `SourceResult`, job DTOs, MCP schema) | `axon-error` |
-| `axon-authz` | auth scopes, policy decisions, execution visibility, credential resolution | `axon-api`, `axon-error` |
-| `axon-core` | config, paths, redaction, HTTP safety, time/id, artifact primitives | `axon-api` |
-| `axon-observe` | progress events, spans, metrics, structured logs, heartbeats | `axon-api`, `axon-core`, `axon-error` |
+### Acquisition, preparation, storage, and retrieval
 
-### Domain (acquisition, preparation, storage, retrieval)
+| Crate | Responsibility |
+|---|---|
+| `axon-route` | Canonical source identity, adapter selection, scope/options routing |
+| `axon-adapters` | Source-owned materialization, discovery, acquisition, and normalization |
+| `axon-extract` | Structured/vertical extraction capabilities used by acquisition/services |
+| `axon-parse` | Parser implementations and source facts for text, code, manifests, and structured inputs |
+| `axon-document` | Document preparation and chunk construction |
+| `axon-ledger` | Source generations, manifests, items, document status, leases, and cleanup debt |
+| `axon-embedding` | Embedding providers and their retry/cooling behavior |
+| `axon-vectors` | Vector storage, payloads, upserts, and publication |
+| `axon-retrieval` | Filtered retrieval, ranking/fusion, and context retrieval |
+| `axon-graph` | Graph storage, nodes/edges, evidence, and publication coordination |
+| `axon-memory` | Memory retention, retrieval, review, decay, and forgetting |
+| `axon-llm` | Synthesis provider implementations and request handling |
+| `axon-codex` | Typed Codex app-server control, bounded events/approvals, and mutation tracking |
+| `axon-prune` | Cleanup planning/execution over source and derived state |
 
-| Crate | Purpose | Axon deps |
-|---|---|---|
-| `axon-route` | source resolution, canonical URI, adapter/scope routing | `axon-api`, `axon-error` |
-| `axon-parse` | parsers: code (tree-sitter), markdown, manifest, schema, session, tool | `axon-api` |
-| `axon-extract` | structured LLM extraction (vertical extractors) | `axon-core`, `axon-llm`, `axon-api` |
-| `axon-adapters` | per-source-family acquisition (web, local, git, registry, reddit, youtube, feed, sessions, cli/mcp tools) | `axon-api`, `axon-core`, `axon-error`, `axon-extract`, `axon-parse`, `axon-observe` |
-| `axon-ledger` | SQLite source ledger: sources, items, manifests, diffs, generations, leases, cleanup debt | `axon-api`, `axon-error` |
-| `axon-graph` | GraphStore trait + SQLite impl: nodes, edges, evidence, merge/conflict | `axon-api`, `axon-core`, `axon-error` |
-| `axon-memory` | MemoryStore + decay/reinforcement/review/forgetting | `axon-api`, `axon-core`, `axon-document`, `axon-embedding`, `axon-error`, `axon-graph`, `axon-observe`, `axon-vectors` |
-| `axon-document` | DocumentPreparer, ChunkRouter, PreparedDocument | `axon-api`, `axon-core`, `axon-parse` |
-| `axon-embedding` | EmbeddingProvider trait + TEI / OpenAI-compat / fake | `axon-api`, `axon-error`, `axon-observe` |
-| `axon-vectors` | VectorStore trait + Qdrant impl (named dense + BM42 sparse) | `axon-api`, `axon-core`, `axon-error`, `axon-observe` |
-| `axon-retrieval` | RetrievalEngine: query/retrieve/ask context, ranking/fusion | `axon-api`, `axon-embedding`, `axon-error`, `axon-vectors` |
-| `axon-llm` | LlmProvider trait + Gemini-headless / OpenAI-compat / Codex app-server / fake | `axon-api`, `axon-core`, `axon-error`, `axon-observe` |
-| `axon-codex` | typed Codex app-server protocol, isolated trusted-control runtime, event/approval bounds, and durable mutation ledger | (leaf outside shared serialization/runtime crates) |
-| `axon-prune` | cleanup, purge, dedupe, cleanup-debt executor | `axon-api` |
+### Execution, composition, and transports
 
-### Composition + runtime
+| Crate | Responsibility |
+|---|---|
+| `axon-jobs` | Durable SQLite jobs, attempts, stages, events, heartbeats, reservations, and worker runtime |
+| `axon-services` | Cross-domain orchestration, policy/context binding, and transport-facing service entry points |
+| `axon-cli` | CLI parsing/dispatch, progress, and output rendering |
+| `axon-mcp` | Legacy and atomic tool projections, resources, auxiliary dashboard tool, and protocol tasks |
+| `axon-web` | REST/OpenAPI, HTTP MCP mounting, web-panel assets, and HTTP authorization integration |
+| `axon` | Root binary bootstrap and delegation |
 
-| Crate | Purpose | Axon deps |
-|---|---|---|
-| `axon-jobs` | JobStore, workers, events, scheduler, heartbeats, watch store | `axon-api`, `axon-adapters`, `axon-core`, `axon-error`, `axon-graph`, `axon-ledger`, `axon-llm`, `axon-memory`, `axon-observe` |
-| `axon-services` | orchestration facade + ServiceContext; owns construction, policy binding, and transport-neutral re-exports for Codex control | lower domain crates including `axon-codex` |
-
-### Transports (thin projections over `axon-services`)
-
-| Crate | Purpose | Axon deps |
-|---|---|---|
-| `axon-mcp` | MCP transport: single `axon` tool, `action`/`subaction` routing | `axon-api`, `axon-authz`, `axon-core`, `axon-services` |
-| `axon-web` | REST/OpenAPI/panel transport (Axum) | `axon-api`, `axon-authz`, `axon-core`, `axon-error`, `axon-jobs`, `axon-services` |
-| `axon-cli` | CLI transport (clap parser, rendering) | `axon-api`, `axon-core`, `axon-jobs`, `axon-mcp`, `axon-services`, `axon-web` |
-
-### Binary
-
-| Crate | Purpose | Axon deps |
-|---|---|---|
-| `axon` (root `.`) | binary bootstrap (`src/main.rs` + `src/lib.rs` re-export `axon_cli::run`) | `axon-cli`, `axon-core`, `axon-mcp`, `axon-services`, `axon-web` |
+`xtask` and `xtask-release` maintain checks, generated contracts, and release
+operations. They are tooling packages, not additional source-pipeline domains,
+and their package versions need not equal the product version.
 
 ## Ownership rule
 
-Own the contract where the data lives:
-
-- **Single-domain logic** → its domain crate (e.g. prune plan/execute in `axon-prune`).
-- **The `*Result` DTO** → `axon-api` (e.g. `PurgeResult`).
-- **Cross-domain composition or job-runtime wiring** → `axon-services` (thin
-  facade, often just a re-export).
-- **Transports** never import a domain crate's internal `::ops::*` modules.
-
-Authoritative doc: [crate-ownership.md](crate-ownership.md). Enforced by
-`cargo xtask check-layering`.
+Shared DTOs belong to `axon-api`; single-domain logic belongs to its owning
+crate; cross-domain or job-aware composition belongs to `axon-services`.
+Adapters emit `SourceDocument` values rather than running private embedding
+or publication pipelines. See [crate ownership](crate-ownership.md) and
+[source pipeline](source-pipeline.md).
 
 ## Per-crate maintenance contracts
 
-Every non-trivial crate has `crates/<name>/src/CLAUDE.md` — the agent-facing
-maintenance contract (purpose, public modules, ownership boundaries,
-must-not-own, test commands, gotchas). `AGENTS.md` and `GEMINI.md` in the same
-dir are symlinks to it. The pipeline-unification packet also keeps design
-contracts at `docs/pipeline-unification/crates/<name>/{README.md,CLAUDE.md}`
-(historical design record; the live `src/CLAUDE.md` supersedes).
+The canonical agent-facing maintenance file is
+`crates/<name>/src/AGENTS.md` where that scope has local instructions.
+`CLAUDE.md` and `GEMINI.md` are direct relative symlinks to `AGENTS.md`, not
+the reverse. Edit the canonical file and preserve the aliases.
+
+The pipeline-unification packet retains per-crate design contracts under
+`docs/pipeline-unification/crates/`. Treat dated implementation plans as
+history; reconcile current ownership with code and the live instruction chain.
+See [documentation maintenance](../development/documentation.md).
 
 ## Notes on transitional state
 
-- The legacy single-purpose crates (`axon-vector`, `axon-crawl`, `axon-ingest`,
-  `axon-code-index`) are removed from the workspace. The live
-  `cargo xtask check-layering` gate checks the current crate graph and exact
-  exception ledger; it does not retain compatibility rules for those removed
-  paths. See [dependency-layering.md](dependency-layering.md).
-- `axon-extract` remains even though the contract disposition said "remove or
-  shrink"; it is still depended on by `axon-adapters` and `axon-services` for
-  vertical extraction.
+The old `axon-vector`, `axon-crawl`, `axon-ingest`, and `axon-code-index` crates
+are not workspace members. Acquisition now lives in adapters, with separate
+preparation, embedding, publication, and retrieval owners. `axon-extract`
+remains an active crate; a historical plan to shrink/remove it is not proof
+that it was removed.
 
-If this layout changes, update this file in the same PR.
+Use `cargo xtask check-layering` for enforced boundaries and
+`cargo xtask check-crate-contracts` for the standalone design-contract audit.
+The latter is not a substitute for testing runtime behavior. Run the ordered
+`cargo xtask generated-contracts refresh` and `check` after changing sources
+that own generated references.

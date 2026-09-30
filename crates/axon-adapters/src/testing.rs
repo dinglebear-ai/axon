@@ -197,7 +197,7 @@ impl SourceAdapter for FakeSourceAdapter {
             manifest_items.push(manifest_item);
         }
 
-        Ok(SourceManifest {
+        let mut manifest = SourceManifest {
             source_id: plan.route.source.source_id.clone(),
             generation: SourceGenerationId::from("gen_fake"),
             adapter: plan.route.adapter.clone(),
@@ -205,7 +205,9 @@ impl SourceAdapter for FakeSourceAdapter {
             items: manifest_items,
             created_at: timestamp(),
             metadata: MetadataMap::new(),
-        })
+        };
+        manifest.set_inventory_completeness(InventoryCompleteness::Complete);
+        Ok(manifest)
     }
 
     async fn acquire(

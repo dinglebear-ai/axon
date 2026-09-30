@@ -1,5 +1,6 @@
 //! Git checkout discovery, bounded hashing, and manifest construction.
 
+use std::collections::BTreeSet;
 use std::collections::BinaryHeap;
 use std::fs::{self, File};
 use std::io::Read;
@@ -41,10 +42,11 @@ pub(super) fn collect_capped_git_keys(
     root: &Path,
     exclude_paths: &[String],
     limit: usize,
-) -> Result<Vec<String>> {
+) -> Result<(Vec<String>, bool)> {
     if limit == 0 {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), true));
     }
+    let mut truncated = false;
     let mut selected = BinaryHeap::with_capacity(limit.min(4096));
     for entry in git_walk_builder(root).build() {
         let entry = entry.map_err(git_walk_error)?;
@@ -55,9 +57,10 @@ pub(super) fn collect_capped_git_keys(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if git_key_excluded(&key, exclude_paths) {
+        if !repository_path_allowed(&key, exclude_paths) {
             continue;
         }
+        truncated |= selected.len() == limit;
         if selected.len() < limit {
             selected.push(key);
         } else if selected.peek().is_some_and(|largest| key < *largest) {
@@ -67,7 +70,7 @@ pub(super) fn collect_capped_git_keys(
     }
     let mut selected = selected.into_vec();
     selected.sort();
-    Ok(selected)
+    Ok((selected, truncated))
 }
 
 pub(super) fn hash_git_keys_parallel(
@@ -159,7 +162,7 @@ pub(super) fn collect_git_manifest_items_parallel(
                     return WalkState::Quit;
                 }
             };
-            if git_key_excluded(&key, exclude_paths) {
+            if !repository_path_allowed(&key, exclude_paths) {
                 return WalkState::Continue;
             }
             match git_manifest_item(plan, root, base_uri, &key) {
@@ -196,15 +199,30 @@ fn git_manifest_item(
     base_uri: &str,
     key: &str,
 ) -> Result<Option<ManifestItem>> {
+    if !is_code_or_documentation(key) {
+        return Ok(None);
+    }
     let path = safe_item_path(root, key)?;
     let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
     if !meta.is_file() {
         return Ok(None);
     }
-    let content_hash = content_fingerprint(&path)?;
+    let cap =
+        crate::file_payload::effective_item_limit(plan, crate::acquisition::MAX_FILE_CONTENT_BYTES);
+    let content_hash = if meta.len() > cap {
+        None
+    } else {
+        content_fingerprint(&path, cap)?
+    };
     let identity = item_identity(SourceKind::Git, base_uri, key)?;
     let mut item_metadata = MetadataMap::new();
     item_metadata.insert("git_relative_path".to_string(), json!(key));
+    if content_hash.is_none() {
+        item_metadata.insert(
+            CONTENT_OMISSION_METADATA_KEY.to_owned(),
+            json!("size_limit_exceeded"),
+        );
+    }
     Ok(Some(ManifestItem {
         source_id: plan.route.source.source_id.clone(),
         source_item_key: identity.source_item_key,
@@ -214,7 +232,7 @@ fn git_manifest_item(
         display_path: Some(key.to_string()),
         parent_key: None,
         size_bytes: Some(meta.len()),
-        content_hash: Some(content_hash),
+        content_hash,
         mtime: None,
         version: None,
         fetch_plan: None,
@@ -225,6 +243,66 @@ fn git_manifest_item(
 
 fn git_key_excluded(key: &str, exclude_paths: &[String]) -> bool {
     exclude_paths.iter().any(|excluded| key.contains(excluded))
+}
+
+/// Apply the same repository inventory policy to both new and retained items.
+pub fn repository_path_allowed(key: &str, exclude_paths: &[String]) -> bool {
+    is_code_or_documentation(key) && !git_key_excluded(key, exclude_paths)
+}
+
+pub(super) fn existing_repository_paths(
+    root: &Path,
+    wanted: &BTreeSet<String>,
+    exclude_paths: &[String],
+) -> Result<BTreeSet<String>> {
+    let mut existing = BTreeSet::new();
+    for entry in git_walk_builder(root).build() {
+        let entry = entry.map_err(git_walk_error)?;
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let key = relative_key(root, entry.path())?;
+        if wanted.contains(&key) && repository_path_allowed(&key, exclude_paths) {
+            existing.insert(key);
+        }
+    }
+    Ok(existing)
+}
+
+fn is_code_or_documentation(key: &str) -> bool {
+    let path = Path::new(key);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    let name = name.to_ascii_lowercase();
+    if matches!(name.as_str(), "dockerfile" | "makefile" | "justfile") {
+        return true;
+    }
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("");
+    let extension = extension.to_ascii_lowercase();
+    if (extension.is_empty() || extension == "txt")
+        && [
+            "readme",
+            "license",
+            "licence",
+            "changelog",
+            "contributing",
+            "authors",
+            "notice",
+        ]
+        .iter()
+        .any(|prefix| name == *prefix || name.starts_with(&format!("{prefix}.")))
+    {
+        return true;
+    }
+    matches!(
+        content_kind_for(path),
+        ContentKind::Code | ContentKind::Markdown | ContentKind::Html
+    )
 }
 
 fn record_git_parallel_error(slot: &Mutex<Option<ApiError>>, error: ApiError) {
@@ -276,8 +354,11 @@ pub(super) fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
     Ok(root.join(key))
 }
 
-fn content_fingerprint(path: &Path) -> Result<String> {
-    let mut file = File::open(path).map_err(|err| fs_error("read_failed", path, err))?;
+// Hash raw bytes; shared document preparation decides indexing eligibility.
+fn content_fingerprint(path: &Path, cap: u64) -> Result<Option<String>> {
+    let file = File::open(path).map_err(|err| fs_error("read_failed", path, err))?;
+    let mut file = file.take(cap.saturating_add(1));
+    let mut bytes_read = 0u64;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
@@ -287,21 +368,29 @@ fn content_fingerprint(path: &Path) -> Result<String> {
         if read == 0 {
             break;
         }
+        bytes_read += read as u64;
+        if bytes_read > cap {
+            return Ok(None);
+        }
         hasher.update(&buffer[..read]);
     }
-    Ok(hex_prefix(&hasher.finalize(), 16))
+    Ok(Some(hex_prefix(&hasher.finalize(), 16)))
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {
-    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
-        "md" | "markdown" => ContentKind::Markdown,
+    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    match extension.to_ascii_lowercase().as_str() {
+        "md" | "markdown" | "mdx" | "rst" | "adoc" | "asciidoc" => ContentKind::Markdown,
         "html" | "htm" => ContentKind::Html,
         "json" => ContentKind::Json,
         "yaml" | "yml" => ContentKind::Yaml,
         "toml" => ContentKind::Toml,
         "xml" => ContentKind::Xml,
-        "rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "py" | "java" | "kt" | "swift" | "c" | "cc"
-        | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh" | "zsh" | "fish" => ContentKind::Code,
+        "rs" | "go" | "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "py" | "java" | "kt"
+        | "kts" | "swift" | "c" | "cc" | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh"
+        | "zsh" | "fish" | "ex" | "exs" | "erl" | "hrl" | "hs" | "scala" | "sc" | "sql" | "lua"
+        | "pl" | "r" | "jl" | "dart" | "vue" | "svelte" | "proto" | "css" | "scss" | "less"
+        | "tf" | "nix" => ContentKind::Code,
         _ => ContentKind::PlainText,
     }
 }

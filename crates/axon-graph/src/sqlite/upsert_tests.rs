@@ -129,3 +129,44 @@ async fn injected_streaming_failure_leaves_only_the_committed_candidate_prefix_v
             .unwrap();
     assert_eq!(keys, vec!["repo:first"]);
 }
+
+#[tokio::test]
+async fn batched_failure_replays_only_the_valid_prefix() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let write_gate = axon_core::sqlite::SqliteWriteGate::default();
+    crate::migration::ensure_schema(&pool).await.unwrap();
+    sqlx::query(
+        "CREATE TRIGGER fail_second_candidate BEFORE INSERT ON graph_nodes \
+         WHEN NEW.stable_key = 'repo:second' \
+         BEGIN SELECT RAISE(FAIL, 'injected candidate failure'); END",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let candidates = vec![
+        candidate("first", "repo:first"),
+        candidate("second", "repo:second"),
+        candidate("third", "repo:third"),
+    ];
+    let error = upsert_candidates(&pool, &write_gate, candidates.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code.to_string(), "graph.storage");
+    let keys: Vec<String> =
+        sqlx::query_scalar("SELECT stable_key FROM graph_nodes ORDER BY stable_key")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(keys, vec!["repo:first"]);
+
+    sqlx::query("DROP TRIGGER fail_second_candidate")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let result = upsert_candidates(&pool, &write_gate, candidates)
+        .await
+        .unwrap();
+    assert_eq!(result.candidates_seen, 3);
+    assert_eq!(result.nodes_upserted, 3);
+}

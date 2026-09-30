@@ -36,16 +36,22 @@ reviewable as JSON.
 ## Single enforcement chokepoint
 
 `PruneExecutor::execute()` (`crates/axon-prune/src/executor.rs`) is the **only**
-code path that performs a destructive delete against a store boundary. It takes
+plan-execution path inside `axon-prune` for destructive store steps. It takes
 an explicit `PruneAuthz` argument and refuses a `requires_admin: true` plan
 with `PruneDenied::AdminRequired` unless `authz.is_admin` is set — **before**
-any step runs. There is no way to reach a store delete through this crate
-without passing that check.
+any step runs. This is not a claim that all application cleanup passes through
+the executor: source maintenance has separate artifact/cache/adapter-release
+and graph-evidence drain paths, while reset has its own service. Those paths
+must retain their own authorization and containment boundaries.
 
-## Cleanup debt kinds (7)
+## Cleanup debt kinds
 
-`vector_delete`, `artifact_delete`, `ledger_prune`, `graph_prune`,
-`memory_prune`, `job_retention`, `cache_prune`.
+The public enum includes `vector_delete`, `artifact_delete`, `ledger_prune`,
+`graph_prune`, `memory_prune`, `job_retention`, `cache_prune`, and
+`adapter_release`. The last kind retries adapter-owned temporary-resource
+cleanup through the source runner, not a new dependency from `axon-prune` to
+adapters. See the [enum](../../../crates/axon-api/src/source/enums/runtime.rs)
+and [drain dispatch](../../../crates/axon-services/src/source/prune/drain_ops.rs).
 
 ## `PruneSelector` variants
 
@@ -101,8 +107,8 @@ with caller-derived prune authz.
 ```bash
 axon prune plan <target>           # dry-run reviewable plan
 axon prune exec <plan_id> --confirm   # destructive execution (admin)
-axon reset plan                     # dry-run reset of local stores
-axon reset exec --confirm           # destructive reset
+axon reset --json                   # dry-run reset; inspect the returned plan_id
+axon reset --yes --plan-id <plan_id>  # destructive reset of the reviewed plan
 ```
 
 `reset` is **not** ordinary prune — it is owned by a separate `ResetService`

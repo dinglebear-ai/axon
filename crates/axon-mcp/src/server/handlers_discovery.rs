@@ -97,6 +97,8 @@ impl AxonMcpServer {
         req: ProvidersRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.as_deref().unwrap_or("list");
+        let selector: super::system_requests::ProvidersSubaction =
+            super::system_requests::parse_selector("providers", subaction)?;
         let ctx = self
             .base_service_context()
             .await
@@ -106,9 +108,11 @@ impl AxonMcpServer {
             .map_err(|e| logged_internal_error("providers.doctor", e.as_ref()))?;
         let providers = provider_summaries(&doctor.payload);
 
-        let payload = match subaction {
-            "list" => serde_json::json!({ "providers": providers }),
-            "get" => {
+        let payload = match selector {
+            super::system_requests::ProvidersSubaction::List => {
+                serde_json::json!({ "providers": providers })
+            }
+            super::system_requests::ProvidersSubaction::Get => {
                 let provider_id = req
                     .provider_id
                     .as_deref()
@@ -123,11 +127,6 @@ impl AxonMcpServer {
                             "provider.unavailable: unknown provider `{provider_id}`"
                         ))
                     })?
-            }
-            other => {
-                return Err(invalid_params(format!(
-                    "unknown providers subaction '{other}' (expected list|get)"
-                )));
             }
         };
 

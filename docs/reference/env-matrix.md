@@ -2,10 +2,14 @@
 
 Generated: 2026-05-15 from source-derived inventory.
 
-**Current snapshot only.** This file is stale-prone and no longer the
-authoritative future config contract. The target `.env`/`config.toml` split is
-tracked in `docs/pipeline-unification/configuration/`; regenerate this matrix
-from the current env registry before treating it as operational truth.
+**Historical migration inventory, not current runtime configuration.**
+The rows below preserve the 2026-05-15 refactor inventory and its old paths
+and proposed dispositions. The unified configuration migration is implemented.
+Use the [current configuration guide](../guides/configuration.md),
+[environment registry](config/env.md), and
+[literal TOML field inventory](config/runtime-keys.md). This legacy matrix
+has validation tooling, not a current automatic runtime-registry generator.
+Do not apply its old rename/delete proposals to a live configuration.
 
 ## Classification Key
 
@@ -136,6 +140,8 @@ from the current env registry before treating it as operational truth.
 | `AXON_HTTP_HOST` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_HTTP_PORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_MCP_TRANSPORT` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_MCP_TOOL_PROJECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
+| `AXON_MCP_PROJECTION` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_NEO4J_URL` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_OUTPUT_DIR` | trusted-bootstrap | host-only | — | no | advanced.rs |
 | `AXON_REPO_ROOT` | trusted-bootstrap | host-only | — | no | advanced.rs |

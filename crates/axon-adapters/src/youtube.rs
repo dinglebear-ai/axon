@@ -187,7 +187,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     }
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
-    Ok(SourceManifest {
+    let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),
         generation: SourceGenerationId::from("gen_youtube_discovery"),
         adapter: plan.route.adapter.clone(),
@@ -195,7 +195,13 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         items,
         created_at: timestamp(),
         metadata: youtube_manifest_metadata(plan.route.scope),
-    })
+    };
+    manifest.set_inventory_completeness(if plan.route.scope == SourceScope::Video {
+        InventoryCompleteness::Complete
+    } else {
+        InventoryCompleteness::Partial
+    });
+    Ok(manifest)
 }
 
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {

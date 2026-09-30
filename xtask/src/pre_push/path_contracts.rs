@@ -4,9 +4,18 @@ const GENERATED_CONTRACT_PATH_PREFIXES: &[&str] = &[
     // projection under docs lives in this canonical output tree. Keep the
     // prefix broad so a new family cannot silently bypass the local gate.
     "docs/reference/",
+    "docs/architecture/integrations/generated/",
+    "contracts/",
 ];
 
 const GENERATED_CONTRACT_INPUT_PATHS: &[&str] = &[
+    "scripts/doc_schema.py",
+    "scripts/mcp_doc_renderer.py",
+    "scripts/generate_action_docs.py",
+    "scripts/generate_mcp_schema_doc.py",
+    "scripts/check_mcp_schema_doc.sh",
+    "scripts/check-integration-contracts.py",
+    "scripts/generate-codex-app-server-methods.sh",
     "docs/pipeline-unification/configuration/config-contract.md",
     "docs/pipeline-unification/runtime/provider-contract.md",
     "docs/pipeline-unification/sources/adapter-scopes.md",

@@ -105,8 +105,8 @@ fn domain_sources_from_urls_preserves_cursor_page() {
     let result = domain_sources_from_urls(
         "docs.rs".to_string(),
         vec![
-            "https://docs.rs/z".to_string(),
-            "https://docs.rs/a".to_string(),
+            ("https://docs.rs/z".to_string(), Some("Z title".to_string())),
+            ("https://docs.rs/a".to_string(), None),
         ],
         2,
         Some("cursor-a".to_string()),
@@ -115,6 +115,8 @@ fn domain_sources_from_urls_preserves_cursor_page() {
 
     assert_eq!(result.count, 2);
     assert_eq!(result.urls, vec!["https://docs.rs/z", "https://docs.rs/a"]);
+    assert_eq!(result.items[0].title.as_deref(), Some("Z title"));
+    assert_eq!(result.items[1].title, None);
     assert!(result.truncated);
     assert_eq!(result.cursor.as_deref(), Some("cursor-a"));
     assert_eq!(result.next_cursor.as_deref(), Some("cursor-b"));
@@ -125,8 +127,8 @@ fn domain_sources_from_urls_reports_terminal_page() {
     let result = domain_sources_from_urls(
         "docs.rs".to_string(),
         vec![
-            "https://docs.rs/a".to_string(),
-            "https://docs.rs/b".to_string(),
+            ("https://docs.rs/a".to_string(), None),
+            ("https://docs.rs/b".to_string(), None),
         ],
         2,
         None,

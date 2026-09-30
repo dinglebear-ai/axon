@@ -26,35 +26,34 @@ fn help_payload_lists_every_supported_action() {
 fn help_payload_subactions_match_live_contract() {
     let payload = help_payload();
 
-    assert_eq!(
-        payload.pointer("/actions/jobs").unwrap(),
-        &serde_json::json!([
+    let assert_subactions = |action: &str, expected: &[&str]| {
+        let actual = payload
+            .pointer(&format!("/actions/{action}"))
+            .and_then(serde_json::Value::as_array)
+            .expect("action subactions should be an array")
+            .iter()
+            .map(|value| value.as_str().expect("subaction should be a string"))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual, expected.iter().copied().collect());
+    };
+
+    assert_subactions(
+        "jobs",
+        &[
             "list", "get", "status", "events", "stream", "cancel", "retry", "recover", "cleanup",
-            "clear"
-        ])
+            "clear",
+        ],
     );
-    assert_eq!(
-        payload.pointer("/actions/prune").unwrap(),
-        &serde_json::json!(["plan", "exec"])
-    );
-    assert_eq!(
-        payload.pointer("/actions/reset").unwrap(),
-        &serde_json::json!(["plan", "exec"])
-    );
-    assert_eq!(
-        payload.pointer("/actions/collections").unwrap(),
-        &serde_json::json!(["list", "get"])
-    );
-    assert_eq!(
-        payload.pointer("/actions/extract").unwrap(),
-        &serde_json::json!(["start"])
-    );
-    assert_eq!(
-        payload.pointer("/actions/watch").unwrap(),
-        &serde_json::json!([
+    assert_subactions("prune", &["plan", "get", "exec"]);
+    assert_subactions("reset", &["plan", "get", "exec"]);
+    assert_subactions("collections", &["list", "get"]);
+    assert_subactions("extract", &["start"]);
+    assert_subactions(
+        "watch",
+        &[
             "create", "list", "get", "status", "exec", "history", "update", "pause", "resume",
-            "delete"
-        ])
+            "delete",
+        ],
     );
 }
 

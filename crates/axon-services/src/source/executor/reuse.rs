@@ -8,6 +8,8 @@ use axon_api::source::*;
 use super::SourcePipelineInput;
 use crate::context::TargetLocalSourceRuntime;
 
+mod eligibility;
+
 const PRIOR_ETAG: &str = "web_prior_etag";
 const ETAG: &str = "web_etag";
 const PRIOR_LAST_MODIFIED: &str = "web_prior_last_modified";
@@ -17,6 +19,8 @@ const REUSE_REQUIRED: &str = "web_reuse_required";
 pub(super) struct ResolvedAcquisition {
     pub(super) acquisition: SourceAcquisition,
     pub(super) reused_item_keys: Vec<SourceItemKey>,
+    pub(super) cached_documents_to_prepare: Vec<SourceDocument>,
+    pub(super) cached_items_to_enrich: Vec<AcquiredSourceItem>,
 }
 
 pub(super) async fn overlay_trusted_validators(
@@ -72,19 +76,26 @@ pub(super) async fn resolve_acquisition(
         return Ok(ResolvedAcquisition {
             acquisition,
             reused_item_keys: Vec::new(),
+            cached_documents_to_prepare: Vec::new(),
+            cached_items_to_enrich: Vec::new(),
         });
     }
     if input.adapter.reuse_policy() != ReusePolicy::ConditionalRequest {
         return Ok(ResolvedAcquisition {
             acquisition,
             reused_item_keys: Vec::new(),
+            cached_documents_to_prepare: Vec::new(),
+            cached_items_to_enrich: Vec::new(),
         });
     }
 
     let previous_items = previous_manifest_items(runtime, diff).await?;
+    let reusable = eligibility::prepared_reuse_keys(runtime, input, diff).await?;
     let mut refreshed_items = BTreeMap::new();
     let mut fetched = Vec::new();
     let mut reused_item_keys = Vec::new();
+    let mut cached_documents_to_prepare = Vec::new();
+    let mut cached_items_to_enrich = Vec::new();
     for item in std::mem::take(&mut acquisition.fetched_items) {
         refreshed_items.insert(
             item.manifest_item.source_item_key.clone(),
@@ -96,7 +107,12 @@ pub(super) async fn resolve_acquisition(
                 previous.content_hash.is_some()
                     && previous.content_hash == item.manifest_item.content_hash
             });
-            if same_content && reuse_cached_document(runtime, diff, &item_key).await? {
+            if same_content
+                && reusable.contains(&item_key)
+                && reuse_cached_document(runtime, diff, &item_key)
+                    .await?
+                    .is_some()
+            {
                 reused_item_keys.push(item_key);
                 continue;
             }
@@ -108,26 +124,31 @@ pub(super) async fn resolve_acquisition(
             continue;
         }
         let item_key = item.manifest_item.source_item_key.clone();
-        if reuse_cached_document(runtime, diff, &item_key).await? {
-            reused_item_keys.push(item_key);
+        if let Some(document) = reuse_cached_document(runtime, diff, &item_key).await? {
+            if reusable.contains(&item_key) {
+                reused_item_keys.push(item_key);
+            } else {
+                let mut cached_item = item;
+                cached_item.content_ref = document.content.clone();
+                cached_items_to_enrich.push(cached_item);
+                cached_documents_to_prepare.push(document);
+            }
         } else {
             acquisition.header.warnings.push(SourceWarning {
                 code: "source.reuse.cache_miss_refetch".to_string(),
                 severity: Severity::Warning,
-                message: format!(
-                    "conditional reuse for {} had no cached committed document; refetching",
-                    item.manifest_item.canonical_uri
-                ),
+                message: "conditional response has no usable cached body; refetching".to_owned(),
                 source_item_key: Some(item_key),
                 retryable: true,
             });
             let canonical_uri = item.manifest_item.canonical_uri.clone();
             let reacquired = refetch_unconditionally(input, diff, item.manifest_item).await?;
-            fetched.push(merge_reacquired(
-                &mut acquisition,
-                reacquired,
-                &canonical_uri,
-            )?);
+            let item = merge_reacquired(&mut acquisition, reacquired, &canonical_uri)?;
+            refreshed_items.insert(
+                item.manifest_item.source_item_key.clone(),
+                item.manifest_item.clone(),
+            );
+            fetched.push(item);
         }
     }
 
@@ -140,6 +161,8 @@ pub(super) async fn resolve_acquisition(
     Ok(ResolvedAcquisition {
         acquisition,
         reused_item_keys,
+        cached_documents_to_prepare,
+        cached_items_to_enrich,
     })
 }
 
@@ -150,18 +173,19 @@ async fn previous_manifest_items(
     let Some(generation) = diff.previous_generation.clone() else {
         return Ok(BTreeMap::new());
     };
+    let keys = diff
+        .added
+        .iter()
+        .chain(&diff.modified)
+        .map(|item| item.source_item_key.clone())
+        .collect();
     Ok(runtime
         .ledger
-        .get_manifest(diff.source_id.clone(), generation)
+        .get_manifest_items(diff.source_id.clone(), generation, keys)
         .await?
-        .map(|manifest| {
-            manifest
-                .items
-                .into_iter()
-                .map(|item| (item.source_item_key.clone(), item))
-                .collect()
-        })
-        .unwrap_or_default())
+        .into_iter()
+        .map(|item| (item.source_item_key.clone(), item))
+        .collect())
 }
 
 pub(super) async fn normalize_acquisition(
@@ -249,9 +273,9 @@ async fn reuse_cached_document(
     runtime: &TargetLocalSourceRuntime,
     diff: &SourceManifestDiff,
     item_key: &SourceItemKey,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<Option<SourceDocument>> {
     let Some(previous_generation) = diff.previous_generation.clone() else {
-        return Ok(false);
+        return Ok(None);
     };
     let Some(mut cached) = runtime
         .document_cache
@@ -262,11 +286,26 @@ async fn reuse_cached_document(
         })
         .await?
     else {
-        return Ok(false);
+        return Ok(None);
     };
+    if cached.document.source_id != diff.source_id
+        || cached.document.source_item_key != *item_key
+        || !matches!(
+            cached.document.content,
+            ContentRef::InlineText { .. } | ContentRef::InlineBytes { .. }
+        )
+        || cached
+            .document
+            .metadata
+            .get(CONTENT_OMISSION_METADATA_KEY)
+            .is_some()
+    {
+        return Ok(None);
+    }
     cached.document.metadata.remove("source_generation");
     cached.document.metadata.remove("committed_generation");
     cached.cached_at = timestamp();
+    let document = cached.document.clone();
     runtime
         .document_cache
         .put(
@@ -278,7 +317,7 @@ async fn reuse_cached_document(
             cached,
         )
         .await?;
-    Ok(true)
+    Ok(Some(document))
 }
 
 async fn cache_documents(

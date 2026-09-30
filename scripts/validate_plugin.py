@@ -22,7 +22,20 @@ if not monitors.exists():
     raise SystemExit(f"MISSING: {monitors.relative_to(root)}")
 json.loads(monitors.read_text(encoding="utf-8"))
 
-mcp_config = manifest.parent.parent / ".mcp.json"
+installer = root / "plugins/install-axon/.claude-plugin/plugin.json"
+install_plugin = json.loads(installer.read_text(encoding="utf-8"))
+if install_plugin.get("name") != "install-axon":
+    raise SystemExit(f"INVALID: {installer.relative_to(root)} name")
+if install_plugin.get("mcpServers") != "./.mcp.json":
+    raise SystemExit(f"INVALID: {installer.relative_to(root)} mcpServers")
+if "version" in install_plugin:
+    raise SystemExit(f"FORBIDDEN: {installer.relative_to(root)} version")
+if not (root / "plugins/install-axon/skills/install-axon/SKILL.md").is_file():
+    raise SystemExit("MISSING: install-axon skill")
+if (root / "plugins/axon/skills/install-axon").exists():
+    raise SystemExit("INSTALLER SKILL remains in usage plugin")
+
+mcp_config = root / "plugins/install-axon/.mcp.json"
 if not mcp_config.exists():
     raise SystemExit(f"MISSING: {mcp_config.relative_to(root)}")
 json.loads(mcp_config.read_text(encoding="utf-8"))

@@ -139,7 +139,7 @@ fn mcp_schema_exposes_only_canonical_prune_and_admin_subactions() {
     let schema = axon_input_schema();
     assert_eq!(
         schema.pointer("/x-axon-subactions/prune").unwrap(),
-        &serde_json::json!(["plan", "exec"])
+        &serde_json::json!(["exec", "get", "plan"])
     );
     assert!(schema.pointer("/x-axon-subactions/reset").is_some());
     assert!(schema.pointer("/x-axon-subactions/collections").is_some());
@@ -463,4 +463,10 @@ fn axon_tool_input_schema_documents_subaction_families() {
         &vec![serde_json::json!("start")],
         "MCP extract must submit only; lifecycle is under action=jobs"
     );
+}
+
+#[test]
+fn canonical_request_schema_inventory_is_bidirectional() {
+    let schema = super::tool_schema::canonical_request_schema();
+    assert!(schema.get("oneOf").is_some());
 }

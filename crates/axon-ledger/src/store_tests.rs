@@ -24,6 +24,7 @@ fn source() -> SourceSummary {
         authority: AuthorityLevel::UserPinned,
         status: LifecycleStatus::Running,
         counts: SourceCounts {
+            documents_skipped: 0,
             items_total: 1,
             items_changed: 1,
             documents_total: 1,
@@ -158,6 +159,7 @@ fn completed_generation_for_manifest(manifest: &SourceManifest) -> SourceGenerat
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: manifest.items.len() as u64,
             prepared: 0,
             embedded: 0,
@@ -176,6 +178,7 @@ fn publish_request(generation: &SourceGeneration) -> PublishGenerationRequest {
         source_id: generation.source_id.clone(),
         generation: generation.generation.clone(),
         expected_previous_generation: generation.previous_generation.clone(),
+        retained_statuses: Vec::new(),
     }
 }
 
@@ -215,3 +218,6 @@ mod store_lease_tests;
 mod store_listing_tests;
 #[path = "store_tests/store_manifest_tests.rs"]
 mod store_manifest_tests;
+
+#[path = "store_tests/graph_retirement_tests.rs"]
+mod graph_retirement_tests;

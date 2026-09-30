@@ -13,6 +13,7 @@ mod conflict;
 mod header;
 mod query;
 mod resolve;
+mod retirement;
 mod row;
 mod upsert;
 
@@ -154,6 +155,14 @@ impl GraphStore for SqliteGraphStore {
         limit: usize,
     ) -> Result<Vec<GraphNode>> {
         resolve::nodes_for_source(&self.pool, &source_id, Some(limit)).await
+    }
+
+    async fn retire_item_evidence(
+        &self,
+        source_id: SourceId,
+        item: axon_api::source::SourceItemKey,
+    ) -> Result<GraphDeleteResult> {
+        retirement::retire(&self.pool, &self.write_gate, &source_id, &item).await
     }
 
     async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {

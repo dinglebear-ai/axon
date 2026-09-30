@@ -59,6 +59,7 @@ pub(super) async fn create_generation(
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: 0,
             prepared: 0,
             embedded: 0,
@@ -198,6 +199,8 @@ pub(super) async fn publish_generation(
         .with_source_id(generation.source_id.0));
     }
 
+    carry_retained_statuses_in_tx(&mut tx, &request, previous.as_ref()).await?;
+
     let mut committed_generation = generation.clone();
     committed_generation.published_at = Some(timestamp());
     let mut cleanup_debt =
@@ -264,6 +267,32 @@ pub(super) async fn publish_generation(
     record_committed_epoch(&mut tx, &committed_generation).await?;
     tx.commit().await.map_err(sqlite_error)?;
     Ok(committed_generation)
+}
+
+async fn carry_retained_statuses_in_tx(
+    tx: &mut sqlx::SqliteConnection,
+    request: &PublishGenerationRequest,
+    previous: Option<&SourceGenerationId>,
+) -> Result<()> {
+    if let Some(previous) = previous {
+        let mut statuses = request.retained_statuses.clone();
+        super::document::carry_document_statuses_in_tx(
+            tx,
+            &request.source_id,
+            previous,
+            &request.generation,
+            &mut statuses,
+            &timestamp(),
+        )
+        .await?;
+    } else if !request.retained_statuses.is_empty() {
+        return Err(ApiError::new(
+            "source.ledger.status_provenance_changed",
+            ErrorStage::Publishing,
+            "initial publication cannot carry retained statuses",
+        ));
+    }
+    Ok(())
 }
 
 pub(super) async fn committed_generation(
@@ -419,6 +448,7 @@ pub(super) async fn ensure_generation_for_manifest_in_tx(
             failed: 0,
         },
         document_counts: DocumentCounts {
+            skipped: 0,
             discovered: manifest.items.len() as u64,
             prepared: 0,
             embedded: 0,

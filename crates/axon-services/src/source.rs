@@ -37,6 +37,7 @@ pub(crate) fn spawn_artifact_candidate_outbox_drain(
 ) {
     executor::artifact_candidates::spawn_outbox_drain(runtime);
 }
+pub(crate) mod diagnostics;
 pub mod foreground_progress;
 pub mod graph;
 pub mod job_tracking;
@@ -175,7 +176,7 @@ async fn index_source_inner(
     };
 
     let collection = source_collection(&request, ctx);
-    let owner_id = DEFAULT_OWNER_ID;
+    let owner_id = format!("{}:{}", DEFAULT_OWNER_ID, uuid::Uuid::new_v4());
 
     // Boxed: `dispatch_kind` owns the entire source pipeline (adapter
     // acquisition through vector publish); polled inline, the nested debug
@@ -189,7 +190,7 @@ async fn index_source_inner(
         runtime,
         &input,
         &collection,
-        owner_id,
+        &owner_id,
         execution.auth_snapshot.as_ref(),
         request.embed,
         &request.output,
@@ -457,3 +458,6 @@ pub(crate) async fn open_cleanup_debt_stores(
 
     (graph_store, memory_store)
 }
+
+#[cfg(test)]
+mod byte_policy_tests;

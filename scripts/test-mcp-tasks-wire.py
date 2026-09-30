@@ -8,7 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTENSION = "io.modelcontextprotocol/tasks"
 TERMINAL = {"completed", "failed", "cancelled"}
 
+SPEC = importlib.util.spec_from_file_location("mcp_adapter", ROOT/"scripts/e2e/adapters/mcp.py")
+adapter = importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(adapter)
+
 class WireError(RuntimeError): pass
+
+def call_params(transport, arguments, meta=None):
+    projected = adapter.project_call(arguments, getattr(transport, "call_form", "legacy"))
+    params = {"name": projected["name"], "arguments": projected["arguments"]}
+    if meta is not None: params["_meta"] = meta
+    return params
 
 def rpc(identifier, method, params=None):
     value = {"jsonrpc": "2.0", "id": identifier, "method": method}
@@ -131,18 +140,18 @@ class Http:
         return structured_error(message, "malformed JSON")
     def close(self): pass
 
-def initialize(transport, identifier=1):
+def initialize(transport, identifier=1, *, supports_tasks=True):
     message, _ = transport.request(rpc(identifier, "initialize", {"protocolVersion":"2025-11-25",
-        "capabilities":{"extensions":{EXTENSION:{}}}, "clientInfo":{"name":"axon-e2e-task-wire","version":"1"}}))
+        "capabilities":({"extensions":{EXTENSION:{}}} if supports_tasks else {}), "clientInfo":{"name":"axon-e2e-task-wire","version":"1"}}))
     value = result(message, "initialize")
     if EXTENSION not in value.get("capabilities", {}).get("extensions", {}): raise WireError("tasks extension not negotiated")
     transport.notify({"jsonrpc":"2.0", "method":"notifications/initialized"})
     return value
 
 def create(transport, identifier, url, prompt, token):
-    message, notices = transport.request(rpc(identifier, "tools/call", {"name":"axon", "arguments":{
-        "action":"extract", "subaction":"start", "urls":[url], "prompt":prompt, "max_pages":1},
-        "_meta":{EXTENSION:{}, "progressToken":token}}), timeout=60)
+    arguments = {"action":"extract", "subaction":"start", "urls":[url], "prompt":prompt, "max_pages":1}
+    message, notices = transport.request(rpc(identifier, "tools/call", call_params(transport, arguments,
+        {EXTENSION:{}, "progressToken":token})), timeout=60)
     value = result(message, "create"); task_id = value.get("taskId")
     if not isinstance(task_id, str) or not task_id: raise WireError("taskId missing")
     if not progress_values(notices): raise WireError("task create omitted the required initial progress notification")
@@ -167,18 +176,21 @@ def progress_values(notices):
     return values
 
 def transport(args, env, stderr):
-    return Http(args.base_url, args.token, args.origin) if args.transport == "http" else Stdio(args.binary, env, stderr, args.manifest)
+    client = Http(args.base_url, args.token, args.origin) if args.transport == "http" else Stdio(args.binary, env, stderr, args.manifest)
+    client.call_form = getattr(args, "call_form", "legacy")
+    return client
 
 def run(args):
     outdir = args.outdir.resolve(); data = outdir/"data"; data.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy(); env.update({"AXON_HOME":str(data), "AXON_DATA_DIR":str(data),
-        "AXON_SQLITE_PATH":str(data/"jobs.db"), "AXON_MCP_TRANSPORT":"stdio"})
+        "AXON_SQLITE_PATH":str(data/"jobs.db"), "AXON_MCP_TRANSPORT":"stdio",
+        "AXON_MCP_TOOL_PROJECTION":args.projection})
     client = transport(args, env, outdir/"server.stderr")
-    evidence = {"schema_version":1, "surface":"mcp_task_wire", "transport":args.transport}
+    evidence = {"schema_version":1, "surface":"mcp_task_wire", "transport":args.transport, "projection":args.projection, "call_form":args.call_form}
     try:
         evidence["initialize"] = initialize(client)
         evidence["malformed_json"] = client.malformed_probe()
-        invalid, _ = client.request(rpc(8, "tools/call", {"name":"axon", "arguments":{"action":17}}))
+        invalid, _ = client.request(rpc(8, "tools/call", {"name": "query" if args.call_form == "atomic" else "axon", "arguments": {"query":17} if args.call_form == "atomic" else {"action":17}}))
         evidence["invalid_arguments"] = structured_error(invalid, "invalid tool arguments")
         task_id, creation_notices, created = create(client, 10, args.url, "Extract the page title.", "axon-e2e-progress")
         before_terminal, _ = client.request(rpc(11, "tasks/result", {"taskId":task_id}))
@@ -228,7 +240,13 @@ def arguments():
     parser.add_argument("--url", default=os.getenv("REAL_PAGE_URL","https://example.com"))
     parser.add_argument("--outdir", type=Path, default=Path(os.getenv("AXON_MCP_TASK_OUTDIR", ROOT/".cache/mcp-tasks-wire")))
     parser.add_argument("--manifest", default=os.getenv("AXON_E2E_MANIFEST")); parser.add_argument("--poll-interval", type=float, default=1)
-    return parser.parse_args()
+    parser.add_argument("--projection", choices=("legacy", "atomic", "both"), default=os.getenv("AXON_MCP_TOOL_PROJECTION", "legacy"))
+    parser.add_argument("--call-form", choices=("legacy", "atomic"))
+    args = parser.parse_args()
+    args.call_form = args.call_form or ("atomic" if args.projection == "atomic" else "legacy")
+    if args.projection != "both" and args.call_form != args.projection:
+        parser.error("call form must be advertised by the selected projection")
+    return args
 
 if __name__ == "__main__":
     try: json.dump(run(arguments()), sys.stdout, indent=2, sort_keys=True); print()
