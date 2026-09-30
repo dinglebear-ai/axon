@@ -1,179 +1,98 @@
----
-title: "API Tokens"
-created: 2026-03-10
-updated: 2026-07-30
----
+# API Tokens and Panel Credentials
 
-# API Tokens
-Last Modified: 2026-05-06
+Last reviewed: 2026-09-29
 
-This is the **index** of every authentication secret recognised by the Axon
-runtime. Each section below documents one token: where it lives, how it is
-created, when it is required, and what fails without it.
-
-> Earlier revisions of this document referenced a rich web surface
-> (`/ws`, `/output/*`, `/download/*`, `AXON_WEB_API_TOKEN`,
-> `AXON_WEB_BROWSER_API_TOKEN`, `NEXT_PUBLIC_AXON_API_TOKEN`,
-> `AXON_SHELL_WS_TOKEN`, `AXON_WEB_ALLOW_INSECURE_DEV`). **None of those
-> exist any more.** The Next.js web app and shell WS server were removed
-> when the runtime collapsed onto the unified `axon serve` panel. Search
-> the current code base for any of those names — you will find none.
+Axon separates API/MCP authentication, panel unlock, and third-party provider
+credentials. This is a navigation map, not a complete inventory of every
+secret used by an installation. See [security](../security.md) and the
+[generated environment registry](../../reference/config/env.md).
 
 ## Quick Map
 
-| Token | Type | Surface | Required? | Section |
-|-------|------|---------|-----------|---------|
-| `AXON_HTTP_TOKEN` | Env-set bearer | `axon mcp --transport http` (`/mcp`) | Loopback: optional. Non-loopback: yes. | [MCP HTTP token](#mcp-http-token) |
-| MCP OAuth env | Google OAuth + JWT | `/mcp`, protected `/v1` routes | OAuth mode only | [MCP OAuth](#mcp-oauth) |
-| Web panel password | Auto-generated, file-backed | `axon serve` web panel (`/api/panel/*`) | Always (no anonymous access) | [Web panel password](#web-panel-password) |
+| Credential | Purpose | Reference |
+|---|---|---|
+| `AXON_HTTP_TOKEN` | Static bearer/API-key authorization for protected HTTP API and MCP | [HTTP token](#mcp-http-token) |
+| Configured OAuth credentials and issued tokens | Public-origin discovery, login, caller identity and scope | [OAuth](#mcp-oauth) |
+| Panel password | Administrative panel unlock | [Panel password](#web-panel-password) |
+| Provider credentials | Access to a selected acquisition, embedding, search or synthesis provider | [Third-party credentials](#third-party-credentials) |
 
-User-supplied third-party credentials (Tavily, OpenAI, GitHub, Reddit) are
-**not** axon-issued tokens — see [Third-party credentials](#third-party-credentials)
-for how they differ.
-
----
+A panel password is not an API token. A provider key is not a credential for
+the Axon HTTP listener. Metadata discovery does not authorize tool execution.
 
 ## MCP HTTP token
 
-**Variable:** `AXON_HTTP_TOKEN`
-**Source:** `src/mcp/auth.rs`, `src/mcp/server/http.rs`
-**Detailed reference:** [`docs/operations/auth/mcp-auth.md`](mcp-auth.md)
+`AXON_HTTP_TOKEN` enables static authorization with `Authorization: Bearer
+<token>` or the supported `x-api-key` header. It protects the shared HTTP
+boundary, not only one legacy MCP action. The stdio transport has no HTTP
+auth handshake but still runs under local process and operation authority.
 
-Bearer token gating the MCP HTTP transport. Applied only to
-`axon mcp --transport http` (or `--transport both`) and the unified
-`axon serve` MCP HTTP route at `/mcp`. The stdio transport has no network
-listener and performs no auth.
+Loopback-only development can omit network auth. A non-loopback listener
+requires the configured token or OAuth; a blank/whitespace value is not
+protection. Verify the effective service configuration and listener.
 
-| Property | Value |
-|----------|-------|
-| Storage | Process environment (`.env`, shell export, container env) |
-| Format | Arbitrary opaque secret (recommended: `openssl rand -hex 32`) |
-| Headers accepted | `Authorization: Bearer <token>` or `x-api-key: <token>` |
-| Comparison | Constant-time (`subtle::ConstantTimeEq`) |
-| Loopback bind (`127.0.0.1`, `::1`, `localhost`) | Optional — server starts and emits a one-time warning when unset |
-| Non-loopback bind (`0.0.0.0`, public hostname) | Required unless OAuth mode is configured |
-| Failure mode | `401 Unauthorized` on each request when token is set but request omits / mismatches header |
+Generate a strong secret through the approved credential process and place
+its literal value in the actual service environment. A dotenv file does not
+execute shell command substitution: do not put a literal
+`$(openssl rand -hex 32)` expression into it and assume a random token was
+created. Do not expose token values in shell history, logs, or examples.
 
-### Setting it
-
-```bash
-# .env
-AXON_HTTP_TOKEN=$(openssl rand -hex 32)
-AXON_HTTP_HOST=127.0.0.1
-AXON_HTTP_PORT=8001
-```
-
-For client configuration (Claude Code, mcporter, raw `curl`) and the full
-security model, see [`docs/operations/auth/mcp-auth.md`](mcp-auth.md).
-
----
-
----
+See [MCP authentication](mcp-auth.md) for accepted headers, OAuth coexistence,
+scope semantics, and invalid-credential behavior. Implementation is shared
+in [axon-authz](../../../crates/axon-authz/src/) and re-exported by
+[MCP auth](../../../crates/axon-mcp/src/auth.rs).
 
 ## MCP OAuth
 
-**Variables:** `AXON_AUTH_MODE`, `AXON_PUBLIC_URL`,
-`AXON_GOOGLE_CLIENT_ID`, `AXON_GOOGLE_CLIENT_SECRET`,
-`AXON_AUTH_ADMIN_EMAIL`, `AXON_ALLOWED_REDIRECT_URIS`
-**Source:** `src/mcp/auth.rs`, `src/mcp/server/http.rs`
-**Detailed reference:** [`docs/operations/auth/mcp-auth.md`](mcp-auth.md)
+`AXON_AUTH_MODE=oauth` uses the configured public origin, Google client ID
+and secret, allowed identity, and redirect settings. The source of truth is
+[MCP authentication](mcp-auth.md), not a stale `AXON_MCP_*` alias table.
+A static token can remain configured for supported dual-mode access.
 
-OAuth mode is enabled with `AXON_AUTH_MODE=oauth`. It mounts lab-auth OAuth
-metadata, Google login, token, JWKS, and dynamic registration routes beside
-`/mcp`. Static bearer auth remains accepted when `AXON_HTTP_TOKEN` is also
-set.
-
----
+Scope compatibility and admin identity behavior must be checked in the
+current authorization implementation. Do not assume a descriptive tool hint
+or requested narrow scope overrides the server policy. Keep caller identity
+and authorization intact through system/watch requests, tasks, resources,
+and legacy/atomic projections.
 
 ## Web panel password
 
-**Source:** `src/web/auth.rs`, `src/web/server.rs`
-**File:** `~/.axon/panel-password` (mode `0600`, owner-only)
+The panel uses a file-backed shared password under the configured Axon home.
+[Panel auth](../../../crates/axon-web/src/auth.rs) creates a missing password
+with random bytes, exclusive creation, and restrictive Unix file mode.
+Existing-file reads are a separate path; verify ownership, permissions, and
+symlink state instead of assuming creation checks apply to every read.
 
-Single shared password gating the `axon serve` admin panel. There are no
-user accounts and no signup flow; everyone with the file's contents has
-the same access.
+The login handler currently returns the same credential as the panel token.
+Treat it as a bearer secret, not a separate short-lived or independently
+revocable session. Everyone possessing it has the associated panel access.
+Use the current router/auth code for protected routes rather than a static
+list claiming no other endpoints exist.
 
-| Property | Value |
-|----------|-------|
-| Storage | `~/.axon/panel-password` (plaintext, mode `0600`, written with `O_NOFOLLOW`) |
-| Format | 32 random bytes, URL-safe base64 (no padding) |
-| Generated | Automatically on first start of `axon serve` if the file does not exist |
-| Persistence | Reused on subsequent starts; never rotated automatically |
-| Surface gated | `/api/panel/config`, `/api/panel/ops`, `/api/panel/setup/targets` |
-| Headers accepted | `Authorization: Bearer <password>` or `x-axon-panel-token: <password>` |
-| Comparison | Constant-time (`subtle::ConstantTimeEq`) |
-| Login flow | `POST /api/panel/login` returns the same string back when the supplied password matches; the UI then sends it on subsequent requests |
-| Failure mode | `401 Unauthorized` on `/api/panel/config|ops|setup/*` |
-| Static assets and `/api/panel/state`/`/login` | Unauthenticated — needed to bootstrap the login page |
-
-### First-run behaviour
-
-When `axon serve` generates a new password it logs the protected file location
-to stderr **once**:
-
-```
-Axon web panel password generated at /home/user/.axon/panel-password
-Open: http://127.0.0.1:8001
-```
-
-If you miss the line, copy it back:
-
-```bash
-cat ~/.axon/panel-password
-```
-
-### Rotating
-
-Delete the file, restart `axon serve`, then read the new password from the
-owner-only file.
-There is no in-product rotation API.
-
-```bash
-rm ~/.axon/panel-password
-axon serve
-cat ~/.axon/panel-password
-```
-
----
+For a planned rotation, identify the effective credential path, service,
+backup/access implications, and all clients before making changes. Follow
+an approved replacement/restart procedure; this page does not authorize
+deleting a live password file or rotating API/provider credentials.
 
 ## Third-party credentials
 
-These are **not** axon-issued tokens. They are credentials you obtain
-from a third-party provider and supply via environment variables so that
-Axon can call the upstream API on your behalf. They are listed here only
-to disambiguate them from Axon-issued auth secrets above.
+Provider credentials can include GitHub/Reddit API access, embedding/search
+keys, synthesis credentials, and CLI-provider identity. They authorize the
+provider interaction, not the Axon client. Configure only the selected
+provider and preserve unrelated secrets.
 
-| Variable | Provider | Used by |
-|----------|----------|---------|
-| Gemini CLI auth / `AXON_HEADLESS_GEMINI_CMD` | Gemini headless synthesis | `ask`, `evaluate`, `suggest`, extract LLM fallback, debug, research synthesis |
-| `TAVILY_API_KEY` | Tavily search API fallback when `AXON_SEARXNG_URL` is unset | `search`, `research` |
-| `GITHUB_TOKEN` | GitHub | Optional — raises rate limits on `ingest` GitHub targets |
-| `GITLAB_TOKEN` | GitLab | Optional — authenticates private projects and raises rate limits on `ingest` GitLab targets |
-| `GITEA_TOKEN` | Gitea/Forgejo | Optional — authenticates Gitea-compatible API requests |
-| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Reddit OAuth app | Required for `ingest` Reddit targets |
+Secrets may live in service environments, explicit environment files,
+provider stores, OAuth state, and client configuration; `~/.axon/.env` is
+not the only secret store. TOML unknown-key rejection is not a generic
+secret detector. Never commit credentials in accepted string/header fields.
 
-If any of these are missing or invalid, the relevant command surfaces
-the upstream provider's error verbatim. They never gate the Axon HTTP
-surface.
+## Verification and recovery
 
----
+After an authorized credential/configuration change, verify the actual
+service loaded it, reconnect the intended client, discover the catalog, and
+make a safe read-only call. Test missing/wrong credentials separately from
+origin/host restrictions and operation-scope denial. A healthy process or
+new configuration entry alone does not prove authenticated access.
 
-## Quick verification
-
-```bash
-# MCP HTTP token (returns 401 without, 200/405/406 with)
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/mcp
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer $AXON_HTTP_TOKEN" http://localhost:8001/mcp
-
-# Web panel password — verify file exists
-test -f ~/.axon/panel-password && echo "panel password present"
-ls -l ~/.axon/panel-password   # mode 0600
-
-# Panel login round-trip
-curl -s -X POST http://localhost:8001/api/panel/login \
-  -H "Content-Type: application/json" \
-  -d "{\"password\":\"$(cat ~/.axon/panel-password)\"}"
-# → {"ok":true,"token":"..."}
-```
+Report the failing hop and safe recovery action without dumping tokens.
+Panel unlock, API auth, source authorization, and provider credentials are
+different prerequisites. See [client setup](../../reference/mcp/connect.md).

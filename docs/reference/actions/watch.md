@@ -6,12 +6,14 @@ Last Modified: 2026-05-31
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon watch ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
+| CLI | <code>axon watch create</code><br><code>axon watch delete</code><br><code>axon watch exec</code><br><code>axon watch get</code><br><code>axon watch history</code><br><code>axon watch list</code><br><code>axon watch pause</code><br><code>axon watch resume</code><br><code>axon watch status</code><br><code>axon watch update</code> |
+| REST | <code>DELETE /v1/watches/{watch_id}</code><br><code>GET /v1/watches</code><br><code>GET /v1/watches/{watch_id}</code><br><code>GET /v1/watches/{watch_id}/history</code><br><code>GET /v1/watches/{watch_id}/status</code><br><code>PATCH /v1/watches/{watch_id}</code><br><code>POST /v1/watches</code><br><code>POST /v1/watches/{watch_id}/exec</code><br><code>POST /v1/watches/{watch_id}/pause</code><br><code>POST /v1/watches/{watch_id}/resume</code> |
+| MCP atomic tools | <code>watch_create</code><br><code>watch_delete</code><br><code>watch_exec</code><br><code>watch_get</code><br><code>watch_history</code><br><code>watch_list</code><br><code>watch_pause</code><br><code>watch_resume</code><br><code>watch_status</code><br><code>watch_update</code> |
+| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |
 
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+MCP names describe the atomic projection. The legacy `axon` tool uses the corresponding action/subaction selectors; `both` exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.
+
+Family-level navigation does not imply identical suboperations or request shapes across transports.
 <!-- END GENERATED ACTION SURFACES -->
 
 

@@ -1,316 +1,212 @@
 ---
 title: "Security Model"
 created: 2026-02-25
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Security Model
-Last Modified: 2026-06-01
 
-## Table of Contents
-
-1. Scope and Threat Model
-2. SSRF and URL Validation
-3. HTTP Client Safety
-4. MCP HTTP Authentication
-5. Host and CORS Allowlists
-6. Web Admin Panel
-7. Secrets Handling
-8. Network Exposure
-9. Operational Checklist
-10. Source Map
-
----
-
-## 1. Scope and Threat Model
-
-This document captures the security controls present in the Axon code base today. Axon is a single-binary Rust application (`axon`) with SQLite-backed jobs and in-process workers. The legacy Postgres / Redis / AMQP runtime has been removed. MCP HTTP auth supports static bearer mode and Google OAuth/JWT mode through lab-auth.
-
-**In scope:**
-
-- SSRF via user-supplied URLs (CLI args, MCP tool calls, sitemap/discovered URLs)
-- DNS rebinding against the in-process HTTP client
-- Secret leakage through commits, logs, and `Debug` impls
-- MCP HTTP transport authentication and origin/host validation
-- Local admin web panel access control
-- Heap exposure from the optional ask full-document cache in long-lived
-  `serve`/`mcp` processes
-
-**Out of scope:**
-
-- Host kernel compromise
-- Multi-tenant isolation — Axon is designed for trusted self-hosted operation
-- Hardening of the upstream services Axon talks to (Qdrant, TEI, Gemini headless LLM)
-- Supply-chain integrity beyond pinned crate versions
-
----
-
-## 2. SSRF and URL Validation
-
-### 2.1 `validate_url()`
-
-Source: `src/core/http/ssrf.rs:64`.
-
-`validate_url(&str) -> Result<(), HttpError>` is the parse-time SSRF guard. It rejects:
-
-| Category | Examples |
-|----------|----------|
-| Non-HTTP schemes | `file://`, `gopher://`, `ftp://`, `javascript:` |
-| Loopback hosts | `localhost`, `*.localhost` |
-| Reserved TLDs | `*.internal`, `*.local` |
-| Loopback IPs | `127.0.0.0/8`, `::1`, `0.0.0.0/8` |
-| Link-local | `169.254.0.0/16`, `fe80::/10` |
-| RFC 1918 private | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
-| IPv6 unique-local | `fc00::/7` |
-| IPv4-mapped IPv6 | `::ffff:127.0.0.1`, `::ffff:10.x.x.x` (recursed into the v4 checks) |
-
-Implementation note: hosts are parsed with `host_str().parse::<IpAddr>()`, **not** `spider::url::Host::Ipv4/Ipv6` — the spider variants silently miss IPv6 (confirmed production bug, see `src/core/CLAUDE.md`).
-
-### 2.2 Call sites
-
-`validate_url()` is invoked at every external entry point that accepts a URL. As of this writing, callers include (`src/core/http/client.rs:46,70` and):
-
-- `src/cli/commands/scrape.rs`, `crawl.rs`, `screenshot.rs`
-- `src/services/scrape.rs`, `map.rs`, `screenshot.rs`
-- `src/crawl/engine/map.rs`, `engine/sitemap.rs`, `scrape.rs`, `screenshot.rs`
-- `src/jobs/workers/runners/crawl.rs`, `src/jobs/crawl.rs`
-- `src/ingest/youtube.rs`, `ingest/github/files/clone.rs`, `ingest/github/wiki.rs`
-- `src/mcp/server/common.rs`
-- `src/core/content/engine.rs`
-
-The reqwest redirect policy also re-validates every redirect target (`src/core/http/client.rs:44-53`). A 30x to a blocked URL becomes `PermissionDenied` instead of a follow. The scrape direct-fetch fallback uses the same SSRF-guarded client builder, then layers its per-request timeout, TLS, proxy, user-agent, and header options on top without process-global reuse.
-
-### 2.3 DNS rebinding (TOCTOU) — mitigated
-
-`validate_url()` only checks literal hostnames and IPs. The connect-time TOCTOU window is closed by `SsrfBlockingResolver` (`src/core/http/ssrf.rs:174-205`), wired into the reqwest client via `ClientBuilder::dns_resolver()` in production builds. The resolver runs `check_ip()` on every IP returned by the OS resolver at the moment reqwest dials. A TTL-0 record that flips to `127.0.0.1` after `validate_url()` returns is rejected before the connection is made.
-
-Test builds (`#[cfg(test)]`) skip the custom resolver so `httpmock` servers on `127.0.0.1` remain reachable; `validate_url()` itself still blocks loopback unless a thread-local `ALLOW_LOOPBACK` flag is set inside the test.
-
-### 2.4 Defence-in-depth blacklist
-
-`ssrf_blacklist_patterns()` (`src/core/http/ssrf.rs:144`) returns 12 regex patterns covering loopback, link-local, RFC-1918, and IPv6 private ranges. These are passed to `spider`'s `with_blacklist_url()` so URLs **discovered during crawl** (sitemaps, link extraction) are dropped before fetch — even if the seed URL was public, a crawler cannot follow a same-page link to `http://127.0.0.1/admin`.
-
----
-
-## 3. HTTP Client Safety
-
-Source: `src/core/http/client.rs`.
-
-- Production builds use a single shared `LazyLock<reqwest::Client>` (`HTTP_CLIENT`), constructed once with a 30-second timeout and the SSRF-blocking DNS resolver. Request paths that need custom client settings must use the shared builder helper that installs the same resolver before layering additional options. **Never construct `reqwest::Client::new()` per call** — that bypasses the resolver and exhausts sockets under load.
-- The redirect policy re-validates every hop with `validate_url()` (`client.rs:44`).
-- `fetch_html()` validates the final URL before issuing the request (`client.rs:70`).
-- Test builds get a fresh leaked `reqwest::Client` per call to avoid cross-runtime "dispatch task is gone" failures and to keep `httpmock` working. The scrape direct-fetch fallback also builds a fresh client per call so headers, proxy, and TLS settings from one config cannot leak into another scrape.
-
-The shared User-Agent resolves in priority order: `AXON_USER_AGENT` → `AXON_CHROME_USER_AGENT` → built-in Firefox browser UA (`DEFAULT_UA` in `src/core/http/ua.rs`). All HTTP paths — the `http_client()` singleton, Spider crawl/scrape/screenshot paths, and vertical extractors — use this resolved value consistently. Reddit ingestion uses its own OAuth-format UA regardless of these settings.
-
----
-
-## 4. MCP HTTP Authentication
-
-The MCP server (`axon mcp`) supports `stdio`, `http`, and `both` transports. **Stdio is unauthenticated** and relies on OS process boundaries — the MCP client owns the process lifecycle. HTTP is gated by static bearer auth, OAuth, or loopback-only dev mode.
-
-Sources: `src/mcp/auth.rs`, `src/mcp/server/http.rs`.
-
-### 4.1 Auth policies
-
-| Policy | How selected | Behavior |
-|--------|--------------|----------|
-| OAuth/JWT | `AXON_AUTH_MODE=oauth` | Builds `lab_auth::state::AuthState`, mounts OAuth routes, validates JWT bearer tokens, and enforces `axon:read` / `axon:write` scopes. |
-| Bearer-only | default mode with `AXON_HTTP_TOKEN` set | Validates a static token with `lab_auth::AuthLayer::with_static_token`; static tokens receive both read and write scopes. |
-| Loopback dev | default mode, no token, loopback bind | No auth layer; loopback bind is the trust boundary. |
-
-Static bearer tokens are accepted on either header:
-- `Authorization: Bearer <token>`
-- `x-api-key: <token>` (normalized to bearer before lab-auth sees the request)
-
-Empty or whitespace-only `AXON_HTTP_TOKEN` values are treated as unset.
-
-### 4.2 OAuth mode
-
-When `AXON_AUTH_MODE=oauth`, `src/mcp/auth.rs` initializes lab-auth with
-Google OAuth, JWKS/JWT validation, dynamic client registration, and OAuth
-metadata routes. `AXON_PUBLIC_URL`, Google client credentials, and admin
-email are required. `AXON_HTTP_TOKEN` remains valid in dual mode when set.
-
-OAuth mode reads `AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`,
-`AXON_GOOGLE_CLIENT_SECRET`, `AXON_AUTH_ADMIN_EMAIL`, and
-`AXON_ALLOWED_REDIRECT_URIS`. The OAuth router exposes
-`/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource`,
-`/jwks`, `/authorize`, `/auth/google/callback`, `/token`, and `/register`.
-The account configured as `AXON_AUTH_ADMIN_EMAIL` is always granted the full
-configured Axon OAuth scope set (`axon:read axon:write`) after Google email
-verification. Other allowlisted users receive only the scope approved for their
-authorization request.
-
-### 4.3 Startup policy
-
-`build_auth_policy` (`src/mcp/auth.rs`) runs before the listener binds:
-
-| Bind host | Auth configured | Behaviour |
-|-----------|-----------------|-----------|
-| Stdio transport | any | loopback/process-boundary policy; OAuth config is ignored with a warning |
-| Loopback (`127.0.0.1`, `::1`, `localhost`) | OAuth or static token | start, auth required |
-| Loopback | none | start, log a warning, requests pass through |
-| Non-loopback (`0.0.0.0`, public DNS) | OAuth or static token | start, auth required |
-| Non-loopback | none | **refuse to start** with a clear error |
-
-This means a forgotten token on a public bind fails closed instead of running unauthenticated.
-
-### 4.4 Scope enforcement
-
-Mounted auth inserts `lab_auth::AuthContext` into request extensions. `src/mcp/server.rs` maps each tool action to a minimum scope:
-
-- `axon:write`: mutating operations such as `crawl`, `extract`, `embed`, `ingest`, `scrape`, and artifact deletion/cleanup.
-- `axon:read`: query, search, retrieval, status, ask/research/evaluate, screenshots, and read-only artifact operations.
-- `axon:write` satisfies `axon:read`; unknown actions fail closed.
-
-See `docs/operations/auth/mcp-auth.md` for the canonical, code-aligned auth flow.
-
----
-
-## 5. Host and CORS Allowlists
-
-The MCP HTTP server stacks host and CORS middleware around the MCP router. When `AuthPolicy` is mounted, `lab_auth::AuthLayer` protects `/mcp`; OAuth routes are mounted beside it and remain unauthenticated so the OAuth flow can start.
-
-### 5.1 Host validation
-
-Source: `src/web/security.rs` (used by `src/mcp/server/http.rs:23-26`).
-
-`HostAllowlist` accepts:
-
-- `127.0.0.1:<port>`, `localhost:<port>`, `[::1]:<port>`
-- The configured bind host on its port
-- Every entry in `AXON_ALLOWED_ORIGINS` (origin → authority via `Uri::authority()`)
-
-Requests with a `Host` header outside that set return `403 forbidden: host not allowed`. Missing `Host` returns `400`.
-
-### 5.2 CORS
-
-Source: `src/mcp/cors.rs` (mounted by `server/http.rs:148-151`).
-
-- Allowlist driven by `AXON_ALLOWED_ORIGINS` (comma-separated). Unset = strict default (only same-origin / loopback). Non-browser tools (curl, MCP SDKs) are unaffected because they do not send `Origin`.
-- Preflight `OPTIONS` requests with a disallowed origin return `403`.
-- `Access-Control-Allow-Headers` is the **static** list `authorization, content-type, x-api-key`. The middleware never reflects the client-supplied `Access-Control-Request-Headers` value, which would grant an effective wildcard (CWE-942).
-
----
-
-## 6. Web Admin Panel
-
-Source: `src/web/auth.rs`, `src/web/server.rs`.
-
-`apps/web` (`@axon/admin-panel`) is an admin-only setup/config UI mounted by `axon serve`. It is **not** a public-facing application.
-
-- On first start, `init_panel_password()` (`auth.rs:33`) generates a 32-byte URL-safe password and writes it to `~/.axon/panel-password` with mode `0600` and `O_NOFOLLOW`. The startup notice prints only that protected file's path, never the credential. Existing files are reused.
-- `/api/panel/login` accepts the password and returns it back to the caller as a session token. `/api/panel/state` is unauthenticated (returns only `setup_required` + the config path).
-- All other `/api/panel/*` routes require `Authorization: Bearer <token>` or `x-axon-panel-token: <token>`, verified in constant time via `PanelPassword::verify` (`auth.rs:21-26`).
-- Routes exposed (see `src/web/server/routing.rs` and `src/web/CLAUDE.md`): `state` (GET), `login` (POST), `config` (GET/PUT), `env` (GET/PUT), `status` (GET), `doctor` (GET), `command` (POST), `ops` (GET), `stack` (GET), `first-run/crawl` (POST), `first-run/ask` (POST), `setup/targets` (GET).
-- `/api/panel/command` is a **command runner**, not a raw shell: `panel_command` (`handlers/config.rs:179`) parses only a fixed `ask`-or-action grammar (`parse_panel_command`) and dispatches through the same `services`/action layer the CLI uses. It is authenticated like every other write route. There is no arbitrary-shell endpoint, no WebSocket, no download route, and no `/output/*` route in the current code.
-
-Recommendations:
-
-- Bind the unified `axon serve` to `127.0.0.1` unless you intend to expose the panel externally.
-- If exposing externally, terminate TLS and add a reverse-proxy auth layer in front — the panel password is meant for local administration.
-
----
-
-## 7. Secrets Handling
-
-### 7.1 `~/.axon/.env` is the only secret store
-
-- Service URLs and credentials live in `~/.axon/.env`. Repo-local `.env` is a gitignored development fallback only. `.env.example` is the tracked template.
-- `~/.axon/config.toml` is for **non-secret** tuning knobs only (search params, worker limits). The loader treats unknown fields as fatal so accidentally pasting a secret there fails fast (`src/core/config/parse/toml_config.rs`).
-- The MCP HTTP static token is `AXON_HTTP_TOKEN`; OAuth/JWT mode is configured with the `AXON_MCP_*` auth variables documented above.
-
-### 7.2 `Debug` redaction
-
-`Config`'s `fmt::Debug` impl (`src/core/config/types/config_impls.rs:203-369`) redacts:
-
-- `github_token`
-- `reddit_client_id`, `reddit_client_secret`
-- `tavily_api_key`
-- `custom_headers` — values redacted, header names preserved as `"Name: [REDACTED]"`; malformed entries become `"[MALFORMED]"`
-
-Do **not** add new secret fields without extending this impl. The compiler will not warn you.
-
-### 7.3 Logging hygiene
-
-- Library code uses `log_info` / `log_warn` / `log_done` from `src/core/logging.rs`. Never `println!` from a library — it bypasses log targets and rotation.
-- `redact_url()` in `src/core/content.rs` strips `username:password@` from URLs before logging.
-- The MCP server returns deterministic error messages and never echoes secret env values back to callers.
-
-### 7.4 Ask full-document cache
-
-The optional `[ask.cache]` cache stores full-document Qdrant chunks in the
-process heap for the ask retrieval path. Cached values include `chunk_text`;
-logs deliberately omit that text and only use source identifiers and counters.
-
-The cache is disabled by default and is useful only in long-lived `axon serve`
-or `axon mcp` processes. When enabled for those modes, startup enforces
-`RLIMIT_CORE=0` before initializing the daemon so a crash does not write cached
-source text to a core file. This guard does not encrypt heap memory and does
-not protect against a compromised process; it only removes the core-dump leak
-path.
-
----
-
-## 8. Network Exposure
-
-| Service | Compose publish (`docker-compose.prod.yaml`) | Notes |
-|---------|----------------------------------------------|-------|
-| `axon mcp` / `axon serve` / Compose `axon` (HTTP) | `127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001` | Compose publishes on host loopback only. The container binds internally on all interfaces so Docker can forward traffic; direct non-loopback server binds require bearer or OAuth auth. |
-| `axon-qdrant` (compose) | `127.0.0.1:${QDRANT_HTTP_PORT:-53333}:6333`, `127.0.0.1:${QDRANT_GRPC_PORT:-53334}:6334` | Published on host loopback only. |
-| `axon-tei` (compose) | `127.0.0.1:${TEI_HTTP_PORT:-52000}:80` | Published on host loopback only. |
-| `axon-chrome` (compose) | `127.0.0.1:${AXON_CHROME_MANAGEMENT_PORT:-6000}:6000`, `127.0.0.1:${AXON_CHROME_CDP_PORT:-9222}:9222`, `127.0.0.1:${AXON_CHROME_DEVTOOLS_PORT:-9223}:9223` | Published on host loopback only. Ports 6000, 9222, and 9223 remain unauthenticated control planes inside the trusted host boundary. |
-
-> **Caution:** the compose files publish provider ports on host loopback, and
-> `scripts/check_compose_port_bindings.py` rejects non-loopback mappings. The
-> provider processes still listen on container interfaces, so any custom
-> override that publishes them beyond loopback must add an explicit authenticated
-> tunnel or proxy. Chrome's CDP and management APIs have no built-in authentication.
-
-Hardening guidance:
-
-- Keep the loopback prefixes on every published provider port. Use an authenticated tunnel or proxy for deliberate cross-host access; never publish Qdrant or Chrome directly to an untrusted network.
-- For the MCP server on a non-loopback host, set a long random `AXON_HTTP_TOKEN` (`openssl rand -hex 32`) or configure `AXON_AUTH_MODE=oauth`.
-- Never expose Qdrant or Chrome's CDP / management ports to a network. The upstream `headless_browser` and Chrome DevTools Protocol have **no built-in authentication** — anyone who can reach 6000/9222/9223 can run arbitrary JS, navigate to internal URLs, exfiltrate cookies from any origin Chrome has visited, and (via `Page.navigate` on `file://` URLs) read local files inside the container.
-
-Cross-host deployments (operator-managed):
-
-- If you point `chrome_remote_url` in `~/.axon/config.toml` at a non-loopback host (for clients running on a different machine than `axon-chrome`), **you own the auth boundary** — front the Chrome ports with an authenticated reverse proxy, an SSH tunnel, a WireGuard mesh, or equivalent. Axon does not add a token to the CDP/management endpoints because those endpoints are owned by upstream crates we do not control.
-- The defense-in-depth `validate_url()` SSRF guard still runs on every URL handed to Chrome via spider (`screenshot`, `extract`, `crawl`, `map`, `scrape`), so an attacker who tricks axon into asking Chrome to fetch `http://127.0.0.1:54321/admin` is blocked at the axon layer regardless of where Chrome is hosted.
-
----
-
-## 9. Operational Checklist
-
-Before deploy:
-
-1. `~/.axon/.env` exists and contains every required secret. Repo-local `.env`, if present for development fallback, is not committed.
-2. `git diff -- . ':!*.lock'` shows no secret material in the changeset.
-3. For history scans, run a dedicated tool (`gitleaks detect --source=. --log-opts="HEAD~50..HEAD"` or similar). `git diff` only sees uncommitted changes.
-4. `AXON_HTTP_TOKEN` or OAuth mode is configured if `AXON_HTTP_HOST` is anything other than `127.0.0.1` / `localhost` / `::1`.
-5. `~/.axon/panel-password` exists and is mode `0600` if `axon serve` will run.
-6. `./scripts/axon doctor` reports Qdrant and TEI healthy.
-
-After deploy:
-
-1. Containers report healthy.
-2. `curl http://<host>:8001/mcp` (no auth) returns `401` when the token is configured.
-3. `curl -H "Authorization: Bearer <wrong>" http://<host>:8001/mcp` returns `401`.
-4. Logs do not show repeated `web: rejected request with disallowed Host header` (indicates a misconfigured allowlist) or token-auth failures from your own clients.
-
----
-
-## 10. Source Map
-
-- `src/core/http/ssrf.rs` — `validate_url()`, `check_ip()`, `ssrf_blacklist_patterns()`, `SsrfBlockingResolver`
-- `src/core/http/client.rs` — `HTTP_CLIENT` singleton, redirect-time SSRF re-validation, `fetch_html()`
-- `src/core/http/normalize.rs` — `normalize_url()` (scheme prepend)
-- `src/core/config/types/config_impls.rs` — `Config::Debug` redaction
-- `src/mcp/auth.rs` — `AuthPolicy`, `build_auth_policy`, static bearer helpers, OAuth/JWT policy wiring
-- `src/mcp/server/http.rs` — startup policy, host allowlist + CORS wiring, unified router
-- `src/mcp/cors.rs` — CORS middleware (static `Allow-Headers`, no reflection)
-- `src/web/security.rs` — `HostAllowlist`, `host_validation_middleware`
-- `src/web/auth.rs` — admin panel password generation and constant-time verify
-- `src/web/server.rs` — admin panel routes and authorization helper
-- `docs/operations/auth/mcp-auth.md` — canonical MCP HTTP auth reference
+Last reviewed: 2026-09-29
+
+## Scope and threat model
+
+Axon handles untrusted source text, URLs, file paths, provider responses, and
+remote client requests. Its security boundaries include HTTP authentication,
+operation authorization, source containment, provider/tool execution, durable
+visibility, and response/log redaction. A trusted local installation is not
+a license to expose the same operations anonymously over HTTP.
+
+Production is native Axon under systemd in Incus or bare-metal Linux with
+external providers. Follow [deployment](deployment.md) and verified local
+installation notes. This guide describes controls and required checks; it
+is not a claim that every possible provider/browser path is invulnerable.
+
+## SSRF and URL validation
+
+[`axon-core/src/http/ssrf.rs`](../../crates/axon-core/src/http/ssrf.rs) owns
+URL policy, IP-range checks, resolver protection, and crawl blacklist support.
+[`http/client.rs`](../../crates/axon-core/src/http/client.rs) installs the
+shared HTTP safety behavior, including redirect validation. The old root
+`src/core`, `src/crawl`, and `src/ingest` paths are not current owners.
+
+The public-source policy rejects non-HTTP schemes and disallowed loopback,
+private, link-local, reserved hostname/IP forms, including mapped IPv6.
+Parse-time validation alone cannot prevent DNS rebinding. The production
+resolver checks resolved addresses for supported shared-client paths;
+redirect targets must also pass policy. Do not construct an unguarded
+HTTP client to bypass a rejected source.
+
+Web acquisition additionally crosses Spider and browser/CDP boundaries.
+Inspect [adapter security](../../crates/axon-adapters/src/acquisition_security.rs),
+[source security](../../crates/axon-services/src/source/security.rs), and
+the chosen acquisition implementation when adding a path. A guarded reqwest
+client does not prove that every browser subresource or upstream tool uses
+that same resolver. Browser providers therefore remain privileged services
+inside an explicitly controlled network boundary.
+
+Test-only loopback allowances and mock-client lifecycle helpers are not
+production configuration. Preserve cfg gates and test both denied production
+inputs and authorized fixtures. Include redirects, alternate IP spellings,
+DNS rebinding, and interrupted/partial acquisition in relevant changes.
+
+## Filesystem and tool execution
+
+Local sources are resolved on the executing host against approved roots and
+canonical paths. `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` replaces the rejected
+legacy MCP embed-root name. A client-provided path, discovery result, or
+metadata descriptor does not grant filesystem or execution permission.
+
+CLI/MCP tool acquisition requires its own authorization, allowlists, timeout,
+output caps, cancellation, and redaction. Use the existing source adapter
+contracts rather than a provider-specific shell pipeline. Temporary data
+needs cleanup on success, failure, and cancellation; failed adapter release
+is tracked as cleanup debt for controlled retry.
+
+Do not claim a parsed configuration field enforces a limit without checking
+its runtime consumer. In particular, the current session adapter reads whole
+selected transcript files and does not consume the old session-byte-limit
+variable. See [session ingestion](../guides/ingest/sessions.md),
+[local sources](../guides/local-sources.md), and
+[CLI tool sources](../guides/cli-tool-sources.md) and
+[MCP tool sources](../guides/mcp-tool-sources.md).
+
+## HTTP authentication and operation authorization
+
+Shared HTTP authorization is owned by
+[`axon-authz`](../../crates/axon-authz/src/), with the MCP compatibility
+re-export in [`axon-mcp/src/auth.rs`](../../crates/axon-mcp/src/auth.rs).
+HTTP API and MCP use the same caller-derived policy; stdio uses the local
+process boundary, not an HTTP token exchange.
+
+| Mode | Required boundary |
+|---|---|
+| Loopback-only development without a token | Deliberately local listener; not anonymous remote access |
+| Static bearer | Configured `AXON_HTTP_TOKEN`; supported bearer/API-key header handling |
+| OAuth | Configured public origin, identity/client/secret/redirect settings, validated caller and scopes |
+| Stdio | Client-owned child process and executing OS account, with operation/source policies still applicable |
+
+A non-loopback listener without configured authentication must refuse startup.
+Whitespace-only tokens are not valid protection. Configure TLS at the
+intended origin/proxy and check the effective listener rather than relying
+on the presence of a token in an unused file.
+
+`axon:write` and operation-specific authorization/elevation checks are
+separate from descriptive tool safety hints. Some nominally read-oriented
+operations such as external search/research can acquire/index sources and
+require explicit write elevation. Unknown selectors must fail before side
+effects. Do not copy a static read/write table without verifying the live
+action metadata and handler checks.
+
+Source, job, artifact, and task visibility must preserve caller identity
+through shared service dispatch. The primary MCP action enum is not the
+full authorization surface: system/watch request types, atomic projections,
+resources, auxiliary dashboard, and tasks also require coverage. See
+[MCP authentication](auth/mcp-auth.md) and
+[the MCP tool contract](../reference/mcp/tool-contract.md).
+
+## Host and origin policy
+
+Host validation and browser-origin policy are owned by
+[`axon-web/src/security.rs`](../../crates/axon-web/src/security.rs),
+[routing security](../../crates/axon-web/src/server/routing_security.rs), and
+[MCP CORS](../../crates/axon-mcp/src/cors.rs). Allowed origins must be explicit
+for the intended client deployment.
+
+CORS is a browser constraint, not authentication: a non-browser caller can
+omit Origin. Conversely, a successful authenticated command-line request
+does not prove that a browser origin or preflight is allowed. Test allowed
+and denied Host/Origin values, preflight headers, authentication, and real
+MCP initialization against the changed listener. Do not use a wildcard proxy
+rule to conceal a failing allowed-origin check.
+
+## Web panel authorization
+
+The web panel is an administrative surface. Its password/session mechanism
+is separate from API/MCP bearer or OAuth identity. Do not substitute an
+API token for the panel unlock credential.
+
+[`axon-web/src/auth.rs`](../../crates/axon-web/src/auth.rs) creates a random
+panel password file under the Axon home with restrictive creation semantics
+on Unix. Startup should report the protected path, not the password. New-file
+creation uses exclusive creation and `O_NOFOLLOW`; do not extrapolate that
+into a claim that every later existing-file read has the same checks. Verify
+existing file ownership, permissions, and location during deployment.
+
+The login handler returns the panel credential as the token in the current
+implementation. Treat it as a bearer secret, not a separately revocable
+short-lived session. Keep it out of URLs, logs, screenshots, shared client
+configuration, and browser storage exports.
+
+Use the actual panel/router source for the available routes. The former
+fixed list and claim that no download/WebSocket/output route could exist
+were not a maintained security contract. Command operations still require
+their parser, service policy, and administrative authorization; do not infer
+arbitrary-shell permission from a command-shaped UI.
+
+## Secrets, configuration, and logs
+
+`~/.axon/.env` is a conventional environment source, **not the only secret
+store**. Service managers, explicit environment files, process variables,
+provider credentials, OAuth state, client credentials, and the panel password
+can live separately. Inventory the effective installation and use the
+approved secret-management process for each.
+
+Use TOML for non-secret tuning. Unknown-field rejection catches typos but
+is not a generic secret detector: a credential pasted into an accepted
+string/header field does not become safe to commit. Keep secrets out of
+repository examples and generated artifacts. Preserve unrelated keys rather
+than replacing a configured file with a template.
+
+[`src/main.rs`](../../src/main.rs) owns environment-file loading. An invalid
+explicit `AXON_ENV_FILE` can fall through to later locations; canonical-file
+permission/symlink failure has different handling. Check startup diagnostics
+and effective values; do not assume a requested file was loaded successfully.
+
+Config debug formatting, provider error bodies, URL redaction, command output,
+and persisted metadata each need their own redaction tests. Structured
+results go to stdout; diagnostic logs go to stderr and correlate through
+`axon-observe`. Never flatten a failure into a successful empty response.
+Report safe cause, stage/entity/job IDs, retryability, known side effects,
+and recovery instructions without leaking secrets.
+
+## Retained content, caches, and backups
+
+Session and tool acquisition redact and normalize before publication, and
+retrieval must honor committed generations and visibility. Do not equate
+redaction with encryption or guarantee that every input secret pattern is
+recognized. Review [redaction](../reference/runtime/redaction.md),
+[metadata](../reference/sources/metadata-payload.md), and provider failure
+paths before adding new fields.
+
+The optional full-document ask cache retains source text in process memory.
+Its daemon startup core-dump guard does not encrypt memory or protect a
+compromised process. SQLite also contains an embedding-vector cache, while
+Qdrant owns published retrieval vectors. Backups need equivalent access
+controls and consistent state boundaries; follow
+[backup and restore](../reference/operations/backup-restore.md).
+
+## Network exposure
+
+Tracked Compose provider mappings are loopback-bound and checked by
+`scripts/check_compose_port_bindings.py`. Containers still listen on their
+internal interfaces. A custom network, port override, proxy, or tunnel can
+change reachability; inspect actual published ports and policy.
+
+Chrome CDP/management is a privileged unauthenticated control interface,
+not a public API to expose directly. Qdrant and embedding providers also
+need an explicit trusted network/authentication boundary. Use deliberate
+authenticated cross-host access rather than removing loopback bindings
+to make a failing connection work.
+
+## Verification and maintenance
+
+For a security-relevant change, test denial as well as success, including
+invalid inputs, missing/wrong scope, origin/host restrictions, source roots,
+redaction, output limits, and cancellation. Verify discovery and one safe
+call through the real configured transport after reload/reconnect.
+
+Do not perform reset, broad process kills, firewall changes, or credential
+rotation as a documentation smoke test. Destructive cleanup needs the
+reviewed [prune](../reference/runtime/pruning.md) or
+[reset](../reference/operations/reset.md) plan and explicit target approval.
+Preserve partial-success and unknown-commit evidence before retrying.

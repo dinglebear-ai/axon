@@ -20,7 +20,11 @@ no per-source-family job store.
 `job_kind=watch` + `job_intent=exec`. Legacy family kinds (`Crawl`/`Embed`/
 `Ingest`) are absent.
 
-`job_intent` ∈ `index`/`refresh`/`watch`/`map`/`retrieve`/`answer`/`extract`/`prune`.
+`JobIntent` is defined independently from `JobKind` in
+[`axon-api` enums](../../../crates/axon-api/src/source/enums.rs). Current intents
+are `run`, `acquire`, `refresh`, `watch`, `exec`, `retry`, `recover`,
+`cleanup`, `probe`, `reset`, `index`, `map`, and `extract`. Do not derive
+an intent by copying an operation name.
 
 ## Lifecycle statuses
 
@@ -72,8 +76,8 @@ Site-scope source jobs get a separate conservative Chrome/CDP concurrency rail.
 
 | Env var | TOML key | Default | Purpose |
 |---|---|---|---|
-| `AXON_JOB_STALE_TIMEOUT_SECS` | `workers.watchdog-stale-timeout-secs` | 300 | seconds a running job may stay idle before stale |
-| `AXON_JOB_STALE_CONFIRM_SECS` | `workers.watchdog-confirm-secs` | 60 | seconds stale must stay unchanged before reclaim |
+| `AXON_JOB_STALE_TIMEOUT_SECS` | `jobs.stale-after-secs` | 300 | seconds a running job may stay idle before stale |
+| `AXON_JOB_STALE_CONFIRM_SECS` | `jobs.stale-grace-secs` | 60 | seconds stale must stay unchanged before reclaim |
 | `AXON_WATCHDOG_SWEEP_SECS` | — | 15 | periodic sweep interval |
 | `AXON_WORKER_STARVATION_SECS` | — | 120 | lane starvation safety net (0 disables) |
 | `AXON_JOBS_WORKER_IDLE_EXIT_SECS` | `jobs.worker-idle-exit-secs` | 300 | spawned-worker linger/exit |
@@ -87,12 +91,12 @@ watchdog reclaims stale jobs based on the timeouts above.
 axon jobs list                 # all jobs
 axon jobs get <id>             # status, stages, counts, errors
 axon jobs events <id>          # paged event log
-axon jobs stream               # live event stream
+axon jobs stream               # fetch an event page for stream consumers
 axon jobs cancel <id>
 axon jobs retry <id>           # appends a new attempt (--from-phase, --idempotency-key)
 axon jobs recover              # reclaim stale running jobs (admin)
 axon jobs cleanup              # remove old terminal jobs
-axon jobs clear                # clear all rows (admin)
+axon jobs clear                # clear terminal rows (admin); active jobs need cancel/recover
 axon jobs worker [--idle-exit-secs N]  # standalone worker process
 ```
 
@@ -106,8 +110,17 @@ Generic `/v1/jobs` collection (read/write/admin split is scope-based):
 
 ## Retention
 
-Terminal job rows 30d, detailed events 14d, failed job events 60d, cleanup debt
-until completed, config snapshots ≥ as long as terminal jobs.
+Default windows are 30 days for terminal jobs, 14 for ordinary events, 60
+for failed-job events, 7 for provider reservation history, and 30 for artifact
+references. These are configurable `[jobs]` retention settings, not guaranteed
+minimum preservation periods. Deleting a parent job cascades to its dependent
+rows, so a 60-day failed-event setting cannot preserve events after a
+30-day parent-job sweep. Widen the terminal-job window as well when retaining
+postmortem evidence. Cleanup debt remains until resolved.
+
+A history sweep is destructive maintenance, not source-data pruning or an
+artifact-file backup policy. Check effective values before enabling a live
+retention sweep; see [configuration](../../guides/configuration.md).
 
 ## Layering
 

@@ -1,157 +1,97 @@
 ---
 title: "Coding Rules -- Axon"
 created: 2026-04-04
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Coding Rules -- Axon
 
-Standards and conventions enforced across the Axon codebase.
+Last reviewed: 2026-09-29
+
+This is a contributor checklist, not a second policy source. Read the
+[canonical agent instructions](../../../AGENTS.md),
+[contributing guide](../contributing.md), and the instructions in each
+affected source scope.
 
 ## Git workflow
 
-### Conventional commits
-
-| Prefix | Purpose | Example |
-|--------|---------|---------|
-| `feat:` | New feature | `feat(mcp): add screenshot action` |
-| `fix:` | Bug fix | `fix(crawl): handle timeout on sitemap backfill` |
-| `chore:` | Maintenance | `chore: update spider to 2.47` |
-| `refactor:` | Code restructure | `refactor(services): extract ask pipeline` |
-| `test:` | Tests | `test(vector): add hybrid search tests` |
-| `docs:` | Documentation | `docs: update CONFIG reference` |
-| `ci:` | CI/CD changes | `ci: add nextest to verify` |
-
-### Branch strategy
-
-- `main` is production-ready
-- Feature branches for development
-- PR required before merge
-
-### Never commit
-
-- `.env` files
-- API keys, tokens, or passwords
-- Large binary files
-- `target/`, `node_modules/`, `.next/`
+Work on a focused branch, preserve unrelated uncommitted changes, and submit
+a PR. Use the repository's conventional commit and release rules. Do not
+commit credentials, `.env` secrets, dependency/build caches, or accidental
+binary artifacts. Inspect the staged diff and generated outputs before push.
 
 ## Version bumping
 
-### Bump type rules
+[release/components.toml](../../../release/components.toml) owns shipping
+components, tag prefixes, workflows, and version-bearing files. Follow
+[release checklist](../release-checklist.md), rather than a duplicated list of
+version fields or an assumption that every file changes with every release.
+Product crates use workspace metadata; client/tooling components can have
+separate version contracts.
 
-| Commit prefix | Bump | Example |
-|---------------|------|---------|
-| `feat!:` or `BREAKING CHANGE` | Major | `0.35.0` -> `1.0.0` |
-| `feat:` or `feat(...):` | Minor | `0.35.0` -> `0.36.0` |
-| Everything else | Patch | `0.35.0` -> `0.35.1` |
-
-### Release versioning
-
-`release/components.toml` is the source of truth for releasable component
-shipping paths, tag prefixes, release workflows, version sources, and
-version-bearing files.
-
-Release checklist:
-
-1. Identify changed components with `cargo xtask release-plan --base origin/main --head HEAD`.
-2. Bump only those components with `cargo xtask bump-version patch|minor|major --component <component>`.
-3. Run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
-4. Run `cargo xtask check`.
-
-CLI version-bearing files must have the same version (see the root `CLAUDE.md`
-"Version bumping rules" section):
-
-| File | Field |
-|------|-------|
-| `Cargo.toml` | `version = "X.Y.Z"` in `[package]` |
-| `apps/web/package.json` | `"version": "X.Y.Z"` |
-| `apps/web/package-lock.json` | Root package `"version": "X.Y.Z"` |
-| `apps/web/openapi/axon.json` | `"info.version": "X.Y.Z"` |
-| `README.md` | `Version: X.Y.Z` |
-| `CHANGELOG.md` | New entry under `## [X.Y.Z]` |
-
-`plugins/axon/.claude-plugin/plugin.json` has no `version` key; the plugin is
-versioned by the marketplace, not the manifest.
+The usage plugin at `plugins/axon/` ships no Axon binary, and its manifest
+must not gain a `version` key. Installer/setup behavior lives in the separate
+installer plugin. Hook installation does not imply plugin provisioning.
 
 ## Monolith policy (enforced)
 
-Changed `.rs` files are checked at CI and via lefthook pre-commit:
-
-| Metric | Warn | Fail |
-|--------|------|------|
-| File size | -- | 500 lines |
-| Function size | 80 lines | 120 lines |
-
-Exempt: `tests/**`, `benches/**`, `config/**`, `**/config.rs`.
-
-Exceptions: add to `.monolith-allowlist`.
-
-Enforcement: `scripts/enforce_monoliths.py` runs on staged files.
+Rust source files are capped at 500 lines. Functions warn at 80 lines and fail
+at 120. The [checker](../../../scripts/enforce_monoliths.py), its helpers, and
+[.monolith-allowlist](../../../.monolith-allowlist) define actual exemptions.
+Do not invent an exemption or widen the allowlist merely to pass a new change.
 
 ## Module layout (enforced)
 
-Rust 2018+ file-per-module layout. `mod.rs` is forbidden:
-
-```
-foo.rs          <- module root (declarations: mod bar; mod baz;)
-foo/
-  bar.rs        <- submodule
-  baz.rs        <- submodule
-```
-
-Enforcement: `cargo xtask check-no-mod-rs`.
+No `mod.rs`. Use a module root such as `foo.rs` and submodules under `foo/`.
+Preserve existing explicit paths, test sidecar names, cfg gates, and selectors.
+`cargo check` alone does not compile or run the affected tests.
 
 ## Rust code standards
 
-- `cargo fmt` before committing
-- `cargo clippy` clean (all warnings are errors in CI)
-- `unsafe` code is denied (`#[deny(unsafe_code)]` in `Cargo.toml`)
-- Errors: `Box<dyn Error>` at command boundaries, typed errors internally
-- Logging: `log_info` / `log_warn` (not `println!` in library code)
-- `--json` flag enables machine-readable output on all result-printing commands
-- Structured log output via `tracing` with `env-filter`
+Keep transport-neutral DTOs in `axon-api`, domain logic in its owning crate,
+and cross-domain orchestration in `axon-services`. Transports must not import
+domain-internal `::ops::*`. Run `cargo xtask check-layering` after boundary
+changes and retain its exact reviewed exception contracts.
+
+Use the [error taxonomy](../../pipeline-unification/runtime/error-handling.md)
+for stable codes, typed causes, stage/entity context, retryability, safe
+side-effect reporting, and concrete recovery actions. Do not flatten provider
+errors into unexplained strings or hide failure behind an empty success.
+Structured results go to stdout; diagnostics/logs go to stderr and correlate
+through `axon-observe`.
 
 ### Services layer contract
 
-- CLI commands, MCP handlers, and HTTP routes all call through `src/services/`
-- Each service function returns a typed result struct (no raw JSON, no stdout side-effects)
-- Service result types live in domain modules under `src/services/types/service/` and are re-exported through `src/services/types/service.rs`
+CLI, MCP, and HTTP call `axon-services` and public domain contracts. Shared
+result DTOs do not belong in a new private transport/services type hierarchy.
+Adapters emit normalized documents; they do not create family-specific
+embedding pipelines or queues. One source job spans the shared pipeline.
 
-## TypeScript code standards (web panel)
+## TypeScript code standards
 
-- ESM modules, `import` syntax
-- No `any` types
-- Strict mode in `tsconfig.json`
-- Static Next.js export only; runtime APIs are served by Rust under `src/web`
+Use each app's TypeScript, lint, package-manager, and test configuration.
+Shared DTO/client contracts must be regenerated from their owning schemas,
+not patched independently in a UI. Browser rendering, native-shell behavior,
+and live API integration need separate evidence.
 
 ## Pre-commit hooks (lefthook)
 
-| Hook | Purpose |
-|------|---------|
-| `enforce_monoliths.py` | File and function size limits |
-| `enforce_no_legacy_symbols.py` | Block deprecated names |
-| `cargo xtask check` | Runs all xtask sub-checks below in one invocation (lefthook `xtask-check`) |
-| `cargo xtask check-env-staged` | Block .env commits |
-| `cargo xtask check-no-mod-rs` | No mod.rs files |
-| `cargo xtask check-unwraps` | Flag new .unwrap()/.expect() calls (warn-only) |
-| `cargo xtask check-mcp-http` | MCP transport configuration parity |
-| `cargo xtask check-claude-symlinks` | AGENTS.md/GEMINI.md symlinks present |
-| `cargo xtask check-broken-symlinks` | No broken symlinks committed |
-| `cargo xtask check-secrets` | Scan staged changes for secret material |
+[lefthook.yml](../../../lefthook.yml) and the [Justfile](../../../Justfile)
+are authoritative. Repository checks include module/monolith limits,
+layering, secrets, symlink correctness, and generated contracts as applicable.
+The compatibility command name `check-claude-symlinks` validates canonical
+`AGENTS.md` files with direct `CLAUDE.md` and `GEMINI.md` aliases.
 
-Install hooks:
-
-```bash
-./scripts/install-git-hooks.sh
-```
+Use [testing](../testing.md) and [documentation checks](../documentation.md)
+for the affected change. A hook returning success is not evidence that
+unselected tests, external providers, or a production deployment were checked.
 
 ## Performance profiles
 
-Concurrency is tuned relative to available CPU cores:
-
-| Profile | Crawl | Sitemap | Backfill | Timeout | Retries |
-|---------|-------|---------|----------|---------|---------|
-| `high-stable` (default) | CPUs x 8 | CPUs x 12 | CPUs x 6 | 20s | 2 |
-| `balanced` | CPUs x 4 | CPUs x 6 | CPUs x 3 | 30s | 2 |
-| `extreme` | CPUs x 16 | CPUs x 20 | CPUs x 10 | 15s | 1 |
-| `max` | CPUs x 24 | CPUs x 32 | CPUs x 20 | 12s | 1 |
+Effective concurrency and timeouts come from typed configuration, provider
+reservations, and runtime policy. Do not tune from an old CPU-multiplier table.
+Consult [configuration](../../guides/configuration.md),
+[pipeline performance boundaries](../../guides/pipeline-performance-boundaries.md),
+and [performance operations](../../operations/performance.md). Preserve
+authorization, cancellation, memory/output bounds, and publication correctness
+when optimizing.

@@ -1,279 +1,184 @@
 #!/usr/bin/env python3
-"""Generate action reference index and per-action surface blocks.
+"""Render action navigation and marked surface blocks from canonical JSON.
 
-Sources:
-- docs/reference/api-parity.md for CLI/service/MCP/REST parity
-- docs/reference/actions/*.md as the existing human-authored body pages
-
-The generator intentionally owns only the index page and the marked "Surfaces"
-block in each action page. Command-specific examples and operational notes stay
-handwritten below the generated block.
+The handwritten action body is never regenerated. CLI, MCP, and REST presence
+come from their owning registries, not a Markdown table or guessed command name.
 """
-
 from __future__ import annotations
-
 import argparse
 import dataclasses
-import html
 import re
+import sys
 from pathlib import Path
-
+from doc_schema import ContractError, cell, load_contract, operations
 
 BEGIN = "<!-- BEGIN GENERATED ACTION SURFACES -->"
 END = "<!-- END GENERATED ACTION SURFACES -->"
+T = chr(96)
+# These are navigation joins, not an assertion that every suboperation has parity.
+REST_FAMILIES = {"memory": "memories", "watch": "watches", "source": "sources"}
+SOURCE_PAGES = {"github", "reddit", "youtube"}
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class Surface:
     name: str
-    service: str
-    mcp: str
-    rest: str
-    notes: str
+    cli: tuple[str, ...]
+    mcp: tuple[str, ...]
+    rest: tuple[str, ...]
+    notes: str = ""
 
 
-SOURCE_REDIRECTS = {
-    "github": Surface(
-        name="github",
-        service="services::source::* via SourceRequest",
-        mcp="`source`",
-        rest="`POST /v1/sources`",
-        notes="Compatibility source page. Use the unified source action for CLI, REST, and MCP.",
-    ),
-    "reddit": Surface(
-        name="reddit",
-        service="services::source::* via SourceRequest",
-        mcp="`source`",
-        rest="`POST /v1/sources`",
-        notes="Compatibility source page. Use the unified source action for CLI, REST, and MCP.",
-    ),
-    "youtube": Surface(
-        name="youtube",
-        service="services::source::* via SourceRequest",
-        mcp="`source`",
-        rest="`POST /v1/sources`",
-        notes="Compatibility source page. Use the unified source action for CLI, REST, and MCP.",
-    ),
-}
-
-REMOVED_CLI_ENTRIES = {
-    "crawl": "`axon crawl` reserved; use `axon <url> --scope site|docs`",
-    "embed": "Removed; use `axon <path-or-source>`",
-    "ingest": "Removed; use `axon <source>`",
-    "code-search": "Removed; use `axon <path> --scope directory`",
-    "code-search-watch": "Removed; use `axon <path> --watch`",
-}
+def canonical_name(name: str) -> str:
+    return name.replace("-", "_")
 
 
-def strip_ticks(value: str) -> str:
-    value = re.sub(r"<br\s*/?>", ", ", value)
-    value = re.sub(r"\s+", " ", value).strip()
-    return value
-
-
-def split_markdown_row(line: str) -> list[str]:
-    raw = line.strip().strip("|")
-    return [cell.strip() for cell in raw.split("|")]
-
-
-def parse_api_parity(path: Path) -> dict[str, Surface]:
-    rows: dict[str, Surface] = {}
-    in_matrix = False
-    for line in path.read_text().splitlines():
-        if line.startswith("## Route Parity Matrix"):
-            in_matrix = True
+def read_surfaces(root: Path) -> dict[str, Surface]:
+    cli = load_contract(root, "docs/reference/cli/commands.json", "cargo xtask schemas cli")
+    mcp = load_contract(root, "docs/reference/mcp/tool-schema.json", "cargo xtask schemas mcp")
+    rest = load_contract(root, "docs/reference/rest/openapi.json", "cargo xtask schemas openapi")
+    commands = cli.get("commands")
+    routes = rest.get("routes")
+    if not isinstance(commands, list) or not commands or not isinstance(routes, list) or not routes:
+        raise ContractError("CLI commands and REST routes must be nonempty registry arrays")
+    cli_groups: dict[str, set[str]] = {}
+    rest_groups: dict[str, set[str]] = {}
+    mcp_groups: dict[str, set[str]] = {}
+    for command in commands:
+        path = command.get("path") if isinstance(command, dict) else None
+        if not isinstance(path, list) or not path or not all(isinstance(p, str) and p for p in path):
+            raise ContractError("CLI registry entry has no valid command path")
+        cli_groups.setdefault(canonical_name(path[0]), set()).add("axon " + " ".join(path))
+    for route in routes:
+        if not isinstance(route, dict) or not all(isinstance(route.get(k), str) for k in ("path", "method")):
+            raise ContractError("REST registry entry must contain path and method")
+        if not route["path"].startswith("/v1/"):
             continue
-        if in_matrix and line.startswith("## "):
-            break
-        if not in_matrix or not line.startswith("| `"):
-            continue
-        cells = split_markdown_row(line)
-        if len(cells) < 5 or cells[0] == "`---`":
-            continue
-        match = re.match(r"`([^`]+)`", cells[0])
-        if not match:
-            continue
-        name = match.group(1)
-        rows[name] = Surface(
-            name=name,
-            service=strip_ticks(cells[1]),
-            mcp=strip_ticks(cells[2]),
-            rest=strip_ticks(cells[3]),
-            notes=strip_ticks(cells[4]),
+        segment = canonical_name(route["path"].split("/")[2])
+        family = next((k for k, v in REST_FAMILIES.items() if v == segment), segment)
+        rest_groups.setdefault(family, set()).add(route["method"].upper() + " " + route["path"])
+    for operation in operations(mcp):
+        mcp_groups.setdefault(canonical_name(operation["action"]), set()).add(operation["name"])
+    names = set(cli_groups) | set(rest_groups) | set(mcp_groups)
+    result = {
+        name: Surface(name, tuple(sorted(cli_groups.get(name, ()))), tuple(sorted(mcp_groups.get(name, ()))), tuple(sorted(rest_groups.get(name, ()))))
+        for name in names
+    }
+    for page in SOURCE_PAGES:
+        if "source" not in result:
+            raise ContractError("source compatibility pages require the canonical source surface")
+        source = result["source"]
+        result[page] = Surface(page, ("axon <source>",), source.mcp, source.rest, "Source-specific guide, not a dedicated provider command. Use unified source acquisition.")
+    if "sessions" in result:
+        source = result.get("source")
+        if source is None:
+            raise ContractError("session ingestion requires the canonical source surface")
+        result["sessions"] = Surface(
+            "sessions", result["sessions"].cli, source.mcp, source.rest,
+            "Transcript ingestion uses session:<provider>:<path> through source acquisition; mobile chat sessions are a different resource.",
         )
-    rows.update(SOURCE_REDIRECTS)
-    return rows
+    return result
 
 
-def cli_entry(action: str, surface: Surface) -> str:
-    if action in REMOVED_CLI_ENTRIES:
-        return REMOVED_CLI_ENTRIES[action]
-    if action in {"github", "reddit", "youtube"}:
-        return "`axon <source>`"
-    return f"`axon {action} ...`"
-
-
-def mcp_entry(surface: Surface) -> str:
-    if surface.mcp in {"no action", "no dedicated action"}:
-        return "Not exposed as a dedicated MCP action."
-    if "." in surface.mcp and "," in surface.mcp:
-        return f"`{{ \"action\": \"{surface.name}\", \"subaction\": \"...\" }}` ({surface.mcp})"
-    if "." in surface.mcp:
-        first = surface.mcp.split(",", 1)[0].strip("` ")
-        action, subaction = first.split(".", 1)
-        return f"`{{ \"action\": \"{action}\", \"subaction\": \"{subaction}\" }}` ({surface.mcp})"
-    return f"`{{ \"action\": \"{surface.mcp.strip('`')}\" }}`"
-
-
-def rest_entry(surface: Surface) -> str:
-    text = surface.rest
-    text = re.sub(r"\s*=\s*(Implemented|Partial|Missing|Deferred)", r" (\1)", text)
-    if text in {"Missing", "Deferred"}:
-        return text
-    return text
+def entries(values: tuple[str, ...]) -> str:
+    return "<br>".join(f"<code>{cell(value)}</code>" for value in values) if values else "Not exposed in this registry"
 
 
 def generated_block(surface: Surface) -> str:
-    rows = [
-        ("CLI", cli_entry(surface.name, surface)),
-        ("REST", rest_entry(surface)),
-        ("MCP", mcp_entry(surface)),
-        ("Service", f"`{surface.service}`" if not surface.service.startswith("`") else surface.service),
-    ]
-    lines = [
-        BEGIN,
-        "## Surfaces",
+    return "\n".join([
+        BEGIN, "## Surfaces", "", "| Surface | Entry point |", "|---|---|",
+        f"| CLI | {entries(surface.cli)} |",
+        f"| REST | {entries(surface.rest)} |",
+        f"| MCP atomic tools | {entries(surface.mcp)} |",
+        "| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |",
         "",
-        "| Surface | Entry point |",
-        "|---|---|",
-    ]
-    lines.extend(f"| {label} | {entry} |" for label, entry in rows)
-    if surface.notes:
-        lines.extend(["", f"Parity notes: {surface.notes}"])
-    lines.append(END)
-    return "\n".join(lines)
+        f"MCP names describe the atomic projection. The legacy {T}axon{T} tool uses the corresponding action/subaction selectors; {T}both{T} exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.",
+        "",
+        ("Family-level navigation does not imply identical suboperations or request shapes across transports. " + surface.notes).rstrip(),
+        END,
+    ])
 
 
 def insert_block(text: str, block: str) -> str:
-    pattern = re.compile(rf"{re.escape(BEGIN)}.*?{re.escape(END)}", re.DOTALL)
-    if pattern.search(text):
-        return pattern.sub(block, text)
-
-    lines = text.splitlines()
-    insert_at = 1
-    for index, line in enumerate(lines[:8]):
-        if line.startswith("Last Modified:"):
-            insert_at = index + 1
+    """Replace exactly one owned block; preserve all bytes outside it."""
+    starts, ends = text.count(BEGIN), text.count(END)
+    if starts or ends:
+        if starts != 1 or ends != 1 or text.index(BEGIN) >= text.index(END):
+            raise ContractError("action page has malformed or duplicate generated markers; repair the marker pair without losing prose")
+        start, end = text.index(BEGIN), text.index(END) + len(END)
+        return text[:start] + block + text[end:]
+    lines = text.splitlines(keepends=True)
+    start = 0
+    if lines and lines[0].strip() == "---":
+        closing = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if closing is None:
+            raise ContractError("action page has unclosed YAML frontmatter")
+        start = closing + 1
+    for i in range(start, len(lines)):
+        if lines[i].startswith("# "):
+            start = i + 1
+            if start < len(lines) and lines[start].startswith("Last Modified:"):
+                start += 1
             break
-    lines[insert_at:insert_at] = ["", block, ""]
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def page_title(path: Path) -> str:
-    for line in path.read_text().splitlines():
-        if line.startswith("# "):
-            return line[2:].strip()
-    return path.stem
+    return "".join(lines[:start]) + "\n" + block + "\n\n" + "".join(lines[start:])
 
 
 def generate_index(actions_dir: Path, surfaces: dict[str, Surface]) -> str:
-    pages = [p for p in sorted(actions_dir.glob("*.md")) if p.name != "README.md"]
+    pages = {canonical_name(p.stem): p for p in sorted(actions_dir.glob("*.md")) if p.name != "README.md"}
     lines = [
-        "# Action Reference",
-        "Last Modified: 2026-06-13",
-        "",
-        "<!-- AUTO-GENERATED by scripts/generate_action_docs.py; edit source action pages, not this index. -->",
-        "",
-        "Axon exposes one logical action layer through three adapters: local CLI commands, direct `/v1` REST routes, and the single MCP `axon` tool routed by `action` plus optional `subaction`. The CLI always runs in-process; client/server callers should use direct REST or MCP rather than the removed `/v1/actions` envelope.",
-        "",
-        "## Dispatch Layer",
-        "",
-        "| Layer | Contract | Source |",
-        "|---|---|---|",
-        "| CLI | `axon <action> ...` and lifecycle subcommands | `src/cli/commands.rs`, `src/lib.rs` |",
-        "| Service | Typed request/result structs shared by adapters | `src/services/` |",
-        "| REST | Direct `/v1/<action>` routes and lifecycle job routes | `src/web/server/routing.rs`, `docs/reference/api-parity.md` |",
-        "| MCP | One `axon` tool with `action` and optional `subaction` | `src/mcp/schema.rs`, `docs/reference/mcp/tool-schema.md` |",
-        "",
-        "## Actions",
-        "",
-        "| Action | CLI | REST | MCP | Doc |",
-        "|---|---|---|---|---|",
+        "# Action Reference", "",
+        "<!-- AUTO-GENERATED by scripts/generate_action_docs.py; edit source action pages, not this index. -->", "",
+        "CLI, REST, and MCP are projections over shared Rust services. This index reads the generated CLI, REST, and MCP JSON registries; it does not parse the presentation-only parity matrix.", "",
+        "## Dispatch Layer", "", "| Layer | Source of truth |", "|---|---|",
+        "| CLI | [Generated command registry](../cli/commands.json), exported from axon-cli/axon-core |",
+        "| Service | [axon-services](../../../crates/axon-services/src/lib.rs) and [crate ownership](../../architecture/crate-ownership.md) |",
+        "| REST | [Generated route registry](../rest/openapi.json), exported from axon-web |",
+        "| MCP | [Operation schemas and projection metadata](../mcp/tool-schema.json), exported from axon-mcp |", "",
+        "## Actions", "", "| Family | CLI | REST | MCP atomic tools | Guide |", "|---|---|---|---|---|",
     ]
-    for page in pages:
-        action = page.stem
-        surface = surfaces.get(action)
-        title = html.escape(page_title(page))
-        if surface is None:
-            surface = Surface(
-                name=action,
-                service="Not inventoried",
-                mcp="no dedicated action",
-                rest="Not inventoried",
-                notes="",
-            )
-            cli = cli_entry(action, surface)
-            rest = "Not inventoried"
-            mcp = "Not inventoried"
-        else:
-            cli = cli_entry(action, surface)
-            rest = rest_entry(surface)
-            mcp = surface.mcp
-        lines.append(f"| `{action}` | {cli} | {rest} | {mcp} | [{title}]({page.name}) |")
-    lines.extend(
-        [
-            "",
-            "## Generation",
-            "",
-            "Regenerate this index and every per-page `Surfaces` block after CLI, REST, MCP, or service dispatch changes:",
-            "",
-            "```bash",
-            "python3 scripts/generate_action_docs.py",
-            "```",
-            "",
-            "The generator reads `docs/reference/api-parity.md`, then updates only this index and the marked generated blocks in `docs/reference/actions/*.md`.",
-        ]
-    )
+    for name in sorted(set(pages) | set(surfaces)):
+        surface = surfaces.get(name, Surface(name, (), (), (), "No canonical surface has this page's name."))
+        page = pages.get(name)
+        guide = f"[{cell(name)}]({page.name})" if page else "See linked generated registries; no dedicated action guide"
+        lines.append(f"| {cell(name)} | {entries(surface.cli)} | {entries(surface.rest)} | {entries(surface.mcp)} | {guide} |")
+    lines += ["", "## Generation", "",
+        "~~~bash", "cargo xtask generated-contracts refresh", "cargo xtask generated-contracts check", "~~~", "",
+        "This generator owns this index and only the marked Surfaces block in each action page. Narrative, examples, and dates outside those blocks remain handwritten. Missing registry inputs, bad provenance, and malformed markers fail before any output is written.", "",
+        "The index includes canonical families without a dedicated prose page instead of silently omitting them. A family join is navigation, not a per-operation parity guarantee. MCP atomic names apply only when that projection is enabled; the aggregate tool and auxiliary presentation/resource/task surfaces remain distinct."]
     return "\n".join(lines) + "\n"
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true", help="fail if generated docs are stale")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="fail on drift without writing")
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args()
-
-    repo = Path(__file__).resolve().parents[1]
-    actions_dir = repo / "docs" / "reference" / "actions"
-    surfaces = parse_api_parity(repo / "docs" / "reference" / "api-parity.md")
-
-    updates: dict[Path, str] = {}
-    for path in sorted(actions_dir.glob("*.md")):
-        if path.name == "README.md":
-            continue
-        surface = surfaces.get(path.stem)
-        if surface is None:
-            surface = Surface(
-                name=path.stem,
-                service="Not inventoried",
-                mcp="no dedicated action",
-                rest="Not inventoried",
-                notes="This action page is missing from docs/reference/api-parity.md.",
-            )
-        updates[path] = insert_block(path.read_text(), generated_block(surface))
-    updates[actions_dir / "README.md"] = generate_index(actions_dir, surfaces)
-
-    stale = [path for path, new_text in updates.items() if path.read_text() != new_text]
-    if args.check:
-        if stale:
+    root = args.repo_root.resolve()
+    try:
+        surfaces = read_surfaces(root)
+        directory = root / "docs/reference/actions"
+        if not directory.is_dir():
+            raise ContractError("missing docs/reference/actions directory")
+        updates: dict[Path, str] = {}
+        for page in sorted(directory.glob("*.md")):
+            if page.name == "README.md":
+                continue
+            name = canonical_name(page.stem)
+            surface = surfaces.get(name, Surface(name, (), (), (), "This guide has no matching canonical operation family; do not infer a command from its filename."))
+            updates[page] = insert_block(page.read_text(encoding="utf-8"), generated_block(surface))
+        updates[directory / "README.md"] = generate_index(directory, surfaces)
+        stale = [path for path, text in updates.items() if not path.exists() or path.read_text(encoding="utf-8") != text]
+        if args.check:
             for path in stale:
-                print(f"stale: {path.relative_to(repo)}")
-            return 1
+                print(f"stale: {path.relative_to(root)}; run cargo xtask generated-contracts refresh", file=sys.stderr)
+            return int(bool(stale))
+        for path in stale:
+            path.write_text(updates[path], encoding="utf-8")
+        print(f"Action documentation: refreshed {len(stale)} owned outputs/blocks")
         return 0
-
-    for path, new_text in updates.items():
-        if path.read_text() != new_text:
-            path.write_text(new_text)
-    return 0
+    except (ContractError, OSError) as error:
+        print(f"Action documentation input error: {error}; no output was written during input validation", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

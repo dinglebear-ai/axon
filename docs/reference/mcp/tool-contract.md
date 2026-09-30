@@ -1,121 +1,138 @@
 # MCP Tool Contract
 
-Last Modified: 2026-07-19
+Last reviewed: 2026-09-29
 
-Axon exposes MCP through **one** operation tool named `axon`. Callers send an
-`action` (and optional `subaction`) plus a typed request body; the server maps
-the request to `axon-api` DTOs, calls `axon-services`, and returns a typed
-result.
+Axon has one canonical dispatcher with startup-static `legacy`, `atomic`, and
+`both` projections. Legacy mode accepts the aggregate `axon` tool with
+`action`/`subaction`; atomic mode advertises canonical leaf names and rejects
+those fixed routing fields in leaf arguments. `both` publishes both forms.
+The auxiliary `axon_status_dashboard` tool is a separate preserved route.
 
-> Live source of truth: [`tool-schema.md`](tool-schema.md) (160 lines) and
-> [`tool-schema.json`](tool-schema.json). Contract source:
-> [`docs/pipeline-unification/surfaces/tool-contract.md`](../../pipeline-unification/surfaces/tool-contract.md).
-> Implementation: `crates/axon-mcp/src/schema.rs`, `crates/axon-mcp/src/server.rs`.
+The [generated tool reference](tool-schema.md),
+[machine-readable contract](tool-schema.json), and
+[projection guide](overview.md) describe the current catalog. Discovery must
+be checked against the actual running build, not a remembered count or only
+the primary request enum.
 
-## Canonical envelope
+## Request and dispatch contract
 
-```json
-{ "ok": true, "action": "<resolved action>", "subaction": "<resolved subaction>", "data": { "..." : "..." } }
-```
+Shared domain DTOs belong to `axon-api`. Transport-only request envelopes and
+intentionally distinct system/watch requests live in `axon-mcp`; handlers
+convert to public contracts and call shared services. The primary
+`AxonRequest` enum is not the whole catalog. See
+[server.rs](../../../crates/axon-mcp/src/server.rs),
+[system requests](../../../crates/axon-mcp/src/server/system_requests.rs), and
+[operation registry](../../../crates/axon-mcp/src/server/operations.rs).
 
-Parser is strict serde: `action` is required and must match a canonical name;
-`subaction` is optional for lifecycle families (defaults to `start` when
-omitted for `extract`). There are no fallback fields (`command`/`op`/`operation`),
-no token normalization, and no alias remapping.
+Legacy requests require a valid `action` and the fields required by its
+selected schema. Atomic requests use the discovered leaf schema without
+`action` or fixed `subaction`. Fixed selectors are rejected even when their
+values match the intended operation. Do not replace these rules with a
+permissive union of all action properties.
 
-## Direct actions (no subaction required)
-
-| Action | Required field |
-|---|---|
-| `ask` | `query` |
-| `query` | `query` |
-| `research` | `query` |
-| `evaluate` | `query` |
-| `brand` | `url` |
-| `endpoints` | `url` |
-| `map` | `url` |
-| `screenshot` | `url` |
-| `diff` | `url_a`, `url_b` |
-| `retrieve` | `url` |
-| `summarize` | `url` or `urls` |
-| `source` | none (optional `source`/`scope`/`collection`/`response_mode`/`detached`) |
-| `doctor`, `help`, `prune`, `status`, `suggest` | none |
-
-## Lifecycle action families
-
-| Family | Subactions |
-|---|---|
-| `extract` | `start` (requires `urls` array) |
-| `memory` | `remember` / `list` / `search` / `show` / `link` / `supersede` / `context` / `reinforce` / `contradict` / `pin` / `archive` / `forget` / `review` / `compact` / `import` / `export` |
+Safety/destructiveness/idempotence hints describe effects; they do not grant
+permission. Caller authorization, explicit write elevation, ownership and
+visibility, and destructive confirmation remain separate runtime checks.
+Plans may persist review records even when their execution is deferred.
 
 ## Source acquisition
 
-Universal indexing goes through `action=source` with
-`scope=page`/`site`/`docs`/`repo`/`package`/`subreddit`. Focused `scrape`,
-`crawl`, `embed`, and `ingest` actions project onto the same `SourceRequest`
-pipeline; `code_search` is a committed-state read projection.
+The universal source operation accepts a canonical source selector and an
+adapter-supported scope. Focused `scrape`, `crawl`, `embed`, and `ingest`
+projections remain supported and reuse shared source services. `code_search`
+queries committed code vectors. Do not classify those projections as removed
+or create private acquisition-to-embedding pipelines for them.
 
-## Response modes
+Example arguments for the legacy aggregate:
 
-`response_mode` (`ResponseMode` enum):
+<!-- doc-example: kind=json schema=mcp/tool-schema.json#/$defs/AxonToolInput -->
+```json
+{ "action": "source", "source": "https://example.com", "scope": "page" }
+```
 
-| Mode | Behavior |
+This submits work when actually called; it is not a read-only capability
+probe. Host-local inputs require server-side allowed roots and acquisition
+authorization. CLI/MCP tool-source discovery is not permission to execute
+the discovered tool. See [source scopes](../sources/adapter-scopes.md).
+
+## Response modes and artifacts
+
+| Mode | Meaning |
 |---|---|
-| `path` | Return artifact-ref metadata; client follows `artifact_id` |
-| `inline` | Inline the full payload |
-| `both` | Inline + artifact path |
-| `auto_inline` (default) | Inline small payloads; artifact path for large ones |
+| `artifact` | Store the result and return opaque artifact metadata |
+| `inline` | Return inline content subject to size/visibility policy |
+| `both` | Return permitted inline content and an artifact reference |
+| `auto_inline` | Inline small permitted results; use artifacts otherwise |
 
-MCP responses never expose a server filesystem path; clients follow the
-returned `artifact_id`. Heavy operations write artifacts under
-`~/.axon/artifacts/<context>/` (override with `AXON_MCP_ARTIFACT_DIR`).
-Compact metadata fields: `path`, `bytes`, `line_count`, `sha256`, `preview`,
-`preview_truncated`.
+Defaults can vary by operation; `retrieve` is inline-first for bounded
+document reading. Use the actual response schema rather than assuming every
+result is the same `{ok, data}` object. Artifact responses expose opaque
+`artifact_id` values, not a public `path` contract or a server filesystem
+location. Follow the returned resource/API metadata instead of constructing
+private paths.
 
 ## Task support
 
-The server advertises the SEP-2663 `io.modelcontextprotocol/tasks` extension in
-its `extensions` capability map. Task support is **server-wide, not per-tool** —
-rmcp 3.x removed the `execution.taskSupport` tool field, so no tool advertises
-one. A client opts an individual `tools/call` into task mode by carrying the
-`io.modelcontextprotocol/tasks` key in the request `_meta` and declaring the
-tasks extension capability itself; without that key the call is served
-synchronously. **Task starts are supported for `extract.start` only.** Task IDs
-are stable aliases over Axon job IDs: `axon:<kind>:<job_uuid>`. The lifecycle
-surface is `tasks/get` and `tasks/cancel` — SEP-2663 removed `tasks/result` and
-`tasks/list`, and `tasks/get` now inlines the terminal result (or error) in the
-returned `DetailedTask`. Poll interval ≥ 5000 ms.
+The current server advertises task capability through its extension map.
+Only canonical `extract.start` supports task-augmented calls, whether reached
+through legacy `axon` or atomic `extract_start`. A source job is not
+automatically an MCP protocol task.
+
+A client must negotiate the task extension and supply task metadata on the
+call. Capability and operation-support checks occur before enqueue. Caller
+identity, authorization, and progress metadata must survive canonicalization.
+The task identifier aliases the durable job; task acceptance is not job
+completion.
+
+In this implementation, `tasks/get` returns the detailed task, including its
+terminal result/error. `tasks/cancel` acknowledges the request and the next
+`tasks/get` shows the observed state. Do not assume an older client's
+`tasks/result` or `tasks/list` sequence is implemented by this build. Respect
+the returned polling interval. See
+[task handlers](../../../crates/axon-mcp/src/server/tasks.rs) and
+[task-augmented calls](overview.md#task-augmented-calls).
 
 ## Resources
 
-- `axon://schema/mcp-tool` — this tool's schema.
-- `ui://axon/status-dashboard` — MCP Apps status-dashboard widget (presentation
-  only; not an operation surface).
+| URI | Purpose |
+|---|---|
+| `axon://schema/mcp-tool` | Compatible aggregate tool schema |
+| `axon://schema/mcp-operations` | Canonical operation schemas, safety/task metadata, selected projection, and active names |
+| `ui://axon/status-dashboard` | MCP App status presentation |
+
+These resources do not replace `tools/list` or authorize operations. Keep
+discovery, read-resource behavior, dashboard metadata, tool authorization,
+and task capability consistent.
 
 ## Transport and auth
 
-| Command | Transport |
-|---|---|
-| `axon mcp` | stdio (default) |
-| `axon mcp --transport http` | streamable HTTP at `/mcp` |
-| `axon mcp --transport both` | stdio + HTTP concurrently |
-| `axon serve mcp` | unified web + MCP HTTP on one listener |
+`axon mcp` defaults to stdio. HTTP/both transport and `axon serve mcp` use
+the unified HTTP listener. Loopback-only tokenless development is distinct
+from non-loopback deployment, which requires `AXON_HTTP_TOKEN` or OAuth.
+Web-panel password/session unlock is not an API/MCP token. See
+[transport](transport.md) and [MCP authentication](../../operations/auth/mcp-auth.md).
 
-MCP HTTP auth shares the same policy as the unified HTTP server: loopback
-allows tokenless; non-loopback requires `AXON_HTTP_TOKEN` or OAuth
-(`AXON_AUTH_MODE=oauth`). See [overview.md](overview.md).
+## Errors and partial results
 
-## Error semantics
+Input-shape and unsupported-operation failures must identify the invalid
+field/selector. Authorization failures must name the missing scope or
+prerequisite without revealing credentials. Runtime failures retain safe
+`ApiError`/typed-cause context through MCP error or result envelopes.
 
-- Input/shape failures → MCP `invalid_params`.
-- Runtime failures → MCP `internal_error`.
+Do not flatten provider failures into generic strings, report a failed stage
+as a successful empty result, or imply that a transport error rolled back
+already-published state. Preserve operation/stage, affected entity and job
+IDs, retryability, side effects, and recovery actions. Partial success,
+degradation, cancellation, and unknown commit status are distinct outcomes.
 
-## Removed actions
+## Maintenance
 
-Removed legacy actions (`vertical_scrape`, `purge`, `dedupe`, and
-`code_search_watch`) are **not** valid `action` enum values and are rejected
-before dispatch. Use `source` or a focused source projection for indexing and
-`prune` for cleanup.
+`vertical_scrape`, `purge`, `dedupe`, and `code_search_watch` are removed
+legacy actions. Use source/projection operations for acquisition and the
+reviewed prune lifecycle for cleanup.
 
-If the MCP action router or response envelope changes, update `crates/axon-mcp/src/schema.rs` and
-re-run `python3 scripts/generate_mcp_schema_doc.py` in the same PR.
+Follow [adding an MCP action](../../development/adding-mcp-action.md), refresh
+generated contracts in their declared order, and test the real catalog and
+calls for legacy/atomic/both, invalid arguments, denied authorization,
+resources, and tasks. A generated schema or accepting job ID alone is not
+proof of successful execution.

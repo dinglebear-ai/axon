@@ -1,21 +1,8 @@
-//! `cargo xtask docs` — the docs-generator command family described by
-//! `docs-generator-contract.md`.
-//!
-//! This is the CORE slice plus the example-validation pass: `generate` and
-//! `check` verbs, where `check` also validates marker-annotated fenced
-//! examples (see `examples.rs`). The full contract describes 17 per-family
-//! subcommands, presentation-token generation, README<->CLAUDE.md drift
-//! checks, anchor validation, and CI wiring — those remain intentionally
-//! deferred (see the wave summary in the delivering PR).
-//!
-//! `docs generate` does not re-render markdown from scratch (that job
-//! belongs to the frozen `schemas` generator). It post-processes the
-//! already-generated docs under `docs/reference/**` that `schemas generate`
-//! produces: it rewrites their header comment to cite `cargo xtask docs
-//! generate` (per the contract's "Generated Header" section) and emits a
-//! repo-wide source-input manifest built from the `x-axon.source_inputs`
-//! metadata already embedded in each family's generated JSON schema
-//! artifact.
+//! Render sixteen human-reference families from canonical generated JSON.
+//! The generator owns complete bodies, provenance headers, and the source-input
+//! manifest. Check mode compares without writes and also validates repository
+//! links, active contracts, inventory, and marked examples. The aggregate
+//! generated-contracts command refreshes schemas and ancillary renderers first.
 
 mod artifact;
 mod examples;

@@ -1,20 +1,25 @@
 # MCP Code Patterns -- Axon
 
-Axon MCP uses one operation tool, `axon`, with `action`/`subaction` routing.
+Axon MCP uses one canonical dispatcher with legacy aggregate `axon`,
+atomic leaf, and combined projections, plus an auxiliary dashboard tool.
 MCP handlers are transport adapters over shared `axon-api` DTOs and
 `axon-services` entrypoints.
 
 ## Dispatch Pattern
 
-```rust
-match request {
-    AxonRequest::Source(req) => self.handle_source(req).await?,
-    AxonRequest::Query(req) => self.handle_query(req).await?,
-    AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
-    AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
-    AxonRequest::Prune(req) => self.handle_prune(req).await?,
-}
+```text
+presented tool + arguments + metadata
+  -> canonical operation identity and policy checks
+  -> typed primary, system, or watch request
+  -> existing domain handler -> shared service
+  -> typed result/error and permitted response projection
 ```
+
+This is a responsibility sketch, not an exhaustive Rust match. Inspect
+[server.rs](../../../crates/axon-mcp/src/server.rs) and
+[projection_call.rs](../../../crates/axon-mcp/src/server/projection_call.rs)
+for actual routing order. Atomic leaves reject fixed selector fields and
+reuse handlers instead of calling aggregate MCP internally.
 
 The live action allowlist is `MCP_ACTION_SPECS` in
 `crates/axon-mcp/src/server/authz.rs`. Removed action variants are absent from
@@ -28,8 +33,9 @@ handler dispatch.
 pipeline; read-only `code_search` queries committed local-code vectors.
 `vertical_scrape` remains removed. The universal source shape is:
 
+<!-- doc-example: kind=json schema=mcp/tool-schema.json#/$defs/AxonToolInput -->
 ```json
-{ "action": "source", "source": "https://example.com", "scope": "page", "embed": true }
+{ "action": "source", "source": "https://example.com", "scope": "page" }
 ```
 
 The source handler calls `axon_services::source`/`index_source` and receives a
@@ -62,9 +68,13 @@ Durable async work is surfaced through `action=jobs`, not through one action
 per source or operation kind. Use `subaction=list|get|events|stream|cancel|retry|recover|
 cleanup|clear`.
 
-Source, extract, watch-triggered, memory, and operational work share the unified
-job/event model. Source watches enqueue canonical Source jobs and record those
-job IDs in watch-run history.
+Source, extract, watch-triggered, memory, and operational work share the
+unified job/event model. Preserve the returned job IDs and inspect watch-run
+history rather than inferring job kind from the source family.
+
+Protocol tasks require separate capability negotiation; only extraction
+start currently supports task augmentation. Preserve caller identity and
+progress metadata, and reject unsupported task calls before enqueue.
 
 ## Response Modes
 

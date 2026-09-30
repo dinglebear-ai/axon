@@ -4,7 +4,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod categories;
 mod path_contracts;
+
+use categories::Categories;
 
 use path_contracts::{is_generated_contract_path, is_repo_structure_path};
 
@@ -16,79 +19,6 @@ pub struct PrePushArgs {
     /// Read changed paths from a file instead of diffing git.
     #[arg(long)]
     pub changed_files: Option<PathBuf>,
-}
-
-#[derive(Debug, Default)]
-struct Categories {
-    docs: bool,
-    workflow: bool,
-    rust: bool,
-    web: bool,
-    android: bool,
-    palette: bool,
-    chrome: bool,
-    docker: bool,
-    compose: bool,
-    mcp: bool,
-    security: bool,
-    release: bool,
-    version_files: bool,
-    openapi: bool,
-    codeql_actions: bool,
-    codeql_python: bool,
-    codeql_rust: bool,
-}
-
-impl Categories {
-    fn all() -> Self {
-        Self {
-            docs: true,
-            workflow: true,
-            rust: true,
-            web: true,
-            android: true,
-            palette: true,
-            chrome: true,
-            docker: true,
-            compose: true,
-            mcp: true,
-            security: true,
-            release: true,
-            version_files: true,
-            openapi: true,
-            codeql_actions: true,
-            codeql_python: true,
-            codeql_rust: true,
-        }
-    }
-
-    fn names(&self) -> Vec<&'static str> {
-        let mut names = Vec::new();
-        for (name, enabled) in [
-            ("docs", self.docs),
-            ("workflow", self.workflow),
-            ("rust", self.rust),
-            ("web", self.web),
-            ("android", self.android),
-            ("palette", self.palette),
-            ("chrome", self.chrome),
-            ("docker", self.docker),
-            ("compose", self.compose),
-            ("mcp", self.mcp),
-            ("security", self.security),
-            ("release", self.release),
-            ("version_files", self.version_files),
-            ("openapi", self.openapi),
-            ("codeql_actions", self.codeql_actions),
-            ("codeql_python", self.codeql_python),
-            ("codeql_rust", self.codeql_rust),
-        ] {
-            if enabled {
-                names.push(name);
-            }
-        }
-        names
-    }
 }
 
 #[derive(Debug)]
@@ -521,6 +451,12 @@ fn rust_ci_helper_scripts() -> &'static [&'static str] {
         "scripts/check_shell_completions.sh",
         "scripts/enforce_monoliths.py",
         "scripts/generate_mcp_schema_doc.py",
+        "scripts/doc_schema.py",
+        "scripts/mcp_doc_renderer.py",
+        "scripts/generate_action_docs.py",
+        "scripts/check_mcp_schema_doc.sh",
+        "scripts/check-integration-contracts.py",
+        "scripts/generate-codex-app-server-methods.sh",
         "scripts/test-ask-quality-regressions.sh",
         "scripts/test-mcp-oauth-protection.sh",
         "scripts/test-mcp-tools-mcporter.sh",
@@ -530,6 +466,12 @@ fn rust_ci_helper_scripts() -> &'static [&'static str] {
 fn mcp_ci_helper_scripts() -> &'static [&'static str] {
     &[
         "scripts/generate_mcp_schema_doc.py",
+        "scripts/doc_schema.py",
+        "scripts/mcp_doc_renderer.py",
+        "scripts/generate_action_docs.py",
+        "scripts/check_mcp_schema_doc.sh",
+        "scripts/check-integration-contracts.py",
+        "scripts/generate-codex-app-server-methods.sh",
         "scripts/test-mcp-oauth-protection.sh",
         "scripts/test-mcp-tools-mcporter.sh",
     ]

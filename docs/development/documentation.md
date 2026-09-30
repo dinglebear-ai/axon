@@ -1,12 +1,12 @@
 ---
 title: "Maintaining Axon documentation"
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-29
 ---
 
 # Maintaining Axon documentation
 
-Last reviewed: 2026-09-27
+Last reviewed: 2026-09-29
 
 This guide explains where facts belong and how to change documentation without
 creating a competing source of truth. Start with [AGENTS.md](../../AGENTS.md)
@@ -154,3 +154,75 @@ origin, and reconcile a changed remote without discarding either side. Use a
 normal non-force push to the authorized branch. Verify that local HEAD matches
 the remote branch and that the checkout is clean; a successful local commit
 alone is not publication.
+
+## Generator ownership and complete refresh
+
+Generated documentation is a dependency graph, not a set of Markdown files
+to patch independently. `xtask/src/generated_contracts.rs` orders typed
+schema/contract exports before ancillary references and the 16 documentation
+families. `xtask/src/docs/manifest.rs` declares family inputs and outputs.
+
+| Output | Owner and input |
+|---|---|
+| CLI, DTO, REST, MCP, config and other contract JSON | `cargo xtask schemas ...` and the owning typed registries |
+| Family Markdown, provider/runtime/client indexes | `cargo xtask docs generate`; JSON producer identity and source provenance must match |
+| MCP tool reference | `scripts/generate_mcp_schema_doc.py`, `mcp_doc_renderer.py`, and `doc_schema.py`; canonical MCP operation JSON, not regex over one request enum |
+| Action pages and transport summary | `scripts/generate_action_docs.py`; canonical CLI/MCP/REST inputs, with marked regions preserving handwritten bytes |
+| Literal TOML keys | `xtask/src/runtime_config_docs.rs`; Rust syntax and serde names from the actual raw configuration types |
+| Family parity and dependency/API inventories | xtask checks/generators plus Cargo/public API sources |
+| Codex methods | Pinned CLI version in `contracts/codex-app-server-version.txt`, export script, and tracked method snapshot |
+| Integration compatibility exports | Canonical `contracts/` schema; compatibility copies must remain byte-identical |
+
+The normalized configuration registry is smaller than the literal parser
+shape. [Runtime keys](../reference/config/runtime-keys.md) enumerate serialized
+fields without guessing defaults or claiming inert/rejected settings work.
+Adding a new serde representation that this generator cannot interpret must
+fail with recovery guidance, not silently drop fields.
+
+```bash
+cargo xtask generated-contracts refresh
+cargo xtask generated-contracts check
+python3 scripts/test_mcp_doc_renderer.py
+python3 scripts/test_audit_docs.py
+python3 scripts/test_operational_docs.py
+cargo test -p xtask --tests --bins --locked
+```
+
+The final check is read-only. Verify a second refresh produces no diff and
+keep the pin/producer/input hashes consistent. Missing inputs, malformed
+markers, duplicate operations, dangling references, and wrong producers
+must fail, not yield a successful empty reference. Do not copy generated
+Markdown from a different worktree without its matching source repairs.
+
+The action surface join distinguishes CLI transcript ingestion from mobile
+chat sessions: `axon sessions` submits canonical session source requests;
+`/v1/mobile/sessions` is a different resource. Family-level parity does not
+prove suboperation-level equivalence across transports.
+
+## Whole-tree audit and historical evidence
+
+```bash
+python3 scripts/audit_docs.py --check
+# Optional machine-readable inventory outside the source tree:
+python3 scripts/audit_docs.py --report /tmp/axon-docs-inventory.json
+```
+
+The checker inventories every tracked docs file and hashes its bytes. It
+validates JSON/JSONL and checks current Markdown links, reference-style links,
+heading anchors, duplicate headings, and explicit anchors while ignoring
+fenced code/frontmatter. It is also called by the operational docs gate.
+New files must be staged before a tracked-tree audit can count them.
+
+Historical reports/plans/sessions retain their original evidence and are
+classified separately rather than rewritten into present-tense claims.
+Illustrative code paths are diagnostic hints, not automatic failures; a
+placeholder or explicitly removed path is different from broken navigation.
+The audit does not fetch external URLs, execute examples, or prove every
+semantic assertion in prose. Source-level review and actual runtime tests
+remain necessary for those claims.
+
+Use opt-in `doc-example` markers for schema-validated examples in reference
+pages. A protocol request example must be one valid JSON value; independent
+examples are separate fences or explicitly JSON Lines, not invalid JSON.
+Avoid examples containing live credentials, private deployment paths, or
+unapproved destructive operations.

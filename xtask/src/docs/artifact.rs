@@ -25,7 +25,12 @@ impl GeneratedDocArtifact {
         if content.trim().is_empty() || is_header_only(&content) {
             bail!("docs generator produced an empty/header-only artifact");
         }
-        validate_public_content(&content)?;
+        if let Err(error) = validate_public_content(&content) {
+            bail!(
+                "{}: {error}; correct the source or renderer, not the generated file",
+                path.display()
+            );
+        }
         let checksum = format!("sha256:{:x}", Sha256::digest(content.as_bytes()));
         Ok(Self {
             path,
@@ -62,7 +67,7 @@ fn validate_relative_path(path: &std::path::Path) -> Result<()> {
 fn validate_public_content(content: &str) -> Result<()> {
     let secret_patterns = [
         r"(?i)bearer\s+[a-z0-9._~+/=-]{12,}",
-        r"\b(?:sk|ghp|github_pat|xox[baprs]-)[a-z0-9_-]{8,}",
+        r"\b(?:sk-|ghp_|github_pat_|xox[baprs]-)[a-zA-Z0-9_-]{8,}",
         r"(?i)\b(?:api[_-]?key|client[_-]?secret|password|passwd|private[_-]?key|refresh[_-]?token)\s*[:=]\s*[^`\s|]+",
     ];
     for pattern in secret_patterns {

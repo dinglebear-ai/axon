@@ -15,7 +15,7 @@ Axon is a trimodal application:
 | Mode | Entry point | Port | Purpose |
 |------|-------------|------|---------|
 | CLI | `axon <command>` | — | Interactive command-line tool for crawl, scrape, summarize, embed, query, ask |
-| MCP server | `axon mcp` | 8001 | Primary action-dispatched tool, auxiliary dashboard, tasks, and resources |
+| MCP server | `axon mcp` | None for default stdio; configured port for HTTP | Legacy/atomic/both tools, auxiliary dashboard, supported tasks, and resources |
 | Web panel + HTTP API | `axon serve` | 8001 | Unified HTTP server for web panel, MCP, and direct `/v1` REST routes |
 
 All three modes share the same Rust binary, the same services layer, and the same infrastructure stack.
@@ -51,7 +51,8 @@ reviews, plans) live under the history directories at the bottom.
 | [reference/job-lifecycle.md](reference/job-lifecycle.md) | Async job state machine (SQLite-backed) |
 | [reference/inventory.md](reference/inventory.md) | Complete component + command inventory |
 | [reference/qdrant-payload-schema.md](reference/qdrant-payload-schema.md) | Qdrant point payload contract |
-| [reference/env-matrix.md](reference/env-matrix.md) | Environment variable migration matrix |
+| [reference/config/runtime-keys.md](reference/config/runtime-keys.md) | Literal TOML field inventory generated from Rust syntax and serde names |
+| [reference/env-matrix.md](reference/env-matrix.md) | Historical environment migration inventory, not current configuration |
 
 ### `architecture/` — system design
 

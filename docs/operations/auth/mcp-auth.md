@@ -24,9 +24,11 @@ Last Modified: 2026-06-01
 
 `axon mcp` supports `stdio`, `http`, and `both` transport modes. This document covers
 authentication on the HTTP transport. The `stdio` transport runs as a child process
-of the MCP client and has no network listener, so no auth is applied there.
+of the MCP client and has no network listener, so no HTTP authentication handshake is applied there. Local execution
+authority and operation/source authorization remain relevant.
 
-The HTTP transport exposes a single MCP tool (`axon`) over streamable HTTP at `/mcp`.
+The HTTP transport exposes the configured legacy, atomic, or combined tool
+projection at `/mcp`, including the separate dashboard tool.
 HTTP auth has two modes:
 
 - **Bearer mode** (default): static `AXON_HTTP_TOKEN` accepted as
@@ -36,10 +38,10 @@ HTTP auth has two modes:
   endpoints. The static bearer token continues to work in dual mode when set.
 
 **Key facts:**
-- Auth is enforced by `src/mcp/auth.rs` via lab-auth `AuthLayer`.
+- Auth is enforced by `crates/axon-mcp/src/auth.rs` via lab-auth `AuthLayer`.
 - A shared static token can be configured via `AXON_HTTP_TOKEN`.
 - OAuth mode is configured through `AXON_AUTH_MODE=oauth` and the
-  `AXON_MCP_*` Google/public URL variables below.
+  Google/public URL variables below.
 - Clients authenticate using either header:
   - `Authorization: Bearer <AXON_HTTP_TOKEN>`
   - `x-api-key: <AXON_HTTP_TOKEN>`
@@ -58,7 +60,7 @@ HTTP auth has two modes:
     │  POST /mcp
     │  Authorization: Bearer <AXON_HTTP_TOKEN>
     ▼
-[axum router (src/mcp/server/http.rs)]
+[axum router (crates/axon-mcp/src/server/http.rs)]
     │  └─ host_validation_middleware  (HostAllowlist)
     │  └─ mcp_http_cors_middleware    (AXON_ALLOWED_ORIGINS)
     │  └─ AuthLayer                   (static bearer and/or OAuth JWT)

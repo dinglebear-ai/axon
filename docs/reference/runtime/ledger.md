@@ -13,7 +13,7 @@ See also: crate guide `crates/axon-ledger/src/CLAUDE.md`, behavior contract
 
 `LedgerStore` (`crates/axon-ledger/src/store.rs`) is the trait every caller
 depends on; `SqliteLedgerStore` (`crates/axon-ledger/src/sqlite.rs`) is the
-only concrete implementation. It owns five kinds of durable state:
+production SQLite implementation (the test fake is described below). It owns five kinds of durable state:
 
 - **Sources** — one row per indexable source (`sources` table), keyed by
   `source_id`, with a `committed_generation` pointer and a JSON `SourceSummary`
@@ -131,8 +131,9 @@ Qdrant, the filesystem, or any other store directly (enforced by
 provider clients).
 
 - `kind` is one of `VectorDelete`, `ArtifactDelete`, `LedgerPrune`,
-  `GraphPrune`, `MemoryPrune`, `JobRetention`, `CachePrune` — each names a
-  different downstream system that owns execution.
+  `GraphPrune`, `MemoryPrune`, `JobRetention`, `CachePrune`, and
+  `AdapterRelease`. Adapter-release debt preserves failed temporary-resource
+  cleanup for the source runner to retry with the owning adapter registry.
 - `selector` scopes the debt to a `Source`, a `Generation`, or a specific
   `SourceItem`, and must be internally consistent with the debt's own
   `source_id`/`generation` (`validate_cleanup_debt` rejects mismatches before
@@ -187,8 +188,8 @@ and `source.ledger.lease_missing` / `source.ledger.lease_owner_mismatch`
 
 ## Testing
 
-`crates/axon-ledger/src/testing.rs` exposes `FakeLedgerStore` (an in-memory
-implementation of `LedgerStore`) plus SQLite temp-db fixtures, so callers in
+`crates/axon-ledger/src/store/fake.rs` implements `FakeLedgerStore` (an
+in-memory implementation re-exported through `store`). Callers in
 `axon-services`/`axon-jobs` can exercise ledger-dependent logic without a real
 database. `crates/axon-ledger/src/sqlite_tests.rs` and
 `crates/axon-ledger/src/store_tests.rs` cover the SQLite implementation and

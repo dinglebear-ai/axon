@@ -17,7 +17,10 @@
 //! Compiled schema validators are cached per schema path for the run.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[path = "examples_schema.rs"]
+mod schema_loader;
 
 use anyhow::{Result, bail};
 use jsonschema::Validator;
@@ -279,12 +282,7 @@ fn get_or_build_validator<'a>(
     cache: &'a mut HashMap<String, Validator>,
 ) -> Result<&'a Validator, String> {
     if !cache.contains_key(schema_rel_path) {
-        let schema_path: PathBuf = docs_root.join(schema_rel_path);
-        let content = std::fs::read_to_string(&schema_path).map_err(|err| {
-            format!("schema `{schema_rel_path}` not found under docs/reference: {err}")
-        })?;
-        let schema_value: Value = serde_json::from_str(&content)
-            .map_err(|err| format!("schema `{schema_rel_path}` is not valid JSON: {err}"))?;
+        let schema_value = schema_loader::load(docs_root, schema_rel_path)?;
         let validator = jsonschema::validator_for(&schema_value)
             .map_err(|err| format!("schema `{schema_rel_path}` failed to compile: {err}"))?;
         cache.insert(schema_rel_path.to_string(), validator);

@@ -1,4 +1,68 @@
 use super::*;
+
+#[test]
+fn manifest_preserves_schema_producer_without_inventing_docs_families() {
+    let root = tempfile::tempdir().unwrap();
+    for family in [
+        "api",
+        "adapters",
+        "database",
+        "graph",
+        "vector-payload",
+        "projections",
+    ] {
+        write_family_json(
+            root.path(),
+            &format!("docs/reference/{family}.json"),
+            family,
+            &[("source.rs", "abc")],
+        );
+    }
+    for entry in build(root.path()).unwrap().families {
+        assert_eq!(
+            entry.generated_by,
+            format!("cargo xtask schemas {}", entry.family)
+        );
+    }
+}
+
+#[test]
+fn manifest_rejects_conflicting_source_checksums() {
+    let root = tempfile::tempdir().unwrap();
+    write_family_json(
+        root.path(),
+        "docs/reference/one.json",
+        "cli",
+        &[("source.rs", "aaa")],
+    );
+    write_family_json(
+        root.path(),
+        "docs/reference/two.json",
+        "cli",
+        &[("source.rs", "bbb")],
+    );
+    assert!(
+        build(root.path())
+            .unwrap_err()
+            .to_string()
+            .contains("conflicting provenance")
+    );
+}
+
+#[test]
+fn manifest_does_not_silently_drop_invalid_json_or_provenance() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("docs/reference")).unwrap();
+    let path = root.path().join("docs/reference/invalid.json");
+    for text in [
+        "{",
+        r#"{"x-axon":{"generated_by":"cargo xtask schemas cli","source_inputs":[{}]}}"#,
+    ] {
+        fs::write(&path, text).unwrap();
+        assert!(build(root.path()).is_err());
+    }
+}
+
 use std::fs;
 
 fn write_family_json(root: &Path, rel: &str, family: &str, inputs: &[(&str, &str)]) {
@@ -44,7 +108,7 @@ fn build_groups_by_family_and_dedupes() {
     let cli = &manifest.families[0];
     assert_eq!(cli.family, "cli");
     assert_eq!(cli.source_inputs.len(), 2);
-    assert_eq!(cli.generated_by, "cargo xtask docs generate --family cli");
+    assert_eq!(cli.generated_by, "cargo xtask schemas cli");
 }
 
 #[test]
@@ -90,7 +154,7 @@ fn build_includes_presentation_generator_provenance() {
     assert_eq!(presentation.family, "presentation");
     assert_eq!(
         presentation.generated_by,
-        "cargo xtask docs generate --family presentation"
+        "cargo xtask presentation generate"
     );
     assert_eq!(
         presentation.source_inputs,

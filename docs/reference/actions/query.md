@@ -6,12 +6,14 @@ Last Modified: 2026-06-01
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon query ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
+| CLI | <code>axon query</code> |
+| REST | <code>POST /v1/query</code> |
+| MCP atomic tools | <code>query</code> |
+| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |
 
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+MCP names describe the atomic projection. The legacy `axon` tool uses the corresponding action/subaction selectors; `both` exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.
+
+Family-level navigation does not imply identical suboperations or request shapes across transports.
 <!-- END GENERATED ACTION SURFACES -->
 
 

@@ -1,402 +1,250 @@
 ---
 title: "Axon Architecture"
 created: 2026-02-25
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Axon Architecture
-Last Modified: 2026-06-30
 
-> Current pre-unification architecture. The clean-break target that replaces
-> separate crawl/embed/ingest/code-search lifecycle families with one
-> `SourceRequest -> ... -> CleanupDebt` pipeline lives in
-> [`../pipeline-unification/`](../pipeline-unification/README.md) and GitHub
-> issue #298.
+Last reviewed: 2026-09-29
 
-## Table of Contents
+Axon exposes one Rust service layer through CLI, MCP, and HTTP/app surfaces.
+The unified source pipeline is implemented, not a future migration. Source
+acquisition, document preparation, embedding, publication, graph updates, and
+cleanup share source identity, generations, and a durable job lifecycle.
 
-1. [Purpose and Scope](#purpose-and-scope)
-2. [System Context](#system-context)
-3. [Runtime Components](#runtime-components)
-4. [Execution Entry Points](#execution-entry-points)
-5. [CLI and Config Flow](#cli-and-config-flow)
-6. [Crawl and Content Pipeline](#crawl-and-content-pipeline)
-7. [Async Job Architecture](#async-job-architecture)
-8. [Vector and RAG Pipeline](#vector-and-rag-pipeline)
-9. [Ingest Pipeline](#ingest-pipeline)
-10. [Web Runtime Architecture](#web-runtime-architecture)
-11. [Data Model and Persistence](#data-model-and-persistence)
-12. [Configuration Resolution](#configuration-resolution)
-13. [Failure Handling and Recovery](#failure-handling-and-recovery)
-14. [End-to-End Flows](#end-to-end-flows)
-15. [Key Source Map](#key-source-map)
+The [source pipeline](source-pipeline.md), [crate ownership](crate-ownership.md),
+and [crate map](crate-structure.md) provide the detailed boundaries. The
+[pipeline-unification packet](../pipeline-unification/README.md) retains design
+contracts and dated delivery notes; its old implementation examples are not
+current operator commands.
 
-## Purpose and Scope
-
-This document defines the current architecture of `axon` across:
-
-- CLI command execution and dispatch
-- Crawl/extract/embed/ingest asynchronous pipelines
-- Vector storage and retrieval (Qdrant + TEI)
-- Unified HTTP runtime (`axon serve` web panel, MCP, `/v1/ask`, and direct `/v1` REST routes)
-- CLI client/server data flow
-
-It supersedes the previous architecture notes for the removed omnibox/Pulse web
-runtime.
-
-## System Context
+## System context
 
 ```mermaid
 flowchart LR
-  U[User or API client]
-  CLI[axon CLI binary]
-
-  QD[(Qdrant)]
-  TEI[TEI embeddings]
-  LLM[LLM completion backend: Gemini headless default, OpenAI-compatible optional]
-  CHR[Chrome/CDP]
-  SQ[(SQLite jobs)]
-
-  U --> CLI
-
-  CLI --> QD
-  CLI --> TEI
-  CLI --> LLM
-  CLI --> CHR
-  CLI --> SQ
+  CLI[CLI] --> S[Shared Rust services]
+  MCP[MCP tools and tasks] --> S
+  HTTP[HTTP API and web panel] --> S
+  Apps[Palette, Android, extension] --> HTTP
+  S --> SQLite[(SQLite durable state)]
+  S --> Qdrant[(Qdrant vectors)]
+  S --> Embeddings[Configured embedding provider]
+  S --> Browser[External Chrome / CDP]
+  S --> LLM[Configured synthesis provider]
 ```
 
-## Runtime Components
+SQLite owns durable jobs, source generations, manifests, document status, and
+other application state. Qdrant stores the retrieval corpus. TEI and Chrome/CDP
+are external providers, not alternate queue or lifecycle authorities. Provider
+availability is operation-specific; a responding HTTP listener alone does not
+prove a source job can embed or publish.
 
-| Component | Role |
+## Runtime ownership
+
+| Boundary | Owning code | Responsibility |
+|---|---|---|
+| Public DTOs and errors | [axon-api](../../crates/axon-api/), [axon-error](../../crates/axon-error/) | Transport-neutral contracts and typed diagnostics |
+| Configuration and common policy | [axon-core](../../crates/axon-core/), [axon-authz](../../crates/axon-authz/) | Effective settings, HTTP/filesystem safety, authorization contracts |
+| Source resolution | [axon-route](../../crates/axon-route/) | Canonical identity, adapter and scope selection |
+| Acquisition | [axon-adapters](../../crates/axon-adapters/) | Materialize, discover, acquire, and normalize source documents |
+| Source state | [axon-ledger](../../crates/axon-ledger/) | Generations, manifests, document status, leases, cleanup debt |
+| Preparation | [axon-document](../../crates/axon-document/), [axon-parse](../../crates/axon-parse/), [axon-extract](../../crates/axon-extract/) | Parsing, preparation, chunking, extraction |
+| Embeddings and publication | [axon-embedding](../../crates/axon-embedding/), [axon-vectors](../../crates/axon-vectors/) | Provider requests, vector writes, generation-aware visibility |
+| Retrieval and synthesis | [axon-retrieval](../../crates/axon-retrieval/), [axon-llm](../../crates/axon-llm/) | Filtered retrieval, ranking, synthesis backends |
+| Graph, memory, cleanup | [axon-graph](../../crates/axon-graph/), [axon-memory](../../crates/axon-memory/), [axon-prune](../../crates/axon-prune/) | Derived state and bounded cleanup |
+| Execution | [axon-jobs](../../crates/axon-jobs/) | SQLite jobs, attempts, stages, events, heartbeats, reservations |
+| Composition | [axon-services](../../crates/axon-services/) | Cross-domain orchestration and shared transport-facing entry points |
+| Codex control | [axon-codex](../../crates/axon-codex/) | Codex app-server integration used by shared services |
+| Transports | [axon-cli](../../crates/axon-cli/), [axon-mcp](../../crates/axon-mcp/), [axon-web](../../crates/axon-web/) | Parse, authorize, call services, render responses |
+
+A source adapter emits `SourceDocument` values, not persisted chunks, vectors,
+or transport responses. Transports must not reach into a domain crate's
+internal `::ops::*` modules. Single-domain logic belongs to its owning crate;
+`axon-services` composes domains and owns job-aware orchestration. The
+[layering check](dependency-layering.md) enforces this boundary.
+
+## Entry points and configuration
+
+| Surface | Entry point | Contract |
+|---|---|---|
+| CLI | `axon <command>` or `axon <source>` | In-process command execution; generic CLI-to-server forwarding is not supported |
+| MCP stdio | `axon mcp` | Process transport, without an HTTP listener requirement |
+| Unified HTTP | `axon serve` | Web panel, MCP mount, and `/v1` REST routes on the configured listener |
+| MCP HTTP | `axon serve mcp` or configured MCP HTTP transport | Same HTTP authorization boundary |
+
+MCP discovery includes legacy/atomic tool projections, auxiliary dashboard
+tools, resources, and task behavior. The primary action enum is not the full
+catalog. See [MCP overview](../reference/mcp/overview.md) and
+[HTTP reference](../reference/http-api.md).
+
+Configuration precedence is **CLI > environment > TOML > defaults**. Typed
+parsing and validation live in `axon-core`; transports consume effective
+configuration rather than implementing their own precedence rules.
+[Configuration](../guides/configuration.md) explains file loading and reload
+requirements; the [generated configuration reference](../reference/config/)
+provides keys and defaults. An example file is not evidence of the running
+process configuration.
+
+## Unified source pipeline
+
+The entry points in
+[`axon-services::source`](../../crates/axon-services/src/source.rs) resolve
+and authorize a `SourceRequest`, invoke adapter-owned acquisition, and run
+the shared document/publication pipeline.
+
+```mermaid
+flowchart TD
+  Request[SourceRequest] --> Resolve[Resolve, route, authorize]
+  Resolve --> Acquire[Adapter acquisition and manifest discovery]
+  Acquire --> Ledger[Ledger generation and manifest diff]
+  Ledger --> Prepare[Parse, normalize, prepare chunks]
+  Prepare --> Embed[Embedding provider]
+  Embed --> Publish[Vector publication and generation commit]
+  Publish --> Graph[Graph derived from committed source state]
+  Graph --> Cleanup[Drain cleanup debt]
+  Cleanup --> Result[SourceResult]
+  Publish --> Evidence[Optional committed artifact-candidate outbox]
+```
+
+The exact stage sequence and no-embed/map branches are described in
+[source-pipeline.md](source-pipeline.md). Important invariants are:
+
+- One source job ID spans the pipeline. Source family names do not create
+  separate crawl, ingest, or embedding queues or child-job handoffs.
+- Stable source/item identity and hashes allow unchanged items to skip
+  preparation and re-embedding. Added, modified, removed, and unchanged items
+  are distinct outcomes. Deletions require a complete snapshot or explicit
+  tombstone, never a truncated page or interrupted acquisition.
+- Preparation and publication are shared service orchestration, not duplicated
+  inside each adapter. Cleanup must also cover failure and cancellation paths.
+- Publishing makes the new generation visible. Graph updates follow
+  publication; cleanup debt tracks work that cannot safely finish immediately.
+- Optional artifact candidates are evidence associated with the same job and
+  generation. Delivery failure after commit does not roll back published RAG
+  state or authorize another source pipeline.
+
+### Web acquisition and map
+
+The web adapter uses the shared HTTP/Chrome acquisition ladder and HTTP safety
+policy. Spider integration is in
+[`axon-adapters`](../../crates/axon-adapters/Cargo.toml), not a separate
+`axon-crawl` crate. Render and discovery options are documented in
+[web crawls](../guides/web-crawls.md) and
+[Spider feature flags](../reference/spider-feature-flags.md).
+
+`axon scrape <url>` is a page-scoped convenience projection.
+`axon <url> --scope site` or `--scope docs` submits multi-page source work.
+`map` is bounded discovery, not a crawl-output or child-embedding handoff.
+The current CLI and transport projections are generated in
+[action reference](../reference/actions/) and
+[API parity](../reference/api-parity.md).
+
+### Other acquisition families
+
+Local files, hosted Git, feeds, registries, Reddit, YouTube, sessions, uploads,
+and authorized CLI/MCP tools reuse the same adapter and source contracts.
+Use the [adapter scope registry](../reference/sources/adapter-scopes.md) for
+supported scopes, and [source onboarding](../development/adding-source.md)
+when extending acquisition. Provider metadata discovery does not grant
+permission to execute a tool.
+
+## Durable jobs and workers
+
+Jobs are SQLite-backed; workers run in-process in a Tokio runtime.
+[`axon-jobs`](../../crates/axon-jobs/) owns attempts, stages, event history,
+heartbeats, cancellation, recovery, and provider reservations. There are no
+separate `axon_crawl_jobs`, `axon_embed_jobs`, or `axon_ingest_jobs` tables in
+the current source lifecycle.
+
+A detached response is acceptance, not completion. The local CLI attempts to
+ensure a worker process exists; a long-lived `axon serve` or `axon jobs worker`
+can also drain the queue. Verify the job's actual terminal status and
+diagnostics. `--wait true` runs with active workers and waits for completion;
+a wait timeout is not evidence that a durable job was canceled.
+
+```bash
+axon https://example.com --scope site --wait true
+axon jobs list
+axon jobs get <job_id>
+axon jobs events <job_id>
+```
+
+Use the [jobs reference](../reference/runtime/jobs.md) for lifecycle states,
+retry/recovery prerequisites, event streams, and retention. A retry belongs to
+the same durable job, not a new per-family queue. Cancellation is observed at
+safe boundaries; inspect completed work and side effects before repeating a
+write. Destructive cleanup and reset require their documented plan and
+confirmation flows.
+
+## Retrieval, synthesis, and visibility
+
+```mermaid
+flowchart LR
+  Query[Query or question] --> Filter[Source, path, content and visibility filters]
+  Filter --> Retrieve[Retrieve committed-generation candidates]
+  Retrieve --> Rank[Rank and assemble context]
+  Rank --> Answer[Configured synthesis provider]
+  Answer --> Citations[Answer with provenance]
+```
+
+`axon-retrieval` owns retrieval; `axon-embedding` owns embedding provider
+requests and retry/cooling behavior; `axon-vectors` owns vector upserts and
+publication. `axon-llm` owns synthesis backends. `axon-services` composes these
+for ask/research and other cross-domain workflows.
+
+Queries must honor committed generations and requested filters. A refresh or
+removal must not leave old content retrievable merely because vector insertion
+succeeded. See [ask/RAG](../guides/ask-rag.md),
+[vector payload](../reference/sources/vector-payload.md), and
+[ledger](../reference/runtime/ledger.md).
+
+## Persistence and artifacts
+
+| Store | Authority |
 |---|---|
-| `src/main.rs` + `src/lib.rs` | Binary entry and re-export of `axon_cli::run` |
-| `crates/axon-cli/src/*` | Command handlers and subcommand routing |
-| `crates/axon-core/src/*` | Config parsing, HTTP safety, content transforms, logging |
-| `crates/axon-crawl/src/*` | Crawl engine, render mode strategy, sitemap backfill |
-| `crates/axon-jobs/src/*` | SQLite-backed worker runtime + job state transitions |
-| `crates/axon-vector/src/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
-| `crates/axon-core/src/llm/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
-| `docker-compose.prod.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
-
-## Execution Entry Points
-
-```mermaid
-flowchart TD
-  A[main.rs] --> B[axon::run in lib.rs]
-  B --> C{--cron-every-seconds?}
-  C -->|no| D[run_once]
-  C -->|yes| E[cron loop -> run_once]
-  D --> F{CommandKind}
-  F --> G[CLI command handler]
-```
-
-- `main.rs` loads `.env` and invokes `axon::run`.
-- `lib.rs` owns run-loop concerns (logging init, optional cron, dispatch to handlers).
-- Command dispatch is centralized in `run_once` using `CommandKind`.
-
-## CLI and Config Flow
-
-```mermaid
-sequenceDiagram
-  participant User
-  participant Clap as clap parser
-  participant Parse as parse_args/into_config
-  participant Config as Config struct
-  participant Cmd as command handler
-
-  User->>Clap: axon <command> [flags]
-  Clap->>Parse: parsed CLI args
-  Parse->>Parse: env + flag merge
-  Parse->>Parse: apply performance profile
-  Parse->>Parse: normalize local service URLs
-  Parse->>Config: fully-resolved Config
-  Config->>Cmd: shared runtime config
-```
-
-Key points:
-
-- Argument schema is defined in `crates/axon-core/src/config/cli.rs` and
-  `crates/axon-core/src/config/cli/global_args.rs`.
-- Parsing/normalization is under `crates/axon-core/src/config/parse/`.
-- Effective runtime settings are stored in
-  `crates/axon-core/src/config/types/config.rs::Config`.
-- URL seed handling is consolidated in
-  `crates/axon-cli/src/commands/common.rs` (`parse_urls`,
-  `start_url_from_cfg`).
-
-## Crawl and Content Pipeline
-
-```mermaid
-flowchart TD
-  A[Seed URLs] --> B[validate_url + SSRF checks]
-  B --> C{Render mode}
-  C -->|http| D[crawl_raw]
-  C -->|chrome| E[crawl with CDP]
-  C -->|auto-switch| F[HTTP first then fallback heuristic]
-
-  D --> G[collect pages]
-  E --> G
-  F --> G
-
-  G --> H[HTML -> markdown transform]
-  H --> I[thin-page filtering]
-  I --> J[sitemap backfill]
-  J --> K[manifest + output files]
-  K --> L{embed enabled?}
-  L -->|yes| M[enqueue or embed now]
-  L -->|no| N[store output only]
-```
-
-Key responsibilities:
-
-- HTTP safety, SSRF guarding, and client setup in `src/core/http.rs`.
-- Content transformation and markdown extraction in `src/core/content.rs`.
-- Crawl orchestration in `src/crawl/engine.rs`.
-- Auto-switch mode evaluates crawl quality and can rerun with Chrome.
-- Sitemap backfill extends coverage beyond direct traversal.
-
-### Map Command
-
-`map` consumes canonical in-memory URLs from the web adapter's bounded sitemap,
-`llms.txt`, and root-anchor discovery strategies. It does not invoke a crawl or
-use crawl output as a handoff.
-The CLI no longer merges or deduplicates sitemap URLs itself — the engine owns the full URL set with
-deterministic sort+dedup before returning `MapResult`. This keeps the CLI handler as a thin
-delegation layer and ensures the output contract is tested at the engine level.
-
-## Async Job Architecture
-
-Jobs are persisted in SQLite. Workers run in-process within the same tokio runtime.
-
-```mermaid
-flowchart LR
-  ENQ[enqueue command] --> SQ[(insert pending row in SQLite)]
-  SQ --> WK[in-process worker]
-  WK --> CLM[claim pending row]
-  CLM --> RUN[set running + started_at]
-  RUN --> PROC[process job]
-  PROC --> DONE[set completed + result_json]
-  PROC --> FAIL[set failed + error_text]
-```
-
-State model:
-
-- Shared statuses in `src/jobs/status.rs`: `pending`, `running`, `completed`, `failed`, `canceled`.
-- Atomic claim/fail/update helpers in `src/jobs/ops/lifecycle.rs`.
-- Queue-cap checks in `src/jobs/ops/enqueue.rs`.
-- Stale job reclaim in `src/jobs/store.rs`.
-
-Job families:
-
-- Crawl: `src/jobs/workers/runners/crawl.rs`
-- Extract: `src/jobs/workers/runners/extract.rs`
-- Embed: `src/jobs/workers/runners/embed.rs`
-- Ingest: `src/jobs/workers/runners/ingest.rs`
-
-### Worker Architecture
-
-#### In-Process SQLite Workers
-
-`src/jobs/workers.rs` provides the generic worker loop. Each lane claims a
-pending row from SQLite, updates heartbeat state while running, calls the
-per-kind runner, and records completion or failure.
-
-Lane counts are resolved per job family, with ingest and embed exposing tuning
-env vars. Each lane processes jobs sequentially.
-
-#### Crawl Runner and Spider Control
-
-The crawl runner wires cancellation into Spider control IDs so a canceled job can
-stop dispatching new pages and record partial progress before the row reaches a
-terminal state.
-
-## Vector and RAG Pipeline
-
-```mermaid
-flowchart TD
-  A[markdown/text input] --> B[chunk_text]
-  B --> C[tei_embed batches]
-  C --> D{TEI response}
-  D -->|ok| E[qdrant_upsert points]
-  D -->|413/429/503| F[split/retry with backoff]
-  F --> C
-
-  Q[query/ask/evaluate] --> R[qdrant search]
-  R --> S[ranking + candidate selection]
-  S --> T[context assembly]
-  T --> U[LLM completion]
-```
-
-Key behaviors:
-
-- Embedding implementation in `src/vector/ops/tei.rs`.
-- Qdrant operations and collection lifecycle in `src/vector/ops/qdrant/*`.
-- Command-level vector flows in `src/vector/ops/commands/*`.
-- Source adapters eventually call vector embedding paths so all content lands in Qdrant with metadata.
-
-## Source Pipeline
-
-### Unified Source Entry Point
-
-`SourceRequest` is the canonical ingestion contract. CLI, MCP, REST, and app
-surfaces classify a submitted target into `SourceKind`, then route through the
-matching source adapter instead of a legacy ingest-family job:
-
-```mermaid
-flowchart TD
-  A["CLI/MCP/REST/app source target"] --> B["SourceRequest"]
-  B --> C["SourceKind classifier"]
-  C -->|web URL| D["WebSourceAdapter"]
-  C -->|git repository| E["GitSourceAdapter"]
-  C -->|feed URL| F["FeedSourceAdapter"]
-  C -->|media/social/session/local/tool/upload| G["source-family adapter"]
-  D --> H["ledger -> prepare -> embed -> publish"]
-  E --> H
-  F --> H
-  G --> H
-```
-
-Detection order: Reddit → YouTube → GitHub (first match wins).
-
-### Ingest Submodule Layout
-
-```text
-src/ingest/
-├── classify.rs          # auto-detection: classify_target()
-├── github.rs            # module root
-├── github/
-│   ├── files.rs         # file tree fetch + raw content
-│   ├── issues.rs        # octocrab paginated issues + PRs
-│   ├── meta.rs          # gh_* structured metadata for Qdrant points (v0.12.0)
-│   └── wiki.rs          # git clone --depth=1 wiki
-├── reddit.rs            # module root
-├── reddit/
-│   ├── client.rs        # OAuth2 client credentials
-│   ├── comments.rs      # recursive comment tree
-│   ├── meta.rs          # reddit_* structured metadata for Qdrant points (v0.12.0)
-│   └── types.rs         # Reddit API response types
-├── youtube.rs           # module root
-├── youtube/
-│   ├── meta.rs          # yt_* structured metadata for Qdrant points (v0.12.0)
-│   └── vtt.rs           # parse_vtt_to_text: yt-dlp VTT transcript parser
-└── sessions.rs          # AI session export ingest
-```
-
-### MCP Artifacts Module (`src/mcp/server/artifacts/`)
-
-Added in v0.12.0 to manage MCP tool response artifacts:
-
-| File | Responsibility |
-|---|---|
-| `artifacts.rs` | Module root; `ArtifactStore` type |
-| `artifacts/lifecycle.rs` | Create, expire, and garbage-collect artifacts |
-| `artifacts/path.rs` | Artifact path resolution and URL generation |
-| `artifacts/respond.rs` | Build MCP tool response payloads embedding artifact refs |
-| `artifacts/shape.rs` | `ArtifactShape` enum: `Blob`, `Text`, `Json`, `Image` |
-
-### LLM Backend (`src/core/llm/`)
-
-`core/llm` is the sole LLM synthesis gateway. It serves `ask`,
-`summarize`, `evaluate`, `suggest`, `research`, `debug`, and extract fallback by launching
-Gemini headless with:
-
-- isolated temporary HOME populated from `AXON_HEADLESS_GEMINI_HOME` or process HOME
-- allowlisted environment variables
-- command path validation
-- `AXON_LLM_COMPLETION_CONCURRENCY` semaphore
-- `AXON_LLM_COMPLETION_TIMEOUT_SECS` per-request timeout
-
-Callers use `CompletionRequest` and `CompletionResponse`; no entry point should
-spawn Gemini directly.
-
-## Data Model and Persistence
-
-Primary tables (SQLite, auto-created via `ensure_schema()`):
-
-- `axon_crawl_jobs`
-- `axon_extract_jobs`
-- `axon_embed_jobs`
-- `axon_ingest_jobs`
-
-Common columns:
-
-- `id`, `status`, `created_at`, `updated_at`, `started_at`, `finished_at`, `error_text`, `config_json`, `result_json`
-
-Ingest-specific discriminator:
-
-- `source_type` + `target` replace URL-based identifiers.
-
-Storage responsibilities:
-
-- SQLite: job metadata and lifecycle state
-- Qdrant: vector points + retrieval corpus
-
-## Configuration Resolution
-
-```mermaid
-flowchart LR
-  CLI[CLI flags] --> CFG[Config resolution]
-  ENV[Environment variables] --> CFG
-  PROF[Performance profile defaults] --> CFG
-  DOCKER[Docker/local URL normalization] --> CFG
-  CFG --> HANDLERS[all commands/workers]
-```
-
-Important behavior:
-
-- Container DNS endpoints are normalized for local execution when needed.
-- Profiles (`high-stable`, `balanced`, `extreme`, `max`) apply batch, timeout, retry, and concurrency defaults.
-- Collection names and worker/concurrency knobs are centrally configurable.
-
-## Failure Handling and Recovery
-
-Resilience patterns implemented:
-
-- Atomic row claiming prevents duplicate worker ownership.
-- Watchdog can reclaim stale `running` jobs.
-- Embedding retries handle transient TEI overload and payload limits.
-- Service calls return typed errors and diagnostics for CLI, MCP, and HTTP callers.
-- Job subcommands (`status`, `errors`, `list`, `recover`, `cancel`) provide operational control.
-
-## End-to-End Flows
-
-### 1) Crawl with Async Job
-
-1. User runs `axon crawl <url>` (default async).
-2. Command inserts a `pending` job row into SQLite.
-3. Worker claims row, marks `running`, executes crawl.
-4. Results and artifacts are written, optional embedding happens.
-5. Job row is finalized with `completed` or `failed`.
-
-### 2) Ask/RAG Query
-
-1. User runs `axon ask <question>`, sends an MCP action, or calls the HTTP action API.
-2. Query retrieves candidates from Qdrant.
-3. Ranking/context assembly builds prompt context.
-4. LLM endpoint generates final answer.
-
-## Key Source Map
-
-The thin root binary delegates to `axon-cli`. Current ownership follows the
-workspace crates:
-
-- `crates/axon-core/` — configuration, HTTP policy, content utilities
-- `crates/axon-adapters/` — web, local, Git, feed, Reddit, YouTube, and tool acquisition
-- `crates/axon-jobs/` — unified SQLite job lifecycle and workers
-- `crates/axon-document/` and `crates/axon-extract/` — parsing and preparation
-- `crates/axon-embedding/` and `crates/axon-vectors/` — TEI and Qdrant providers
-- `crates/axon-llm/` — synthesis backends
-- `crates/axon-services/` — transport-neutral orchestration
-- `crates/axon-cli/`, `crates/axon-mcp/`, and `crates/axon-web/` — transports
-
-## Security: Destructive Operations
-
-Destructive job operations use the unified `axon jobs cancel|cleanup|clear`
-surface. Local CLI access is bounded by filesystem permissions; HTTP and MCP
-access is governed by the configured static-token or OAuth authorization
-policy. Qdrant remains loopback- or internal-network-bound by default.
-
----
-
-If this architecture changes, update this file in the same PR as the behavior change.
+| SQLite | Durable jobs and source state; owning crate migrations define tables and upgrades |
+| Qdrant | Published vectors and payloads used for retrieval |
+| Artifact/document stores | Acquired or produced content referenced by durable records |
+| Graph and memory stores | Derived relationships and retained memory under their owning contracts |
+
+Use [database schema](../reference/runtime/database-schema.md) and its
+[provenance-bearing JSON](../reference/runtime/database-schema.json), rather
+than copying a table inventory here. Applied migrations are immutable; add
+new migrations and test existing-state upgrades.
+
+Public artifact responses carry opaque IDs, not server filesystem paths.
+Follow the transport's artifact resource contract instead of reconstructing
+private paths from filenames.
+
+## Authorization, diagnostics, and deployment
+
+Non-loopback HTTP requires `AXON_HTTP_TOKEN` or OAuth. Panel password/session
+unlock is separate from API/MCP authorization. Do not use an API token as a
+panel password or treat a local CLI identity as a remote caller identity.
+Source acquisition also enforces SSRF/filesystem boundaries; CLI/MCP tool
+execution requires authorization, allowlists, timeouts, output caps, and
+redaction. See [security](../operations/security.md).
+
+Failures and degraded results must identify the operation/stage, affected
+entity, safe cause, correlated job/source/item IDs, retryability, and concrete
+recovery action. Distinguish partial completion from an empty success. Unknown
+commit status must be explicit so a caller does not blindly repeat writes.
+Structured results go to stdout and diagnostics/logs to stderr.
+[Error contracts](../pipeline-unification/runtime/error-handling.md) and
+[observability](../reference/runtime/observability.md) define the details.
+
+The supported production contract is native `axon serve` under systemd in
+Incus or bare-metal Linux, with external providers. Compose is a development
+and reference surface. Use [deployment](../operations/deployment.md) and
+verified installation notes for lifecycle commands; do not infer the deployed
+service manager from a repository example.
+
+## Keeping this map current
+
+When behavior changes, update the owning code, generated contracts, and the
+relevant task/reference guide together. Run the
+[documentation checks](../development/documentation.md); source/schema
+changes additionally require their affected tests and ordered generated-contract
+refresh/check. Historical reports are evidence of their recorded revision,
+not an alternate current architecture.

@@ -1,103 +1,82 @@
----
-title: "Reddit Ingest"
-created: 2026-02-23
-updated: 2026-07-30
----
-
 # Reddit Ingest
-Last Modified: 2026-03-09
 
-Version: 1.0.0
-Last Updated: 01:26:53 | 02/25/2026 EST
+Last reviewed: 2026-09-29
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/reddit.md`](../../reference/actions/reddit.md)
-
-Ingests subreddit posts and comment threads into Qdrant via the Reddit OAuth2 API (client credentials flow — no user login required).
-
-## What Gets Indexed
-
-- **Posts**: title + selftext body (for text posts); title + URL (for link posts)
-- **Comments**: full thread up to `--depth` levels deep, filtered by `--min-score`
-- Deleted (`[deleted]`) and removed (`[removed]`) comments are skipped
-- Post metadata: score, flair, author, timestamp
-
-## Prerequisites
-
-A Reddit **script app** with client credentials. Both `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are required — the command fails immediately if either is missing.
-
-1. Go to [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) → **"create another app"**
-2. Select **"script"** type, set redirect URI to `http://localhost:8080`
-3. Copy the **client ID** (displayed under the app name) and **client secret**
+The Reddit adapter acquires a bounded OAuth API snapshot and emits normalized
+documents through shared preparation, embedding, and publication. There is
+no independent Reddit queue or vector writer.
 
 ```bash
-# ~/.axon/.env
-REDDIT_CLIENT_ID=your_client_id
-REDDIT_CLIENT_SECRET=your_client_secret
+axon r/rust --wait true
+axon https://www.reddit.com/r/rust/comments/POST_ID/title/ --wait true
 ```
 
-## How It Works
+Use a real authorized target instead of `POST_ID`. See the
+[scope registry](../../reference/sources/adapter-scopes.md).
 
-1. Validates subreddit names and canonicalizes thread targets before constructing Reddit API URLs. Accepted thread inputs are `reddit.com`, `www.reddit.com`, `old.reddit.com`, or `/r/<subreddit>/comments/<id>/...` permalink-style paths. Non-Reddit `/comments/` URLs are rejected.
-2. Authenticates via Reddit OAuth2 client credentials, obtaining a bearer token
-3. Fetches posts from `https://oauth.reddit.com/r/<subreddit>/<sort>?limit=100`; paginates until `--max-posts` reached
-4. For each post, fetches the comment tree at `https://oauth.reddit.com<permalink>.json?limit=100&depth=<n>`
-5. Recursively traverses comments up to `--depth` levels, skipping entries below `--min-score`
-6. Posts and comments embedded via `embed_prepared_docs()` → TEI → Qdrant
+## Credentials and request boundaries
 
-**User-Agent:** `axon-ingest/1.0 by /u/axon_bot` (Reddit requires a descriptive UA string per their API terms)
+Both `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` must be nonblank in the
+executing runtime. [Acquisition](../../../crates/axon-adapters/src/reddit/acquire.rs)
+resolves them before network I/O and uses a client-credentials OAuth grant.
+No user login occurs, so access requiring a particular signed-in user must
+not be assumed. Keep credentials out of logs and source control.
 
-## Rate Limits
+The shared client uses a 60-second request timeout. Listing/thread GET
+bodies are capped at 16 MiB, including while streaming. These are per-request
+constraints, not a whole-job deadline or proof of complete data.
 
-Reddit OAuth2 script apps are allowed 100 requests/minute. On 429 responses, the ingest worker honors numeric `Retry-After` headers up to a 60s cap, then falls back to exponential backoff (2s, 4s, 8s; max 3 retries) when the header is missing or invalid.
+## What is fetched
 
-## Cancellation and Partial Comment Failures
+| Target | Current acquisition | Completeness |
+|---|---|---|
+| Subreddit | One hot listing requesting 100 posts | Not every post or every comment thread |
+| Thread | One response requesting limit 100 and depth 10 | Only returned comments; missing/deeper children are not exhaustively expanded |
 
-The Reddit source has source-local cancellation hooks that can be wired by job/service layers. Checks occur before page fetches, before comment fetches, and during retry backoff sleeps.
+The implementation does not follow subreddit pagination cursors, fetch all
+listing comment trees, or expand every `more` placeholder. Old claims of
+arbitrary sort/depth controls, full-archive pagination, or a fixed account-wide
+rate allowance were not descriptions of this adapter.
 
-Subreddit ingest treats per-post comment fetch failures as partial failures: the post can still be embedded, while `comment_fetch_attempts` and `comment_fetch_failures` are tracked in Reddit ingest stats and emitted through the source progress payload.
+Acquisition reports HTTP error status directly. Do not rely on the previous
+429 Retry-After/three-retry backoff description. Follow actual provider/job
+recovery guidance instead of immediately replaying a failed request.
 
-## Qdrant Metadata Fields
+## Normalization and metadata
 
-All Reddit post chunks carry structured `reddit_*` payload fields built in `src/ingest/reddit/meta.rs`. Fields are sourced from the `post["data"]` object in the Reddit API JSON response.
+The [adapter](../../../crates/axon-adapters/src/reddit.rs) owns a temporary
+prepared snapshot. The [dump parser](../../../crates/axon-adapters/src/reddit/dump.rs)
+renders post/comment content; linked external pages are not fetched
+automatically. Submit linked URLs separately through the web source path.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `reddit_author` | `string` | Post author username; `"[deleted]"` if account removed |
-| `reddit_created_utc` | `integer` | Post creation time as a Unix timestamp (UTC) |
-| `reddit_score` | `integer` | Net upvote score at index time |
-| `reddit_num_comments` | `integer` | Total comment count at index time |
-| `reddit_upvote_ratio` | `float` | Upvote ratio (0.0–1.0) at index time |
-| `reddit_subreddit` | `string` | Subreddit name (without `r/` prefix) |
-| `reddit_domain` | `string` | Link domain for link posts; `"self.<subreddit>"` for text posts |
-| `reddit_is_video` | `boolean` | Whether the post is a native Reddit video |
-| `reddit_distinguished` | `string \| null` | Distinguishment status (`"moderator"`, `"admin"`, or `null`) |
-| `reddit_gilded` | `integer` | Number of times the post has been gilded |
-| `reddit_flair` | `string \| null` | Post flair text; `null` if no flair set |
+[Metadata](../../../crates/axon-adapters/src/reddit/metadata.rs) includes
+approved author, timestamp, score, comment count, subreddit, domain, video,
+flair, permalink, and kind fields, plus shared identity/generation/visibility.
+Values describe the snapshot, not live Reddit state. Optional/deleted fields
+follow the implementation defaults and null handling.
 
-## Known Limitations
+Use [metadata payload](../../reference/sources/metadata-payload.md) for shared
+rules. Do not assume a changed score alone forces content re-embedding or
+that arbitrary old metadata survives normalization.
 
-| Limitation | Detail |
-|-----------|--------|
-| **Link posts** | Only title + URL indexed; no external page content. Use `axon <url> --scope site` for the linked URL |
-| **Comment depth limits** | Reddit's API can truncate very deep threads before `--depth` is reached |
-| **Private / quarantined subreddits** | Client credentials flow cannot access these; fails with 403 |
-| **Score freshness** | Scores captured at index time; not updated on re-index |
-| **Target validation** | Subreddit names are 3–21 chars, alphanumeric + underscore only. Thread URLs must be on `reddit.com`, `www.reddit.com`, or `old.reddit.com`, or use `/r/.../comments/...` permalink form |
+## Refresh and completion
 
-## Troubleshooting
+Reddit manifests are explicitly **partial**. Absence from the next hot
+listing is not a deletion. Stable identities and hashes select changed
+items while unchanged items can be retained. A bounded listing must not
+remove every unseen source item.
 
-**`invalid subreddit name`**
+```bash
+axon jobs get <job_id> --json
+axon jobs events <job_id> --json
+```
 
-Name contains invalid characters or wrong length. Remove any `r/` prefix.
+A job ID is acceptance, not completion; a wait timeout is not cancellation.
+Inspect terminal results and distinguish credential denial, provider rate
+limits, malformed/oversized responses, partial inventory, and publication
+failure. Preserve source/job IDs and completed-stage evidence before retrying.
 
-**`401 Unauthorized`**
-
-Wrong `REDDIT_CLIENT_ID` or `REDDIT_CLIENT_SECRET`. Verify in `~/.axon/.env` and confirm the app type is **"script"** on reddit.com/prefs/apps.
-
-**`403 Forbidden`**
-
-Subreddit is private or quarantined — not accessible with client credentials.
-
-**Rate limit / 429 errors**
-
-Handled automatically with exponential backoff retries. If errors persist, reduce request rate and verify app health on Reddit.
+Tests include [adapter coverage](../../../crates/axon-adapters/src/reddit_tests.rs)
+and [acquisition coverage](../../../crates/axon-adapters/src/reddit/acquire_tests.rs).
+Changes require credential/error redaction, target validation, bounds,
+partial inventories, refresh/removal, cancellation, and shared lifecycle tests.
