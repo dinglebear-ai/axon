@@ -108,28 +108,38 @@ fn split_chunk_streaming(chunk: &DocumentChunk, source: &str, output: &mut Vec<D
     let mut line = 1_u32;
     let mut last_line = 1_u32;
     let mut char_index = 0_u64;
+    let mut last_line_break = None;
     for (byte, ch) in chunk.content.char_indices() {
         if byte > start_byte
             && (byte + ch.len_utf8() - start_byte > text::MAX_PLAIN_TEXT_CHUNK_BYTES
                 || char_index - start_char >= text::MAX_PLAIN_TEXT_CHUNK_CHARS as u64)
         {
+            let (end_byte, end_char, end_line, split_at_line) =
+                match last_line_break.filter(|(break_byte, _, _)| *break_byte > start_byte) {
+                    Some((break_byte, break_char, break_line)) => {
+                        (break_byte, break_char, break_line, true)
+                    }
+                    None => (byte, char_index, last_line, false),
+                };
             push_bounded_window(
                 chunk,
                 literal_start,
                 start_byte,
-                byte,
+                end_byte,
                 start_char,
-                char_index,
+                end_char,
                 start_line,
-                last_line,
+                end_line,
                 output,
             );
-            start_byte = byte;
-            start_char = char_index;
-            start_line = line;
+            start_byte = end_byte;
+            start_char = end_char;
+            start_line = if split_at_line { end_line + 1 } else { line };
+            last_line_break = None;
         }
         last_line = line;
         if ch == '\n' {
+            last_line_break = Some((byte + 1, char_index + 1, line));
             line = line.saturating_add(1);
         }
         char_index += 1;
@@ -146,6 +156,10 @@ fn split_chunk_streaming(chunk: &DocumentChunk, source: &str, output: &mut Vec<D
         output,
     );
 }
+
+#[cfg(test)]
+#[path = "chunk_build_tests.rs"]
+mod tests;
 
 #[allow(clippy::too_many_arguments)]
 fn push_bounded_window(
