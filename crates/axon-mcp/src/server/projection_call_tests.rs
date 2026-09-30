@@ -88,6 +88,24 @@ fn atomic_tool_rejects_conflicting_action_argument() {
 }
 
 #[test]
+fn atomic_tool_rejects_sibling_fields_before_dispatch() {
+    let server = server(McpToolProjection::Atomic);
+    for (tool, field) in [
+        ("jobs_get", "retry_mode"),
+        ("jobs_list", "confirm"),
+        ("memory_show", "import_mode"),
+    ] {
+        let mut request = CallToolRequestParams::new(tool).with_arguments(
+            serde_json::Map::from_iter([(field.to_owned(), Value::Null)]),
+        );
+        assert!(
+            projection::normalize_projected_tool_call(&server, &mut request).is_err(),
+            "{tool}"
+        );
+    }
+}
+
+#[test]
 fn leaf_fixed_fields_are_rejected_even_when_equal_null_or_non_string() {
     let server = server(McpToolProjection::Atomic);
     for field in ["action", "subaction"] {

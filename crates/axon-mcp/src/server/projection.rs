@@ -71,6 +71,19 @@ pub(super) fn normalize_projected_tool_call(
             ));
         }
     }
+    let properties = operation
+        .input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("atomic operation properties");
+    for field in arguments.keys() {
+        if !properties.contains_key(field) {
+            return Err(ErrorData::invalid_params(
+                format!("{field} is not an input to tool {}", request.name),
+                None,
+            ));
+        }
+    }
     arguments.insert("action".into(), Value::String(operation.action.to_owned()));
     if let Some(subaction) = &operation.subaction {
         arguments.insert("subaction".into(), Value::String(subaction.clone()));

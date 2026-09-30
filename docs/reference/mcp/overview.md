@@ -118,6 +118,8 @@ An atomic call to `jobs_get` supplies only the request fields, for example
 `{"job_id":"<owned-job-id>"}`. It must not supply `action` or `subaction`,
 even with the same value or null. The legacy equivalent is the `axon` tool
 with `{"action":"jobs","subaction":"get","job_id":"<owned-job-id>"}`.
+Atomic tools reject fields belonging only to sibling subactions, such as
+`retry_mode` on `jobs_get`.
 Both forms enter one canonical dispatcher with the presented name retained in
 audit events. Auxiliary `axon_status_dashboard` identity, UI metadata and
 callability are unchanged in all modes.

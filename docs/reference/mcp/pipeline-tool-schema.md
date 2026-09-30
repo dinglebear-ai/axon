@@ -195,7 +195,7 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | `crates/axon-mcp/src/server.rs` | `sha256:94c1ad9c90317c5ab83732d156162dd457f86f1646fec9e674ff5f9dd2146e10` |
 | `crates/axon-mcp/src/server/action_specs.rs` | `sha256:81cbac8e7456fedff6b40b57575d3d2eff29a0345df8ee4cc857809f012513aa` |
 | `crates/axon-mcp/src/server/authz.rs` | `sha256:b725a33e4c6f28a60159b04f52d07fcca493191c39b67e441fbece7c86d976d6` |
-| `crates/axon-mcp/src/server/operation_schema.rs` | `sha256:95bb355c2b134fd17fd478bf52e24e864a0ded80ddf5680a3bdf9440cd3509b6` |
+| `crates/axon-mcp/src/server/operation_schema.rs` | `sha256:9c49af42baefcc858d7aeba64535431779340581b1529714b90c031b847e802a` |
 | `crates/axon-mcp/src/server/operations.rs` | `sha256:2d9fb5b00a3c99170cec8760c965e056e7099c6f93dabf2507c84a99513a3d11` |
 | `crates/axon-mcp/src/server/system_requests.rs` | `sha256:ff977a83bffb782175626386eef486f11aaf0d2b274aa70d5a4a23276bbe46e2` |
 | `crates/axon-mcp/src/server/tool_schema.rs` | `sha256:156d868b83e26de9171704f2f229673af0771a113d7de7ff18677e11fbafaa5f` |

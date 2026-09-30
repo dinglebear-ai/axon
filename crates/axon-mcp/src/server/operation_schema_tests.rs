@@ -39,6 +39,218 @@ fn focused_schema_has_only_reachable_definitions_and_preserves_unions() {
 }
 
 #[test]
+fn finite_leaves_expose_only_fields_used_by_their_operation() {
+    for op in operation_registry() {
+        let Some(selector) = op.subaction.as_deref() else {
+            continue;
+        };
+        let Some(fields) = leaf_fields(op.action, selector) else {
+            continue;
+        };
+        let actual: BTreeSet<_> = op.input_schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(actual, fields.iter().copied().collect(), "{}", op.name);
+    }
+    for (name, irrelevant) in [
+        ("jobs_get", "retry_mode"),
+        ("jobs_list", "confirm"),
+        ("memory_show", "import_mode"),
+        ("watch_get", "every_seconds"),
+        ("uploads_get", "content"),
+        ("graph_node", "edges"),
+        ("codex_snapshot", "operation_id"),
+        ("prune_get", "confirm"),
+        ("reset_get", "stores"),
+    ] {
+        let schema = Value::Object(
+            operation_registry()
+                .iter()
+                .find(|op| op.name == name)
+                .unwrap()
+                .input_schema
+                .as_ref()
+                .clone(),
+        );
+        assert!(
+            !schema["properties"]
+                .as_object()
+                .unwrap()
+                .contains_key(irrelevant),
+            "{name}"
+        );
+    }
+    for (name, required_field) in [
+        ("jobs_get", "job_id"),
+        ("memory_show", "id"),
+        ("uploads_create", "filename"),
+        ("watch_create", "source"),
+        ("prune_exec", "confirm"),
+        ("jobs_recover", "stale_before"),
+        ("jobs_clear", "confirm"),
+        ("codex_prepare", "params"),
+        ("codex_execute", "params"),
+    ] {
+        let schema = Value::Object(
+            operation_registry()
+                .iter()
+                .find(|op| op.name == name)
+                .unwrap()
+                .input_schema
+                .as_ref()
+                .clone(),
+        );
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(!validator.is_valid(&json!({})), "{name}");
+        let null_field = Value::Object(Map::from_iter([(required_field.to_owned(), Value::Null)]));
+        assert!(!validator.is_valid(&null_field), "{name}");
+        if schema["properties"][required_field]["type"] == "string" {
+            let blank = Value::Object(Map::from_iter([(required_field.to_owned(), json!("  \t"))]));
+            assert!(!validator.is_valid(&blank), "{name}");
+        }
+    }
+    let exec = Value::Object(
+        operation_registry()
+            .iter()
+            .find(|op| op.name == "prune_exec")
+            .unwrap()
+            .input_schema
+            .as_ref()
+            .clone(),
+    );
+    assert!(
+        !jsonschema::validator_for(&exec)
+            .unwrap()
+            .is_valid(&json!({"plan_id":"owned", "confirm":false}))
+    );
+    for (name, invalid, valid) in [
+        (
+            "memory_show",
+            json!({"id": " \t"}),
+            json!({"id": "memory-1"}),
+        ),
+        (
+            "prune_plan",
+            json!({"target": " \t"}),
+            json!({"target": "all"}),
+        ),
+        (
+            "reset_get",
+            json!({"plan_id": " \t"}),
+            json!({"plan_id": "plan-1"}),
+        ),
+        (
+            "codex_events",
+            json!({"cursor_boot_id": 1}),
+            json!({"cursor_boot_id": 1, "after_sequence": 2}),
+        ),
+        ("codex_events", json!({"after_sequence": 2}), json!({})),
+        (
+            "codex_events",
+            json!({"cursor_boot_id": null, "after_sequence": 2}),
+            json!({"cursor_boot_id": 1, "after_sequence": 2}),
+        ),
+        (
+            "codex_reconcile",
+            json!({"operation_id": 1, "without_replay": true}),
+            json!({"operation_id": 1, "without_replay": true, "effect_applied": false, "disposition_note": "checked"}),
+        ),
+        (
+            "codex_reconcile",
+            json!({"operation_id": 1, "without_replay": true, "effect_applied": null, "disposition_note": null}),
+            json!({"operation_id": 1, "without_replay": true, "effect_applied": false, "disposition_note": "checked"}),
+        ),
+    ] {
+        let schema = Value::Object(
+            operation_registry()
+                .iter()
+                .find(|op| op.name == name)
+                .unwrap()
+                .input_schema
+                .as_ref()
+                .clone(),
+        );
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(!validator.is_valid(&invalid), "{name}: {invalid}");
+        assert!(validator.is_valid(&valid), "{name}: {valid}");
+    }
+    for (name, field) in [
+        ("graph_query", "node_id"),
+        ("graph_resolve", "canonical_uri"),
+        ("watch_history", "source"),
+        ("uploads_put_content", "content"),
+    ] {
+        let schema = Value::Object(
+            operation_registry()
+                .iter()
+                .find(|op| op.name == name)
+                .unwrap()
+                .input_schema
+                .as_ref()
+                .clone(),
+        );
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(!validator.is_valid(&json!({})), "{name}");
+        let mut null_choice = Map::new();
+        null_choice.insert(field.to_owned(), Value::Null);
+        if name == "uploads_put_content" {
+            null_choice.insert("upload_id".to_owned(), json!("owned"));
+        }
+        assert!(!validator.is_valid(&Value::Object(null_choice)), "{name}");
+        let mut valid = Map::new();
+        valid.insert(field.to_owned(), json!("owned"));
+        if name == "uploads_put_content" {
+            valid.insert("upload_id".to_owned(), json!("owned"));
+        }
+        assert!(validator.is_valid(&Value::Object(valid)), "{name}");
+    }
+}
+
+#[test]
+fn every_flat_family_field_is_classified_or_explicitly_unused() {
+    let root = tool_schema::canonical_request_schema();
+    for action in [
+        "artifacts",
+        "codex",
+        "collections",
+        "graph",
+        "jobs",
+        "memory",
+        "providers",
+        "prune",
+        "reset",
+        "uploads",
+        "watch",
+    ] {
+        let branch = action_branch(&root, action);
+        let declared: BTreeSet<_> = branch["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .filter(|field| !matches!(*field, "action" | "subaction"))
+            .collect();
+        let classified: BTreeSet<_> = subactions(&root, branch)
+            .iter()
+            .flat_map(|selector| leaf_fields(action, selector).unwrap().iter().copied())
+            .collect();
+        let unused: BTreeSet<_> = declared.difference(&classified).copied().collect();
+        let expected: BTreeSet<_> = match action {
+            "memory" => ["depth", "response_mode", "salience"].into(),
+            "reset" => ["include_config", "reason"].into(),
+            _ => BTreeSet::new(),
+        };
+        assert_eq!(
+            unused, expected,
+            "{action}: update leaf field classification when the DTO changes"
+        );
+    }
+}
+
+#[test]
 fn discriminator_specialization_preserves_conditional_and_nested_payload_semantics() {
     let root = json!({"oneOf":[{
         "type":"object", "additionalProperties":false,
@@ -96,12 +308,12 @@ fn canonical_and_specialized_validity_agree_for_representative_payloads() {
             if let Some(subaction) = &operation.subaction {
                 routed["subaction"] = json!(subaction);
             }
-            assert_eq!(
-                projected.is_valid(sample),
-                validator.is_valid(&routed),
-                "{}: {sample}",
-                operation.name
-            );
+            let focused = projected.is_valid(sample);
+            let canonical = validator.is_valid(&routed);
+            assert!(!focused || canonical, "{}: {sample}", operation.name);
+            if operation.subaction.is_none() {
+                assert_eq!(focused, canonical, "{}: {sample}", operation.name);
+            }
         }
     }
 }
