@@ -898,6 +898,12 @@
       "reason": "Canonical cross-surface operation requires shared semantic coverage."
     },
     {
+      "id": "surface:agent",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Advertised agent operations belong in the behavioral coverage denominator; passing coverage still requires measured runtime evidence."
+    },
+    {
       "id": "surface:artifacts",
       "inventory": "api_parity",
       "classification": "behavioral_e2e",
@@ -938,6 +944,12 @@
       "inventory": "api_parity",
       "classification": "behavioral_e2e",
       "reason": "Generated API parity operation is planned for behavioral E2E coverage."
+    },
+    {
+      "id": "surface:codex",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "Advertised Codex control operations belong in the behavioral coverage denominator; passing coverage still requires measured runtime evidence."
     },
     {
       "id": "surface:collections",

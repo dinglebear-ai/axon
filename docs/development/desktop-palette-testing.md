@@ -1,150 +1,132 @@
 ---
 title: "Desktop Palette Testing"
 created: 2026-05-18
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Desktop Palette Testing
-Last Modified: 2026-06-14
 
-This document covers how to validate the Tauri palette
-(`apps/palette-tauri`, binary `axon-palette-tauri.exe`) on Windows.
+Last reviewed: 2026-09-29
 
-## Capture Workflow
+Validate the Palette frontend separately from its native shell and live Axon
+API connection. The app is in [apps/palette-tauri](../../apps/palette-tauri/),
+with its own package manifest and standalone Tauri Cargo workspace. A browser
+fixture passing does not prove native window, credential, or network behavior.
 
-> **Note:** The `scripts/capture-palette-operations.ps1` script referenced in
-> older versions of this document was never committed to the repository. Use the
-> Windows-MCP approach below instead.
+## Frontend checks and deterministic fixtures
 
-Palette testing runs on **agent-os** (Claude's Windows 11 VM on tootie,
-reachable via `ssh agent-os`). Use the `vibin:desktop-app-testing` skill or
-drive agent-os directly via the Windows-MCP tool available through Labby.
-
-### Building a Windows binary
-
-The portable Windows `.exe` is produced by `tauri build --no-bundle` and shipped
-by the `palette-windows` job in `.github/workflows/release.yml`. To build one
-locally for testing, use `scripts/build-on-winhost.sh` / `scripts/build-windows.sh`
-(both default to `--target palette-tauri`), or build directly:
+From the Axon repository root:
 
 ```bash
 pnpm --dir apps/palette-tauri install --frozen-lockfile
-pnpm --dir apps/palette-tauri exec tauri build \
-  --target x86_64-pc-windows-gnu --no-bundle --ci
-# → apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe
+pnpm --dir apps/palette-tauri lint
+pnpm --dir apps/palette-tauri test
+pnpm --dir apps/palette-tauri typecheck
+pnpm --dir apps/palette-tauri vite:build
+
+# Interactive fixture pages, each run separately
+pnpm --dir apps/palette-tauri fixture:operation-results
+pnpm --dir apps/palette-tauri fixture:labby-cortex
 ```
 
-### Prerequisites
+The fixture scripts and check commands are owned by
+[package.json](../../apps/palette-tauri/package.json). Record the revision and
+fixture URL when capturing results. Check long titles/URLs, empty results,
+partial success, visible errors, keyboard navigation, focus, and narrow-window
+layout. Fixture screenshots demonstrate presentation only, not a successful
+real provider call.
 
-1. Build or download a portable Windows palette directory containing:
-   - `axon-palette-tauri.exe`
-   - `axon.exe`
+For API changes, regenerate the matching OpenAPI/client artifacts and run
+`cargo xtask check-openapi-drift` as described in
+[documentation maintenance](documentation.md). Do not hand-edit generated
+client types to make a test compile.
 
-   The palette needs the WebView2 runtime, which ships with Windows 11.
+## Native Windows build and packaging
 
-2. Copy the runtime config to the Windows user:
+The Windows portable artifact is built by
+[palette-release.yml](../../.github/workflows/palette-release.yml), independently
+of the CLI release workflow. Its native Windows build uses:
 
 ```powershell
-# Run from devhost
-scp ~/.axon/.env agent-os:'C:/Users/User/.axon/.env'
-scp ~/.axon/config.toml agent-os:'C:/Users/User/.axon/config.toml'
+pnpm --dir apps/palette-tauri install --frozen-lockfile
+pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci --config src-tauri/tauri.ci.conf.json
 ```
 
-3. Copy the palette binaries to agent-os:
+Run this on a Windows build host with the app's native build prerequisites.
+The workflow packages
+`apps/palette-tauri/src-tauri/target/release/axon-palette-tauri.exe` and emits
+archive checksums. A different explicit target or Cargo target directory can
+change the local output path; inspect the build result instead of assuming a
+GNU cross-compilation path.
 
-```bash
-scp ./apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe \
-    ./target/x86_64-pc-windows-gnu/release/axon.exe \
-    agent-os:'C:/axon-test/portable/'
-```
+The current Windows portable archive contains the Palette executable. Do not
+assume an adjacent `axon.exe` is bundled or that launching the client starts
+a production Axon server. Configure and verify the intended API endpoint
+separately. Use the installed app's own profile/connection workflow, and keep
+API authorization distinct from web-panel unlock credentials.
 
-4. Unblock downloaded executables (if copied from Linux or downloaded):
+## Isolated live smoke test
+
+Use a dedicated test directory and an explicitly selected Windows desktop
+session. Record hostname, user, working directory, binary path, revision, API
+origin, and test data scope. The host name is an environment choice, not a
+repository contract.
+
+Provision only the credentials needed for the chosen test endpoint. Do not
+copy an entire server `.env`, token store, or home directory into the test
+profile. Avoid broad firewall changes or stopping all processes named `axon`.
+
+A native launch that retains the test process ID is easier to clean up safely:
 
 ```powershell
-Get-ChildItem C:\axon-test\portable -Recurse -Include *.exe | Unblock-File
+$palette = Start-Process -FilePath C:\axon-test\portable\axon-palette-tauri.exe -PassThru
+$palette.Id
+# After collecting evidence, stop only this test instance when still running:
+Get-Process -Id $palette.Id -ErrorAction SilentlyContinue | Stop-Process
 ```
 
-5. Accept or pre-create Windows Firewall rules for `axon.exe` if a network
-   prompt appears on first launch.
+Choose a test path that exists on the host. A process exit or successful
+`Start-Process` is not a UI health check. Use an interactive desktop session
+for keyboard, focus, native dialogs, and screenshots; a non-interactive SSH
+session may not provide those capabilities. When using automation, discover
+the connected device tool and verify its target rather than assuming a
+particular machine or screenshot action name.
 
-### Running via Windows-MCP
+Exercise read-only status/query/retrieve first. Source submission, extraction,
+and cancellation require a deliberately selected test corpus and the
+appropriate authorization. Keep destructive reset/prune/clear operations out
+of ordinary smoke tests unless separately planned and approved.
 
-Use Windows-MCP on agent-os to launch and interact with the palette. For each
-operation to capture:
+## Follow queued work through the unified lifecycle
 
-1. Kill any running palette process:
-
-```powershell
-Stop-Process -Name axon-palette-tauri,axon -Force -ErrorAction SilentlyContinue
-```
-
-2. Launch the palette:
-
-```powershell
-Start-Process C:\axon-test\portable\axon-palette-tauri.exe
-Start-Sleep -Seconds 2
-```
-
-3. Send the operation input via Windows-MCP keyboard automation, then take a
-   screenshot with the Windows-MCP `Screenshot` action. Repeat for each
-   operation (`status`, `doctor`, `map`, `scrape`, `crawl`, `search`,
-   `research`, `ask`, `ingest`, `ask-reset`).
-
-4. Fetch screenshots back to Linux:
+A source result or job ID is not completion. For a source submitted from the
+Palette, inspect the same durable job through the UI or its API. On a CLI host
+connected to the same local runtime state, use:
 
 ```bash
-mkdir -p /tmp/axon-agent-os/final-captures
-scp 'agent-os:C:/axon-test/captures/*.png' /tmp/axon-agent-os/final-captures/
+axon jobs get <job_id> --json
+axon jobs events <job_id> --json
 ```
 
-### Notes
+Do not use retired crawl/ingest family status commands or infer a job's
+documents by guessing an output directory. Source identity, generations,
+manifest entries, job artifacts, and counts are provided by the shared
+contracts. Follow opaque artifact IDs rather than exposing server paths.
+See [jobs](../reference/runtime/jobs.md),
+[ledger](../reference/runtime/ledger.md), and
+[Palette surface](../reference/surfaces/palette.md).
 
-- Kill and relaunch the palette between operations so selected mode, input
-  text, and output state do not leak between captures.
-- Use a Windows-MCP full-desktop screenshot when a system dialog or other
-  desktop-level issue needs to be captured.
-- A plain SSH PowerShell session can start the app but may not foreground the
-  palette window or deliver keyboard input reliably — use the Windows-MCP
-  desktop automation path instead.
+## Acceptance evidence
 
-## Job ID Follow-Up
+Record frontend check results, native build/revision, fixture captures, and
+live API/job verification separately. Every operation must show a result or
+a diagnostic that identifies the failure and recovery action. Distinguish
+queued, running, completed, degraded, failed, and canceled states; retain the
+job ID for follow-up.
 
-For queued palette operations, the first follow-up should be:
-
-```bash
-axon status
-```
-
-That gives the user the current queue view without forcing them to copy a UUID.
-Power users can still inspect a specific job directly:
-
-```bash
-axon crawl status <job_id> --json
-axon ingest status <job_id> --json
-```
-
-Current document lookup support by job id:
-
-- Crawl jobs can be traced to filesystem artifacts. `crawl status <job_id>
-  --json` includes `result_json.output_dir` / `output_path` after progress has
-  been persisted; the associated documents are the `manifest.jsonl` entries and
-  markdown files under that directory.
-- Ingest jobs currently expose progress/count metadata, not a per-document
-  manifest. Qdrant payloads include URL/source metadata, but not the originating
-  ingest job id, so there is no first-class `axon ingest documents <job_id>`
-  command today.
-
-If we want job-id document browsing for all async work, add a first-class
-document manifest keyed by job id or stamp embedded Qdrant points with
-`job_id`, then expose it through `axon <kind> documents <job_id>`.
-
-## Acceptance Criteria
-
-- Every operation in the harness produces visible output or a visible error.
-- Completed successful operations do not show an error-colored prompt state.
-- Default output hides transport details, stdout/stderr labels, line counts, and
-  raw CLI flag advice.
-- URL-heavy results wrap cleanly and remain readable in a narrow window.
-- Async job operations suggest `axon status`, not only a job id.
-- Search/research output uses structured result rows instead of pasted terminal
-  text.
+Verify that result rows, provenance, long URLs, and errors remain readable;
+keyboard focus and navigation remain usable; and successful completion is not
+rendered as a failure. Capture native dialogs with a desktop screenshot when
+necessary, with credentials and private content redacted. Report unavailable
+providers or desktop automation explicitly instead of treating an untested
+path as passed.

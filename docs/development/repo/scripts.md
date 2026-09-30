@@ -43,7 +43,7 @@ The enforcement checks below live in the `xtask` crate (see `axon_rust-pp5`). Ru
 | `check-no-mod-rs` | Enforce no `mod.rs` files (Rust 2018+ convention) |
 | `check-mcp-http` | Verify MCP transport configuration |
 | `check-unwraps` | Warn about new `.unwrap()`/`.expect(` calls in staged code (warn-only) |
-| `check-claude-symlinks` | Verify AGENTS.md / GEMINI.md symlinks next to every CLAUDE.md |
+| `check-claude-symlinks` | Verify canonical AGENTS.md files with direct CLAUDE.md / GEMINI.md aliases |
 | `check-broken-symlinks` | Fail on broken symlinks |
 | `check-secrets` | Scan staged changes for secret material |
 
@@ -61,7 +61,6 @@ The enforcement checks below live in the `xtask` crate (see `axon_rust-pp5`). Ru
 | `test-mcp-tools-mcporter.sh` | MCP smoke test suite (50+ tool calls) |
 | `live-test-all-commands.sh` | Registry-wide parser checks plus isolated live scenarios; performs an early provider preflight, writes per-command timings, fails on missing command/flag behavioral contracts, and supports targeted `--mode scenarios --scenario-group web-rag|jobs-source|admin|resources` reruns |
 | `stress-crawler.sh` | Opt-in isolated crawler/embedding/graph stress run with concurrent jobs, metrics, verification, and automatic cleanup |
-| `test-client-server-mode.sh` | CLI client/server smoke against a running `axon serve` |
 | `test-ask-quality-regressions.sh` | RAG answer quality regression tests |
 
 Run the full CLI contract suite with `scripts/live-test-all-commands.sh`. For a

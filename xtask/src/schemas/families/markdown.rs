@@ -2,7 +2,12 @@ use crate::schemas::source_input::SourceInput;
 use serde_json::Value;
 
 pub(super) fn markdown(family: &str, inputs: &[SourceInput]) -> String {
-    let mut out = generated_header(family, family);
+    let command = match family {
+        "cli-help" => "cli",
+        "env" => "config",
+        _ => family,
+    };
+    let mut out = generated_header(family, command);
     out.push_str("## Source Inputs\n\n| Path | SHA-256 |\n|---|---|\n");
     for input in inputs {
         out.push_str(&format!("| `{}` | `{}` |\n", input.path, input.checksum));

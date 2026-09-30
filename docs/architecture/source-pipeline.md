@@ -58,7 +58,9 @@ requested
   → complete                            (result_map::to_source_result_with_counts)
 ```
 
-The family adapter owns the inner acquire→prepare→embed→publish run. An
+The adapter owns acquisition and normalization into `SourceDocument` values.
+The shared `axon-services::source` executor owns preparation, embedding, and
+publication; a family does not implement a parallel indexing pipeline. An
 artifact-aware adapter may also emit neutral `dinglebear.artifact-candidate/v1`
 evidence beside normalized changed documents. The executor buffers that evidence
 and calls the optional `ArtifactCandidateSink` only after the generation has

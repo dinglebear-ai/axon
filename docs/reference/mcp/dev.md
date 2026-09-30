@@ -8,20 +8,22 @@ Day-to-day development guide for the Axon MCP server.
 git clone https://github.com/dinglebear-ai/axon.git
 cd axon
 mkdir -m 700 -p ~/.axon
-cp .env.example ~/.axon/.env
+test -e ~/.axon/.env || cp .env.example ~/.axon/.env
 # Edit ~/.axon/.env with service URLs/secrets.
 
 just dev
 ```
 
-`just dev` starts infrastructure and `axon serve`, including MCP HTTP on the
-unified listener.
+`just dev` calls `just stop`, builds the debug binary, starts configured
+TEI/Chrome services, and runs `axon mcp`. It is a development workflow that
+can interrupt an existing local runtime, not a synonym for `axon serve`.
+Use `axon serve` for the unified HTTP listener with configured providers.
 
 ## Source Layout
 
 ```text
 crates/axon-mcp/src/
-  server.rs                  # AxonMcpServer, single-tool dispatch
+  server.rs                  # canonical dispatch, legacy/atomic/both, auxiliary tools and tasks
   server/authz.rs            # live MCP_ACTION_SPECS allowlist and scopes
   server/tool_schema.rs      # live input schema generation
   server/handlers_source.rs  # action=source
@@ -32,7 +34,10 @@ crates/axon-mcp/src/
   server/handlers_extract.rs # action=extract
 ```
 
-The shared MCP request DTOs live in `crates/axon-api/src/action/`.
+Shared domain DTOs live in `axon-api`. Transport-only envelopes and distinct
+system/watch requests live in `axon-mcp`; the primary request enum does not
+represent the entire catalog. Canonical leaf descriptors come from
+`server/operations.rs`, not a separately maintained list of wrappers.
 
 ## Development Cycle
 
@@ -62,19 +67,19 @@ cargo test -p axon-mcp authz -- --nocapture
   action.
 - Add the action name, scope, description, and cost to `MCP_ACTION_SPECS`.
 - Add schema/auth tests proving the action is advertised and scoped.
+- Validate legacy, atomic, and combined projections, including rejection of
+  fixed routing fields on leaf calls, auxiliary tools, resources, and tasks.
+- Preserve caller identity and request metadata through canonicalization.
+  A durable job is not automatically a supported MCP task.
 
 Do not add source-family one-off actions. Source acquisition/indexing belongs
 under `action=source`.
 
 ## Removed Action Guard
 
-These names must stay absent from the live MCP schema and action allowlist:
+Supported `scrape`, `crawl`, `embed`, `ingest`, and `code_search` projections
+remain live. These removed names must stay absent:
 
-- `scrape`
-- `crawl`
-- `embed`
-- `ingest`
-- `code_search`
 - `code_search_watch`
 - `vertical_scrape`
 - `purge`
@@ -84,12 +89,11 @@ Use `action=source` for indexing and `action=prune` for cleanup.
 
 ## HTTP Testing
 
-```bash
-curl -X POST http://localhost:8001/mcp \
-  -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"axon","arguments":{"action":"doctor"}}}'
-```
+Use a real MCP client with initialization, negotiated capability/session
+headers, and the intended API/OAuth identity. A bare `tools/call` POST is
+not a complete protocol smoke test. Follow the [connection guide](connect.md),
+discover the actual tool schema, and make a read-only status call.
 
-Loopback development binds may omit the token. Non-loopback binds require OAuth
-or `AXON_HTTP_TOKEN`.
+Loopback-only development may omit a token. Non-loopback binds require
+OAuth or `AXON_HTTP_TOKEN`; panel unlock is separate. Include denied
+auth/origin cases and preserve job IDs when testing queued operations.

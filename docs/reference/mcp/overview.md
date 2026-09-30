@@ -21,11 +21,13 @@ The live machine-readable schema is generated at
 
 ## Source Indexing
 
-All MCP indexing goes through `action=source`.
+All MCP indexing uses the shared source pipeline, through the universal
+source operation or supported focused projections. The following JSON Lines
+examples are separate legacy calls, not one batch request.
 
-```json
-{ "action": "source", "source": "https://example.com", "scope": "page", "embed": true }
-{ "action": "source", "source": "https://example.com", "scope": "site", "embed": true }
+```jsonl
+{ "action": "source", "source": "https://example.com", "scope": "page" }
+{ "action": "source", "source": "https://example.com", "scope": "site" }
 ```
 
 `scope=page` is the single-page scrape shape. `scope=site` or `scope=docs` is
@@ -68,7 +70,7 @@ OAuth mode or `AXON_HTTP_TOKEN`.
 
 Grouped actions use `subaction`, for example:
 
-```json
+```jsonl
 { "action": "jobs", "subaction": "events", "job_id": "..." }
 { "action": "extract", "subaction": "start", "urls": ["https://example.com"] }
 { "action": "watch", "subaction": "list" }
@@ -137,6 +139,20 @@ confirmation are checked by the existing policy/services. Only `extract_start`
 currently implements optional MCP task augmentation; in legacy form this is
 `axon` with `action=extract, subaction=start`. Progress metadata is preserved and
 a client without task capability is refused before enqueue.
+
+## Task-augmented calls
+
+Only extraction start supports negotiated MCP task execution. A durable
+source job does not automatically support protocol tasks. The current task
+handlers expose `tasks/get` with the terminal result/error inline and
+`tasks/cancel` with subsequent state observed through `tasks/get`. Do not
+use an older `tasks/result` / `tasks/list` flow against this build. Preserve
+the returned task ID and polling interval.
+
+See [the task contract](tool-contract.md#task-support) and
+[the implementation](../../../crates/axon-mcp/src/server/tasks.rs). Client
+capability refusal must happen before enqueue; task acceptance is not proof
+of completed extraction.
 
 ### Real-client validation
 

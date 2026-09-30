@@ -1,141 +1,62 @@
 ---
 title: "Repository Structure -- Axon"
 created: 2026-04-04
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Repository Structure -- Axon
 
+Last reviewed: 2026-09-29
+
 ## Directory tree
 
-```
-axon/
-├── apps/
-│   └── web/                         # Static setup/config panel source
-│       ├── app/                     # Next static app files
-│       ├── package.json             # Node dependencies
-│       └── CLAUDE.md                # Web-specific development instructions
-│
-├── src/                             # Rust module roots and submodules
-│   ├── cli.rs                       # CLI module root
-│   ├── cli/                         # Command handlers
-│   │   └── commands/                # Per-command handlers (scrape, crawl, ask, etc.)
-│   ├── core.rs                      # Core module root
-│   ├── core/                        # Config, HTTP client, content processing
-│   │   ├── config/                  # CLI flags, env parsing, runtime config
-│   │   └── llm/                     # Gemini headless + OpenAI-compat completions
-│   ├── crawl.rs                     # Crawl module root
-│   ├── crawl/                       # Spider-based crawl engine
-│   ├── ingest.rs                    # Ingest module root
-│   ├── ingest/                      # GitHub, Reddit, YouTube adapters
-│   ├── jobs.rs                      # Jobs module root
-│   ├── jobs/                        # SQLite job runtime and workers
-│   │   ├── runtime.rs               # SQLite runtime module root
-│   │   ├── workers.rs               # In-process worker loops
-│   │   ├── store.rs                 # SQLite schema and lifecycle helpers
-│   │   ├── ops.rs                   # Job state transition helpers
-│   │   ├── query.rs                 # Job query helpers
-│   │   └── watch.rs                 # Recurring watch scheduler
-│   ├── mcp.rs                       # MCP module root
-│   ├── mcp/                         # MCP schema and server
-│   │   ├── schema.rs               # Tool input schema, action enums
-│   │   └── server.rs               # Handler dispatch, transport setup
-│   ├── services.rs                  # Services module root
-│   ├── services/                    # Typed service layer
-│   │   ├── context.rs              # ServiceContext
-│   │   ├── types/                  # Result structs
-│   ├── vector.rs                    # Vector module root
-│   ├── vector/                      # Qdrant ops, TEI, hybrid search
-│   │   └── ops/                    # TEI embed, Qdrant upsert/search, ask
-│   ├── web.rs                       # Unified HTTP server module root
-│   └── web/                         # Static panel, /v1/ask, direct /v1 REST routes
-│
-├── docs/                            # Documentation (this directory)
-├── migrations/                      # SQL migrations (root; per-family schema also under src/jobs/migrations/)
-├── scripts/                         # Maintenance, hooks, testing scripts
-├── xtask/                           # Cargo xtask crate — enforcement checks (cargo xtask check)
-├── tests/                           # Integration tests
-├── config/                          # Compose, Chrome, Qdrant, and MCP config files
-├── specs/                           # Specifications
-│
-├── main.rs                          # Binary entry point
-├── lib.rs                           # Library root (run/run_once, command dispatch)
-├── Cargo.toml                       # Rust package manifest
-├── Cargo.lock                       # Dependency lock file
-├── Justfile                         # Task runner recipes
-├── config.example.toml              # Annotated template — copy to ~/.axon/config.toml
-├── lefthook.yml                     # Git hooks
-├── deny.toml                        # cargo-deny config
-├── renovate.json                    # Dependency update bot
-├── rust-toolchain.toml              # Rust 1.97.1 pinned toolchain
-│
-├── docker-compose.prod.yaml         # Axon server + infrastructure services
-├── docker-compose.yaml              # Local development stack
-├── .env.example                     # Environment variable template
-│
-├── CLAUDE.md                        # Project instructions for Claude Code
-├── AGENTS.md -> CLAUDE.md           # Codex agent alias
-├── GEMINI.md -> CLAUDE.md           # Gemini agent alias
-├── README.md                        # User-facing documentation
-└── CHANGELOG.md                     # Version history
-```
+The maintained [repository map](../../architecture/repo-structure.md) describes
+the current workspace, apps, plugins, deployment material, and tooling. The
+old monolithic `src/cli`, `src/crawl`, `src/ingest`, and `src/vector` tree is
+not the current layout. The root `src/` is a thin bootstrap and utility-binary
+surface; domain implementations live under `crates/`.
 
 ## Runtime modules
 
-Axon uses a flat module layout rooted at `src/`. Each module has a module root file (`src/<name>.rs`) and a subdirectory (`src/<name>/`).
-
-| Module | Module root | Purpose |
-|-------|------------|---------|
-| cli | `src/cli.rs` | CLI command handlers -- one file per subcommand |
-| core | `src/core.rs` | Config parsing, HTTP client, content/markdown processing |
-| crawl | `src/crawl.rs` | Spider-based crawl engine, render mode switching |
-| ingest | `src/ingest.rs` | Source adapters (GitHub, Reddit, YouTube, sessions) |
-| jobs | `src/jobs.rs` | SQLite-backed async job framework with in-process workers |
-| mcp | `src/mcp.rs` | MCP server schema definition and handler dispatch |
-| services | `src/services.rs` | Typed service layer consumed by CLI, MCP, and HTTP routes |
-| vector | `src/vector.rs` | Qdrant operations, TEI embedding, hybrid search |
-| web | `src/web.rs` | Unified HTTP server for panel, `/v1/ask`, and direct `/v1` REST routes |
+Use [crate structure](../../architecture/crate-structure.md) for current owners
+and the [generated dependency graph](../../reference/crate-dependency-graph.md)
+for exact edges. [Crate ownership](../../architecture/crate-ownership.md) is
+the rule for deciding where a change belongs. CLI, MCP, and HTTP call shared
+services; DTOs belong in `axon-api`.
 
 ### Module layout convention (enforced)
 
-Rust 2018+ file-per-module layout. `mod.rs` is forbidden:
+Rust uses a module root file and a sibling directory rather than `mod.rs`:
 
-```
-# Correct
-foo.rs          <- module root
+```text
+foo.rs
 foo/
-  bar.rs        <- submodule
-
-# Wrong
-foo/
-  mod.rs        <- forbidden
+  bar.rs
 ```
 
-Enforced by `cargo xtask check-no-mod-rs`.
-
-Do not use `#[path = "..."]` to route around this layout in production modules.
-If a temporary path attribute is needed during a file split, remove it before
-landing the change and add the new module under the standard `foo.rs` plus
-`foo/bar.rs` structure. A current-tree check should return no production
-`#[path]` attributes outside historical docs.
+`cargo xtask check-no-mod-rs` enforces the filename rule. Existing `#[path]`
+declarations, especially test sidecars and explicit module boundaries, are
+part of the compiled module graph. Do not delete or rename them based on the
+former blanket claim that production path attributes are forbidden. Preserve
+cfg gates and run the affected tests after a split.
 
 ## Root files
 
-| File | Required | Purpose |
-|------|----------|---------|
-| `CLAUDE.md` | Yes | Project instructions (37K, comprehensive) |
-| `README.md` | Yes | User-facing documentation (55K) |
-| `CHANGELOG.md` | Yes | Version history |
-| `.env.example` | Yes | Environment template (150+ variables) |
-| `Justfile` | Yes | Task runner (30+ recipes) |
-| `config.example.toml` | Yes | Annotated config template (copy to `~/.axon/config.toml`) |
-| `Cargo.toml` | Yes | Rust package manifest |
-| `main.rs` | Yes | Binary entry point |
-| `lib.rs` | Yes | Library root with command dispatch |
+[AGENTS.md](../../../AGENTS.md) is canonical. Root and scoped `CLAUDE.md` /
+`GEMINI.md` files are direct relative aliases to their canonical `AGENTS.md`,
+not the reverse. [Documentation maintenance](../documentation.md) describes
+validation and agent instruction size budgets.
+
+[Cargo.toml](../../../Cargo.toml), [Cargo.lock](../../../Cargo.lock),
+[rust-toolchain.toml](../../../rust-toolchain.toml),
+[Justfile](../../../Justfile), and [lefthook.yml](../../../lefthook.yml) own
+the workspace/toolchain/developer workflow. Do not copy stale file sizes,
+recipe counts, or version strings into this navigation page.
 
 ## Docker compose files
 
-| File | Contents | Network |
-|------|----------|---------|
-| `docker-compose.prod.yaml` | Axon server, Qdrant, TEI, Chrome | `axon` bridge |
-| `docker-compose.yaml` | Local development stack with bind-mounted Axon debug binary | `axon` bridge |
+Compose is a development/reference surface. Production Axon is native under
+systemd in Incus or bare-metal Linux with external providers. Follow
+[deployment](../../operations/deployment.md) and inspect the actual target
+before choosing lifecycle commands. A repository file named `prod` is not
+evidence of an installation's service manager.

@@ -1,131 +1,157 @@
 ---
 title: "Sessions Ingest"
 created: 2026-02-23
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Sessions Ingest
-Last Modified: 2026-07-15
 
-Version: 1.0.0
-Last Updated: 01:26:53 | 02/25/2026 EST
+Last reviewed: 2026-09-29
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/sessions.md`](../../reference/actions/sessions.md)
+Index local Claude, Codex, and Gemini CLI session history through the unified
+source pipeline. The [session adapter](../../../crates/axon-adapters/src/sessions.rs)
+discovers transcripts, decodes semantic turns, redacts their text, and emits
+`SourceDocument` values. Shared preparation, embedding, and publication then
+make committed content searchable. There is no separate session ingest queue
+or adapter-owned vector writer.
 
-Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Session ingest scans local history paths, redacts secret-like tokens, normalizes each session chunk through the source-doc planner, and embeds planner-created `PreparedDoc` values through the shared TEI/Qdrant pipeline.
+See the [CLI reference](../../reference/actions/sessions.md) for flags and
+[session source overview](../sessions.md) for navigation.
 
-## Supported Formats
+## Supported providers and roots
 
-| Provider | Scan path | File format |
-|----------|-----------|-------------|
-| **Claude** | `~/.claude/projects/` | `.jsonl` per conversation |
-| **Codex** | `~/.codex/sessions/` | `.jsonl` per session |
-| **Gemini** | `~/.gemini/history/`, `~/.gemini/tmp/` | `.json` per conversation |
+| Provider | Default root under the executing process HOME | Transcript format |
+|---|---|---|
+| Claude | `~/.claude/projects/` | JSONL |
+| Codex | `~/.codex/sessions/` | JSONL |
+| Gemini | `~/.gemini/history/` and `~/.gemini/tmp/` | JSON |
 
-Each parser (`claude.rs`, `codex.rs`, `gemini.rs`) extracts message pairs (human + assistant turns) into flat text chunks, stripping internal metadata to keep only the conversational content.
+These are agent CLI history formats, not a promise that an arbitrary consumer
+chat application export has the same schema. Provider selection and root
+validation live in
+[`sessions/selection.rs`](../../../crates/axon-adapters/src/sessions/selection.rs).
+Roots come from the executing process HOME. A client path does not become a
+server-readable path merely because it appears in a request.
 
-## What Gets Indexed
-
-- All human and assistant message turns
-- Session metadata embedded as Qdrant point payload: source path, provider, project name
-- Each changed session file produces one or more Qdrant points
-
-## Size and Safety Limits
-
-Each session file is bounded by `AXON_SESSION_INGEST_MAX_BYTES` (default: 20 MiB). Files above that limit fail closed. Secret-like tokens such as `sk-*`, `ghp_*`, `github_pat_*`, `atk_*`, and long mixed alphanumeric tokens are redacted before embedding.
-
-## How It Works
-
-1. Discovers all session files under each provider's scan path
-2. Dispatches to the matching parser based on path/provider
-3. Parser extracts message turns and formats each session document as redacted plain text
-4. Session text is normalized with the shared source-doc helpers, then embedded via `embed_prepared_docs()` → TEI → Qdrant
-
-Sessions defaults to **async queued execution** when `--wait false` (default): it enqueues an ingest job and returns a job ID.
-
-Use `--wait true` for synchronous execution.
-
-## Auto-Capture vs Explicit Recall
-
-The Claude plugin registers no SessionStart hook. Run `axon memory context`
-explicitly for fast, best-effort recall; it does not scan or ingest session
-files.
-
-Automatic capture must use the unified source/watch pipeline. The old
-session-specific watcher, status/smoke helpers, and setup service are not
-supported surfaces.
-
-Use `axon sessions` for a one-shot local ingest, or submit an explicit session
-selector through the source pipeline when a caller needs the transport-neutral
-path:
+## Submit and follow a job
 
 ```bash
-axon sessions --codex --wait true
-axon 'session:codex:/home/me/.codex/sessions/2026/07/15/session.jsonl' --wait true
+# Existing roots for all three providers
+axon sessions --wait true
+
+# One provider, with an optional project filter
+axon sessions --codex --project axon --wait true
+
+# One explicit export under an approved provider root
+axon "session:codex:${HOME}/.codex/sessions/2026/07/15/session.jsonl" --wait true
+
+# Inspect a returned durable job
+axon jobs get <job_id>
+axon jobs events <job_id>
 ```
 
-A session selector has the form `session:<provider>:<path>`, where provider is
-`claude`, `codex`, or `gemini`, and path is a session export file or directory.
-The selector routes through the session source adapter, not through local-path
-indexing, so transcript parsing/redaction stays session-aware.
+Replace the example transcript path with an existing local export. Without a
+provider flag, `axon sessions` selects every existing provider root. Gemini
+history and temporary roots are separate source submissions. Consequently a
+command can return more than one source result/job, not one job for the whole
+fleet of roots. JSON output groups these under `sessions`.
 
-## Remote and Server Submission
+Without `--wait true`, the CLI enqueues source jobs and attempts to ensure a
+worker process exists. A job ID is not completion. With `--wait true`, each
+selected source is executed with active workers and waited to terminal state.
+Use [unified jobs](../../reference/runtime/jobs.md) for cancellation, retry,
+and recovery. The CLI implementation is
+[`commands/sessions.rs`](../../../crates/axon-cli/src/commands/sessions.rs).
 
-Server/API callers submit session work through `POST /v1/sources` with a
-`SourceRequest` whose `source` is a `session:<provider>:<path>` selector. The
-removed prepared-session endpoint must not be reintroduced as a compatibility
-route.
+A transport-neutral selector is `session:<provider>:<path>`. REST callers use
+`POST /v1/sources` with that selector in `SourceRequest.source`; MCP callers
+use the corresponding source request. Authorization and provider-root checks
+still apply on the executing host. Do not use the removed prepared-session
+endpoint or assume an upload is automatically decoded as a session export.
 
-Prepared uploads are a pipeline-unification target for clients that cannot
-expose local paths to the server. That replacement belongs under the staged
-uploads contract plus `POST /v1/sources`; it is not the removed prepared-session
-endpoint.
+## Discovery, refresh, and limits
 
-## Git Enrichment (repo and branch fields)
+Discovery checks provider-specific extensions, walks without following links,
+computes content fingerprints, and emits manifest entries. Acquisition reads
+added and modified files; unchanged content can reuse the existing generation
+projection. The semantic document version participates in freshness so decoder
+changes can invalidate previously prepared output.
 
-Session metadata includes project and repository context where it can be resolved. Claude project directories are decoded back to filesystem paths and the git `origin` remote is read once per project directory. The result is shared across all sessions within that project.
+A configured effective item limit caps the selected manifest inventory. A
+truncated inventory is marked partial, so omitted transcripts are not evidence
+of deletion. The directory walk can still inspect additional entries while
+selecting a deterministic bounded set. Item-count bounds are not a guarantee
+that discovery time or each transcript's byte size is bounded.
 
-### How enrichment works
+The old `AXON_SESSION_INGEST_MAX_BYTES` variable is **not read by the current
+session adapter**. Do not rely on the previously documented 20 MiB limit.
+The current acquisition implementation reads each selected transcript into
+text; choose a bounded export/file set and account for memory use when
+indexing large sessions. This is an implementation limitation, not a
+configurable fail-closed byte cap.
 
-1. The session scanner decodes the Claude CLI project folder name (e.g. `-home-jmagar-workspace-axon-rust`) back to a filesystem path via `decodeProjectPath()`.
-2. `enrichWithGit(projectPath)` walks up the directory tree looking for a `.git` directory.
-3. If a git root is found, `git remote get-url origin` is read and normalized to a GitHub slug when possible.
+Selection rejects symlink roots, unsupported types/extensions, secret path
+components, and paths outside the matching provider's approved roots. The
+[discovery implementation](../../../crates/axon-adapters/src/sessions/discovery.rs)
+and [selection implementation](../../../crates/axon-adapters/src/sessions/selection.rs)
+are the source of truth for these checks.
 
-### Fallback for hyphenated directory names
+## Searchable text and metadata
 
-Because the Claude CLI encodes path separators and literal hyphens identically (both become `-`), a single lossless decode is not always possible. When the naively decoded path does not exist on disk, `enrichWithGit` iterates over candidate paths generated by `decodedProjectPathCandidates()` (up to 16 candidates) and uses the first one that exists. This handles projects in directories with real hyphens in their names.
+[Provider decoders](../../../crates/axon-adapters/src/sessions/decode.rs)
+project semantic conversation text and redact it before preparation.
+Normalized documents are plain text with the session-turn chunk profile; raw
+JSON/JSONL transport is not sent through a second transcript parser.
 
-### Field shapes
+The [metadata projection](../../../crates/axon-adapters/src/sessions/metadata.rs)
+uses stable opaque session/document identities and a strict field allowlist.
+Canonical source fields, `session_provider`, opaque `session_id`, generation,
+visibility, and redaction state are retained. Optional session turn/tool/skill
+fields are allowed when present. Raw local paths and export IDs must not be
+reconstructed from public vector metadata.
 
-| Field | Type | Value |
-|-------|------|-------|
-| `project` | `string` | Project/display name derived from the session path |
-| `project_path` | `string \| undefined` | Decoded local project path when resolvable |
-| `gh_repo` | `string \| undefined` | `owner/repo` string parsed from the `origin` remote URL; absent if no remote or parse fails |
+Do not depend on the old `project`, `project_path`, or `gh_repo` enrichment
+contract. Decoder observations such as workspace path, model, tool summaries,
+and Git branch are not automatically retained in the normalized vector
+payload. A project filter is input selection, not a promise of a corresponding
+searchable payload field.
 
-## Adding a New Session Format
+Successfully normalized, redacted semantic text is marked `clean` for normal
+retrieval. The `redacted` visibility state is not a success flag to set on all
+session vectors. See [redaction](../../reference/runtime/redaction.md) and
+[metadata payload](../../reference/sources/metadata-payload.md).
 
-1. Create `crates/axon-ingest/src/sessions/<provider>.rs` (or add provider parser logic under `crates/axon-ingest/src/sessions.rs` if keeping a single module)
-2. Implement `ingest_<provider>_sessions(cfg, state, multi)` following the pattern in `claude.rs`
-3. Register it in sessions dispatch (`crates/axon-ingest/src/sessions.rs`) with a `cfg.sessions_<provider>` flag check
-4. Add the `--<provider>` flag (e.g. `--claude`, `--codex`, `--gemini`) to `SessionsArgs` in `crates/axon-core/src/config/cli.rs` and wire it through `crates/axon-core/src/config/parse/build_config/`
-5. Update service/API schema surfaces and source-adapter docs when the format
-   is exposed beyond CLI.
-6. Add a unit test with a minimal sample file in `#[cfg(test)]`
+## Capture and recall
 
-## Troubleshooting
+The usage plugin registers no automatic SessionStart ingest hook.
+`axon memory context` is explicit recall; it does not scan session roots.
+Recurring capture belongs to the unified source/watch lifecycle, not the
+retired session-specific watcher, setup service, or status/smoke helpers.
 
-**No files processed / `0 chunks indexed`**
+## Troubleshooting and extension
 
-Session export files don't exist at the scanned paths. Export conversations from the respective app:
-- Claude: Settings → Export Data
-- Codex: `codex export` or check `~/.codex/sessions/` after running sessions
-- Gemini: Check `~/.gemini/history/` after using Gemini CLI
+**No selected roots:** Check HOME and the provider history directories on the
+executing host. An empty selected-root result is not proof that a remote
+client's transcripts were inspected. Do not invent an export command or move
+files outside the approved roots to bypass selection.
 
-**Parse errors on a `.jsonl` / `.json` file**
+**Selection denied:** Check provider, extension, canonical root, symlink use,
+and permissions. Use the appropriate session selector, not generic local-file
+indexing, when session-specific decoding/redaction is required.
 
-The export schema may have changed. Open the file and verify the structure matches what the parser expects, or check `crates/axon-ingest/src/sessions/<provider>.rs` for the expected fields.
+**Unexpected or empty text:** Compare a small redacted fixture with the
+provider decoder and inspect job events. Provider format changes need decoder
+coverage; they are not corrected by changing the file suffix.
 
-**`gh_repo` missing**
+**Queued but not progressing:** Inspect the returned source job and worker
+state. Check data-plane/provider diagnostics before retrying; preserve the
+job ID and inspect completed stages.
 
-The decoded project directory either does not exist on disk, is not inside a git repository, or has no `origin` remote configured. Run `git remote -v` in the project directory to verify the remote is set up correctly.
+To add a format, extend the session provider/selection and decoder modules in
+`axon-adapters`, update its adapter declarations and transport selectors, and
+follow [source onboarding](../../development/adding-source.md). Test semantic
+text, redaction, metadata allowlisting, path denial, partial inventories, and
+added/modified/removed/unchanged refresh behavior. Existing coverage includes
+[adapter tests](../../../crates/axon-adapters/src/sessions_tests.rs),
+[decoder tests](../../../crates/axon-adapters/src/sessions/decode_tests.rs), and
+[CLI tests](../../../crates/axon-cli/src/commands/sessions_tests.rs).

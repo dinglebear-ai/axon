@@ -6,12 +6,14 @@ Last Modified: 2026-06-13
 
 | Surface | Entry point |
 |---|---|
-| CLI | `axon memory ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
+| CLI | <code>axon memory context</code><br><code>axon memory link</code><br><code>axon memory list</code><br><code>axon memory remember</code><br><code>axon memory search</code><br><code>axon memory show</code><br><code>axon memory supersede</code> |
+| REST | <code>DELETE /v1/memories/{memory_id}</code><br><code>GET /v1/memories</code><br><code>GET /v1/memories/{memory_id}</code><br><code>POST /v1/memories</code><br><code>POST /v1/memories/compact</code><br><code>POST /v1/memories/context</code><br><code>POST /v1/memories/export</code><br><code>POST /v1/memories/import</code><br><code>POST /v1/memories/review</code><br><code>POST /v1/memories/search</code><br><code>POST /v1/memories/{memory_id}/archive</code><br><code>POST /v1/memories/{memory_id}/compact</code><br><code>POST /v1/memories/{memory_id}/contradict</code><br><code>POST /v1/memories/{memory_id}/link</code><br><code>POST /v1/memories/{memory_id}/pin</code><br><code>POST /v1/memories/{memory_id}/reinforce</code><br><code>POST /v1/memories/{memory_id}/supersede</code> |
+| MCP atomic tools | <code>memory_archive</code><br><code>memory_compact</code><br><code>memory_context</code><br><code>memory_contradict</code><br><code>memory_export</code><br><code>memory_forget</code><br><code>memory_import</code><br><code>memory_link</code><br><code>memory_list</code><br><code>memory_pin</code><br><code>memory_reinforce</code><br><code>memory_remember</code><br><code>memory_review</code><br><code>memory_search</code><br><code>memory_show</code><br><code>memory_supersede</code> |
+| Shared service ownership | [axon-services](../../../crates/axon-services/src/lib.rs) and the owning domain crate; see [crate ownership](../../architecture/crate-ownership.md) |
 
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+MCP names describe the atomic projection. The legacy `axon` tool uses the corresponding action/subaction selectors; `both` exposes both projections. Discover the running server before calling. [MCP contract](../mcp/tool-schema.md) owns exact schemas and selectors.
+
+Family-level navigation does not imply identical suboperations or request shapes across transports.
 <!-- END GENERATED ACTION SURFACES -->
 
 

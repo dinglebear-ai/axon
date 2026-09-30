@@ -172,4 +172,12 @@ for stale in ("Inert otherwise", "signature verification is optional"):
     if stale in integrity:
         raise SystemExit(f"updater integrity comment describes fail-open behavior: {stale}")
 
+# Include all current tracked prose, not only the curated operation examples.
+from audit_docs import audit
+
+doc_audit = audit(root)
+if doc_audit["findings"]:
+    raise SystemExit("documentation navigation/data failures: " + json.dumps(doc_audit["findings"]))
+print(f"ok - {doc_audit['summary']['files']} documentation files inventoried; "
+      f"{doc_audit['summary']['links_checked']} current links checked")
 print("ok - operational documentation contracts passed")

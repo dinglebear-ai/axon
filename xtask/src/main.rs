@@ -9,6 +9,8 @@
     clippy::while_let_on_iterator
 )]
 
+mod reference_tables;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};

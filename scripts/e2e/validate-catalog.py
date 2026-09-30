@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CATALOG = ROOT / "tests/e2e/catalog/catalog.json"
 CLI_REGISTRY = ROOT / "docs/reference/cli/commands.json"
 CROSS_MATRIX = ROOT / "tests/fixtures/cross-surface/operation_matrix.json"
-API_PARITY = ROOT / "docs/reference/api-parity.md"
+MCP_REGISTRY = ROOT / "docs/reference/mcp/tool-schema.json"
+REST_REGISTRY = ROOT / "docs/reference/rest/openapi.json"
 
 CLASSIFICATIONS = {"behavioral_e2e", "contract_only", "unsupported", "out_of_scope"}
 SURFACES = {"cli", "mcp", "mcp_task_wire", "http"}
@@ -128,14 +129,50 @@ def walk_forbidden(value: Any, errors: list[str], location: str = "catalog") -> 
             walk_forbidden(child, errors, f"{location}[{index}]")
 
 
+def registry_records(path: Path, *keys: str) -> list[dict[str, Any]]:
+    """Load a complete registry, never turn missing input into an empty surface."""
+    value = load(path)
+    for key in keys:
+        if not isinstance(value, dict) or key not in value:
+            raise ValueError(f"{path}: missing registry {'/'.join(keys)}")
+        value = value[key]
+    if not isinstance(value, list) or not value or not all(isinstance(row, dict) for row in value):
+        raise ValueError(f"{path}: registry {'/'.join(keys)} must be a nonempty object array")
+    return value
+
+
+def required_name(row: dict[str, Any], key: str, path: Path) -> str:
+    value = row.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{path}: registry entry requires nonempty {key}")
+    return value
+
+
 def expected_operations() -> set[str]:
-    cli = {f"cli:{item['name']}" for item in load(CLI_REGISTRY)["commands"]}
-    cross = {f"cross:{item['op']}" for item in load(CROSS_MATRIX)["operations"]}
-    surface = {
-        f"surface:{match.group(1)}"
-        for line in API_PARITY.read_text(encoding="utf-8").splitlines()
-        if (match := re.match(r"^\| `([^`]+)` \|", line))
+    # The human parity table is an output, not a machine-readable input.
+    # Preserve literal names: CLI code-search and MCP code_search are distinct
+    # existing coverage IDs even though the presentation normalizes spelling.
+    cli_rows = registry_records(CLI_REGISTRY, "commands")
+    cli = {f"cli:{required_name(item, 'name', CLI_REGISTRY)}" for item in cli_rows}
+    cross = {
+        f"cross:{required_name(item, 'op', CROSS_MATRIX)}"
+        for item in registry_records(CROSS_MATRIX, "operations")
     }
+    surface: set[str] = set()
+    for item in cli_rows:
+        path = item.get("path")
+        if not isinstance(path, list) or not path or not all(isinstance(part, str) and part for part in path):
+            raise ValueError(f"{CLI_REGISTRY}: command entry has no valid path")
+        surface.add(f"surface:{path[0]}")
+    for item in registry_records(MCP_REGISTRY, "x-axon", "operations"):
+        surface.add(f"surface:{required_name(item, 'action', MCP_REGISTRY)}")
+    for item in registry_records(REST_REGISTRY, "routes"):
+        path = required_name(item, "path", REST_REGISTRY)
+        if path.startswith("/v1/"):
+            family = path[4:].split("/", 1)[0]
+            if not family:
+                raise ValueError(f"{REST_REGISTRY}: route has no /v1 family segment")
+            surface.add(f"surface:{family}")
     return cli | cross | surface
 
 
@@ -160,7 +197,11 @@ def validate(catalog: dict[str, Any]) -> list[str]:
     duplicates = duplicate_values(operation_ids)
     if duplicates:
         errors.append(f"duplicate operation IDs: {sorted(duplicates)}")
-    actual, expected = set(operation_ids), expected_operations()
+    actual = set(operation_ids)
+    try:
+        expected = expected_operations()
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return errors + [f"authoritative operation inventory unavailable: {error}; regenerate the owning contracts and retry"]
     if missing := expected - actual:
         errors.append(f"unclassified advertised operations: {sorted(missing)}")
     if stale := actual - expected:

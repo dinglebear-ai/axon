@@ -1,195 +1,123 @@
-//! Generates `docs/reference/api-parity.md` — the factual CLI/MCP/REST parity
-//! matrix — from the actual source surfaces, so it can't go stale:
-//!
-//! - **CLI**: `CommandKind` variants (`crates/axon-core/.../enums.rs`)
-//! - **MCP**: live `MCP_ACTION_SPECS` names
-//!   (`crates/axon-mcp/src/server/authz.rs`)
-//! - **REST**: `/v1/*` paths in the generated `apps/web/openapi/axon.json`
-//!
-//! `gen-api-parity` writes the file; `check-api-parity` (run in `xtask check`)
-//! regenerates and fails on drift.
-
+//! Family-presence inventory from canonical generated CLI, MCP and REST JSON.
+//! This is not semantic equivalence between differently named operations.
 use anyhow::{Context, Result, bail};
-use std::collections::{BTreeMap, BTreeSet};
+use serde_json::Value;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 const OUTPUT: &str = "docs/reference/api-parity.md";
 
-fn pascal_to_snake(s: &str) -> String {
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_ascii_uppercase() {
-            if i != 0 {
-                out.push('_');
-            }
-            out.push(c.to_ascii_lowercase());
-        } else {
-            out.push(c);
-        }
-    }
-    out
+fn read(root: &Path, path: &str, pointer: &str) -> Result<Vec<Value>> {
+    let source = std::fs::read_to_string(root.join(path))
+        .with_context(|| format!("read {path}; run cargo xtask generated-contracts refresh"))?;
+    let value: Value = serde_json::from_str(&source).with_context(|| format!("parse {path}"))?;
+    let values = value
+        .pointer(pointer)
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty())
+        .with_context(|| format!("{path}: missing nonempty {pointer} registry"))?;
+    Ok(values.clone())
 }
 
-/// Extract the variant identifiers from `pub enum <Name> { ... }` in `text`.
-fn enum_variants(text: &str, enum_name: &str) -> Vec<String> {
-    let mut variants = Vec::new();
-    let needle = format!("pub enum {enum_name} {{");
-    let Some(start) = text.find(&needle) else {
-        return variants;
-    };
-    let body = &text[start + needle.len()..];
-    let end = body.find("\n}").unwrap_or(body.len());
-    for line in body[..end].lines() {
-        let trimmed = line.trim();
-        // A variant line looks like `Ident,` or `Ident(Type),` — take the leading
-        // PascalCase identifier, skip comments/attributes.
-        let ident: String = trimmed
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric())
-            .collect();
-        if ident.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-            variants.push(ident);
-        }
-    }
-    variants
+fn normalized(value: &str) -> String {
+    value.replace('-', "_")
 }
 
-/// Extract live MCP action names from the dispatcher authz registry.
-fn mcp_action_specs(authz_rs: &str) -> BTreeSet<String> {
-    let Some(start) = authz_rs.find("pub(super) const MCP_ACTION_SPECS") else {
-        return BTreeSet::new();
-    };
-    let body = &authz_rs[start..];
-    let end = body.find("\n];").unwrap_or(body.len());
-    let mut actions = BTreeSet::new();
-    for line in body[..end].lines() {
-        let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("name: \"") else {
-            continue;
-        };
-        let Some((name, _)) = rest.split_once('"') else {
-            continue;
-        };
-        actions.insert(name.to_string());
+fn surface_names(root: &Path) -> Result<[BTreeSet<String>; 3]> {
+    let mut cli = BTreeSet::new();
+    for command in read(root, "docs/reference/cli/commands.json", "/commands")? {
+        let name = command
+            .pointer("/path/0")
+            .and_then(Value::as_str)
+            .context("CLI registry entry has no command path")?;
+        cli.insert(normalized(name));
     }
-    actions
-}
-
-fn rest_segments(axon_json: &str) -> Result<BTreeSet<String>> {
-    let spec: serde_json::Value =
-        serde_json::from_str(axon_json).context("parse apps/web/openapi/axon.json")?;
-    let mut segs = BTreeSet::new();
-    if let Some(paths) = spec.get("paths").and_then(|p| p.as_object()) {
-        for path in paths.keys() {
-            if let Some(seg) = path.strip_prefix("/v1/").and_then(|r| r.split('/').next())
-                && !seg.is_empty()
-            {
-                segs.insert(seg.to_string());
+    let mut mcp = BTreeSet::new();
+    for operation in read(
+        root,
+        "docs/reference/mcp/tool-schema.json",
+        "/x-axon/operations",
+    )? {
+        let name = operation
+            .get("action")
+            .and_then(Value::as_str)
+            .context("MCP registry entry has no action")?;
+        mcp.insert(normalized(name));
+    }
+    let mut rest = BTreeSet::new();
+    for route in read(root, "docs/reference/rest/openapi.json", "/routes")? {
+        let path = route
+            .get("path")
+            .and_then(Value::as_str)
+            .context("REST registry entry has no path")?;
+        if let Some(name) = path.strip_prefix("/v1/").and_then(|s| s.split('/').next()) {
+            if !name.is_empty() {
+                rest.insert(normalized(name));
             }
         }
     }
-    Ok(segs)
+    Ok([cli, mcp, rest])
 }
 
 fn render(root: &Path) -> Result<String> {
-    let read = |rel: &str| -> Result<String> {
-        std::fs::read_to_string(root.join(rel)).with_context(|| format!("read {rel}"))
-    };
-    let cli: BTreeSet<String> = enum_variants(
-        &read("crates/axon-core/src/config/types/enums.rs")?,
-        "CommandKind",
-    )
-    .iter()
-    .map(|v| pascal_to_snake(v))
-    .collect();
-    let mcp = mcp_action_specs(&read("crates/axon-mcp/src/server/authz.rs")?);
-    let rest = rest_segments(&read("apps/web/openapi/axon.json")?)?;
-
-    let mut all: BTreeSet<String> = BTreeSet::new();
-    all.extend(cli.iter().cloned());
-    all.extend(mcp.iter().cloned());
-    all.extend(rest.iter().cloned());
-
-    let mark = |present: bool| if present { "✓" } else { "—" };
-    let mut counts: BTreeMap<&str, usize> =
-        BTreeMap::from([("cli", 0), ("mcp", 0), ("rest", 0), ("all3", 0)]);
-    let mut rows = String::new();
-    for op in &all {
-        let (c, m, r) = (cli.contains(op), mcp.contains(op), rest.contains(op));
-        if c {
-            *counts.get_mut("cli").unwrap() += 1;
-        }
-        if m {
-            *counts.get_mut("mcp").unwrap() += 1;
-        }
-        if r {
-            *counts.get_mut("rest").unwrap() += 1;
-        }
-        if c && m && r {
-            *counts.get_mut("all3").unwrap() += 1;
-        }
-        rows.push_str(&format!(
-            "| `{op}` | {} | {} | {} |\n",
-            mark(c),
-            mark(m),
-            mark(r)
+    let [cli, mcp, rest] = surface_names(root)?;
+    let all: BTreeSet<_> = cli.iter().chain(&mcp).chain(&rest).cloned().collect();
+    let mut output = String::from(
+        "# API Parity Matrix\n\n\
+         <!-- GENERATED by cargo xtask gen-api-parity; do not edit by hand. -->\n\n\
+         This is a **family-name presence inventory**, not proof that requests, results, \
+         authorization, or every suboperation are interchangeable. Names come from the \
+         canonical [CLI registry](cli/commands.json), [MCP operation catalog](mcp/tool-schema.json), \
+         and [REST route registry](rest/openapi.json). Hyphens normalize to underscores; \
+         singular/plural and source/list distinctions are intentionally not guessed.\n\n",
+    );
+    output.push_str(&format!(
+        "{} family identifiers: {} CLI roots, {} MCP actions, {} REST /v1 segments.\n\n\
+         | Operation | CLI | MCP | REST |\n|---|:--:|:--:|:--:|\n",
+        all.len(),
+        cli.len(),
+        mcp.len(),
+        rest.len()
+    ));
+    let mark = |present| if present { "yes" } else { "no" };
+    for name in all {
+        output.push_str(&format!(
+            "| {} | {} | {} | {} |\n",
+            name,
+            mark(cli.contains(&name)),
+            mark(mcp.contains(&name)),
+            mark(rest.contains(&name))
         ));
     }
-
-    // Derive the REST-only callout from the computed sets so the narrative can't
-    // drift from the matrix when a new client/server-only segment is added.
-    let rest_only = all
-        .iter()
-        .filter(|op| rest.contains(*op) && !cli.contains(*op) && !mcp.contains(*op))
-        .map(|op| format!("`{op}`"))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    Ok(format!(
-        "# API Parity Matrix\n\
-         \n\
-         <!-- GENERATED by `cargo xtask gen-api-parity` — DO NOT EDIT BY HAND. -->\n\
-         <!-- Sources: CommandKind (CLI), MCP_ACTION_SPECS (MCP), apps/web/openapi/axon.json (REST). -->\n\
-         <!-- Run `cargo xtask gen-api-parity` to regenerate; `cargo xtask check-api-parity` (in `xtask check`) fails on drift. -->\n\
-         \n\
-         Factual matrix of which operations are exposed on each control surface.\n\
-         `✓` = exposed, `—` = not. {total} operations: {cli_n} CLI, {mcp_n} MCP, {rest_n} REST, {all3_n} on all three.\n\
-         \n\
-         | Operation | CLI | MCP | REST |\n\
-         |---|:--:|:--:|:--:|\n\
-         {rows}\n\
-         \n\
-         **Notes.** MCP intentionally omits destructive/stateful admin actions routed HTTP-only \
-         (see the `AxonRequest` arm in `crates/axon-mcp/src/server.rs`). REST-only rows \
-         ({rest_only}) are client/server surfaces with no \
-         CLI/MCP command. CLI-only rows are local/dev commands (`serve`, `mcp`, `completions`, \
-         `setup`, `config`, …). A gap here is not automatically a bug — but a *new* gap should be a \
-         conscious decision. See [crate-ownership.md](../architecture/crate-ownership.md) for where \
-         the shared logic behind each surface lives.\n",
-        total = all.len(),
-        cli_n = counts["cli"],
-        mcp_n = counts["mcp"],
-        rest_n = counts["rest"],
-        all3_n = counts["all3"],
-        rows = rows.trim_end(),
-    ))
+    output.push_str(
+        "\nSee the [action navigation](actions/README.md) for explicit transport entrypoints \
+         and [crate ownership](../architecture/crate-ownership.md) for shared behavior. \
+         The action renderer consumes JSON directly; this table is not its input. \
+         MCP includes system/watch operations from the full operation registry, not \
+         only primary request-enum variants. Dashboard/resources/tasks remain separate surfaces.\n\n\
+         Refresh schemas first with cargo xtask generated-contracts refresh; the matching \
+         check command verifies this snapshot and all dependent renderers.\n",
+    );
+    Ok(output)
 }
 
 pub fn write(root: &Path) -> Result<()> {
     let content = render(root)?;
-    std::fs::write(root.join(OUTPUT), &content).with_context(|| format!("write {OUTPUT}"))?;
-    println!("Wrote {OUTPUT} ({} bytes).", content.len());
+    std::fs::write(root.join(OUTPUT), content).with_context(|| format!("write {OUTPUT}"))?;
+    println!("Wrote {OUTPUT}.");
     Ok(())
 }
 
 pub fn check(root: &Path) -> Result<()> {
     let expected = render(root)?;
     let actual = std::fs::read_to_string(root.join(OUTPUT)).unwrap_or_default();
-    if expected == actual {
-        println!("OK: {OUTPUT} is in sync.");
-        return Ok(());
+    if expected != actual {
+        bail!("{OUTPUT} differs; run cargo xtask generated-contracts refresh");
     }
-    eprintln!("ERROR: {OUTPUT} is out of date.");
-    eprintln!("Run `cargo xtask gen-api-parity` and commit the result.");
-    bail!("api-parity drift");
+    println!("OK: {OUTPUT} is in sync.");
+    Ok(())
 }
+
+#[cfg(test)]
+#[path = "api_parity_tests.rs"]
+mod tests;

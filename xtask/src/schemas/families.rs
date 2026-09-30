@@ -176,7 +176,7 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             json_string(&schema)?,
         ),
         // docs/reference/api/dto.md and api/enums.md are owned by the docs
-        // generator (`cargo xtask docs generate --family api`), which emits the
+        // generator (`the api-dto and api-enums documentation families`), which emits the
         // substantive human reference rather than the skeleton this family
         // produced. Declaring them here too made `schemas generate --check` and
         // `docs generate --check` mutually unsatisfiable as soon as the API
@@ -267,7 +267,7 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         ),
         SchemaArtifact::new(
             rel("docs/reference/api/errors.md"),
-            markdown("errors", &inputs),
+            markdown("errors", &inputs) + &crate::reference_tables::render(&schema),
         ),
     ])
 }
@@ -349,11 +349,13 @@ fn openapi_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
         SchemaArtifact::new(
             rel(spec.markdown_path),
-            registry_markdown("openapi", &inputs, "Routes"),
+            registry_markdown("openapi", &inputs, "Routes")
+                + &crate::reference_tables::render(&schema),
         ),
         SchemaArtifact::new(
             rel(spec.extra_markdown_path.unwrap()),
-            registry_projection_markdown("openapi-schemas", "openapi", &inputs, "Routes"),
+            registry_projection_markdown("openapi-schemas", "openapi", &inputs, "Routes")
+                + &crate::reference_tables::render(&schema),
         ),
     ])
 }

@@ -49,11 +49,13 @@ pub(crate) fn config_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
         SchemaArtifact::new(rel(extra.path), json_string(&env_schema)?),
         SchemaArtifact::new(
             rel(spec.markdown_path),
-            registry_markdown("config", &inputs, "Config Keys"),
+            registry_markdown("config", &inputs, "Config Keys")
+                + &crate::reference_tables::render(&schema),
         ),
         SchemaArtifact::new(
             rel(spec.extra_markdown_path.unwrap()),
-            registry_markdown("env", &inputs, "Env Variables"),
+            registry_markdown("env", &inputs, "Env Variables")
+                + &crate::reference_tables::render(&env_schema),
         ),
     ])
 }

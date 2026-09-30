@@ -1,190 +1,147 @@
 # Connect to Axon MCP
 
-How to connect to the Axon MCP server from supported clients.
+Last reviewed: 2026-09-29
 
-## Claude Code CLI
+Choose a local stdio process or an existing HTTP server. Do not replace an
+existing client configuration with a template: add one named entry and
+preserve unrelated settings. The examples below are alternatives, not a
+request to register the same server twice.
 
-### stdio
+## Before connecting
 
-```bash
-claude mcp add axon -- /path/to/axon mcp
-```
+For stdio, use the absolute path to the intended Axon binary and verify its
+version, executing user, HOME, configuration, and provider endpoints.
+`axon mcp` does not open an HTTP listener by default.
 
-Or with environment variables:
+For HTTP, run the intended native Axon service with `/mcp` mounted, typically
+through `axon serve` or `axon serve mcp`. The default local origin is
+`http://127.0.0.1:8001`, but use the actual deployment origin. Non-loopback
+HTTP requires the configured bearer/OAuth policy. Panel unlock passwords
+and sessions are separate from API/MCP authorization.
 
-```bash
-claude mcp add axon -- env QDRANT_URL=http://127.0.0.1:53333 TEI_URL=http://127.0.0.1:52000 /path/to/axon mcp
-```
+These instructions configure clients, not Axon provider credentials or
+server-side source permissions. Review [transport](transport.md) and
+[authentication](../../operations/auth/mcp-auth.md).
 
-### HTTP
+## Claude Code
 
-`axon mcp` defaults to **stdio** transport. To run the HTTP transport, use one
-of:
-
-```bash
-axon mcp --transport http       # HTTP only
-axon mcp --transport both       # stdio + HTTP concurrently
-axon serve mcp                  # HTTP transport (defaults to HTTP for the serve subcommand)
-axon serve                      # unified web + MCP HTTP on the same port
-```
-
-Then register the HTTP transport with Claude Code:
+Register local stdio or loopback HTTP with the client CLI:
 
 ```bash
-claude mcp add --transport http axon http://localhost:8001/mcp \
-  --header "Authorization: Bearer $AXON_HTTP_TOKEN"
+claude mcp add --scope user --transport stdio axon -- /absolute/path/to/axon mcp
+# Alternative:
+claude mcp add --scope user --transport http axon http://127.0.0.1:8001/mcp
+claude mcp list
 ```
 
-### Scopes
-
-| Flag | Scope | Config file |
-|------|-------|-------------|
-| `--scope project` | Current project only | `.claude/settings.local.json` |
-| `--scope user` | All projects | `~/.claude/settings.json` |
-| (none) | Project default | `.claude/settings.local.json` |
-
-## Codex CLI
-
-### stdio
-
-`.codex/mcp.json` (project) or `~/.codex/mcp.json` (global):
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "command": "/path/to/axon",
-      "args": ["mcp"],
-      "env": {
-        "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000"
-      }
-    }
-  }
-}
-```
-
-MCP uses the same SQLite/in-process job runtime as the CLI and HTTP server.
-
-### HTTP
+The default local scope and user scope are stored in `~/.claude.json`; local
+scope is keyed to the project. Shared project scope uses `.mcp.json`, not
+`.claude/settings.local.json`. HTTP entries need `type: "http"`. For a
+static-token project entry, keep the variable reference rather than a secret:
 
 ```json
 {
   "mcpServers": {
     "axon": {
       "type": "http",
-      "url": "http://localhost:8001/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_AXON_HTTP_TOKEN"
-      }
+      "url": "https://axon.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${AXON_HTTP_TOKEN}" }
     }
   }
 }
 ```
+
+Supply the token in the client environment, or use the configured OAuth
+login flow instead. Follow the client trust/approval prompts. Scope and
+expansion behavior are documented in the
+[official Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
+
+Claude Desktop chat configuration is a different client surface. Use that
+application's current connector/developer setup workflow; do not copy Claude
+Code settings paths into it.
+
+## Codex CLI and IDE
+
+Codex uses `~/.codex/config.toml`, or `.codex/config.toml` for a trusted
+project. It does not use the old `mcpServers` JSON examples in `mcp.json`.
+For local stdio, add this table to the existing TOML file:
+
+```toml
+[mcp_servers.axon]
+command = "/absolute/path/to/axon"
+args = ["mcp"]
+```
+
+For HTTP, use this table instead:
+
+```toml
+[mcp_servers.axon]
+url = "https://axon.example.com/mcp"
+bearer_token_env_var = "AXON_HTTP_TOKEN"
+```
+
+The variable contains the Axon HTTP token, not an OpenAI API key. For an
+OAuth-configured server, omit that token setting and use the client login
+flow. Verify with `codex mcp list` and `/mcp`; use `codex mcp --help` for
+the installed version. The
+[official MCP guide](https://learn.chatgpt.com/docs/extend/mcp) owns client
+configuration, scope, and authentication options.
 
 ## Gemini CLI
 
-### stdio
-
-`gemini-extension.json` (project root or `~/.gemini/`):
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "command": "/path/to/axon",
-      "args": ["mcp"],
-      "env": {
-        "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000"
-      }
-    }
-  }
-}
-```
-
-### HTTP
+Ordinary server configuration lives under `mcpServers` in
+`~/.gemini/settings.json` or project `.gemini/settings.json`, not a standalone
+`gemini-extension.json`. Stdio uses `command` and `args`; streamable HTTP
+uses **`httpUrl`**, while `url` selects the older SSE transport.
 
 ```json
 {
   "mcpServers": {
     "axon": {
-      "type": "http",
-      "url": "http://localhost:8001/mcp"
+      "httpUrl": "https://axon.example.com/mcp",
+      "headers": { "Authorization": "Bearer ${AXON_HTTP_TOKEN}" }
     }
   }
 }
 ```
 
-## Manual configuration reference
-
-### Config file locations
-
-| Client | Scope | File |
-|--------|-------|------|
-| Claude Code | Project | `.claude/settings.local.json` |
-| Claude Code | User | `~/.claude/settings.json` |
-| Codex CLI | Project | `.codex/mcp.json` |
-| Codex CLI | User | `~/.codex/mcp.json` |
-| Gemini CLI | Project | `gemini-extension.json` |
-| Gemini CLI | Global | `~/.gemini/gemini-extension.json` |
-
-## Local stdio connection
-
-For local stdio MCP with SQLite-backed jobs and no external queue broker:
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "command": "/path/to/axon",
-      "args": ["mcp"],
-      "env": {
-        "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000"
-      }
-    }
-  }
-}
-```
-
-## Verifying connection
+For local stdio:
 
 ```bash
-# HTTP probe (requires bearer token; returns 401 without it when token is set)
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer $AXON_HTTP_TOKEN" \
-  http://localhost:8001/mcp
-
-# Test via doctor
-axon doctor
-
-# Test a tool call via Claude Code
-claude "call axon with action=doctor"
+gemini mcp add --scope user axon /absolute/path/to/axon mcp
+gemini mcp list
 ```
 
-If connection fails:
+Choose the server's actual auth mode and complete the client trust flow.
+The [official Gemini MCP guide](https://geminicli.com/docs/tools/mcp-server/)
+documents environment expansion and transport-specific settings.
 
-1. Verify the server is running (`just dev` or `axon serve`)
-2. Check port 8001 is not blocked
-3. For stdio: confirm the `axon` binary path is correct and all env vars are set
-4. For HTTP: confirm `AXON_HTTP_TOKEN` is set on both server and client
-5. Run `axon doctor` to check infrastructure connectivity
+## Verify the runtime, not just registration
 
-The unified HTTP server exposes `/healthz` for process health. Auth-pass on
-`/mcp` verifies the MCP/auth path specifically.
+A configuration entry is not proof of a connection. Initialize a real MCP
+client, discover `tools/list`, and verify the selected legacy/atomic/both
+projection and auxiliary dashboard. Inspect the exact input schema before
+a read-only status/help call.
 
-## HTTP API access
+Legacy mode calls the aggregate `axon` tool with `action`; atomic mode uses
+the discovered leaf name without fixed action/subaction fields. Reconnect
+clients after a startup-static projection change. An HTTP `/healthz` success
+checks process health, not the MCP handshake or provider execution. A bare
+GET of `/mcp` can have protocol-specific requirements and is not a sufficient
+connection test.
 
-The `axon` CLI and MCP server always run in-process (local execution against
-Qdrant and TEI) — they do not forward to a remote `axon serve`. To expose Axon
-over HTTP for external API clients, run `axon serve`, which serves the first-party
-`/v1` REST routes and MCP-over-HTTP on `/mcp` behind the same bearer token policy
-(`AXON_HTTP_TOKEN`). Point your own HTTP/MCP clients at it; the bundled CLI
-does not consume those routes.
+For queued source work, follow the returned job to terminal state. A client
+timeout does not prove cancellation, and a task/job descriptor does not prove
+publication. Do not repeat a write with unknown commit status.
 
-## See also
+## Troubleshooting
 
-- [TRANSPORT.md](transport.md) -- transport configuration details
-- [ENV.md](env.md) -- environment variables
-- [DEPLOY.md](deploy.md) -- deployment patterns
+Check the failing hop: local executable/configuration, remote origin/TLS,
+authentication, MCP initialization/session, tool discovery, or provider/job
+execution. Record the client/server versions and safe diagnostics; do not
+paste secrets or entire environment files.
+
+`axon doctor` inspects the runtime where it executes. The bundled CLI does
+not forward arbitrary commands to a remote `axon serve`; remote checks must
+use that server's REST/MCP surface. See [environment](env.md),
+[deployment](deploy.md), and [MCP overview](overview.md).

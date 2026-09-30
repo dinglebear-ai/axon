@@ -4,16 +4,28 @@ use std::collections::BTreeSet;
 
 const DOC: &str = include_str!("../docs/reference/api-parity.md");
 
-fn row_for_cli(command: &str) -> Option<&'static str> {
-    let needle = format!("| `{command}` |");
-    DOC.lines().find(|line| line.starts_with(&needle))
+fn row_for_cli<'a>(document: &'a str, command: &str) -> Option<&'a str> {
+    let family = command.replace('-', "_");
+    document.lines().find(|line| {
+        let mut cells = line.split('|').map(str::trim);
+        cells.next() == Some("")
+            && cells.next() == Some(family.as_str())
+            && cells.next() == Some("yes")
+    })
+}
+
+#[test]
+fn cli_row_matches_normalized_family_and_requires_cli_presence() {
+    assert!(row_for_cli("| code_search | yes | yes | no |", "code-search").is_some());
+    assert!(row_for_cli("| code_search | no | yes | yes |", "code-search").is_none());
+    assert!(row_for_cli("| query | yes | yes | yes |", "missing").is_none());
 }
 
 #[test]
 fn parity_doc_covers_every_cli_command_kind() {
     for command in axon_cli::schema_registry::command_registry() {
         assert!(
-            row_for_cli(command.name).is_some(),
+            row_for_cli(DOC, command.name).is_some(),
             "docs/reference/api-parity.md is missing CLI command row `{}`",
             command.name
         );

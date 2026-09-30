@@ -1,138 +1,108 @@
 ---
 title: "Technology Choices -- Axon"
 created: 2026-04-04
-updated: 2026-07-30
+updated: 2026-09-29
 ---
 
 # Technology Choices -- Axon
 
+Last reviewed: 2026-09-29
+
 ## Language and runtime
 
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| Core binary | Rust | 1.97.1 (edition 2024) | CLI, MCP server, workers, HTTP server |
-| Web panel assets | TypeScript | Node 24+ | Embedded setup/config panel assets |
-| Scripts | Bash + Python | -- | Maintenance, testing, analysis |
+Axon is a Rust workspace exposing CLI, MCP, and HTTP projections over shared
+services. Tokio hosts in-process workers and asynchronous I/O. SQLite owns
+durable jobs/source state; external Qdrant owns published retrieval vectors.
+See [architecture](../overview.md) and [crate ownership](../crate-ownership.md).
+
+The pinned toolchain is in [rust-toolchain.toml](../../../rust-toolchain.toml),
+and workspace metadata/dependencies are in [Cargo.toml](../../../Cargo.toml).
+Resolved versions belong to [Cargo.lock](../../../Cargo.lock), not copied
+version ranges in this page. App manifests/lockfiles own their JavaScript
+toolchains and standalone native dependencies.
 
 ## Key dependencies
 
-### Rust crates
+| Responsibility | Technology and owner |
+|---|---|
+| CLI parsing | clap through core/CLI contracts |
+| Serialization | serde/serde_json and typed public DTO/schema owners |
+| HTTP server | Axum in `axon-web`, with shared authorization |
+| MCP | rmcp in `axon-mcp`; canonical dispatch, projections, resources, tasks |
+| HTTP acquisition | Shared guarded clients and Spider in `axon-adapters` |
+| Parsing and preparation | `axon-parse` and `axon-document`, including syntax-aware code handling |
+| Durable state | SQLx/SQLite in jobs, ledger, and other owning stores |
+| Embeddings | Provider requests and retry/cooling in `axon-embedding` |
+| Publication/retrieval | Qdrant writes in `axon-vectors`, queries/ranking in `axon-retrieval` |
+| Synthesis | Configured backends in `axon-llm`, composed by services |
+| Codex control | Typed app-server integration in `axon-codex` |
 
-| Crate | Version | Purpose |
-|-------|---------|---------|
-| `spider` | 2.x | Web crawling engine (HTTP + Chrome rendering) |
-| `spider_agent` | 2.47+ | Tavily search integration |
-| `spider_transformations` | 2.x | Content transformation (markdown, readability) |
-| `rmcp` | 1.5+ | MCP server framework (stdio + streamable-http) |
-| `axum` | 0.8 | HTTP server for web panel, MCP, and first-party action routes |
-| `tokio` | 1.x | Async runtime (multi-threaded) |
-| `sqlx` | 0.8 | SQLite async driver |
-| `reqwest` | 0.13 | HTTP client (rustls, streaming) |
-| `clap` | 4.x | CLI argument parsing |
-| `serde` / `serde_json` | 1.x | Serialization |
-| `text-splitter` | 0.30 | Semantic text chunking (code + markdown) |
-| `tree-sitter-*` | various | AST-based code chunking (Rust, Python, JS, TS, Go, Bash) |
-| `octocrab` | 0.49 | GitHub API client |
-| `bollard` | 0.20 | Docker API client |
+Exact workspace edges are generated in
+[the dependency graph](../../reference/crate-dependency-graph.md). A dependency
+listed by another crate is not necessarily a direct root dependency.
 
-### Infrastructure
+## Infrastructure and clients
 
-| Service | Image/Version | Purpose |
-|---------|--------------|---------|
-| SQLite | (embedded) | Job persistence, metadata storage |
-| Qdrant | v1.18.2 | Vector database (dense + sparse search) |
-| TEI | ghcr.io/huggingface/text-embeddings-inference:89-1.9 | Text embedding generation |
-| Chrome | Custom Dockerfile | Headless browser for JavaScript rendering |
+The supported production runtime is native `axon serve` under systemd in
+Incus or bare-metal Linux. Qdrant, TEI/other embedding providers, and
+Chrome/CDP run externally as required. Compose is a development/reference
+surface; its manifests own image tags, ports, and provider profiles.
+A repository example is not a deployed-state inventory.
 
-### Web panel assets
+Clients include `apps/web`, `apps/palette-tauri`, `apps/android`, and
+`apps/chrome-extension`. They share generated API/DTO contracts rather
+than independent business logic. Read each app manifest for build/lint/test
+commands instead of applying one package-manager assumption to every app.
+The Palette Tauri backend is a standalone workspace.
 
-| Package | Purpose |
-|---------|---------|
-| Biome | Linter and formatter |
-| npm + package-lock.json | Package manager/build runner |
+## Embedding and document pipeline
 
-## Embedding pipeline
+The shared source pipeline resolves/acquires documents, diffs the ledger,
+prepares chunks, requests embeddings, publishes a committed generation, then
+updates graph/cleanup. Adapters emit normalized documents, not vector writes.
+Stable hashes let unchanged content skip re-embedding; partial snapshots
+cannot silently delete unseen items.
 
-### TEI (Text Embeddings Inference)
+Chunk profiles, embedding batches, retry behavior, and provider concurrency
+are operation- and configuration-dependent. There is no universal
+2,000-character chunk, five-attempt retry policy, or implicit GPU-to-CPU
+fallback for every source/provider. Use [source pipeline](../source-pipeline.md),
+[chunking](../../reference/sources/chunking.md), and
+[configuration](../../guides/configuration.md).
 
-- Default model: `Qwen/Qwen3-Embedding-0.6B`
-- Pooling: `last-token`
-- Batch size: up to 128 (auto-splits on 413 Payload Too Large)
-- Retry: 5 attempts with exponential backoff (1s, 2s, 4s, 8s + jitter)
-- GPU acceleration via NVIDIA (optional; CPU fallback available)
+## Retrieval and synthesis
 
-### Text chunking
+Qdrant collection layout must match model/vector dimensions and payload
+contracts. Filters and committed-generation visibility remain required with
+dense, sparse, hybrid, or re-ranked retrieval. Do not assume collection
+renaming or first upsert migrates old state. Follow
+[ask/RAG](../../guides/ask-rag.md) and [reindexing](../../guides/reindexing.md).
 
-- `chunk_text()`: 2000 characters with 200-character overlap
-- Code files: tree-sitter AST-based chunking (preserves function boundaries)
-- Each chunk becomes one Qdrant point with `chunk_text` payload field
-
-## Hybrid vector search
-
-New Qdrant collections use named vectors with two search paths:
-
-| Vector | Type | Source | Purpose |
-|--------|------|--------|---------|
-| `dense` | Float (dimension matches model) | TEI embedding | Semantic similarity |
-| `bm42` | Sparse | Computed locally from chunk text | Keyword matching |
-
-Search uses Reciprocal Rank Fusion (RRF) via Qdrant `/query` API:
-1. Dense prefetch: HNSW search (`hnsw_ef=128`)
-2. Sparse prefetch: BM42 index search
-3. RRF fusion: merge and re-rank results
-
-Legacy unnamed-mode collections fall back to dense-only search. Use `axon migrate` to upgrade.
-
-### Tuning
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `AXON_HYBRID_SEARCH` | `true` | Enable hybrid search |
-| `AXON_HYBRID_CANDIDATES` | `100` | Prefetch candidates per arm |
-| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Ask pipeline window (higher for reranking) |
-| `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode (32-512) |
+Synthesis is not Gemini-only. Configured backends include Gemini headless,
+OpenAI-compatible HTTP, and Codex app-server. Credentials, isolation,
+concurrency, and timeouts belong to the selected backend and effective
+settings. `AXON_OPENAI_MODEL` is removed; consult current configuration.
 
 ## Crawl engine
 
-Spider-based crawling with three render modes:
+Spider belongs to `axon-adapters`. Render selection uses HTTP and browser
+paths; the browser remains an external privileged provider. Compiled
+features are not proof of runtime optimization: conditional ETag reuse is
+presently disabled despite compiled cache support.
 
-| Mode | Description |
-|------|-------------|
-| `http` | Pure HTTP fetch (fastest, no JS) |
-| `chrome` | Headless Chrome rendering (JS-heavy sites) |
-| `auto-switch` (default) | HTTP first; if >60% thin pages, retry with Chrome |
+Use [Spider flags](../../reference/spider-feature-flags.md),
+[web crawls](../../guides/web-crawls.md), and shared HTTP safety. Do not copy
+old upstream claims about unreachable features, silent throttling, or fixed
+fallback thresholds without checking the locked code.
 
-Key Spider features enabled (see `Cargo.toml` for the full list): `basic`, `chrome`, `regex`, `sitemap`, `adblock`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `simd`, `cache_mem`, `ua_generator`, `headers`, `control`, `hedge`.
+## Build tooling and maintenance
 
-Features explicitly NOT enabled (see `docs/reference/spider-feature-flags.md`):
-- `firewall`: `spider_firewall`'s build.rs fetches blocklists from `api.github.com` unauthenticated and panics under CI rate limits; SSRF is guarded by `validate_url()` in `src/core/http/ssrf.rs` instead
-- `balance`: silently throttles with zero logging
-- `glob`: causes budget-aware `is_allowed()` to reject first URL with `with_limit(1)`
+The Justfile, lefthook, Cargo tooling, xtask, and Python maintenance scripts
+define actual gates. Caches affect build performance, not correctness.
+Root [feature flags](../../reference/cargo-features.md) include placeholders
+that do not implement their named capability by themselves.
 
-## Gemini Headless LLM
-
-LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `src/core/llm/`:
-
-- `AXON_HEADLESS_GEMINI_CMD` selects the Gemini CLI command.
-- `AXON_HEADLESS_GEMINI_HOME` selects the source HOME for Gemini auth copying.
-- `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` controls the Gemini synthesis model override; `AXON_HEADLESS_GEMINI_MODEL` remains a legacy alias.
-- `AXON_LLM_COMPLETION_CONCURRENCY` caps concurrent completions.
-- `AXON_LLM_COMPLETION_TIMEOUT_SECS` caps each completion request.
-
-## Build tooling
-
-| Tool | Purpose |
-|------|---------|
-| just | Task runner (30+ recipes) |
-| lefthook | Git hooks |
-| kache | Compilation cache (mise-managed global `rustc-wrapper`) |
-| mold | Fast linker (auto-detected) |
-| cargo-nextest | Parallel test runner |
-| cargo-deny | Dependency auditing |
-| cargo-llvm-cov | Code coverage |
-
-## See also
-
-- [ARCH.md](arch.md) -- architecture patterns
-- [PRE-REQS.md](pre-reqs.md) -- prerequisites
-- [../repo/RECIPES.md](../../development/repo/recipes.md) -- Justfile recipes
+Use [testing](../../development/testing.md) and
+[documentation maintenance](../../development/documentation.md) for generation
+and drift checks. Dated benchmarks describe the recorded revision/environment,
+not a current dependency or latency contract.
