@@ -417,7 +417,7 @@ async fn dispatch_session_with_roots(
 pub(crate) async fn dispatch_materialized<'a, F, Fut>(
     runtime: &'a TargetLocalSourceRuntime,
     adapter: &'a dyn SourceAdapter,
-    plan: SourcePlan,
+    mut plan: SourcePlan,
     collection: &'a str,
     owner_id: &'a str,
     auth_snapshot: Option<&'a AuthSnapshot>,
@@ -428,6 +428,7 @@ where
     F: FnOnce(SourcePlan) -> Fut + Send + 'a,
     Fut: std::future::Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
 {
+    plan.request.refresh = execution.refresh;
     index_materialized_source(
         runtime,
         SourcePipelineInput {
