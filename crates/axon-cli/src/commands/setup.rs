@@ -313,10 +313,10 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
     // covers any direct caller that bypasses the early path.
     apply_plugin_options();
 
-    // The SessionStart hook NEVER deploys — provisioning is the `/axon-deploy`
-    // slash command. The hook only probes whether the stack is already serving:
+    // The SessionStart hook NEVER deploys. The helper only probes whether the
+    // stack is already serving; provisioning uses `axon setup` or `axon compose up`:
     //   - /readyz up   → already deployed; exit silently (success)
-    //   - /readyz down → advise running /axon-deploy; exit success (non-blocking)
+    //   - /readyz down → advise running axon setup; exit success (non-blocking)
     // It never runs preflight or `docker compose`.
     if setup::stack_already_healthy().await {
         if cfg.json_output {
@@ -332,10 +332,10 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
         crate::json::print_json_gated(&json!({
             "exit_policy": "success",
             "stack": "down",
-            "action": "run /axon-deploy",
+            "action": "run axon setup",
         }))?;
     } else {
-        eprintln!("axon stack not reachable on /readyz — run /axon-deploy to start it");
+        eprintln!("axon stack not reachable on /readyz — run axon setup to start it");
     }
     Ok(())
 }
