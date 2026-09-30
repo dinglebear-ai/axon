@@ -45,7 +45,7 @@ axon setup plugin-hook   # probe-only readiness check; never deploys
 axon memory context      # recall memories for the current git project
 ```
 
-To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
+To provision the stack for the first time, run `axon setup` or `axon compose up` on the host directly.
 
 The installer plugin `.mcp.json` uses HTTP transport and connects Claude Code to
 `${user_config.server_url}/mcp` with the configured bearer token. Supported
@@ -61,12 +61,6 @@ current git project. Nothing scans or ingests transcript files automatically at
 session startup. Index transcripts with `axon sessions` or with explicit
 `session:<provider>:<path>` selectors through the unified source pipeline; the
 old prepared-session watcher service is not part of the plugin surface.
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/axon-deploy [up\|restart\|rebuild]` | On-demand deploy/restart/rebuild of the stack (`axon compose …` + `axon doctor`). This is how you provision the stack. |
 
 `~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
 
@@ -128,8 +122,6 @@ plugins/axon/
 │   └── plugin.json            — plugin manifest and userConfig
 ├── agents/
 │   └── researcher.md
-├── commands/
-│   └── axon-deploy.md
 ├── examples/
 │   └── workflow-output-templates.md
 ├── references/

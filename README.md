@@ -149,8 +149,7 @@ claude plugin install <path-to-this-repo>
 
 The plugin ships no binary and registers no automatic hooks. Install `axon`
 first, then invoke `axon setup plugin-hook` explicitly for a probe-only
-`/readyz` check. Provisioning is the `/axon-deploy` slash command (or
-`axon setup`).
+`/readyz` check. Provisioning uses `axon setup` or `axon compose up` on the host.
 
 ## Deploy
 
