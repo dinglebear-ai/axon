@@ -274,6 +274,10 @@ async fn incompatible_partial_refresh_rejects_then_complete_reprepares_every_ite
     let unchanged = fixture.run(None).await.unwrap();
     assert_eq!(unchanged.documents_prepared, 0);
     assert_eq!(unchanged.generation, fixed.generation);
+    assert_eq!(
+        unchanged.published_manifest.unwrap().generation,
+        fixed.generation
+    );
 }
 
 #[tokio::test]
