@@ -240,6 +240,47 @@ async fn fake_vector_store_upserts_searches_and_deletes_without_qdrant() {
 }
 
 #[tokio::test]
+async fn occupied_generation_count_is_fenced_by_source_and_generation() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    assert_eq!(
+        store
+            .count_generation_points(
+                "axon-test".into(),
+                SourceId::new("src-a"),
+                SourceGenerationId::new("gen_7"),
+            )
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        store
+            .count_generation_points(
+                "axon-test".into(),
+                SourceId::new("src-a"),
+                SourceGenerationId::new("gen_9"),
+            )
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .count_generation_points(
+                "axon-test".into(),
+                SourceId::new("src-b"),
+                SourceGenerationId::new("gen_7"),
+            )
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+#[tokio::test]
 async fn fake_vector_store_search_filters_committed_source_generation_and_path_prefix() {
     let store = FakeVectorStore::new("fake-vector");
     store.ensure_collection(collection()).await.unwrap();

@@ -10,6 +10,22 @@ use crate::store::{Result, VectorStore};
 
 #[async_trait]
 impl VectorStore for QdrantVectorStore {
+    async fn count_generation_points(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<u64> {
+        self.count_selector_points(
+            &VectorDeleteSelector::Generation {
+                collection,
+                source_id,
+                generation,
+            },
+            ErrorStage::Retrieving,
+        )
+        .await
+    }
     async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()> {
         self.track(self.ensure_collection_inner(spec).await).await
     }
