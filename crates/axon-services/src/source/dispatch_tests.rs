@@ -962,6 +962,56 @@ async fn removal_only_recrawl_publishes_generation_and_retires_removed_docs() {
     );
 }
 
+#[tokio::test]
+async fn force_refresh_rebuilds_unchanged_source() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors, ledger.clone());
+    let adapter = StampingSourceAdapter {
+        inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "readme.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Same content\n",
+        ),
+    };
+    let run = |force| {
+        let mut plan = family_source_plan(&source, &route, true, None, None);
+        if force {
+            plan.request.refresh = axon_api::source::SourceRefreshPolicy::Force;
+        }
+        async {
+            dispatch_materialized(
+                &runtime,
+                &adapter,
+                plan,
+                "axon-test",
+                "test-owner",
+                None,
+                &test_execution(&source),
+                |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+            )
+            .await
+            .unwrap()
+        }
+    };
+    let first = run(false).await;
+    let unchanged = run(false).await;
+    assert_eq!(unchanged.generation, first.generation);
+    assert_eq!(unchanged.documents_prepared, 0);
+
+    let forced = run(true).await;
+    assert_ne!(forced.generation, first.generation);
+    assert_eq!(forced.documents_prepared, 1);
+    assert!(forced.vector_points_written > 0);
+    assert_eq!(
+        ledger.committed_generation(&forced.source_id).await,
+        Some(forced.generation)
+    );
+}
+
 /// Adapter whose N-th `normalize` call parks forever after signalling the
 /// test, so cancellation can be delivered mid-generation with the first
 /// batch's vectors already upserted.
