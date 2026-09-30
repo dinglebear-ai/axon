@@ -193,3 +193,4 @@ entities.json
 
 # Cross-glibc container build output (see docs: build in rust:1-bookworm for the Incus container)
 target-bookworm/
+worktrees/
