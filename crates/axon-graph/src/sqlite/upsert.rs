@@ -26,6 +26,7 @@ const SQLITE_SAFE_BIND_LIMIT: usize = 900;
 const EDGE_READ_BATCH_SIZE: usize = SQLITE_SAFE_BIND_LIMIT;
 const EDGE_WRITE_BINDS_PER_ROW: usize = 9;
 const EDGE_WRITE_BATCH_SIZE: usize = SQLITE_SAFE_BIND_LIMIT / EDGE_WRITE_BINDS_PER_ROW;
+const CANDIDATE_TRANSACTION_BATCH_SIZE: usize = 16;
 
 #[cfg(test)]
 fn batch_sizes(total: usize, size: usize) -> Vec<usize> {
@@ -58,18 +59,45 @@ mod tests;
 
 /// Write a batch of validated candidates into the durable graph.
 ///
-/// Each candidate is validated and resolved before acquiring SQLite's writer
-/// lock, then committed atomically in its own short transaction. A later
-/// candidate failure therefore leaves an idempotent committed prefix visible;
-/// callers must treat the returned error as an incomplete publication and
-/// retry the generation.
+/// Validate the caller batch before writing, then commit small groups to reduce
+/// SQLite syncs. If one group fails, replay it one candidate at a time so only
+/// the valid prefix remains committed. Callers must retry an incomplete write.
 pub async fn upsert_candidates(
     pool: &SqlitePool,
     write_gate: &axon_core::sqlite::SqliteWriteGate,
     candidates: Vec<GraphCandidate>,
 ) -> StoreResult<GraphWriteResult> {
-    prevalidate_candidate_batch(&candidates)?;
-    upsert_candidate_iter(pool, write_gate, candidates).await
+    let source_id = prevalidate_candidate_batch(&candidates)?;
+    let mut totals = CandidateCounts::default();
+    for batch in candidates.chunks(CANDIDATE_TRANSACTION_BATCH_SIZE) {
+        let mut tx = ImmediateTx::begin_with_gate(pool, write_gate)
+            .await
+            .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
+        let mut batch_totals = CandidateCounts::default();
+        let mut failed = false;
+        for candidate in batch {
+            match write_candidate(&mut tx, candidate).await {
+                Ok(counts) => batch_totals.add(counts),
+                Err(_) => {
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        if failed {
+            tx.rollback().await;
+        } else if tx.commit().await.is_ok() {
+            totals.add(batch_totals);
+            continue;
+        }
+        // A failed batch may contain a valid prefix. Replay it candidate by
+        // candidate so that prefix stays durable and the first bad candidate
+        // retains the existing failure boundary.
+        for candidate in batch {
+            totals.add(write_one_candidate(pool, write_gate, candidate).await?);
+        }
+    }
+    Ok(totals.result(source_id))
 }
 
 pub async fn upsert_candidate_iter<I>(
@@ -81,10 +109,7 @@ where
     I: IntoIterator<Item = GraphCandidate>,
 {
     let mut source_id: Option<SourceId> = None;
-    let mut candidates_seen = 0u64;
-    let mut nodes_upserted = 0u64;
-    let mut edges_upserted = 0u64;
-    let mut evidence_records = 0u64;
+    let mut totals = CandidateCounts::default();
     for candidate in candidates {
         // Validation and deterministic graph resolution are CPU-only and must
         // not run while SQLite's process-wide writer lane is held.
@@ -98,71 +123,107 @@ where
         } else {
             source_id = Some(candidate.source_id.clone());
         }
-        let (resolved_nodes, resolved_edges) = resolve_candidate(&candidate);
-        let mut tx = ImmediateTx::begin_with_gate(pool, write_gate)
-            .await
-            .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
-        candidates_seen = candidates_seen.saturating_add(1);
+        totals.add(write_one_candidate(pool, write_gate, &candidate).await?);
+    }
+    Ok(totals.result(source_id))
+}
 
-        nodes::upsert_nodes(
-            &mut tx,
-            &resolved_nodes,
-            &candidate.source_id,
-            candidate.confidence,
-        )
-        .await?;
-        nodes_upserted = nodes_upserted.saturating_add(resolved_nodes.len() as u64);
-        upsert_aliases(&mut tx, &resolved_nodes).await?;
+#[derive(Default)]
+struct CandidateCounts {
+    seen: u64,
+    nodes: u64,
+    edges: u64,
+    evidence: u64,
+}
 
-        let mut pending_evidence = Vec::new();
-        for edge_batch in resolved_edges.chunks(EDGE_WRITE_BATCH_SIZE) {
-            let existing_edges = fetch_edge_states(&mut tx, edge_batch).await?;
-            let mut edge_writes = Vec::with_capacity(edge_batch.len());
-            pending_evidence.clear();
-            for (resolved, edge_evidence) in edge_batch {
-                edge_writes.push(
-                    prepare_edge_write(
-                        &mut tx,
-                        resolved,
-                        existing_edges.get(&resolved.edge_id.0).cloned(),
-                    )
-                    .await?,
-                );
-                edges_upserted += 1;
-                for ev in edge_evidence {
-                    pending_evidence.push((resolved.edge_id.0.clone(), *ev));
-                    evidence_records += 1;
-                }
-            }
-            upsert_edge_batch(&mut tx, &edge_writes).await?;
-            upsert_evidence_batch(&mut tx, &pending_evidence).await?;
-        }
-        // Checkpoints were written by the former partial-commit implementation.
-        // Atomic candidates never consult them: doing so could silently skip a
-        // changed/reordered edge prefix. Delete matching legacy state only as
-        // part of the same transaction that durably writes the whole candidate.
-        sqlx::query("DELETE FROM graph_write_checkpoints WHERE job_id = ? AND candidate_id = ?")
-            .bind(candidate.job_id.0.to_string())
-            .bind(&candidate.candidate_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| {
-                graph_storage_error(format!("failed to clear graph checkpoint: {error}"))
-            })?;
-        tx.commit()
-            .await
-            .map_err(|e| graph_storage_error(format!("failed to commit graph transaction: {e}")))?;
+impl CandidateCounts {
+    fn add(&mut self, other: Self) {
+        self.seen += other.seen;
+        self.nodes += other.nodes;
+        self.edges += other.edges;
+        self.evidence += other.evidence;
     }
 
-    Ok(GraphWriteResult {
-        header: stage_header(),
-        source_id: source_id.unwrap_or_else(|| SourceId::new("graph")),
-        candidates_seen,
-        nodes_upserted,
-        edges_upserted,
-        evidence_records,
-        warnings: Vec::new(),
-    })
+    fn result(self, source_id: Option<SourceId>) -> GraphWriteResult {
+        GraphWriteResult {
+            header: stage_header(),
+            source_id: source_id.unwrap_or_else(|| SourceId::new("graph")),
+            candidates_seen: self.seen,
+            nodes_upserted: self.nodes,
+            edges_upserted: self.edges,
+            evidence_records: self.evidence,
+            warnings: Vec::new(),
+        }
+    }
+}
+
+async fn write_one_candidate(
+    pool: &SqlitePool,
+    write_gate: &axon_core::sqlite::SqliteWriteGate,
+    candidate: &GraphCandidate,
+) -> StoreResult<CandidateCounts> {
+    let mut tx = ImmediateTx::begin_with_gate(pool, write_gate)
+        .await
+        .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
+    let counts = write_candidate(&mut tx, candidate).await?;
+    tx.commit()
+        .await
+        .map_err(|e| graph_storage_error(format!("failed to commit graph transaction: {e}")))?;
+    Ok(counts)
+}
+
+async fn write_candidate(
+    tx: &mut ImmediateTx,
+    candidate: &GraphCandidate,
+) -> StoreResult<CandidateCounts> {
+    let (resolved_nodes, resolved_edges) = resolve_candidate(candidate);
+    nodes::upsert_nodes(
+        tx,
+        &resolved_nodes,
+        &candidate.source_id,
+        candidate.confidence,
+    )
+    .await?;
+    upsert_aliases(tx, &resolved_nodes).await?;
+
+    let mut counts = CandidateCounts {
+        seen: 1,
+        nodes: resolved_nodes.len() as u64,
+        ..Default::default()
+    };
+    let mut pending_evidence = Vec::new();
+    for edge_batch in resolved_edges.chunks(EDGE_WRITE_BATCH_SIZE) {
+        let existing_edges = fetch_edge_states(tx, edge_batch).await?;
+        let mut edge_writes = Vec::with_capacity(edge_batch.len());
+        pending_evidence.clear();
+        for (resolved, edge_evidence) in edge_batch {
+            edge_writes.push(
+                prepare_edge_write(
+                    tx,
+                    resolved,
+                    existing_edges.get(&resolved.edge_id.0).cloned(),
+                )
+                .await?,
+            );
+            counts.edges += 1;
+            for ev in edge_evidence {
+                pending_evidence.push((resolved.edge_id.0.clone(), *ev));
+                counts.evidence += 1;
+            }
+        }
+        upsert_edge_batch(tx, &edge_writes).await?;
+        upsert_evidence_batch(tx, &pending_evidence).await?;
+    }
+    // Remove legacy checkpoints in the transaction that writes the candidate.
+    sqlx::query("DELETE FROM graph_write_checkpoints WHERE job_id = ? AND candidate_id = ?")
+        .bind(candidate.job_id.0.to_string())
+        .bind(&candidate.candidate_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| {
+            graph_storage_error(format!("failed to clear graph checkpoint: {error}"))
+        })?;
+    Ok(counts)
 }
 
 type ResolvedEdgeEvidence<'a> = (ResolvedEdge, Vec<&'a GraphEvidence>);
