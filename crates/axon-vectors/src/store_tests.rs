@@ -242,6 +242,17 @@ async fn fake_vector_store_upserts_searches_and_deletes_without_qdrant() {
 #[tokio::test]
 async fn occupied_generation_count_is_fenced_by_source_and_generation() {
     let store = FakeVectorStore::new("fake-vector");
+    assert_eq!(
+        store
+            .count_generation_points(
+                "axon-test".into(),
+                SourceId::new("src-a"),
+                SourceGenerationId::new("gen_1"),
+            )
+            .await
+            .unwrap(),
+        0
+    );
     store.ensure_collection(collection()).await.unwrap();
     store.upsert(batch()).await.unwrap();
 

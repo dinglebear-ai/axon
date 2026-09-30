@@ -253,7 +253,6 @@ impl VectorStore for FakeVectorStore {
     ) -> Result<u64> {
         let mut state = self.state.lock().await;
         state.calls.push("count_generation_points");
-        state.collection_spec(&collection, ErrorStage::Retrieving)?;
         Ok(state.points.get(&collection).map_or(0, |points| {
             points
                 .values()

@@ -829,7 +829,7 @@
         {
           "path": "crates/axon-vectors/src/store.rs",
           "kind": "rust_module",
-          "checksum": "sha256:41dd5a20d5ca0edbc1a4af95b76f5cfb92031f0539e3c985fd67a29a3638cfd0"
+          "checksum": "sha256:95c36fd11a96bdd1c1039ce6c2c0207d499d7a83539d6430e49e1537cb59fea9"
         },
         {
           "path": "docs/pipeline-unification/runtime/provider-contract.md",
@@ -842,7 +842,7 @@
           "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
         }
       ],
-      "manifest_checksum": "5c0d9ce106c5abc390243e3c0e6c548733dac7889b40488b36d31ae5de3a35db"
+      "manifest_checksum": "679465588d7cc42fdeb11f44dfa9748b72d3042e3f2a735fc466b11efc7f9cc1"
     },
     {
       "family": "vector-payload",
