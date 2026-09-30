@@ -1,3 +1,9 @@
+---
+title: "GitHub Ingest"
+created: 2026-02-23
+updated: 2026-09-30
+---
+
 # GitHub Ingest
 
 Last reviewed: 2026-09-29

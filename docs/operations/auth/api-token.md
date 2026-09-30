@@ -1,3 +1,9 @@
+---
+title: "API Tokens and Panel Credentials"
+created: 2026-03-10
+updated: 2026-09-30
+---
+
 # API Tokens and Panel Credentials
 
 Last reviewed: 2026-09-29

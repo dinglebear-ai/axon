@@ -1,3 +1,9 @@
+---
+title: "Refreshing and Reindexing Sources"
+created: 2026-05-21
+updated: 2026-09-30
+---
+
 # Refreshing and Reindexing Sources
 
 Last reviewed: 2026-09-29
