@@ -79,6 +79,11 @@ before enqueue and preserve request metadata, progress tokens and caller identit
 allowlist in both directions. It invokes each real request-schema callback.
 `server/operation_schema.rs` specializes fixed action/subaction constraints while
 preserving unions, required fields, nested payloads and reachable definitions.
+For a flat request DTO shared by several subactions, update its `leaf_fields`
+classification when a handler starts or stops consuming a field. The generator
+keeps field types from the DTO and rejects unclassified leaves or field names;
+the atomic call resolver rejects sibling fields before dispatch. Mark fields
+required and add multi-field constraints when the handler requires them.
 Missing branches, unresolved references and duplicate/colliding names fail
 construction. Do not introduce an empty-schema fallback or merge alternatives
 into an incorrectly permissive property list.
