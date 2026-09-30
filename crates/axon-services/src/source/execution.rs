@@ -1,4 +1,4 @@
-use axon_api::source::{AuthSnapshot, JobId, JobPriority, SourceRequest};
+use axon_api::source::{AuthSnapshot, JobId, JobPriority, SourceRefreshPolicy, SourceRequest};
 use tokio_util::sync::CancellationToken;
 
 use super::foreground_progress::ForegroundProgressSender;
@@ -8,6 +8,7 @@ pub(crate) struct SourceExecutionContext {
     pub(crate) existing_job_id: Option<JobId>,
     pub(crate) auth_snapshot: Option<AuthSnapshot>,
     pub(crate) priority: JobPriority,
+    pub(crate) refresh: SourceRefreshPolicy,
     pub(crate) idempotency_key: Option<String>,
     pub(crate) attempt: u32,
     pub(crate) foreground: Option<ForegroundProgressSender>,
@@ -26,6 +27,7 @@ impl SourceExecutionContext {
             existing_job_id: None,
             auth_snapshot,
             priority: request.execution.priority,
+            refresh: request.refresh,
             idempotency_key: request.idempotency_key,
             attempt: 1,
             foreground: None,
@@ -53,6 +55,7 @@ impl SourceExecutionContext {
             existing_job_id: Some(job_id),
             auth_snapshot,
             priority: request.execution.priority,
+            refresh: request.refresh,
             idempotency_key: request.idempotency_key,
             attempt,
             foreground: None,
