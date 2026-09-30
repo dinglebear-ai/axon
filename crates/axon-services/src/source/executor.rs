@@ -218,7 +218,10 @@ async fn run_generation(
     };
     require_compatible_inventory(&diff, publication_config_unchanged, !unvisited.is_empty())?;
     retention::validate_retained(runtime.ledger.as_ref(), &mut diff, &unvisited).await?;
-    if !manifest_has_changes(&diff) && publication_config_unchanged {
+    if !manifest_has_changes(&diff)
+        && publication_config_unchanged
+        && input.plan.request.refresh != SourceRefreshPolicy::Force
+    {
         return unchanged_result(
             runtime.ledger.as_ref(),
             input,
@@ -228,7 +231,7 @@ async fn run_generation(
         )
         .await;
     }
-    if !publication_config_unchanged {
+    if !publication_config_unchanged || input.plan.request.refresh == SourceRefreshPolicy::Force {
         force_publication_refresh(&mut diff);
     }
     diff = lease_heartbeat::until_cancelled(
