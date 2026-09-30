@@ -15,7 +15,7 @@ use super::vectorize::VectorizeResult;
 pub(super) async fn unchanged_result(
     ledger: &dyn LedgerStore,
     input: &SourcePipelineInput<'_>,
-    manifest: SourceManifest,
+    mut manifest: SourceManifest,
     diff: &SourceManifestDiff,
     previous: Option<&SourceSummary>,
 ) -> anyhow::Result<IndexCounts> {
@@ -23,6 +23,7 @@ pub(super) async fn unchanged_result(
         .previous_generation
         .clone()
         .ok_or_else(|| anyhow::anyhow!("unchanged source has no committed generation"))?;
+    manifest.generation = generation.clone();
     let retained = super::retention::retained_statuses(ledger, diff).await?;
     let counts =
         super::retention::source_counts(&manifest, diff, &retained, &VectorizeResult::default());
