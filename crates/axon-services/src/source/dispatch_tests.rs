@@ -1576,7 +1576,7 @@ async fn repeated_all_skipped_generations_do_not_require_embedding_or_collection
                 .calls()
                 .await
                 .iter()
-                .all(|call| *call == "capabilities")
+                .all(|call| *call == "capabilities" || *call == "count_generation_points")
         );
     }
 }

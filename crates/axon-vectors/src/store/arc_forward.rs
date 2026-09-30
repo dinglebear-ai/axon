@@ -28,6 +28,16 @@ impl VectorStore for Arc<dyn VectorStore> {
     async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
         (**self).upsert(batch).await
     }
+    async fn count_generation_points(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<u64> {
+        (**self)
+            .count_generation_points(collection, source_id, generation)
+            .await
+    }
     async fn mark_generation_committed(
         &self,
         collection: String,
