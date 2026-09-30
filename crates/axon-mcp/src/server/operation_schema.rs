@@ -83,11 +83,68 @@ pub(crate) fn focused(root: &Value, action: &str, subaction: Option<&str>) -> Ma
         .as_object()
         .expect("an operation must have an object schema")
         .clone();
+    if let Some(selector) = subaction
+        && let Some(fields) = leaf_fields(action, selector)
+    {
+        let allowed: BTreeSet<_> = fields.iter().copied().collect();
+        let properties = object
+            .get_mut("properties")
+            .and_then(Value::as_object_mut)
+            .expect("leaf request properties");
+        for field in fields {
+            assert!(
+                properties.contains_key(*field),
+                "{action}_{selector}: unknown field {field}"
+            );
+        }
+        properties.retain(|field, _| allowed.contains(field.as_str()));
+        let required = leaf_required_fields(action, selector);
+        for field in required {
+            assert!(
+                allowed.contains(field),
+                "{action}_{selector}: required field {field} is not exposed"
+            );
+            let property = properties.get_mut(*field).expect("checked required field");
+            disallow_null(property);
+            if matches!(property.get("type"), Some(Value::String(kind)) if kind == "string")
+                || matches!(property.get("type"), Some(Value::Array(kinds)) if kinds == &[json!("string")])
+            {
+                property
+                    .as_object_mut()
+                    .expect("string schema")
+                    .insert("pattern".into(), json!(r"\S"));
+            }
+            if *field == "confirm" && matches!(action, "prune" | "reset" | "jobs") {
+                *property = json!({"const": true});
+            }
+        }
+        for field in leaf_alternative_fields(action, selector) {
+            disallow_null(properties.get_mut(*field).expect("alternative leaf field"));
+        }
+        if !required.is_empty() {
+            object.insert("required".into(), json!(required));
+        }
+        if let Some(constraint) = leaf_field_combination(action, selector) {
+            object
+                .entry("allOf")
+                .or_insert_with(|| json!([]))
+                .as_array_mut()
+                .expect("leaf allOf")
+                .push(constraint);
+        }
+    }
     object.insert("type".into(), json!("object"));
     object.entry("properties").or_insert_with(|| json!({}));
     close_definitions(root, &mut object);
     object
 }
+
+#[path = "operation_schema_leaf.rs"]
+mod leaf;
+use leaf::{
+    disallow_null, leaf_alternative_fields, leaf_field_combination, leaf_fields,
+    leaf_required_fields,
+};
 
 fn literal_matches(root: &Value, schema: &Value, literal: &str) -> bool {
     if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
