@@ -30,3 +30,11 @@ fn embedding_backstop_keeps_short_code_lines_intact() {
             .all(|part| part.content.len() <= text::MAX_PLAIN_TEXT_CHUNK_BYTES)
     );
 }
+
+#[test]
+fn no_raw_empty_fallback_reintroduces_punctuation_junk() {
+    let source = "{}();".repeat(30);
+    let bounded = bound_or_fallback(Vec::new(), &source);
+    assert!(bounded.empty_fallback);
+    assert!(crate::quality::useful_chunks(bounded.chunks, &source).is_empty());
+}

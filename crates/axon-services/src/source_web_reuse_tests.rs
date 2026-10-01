@@ -215,7 +215,7 @@ async fn unchanged_site_content_is_not_reembedded_without_http_validators() {
 #[tokio::test]
 async fn identical_conditional_200_advances_cache_for_followup_304() {
     let provider = Arc::new(ConditionalFetchProvider::new(
-        "<html><body>stable body</body></html>",
+        "<html><body>stable body provides complete useful page context for canonical source reuse verification.</body></html>",
         "etag-stable",
     ));
     let harness =
@@ -236,10 +236,10 @@ async fn identical_conditional_200_advances_cache_for_followup_304() {
     // HTTP 200 itself returns the exact prior bytes. This exercises the
     // same-content cache-forwarding path rather than the manifest no-op path.
     provider
-        .set_body("<html><body>transient discovery change</body></html>")
+        .set_body("<html><body>transient discovery change provides complete useful page context for canonical source reuse verification.</body></html>")
         .await;
     provider
-        .set_conditional_body("<html><body>stable body</body></html>")
+        .set_conditional_body("<html><body>stable body provides complete useful page context for canonical source reuse verification.</body></html>")
         .await;
 
     crate::source::index_source_with_auth(
@@ -283,7 +283,7 @@ async fn identical_conditional_200_advances_cache_for_followup_304() {
 #[tokio::test]
 async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
     let provider = Arc::new(ConditionalFetchProvider::new(
-        "<html><body>version one</body></html>",
+        "<html><body>version one provides complete useful page context for canonical source reuse verification.</body></html>",
         "etag-v1",
     ));
     let harness =
@@ -304,7 +304,7 @@ async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
     assert!(vector_calls_after_first.contains(&"upsert"));
 
     provider
-        .set_body("<html><body>transient discovery change</body></html>")
+        .set_body("<html><body>transient discovery change provides complete useful page context for canonical source reuse verification.</body></html>")
         .await;
     provider.set_conditional_304(true).await;
     let second = crate::source::index_source_with_auth(
@@ -344,7 +344,7 @@ async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
         .await
         .expect("evict reused cache generation");
     provider
-        .set_body("<html><body>another discovery change</body></html>")
+        .set_body("<html><body>another discovery change provides complete useful page context for canonical source reuse verification.</body></html>")
         .await;
     let embeds_before_refetch = harness.embedder().calls().await.len();
     let full_fetches_before_refetch = provider.full_fetches().await;
@@ -397,7 +397,7 @@ async fn canonical_vector_commit_failure_rolls_back_generation() {
     use axon_vectors::store::{FakeVectorMode, FakeVectorStore};
 
     let provider = Arc::new(ConditionalFetchProvider::new(
-        "<html><body>rollback fixture</body></html>",
+        "<html><body>rollback fixture provides complete useful page context for canonical source reuse verification.</body></html>",
         "etag-rollback",
     ));
     let vectors =

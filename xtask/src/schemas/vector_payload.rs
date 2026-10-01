@@ -14,7 +14,9 @@ use axon_vectors::payload::{
     VECTOR_SOURCE_FAMILIES, VECTOR_SOURCE_FAMILY_FIELDS, VECTOR_VISIBILITY_VALUES,
 };
 
+mod vector_payload_fields;
 mod vector_payload_markdown;
+use vector_payload_fields::source_specific_field_schema;
 
 const VECTOR_API_DTOS: &[&str] = &[
     "EmbeddingBatch",
@@ -44,6 +46,7 @@ pub fn vector_payload_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-vectors/src/point.rs",
             "crates/axon-api/src/source/vector.rs",
             "xtask/src/schemas/vector_payload_markdown.rs",
+            "xtask/src/schemas/vector_payload_fields.rs",
             "docs/pipeline-unification/sources/metadata-payload.md",
             "docs/pipeline-unification/sources/chunking-contract.md",
             "docs/pipeline-unification/schemas/vector-payload-schema.md",
@@ -202,6 +205,9 @@ fn schema_properties(registry: &StaticVectorPayloadContract) -> Value {
 }
 
 fn shared_field_schema(field: &str) -> Value {
+    if let Some(schema) = vector_payload_fields::shared_chunk_field_schema(field) {
+        return schema;
+    }
     match field {
         "payload_contract_version" => json!({
             "type": "string",
@@ -313,20 +319,6 @@ fn redaction_guardrails() -> Value {
             "adapter response blobs in metadata and locator fields"
         ]
     })
-}
-
-fn source_specific_field_schema(field: &str) -> Value {
-    match field {
-        "web_status_code" | "web_depth" | "session_turn_index" | "memory_importance" => {
-            json!({ "type": "integer" })
-        }
-        "graph_confidence" => json!({ "type": "number" }),
-        "manifest" => json!({ "type": "boolean" }),
-        "graph_node_ids" | "graph_edge_ids" => {
-            json!({ "type": "array", "items": { "type": "string" } })
-        }
-        _ => json!({ "type": "string" }),
-    }
 }
 
 fn registry_families_json(registry: &StaticVectorPayloadContract) -> Vec<Value> {

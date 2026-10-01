@@ -52,6 +52,10 @@ fn code_symbols_splits_huge_symbol_into_line_windows() {
 fn code_manifest_stamps_config_file_type() {
     let chunks = code_manifest("[package]\nname = \"axon\"\n", Some("Cargo.toml"));
     assert_eq!(chunks[0].metadata.get("code_file_type").unwrap(), "config");
+    assert_eq!(
+        chunks[0].metadata["actual_chunking_method"],
+        "atomic_manifest"
+    );
     assert_eq!(chunks[0].metadata.get("code_language").unwrap(), "toml");
 }
 
@@ -113,6 +117,17 @@ fn code_symbols_prefers_parser_fact_ranges_when_supplied() {
 
     let chunks = code_symbols_with_facts(text, Some("src/lib.rs"), None, &[fact]);
 
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<String>(),
+        text
+    );
+    let chunks = chunks
+        .into_iter()
+        .filter(|c| c.symbol.as_deref() == Some("render"))
+        .collect::<Vec<_>>();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].symbol.as_deref(), Some("render"));
     assert!(chunks[0].content.contains("let value = 1"));
@@ -159,6 +174,17 @@ fn code_symbols_use_tree_sitter_byte_ranges_and_chunk_metadata() {
 
     let chunks = code_symbols_with_facts(text, Some("src/lib.rs"), None, &[fact]);
 
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<String>(),
+        text
+    );
+    let chunks = chunks
+        .into_iter()
+        .filter(|c| c.symbol.as_deref() == Some("render"))
+        .collect::<Vec<_>>();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].content, &text[start..end]);
     assert_eq!(chunks[0].range.byte_start, Some(start as u64));
@@ -166,4 +192,79 @@ fn code_symbols_use_tree_sitter_byte_ranges_and_chunk_metadata() {
     assert_eq!(chunks[0].metadata["code_chunk_source"], "ast_symbol");
     assert_eq!(chunks[0].metadata["actual_chunking_method"], "tree_sitter");
     assert_eq!(chunks[0].metadata["parser_method"], "tree_sitter");
+}
+
+#[test]
+fn heuristic_code_preserves_module_prelude_and_exact_source_ranges() {
+    let text = "// café module setup\nuse crate::Widget;\n\nfn run() {}\n";
+    let chunks = code_symbols(text, Some("src/lib.rs"), None);
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<String>(),
+        text
+    );
+    assert!(chunks[0].symbol.is_none());
+    assert_eq!(chunks[1].symbol.as_deref(), Some("run"));
+    for chunk in &chunks {
+        let start = chunk.range.byte_start.unwrap() as usize;
+        let end = chunk.range.byte_end.unwrap() as usize;
+        assert_eq!(chunk.content, text[start..end]);
+    }
+}
+
+#[test]
+fn heuristic_symbols_and_huge_windows_avoid_repeated_source_prefix_scans() {
+    for source in [
+        "fn render() { let name = \"café\"; }\n".repeat(2000),
+        format!(
+            "fn huge() {{\n{}}}\n",
+            "    let name = \"café\";\n".repeat(4000)
+        ),
+    ] {
+        let (chunks, work) = crate::performance_measurement::measure(|| {
+            code_symbols(&source, Some("src/lib.rs"), None)
+        });
+        assert!(chunks.len() > 20);
+        assert_eq!(
+            chunks
+                .iter()
+                .map(|c| c.content.as_str())
+                .collect::<String>(),
+            source
+        );
+        assert!(
+            work.range_scan_bytes <= source.len() * 4,
+            "repeated prefix scans processed {} bytes for {} source bytes",
+            work.range_scan_bytes,
+            source.len()
+        );
+        for chunk in &chunks {
+            let start = chunk.range.byte_start.unwrap() as usize;
+            let end = chunk.range.byte_end.unwrap() as usize;
+            assert_eq!(chunk.content, source[start..end]);
+        }
+    }
+}
+
+#[test]
+fn heuristic_and_unsupported_code_publish_the_actual_fallback_method() {
+    let chunks = code_symbols(
+        "fn run() { let explanation = \"useful source context for this example declaration\"; }\n",
+        Some("src/lib.rs"),
+        None,
+    );
+    assert_eq!(
+        chunks[0].metadata["actual_chunking_method"],
+        "heuristic_symbol"
+    );
+    assert_eq!(chunks[0].metadata["code_parse_status"], "fallback");
+    let chunks = code_symbols(
+        "useful unsupported source text with enough context to identify its implementation",
+        None,
+        None,
+    );
+    assert_eq!(chunks[0].metadata["actual_chunking_method"], "atomic_code");
+    assert_eq!(chunks[0].metadata["code_parse_status"], "unsupported");
 }

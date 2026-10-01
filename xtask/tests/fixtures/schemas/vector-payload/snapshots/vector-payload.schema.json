@@ -8498,6 +8498,15 @@
       "minLength": 1,
       "type": "string"
     },
+    "code_ast_status": {
+      "enum": [
+        "parsed",
+        "partial",
+        "unsupported",
+        "failed"
+      ],
+      "type": "string"
+    },
     "code_chunk_source": {
       "minLength": 1,
       "type": "string"
@@ -8509,6 +8518,11 @@
     "code_file_type": {
       "type": "string"
     },
+    "code_grammar": {
+      "minLength": 1,
+      "pattern": "\\S",
+      "type": "string"
+    },
     "code_is_test": {
       "type": "string"
     },
@@ -8518,11 +8532,29 @@
     "code_parse_status": {
       "type": "string"
     },
+    "code_symbol_aliases": {
+      "items": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "code_symbol_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
     "code_symbol_kind": {
       "type": "string"
     },
     "code_symbol_name": {
       "type": "string"
+    },
+    "code_symbol_source_range": {
+      "$ref": "#/$defs/SourceRange"
+    },
+    "code_syntax_recovered": {
+      "type": "boolean"
     },
     "collection": {
       "minLength": 1,
@@ -8692,6 +8724,15 @@
     "item_canonical_uri": {
       "minLength": 1,
       "type": "string"
+    },
+    "item_canonical_uri_aliases": {
+      "items": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "type": "array",
+      "x-qdrant-index": "keyword"
     },
     "job_id": {
       "minLength": 1,
@@ -8929,6 +8970,15 @@
       "type": "string",
       "x-qdrant-index": "keyword"
     },
+    "source_item_aliases": {
+      "items": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "type": "array",
+      "x-qdrant-index": "keyword"
+    },
     "source_item_key": {
       "minLength": 1,
       "type": "string",
@@ -8937,6 +8987,16 @@
     "source_kind": {
       "minLength": 1,
       "type": "string"
+    },
+    "source_path_prefixes": {
+      "items": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "x-qdrant-index": "keyword"
     },
     "source_range": {
       "$ref": "#/$defs/SourceRange"
@@ -10560,6 +10620,10 @@
           "field_schema": "keyword"
         },
         {
+          "field_name": "item_canonical_uri_aliases",
+          "field_schema": "keyword"
+        },
+        {
           "field_name": "job_id",
           "field_schema": "keyword"
         },
@@ -10588,7 +10652,15 @@
           "field_schema": "keyword"
         },
         {
+          "field_name": "source_item_aliases",
+          "field_schema": "keyword"
+        },
+        {
           "field_name": "source_item_key",
+          "field_schema": "keyword"
+        },
+        {
+          "field_name": "source_path_prefixes",
           "field_schema": "keyword"
         },
         {
@@ -10689,7 +10761,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:9f0fbd0bd0bbdd9364741c66a564cdc81c160b3e99be99802990054a1146b17c",
+        "checksum": "sha256:a5a655b18a45b04d0a3a17b098b179aac8756a79e53955522170db0e9d90436a",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -10714,7 +10786,7 @@
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
       {
-        "checksum": "sha256:63c60a97db760d23a91846d0c5ca077363913b0ab778c965c6a73a8bf652826f",
+        "checksum": "sha256:d0233067e8ab42be1a0d1451d5f0e3a7df7953c42d54de761b6ae4d068b1a01b",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
@@ -10722,6 +10794,11 @@
         "checksum": "sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
+      },
+      {
+        "checksum": "sha256:921bae71f3381b68aeca865c6633798f249bc564659c5e02dfa3244b351e3e5e",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/vector_payload_fields.rs"
       },
       {
         "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c",

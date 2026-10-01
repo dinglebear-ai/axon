@@ -39,13 +39,13 @@ const RSS_TWO_ITEMS: &str = r#"<?xml version="1.0"?>
   <item>
     <title>First Post</title>
     <link>https://example.com/a</link>
-    <description>Hello world</description>
+    <description>This first feed article explains source discovery and searchable document preparation.</description>
     <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>Second Post</title>
     <link>https://example.com/b</link>
-    <description>Body two</description>
+    <description>This second feed article explains source refresh and searchable document retention.</description>
   </item>
 </channel></rss>"#;
 
@@ -88,7 +88,7 @@ fn write_two_session_fixtures(dir: &std::path::Path) {
     std::fs::write(
         dir.join("session1.jsonl"),
         concat!(
-            r#"{"type":"user","cwd":"/home/j/proj","gitBranch":"main","timestamp":"2026-01-01T00:00:00Z","message":{"content":"hello"}}"#,
+            r#"{"type":"user","cwd":"/home/j/proj","gitBranch":"main","timestamp":"2026-01-01T00:00:00Z","message":{"content":"Please explain how source discovery and refresh preserve searchable documents."}}"#,
             "\n",
             r#"{"type":"assistant","timestamp":"2026-01-01T00:00:01Z","message":{"model":"claude-x","content":[{"type":"text","text":"hi there"}]}}"#,
         ),
@@ -97,7 +97,7 @@ fn write_two_session_fixtures(dir: &std::path::Path) {
     std::fs::write(
         dir.join("session2.jsonl"),
         concat!(
-            r#"{"type":"user","cwd":"/home/j/proj","gitBranch":"main","timestamp":"2026-01-02T00:00:00Z","message":{"content":"second"}}"#,
+            r#"{"type":"user","cwd":"/home/j/proj","gitBranch":"main","timestamp":"2026-01-02T00:00:00Z","message":{"content":"Please describe the second source session and its searchable preparation results."}}"#,
             "\n",
             r#"{"type":"assistant","timestamp":"2026-01-02T00:00:01Z","message":{"model":"claude-x","content":[{"type":"text","text":"second reply"}]}}"#,
         ),
@@ -878,12 +878,12 @@ async fn removal_only_recrawl_publishes_generation_and_retires_removed_docs() {
             .with_item(
                 "kept.md",
                 axon_api::source::ContentKind::Markdown,
-                "# Kept\nbody\n",
+                "# Kept\nThis retained document provides searchable details for generation lifecycle verification.\n",
             )
             .with_item(
                 "removed.md",
                 axon_api::source::ContentKind::Markdown,
-                "# Removed\nbody\n",
+                "# Removed\nThis removed document provides searchable details for generation lifecycle verification.\n",
             ),
     };
     let first = dispatch_materialized(
@@ -905,7 +905,7 @@ async fn removal_only_recrawl_publishes_generation_and_retires_removed_docs() {
         inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "kept.md",
             axon_api::source::ContentKind::Markdown,
-            "# Kept\nbody\n",
+            "# Kept\nThis retained document provides searchable details for generation lifecycle verification.\n",
         ),
     };
     let second = dispatch_materialized(
@@ -974,7 +974,7 @@ async fn force_refresh_rebuilds_unchanged_source() {
         inner: FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "readme.md",
             axon_api::source::ContentKind::Markdown,
-            "# Same content\n",
+            "# Same content\n\nThis unchanged document has enough source context to produce a useful retrieval chunk on each forced refresh.\n",
         ),
     };
     let run = |force| {
@@ -1216,7 +1216,7 @@ async fn artifact_candidates_are_delivered_after_commit_and_not_replayed_when_un
         CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "SKILL.md",
             axon_api::source::ContentKind::Markdown,
-            "# Demo skill",
+            "# Demo skill\nThis skill describes searchable source preparation and artifact candidate delivery.",
         ));
 
     let first_execution = test_execution(&source);
@@ -1299,7 +1299,7 @@ async fn durable_candidate_outbox_retries_autonomously_then_deletes_on_acceptanc
         CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "SKILL.md",
             axon_api::source::ContentKind::Markdown,
-            "# Demo skill",
+            "# Demo skill\nThis skill describes searchable source preparation and artifact candidate delivery.",
         ));
 
     dispatch_materialized(
@@ -1351,7 +1351,7 @@ async fn disabled_candidate_sink_preserves_durable_outbox_delivery() {
         CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "SKILL.md",
             axon_api::source::ContentKind::Markdown,
-            "# Demo skill",
+            "# Demo skill\nThis skill describes searchable source preparation and artifact candidate delivery.",
         ));
 
     dispatch_materialized(
@@ -1396,7 +1396,7 @@ async fn failed_generation_never_delivers_artifact_candidates() {
         CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "SKILL.md",
             axon_api::source::ContentKind::Markdown,
-            "# Demo skill",
+            "# Demo skill\nThis skill describes searchable source preparation and artifact candidate delivery.",
         ));
 
     let result = dispatch_materialized(
@@ -1451,7 +1451,7 @@ async fn shared_skips_publish_without_embedding_and_retire_prior_text_in_both_mo
         let mixed = StampingSourceAdapter {
             inner: FakeSourceAdapter::new(route.adapter.clone())
                 .with_item("asset", ContentKind::BinaryMetadata, "%PDF-1.7")
-                .with_item("text", ContentKind::PlainText, "searchable words"),
+                .with_item("text", ContentKind::PlainText, "searchable words explain source preparation and generation retirement behavior"),
         };
         let first = dispatch_materialized(
             &runtime,
@@ -1597,7 +1597,7 @@ async fn unscheduled_multibatch_ingestion_enters_bulk_loading_once() {
         inner = inner.with_item(
             format!("item-{index:03}"),
             axon_api::source::ContentKind::PlainText,
-            format!("searchable content {index}"),
+            format!("searchable content {index} explains source preparation and vector batching lifecycle"),
         );
     }
     let adapter = StampingSourceAdapter { inner };

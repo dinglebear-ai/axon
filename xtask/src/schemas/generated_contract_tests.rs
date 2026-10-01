@@ -492,3 +492,6 @@ fn generated_api_schema_and_docs_include_vector_store_dtos() {
     // schemas-only fixture tree. The `$defs` assertions above are the schema
     // contract; the markdown rendering is covered by the docs family tests.
 }
+
+#[path = "generated_chunk_metadata_tests.rs"]
+mod chunk_metadata;

@@ -374,7 +374,7 @@ fn content_fingerprint(path: &Path, cap: u64) -> Result<Option<String>> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(Some(hex_prefix(&hasher.finalize(), 16)))
+    Ok(Some(hex_prefix(&hasher.finalize(), 64)))
 }
 
 fn content_kind_for(path: &Path) -> ContentKind {

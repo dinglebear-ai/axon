@@ -104,7 +104,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
     }];
     let preparer = DocumentPreparer::new(DocumentPreparerConfig {
         max_content_bytes: axon_document::content_policy::DEFAULT_CONTENT_BYTE_LIMIT,
-        markdown_max_chars: 48,
+        markdown_max_chars: 96,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
     });
@@ -121,7 +121,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
     .await
     .expect("prepare documents");
 
-    let PrepareSourceDocumentResult::Prepared(document) = &prepared[0] else {
+    let PrepareSourceDocumentResult::Prepared(document) = &prepared.outcomes[0] else {
         panic!("text skipped")
     };
     assert!(document.chunks.len() > 1);
@@ -129,7 +129,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
         document
             .chunks
             .iter()
-            .all(|chunk| chunk.content.chars().count() <= 48)
+            .all(|chunk| chunk.content.chars().count() <= 96)
     );
 }
 
@@ -169,7 +169,7 @@ async fn request_zero_content_limit_produces_explicit_size_skip() {
     .await
     .unwrap();
     assert!(
-        matches!(&output[0], PrepareSourceDocumentResult::Skipped(skipped) if skipped.reason == ContentSkipReason::SizeLimitExceeded)
+        matches!(&output.outcomes[0], PrepareSourceDocumentResult::Skipped(skipped) if skipped.reason == ContentSkipReason::SizeLimitExceeded)
     );
 }
 
@@ -226,4 +226,101 @@ async fn preparation_error_retains_stage_and_item_identity() {
     assert_eq!(typed.code.0, "document.prepare_failed");
     assert_eq!(typed.stage, ErrorStage::Preparing);
     assert_eq!(typed.source_item_key.as_deref(), Some("item-limit"));
+}
+
+#[tokio::test]
+async fn preparation_summary_counts_zero_symbol_ast_even_when_quality_skips() {
+    let mut document = preparation_test_document(ContentRef::InlineText {
+        text: "let x = 1;".into(),
+    });
+    document.content_kind = ContentKind::Code;
+    document.path = Some("empty.rs".into());
+    let batch = prepare_documents(
+        vec![document],
+        &SourceGenerationId::from("gen-observed"),
+        &BTreeMap::new(),
+        DocumentPreparer::default(),
+        1,
+        4096,
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        batch.outcomes[0],
+        PrepareSourceDocumentResult::Skipped(_)
+    ));
+    assert_eq!(batch.summary.ast_zero_symbol, 1);
+    assert_eq!(batch.summary.skipped, 1);
+    assert_eq!(batch.summary.not_observed, 0);
+    assert!(batch.summary.message().contains("supported_attempts=1"));
+    assert!(batch.summary.chunk_methods.is_empty());
+}
+
+#[test]
+fn preparation_summary_excludes_unsupported_from_failure_denominator() {
+    use axon_document::PreparationObservation;
+    let result = PrepareSourceDocumentResult::Skipped(SkippedDocument {
+        document_id: DocumentId::from("doc"),
+        source_id: SourceId::from("src"),
+        source_item_key: SourceItemKey::from("item"),
+        generation: SourceGenerationId::from("gen"),
+        reason: ContentSkipReason::EmptyContent,
+    });
+    let mut summary = PreparationSummary::default();
+    for (status, count, extraction) in [
+        ("parsed", 1, "ast"),
+        ("partial", 1, "ast"),
+        ("partial", 0, "ast"),
+        ("parsed", 0, "ast"),
+        ("unsupported", 1, "heuristic_fallback"),
+        ("failed", 1, "heuristic_fallback"),
+    ] {
+        summary.observe(&result, &PreparationObservation::from_value(&serde_json::json!({
+            "code_ast_status": status, "code_symbol_count": count, "symbol_extraction_status": extraction,
+            "code_grammar": if matches!(status, "parsed" | "partial") { Some("rust") } else { None }
+        })));
+    }
+    assert_eq!(
+        (
+            summary.ast_clean,
+            summary.ast_recovered,
+            summary.ast_zero_symbol
+        ),
+        (1, 1, 1)
+    );
+    assert_eq!(
+        (
+            summary.unsupported_grammar,
+            summary.parse_failure,
+            summary.heuristic_fallback
+        ),
+        (1, 1, 2)
+    );
+    assert_eq!(summary.ast_partial, 1);
+    assert!(summary.message().contains("supported_attempts=5"));
+    assert!(!summary.message().contains("supported_attempts=6"));
+}
+
+#[tokio::test]
+async fn preparation_summary_counts_actual_chunk_methods_separately_from_parser_outcomes() {
+    let mut document = preparation_test_document(ContentRef::InlineText {
+        text: "// This module has no declarations and retains enough meaningful context for search preparation.\n".into(),
+    });
+    document.content_kind = ContentKind::Code;
+    document.path = Some("module.rs".into());
+    let batch = prepare_documents(
+        vec![document],
+        &SourceGenerationId::from("gen-methods"),
+        &BTreeMap::new(),
+        DocumentPreparer::default(),
+        1,
+        4096,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(batch.summary.ast_zero_symbol, 1);
+    assert_eq!(batch.summary.chunk_methods.get("tree_sitter"), Some(&1));
+    assert_eq!(batch.summary.skipped, 0);
 }

@@ -55,8 +55,8 @@ impl LocalRefresh {
 #[tokio::test]
 async fn partial_and_zero_scans_preserve_inventory_then_complete_scan_deletes() {
     let fixture = LocalRefresh::new();
-    fixture.write("a.txt", "first source body");
-    fixture.write("b.txt", "second source body");
+    fixture.write("a.txt", "first source body. This document provides searchable details for inventory lifecycle verification.");
+    fixture.write("b.txt", "second source body. This document provides searchable details for inventory lifecycle verification.");
     fixture.write("c.txt", b"\x00\x01\x02");
     let initial = fixture.run(None).await.unwrap();
     let partial = fixture.run(Some(1)).await.unwrap();
@@ -106,8 +106,8 @@ async fn partial_and_zero_scans_preserve_inventory_then_complete_scan_deletes() 
 #[tokio::test]
 async fn text_skip_text_and_unchanged_refresh_preserve_exact_status_counts() {
     let fixture = LocalRefresh::new();
-    fixture.write("a.txt", "first text body");
-    fixture.write("b.txt", "retained text body");
+    fixture.write("a.txt", "first text body. This document provides searchable details for inventory lifecycle verification.");
+    fixture.write("b.txt", "retained text body. This document provides searchable details for inventory lifecycle verification.");
     fixture.run(None).await.unwrap();
     fixture.write("a.txt", b"\x00\x01\x02");
     let skipped = fixture.run(None).await.unwrap();
@@ -137,7 +137,7 @@ async fn text_skip_text_and_unchanged_refresh_preserve_exact_status_counts() {
         rows.iter()
             .all(|row| row.generation.as_ref() == Some(&repeat.generation))
     );
-    fixture.write("a.txt", "restored text body");
+    fixture.write("a.txt", "restored text body. This document provides searchable details for inventory lifecycle verification.");
     let restored = fixture.run(None).await.unwrap();
     let summary = fixture
         .ledger
@@ -165,8 +165,8 @@ async fn text_skip_text_and_unchanged_refresh_preserve_exact_status_counts() {
 #[tokio::test]
 async fn failed_status_provenance_forces_reprepare_and_rejects_unvisited_partial() {
     let fixture = LocalRefresh::new();
-    fixture.write("a.txt", "first text body");
-    fixture.write("b.txt", "second text body");
+    fixture.write("a.txt", "first text body. This document provides searchable details for inventory lifecycle verification.");
+    fixture.write("b.txt", "second text body. This document provides searchable details for inventory lifecycle verification.");
     let initial = fixture.run(None).await.unwrap();
     let manifest = initial.published_manifest.unwrap();
     let keys = manifest
@@ -235,7 +235,7 @@ async fn complete_feed_refresh_still_removes_absent_entries() {
     let _updated = server.mock(|when, then| {
         when.method(GET).path("/feed.xml");
         then.status(200).header("content-type", "application/rss+xml")
-            .body(r#"<rss version="2.0"><channel><title>Example</title><link>https://example.com/</link><item><title>First Post</title><link>https://example.com/a</link><description>Hello world</description><pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate></item></channel></rss>"#);
+            .body(r#"<rss version="2.0"><channel><title>Example</title><link>https://example.com/</link><item><title>First Post</title><link>https://example.com/a</link><description>This feed article provides searchable details for complete inventory removal verification.</description><pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate></item></channel></rss>"#);
     });
     let refreshed = run().await.unwrap();
     assert_eq!(refreshed.removed, 1);
@@ -251,8 +251,8 @@ async fn complete_feed_refresh_still_removes_absent_entries() {
 #[tokio::test]
 async fn incompatible_partial_refresh_rejects_then_complete_reprepares_every_item() {
     let fixture = LocalRefresh::new();
-    fixture.write("a.txt", "first unchanged body");
-    fixture.write("b.txt", "second unchanged body");
+    fixture.write("a.txt", "first unchanged body. This document provides searchable details for inventory lifecycle verification.");
+    fixture.write("b.txt", "second unchanged body. This document provides searchable details for inventory lifecycle verification.");
     let initial = fixture.run(None).await.unwrap();
     let mut manifest = initial.published_manifest.unwrap();
     manifest.metadata.insert(
@@ -288,7 +288,7 @@ async fn old_placeholder_is_retired_even_when_binary_manifest_is_unchanged() {
         fixture.runtime.embed_scheduler_enabled = scheduled;
         fixture.write(
             "asset.txt",
-            "binary file placeholder from legacy preparation",
+            "binary file placeholder from legacy preparation. This document provides searchable details for inventory lifecycle verification.",
         );
         let initial = fixture.run(None).await.unwrap();
         assert!(initial.vector_points_written > 0);
@@ -333,7 +333,7 @@ async fn old_placeholder_is_retired_even_when_binary_manifest_is_unchanged() {
 #[tokio::test]
 async fn partial_policy_upgrade_is_safe_when_every_previous_item_was_visited() {
     let fixture = LocalRefresh::new();
-    fixture.write("a.txt", "existing text body");
+    fixture.write("a.txt", "existing text body. This document provides searchable details for inventory lifecycle verification.");
     let initial = fixture.run(None).await.unwrap();
     let mut manifest = initial.published_manifest.unwrap();
     manifest.metadata.insert(
@@ -341,7 +341,7 @@ async fn partial_policy_upgrade_is_safe_when_every_previous_item_was_visited() {
         "legacy-policy".into(),
     );
     fixture.ledger.put_manifest(manifest).await.unwrap();
-    fixture.write("b.txt", "new unvisited body has no previous output");
+    fixture.write("b.txt", "new unvisited body has no previous output. This document provides searchable details for inventory lifecycle verification.");
     let partial = fixture.run(Some(1)).await.unwrap();
     assert_eq!(partial.documents_prepared, 1);
     assert_eq!(partial.items_discovered, 1);

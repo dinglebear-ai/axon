@@ -17,6 +17,39 @@ use axon_api::source::{
 };
 use axon_core::boundary::ArtifactStore;
 
+const WEB_FIXTURE_BODY: &str = "# differential fixture\n\nshared source body provides complete useful context across acquisition adapters.";
+
+struct FixtureRenderProvider(std::sync::Arc<axon_adapters::boundary::FakeAdapterProviders>);
+
+#[async_trait::async_trait]
+impl axon_adapters::boundary::RenderProvider for FixtureRenderProvider {
+    async fn render(
+        &self,
+        request: axon_api::source::RenderRequest,
+    ) -> axon_adapters::boundary::Result<axon_api::source::RenderedResource> {
+        let mut rendered =
+            axon_adapters::boundary::RenderProvider::render(self.0.as_ref(), request).await?;
+        rendered.markdown = WEB_FIXTURE_BODY.into();
+        rendered.text = Some(WEB_FIXTURE_BODY.into());
+        rendered.html = Some(format!("<p>{WEB_FIXTURE_BODY}</p>"));
+        Ok(rendered)
+    }
+    async fn capabilities(
+        &self,
+    ) -> axon_adapters::boundary::Result<axon_api::source::ProviderCapability> {
+        axon_adapters::boundary::RenderProvider::capabilities(self.0.as_ref()).await
+    }
+}
+
+pub(crate) async fn web_fixture() -> anyhow::Result<crate::test_support::SourceWebJobIdentityHarness>
+{
+    let provider = std::sync::Arc::new(
+        axon_adapters::boundary::FakeAdapterProviders::new().with_fetch_text(WEB_FIXTURE_BODY),
+    );
+    let renderer = std::sync::Arc::new(FixtureRenderProvider(provider.clone()));
+    crate::test_support::source_context_with_web_providers(provider, renderer).await
+}
+
 #[derive(Debug)]
 struct PipelineObservation {
     request: SourceRequest,
@@ -221,9 +254,9 @@ fn write_session_fixture(home: &std::path::Path) -> String {
     std::fs::write(
         root.join("fixture.jsonl"),
         concat!(
-            r#"{"type":"user","cwd":"/home/differential","timestamp":"2026-01-01T00:00:00Z","message":{"content":"session fixture"}}"#,
+            r#"{"type":"user","cwd":"/home/differential","timestamp":"2026-01-01T00:00:00Z","message":{"content":"session fixture provides complete useful source context for characterization"}}"#,
             "\n",
-            r#"{"type":"assistant","timestamp":"2026-01-01T00:00:01Z","message":{"model":"fake","content":[{"type":"text","text":"response"}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-01-01T00:00:01Z","message":{"model":"fake","content":[{"type":"text","text":"response includes complete useful assistant context for characterization"}]}}"#,
             "\n",
         ),
     )
@@ -233,16 +266,14 @@ fn write_session_fixture(home: &std::path::Path) -> String {
 
 #[tokio::test]
 async fn web_local_and_git_share_the_observable_source_contract() {
-    let web = crate::test_support::source_context_with_fake_web()
-        .await
-        .unwrap();
+    let web = web_fixture().await.unwrap();
     let web_request = SourceRequest::new("https://docs.example.test/differential");
     let web_observation = observe(web_request.clone(), &web).await.unwrap();
 
     let local_dir = crate::test_support::visible_tempdir().unwrap();
     std::fs::write(
         local_dir.path().join("fixture.md"),
-        "# differential fixture\n\nshared source body\n",
+        "# differential fixture\n\nshared source body provides complete useful context across acquisition adapters.\n",
     )
     .unwrap();
     let local = crate::test_support::source_context_with_local_sqlite_ledger()
@@ -254,7 +285,7 @@ async fn web_local_and_git_share_the_observable_source_contract() {
     let git_dir = crate::test_support::visible_tempdir().unwrap();
     std::fs::write(
         git_dir.path().join("fixture.md"),
-        "# differential fixture\n\nshared source body\n",
+        "# differential fixture\n\nshared source body provides complete useful context across acquisition adapters.\n",
     )
     .unwrap();
     let git = crate::test_support::source_context_with_local_sqlite_ledger()
@@ -309,9 +340,7 @@ async fn web_local_and_git_share_the_observable_source_contract() {
 
 #[tokio::test]
 async fn shared_web_output_supports_inline_and_durable_archive_modes() {
-    let inline_harness = crate::test_support::source_context_with_fake_web()
-        .await
-        .unwrap();
+    let inline_harness = web_fixture().await.unwrap();
     let mut inline_request = SourceRequest::new("https://docs.example.test/inline");
     inline_request.scope = Some(SourceScope::Page);
     inline_request.embed = false;
@@ -339,9 +368,7 @@ async fn shared_web_output_supports_inline_and_durable_archive_modes() {
     assert!(!text.trim().is_empty(), "inline output was empty: {text:?}");
     assert!(inline_result.artifacts.is_empty());
 
-    let archive_harness = crate::test_support::source_context_with_fake_web()
-        .await
-        .unwrap();
+    let archive_harness = web_fixture().await.unwrap();
     let mut archive_request = SourceRequest::new("https://docs.example.test/archive");
     archive_request.scope = Some(SourceScope::Page);
     archive_request.embed = false;
@@ -438,9 +465,7 @@ async fn session_source_joins_the_same_observable_source_contract() {
 #[tokio::test]
 async fn route_failures_map_to_the_same_failed_source_result() {
     for input in ["", "ftp://unsupported.example.test/source"] {
-        let harness = crate::test_support::source_context_with_fake_web()
-            .await
-            .unwrap();
+        let harness = web_fixture().await.unwrap();
         let result = crate::source::index_source_with_auth(
             SourceRequest::new(input),
             harness.ctx(),

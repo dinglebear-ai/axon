@@ -45,6 +45,21 @@ pub fn matches_search_filters(point: &VectorPoint, request: &VectorSearchRequest
         if field == PATH_PREFIX {
             return payload_matches_path_prefix(&point.payload, expected);
         }
+        if field == "source_item_key" {
+            return payload_matches_value(&point.payload, field, expected)
+                || point
+                    .payload
+                    .get("source_item_aliases")
+                    .and_then(Value::as_array)
+                    .is_some_and(|aliases| {
+                        aliases.iter().any(|alias| {
+                            expected == alias
+                                || expected
+                                    .as_array()
+                                    .is_some_and(|values| values.contains(alias))
+                        })
+                    });
+        }
         payload_matches_value(&point.payload, field, expected)
     })
 }
@@ -187,6 +202,12 @@ fn validate_filter_map(filters: &MetadataMap, stage: ErrorStage) -> Result<()> {
 }
 
 fn validate_filter_value(field: &str, expected: &Value, stage: ErrorStage) -> Result<()> {
+    if field == PATH_PREFIX && !expected.is_string() {
+        return Err(invalid_filter(
+            stage,
+            "path_prefix must be a directory path string",
+        ));
+    }
     match expected {
         Value::String(_) | Value::Bool(_) => Ok(()),
         Value::Number(number) if number.as_i64().is_some() => Ok(()),
@@ -307,6 +328,13 @@ fn payload_matches_path_prefix(payload: &MetadataMap, expected: &Value) -> bool 
         return false;
     };
     let prefix = prefix.trim_end_matches('/');
+    if let Some(prefixes) = payload
+        .get("source_path_prefixes")
+        .and_then(Value::as_array)
+    {
+        let key = if prefix.is_empty() { "/" } else { prefix };
+        return prefixes.iter().any(|value| value.as_str() == Some(key));
+    }
     let prefix = if prefix.is_empty() {
         String::new()
     } else {
@@ -322,6 +350,14 @@ fn payload_matches_path_prefix(payload: &MetadataMap, expected: &Value) -> bool 
     ]
     .into_iter()
     .flatten()
+    .chain(
+        payload
+            .get("source_item_aliases")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str),
+    )
     .any(|path| path == prefix.trim_end_matches('/') || path.starts_with(&prefix))
 }
 
@@ -339,3 +375,7 @@ fn value_matches_str(field: &str, actual: &Value, expected: &str) -> bool {
                     == Ok(actual)
             })
 }
+
+#[cfg(test)]
+#[path = "filter_alias_tests.rs"]
+mod alias_tests;

@@ -127,7 +127,14 @@ fn insert_chunk_metadata(
     );
     metadata.insert(
         "chunking_method".to_string(),
-        json!(document.chunking_method),
+        json!(
+            chunk
+                .metadata
+                .get("actual_chunking_method")
+                .and_then(serde_json::Value::as_str)
+                .filter(|method| !method.trim().is_empty())
+                .unwrap_or(&document.chunking_method)
+        ),
     );
     metadata.insert("content_hash".to_string(), json!(chunk.content_hash));
     metadata.insert(
@@ -233,4 +240,5 @@ const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] = &[
     "code_chunk_source",
     "code_fence_language",
     "original_path",
+    "chunk_quality_action",
 ];

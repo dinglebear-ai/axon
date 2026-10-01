@@ -7,7 +7,7 @@ use axon_jobs::boundary::FakeJobWatchStore;
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::FakeVectorStore;
 
-use super::{merge_reacquired, reuse_cached_document};
+use super::{merge_reacquired, reuse_cached_document, same_prepared_identity};
 use crate::context::TargetLocalSourceRuntime;
 
 #[tokio::test]
@@ -261,3 +261,39 @@ fn acquisition_fixture(
 
 #[path = "reuse_resolution_tests.rs"]
 mod resolution;
+
+#[test]
+fn prepared_reuse_requires_equal_alias_membership_and_version() {
+    let mut prior = acquisition_fixture(
+        Vec::new(),
+        Vec::new(),
+        ContentRef::InlineText {
+            text: "body".into(),
+        },
+    )
+    .manifest
+    .items
+    .remove(0);
+    prior.content_hash = Some("same-bytes".into());
+    let mut current = prior.clone();
+    assert!(same_prepared_identity(&prior, &current));
+    current.version = Some("alias-group-change".into());
+    assert!(!same_prepared_identity(&prior, &current));
+    current.version = prior.version.clone();
+    current
+        .metadata
+        .insert("source_item_aliases".into(), serde_json::json!(["copy.md"]));
+    assert!(!same_prepared_identity(&prior, &current));
+    prior.metadata = current.metadata.clone();
+    assert!(same_prepared_identity(&prior, &current));
+    current.metadata.remove("source_item_aliases");
+    assert!(!same_prepared_identity(&prior, &current));
+    prior.metadata = current.metadata.clone();
+    current.metadata.insert(
+        "source_path_prefixes".into(),
+        serde_json::json!(["/", "copied"]),
+    );
+    assert!(!same_prepared_identity(&prior, &current));
+    prior.metadata = current.metadata.clone();
+    assert!(same_prepared_identity(&prior, &current));
+}

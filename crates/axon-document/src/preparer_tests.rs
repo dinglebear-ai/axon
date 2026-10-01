@@ -20,14 +20,14 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-6");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-8");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
 #[test]
 fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {
     let preparer = DocumentPreparer::new(DocumentPreparerConfig {
-        markdown_max_chars: 48,
+        markdown_max_chars: 96,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
         ..DocumentPreparerConfig::default()
@@ -49,7 +49,7 @@ fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {
         prepared
             .chunks
             .iter()
-            .all(|chunk| chunk.content.chars().count() <= 48)
+            .all(|chunk| chunk.content.chars().count() <= 96)
     );
 }
 
@@ -66,7 +66,7 @@ fn document_preparation_hot_path_has_no_ambient_config_lookup() {
 fn preparer_builds_prepared_document_from_inline_source_dto() {
     let request = request(
         ContentKind::Markdown,
-        "# Intro\nHello\n\n## Next\nWorld",
+        "# Intro\nHello to everyone reading this complete application reference.\n\n## Next\nWorld configuration is explained in this complete next section.",
         "gen-1",
         ChunkingProfile::MarkdownSections,
     );
@@ -164,7 +164,7 @@ fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
     let mut recorder = RecordingPreparer::new(DocumentPreparer::default());
     let request = request(
         ContentKind::PlainText,
-        "alpha\r\n\r\nbeta",
+        "alpha content with enough useful context for embedding\r\n\r\nbeta content providing a second complete paragraph",
         "gen-fake",
         ChunkingProfile::PlainTextWindows,
     );
@@ -176,7 +176,7 @@ fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
         panic!("expected prepared document")
     };
     assert_eq!(result.chunking_profile, "plain_text_windows");
-    assert_eq!(result.chunks.len(), 2);
+    assert_eq!(result.chunks.len(), 1);
 }
 
 #[test]
@@ -196,7 +196,7 @@ fn preparer_skips_whitespace_only_content() {
 
 #[test]
 fn preparer_indexes_nonempty_html_when_visible_projection_has_no_chunks() {
-    let body = "<script>window.example = 42;</script>";
+    let body = "<script>window.example = \"a complete example value with additional source context\";</script>";
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::Html,
@@ -225,7 +225,7 @@ fn validate_prepared_document_rejects_duplicate_chunk_identity() {
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
-            "alpha\n\nbeta",
+            "alpha useful content with enough context to prepare and validate\n\nbeta useful content with another complete paragraph",
             "gen-duplicates",
             ChunkingProfile::PlainTextWindows,
         ))
@@ -234,6 +234,7 @@ fn validate_prepared_document_rejects_duplicate_chunk_identity() {
         panic!("expected prepared document")
     };
     let mut invalid = prepared;
+    invalid.chunks.push(invalid.chunks[0].clone());
     invalid.chunks[1].chunk_id = invalid.chunks[0].chunk_id.clone();
     invalid.chunks[1].chunk_key = invalid.chunks[0].chunk_key.clone();
 
@@ -248,7 +249,7 @@ fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
-            "alpha",
+            "alpha useful content with enough context for range validation",
             "gen-invalid-range",
             ChunkingProfile::PlainTextWindows,
         ))
@@ -276,7 +277,7 @@ fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
-            "PORT=3000\n",
+            "PORT=3000\nDESCRIPTION=Complete configuration reference for local testing\n",
             "gen-bounds",
             ChunkingProfile::PlainTextWindows,
         ))
@@ -288,16 +289,21 @@ fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
     invalid.chunks[0].source_range.line_start = Some(9000);
     invalid.chunks[0].source_range.line_end = Some(9001);
 
-    let bounds = bounds_for_text("PORT=3000\n");
-    let err =
-        validate_prepared_document_ranges_against_bounds(&invalid, &bounds, Some("PORT=3000\n"))
-            .expect_err("range outside normalized document rejected");
+    let bounds = bounds_for_text(
+        "PORT=3000\nDESCRIPTION=Complete configuration reference for local testing\n",
+    );
+    let err = validate_prepared_document_ranges_against_bounds(
+        &invalid,
+        &bounds,
+        Some("PORT=3000\nDESCRIPTION=Complete configuration reference for local testing\n"),
+    )
+    .expect_err("range outside normalized document rejected");
     assert!(err.contains("outside normalized document"));
 }
 
 #[test]
 fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
-    let source_text = "FROM alpine:3\n";
+    let source_text = "FROM alpine:3\n# Complete container reference for graph bounds testing\n";
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
@@ -334,8 +340,8 @@ fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
             document_id: Some(DocumentId::from("doc-test")),
             chunk_id: None,
             range: Some(SourceRange {
-                line_start: Some(2),
-                line_end: Some(2),
+                line_start: Some(9000),
+                line_end: Some(9000),
                 byte_start: None,
                 byte_end: None,
                 char_start: None,
@@ -371,7 +377,7 @@ fn preparer_rejects_unordered_time_and_turn_ranges() {
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
-            "first\nsecond\n",
+            "first complete line containing useful preparable information\nsecond complete line\n",
             "gen-time-turn",
             ChunkingProfile::PlainTextWindows,
         ))
@@ -431,12 +437,12 @@ fn preparer_splits_repomix_packed_files_before_code_chunking() {
 ================================================================\n\
 File: src/lib.rs\n\
 ================================================================\n\
-pub fn alpha() {}\n\
+pub fn alpha() { let descriptive_value = 42; println!(\"{descriptive_value}\"); }\n\
 \n\
 ================================================================\n\
 File: src/main.rs\n\
 ================================================================\n\
-fn main() {}\n";
+fn main() { let descriptive_value = 42; println!(\"{descriptive_value}\"); }\n";
     let result = DocumentPreparer::default()
         .prepare(request(
             ContentKind::Code,
@@ -514,7 +520,10 @@ fn preparer_carries_parse_artifacts_to_prepared_document() {
 
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(PrepareSourceDocumentRequest {
-            document: source_doc(ContentKind::PlainText, "body"),
+            document: source_doc(
+                ContentKind::PlainText,
+                "A complete useful body with enough context to prepare its parse artifacts.",
+            ),
             generation: SourceGenerationId::from("gen-artifacts"),
             profile: Some(ChunkingProfile::PlainTextWindows),
             parse_facts: vec![fact.clone()],
@@ -568,7 +577,10 @@ fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() 
         confidence: 0.95,
         metadata: MetadataMap::new(),
     };
-    let mut doc = source_doc(ContentKind::Markdown, "# Axon\n\nRepository metadata.");
+    let mut doc = source_doc(
+        ContentKind::Markdown,
+        "# Axon\n\nRepository metadata describing the project architecture and its source pipelines.",
+    );
     doc.metadata.insert(
         VERTICAL_PARSE_FACTS_METADATA_KEY.to_string(),
         serde_json::to_value(vec![fact.clone()]).unwrap(),
@@ -620,7 +632,7 @@ fn malformed_structured_text_degrades_with_fallback_warning() {
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::Json,
-            "{\"broken\":",
+            "{\"broken\": \"a malformed record containing enough useful text for fallback",
             "gen-structured",
             ChunkingProfile::StructuredRecords,
         ))
@@ -636,6 +648,10 @@ fn malformed_structured_text_degrades_with_fallback_warning() {
     );
     assert_eq!(prepared.warnings.len(), 1);
     assert_eq!(prepared.warnings[0].code, "chunk.structured_parse_failed");
+    assert_eq!(
+        prepared.chunks[0].metadata["actual_chunking_method"],
+        "atomic_fallback"
+    );
 }
 
 #[test]
@@ -695,7 +711,7 @@ fn unsupported_content_returns_skipped_identity_without_a_document() {
 fn authored_atomic_metadata_remains_searchable() {
     let input = request(
         ContentKind::BinaryMetadata,
-        "%PDF- is a documented signature",
+        "%PDF- is a documented signature with complete contextual metadata for retrieval",
         "gen-authored",
         ChunkingProfile::AtomicMetadata,
     );
@@ -745,8 +761,9 @@ fn preparation_enforces_content_ceiling_and_rejects_admitted_malformed_base64() 
 fn decoded_utf16_is_redacted_before_parsing_and_range_validation() {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     let secret = format!("sk-{}", "a".repeat(28));
-    let text =
-        format!("# Title\nAuthorization: Bearer {secret}\n\n## After the secret\nBody text.\n");
+    let text = format!(
+        "# Title\nAuthorization: Bearer {secret}\n\n## After the secret\nBody text provides useful context for retrieval after the credential example.\n"
+    );
     let mut bytes = vec![0xff, 0xfe];
     for unit in text.encode_utf16() {
         bytes.extend(unit.to_le_bytes());
@@ -824,7 +841,10 @@ fn large_code_document_dispatches_to_windowed_fallback_not_code_symbols() {
 
 #[test]
 fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback() {
-    let mut doc = source_doc(ContentKind::Code, "fn tiny() {}\n");
+    let mut doc = source_doc(
+        ContentKind::Code,
+        "fn tiny() { let descriptive_value = 42; println!(\"{descriptive_value}\"); }\n",
+    );
     doc.metadata.insert(
         "source_adapter".to_string(),
         serde_json::json!("web_scrape"),
@@ -856,7 +876,7 @@ fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback()
 fn large_html_document_still_removes_non_content_payloads() {
     let hydration = "window.__next_f.push(['hydration-payload']);".repeat(20_000);
     let html = format!(
-        "<html><body><main>Authorization documentation</main><script>{hydration}</script></body></html>"
+        "<html><body><main>Authorization documentation includes complete useful configuration examples for retrieval.</main><script>{hydration}</script></body></html>"
     );
     let request = request(
         ContentKind::Html,
@@ -894,7 +914,7 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
     // builds each point's payload from `document.metadata.clone()`).
     let mut doc = source_doc(
         ContentKind::Markdown,
-        "# Intro\nHello from docs.\n\n## More\nText.",
+        "# Intro\nHello from the complete reference documentation for this application.\n\n## More\nText explains additional details of the application configuration.",
     );
     doc.metadata
         .insert("source_family".to_string(), serde_json::json!("web"));
@@ -943,7 +963,10 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
 fn structured_payload_kind_falls_back_when_schema_type_is_absent() {
     // `next_data`/`sveltekit` extractions rarely carry a schema.org
     // `schema_type`; the coarser `kind` field should still surface.
-    let mut doc = source_doc(ContentKind::Markdown, "# Intro\nHello.");
+    let mut doc = source_doc(
+        ContentKind::Markdown,
+        "# Intro\nHello to everyone reading this complete application documentation.",
+    );
     doc.metadata
         .insert("source_family".to_string(), serde_json::json!("web"));
     doc.structured_payload = Some(serde_json::json!({
@@ -976,7 +999,10 @@ fn structured_payload_is_not_projected_outside_the_web_family() {
     // `web_structured_blob` are only declared in the `"web"` family's vector
     // payload allowlist, so leaking them onto another family would fail
     // payload validation with `UnknownSourceSpecificField`.
-    let mut doc = source_doc(ContentKind::Markdown, "# Intro\nHello.");
+    let mut doc = source_doc(
+        ContentKind::Markdown,
+        "# Intro\nHello to everyone reading this complete application documentation.",
+    );
     doc.metadata
         .insert("source_family".to_string(), serde_json::json!("code"));
     doc.structured_payload = Some(serde_json::json!({
@@ -1128,7 +1154,12 @@ fn multi_megabyte_json_record_has_bounded_embedding_chunks() {
 
 #[test]
 fn embedding_backstop_drops_whitespace_only_windows() {
-    let body = format!("start{}end", " ".repeat(6_000));
+    let body = format!(
+        "{}{}{}",
+        "useful start context ".repeat(4),
+        " ".repeat(6_000),
+        "useful end context ".repeat(4)
+    );
     let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
         .prepare(request(
             ContentKind::PlainText,
@@ -1438,7 +1469,7 @@ fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
     for policy in ["skip", "metadata", "include"] {
         let mut input = request(
             ContentKind::PlainText,
-            "Local text remains searchable.",
+            "Local text remains searchable with sufficient complete context for embedding.",
             "gen-local-policy",
             ChunkingProfile::MarkdownSections,
         );
@@ -1458,6 +1489,82 @@ fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
                 .chunks
                 .iter()
                 .all(|chunk| !chunk.metadata.contains_key("binary_policy"))
+        );
+    }
+}
+
+#[test]
+fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
+    let profiles = [
+        ChunkingProfile::CodeSymbol,
+        ChunkingProfile::CodeManifest,
+        ChunkingProfile::MarkdownSections,
+        ChunkingProfile::HtmlArticle,
+        ChunkingProfile::PlainTextWindows,
+        ChunkingProfile::TranscriptSegments,
+        ChunkingProfile::StructuredRecords,
+        ChunkingProfile::ApiSchema,
+        ChunkingProfile::ToolOutput,
+        ChunkingProfile::SessionTurns,
+        ChunkingProfile::AtomicMetadata,
+    ];
+    for profile in profiles {
+        for source in ["identifier".to_string(), "{}();---\n".repeat(20)] {
+            let result = DocumentPreparer::default()
+                .prepare(request(
+                    ContentKind::PlainText,
+                    &source,
+                    "gen-quality",
+                    profile,
+                ))
+                .unwrap();
+            assert!(
+                matches!(result, PrepareSourceDocumentResult::Skipped(_)),
+                "{profile}: {source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn code_without_ast_symbols_preserves_actual_ast_success_or_partial_status() {
+    for (source, status) in [
+        (
+            "fn broken(\n// This malformed declaration retains complete useful source context for retrieval.\n",
+            "partial",
+        ),
+        (
+            "// A complete useful source comment without any recognized declarations or symbols.\n",
+            "parsed",
+        ),
+    ] {
+        let mut input = request(
+            ContentKind::Code,
+            source,
+            "gen-fallback-method",
+            ChunkingProfile::CodeSymbol,
+        );
+        input.document.path = Some("src/fallback.rs".into());
+        input.document.language = Some("rust".into());
+        let PrepareSourceDocumentResult::Prepared(prepared) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("expected useful source context")
+        };
+        assert_eq!(prepared.chunking_method, "tree_sitter");
+        assert_eq!(prepared.metadata["code_ast_status"], status);
+        assert_eq!(prepared.metadata["code_symbol_count"], 0);
+        assert!(
+            prepared
+                .chunks
+                .iter()
+                .all(|chunk| chunk.metadata["actual_chunking_method"] == "tree_sitter")
+        );
+        assert!(
+            prepared
+                .parse_facts
+                .iter()
+                .all(|fact| fact.fact_kind != "code_symbol")
         );
     }
 }
