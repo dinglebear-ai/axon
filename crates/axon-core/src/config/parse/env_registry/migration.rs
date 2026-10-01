@@ -561,7 +561,7 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         "AXON_CHUNK_MIN_CHARS",
         MoveToml,
         NotRuntime,
-        Some("chunking.minimum-chars"),
+        Some("pipeline.chunking.minimum-chars"),
         WarnEnvOverride,
         false,
     ),
