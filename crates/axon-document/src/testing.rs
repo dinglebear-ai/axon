@@ -251,3 +251,12 @@ impl boundary::ChunkRouter for FakeChunkRouter {
 #[cfg(test)]
 #[path = "testing_tests.rs"]
 mod tests;
+
+/// Explicit historical floor for small unit fixtures unrelated to default policy.
+#[cfg(test)]
+pub(crate) fn preparer_for_small_fixtures() -> DocumentPreparer {
+    DocumentPreparer::new(crate::preparer::DocumentPreparerConfig {
+        minimum_chunk_chars: 50,
+        ..Default::default()
+    })
+}

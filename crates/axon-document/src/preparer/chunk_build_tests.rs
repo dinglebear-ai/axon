@@ -61,6 +61,7 @@ fn scaffold_omission_precedes_dedup_of_identical_fenced_body_text() {
         &source,
         MarkdownChunkLimits::new(96, 1, 0),
         "heading_sections",
+        50,
     );
     assert_eq!(output.len(), 1, "lost the identical fenced body comment");
     assert_eq!(output[0].content, heading);

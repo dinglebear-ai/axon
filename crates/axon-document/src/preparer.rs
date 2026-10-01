@@ -32,7 +32,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-12";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-13";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -40,6 +40,7 @@ pub struct DocumentPreparerConfig {
     pub markdown_max_chars: usize,
     pub markdown_min_chars: usize,
     pub markdown_overlap_chars: usize,
+    pub minimum_chunk_chars: usize,
 }
 
 impl Default for DocumentPreparerConfig {
@@ -49,6 +50,7 @@ impl Default for DocumentPreparerConfig {
             markdown_max_chars: 2_000,
             markdown_min_chars: 500,
             markdown_overlap_chars: 200,
+            minimum_chunk_chars: 200,
         }
     }
 }
@@ -91,6 +93,12 @@ impl DocumentPreparer {
             markdown_max_chars: limits.max_chars(),
             markdown_min_chars: limits.min_chars(),
             markdown_overlap_chars: limits.overlap_chars(),
+            minimum_chunk_chars: self.config.minimum_chunk_chars.clamp(
+                1,
+                limits
+                    .max_chars()
+                    .min(crate::text::MAX_PLAIN_TEXT_CHUNK_CHARS),
+            ),
         }
     }
 
@@ -226,6 +234,7 @@ impl DocumentPreparer {
             &content.text,
             self.config.markdown_limits(),
             decision.method,
+            self.semantic_config().minimum_chunk_chars,
         );
         if chunks.is_empty() {
             return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(

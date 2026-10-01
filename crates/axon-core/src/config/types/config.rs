@@ -928,6 +928,11 @@ pub struct Config {
     /// Env: `AXON_MARKDOWN_CHUNK_MAX_CHARS`. TOML: `pipeline.chunking.markdown-max-chars`. Clamped 256–16384. Default: 2000.
     pub chunking_markdown_max_chars: usize,
 
+    /// Minimum trimmed characters retained by the shared chunk quality gate.
+    /// Short useful symbols borrow bounded source context; unresolved short chunks are omitted.
+    /// Env: `AXON_CHUNK_MIN_CHARS`. TOML: `pipeline.chunking.minimum-chars`. Clamped 1–min(2000, resolved Markdown maximum). Default: 200.
+    pub chunking_min_chars: usize,
+
     /// Minimum compatible Markdown chunk size considered during packing.
     /// Env: `AXON_MARKDOWN_CHUNK_MIN_CHARS`. TOML: `pipeline.chunking.markdown-min-chars`. Clamped 1–the resolved maximum. Default: 500.
     pub chunking_markdown_min_chars: usize,

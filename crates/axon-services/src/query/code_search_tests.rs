@@ -45,14 +45,16 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs.clone(),
-            ledger,
-            embedder,
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs.clone(),
+                ledger,
+                embedder,
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
 
     let refreshed = refresh_code_search_index_with_progress(
@@ -123,14 +125,16 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs,
-            ledger,
-            embedder,
-            vectors,
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs,
+                ledger,
+                embedder,
+                vectors,
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
     let progress = Arc::new(RecordingReindexProgress::default());
 
@@ -188,14 +192,16 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs,
-            ledger,
-            embedder,
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs,
+                ledger,
+                embedder,
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
 
     let refreshed = refresh_code_search_index_with_progress(
@@ -329,23 +335,24 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs.clone(),
-            ledger.clone(),
-            embedder.clone(),
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs.clone(),
+                ledger.clone(),
+                embedder.clone(),
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
 
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await
         .expect("initial target refresh");
     std::fs::write(repo.path().join("new.rs"), "pub fn fresh() { let refreshed_fixture_value = 42; assert_eq!(refreshed_fixture_value, 42); }\n").expect("new source file");
-    let failing_ctx = ctx
-        .clone()
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
+    let failing_ctx = ctx.clone().with_target_local_source_runtime(
+        crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
             embedder,
@@ -358,7 +365,8 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             ProviderId::new("fake-embedding"),
             "fake-embedding",
             8,
-        ));
+        )),
+    );
     let progress = Arc::new(RecordingReindexProgress::default());
 
     let searched = code_search_with_progress(

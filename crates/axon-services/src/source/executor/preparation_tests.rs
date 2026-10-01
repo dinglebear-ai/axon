@@ -107,6 +107,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
         markdown_max_chars: 96,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
+        minimum_chunk_chars: 50,
     });
 
     let prepared = prepare_documents(
@@ -161,7 +162,7 @@ async fn request_zero_content_limit_produces_explicit_size_skip() {
         vec![document],
         &SourceGenerationId::from("generation-limit"),
         &BTreeMap::new(),
-        DocumentPreparer::default(),
+        crate::test_support::document_preparer_for_small_fixtures(),
         1,
         1024,
         Some(0),
@@ -213,7 +214,7 @@ async fn preparation_error_retains_stage_and_item_identity() {
         vec![document],
         &SourceGenerationId::from("gen_error"),
         &BTreeMap::new(),
-        DocumentPreparer::default(),
+        crate::test_support::document_preparer_for_small_fixtures(),
         1,
         4096,
         None,
@@ -239,7 +240,7 @@ async fn preparation_summary_counts_zero_symbol_ast_even_when_quality_skips() {
         vec![document],
         &SourceGenerationId::from("gen-observed"),
         &BTreeMap::new(),
-        DocumentPreparer::default(),
+        crate::test_support::document_preparer_for_small_fixtures(),
         1,
         4096,
         None,
@@ -313,7 +314,7 @@ async fn preparation_summary_counts_actual_chunk_methods_separately_from_parser_
         vec![document],
         &SourceGenerationId::from("gen-methods"),
         &BTreeMap::new(),
-        DocumentPreparer::default(),
+        crate::test_support::document_preparer_for_small_fixtures(),
         1,
         4096,
         None,

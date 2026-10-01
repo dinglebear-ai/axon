@@ -129,9 +129,15 @@ imports, and declaration annotations attach to nearby declarations rather than
 becoming standalone embeddings. Parser facts still retain the nested symbols
 for graph construction. Provider size limits can split an oversized body.
 
-The existing minimum useful-content check counts trimmed characters. There is
-no 200-character exclusion rule: short symbols and path references can borrow
-compatible, bounded literal context. Punctuation-only chunks are removed.
+The shared quality gate counts trimmed characters against
+`pipeline.chunking.minimum-chars` (default 200; environment override
+`AXON_CHUNK_MIN_CHARS`). Short symbols and path references first borrow
+compatible, bounded literal context. Chunks that still fall below the configured
+minimum are omitted. Punctuation-only and structurally empty chunks are removed
+regardless of the minimum. This quality floor is separate from Markdown's
+`markdown-min-chars` packing target. The effective minimum is clamped to 1 through
+the smaller of 2,000 and the resolved Markdown maximum, and is included in processing identity, so changing
+it re-prepares otherwise unchanged source documents.
 
 Within a document, identical text with compatible context shares one embedding.
 `additional_source_ranges` preserves the other literal locations and

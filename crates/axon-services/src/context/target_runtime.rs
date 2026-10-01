@@ -23,7 +23,6 @@ use axon_adapters::{
 use axon_api::source::{InstructionSupport, ProviderId};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
-use axon_document::{DocumentPreparer, DocumentPreparerConfig};
 use axon_embedding::cache::CachedEmbeddingProvider;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
@@ -35,10 +34,12 @@ use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
 use tokio::sync::{Semaphore, watch};
 
+mod document_preparer;
 mod embedding_identity_cache;
 mod read_stores;
 mod schedulers;
 
+use document_preparer::configured_document_preparer;
 #[cfg(test)]
 pub(crate) use embedding_identity_cache::abort_embedding_identity_probe;
 pub use embedding_identity_cache::invalidate_embedding_identity_cache;
@@ -363,12 +364,7 @@ async fn build_target_runtime(
         embedding_model: EMBEDDING_MODEL_FALLBACK.to_string(),
         embedding_dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
         verified_embedding,
-        document_preparer: DocumentPreparer::new(DocumentPreparerConfig {
-            max_content_bytes: axon_document::content_policy::DEFAULT_CONTENT_BYTE_LIMIT,
-            markdown_max_chars: cfg.chunking_markdown_max_chars,
-            markdown_min_chars: cfg.chunking_markdown_min_chars,
-            markdown_overlap_chars: cfg.chunking_overlap_chars,
-        }),
+        document_preparer: configured_document_preparer(&cfg),
         document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
         document_prepare_max_in_flight_bytes: cfg.embed_prep_max_in_flight_bytes,
         embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),

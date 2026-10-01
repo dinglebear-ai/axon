@@ -3,13 +3,14 @@ use crate::{chunk::DocumentChunk, text};
 
 mod dedup;
 
+#[cfg(test)]
 pub(crate) const MIN_CHUNK_CHARS: usize = 50;
 
 fn meaningful(chunk: &DocumentChunk) -> bool {
     chunk.content.chars().any(char::is_alphanumeric)
 }
-fn short(chunk: &DocumentChunk) -> bool {
-    chunk.content.trim().chars().count() < MIN_CHUNK_CHARS
+fn short(chunk: &DocumentChunk, min_chars: usize) -> bool {
+    chunk.content.trim().chars().count() < min_chars
 }
 fn literal(chunk: &DocumentChunk, source: &str) -> Option<(usize, usize)> {
     let start = usize::try_from(chunk.range.byte_start?).ok()?;
@@ -144,15 +145,23 @@ fn update_literal_range(
 
 #[cfg(test)]
 pub(crate) fn useful_chunks(chunks: Vec<DocumentChunk>, source: &str) -> Vec<DocumentChunk> {
-    useful_chunks_with_limit(chunks, source, text::MAX_PLAIN_TEXT_CHUNK_CHARS)
+    useful_chunks_with_limit(
+        chunks,
+        source,
+        text::MAX_PLAIN_TEXT_CHUNK_CHARS,
+        MIN_CHUNK_CHARS,
+    )
 }
 
 pub(crate) fn useful_chunks_with_limit(
     chunks: Vec<DocumentChunk>,
     source: &str,
     max_chars: usize,
+    min_chars: usize,
 ) -> Vec<DocumentChunk> {
-    deduplicate_chunks(contextual_chunks_with_limit(chunks, source, max_chars))
+    deduplicate_chunks(contextual_chunks_with_limit(
+        chunks, source, max_chars, min_chars,
+    ))
 }
 
 pub(crate) fn deduplicate_chunks(chunks: Vec<DocumentChunk>) -> Vec<DocumentChunk> {
@@ -166,12 +175,13 @@ pub(crate) fn contextual_chunks_with_limit(
     chunks: Vec<DocumentChunk>,
     source: &str,
     max_chars: usize,
+    min_chars: usize,
 ) -> Vec<DocumentChunk> {
     let positions = std::cell::OnceCell::new();
     let mut packed: Vec<DocumentChunk> = Vec::new();
     for chunk in chunks.into_iter().filter(meaningful) {
         if let Some(previous) = packed.last_mut()
-            && (short(previous) || short(&chunk))
+            && (short(previous, min_chars) || short(&chunk, min_chars))
             && compatible(previous, &chunk, source)
             && combine(
                 previous,
@@ -185,14 +195,14 @@ pub(crate) fn contextual_chunks_with_limit(
         }
         packed.push(chunk);
     }
-    if packed.iter().any(short) {
+    if packed.iter().any(|chunk| short(chunk, min_chars)) {
         let positions = positions.get_or_init(|| text::SourcePositions::new(source));
-        borrow_following_context(&mut packed, source, positions, max_chars);
-        borrow_previous_context(&mut packed, source, positions, max_chars);
+        borrow_following_context(&mut packed, source, positions, max_chars, min_chars);
+        borrow_previous_context(&mut packed, source, positions, max_chars, min_chars);
     }
     packed
         .into_iter()
-        .filter(|chunk| !short(chunk) && meaningful(chunk))
+        .filter(|chunk| !short(chunk, min_chars) && meaningful(chunk))
         .collect()
 }
 
@@ -201,11 +211,14 @@ fn borrow_following_context(
     source: &str,
     positions: &text::SourcePositions,
     max_chars: usize,
+    min_chars: usize,
 ) {
     // A leading short symbol can borrow the beginning of its compatible
     // successor when that successor is too large to absorb it in full.
     for index in 0..packed.len().saturating_sub(1) {
-        if !short(&packed[index]) || !compatible(&packed[index], &packed[index + 1], source) {
+        if !short(&packed[index], min_chars)
+            || !compatible(&packed[index], &packed[index + 1], source)
+        {
             continue;
         }
         let (start, _) = literal(&packed[index], source).unwrap();
@@ -216,7 +229,7 @@ fn borrow_following_context(
                 *offset += line.len();
                 Some(*offset)
             })
-            .find(|&end| source[start..end].trim().chars().count() >= MIN_CHUNK_CHARS)
+            .find(|&end| source[start..end].trim().chars().count() >= min_chars)
             .unwrap_or(upper);
         let end = if fits(&source[start..end], max_chars) {
             end
@@ -224,7 +237,7 @@ fn borrow_following_context(
             bounded_context_end(source, start, upper, max_chars)
         };
         if fits(&source[start..end], max_chars)
-            && source[start..end].trim().chars().count() >= MIN_CHUNK_CHARS
+            && source[start..end].trim().chars().count() >= min_chars
         {
             packed[index].content = source[start..end].into();
             update_literal_range(&mut packed[index], positions, start, end);
@@ -255,13 +268,14 @@ fn borrow_previous_context(
     source: &str,
     positions: &text::SourcePositions,
     max_chars: usize,
+    min_chars: usize,
 ) {
     // Include same-record context when a full predecessor cannot absorb a tiny tail.
     for index in 1..packed.len() {
-        if !short(&packed[index]) {
+        if !short(&packed[index], min_chars) {
             continue;
         }
-        let missing = MIN_CHUNK_CHARS - packed[index].content.trim().chars().count();
+        let missing = min_chars - packed[index].content.trim().chars().count();
         if compatible(&packed[index - 1], &packed[index], source) {
             let (lower, _) = literal(&packed[index - 1], source).unwrap();
             let (start, end) = literal(&packed[index], source).unwrap();
@@ -272,7 +286,7 @@ fn borrow_previous_context(
                     *offset -= line.len();
                     Some(*offset)
                 })
-                .find(|&left| source[left..end].trim().chars().count() >= MIN_CHUNK_CHARS)
+                .find(|&left| source[left..end].trim().chars().count() >= min_chars)
                 .unwrap_or(lower);
             if !fits(&source[context_start..end], max_chars) {
                 context_start = source[lower..end]
@@ -287,7 +301,7 @@ fn borrow_previous_context(
                     .map_or(start, |(_, (offset, _))| lower + offset);
             }
             if fits(&source[context_start..end], max_chars)
-                && source[context_start..end].trim().chars().count() >= MIN_CHUNK_CHARS
+                && source[context_start..end].trim().chars().count() >= min_chars
             {
                 packed[index].content = source[context_start..end].into();
                 update_literal_range(&mut packed[index], positions, context_start, end);
@@ -313,7 +327,7 @@ fn borrow_previous_context(
                 packed[index].content = content;
             }
         }
-        if !short(&packed[index]) {
+        if !short(&packed[index], min_chars) {
             packed[index]
                 .metadata
                 .insert("chunk_quality_action".into(), "source_context".into());

@@ -46,14 +46,16 @@ async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs,
-            ledger,
-            embedder,
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs,
+                ledger,
+                embedder,
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
 
     let first = refresh_code_search_index_with_progress(
@@ -176,14 +178,16 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs,
-            ledger,
-            embedder,
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs,
+                ledger,
+                embedder,
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
 
     let refreshed = refresh_code_search_index_with_progress(
@@ -410,23 +414,24 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
-            source_jobs.clone(),
-            ledger.clone(),
-            embedder.clone(),
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
+        .with_target_local_source_runtime(crate::test_support::runtime_for_small_fixtures(
+            TargetLocalSourceRuntime::new(
+                source_jobs.clone(),
+                ledger.clone(),
+                embedder.clone(),
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ),
         ));
 
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await
         .expect("first target refresh");
     std::fs::write(repo.path().join("new.rs"), "pub fn fresh() { let refreshed_fixture_value = 42; assert_eq!(refreshed_fixture_value, 42); }\n").expect("new file");
-    let failing_ctx = ctx
-        .clone()
-        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
+    let failing_ctx = ctx.clone().with_target_local_source_runtime(
+        crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
             embedder,
@@ -439,7 +444,8 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
             ProviderId::new("fake-embedding"),
             "fake-embedding",
             8,
-        ));
+        )),
+    );
 
     let searched = code_search(
         &failing_ctx,

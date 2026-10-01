@@ -26,6 +26,7 @@ pub(super) fn finalize_chunks(
     source: &str,
     markdown_limits: MarkdownChunkLimits,
     fallback_method: &str,
+    min_chars: usize,
 ) -> Vec<DocumentChunk> {
     let max_chars = if profile == ChunkingProfile::MarkdownSections {
         markdown_limits.max_chars()
@@ -33,10 +34,11 @@ pub(super) fn finalize_chunks(
         text::MAX_PLAIN_TEXT_CHUNK_CHARS
     };
     let mut chunks = if profile == ChunkingProfile::MarkdownSections {
-        let chunks = crate::quality::contextual_chunks_with_limit(chunks, source, max_chars);
+        let chunks =
+            crate::quality::contextual_chunks_with_limit(chunks, source, max_chars, min_chars);
         crate::quality::deduplicate_chunks(markdown::omit_empty_heading_spans(chunks, source))
     } else {
-        crate::quality::useful_chunks_with_limit(chunks, source, max_chars)
+        crate::quality::useful_chunks_with_limit(chunks, source, max_chars, min_chars)
     };
     for chunk in &mut chunks {
         chunk

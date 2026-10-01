@@ -227,3 +227,23 @@ fn short_symbol_borrows_bounded_context_from_minified_single_line() {
     assert!(fits(&tiny.content, 2000));
     assert!(literal(tiny, &source).is_some());
 }
+
+#[test]
+fn configured_cutoff_controls_unicode_lengths_and_context_packing() {
+    let source = format!("{}\n\n{}", "界".repeat(70), "有用".repeat(70));
+    let split = source.find("\n\n").unwrap();
+    let chunks = vec![
+        chunk(&source, 0, split),
+        chunk(&source, split + 2, source.len()),
+    ];
+    let retained = useful_chunks_with_limit(chunks.clone(), &source, 1000, 200);
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].content, source);
+    assert!(retained[0].content.trim().chars().count() >= 200);
+    assert_eq!(useful_chunks_with_limit(chunks, &source, 1000, 50).len(), 2);
+    // Byte size must not let a 70-character Unicode chunk bypass a 200-character floor.
+    let short = "界".repeat(70);
+    assert!(
+        useful_chunks_with_limit(vec![chunk(&short, 0, short.len())], &short, 1000, 200).is_empty()
+    );
+}
