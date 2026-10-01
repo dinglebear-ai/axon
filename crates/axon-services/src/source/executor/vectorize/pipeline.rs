@@ -1,4 +1,4 @@
-use super::super::vector_points::VectorPointBuild;
+use super::super::vector_points::{RedactionSkipsBySourceItem, VectorPointBuild};
 use super::*;
 use crate::reserved_call::ProviderCallContext;
 use std::future::Future;
@@ -9,7 +9,7 @@ pub(super) struct BuiltVectorBatch {
     point_batch: VectorPointBatch,
     points_by_document: std::collections::BTreeMap<DocumentId, u32>,
     skipped_redaction: u64,
-    redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64>,
+    redaction_skips_by_source_item: RedactionSkipsBySourceItem,
 }
 
 async fn join_upsert_and_embedding<Write, Embeddings, Upsert, Embed>(

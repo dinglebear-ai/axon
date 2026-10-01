@@ -1340,3 +1340,6 @@ async fn autonomous_sweep_fails_closed_for_legacy_vector_debt_without_collection
             .any(|debt| debt.kind == CleanupDebtKind::VectorDelete)
     );
 }
+
+#[path = "prune/graph_retry_tests.rs"]
+mod graph_retry_tests;

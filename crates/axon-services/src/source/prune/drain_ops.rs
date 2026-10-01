@@ -9,7 +9,8 @@ use super::*;
 pub(super) const ADAPTER_RELEASE_MAX_ATTEMPTS: u32 = 10;
 
 /// Execute one debt entry and, on clean success, mark it resolved. Every
-/// drainable kind (`VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`/
+/// Returns true when a busy source lease requires stopping this drain pass.
+/// Each drainable kind (`VectorDelete`/`LedgerPrune`/`GraphPrune`/`MemoryPrune`/
 /// `JobRetention`) routes through the same [`drain_via_executor`] path.
 pub(super) async fn drain_one_debt(
     ledger: &dyn LedgerStore,
@@ -21,28 +22,9 @@ pub(super) async fn drain_one_debt(
     document_cache: Option<&dyn DocumentCache>,
     adapter_registry: Option<&SourceAdapterRegistry>,
     summary: &mut DebtDrainSummary,
-) {
-    if let CleanupSelector::GraphItemEvidence {
-        source_id,
-        source_item_key,
-        retirement_generation,
-    } = &debt.selector
-    {
-        match provider_ops
-            .graph_retire_item(
-                source_id.clone(),
-                source_item_key.clone(),
-                retirement_generation.clone(),
-            )
-            .await
-        {
-            Ok(_) => resolve_debt(ledger, debt, summary).await,
-            Err(error) => {
-                summary.failed += 1;
-                tracing::warn!(debt_id = %debt.debt_id.0, error = %error, "graph item retirement deferred");
-            }
-        }
-        return;
+) -> bool {
+    if matches!(debt.selector, CleanupSelector::GraphItemEvidence { .. }) {
+        return super::graph_retry::drain(ledger, provider_ops, debt, summary).await;
     }
     match debt.kind {
         CleanupDebtKind::VectorDelete
@@ -64,6 +46,7 @@ pub(super) async fn drain_one_debt(
             drain_adapter_release(ledger, adapter_registry, debt, summary).await;
         }
     }
+    false
 }
 
 pub(super) async fn drain_adapter_release(

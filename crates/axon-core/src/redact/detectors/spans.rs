@@ -26,7 +26,7 @@ pub(in crate::redact) fn redact_operational_secret_spans(value: &str) -> String 
         .into_owned()
 }
 
-fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> String {
+fn redact_pem_secret_spans(value: &str, retrievable_body: bool) -> String {
     let pem_redacted = PEM_PRIVATE_KEY_BLOCK_RE.replace_all(value, |captures: &regex::Captures| {
         if captures[0].len() <= 32_768 {
             super::super::REDACTION_PLACEHOLDER.to_string()
@@ -34,6 +34,27 @@ fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> Strin
             captures[0].to_string()
         }
     });
+    if retrievable_body {
+        PEM_KEY_MATERIAL_RE
+            .replace_all(&pem_redacted, |captures: &regex::Captures| {
+                if captures["material"].len() <= 32_768 {
+                    format!(
+                        "{}{}",
+                        super::super::REDACTION_PLACEHOLDER,
+                        &captures["suffix"]
+                    )
+                } else {
+                    captures[0].to_string()
+                }
+            })
+            .into_owned()
+    } else {
+        pem_redacted.into_owned()
+    }
+}
+
+fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> String {
+    let pem_redacted = redact_pem_secret_spans(value, retrievable_body);
     let bearer_redacted =
         STANDALONE_BEARER_VALUE_RE.replace_all(&pem_redacted, |captures: &regex::Captures| {
             let candidate = captures
@@ -83,14 +104,19 @@ fn redact_secret_spans_with_policy(value: &str, retrievable_body: bool) -> Strin
                 captures[0].to_string()
             }
         });
+    let assignment_re = if retrievable_body {
+        &*BODY_SECRET_ASSIGNMENT_RE
+    } else {
+        &*SECRET_ASSIGNMENT_RE
+    };
     let assignments_redacted =
-        SECRET_ASSIGNMENT_RE.replace_all(&cookie_redacted, |captures: &regex::Captures| {
+        assignment_re.replace_all(&cookie_redacted, |captures: &regex::Captures| {
             let key = captures.name("key").map_or("", |matched| matched.as_str());
             let raw_value = captures
                 .name("value")
                 .map_or("", |matched| matched.as_str());
             let should_redact = if retrievable_body {
-                secret_assignment_is_high_confidence(key, raw_value)
+                retrievable_assignment_is_high_confidence(&cookie_redacted, captures)
             } else {
                 !is_authorization_field(key)
                     && secret_like_field_name(key)
@@ -220,4 +246,11 @@ pub(super) fn is_authorization_field(field: &str) -> bool {
 
 pub(super) static SECRET_ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)\b(?P<prefix>(?P<key>[a-z_][a-z0-9_-]*)\s*[:=]\s*)(?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s;,]+)"#).expect("secret assignment regex is valid")
+});
+
+// Source code and YAML mapping syntax must not capture the next line as a value.
+// Operational egress retains the broader conservative assignment expression.
+pub(super) static BODY_SECRET_ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\b(?P<prefix>(?P<key>[a-z_][a-z0-9_-]*)[ \t]*[:=][ \t]*)(?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s;,"']+)"#)
+        .expect("body secret assignment regex is valid")
 });

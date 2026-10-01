@@ -92,10 +92,11 @@ fn migration_records_match_runtime_identity_and_order() {
             // replay, embedding-vector cache, bounded cache expiry, and the
             // full provider-kind registry, followed by projection batch
             // correlation. Graph carries its base schema, publication state,
-            // and durable write checkpoints. Memory carries three.
+            // durable write checkpoints, and the item evidence index.
+            // Memory carries three.
             "ledger", "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs",
-            "jobs", "jobs", "jobs", "observe", "graph", "graph", "graph", "memory", "memory",
-            "memory"
+            "jobs", "jobs", "jobs", "observe", "graph", "graph", "graph", "graph", "memory",
+            "memory", "memory"
         ]
     );
     for migration in &schema.migrations {

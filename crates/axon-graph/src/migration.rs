@@ -41,6 +41,11 @@ pub const MIGRATIONS: &[SqlMigration] = &[
         name: "0003_write_checkpoints",
         sql: include_str!("migrations/0003_write_checkpoints.sql"),
     },
+    SqlMigration {
+        version: 4,
+        name: "0004_item_evidence_index",
+        sql: include_str!("migrations/0004_item_evidence_index.sql"),
+    },
 ];
 
 /// The graph [`MigrationSet`] for composition into the unified runner.
@@ -106,6 +111,9 @@ const SCHEMA: &[&str] = &[
         FOREIGN KEY (edge_id) REFERENCES graph_edges (edge_id) ON DELETE CASCADE
     )",
     "CREATE INDEX IF NOT EXISTS idx_graph_evidence_source ON graph_evidence (source_id)",
+    // LEARNED: source-only evidence lookup scans every source contribution for
+    // each retired item. Match the effective item expression used by retirement.
+    "CREATE INDEX IF NOT EXISTS idx_graph_evidence_item ON graph_evidence (source_id, coalesce(json_extract(metadata_json, '$.contained_source_item_key'), source_item_key))",
     // Alias resolution: a value/uri under a given kind maps to a node_id.
     // Populated from node stable_keys and canonical URIs so `resolve` can find a
     // node by any of its known identifiers.
