@@ -576,13 +576,9 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         .expect("put gen4");
     complete_and_publish(&store, completed_generation_from(&gen4)).await;
 
-    // Each removal of "src/old.rs" (gen1->gen2, gen3->gen4) creates a distinct
-    // `VectorDelete` + `GraphPrune` pair (4 rows), plus one `LedgerPrune` row
-    // once the chain leaves gen2 (an always-empty generation, never
-    // re-touched by any later debt) past the retention window — see
-    // `sqlite_publish_creates_ledger_prune_debt_past_retention` for an
-    // isolated LedgerPrune-only trace of this same mechanism.
-    assert_eq!(store.cleanup_debt_count().await.expect("count"), 5);
+    // Two removed-item vector/graph pairs plus aged whole-generation vector
+    // debts. Ledger pruning is blocked until vector deletion completes.
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 6);
     let rows = sqlx::query_scalar::<_, String>("SELECT debt_json FROM cleanup_debt")
         .fetch_all(&store.pool)
         .await
@@ -617,7 +613,7 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
             other => panic!("expected LedgerGenerations selector, got {other:?}"),
         })
         .collect::<Vec<_>>();
-    assert_eq!(ledger_prune_targets, vec![gen2.generation.clone()]);
+    assert!(ledger_prune_targets.is_empty());
 
     store
         .delete_generation(SourceId::new("src_sqlite"), gen2.generation.clone())
@@ -656,20 +652,15 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
     assert_eq!(old_ledger_prune_exists, 1);
 }
 
-/// A source that publishes generation after generation with an always-
-/// unchanged item never produces `VectorDelete`/`GraphPrune` debt (nothing
-/// removed or modified), which isolates `LedgerPrune` production: once a
-/// supersede chain leaves more than `LEDGER_GENERATION_RETENTION_COMMITTED`
-/// (2 — the just-published generation plus its immediate predecessor) old
-/// generations behind, the oldest ones become `LedgerPrune` candidates, one
-/// debt row per stale generation.
+/// Unchanged snapshots still receive whole-generation vector cleanup. Ledger
+/// retention advances only on a later publication after vector completion.
 #[tokio::test]
 async fn sqlite_publish_creates_ledger_prune_debt_past_retention() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
 
     let mut generations = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..5 {
         let generation = store
             .create_generation(SourceId::new("src_sqlite"))
             .await
@@ -683,12 +674,21 @@ async fn sqlite_publish_creates_ledger_prune_debt_past_retention() {
             .expect("put manifest");
         complete_and_publish(&store, completed_generation_from(&generation)).await;
         generations.push(generation);
+        for debt in store
+            .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
+            .await
+            .unwrap()
+        {
+            if debt.kind == CleanupDebtKind::VectorDelete {
+                store.resolve_cleanup_debt(debt.debt_id).await.unwrap();
+            }
+        }
     }
 
-    // No item was ever removed or modified, so the only debt possible is
-    // `LedgerPrune`. Retention keeps generations 3 and 4 (the newest
-    // committed plus its predecessor); generations 1 and 2 age out.
-    assert_eq!(store.cleanup_debt_count().await.expect("count"), 2);
+    // Whole-generation vector cleanup covers unchanged items too.
+    // Retention keeps generations 4 and 5. Generations 1 and 2 have
+    // completed vector cleanup; generation 3 awaits its next ledger pass.
+    assert_eq!(store.cleanup_debt_count().await.expect("count"), 5);
     let rows = sqlx::query_scalar::<_, String>("SELECT debt_json FROM cleanup_debt")
         .fetch_all(&store.pool)
         .await
@@ -697,11 +697,9 @@ async fn sqlite_publish_creates_ledger_prune_debt_past_retention() {
         .into_iter()
         .map(|json| serde_json::from_str::<CleanupDebt>(&json).expect("parse cleanup debt"))
         .collect::<Vec<_>>();
-    for debt in &debts {
-        assert_eq!(debt.kind, CleanupDebtKind::LedgerPrune);
-    }
     let up_to_generations: Vec<SourceGenerationId> = debts
         .iter()
+        .filter(|debt| debt.kind == CleanupDebtKind::LedgerPrune)
         .map(|debt| match &debt.selector {
             CleanupSelector::LedgerGenerations {
                 up_to_generation, ..
@@ -751,6 +749,40 @@ async fn ledger_prune_retention_ignores_failed_sequence_gaps() {
         complete_and_publish(&store, completed_generation_from(&generation)).await;
     }
 
+    let pending = store
+        .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    assert!(
+        pending
+            .iter()
+            .all(|d| d.kind != CleanupDebtKind::LedgerPrune)
+    );
+    assert!(
+        pending
+            .iter()
+            .any(|d| d.kind == CleanupDebtKind::VectorDelete
+                && d.generation.as_ref() == Some(&gen1.generation))
+    );
+    assert!(
+        store
+            .get_manifest(SourceId::new("src_sqlite"), gen1.generation.clone())
+            .await
+            .is_ok()
+    );
+    for debt in pending {
+        store.resolve_cleanup_debt(debt.debt_id).await.unwrap();
+    }
+    let next = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    store
+        .put_manifest(manifest_with_items(&next.generation.0, vec![]))
+        .await
+        .unwrap();
+    complete_and_publish(&store, completed_generation_from(&next)).await;
+
     let targets: Vec<String> = sqlx::query_scalar(
         "SELECT generation_key FROM cleanup_debt WHERE kind = 'ledger_prune' ORDER BY generation_key",
     )
@@ -759,4 +791,128 @@ async fn ledger_prune_retention_ignores_failed_sequence_gaps() {
     .unwrap();
     assert_eq!(targets, vec![gen1.generation.0]);
     assert!(!targets.contains(&failed.generation.0));
+}
+
+#[tokio::test]
+async fn unchanged_publications_reconcile_all_aged_vectors() {
+    let store = SqliteLedgerStore::in_memory().await.unwrap();
+    store.upsert_source(source()).await.unwrap();
+    let mut gens = Vec::new();
+    for _ in 0..3 {
+        let g = store
+            .create_generation(SourceId::new("src_sqlite"))
+            .await
+            .unwrap();
+        store
+            .put_manifest(manifest_with_items(
+                &g.generation.0,
+                vec![manifest_item("README.md", "stable")],
+            ))
+            .await
+            .unwrap();
+        complete_and_publish(&store, completed_generation_from(&g)).await;
+        gens.push(g);
+    }
+    let debts = store
+        .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    let vectors = debts
+        .iter()
+        .filter(|d| d.kind == CleanupDebtKind::VectorDelete)
+        .collect::<Vec<_>>();
+    assert_eq!(vectors.len(), 1);
+    assert_eq!(
+        vectors[0].selector,
+        CleanupSelector::Generation {
+            source_id: SourceId::new("src_sqlite"),
+            generation: gens[0].generation.clone()
+        }
+    );
+    assert!(
+        !vectors
+            .iter()
+            .any(|d| d.generation.as_ref() == Some(&gens[1].generation)
+                || d.generation.as_ref() == Some(&gens[2].generation))
+    );
+}
+
+#[tokio::test]
+async fn abandoned_writes_require_current_source_lease_and_preserve_published_generations() {
+    let store = SqliteLedgerStore::in_memory().await.unwrap();
+    store.upsert_source(source()).await.unwrap();
+    let old = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    let mut writer_manifest = manifest_with_items(&old.generation.0, vec![]);
+    writer_manifest.metadata.insert(
+        crate::GENERATION_VECTOR_COLLECTION_METADATA_KEY.into(),
+        "axon".into(),
+    );
+    store.put_manifest(writer_manifest).await.unwrap();
+    store.fail_generation(old.clone()).await.unwrap();
+    let lease = store
+        .acquire_lease(LeaseRequest {
+            lease_key: "source:src_sqlite".into(),
+            owner_id: "new-worker".into(),
+            ttl_seconds: 60,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let new = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    let mut forged = lease.clone();
+    forged.owner_id = "old-worker".into();
+    assert!(
+        store
+            .recover_abandoned_generations(new.clone(), forged, "axon".into())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        store
+            .recover_abandoned_generations(new.clone(), lease.clone(), "axon".into())
+            .await
+            .unwrap(),
+        1
+    );
+    let debts = store
+        .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    assert_eq!(debts.len(), 1);
+    assert_eq!(debts[0].generation.as_ref(), Some(&old.generation));
+    assert_eq!(debts[0].vector_collection.as_deref(), Some("axon"));
+    assert_eq!(
+        store
+            .recover_abandoned_generations(new.clone(), lease.clone(), "axon".into())
+            .await
+            .unwrap(),
+        0
+    );
+    let state: String = sqlx::query_scalar(
+        "SELECT status FROM source_generations WHERE generation=? AND source_id='src_sqlite'",
+    )
+    .bind(&new.generation.0)
+    .fetch_one(&store.pool)
+    .await
+    .unwrap();
+    assert_eq!(state, "running");
+    sqlx::query("UPDATE leases SET expires_at='2000-01-01T00:00:00Z' WHERE lease_id=?")
+        .bind(&lease.lease_id.0)
+        .execute(&store.pool)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .recover_abandoned_generations(new, lease, "axon".into())
+            .await
+            .is_err()
+    );
 }

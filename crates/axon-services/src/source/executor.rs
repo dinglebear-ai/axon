@@ -254,11 +254,27 @@ async fn run_generation(
         reserve_unoccupied_generation(runtime, input, &manifest.source_id).await?;
     diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
+    manifest.metadata.insert(
+        axon_ledger::GENERATION_VECTOR_COLLECTION_METADATA_KEY.into(),
+        input.collection.into(),
+    );
     // Boxed: this is by far the largest future in the pipeline, and holding
     // it inline alongside the cancellation select overflows the default test
     // stack in debug builds.
     let run = Box::pin(async {
         runtime.ledger.put_manifest_ref(&manifest).await?;
+        let recovered = runtime
+            .ledger
+            .recover_abandoned_generations(
+                generation.clone(),
+                lease.clone(),
+                input.collection.to_string(),
+            )
+            .await?;
+        if recovered > 0 {
+            tracing::info!(source_id = %generation.source_id.0, generation = %generation.generation.0, recovered,
+                "recorded lease-fenced cleanup for abandoned source generations");
+        }
         created_generation::run_created_generation(
             runtime,
             input,

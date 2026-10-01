@@ -625,7 +625,7 @@ async fn fake_publish_creates_ledger_prune_debt_past_retention() {
     ledger.upsert_source(source()).await.unwrap();
 
     let mut generations = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..5 {
         let generation = ledger
             .create_generation(SourceId::new("src_a"))
             .await
@@ -639,21 +639,28 @@ async fn fake_publish_creates_ledger_prune_debt_past_retention() {
             .unwrap();
         complete_and_publish(&ledger, completed_generation(generation.clone())).await;
         generations.push(generation);
+        for debt in ledger
+            .list_pending_cleanup_debt(SourceId::new("src_a"))
+            .await
+            .unwrap()
+        {
+            if debt.kind == CleanupDebtKind::VectorDelete {
+                ledger.resolve_cleanup_debt(debt.debt_id).await.unwrap();
+            }
+        }
     }
 
-    // No item was ever removed or modified, so the only debt possible is
-    // `LedgerPrune`. Retention keeps generations 3 and 4 (the newest
-    // committed plus its predecessor); generations 1 and 2 age out.
-    assert_eq!(ledger.cleanup_debt_count().await, 2);
+    // Whole-generation vector cleanup covers unchanged items too.
+    // Retention keeps generations 4 and 5. Generations 1 and 2 have
+    // completed vector cleanup; generation 3 awaits its next ledger pass.
+    assert_eq!(ledger.cleanup_debt_count().await, 5);
     let pending = ledger
         .list_pending_cleanup_debt(SourceId::new("src_a"))
         .await
         .unwrap();
-    for debt in &pending {
-        assert_eq!(debt.kind, CleanupDebtKind::LedgerPrune);
-    }
     let up_to_generations: Vec<SourceGenerationId> = pending
         .iter()
+        .filter(|debt| debt.kind == CleanupDebtKind::LedgerPrune)
         .map(|debt| match &debt.selector {
             CleanupSelector::LedgerGenerations {
                 up_to_generation, ..

@@ -94,6 +94,8 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
         validate_source_range_shape(&range, "code_symbol_source_range")?;
     }
 
+    validate_additional_ranges(metadata)?;
+
     let locator: ChunkLocator =
         serde_json::from_value(metadata.get("chunk_locator").cloned().ok_or_else(|| {
             VectorPayloadValidationError::InvalidFieldShape {
@@ -306,4 +308,24 @@ fn require_non_negative_integer(
             field: field.to_string(),
         })
     }
+}
+
+fn validate_additional_ranges(metadata: &MetadataMap) -> Result<(), VectorPayloadValidationError> {
+    if let Some(value) = metadata.get("additional_source_ranges") {
+        let ranges: Vec<SourceRange> = serde_json::from_value(value.clone()).map_err(|_| {
+            VectorPayloadValidationError::InvalidFieldShape {
+                field: "additional_source_ranges".into(),
+            }
+        })?;
+        if ranges.is_empty() || serde_json::to_vec(&ranges).unwrap().len() > 32 * 1024 {
+            return Err(VectorPayloadValidationError::InvalidFieldShape {
+                field: "additional_source_ranges".into(),
+            });
+        }
+        for range in &ranges {
+            validate_source_range_shape(range, "additional_source_ranges")?;
+        }
+    }
+
+    Ok(())
 }

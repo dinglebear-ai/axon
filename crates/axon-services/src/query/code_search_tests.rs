@@ -290,7 +290,7 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     assert_eq!(searched.results[0].file_path.as_deref(), Some("src/lib.rs"));
     assert_eq!(
         searched.results[0].snippet,
-        "pub fn target_answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }"
+        "pub fn target_answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n"
     );
     assert_eq!(
         vectors.calls().await,

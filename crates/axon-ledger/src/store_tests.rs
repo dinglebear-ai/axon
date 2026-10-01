@@ -221,3 +221,6 @@ mod store_manifest_tests;
 
 #[path = "store_tests/graph_retirement_tests.rs"]
 mod graph_retirement_tests;
+
+#[path = "store_tests/recovery_tests.rs"]
+mod recovery_tests;

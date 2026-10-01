@@ -94,6 +94,14 @@ pub trait LedgerStore: Send + Sync {
     async fn committed_generation(&self, source_id: SourceId)
     -> Result<Option<SourceGenerationId>>;
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration>;
+    /// Reconcile unpublished older snapshots only while holding this source's
+    /// live lease. Never touches committed snapshots or a newer generation.
+    async fn recover_abandoned_generations(
+        &self,
+        generation: SourceGeneration,
+        lease: LeaseGuard,
+        collection: String,
+    ) -> Result<u64>;
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration>;
     async fn publish_generation(
         &self,

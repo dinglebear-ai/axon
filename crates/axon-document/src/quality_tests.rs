@@ -43,7 +43,7 @@ fn headings_prevent_unrelated_short_fragments_from_packing() {
 }
 #[test]
 fn unicode_oversized_tail_gets_literal_context() {
-    let source = "界".repeat(1370);
+    let source = format!("{}{}", "界".repeat(1365), "尾".repeat(5));
     let chunks = useful_chunks(text::plain_text_windows(&source), &source);
     assert!(chunks.len() > 1);
     for chunk in chunks {
@@ -70,7 +70,10 @@ fn synthetic_record_tail_keeps_its_pointer_and_content() {
 
 #[test]
 fn isolated_short_leading_reference_borrows_compatible_following_context() {
-    let source = format!("src/lib.rs\n{}", "useful ".repeat(285));
+    let source = format!(
+        "src/lib.rs\n{}",
+        "useful complete source reference\n".repeat(70)
+    );
     let split = source.find('\n').unwrap() + 1;
     let chunks = useful_chunks(
         vec![
@@ -81,7 +84,7 @@ fn isolated_short_leading_reference_borrows_compatible_following_context() {
     );
     assert_eq!(chunks.len(), 2);
     assert!(chunks[0].content.starts_with("src/lib.rs"));
-    assert_eq!(chunks[0].content.chars().count(), 50);
+    assert!(chunks[0].content.trim().chars().count() >= 50);
     assert!(literal(&chunks[0], &source).is_some());
 }
 
@@ -147,4 +150,80 @@ fn punctuation_between_related_fragments_is_retained_as_context() {
     );
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].content, source);
+}
+
+#[test]
+fn whitespace_cannot_satisfy_minimum_content_length() {
+    let source = format!("{}useful{}", " ".repeat(50), " ".repeat(50));
+    assert!(useful_chunks(vec![chunk(&source, 0, source.len())], &source).is_empty());
+}
+
+#[test]
+fn repeated_text_keeps_one_embedding_and_all_literal_locations() {
+    let body = "fn get_info() -> Info { Info::new(ServerCapabilities::default()) }";
+    let source = format!("{body}\n{body}");
+    let chunks = useful_chunks(
+        vec![
+            chunk(&source, 0, body.len()).with_symbol("one"),
+            chunk(&source, body.len() + 1, source.len()).with_symbol("two"),
+        ],
+        &source,
+    );
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, body);
+    let ranges = chunks[0].metadata["additional_source_ranges"]
+        .as_array()
+        .unwrap();
+    assert_eq!(ranges.len(), 1);
+    assert_eq!(ranges[0]["byte_start"], body.len() + 1);
+    assert_eq!(
+        chunks[0].metadata["code_symbol_aliases"],
+        serde_json::json!(["one", "two"])
+    );
+}
+
+#[test]
+fn short_reference_context_ends_at_complete_line_after_trim_minimum() {
+    let source = format!(
+        "   src/lib.rs\n   {}\n{}",
+        "meaningful complete context about the shared source pipeline",
+        "next useful line\n".repeat(150)
+    );
+    let split = source.find('\n').unwrap() + 1;
+    let chunks = useful_chunks(
+        vec![
+            chunk(&source, 0, split),
+            chunk(&source, split, source.len()),
+        ],
+        &source,
+    );
+    assert!(chunks[0].content.starts_with("   src/lib.rs"));
+    assert!(
+        chunks[0]
+            .content
+            .contains("meaningful complete context about the shared source pipeline")
+    );
+    assert!(chunks[0].content.ends_with('\n'));
+    assert!(chunks[0].content.trim().chars().count() >= MIN_CHUNK_CHARS);
+}
+
+#[test]
+fn short_symbol_borrows_bounded_context_from_minified_single_line() {
+    let source = format!("fn tiny() {{}}{}", "useful_context();".repeat(400));
+    let split = "fn tiny() {}".len();
+    let chunks = useful_chunks(
+        vec![
+            chunk(&source, 0, split).with_symbol("tiny"),
+            chunk(&source, split, source.len()),
+        ],
+        &source,
+    );
+    let tiny = chunks
+        .iter()
+        .find(|c| c.symbol.as_deref() == Some("tiny"))
+        .unwrap();
+    assert!(tiny.content.starts_with("fn tiny() {}"));
+    assert!(tiny.content.trim().chars().count() >= MIN_CHUNK_CHARS);
+    assert!(fits(&tiny.content, 2000));
+    assert!(literal(tiny, &source).is_some());
 }

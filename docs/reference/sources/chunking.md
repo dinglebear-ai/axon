@@ -110,3 +110,25 @@ in parse facts or an artifact.
 
 If the chunk profiles or sizing change, update this file and
 `crates/axon-document/src/chunk_router.rs::profile_defaults` in the same PR.
+
+## Semantic quality and duplicate locations
+
+Executable bodies retain their nested locals and closures. Container scaffold,
+imports, and declaration annotations attach to nearby declarations rather than
+becoming standalone embeddings. Parser facts still retain the nested symbols
+for graph construction. Provider size limits can split an oversized body.
+
+The existing minimum useful-content check counts trimmed characters. There is
+no 200-character exclusion rule: short symbols and path references can borrow
+compatible, bounded literal context. Punctuation-only chunks are removed.
+
+Within a document, identical text with compatible context shares one embedding.
+`additional_source_ranges` preserves the other literal locations and
+`code_symbol_aliases` preserves their symbols. Structured records, session turns,
+and temporal records keep their distinct identities. Deduplication never
+normalizes code whitespace or literals.
+
+Git inventory excludes historical plan/session documentation directories by
+default. Set the source option `include_historical_docs: true` to include them;
+`exclude_paths` still applies. Normal product documentation, tests, and generated
+reference documentation remain eligible.

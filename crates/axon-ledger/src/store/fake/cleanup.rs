@@ -5,8 +5,8 @@ use tokio::sync::Mutex;
 
 use super::FakeLedgerState;
 use crate::cleanup_debt::{
-    artifact_delete_debt_for_metadata, cache_prune_debt_for_metadata, graph_prune_debt,
-    ledger_prune_debt, vector_delete_debt,
+    artifact_delete_debt_for_metadata, cache_prune_debt_for_metadata,
+    generation_vector_delete_debt, graph_prune_debt, ledger_prune_debt, vector_delete_debt,
 };
 use crate::store::Result;
 use crate::store::util::{keyed_manifest_items, manifest_item_changed, timestamp};
@@ -316,7 +316,25 @@ pub(super) fn record_ledger_prune_cleanup_debt(
                 && debt.completed_at.is_none()
                 && debt.kind != CleanupDebtKind::LedgerPrune
         });
-        if !has_unresolved_non_ledger_debt {
+        let mut vector_debt = generation_vector_delete_debt(&generation.source_id, &candidate);
+        vector_debt.vector_collection = state
+            .manifests
+            .get(&(generation.source_id.clone(), candidate.clone()))
+            .and_then(|m| {
+                m.metadata
+                    .get(crate::GENERATION_VECTOR_COLLECTION_METADATA_KEY)
+            })
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let stored = state
+            .cleanup_debt
+            .entry(vector_debt.debt_id.clone())
+            .or_insert(vector_debt);
+        if stored.completed_at.is_none() {
+            debts.push(stored.clone());
+        }
+        let vector_complete = stored.completed_at.is_some();
+        if vector_complete && !has_unresolved_non_ledger_debt {
             let debt = ledger_prune_debt(&generation.source_id, &candidate);
             let stored = state
                 .cleanup_debt

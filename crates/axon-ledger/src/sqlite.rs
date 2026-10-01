@@ -5,6 +5,7 @@ mod document;
 mod generation;
 mod lease;
 mod manifest;
+mod recovery;
 mod source;
 mod util;
 
@@ -237,6 +238,15 @@ impl LedgerStore for SqliteLedgerStore {
             generation::complete_generation(self, generation.clone())
         })
         .await
+    }
+
+    async fn recover_abandoned_generations(
+        &self,
+        generation: SourceGeneration,
+        lease: LeaseGuard,
+        collection: String,
+    ) -> Result<u64> {
+        recovery::recover(self, generation, lease, collection).await
     }
 
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {

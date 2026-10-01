@@ -1343,3 +1343,36 @@ async fn autonomous_sweep_fails_closed_for_legacy_vector_debt_without_collection
 
 #[path = "prune/graph_retry_tests.rs"]
 mod graph_retry_tests;
+
+#[tokio::test]
+async fn cleanup_uses_recorded_write_collection_when_retry_targets_another() {
+    let ledger = FakeLedgerStore::new();
+    ledger.upsert_source(source()).await.unwrap();
+    let old = ledger.create_generation(SourceId::new(SRC)).await.unwrap();
+    let mut first = manifest(&old.generation.0, vec![("old", "gone")]);
+    first.metadata.insert(
+        axon_ledger::GENERATION_VECTOR_COLLECTION_METADATA_KEY.into(),
+        "collection-a".into(),
+    );
+    ledger.put_manifest(first).await.unwrap();
+    publish(&ledger, completed(old.clone())).await;
+    let new = ledger.create_generation(SourceId::new(SRC)).await.unwrap();
+    ledger
+        .put_manifest(manifest(&new.generation.0, vec![]))
+        .await
+        .unwrap();
+    publish(&ledger, completed(new)).await;
+    bind_vector_cleanup_collection(&ledger, &SourceId::new(SRC), "collection-b")
+        .await
+        .unwrap();
+    let debts = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert!(
+        debts
+            .iter()
+            .filter(|d| d.kind == CleanupDebtKind::VectorDelete)
+            .all(|d| d.vector_collection.as_deref() == Some("collection-a"))
+    );
+}
