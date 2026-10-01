@@ -56,6 +56,8 @@ retaining the literal source span and full heading breadcrumb. Empty sibling
 or trailing sections do not produce standalone points. This is a structural
 rule, independent of heading length; the empty-result fallback also applies it
 so headings are not reintroduced as plain-text content.
+If a fitting list or table forces its headings into a separate bounded
+window, that window is omitted and the body retains the full breadcrumb.
 
 ## ChunkRouter decision
 

@@ -29,6 +29,34 @@ fn markdown_only_headings_have_no_content_chunks() {
 }
 
 #[test]
+fn markdown_does_not_emit_heading_scaffold_before_a_fitting_list() {
+    let list = (0..7)
+        .map(|n| format!("- item {n}: {}", "useful context ".repeat(4)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = format!(
+        "# Document title that passes the existing usefulness minimum\n\n## Entries\n\n{list}\n"
+    );
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars: list.chars().count(),
+            min_chars: 1,
+            overlap_chars: 0,
+        },
+    );
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, list.trim());
+    assert_eq!(
+        chunks[0].heading_path,
+        vec![
+            "Document title that passes the existing usefulness minimum",
+            "Entries"
+        ]
+    );
+}
+
+#[test]
 fn markdown_heading_scaffold_preserves_non_heading_hash_paragraphs() {
     for body in [
         "#\u{00a0}This is ordinary Markdown body text, with a nonbreaking space.",
