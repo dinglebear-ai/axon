@@ -62,19 +62,7 @@ pub(super) fn collection_spec(collection: &str, dimensions: u32) -> CollectionSp
             dimensions,
             distance: VectorDistance::Cosine,
         },
-        payload_indexes: [
-            "source_id",
-            "source_generation",
-            "source_item_key",
-            "source_item_aliases",
-            "source_path_prefixes",
-            "item_canonical_uri_aliases",
-            "document_id",
-            "chunk_id",
-        ]
-        .into_iter()
-        .map(payload_index)
-        .collect(),
+        payload_indexes: axon_vectors::collection::required_retrieval_payload_indexes(),
         sparse: Some(SparseVectorConfig {
             name: "bm42".to_string(),
             modifier: SparseVectorModifier::Idf,
@@ -82,14 +70,6 @@ pub(super) fn collection_spec(collection: &str, dimensions: u32) -> CollectionSp
         aliases: Vec::new(),
         distance: Some(VectorDistance::Cosine),
         metadata: MetadataMap::new(),
-    }
-}
-
-pub(super) fn payload_index(field_name: &str) -> PayloadIndexSpec {
-    PayloadIndexSpec {
-        field_name: field_name.to_string(),
-        field_schema: PayloadFieldSchema::Keyword,
-        required_for_filters: true,
     }
 }
 

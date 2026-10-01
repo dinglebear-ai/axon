@@ -491,3 +491,6 @@ fn generation_delete_uses_server_side_count_and_filter_delete() {
     assert_eq!(count_body["exact"], json!(true));
     assert_eq!(delete_body["filter"], count_body["filter"]);
 }
+
+#[path = "index_verification_tests.rs"]
+mod index_verification_tests;
