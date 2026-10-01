@@ -32,6 +32,11 @@ pub(super) fn finalize_chunks(
     } else {
         text::MAX_PLAIN_TEXT_CHUNK_CHARS
     };
+    let chunks = if profile == ChunkingProfile::MarkdownSections {
+        markdown::omit_empty_heading_spans(chunks, source)
+    } else {
+        chunks
+    };
     let mut chunks = crate::quality::useful_chunks_with_limit(chunks, source, max_chars);
     for chunk in &mut chunks {
         chunk

@@ -20,8 +20,85 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-10");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-11");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
+}
+
+#[test]
+fn heading_only_markdown_is_not_reintroduced_by_empty_fallback() {
+    let result = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Markdown,
+            "# This heading is deliberately long enough to pass the old minimum gate\n## Empty descendant section\n",
+            "gen-empty-heading",
+            ChunkingProfile::MarkdownSections,
+        ))
+        .unwrap();
+    assert!(matches!(result, PrepareSourceDocumentResult::Skipped(_)));
+}
+
+#[test]
+fn oversized_heading_only_markdown_is_skipped_before_fallback_can_split_it() {
+    let text = format!("# {}\n", "Empty title ".repeat(500));
+    let result = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::Markdown,
+            &text,
+            "gen-long-heading",
+            ChunkingProfile::MarkdownSections,
+        ))
+        .unwrap();
+    assert!(matches!(result, PrepareSourceDocumentResult::Skipped(_)));
+}
+
+#[test]
+fn fragment_markdown_keeps_fenced_code_comments_that_resemble_headings() {
+    let text = format!(
+        "# Example\n\n```bash\n{}\n```\n",
+        (0..100)
+            .map(|n| format!(
+                "# useful shell comment number {n} {}\n",
+                "context ".repeat(10)
+            ))
+            .collect::<String>()
+    );
+    let mut input = request(
+        ContentKind::Markdown,
+        &text,
+        "gen-fenced-fragment",
+        ChunkingProfile::MarkdownSections,
+    );
+    input
+        .document
+        .metadata
+        .insert("source_adapter".into(), "web_scrape".into());
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("expected fenced code content");
+    };
+    let ranges: Vec<_> = prepared
+        .chunks
+        .iter()
+        .map(|chunk| {
+            let start = chunk.source_range.byte_start.unwrap() as usize;
+            let end = chunk.source_range.byte_end.unwrap() as usize;
+            assert_eq!(text[start..end].trim(), chunk.content.trim());
+            (start, end)
+        })
+        .collect();
+    // A valid window boundary may split a comment. Its literal bytes must
+    // remain covered across the windows, even when each line starts with '# '.
+    for n in 0..100 {
+        let comment = format!("useful shell comment number {n} ");
+        let start = text.find(&comment).unwrap();
+        for byte in start..start + comment.len() {
+            assert!(
+                ranges.iter().any(|(a, b)| *a <= byte && byte < *b),
+                "lost comment {n}"
+            );
+        }
+    }
 }
 
 #[test]

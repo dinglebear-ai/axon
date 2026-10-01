@@ -32,7 +32,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-10";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-11";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {

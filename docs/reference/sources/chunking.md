@@ -51,6 +51,12 @@ or other incompatible Markdown block metadata. A fenced code block remains
 intact even when it alone exceeds `markdown-max-chars`; surrounding prose is
 still bounded by the configured maximum.
 
+Empty ancestor headings attach to their first content-bearing descendant,
+retaining the literal source span and full heading breadcrumb. Empty sibling
+or trailing sections do not produce standalone points. This is a structural
+rule, independent of heading length; the empty-result fallback also applies it
+so headings are not reintroduced as plain-text content.
+
 ## ChunkRouter decision
 
 Inputs: content kind, MIME, file path/extension, source kind & adapter, scope,
