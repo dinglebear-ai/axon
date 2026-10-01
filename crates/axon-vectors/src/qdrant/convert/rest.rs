@@ -244,6 +244,10 @@ pub fn search_filter_json(request: &VectorSearchRequest) -> Result<Option<serde_
             must.push(path_prefix_filter_json(value));
             continue;
         }
+        if field == "source_item_key" {
+            must.push(json!({ "should": [condition_json("source_item_key", value), condition_json("source_item_aliases", value)] }));
+            continue;
+        }
         must.push(condition_json(field, value));
     }
     if let Some(generation) = &request.generation {
@@ -283,13 +287,21 @@ fn path_prefix_filter_json(value: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::String(value) => value.clone(),
         other => other.to_string(),
     };
+    let normalized = prefix.trim_end_matches('/');
+    let normalized = if normalized.is_empty() {
+        "/"
+    } else {
+        normalized
+    };
     let matcher = json!({ "text": prefix });
-    json!({
-        "should": [
+    json!({ "should": [
+        { "key": "source_path_prefixes", "match": { "value": normalized } },
+        { "must": [{ "is_empty": { "key": "source_path_prefixes" } }], "should": [
             { "key": "source_item_key", "match": matcher.clone() },
+            { "key": "source_item_aliases", "match": matcher.clone() },
             { "key": "chunk_locator.path", "match": matcher },
-        ],
-    })
+        ] },
+    ] })
 }
 
 /// Equality filter over a single payload field (used by delete/commit paths).

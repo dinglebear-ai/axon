@@ -8,7 +8,7 @@ fn local_rust_document_uses_code_symbol_chunks_with_code_metadata() {
     let prepared = prepare(local_doc(
         "src/lib.rs",
         ContentKind::Code,
-        "pub fn answer() -> i32 {\n    42\n}\n\nstruct Thing;\n",
+        "pub fn answer() -> i32 {\n    let answer_to_everything = 42;\n    answer_to_everything\n}\n\nstruct Thing {\n    descriptive_field_name: String,\n    value: i32,\n}\n",
     ));
 
     assert_eq!(prepared.chunking_profile, "code_symbol");
@@ -27,7 +27,7 @@ fn local_rust_document_uses_code_symbol_chunks_with_code_metadata() {
         "tree_sitter"
     );
     assert_eq!(prepared.chunks[0].source_range.byte_start, Some(0));
-    assert_eq!(prepared.chunks[0].source_range.byte_end, Some(33));
+    assert_eq!(prepared.chunks[0].source_range.byte_end, Some(86));
     assert!(
         prepared
             .parse_facts
@@ -45,9 +45,9 @@ fn local_typescript_document_uses_js_ts_symbol_kinds() {
     let prepared = prepare(local_doc(
         "src/component.tsx",
         ContentKind::Code,
-        "export function createWidget() {}\n\
-export interface Props { name: string }\n\
-export const useWidget = (name: string) => ({ name });\n",
+        "export function createWidget() { return { name: \"descriptive widget\" }; }\n\
+export interface Props { name: string; description: string; }\n\
+export const useWidget = (name: string) => ({ name, description: \"complete widget details\" });\n",
     ));
 
     let kinds: Vec<_> = prepared
@@ -76,7 +76,7 @@ fn local_markdown_document_uses_heading_sections_with_stable_ranges() {
     let prepared = prepare(local_doc(
         "docs/README.md",
         ContentKind::Markdown,
-        "# Intro\nHello\n\n## Install\nRun it\n",
+        "# Intro\nThis introduction explains how to use the complete application.\n\n## Install\nRun the installation command to configure the application locally.\n",
     ));
 
     assert_eq!(prepared.chunking_profile, "markdown_sections");
@@ -99,7 +99,7 @@ fn local_manifest_document_routes_to_code_manifest_profile() {
     let prepared = prepare(local_doc(
         "Cargo.toml",
         ContentKind::Toml,
-        "[package]\nname = \"demo\"\n",
+        "[package]\nname = \"demo\"\nversion = \"1.0.0\"\ndescription = \"A useful demonstration package\"\n",
     ));
 
     assert_eq!(prepared.chunking_profile, "code_manifest");

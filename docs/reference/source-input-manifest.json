@@ -856,7 +856,7 @@
         {
           "path": "crates/axon-vectors/src/payload.rs",
           "kind": "rust_module",
-          "checksum": "sha256:9f0fbd0bd0bbdd9364741c66a564cdc81c160b3e99be99802990054a1146b17c"
+          "checksum": "sha256:a5a655b18a45b04d0a3a17b098b179aac8756a79e53955522170db0e9d90436a"
         },
         {
           "path": "crates/axon-vectors/src/payload_families.rs",
@@ -881,7 +881,7 @@
         {
           "path": "docs/pipeline-unification/sources/chunking-contract.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:63c60a97db760d23a91846d0c5ca077363913b0ab778c965c6a73a8bf652826f"
+          "checksum": "sha256:d0233067e8ab42be1a0d1451d5f0e3a7df7953c42d54de761b6ae4d068b1a01b"
         },
         {
           "path": "docs/pipeline-unification/sources/metadata-payload.md",
@@ -889,12 +889,17 @@
           "checksum": "sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33"
         },
         {
+          "path": "xtask/src/schemas/vector_payload_fields.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:921bae71f3381b68aeca865c6633798f249bc564659c5e02dfa3244b351e3e5e"
+        },
+        {
           "path": "xtask/src/schemas/vector_payload_markdown.rs",
           "kind": "rust_module",
           "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c"
         }
       ],
-      "manifest_checksum": "sha256:0c6b5730b41e6aee89b8f25bccd6289ff0411af0d82c9b9242e2da94b6d7e486"
+      "manifest_checksum": "sha256:cd33b90ed5c9d13285bea78a7dcf2d91451ad8699bd6bee15a4720c63d80e9a3"
     }
   ]
 }

@@ -275,6 +275,23 @@ fn qdrant_filter_converts_path_prefix_to_source_path_should_filter() {
         .expect("nested path-prefix filter");
 
     assert_eq!(nested.should.len(), 2);
+    let Some(condition::ConditionOneOf::Field(strict)) = nested.should[0].condition_one_of.as_ref()
+    else {
+        panic!("strict prefix field required");
+    };
+    assert_eq!(strict.key, "source_path_prefixes");
+    let Some(condition::ConditionOneOf::Filter(legacy)) =
+        nested.should[1].condition_one_of.as_ref()
+    else {
+        panic!("legacy fallback required");
+    };
+    assert_eq!(legacy.should.len(), 3);
+    let Some(condition::ConditionOneOf::IsEmpty(missing)) =
+        legacy.must[0].condition_one_of.as_ref()
+    else {
+        panic!("legacy fallback must require absent prefix metadata");
+    };
+    assert_eq!(missing.key, "source_path_prefixes");
 }
 
 #[test]

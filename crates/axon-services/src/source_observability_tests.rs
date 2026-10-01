@@ -9,9 +9,9 @@ struct SourceObservabilityHarness {
 impl SourceObservabilityHarness {
     async fn with_fake_web() -> Self {
         Self {
-            harness: crate::test_support::source_context_with_fake_web()
+            harness: crate::source_pipeline_differential_tests::web_fixture()
                 .await
-                .expect("source context with fake web"),
+                .expect("source context with meaningful fake web"),
         }
     }
 
@@ -85,6 +85,18 @@ async fn page_source_emits_ordered_phase_events() {
         .await
         .expect("event phases");
 
+    let events = harness
+        .service_events(claimed.job_id)
+        .await
+        .expect("durable events");
+    let summary = events
+        .events
+        .iter()
+        .find(|event| event.message.starts_with("prepared source batch:"))
+        .expect("preparation outcome summary must survive job event persistence");
+    assert!(summary.message.contains("supported_attempts=0"));
+    assert!(summary.message.contains("chunk_methods="));
+
     // The spine assertion filters out `CompletedDegraded` warning events so it
     // doesn't couple to whether preparation warns for this fixture: warnings
     // depend on the acquisition path's content kind (an HTML-fetched page has
@@ -121,6 +133,7 @@ async fn page_source_emits_ordered_phase_events() {
             (PipelinePhase::Enriching, LifecycleStatus::Running),
             (PipelinePhase::Normalizing, LifecycleStatus::Running),
             (PipelinePhase::Normalizing, LifecycleStatus::Completed),
+            (PipelinePhase::Preparing, LifecycleStatus::Running),
             (PipelinePhase::Preparing, LifecycleStatus::Running),
             (PipelinePhase::Batching, LifecycleStatus::Running),
             (PipelinePhase::Embedding, LifecycleStatus::Running),

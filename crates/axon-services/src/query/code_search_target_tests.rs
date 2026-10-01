@@ -30,12 +30,12 @@ async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
         .expect("git init");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn changed() -> i32 { 1 }\n",
+        "pub fn changed() -> i32 { let changed_fixture_value = 1; changed_fixture_value }\n",
     )
     .expect("changed file");
     std::fs::write(
         repo.path().join("stable.rs"),
-        "pub fn stable_answer() -> i32 { 42 }\n",
+        "pub fn stable_answer() -> i32 { let stable_fixture_answer_value = 42; stable_fixture_answer_value }\n",
     )
     .expect("stable file");
 
@@ -66,7 +66,7 @@ async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
     .expect("first target refresh");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn changed() -> i32 { 2 }\n",
+        "pub fn changed() -> i32 { let changed_fixture_value = 2; changed_fixture_value }\n",
     )
     .expect("modified file");
     let second = refresh_code_search_index_with_progress(
@@ -165,7 +165,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         .expect("git init");
     std::fs::write(
         repo.path().join("visible.rs"),
-        "pub fn visible_answer() {}\n",
+        "pub fn visible_answer() { let committed_fixture_value = 42; assert_eq!(committed_fixture_value, 42); }\n",
     )
     .expect("visible file");
 
@@ -399,7 +399,7 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
         .expect("git init");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn answer() -> i32 { 42 }\n",
+        "pub fn answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n",
     )
     .expect("source file");
 
@@ -423,7 +423,7 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await
         .expect("first target refresh");
-    std::fs::write(repo.path().join("new.rs"), "pub fn fresh() {}\n").expect("new file");
+    std::fs::write(repo.path().join("new.rs"), "pub fn fresh() { let refreshed_fixture_value = 42; assert_eq!(refreshed_fixture_value, 42); }\n").expect("new file");
     let failing_ctx = ctx
         .clone()
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(

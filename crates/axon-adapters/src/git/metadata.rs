@@ -29,6 +29,15 @@ pub(super) fn git_source_document(
         "item_canonical_uri".to_string(),
         json!(item.manifest_item.canonical_uri.clone()),
     );
+    for field in [
+        "source_item_aliases",
+        "item_canonical_uri_aliases",
+        "source_path_prefixes",
+    ] {
+        if let Some(value) = item.manifest_item.metadata.get(field) {
+            metadata.insert(field.to_string(), value.clone());
+        }
+    }
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     metadata.insert("redaction_status".to_string(), json!("clean"));

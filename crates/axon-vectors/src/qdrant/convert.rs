@@ -8,6 +8,9 @@
 
 use std::collections::HashMap;
 
+mod path_prefix;
+use path_prefix::path_prefix_condition;
+
 use axon_api::source::*;
 use qdrant_client::qdrant::{
     CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
@@ -195,6 +198,20 @@ pub fn qdrant_filter(request: &VectorSearchRequest) -> Result<Option<Filter>> {
             conditions.push(path_prefix_condition(value));
             continue;
         }
+        if field == "source_item_key" {
+            conditions.push(qdrant_client::qdrant::Condition {
+                condition_one_of: Some(condition::ConditionOneOf::Filter(Filter {
+                    should: ["source_item_key", "source_item_aliases"]
+                        .into_iter()
+                        .flat_map(|key| qdrant_field_conditions(key, value))
+                        .collect(),
+                    must: Vec::new(),
+                    must_not: Vec::new(),
+                    min_should: None,
+                })),
+            });
+            continue;
+        }
         conditions.extend(qdrant_field_conditions(field, value));
     }
     if let Some(generation) = &request.generation {
@@ -362,46 +379,6 @@ fn field_condition(field: &str, value: &serde_json::Value) -> qdrant_client::qdr
             key: field.to_string(),
             r#match: Some(Match {
                 match_value: Some(qdrant_match_value(value)),
-            }),
-            range: None,
-            geo_bounding_box: None,
-            geo_radius: None,
-            values_count: None,
-            geo_polygon: None,
-            datetime_range: None,
-            is_empty: None,
-            is_null: None,
-        })),
-    }
-}
-
-fn path_prefix_condition(value: &serde_json::Value) -> qdrant_client::qdrant::Condition {
-    qdrant_client::qdrant::Condition {
-        condition_one_of: Some(condition::ConditionOneOf::Filter(Filter {
-            should: ["source_item_key", "chunk_locator.path"]
-                .into_iter()
-                .map(|field| text_field_condition(field, value))
-                .collect(),
-            must: Vec::new(),
-            must_not: Vec::new(),
-            min_should: None,
-        })),
-    }
-}
-
-fn text_field_condition(
-    field: &str,
-    value: &serde_json::Value,
-) -> qdrant_client::qdrant::Condition {
-    let text = match value {
-        serde_json::Value::String(value) => value.clone(),
-        other => other.to_string(),
-    };
-    qdrant_client::qdrant::Condition {
-        condition_one_of: Some(condition::ConditionOneOf::Field(FieldCondition {
-            key: field.to_string(),
-            r#match: Some(Match {
-                match_value: Some(r#match::MatchValue::Text(text)),
             }),
             range: None,
             geo_bounding_box: None,

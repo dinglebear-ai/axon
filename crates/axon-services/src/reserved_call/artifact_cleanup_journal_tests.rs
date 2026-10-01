@@ -495,12 +495,18 @@ fn stable_lease_namespace_is_bounded() {
         let pending = root.join(format!("{}.json", uuid::Uuid::from_u128(value + 1)));
         let claimed = pending.with_extension("claim");
         std::fs::write(&pending, b"record").unwrap();
-        drop(
-            directory
-                .acquire_lease(&pending, &claimed, true)
-                .unwrap()
-                .unwrap(),
-        );
+        // None means transient contention, which the claim API explicitly
+        // permits. Concurrent subprocess tests can briefly inherit an open
+        // lease before exec closes its O_CLOEXEC descriptor.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            if let Some(lease) = directory.acquire_lease(&pending, &claimed, true).unwrap() {
+                drop(lease);
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "lease remained busy");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
     }
     let leases = std::fs::read_dir(&root)
         .unwrap()

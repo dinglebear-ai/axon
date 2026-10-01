@@ -88,7 +88,10 @@ pub(super) async fn prepare_embed_publish(
             },
         )
         .await?;
-        let (prepared, skips) = partition_prepared(prepared);
+        emitter
+            .running(PipelinePhase::Preparing, prepared.summary_message())
+            .await;
+        let (prepared, skips) = partition_prepared(prepared.outcomes);
         crate::source::progress::preparation_skipped(emitter, &skips.document_statuses).await;
         merge_vectorize_result(&mut output, skips);
         let chunk_count = prepared
@@ -105,12 +108,7 @@ pub(super) async fn prepare_embed_publish(
             .await;
         let batches = chunk_batches(prepared, runtime.embed_pool_max_inputs);
         if !input.plan.request.embed {
-            for batch in batches {
-                merge_vectorize_result(
-                    &mut output,
-                    statuses_only(batch, DocumentLifecycleStatus::Prepared),
-                );
-            }
+            merge_prepared_batches(&mut output, batches);
             continue;
         }
         let batch_count = batches.len();
@@ -157,6 +155,15 @@ pub(super) async fn prepare_embed_publish(
         merge_vectorize_result(&mut output, result);
     }
     persist_vectorize_result(runtime, output).await
+}
+
+fn merge_prepared_batches(output: &mut VectorizeResult, batches: Vec<Vec<PreparedDocument>>) {
+    for batch in batches {
+        merge_vectorize_result(
+            output,
+            statuses_only(batch, DocumentLifecycleStatus::Prepared),
+        );
+    }
 }
 
 async fn persist_vectorize_result(
@@ -222,7 +229,10 @@ pub(super) async fn prepare_generation_documents(
         },
     )
     .await?;
-    let (prepared, skipped) = partition_prepared(prepared);
+    emitter
+        .running(PipelinePhase::Preparing, prepared.summary_message())
+        .await;
+    let (prepared, skipped) = partition_prepared(prepared.outcomes);
     crate::source::progress::preparation_skipped(emitter, &skipped.document_statuses).await;
     write_document_statuses(
         runtime.ledger.as_ref(),
