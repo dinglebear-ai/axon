@@ -1,6 +1,54 @@
 use super::*;
 
 #[test]
+fn markdown_empty_heading_ancestors_join_their_child_body() {
+    let text = "# Document title\n\n## Release version\n\n### Fixed\n\n- Preserve useful source context.\n";
+    let chunks = markdown_sections(text);
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, text.trim());
+    assert_eq!(
+        chunks[0].heading_path,
+        vec!["Document title", "Release version", "Fixed"]
+    );
+    assert_eq!(chunks[0].range.byte_start, Some(0));
+    assert_eq!(chunks[0].range.byte_end, Some(text.len() as u64));
+}
+
+#[test]
+fn markdown_empty_siblings_and_trailing_headings_do_not_become_points() {
+    let text = "# Document\n## Empty section with a deliberately long title\n## Useful\nActual body.\n## Another empty section with a long title\n";
+    let chunks = markdown_sections(text);
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, "## Useful\nActual body.");
+    assert_eq!(chunks[0].heading_path, vec!["Document", "Useful"]);
+}
+
+#[test]
+fn markdown_only_headings_have_no_content_chunks() {
+    assert!(markdown_sections("# A\n## B\n## C\n").is_empty());
+}
+
+#[test]
+fn markdown_heading_scaffold_preserves_non_heading_hash_paragraphs() {
+    for body in [
+        "#\u{00a0}This is ordinary Markdown body text, with a nonbreaking space.",
+        "    # This is an indented code comment, not an ATX heading.",
+    ] {
+        let text = format!("# Section\n{body}\n# Next\nUseful sibling content.\n");
+        let chunks = markdown_sections(&text);
+        assert!(
+            chunks.iter().any(|chunk| chunk.content.contains(body)),
+            "lost {body:?}"
+        );
+        assert!(
+            chunks
+                .iter()
+                .any(|chunk| chunk.content.contains("Useful sibling content."))
+        );
+    }
+}
+
+#[test]
 fn markdown_sections_does_not_split_inside_a_fenced_code_block() {
     let text = "# Title\n\n```\n# not a heading\n## also not\n```\n\n## Real Heading\nbody\n";
     let chunks = markdown_sections(text);
