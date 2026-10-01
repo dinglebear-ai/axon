@@ -152,6 +152,21 @@ pub(crate) fn useful_chunks_with_limit(
     source: &str,
     max_chars: usize,
 ) -> Vec<DocumentChunk> {
+    deduplicate_chunks(contextual_chunks_with_limit(chunks, source, max_chars))
+}
+
+pub(crate) fn deduplicate_chunks(chunks: Vec<DocumentChunk>) -> Vec<DocumentChunk> {
+    dedup::deduplicate(chunks)
+}
+
+/// Pack and lend bounded literal context before profile-specific omission.
+/// Deduplication must follow omission so a rejected span cannot own the
+/// canonical location of otherwise useful identical content.
+pub(crate) fn contextual_chunks_with_limit(
+    chunks: Vec<DocumentChunk>,
+    source: &str,
+    max_chars: usize,
+) -> Vec<DocumentChunk> {
     let positions = std::cell::OnceCell::new();
     let mut packed: Vec<DocumentChunk> = Vec::new();
     for chunk in chunks.into_iter().filter(meaningful) {
@@ -175,12 +190,10 @@ pub(crate) fn useful_chunks_with_limit(
         borrow_following_context(&mut packed, source, positions, max_chars);
         borrow_previous_context(&mut packed, source, positions, max_chars);
     }
-    dedup::deduplicate(
-        packed
-            .into_iter()
-            .filter(|chunk| !short(chunk) && meaningful(chunk))
-            .collect(),
-    )
+    packed
+        .into_iter()
+        .filter(|chunk| !short(chunk) && meaningful(chunk))
+        .collect()
 }
 
 fn borrow_following_context(

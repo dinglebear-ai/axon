@@ -30,18 +30,19 @@ pub(crate) fn omit_empty_heading_spans(
         let end = headings
             .get(index + 1)
             .map_or(source.len(), |next| next.byte);
-        if source[heading.byte..end]
-            .lines()
-            .skip(1)
-            .all(|line| line.trim().is_empty())
+        let mut lines = source[heading.byte..end].split_inclusive('\n');
+        let heading_bytes = lines.next().map_or(0, str::len);
+        let blank_bytes: usize = lines
+            .take_while(|line| line.trim().is_empty())
+            .map(str::len)
+            .sum();
+        let scaffold_end = heading.byte + heading_bytes + blank_bytes;
+        if let Some(previous) = empty.last_mut()
+            && previous.1 == heading.byte
         {
-            if let Some(previous) = empty.last_mut()
-                && previous.1 == heading.byte
-            {
-                previous.1 = end;
-            } else {
-                empty.push((heading.byte, end));
-            }
+            previous.1 = scaffold_end;
+        } else {
+            empty.push((heading.byte, scaffold_end));
         }
     }
     chunks

@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-11");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-12");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -97,6 +97,49 @@ fn fragment_markdown_keeps_fenced_code_comments_that_resemble_headings() {
                 ranges.iter().any(|(a, b)| *a <= byte && byte < *b),
                 "lost comment {n}"
             );
+        }
+    }
+}
+
+#[test]
+fn short_markdown_blocks_borrow_heading_context_before_scaffold_is_omitted() {
+    let title = "Context ".repeat(11).trim().to_string();
+    for body in [
+        "- retained entry",
+        "| Name | Value |\n| --- | --- |\n| x | y |",
+    ] {
+        let source = format!("# {title}\n\n{body}\n");
+        let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+            markdown_max_chars: 96,
+            markdown_min_chars: 1,
+            markdown_overlap_chars: 0,
+            ..DocumentPreparerConfig::default()
+        });
+        let result = preparer
+            .prepare(request(
+                ContentKind::Markdown,
+                &source,
+                "gen-short-heading-body",
+                ChunkingProfile::MarkdownSections,
+            ))
+            .unwrap();
+        let PrepareSourceDocumentResult::Prepared(prepared) = result else {
+            panic!("lost useful structural body {body:?}");
+        };
+        assert!(
+            prepared
+                .chunks
+                .iter()
+                .any(|chunk| chunk.content.contains(body))
+        );
+        for chunk in &prepared.chunks {
+            assert!(chunk.content.chars().count() <= 96);
+            assert!(chunk.content.trim().chars().count() >= crate::quality::MIN_CHUNK_CHARS);
+            assert_eq!(chunk.chunk_locator.heading_path, vec![title.clone()]);
+            let start = chunk.source_range.byte_start.unwrap() as usize;
+            let end = chunk.source_range.byte_end.unwrap() as usize;
+            assert_eq!(&source[start..end], chunk.content);
+            assert!(chunk.content.contains(body), "heading-only point survived");
         }
     }
 }

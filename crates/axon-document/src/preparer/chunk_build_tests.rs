@@ -38,3 +38,32 @@ fn no_raw_empty_fallback_reintroduces_punctuation_junk() {
     assert!(bounded.empty_fallback);
     assert!(crate::quality::useful_chunks(bounded.chunks, &source).is_empty());
 }
+
+#[test]
+fn scaffold_omission_precedes_dedup_of_identical_fenced_body_text() {
+    let heading = "# Useful heading and matching fenced comment with enough meaningful context";
+    let source = format!("{heading}\n\n```bash\n{heading}\n```\n");
+    let body_start = source.rfind(heading).unwrap();
+    let chunks = [0, body_start]
+        .into_iter()
+        .map(|start| {
+            DocumentChunk::new(
+                heading,
+                text::source_range(&source, start, start + heading.len()),
+            )
+            .with_title("Shared breadcrumb")
+            .with_heading_path(vec!["Shared breadcrumb".into()])
+        })
+        .collect();
+    let output = finalize_chunks(
+        ChunkingProfile::MarkdownSections,
+        chunks,
+        &source,
+        MarkdownChunkLimits::new(96, 1, 0),
+        "heading_sections",
+    );
+    assert_eq!(output.len(), 1, "lost the identical fenced body comment");
+    assert_eq!(output[0].content, heading);
+    assert_eq!(output[0].range.byte_start, Some(body_start as u64));
+    assert!(!output[0].metadata.contains_key("additional_source_ranges"));
+}
