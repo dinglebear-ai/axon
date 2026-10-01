@@ -66,9 +66,8 @@ impl SqliteGraphStore {
         &self.pool
     }
 
-    /// Upsert a lazy candidate stream in one transaction. This is used by
-    /// source-baseline graph publication so corpus-sized manifests can be
-    /// converted and persisted in bounded chunks without losing atomicity.
+    /// Publish a lazy stream in bounded transactions, releasing the writer
+    /// between groups. On failure, the valid candidate prefix remains committed.
     pub async fn upsert_candidate_iter<I>(&self, candidates: I) -> Result<GraphWriteResult>
     where
         I: IntoIterator<Item = GraphCandidate>,
