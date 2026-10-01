@@ -51,6 +51,8 @@ async fn generation_delete_preserves_pending_nonledger_dependencies_atomically()
             .await
             .unwrap_err();
         assert_eq!(error.code.0, "source.ledger.generation_cleanup_pending");
+        assert!(error.message.contains(&old.generation.0));
+        assert!(error.message.contains("inspect and drain"));
         assert!(
             store
                 .get_manifest(SourceId::new("src_a"), old.generation.clone())

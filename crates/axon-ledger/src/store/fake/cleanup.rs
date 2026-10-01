@@ -108,7 +108,7 @@ pub(in crate::store) async fn delete_generation(
             && debt.kind != CleanupDebtKind::LedgerPrune
     }) {
         return Err(crate::validation::generation_cleanup_pending_error(
-            source_id,
+            source_id, generation,
         ));
     }
     let mut deleted = 0u64;

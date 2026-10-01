@@ -190,7 +190,7 @@ pub(super) async fn delete_generation(
     .map_err(sqlite_error)?;
     if pending.is_some() {
         return Err(crate::validation::generation_cleanup_pending_error(
-            source_id,
+            source_id, generation,
         ));
     }
     let documents =

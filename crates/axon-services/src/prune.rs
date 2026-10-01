@@ -377,22 +377,10 @@ pub async fn prune(
 
 /// A scope source that reports zero estimated impact for every selector.
 ///
-/// This is intentionally honest rather than fabricated: no store in this
-/// codebase currently exposes a read-only "how many would this delete"
-/// primitive (see module docs). A real estimate lands once `VectorStore` (and
-/// the artifact/graph/memory/ledger stores) grow a count-by-filter API.
-struct NullScopeSource;
+mod vector_debt;
+use vector_debt::NullScopeSource;
 
-impl PruneScopeSource for NullScopeSource {
-    fn estimate(&self, _selector: &PruneSelector) -> PruneEstimate {
-        PruneEstimate::default()
-    }
-}
-
-/// [`PruneTarget`] backed by the real vector store. Mirrors
-/// `crate::source::prune::LedgerPruneTarget`, generalized to the
-/// user-requested `Source`/`Generation`/`Collection` selectors this command
-/// exposes (rather than one ledger-recorded debt entry at a time).
+/// Store-backed target for operator source/generation/collection pruning.
 struct VectorOnlyPruneTarget<'a> {
     vector_store: &'a dyn VectorStore,
     /// The target-local ledger, when this target was built from a
@@ -457,11 +445,26 @@ impl PruneTarget for VectorOnlyPruneTarget<'_> {
                         "no vector selector resolvable for this step",
                     ));
                 };
+                let satisfied = self.matching_vector_debt(&selector).await?;
                 let deleted = self
                     .vector_store
                     .delete(selector)
                     .await
                     .map_err(|err| err.message.clone())?;
+                if deleted.dry_run {
+                    return Err(
+                        "vector provider returned a dry-run receipt; cleanup debt remains pending"
+                            .to_string(),
+                    );
+                }
+                if let Some(ledger) = &self.ledger {
+                    for debt_id in satisfied {
+                        ledger
+                            .resolve_cleanup_debt(debt_id)
+                            .await
+                            .map_err(|err| err.message)?;
+                    }
+                }
                 Ok(StepExecution::deleted(deleted.points_deleted))
             }
             axon_api::source::prune::PruneTargetKind::Ledger => {
