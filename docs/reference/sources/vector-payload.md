@@ -15,13 +15,14 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
-| `crates/axon-vectors/src/payload.rs` | `sha256:9f0fbd0bd0bbdd9364741c66a564cdc81c160b3e99be99802990054a1146b17c` |
+| `crates/axon-vectors/src/payload.rs` | `sha256:d9ef64bc363bff8abca1c4bf524f82930031053faa035513a50481a3628e2a20` |
 | `crates/axon-vectors/src/payload_families.rs` | `sha256:4417afd296fec6781597e5ca3aca8ca403c509a3babbf51a11e2b49b3e9b673d` |
 | `crates/axon-vectors/src/point.rs` | `sha256:e5ff4dbf5d477515db4e5dafeba265575900f399905e4e0576103e155ee07088` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
-| `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:63c60a97db760d23a91846d0c5ca077363913b0ab778c965c6a73a8bf652826f` |
+| `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:dbab3ae11359fd9a4a5a06adb2d195ccdd02fd85a2f525740dcfb1e574ec8698` |
 | `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33` |
+| `xtask/src/schemas/vector_payload_fields.rs` | `sha256:5b1ae4e9a1b5b3838bf5250856f6cd738adeb0838b679626c0e533d876285ba7` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c` |
 
 ## Root Shape
@@ -143,6 +144,7 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | `embedding_model` | `keyword` |
 | `embedding_profile` | `keyword` |
 | `embedding_provider` | `keyword` |
+| `item_canonical_uri_aliases` | `keyword` |
 | `job_id` | `keyword` |
 | `payload_contract_version` | `keyword` |
 | `redaction_status` | `keyword` |
@@ -150,7 +152,9 @@ This table lists schema-declared payload fields that may be indexed by a vector-
 | `source_family` | `keyword` |
 | `source_generation` | `integer` |
 | `source_id` | `keyword` |
+| `source_item_aliases` | `keyword` |
 | `source_item_key` | `keyword` |
+| `source_path_prefixes` | `keyword` |
 | `vector_namespace` | `keyword` |
 | `visibility` | `keyword` |
 

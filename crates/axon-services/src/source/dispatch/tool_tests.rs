@@ -125,14 +125,26 @@ async fn dispatch_mcp_tool_indexes_metadata_without_calling_tool() {
     let ledger = Arc::new(FakeLedgerStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors.clone(), ledger.clone());
-    let request = SourceRequest::new("mcp:labby/search").without_embedding();
+    let request = SourceRequest::new(
+        "mcp:labby/search_complete_source_metadata_reference_for_characterization",
+    )
+    .without_embedding();
     let routed =
         crate::source::routing::resolve_source_route(&request).expect("mcp tool should route");
 
-    let policy = super::tool_auth::ToolExecutionPolicy::test_mcp("labby/search", "/bin/echo");
-    let counts = run_mcp_tool(&runtime, "mcp:labby/search", None, &routed.route, &policy)
-        .await
-        .expect("mcp tool metadata dispatch should succeed");
+    let policy = super::tool_auth::ToolExecutionPolicy::test_mcp(
+        "labby/search_complete_source_metadata_reference_for_characterization",
+        "/bin/echo",
+    );
+    let counts = run_mcp_tool(
+        &runtime,
+        "mcp:labby/search_complete_source_metadata_reference_for_characterization",
+        None,
+        &routed.route,
+        &policy,
+    )
+    .await
+    .expect("mcp tool metadata dispatch should succeed");
 
     assert_eq!(counts.documents_prepared, 1);
     assert!(
@@ -281,7 +293,7 @@ async fn dispatch_cli_tool_execute_captures_redacted_artifact() {
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let (runtime, jobs) = test_runtime_with_jobs(vectors.clone(), ledger.clone());
     let mut request =
-        SourceRequest::new("cli:/bin/echo Authorization:Bearer sk-lane4").without_embedding();
+        SourceRequest::new("cli:/bin/echo Authorization:Bearer sk-lane4 Complete useful command output context for retrieval").without_embedding();
     request.scope = Some(axon_api::source::SourceScope::Api);
     request
         .options
@@ -297,7 +309,7 @@ async fn dispatch_cli_tool_execute_captures_redacted_artifact() {
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("/bin/echo");
     let counts = run_cli_tool(
         &runtime,
-        "cli:/bin/echo Authorization:Bearer sk-lane4",
+        "cli:/bin/echo Authorization:Bearer sk-lane4 Complete useful command output context for retrieval",
         Some(&snapshot),
         &routed.route,
         &policy,
@@ -367,7 +379,10 @@ async fn dispatch_mcp_tool_call_requires_caller_command_policy() {
     let ledger = Arc::new(FakeLedgerStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors.clone(), ledger);
-    let mut request = SourceRequest::new("mcp:labby/search").without_embedding();
+    let mut request = SourceRequest::new(
+        "mcp:labby/search_complete_source_metadata_reference_for_characterization",
+    )
+    .without_embedding();
     request.scope = Some(axon_api::source::SourceScope::Api);
     request
         .options
@@ -375,15 +390,17 @@ async fn dispatch_mcp_tool_call_requires_caller_command_policy() {
         .insert("execution_mode".to_string(), serde_json::json!("call"));
     request.options.values.insert(
         "mcp_allowlist".to_string(),
-        serde_json::json!(["labby/search"]),
+        serde_json::json!(["labby/search_complete_source_metadata_reference_for_characterization"]),
     );
     let routed = resolve_execution_route(&request, "mcp tool should route");
     let snapshot = execute_snapshot();
 
-    let policy = super::tool_auth::ToolExecutionPolicy::test_mcp_without_caller("labby/search");
+    let policy = super::tool_auth::ToolExecutionPolicy::test_mcp_without_caller(
+        "labby/search_complete_source_metadata_reference_for_characterization",
+    );
     let err = run_mcp_tool(
         &runtime,
-        "mcp:labby/search",
+        "mcp:labby/search_complete_source_metadata_reference_for_characterization",
         Some(&snapshot),
         &routed.route,
         &policy,
@@ -403,7 +420,10 @@ async fn dispatch_mcp_tool_call_captures_artifact() {
     let ledger = Arc::new(FakeLedgerStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors.clone(), ledger.clone());
-    let mut request = SourceRequest::new("mcp:labby/search").without_embedding();
+    let mut request = SourceRequest::new(
+        "mcp:labby/search_complete_source_metadata_reference_for_characterization",
+    )
+    .without_embedding();
     request.scope = Some(axon_api::source::SourceScope::Api);
     request
         .options
@@ -411,7 +431,7 @@ async fn dispatch_mcp_tool_call_captures_artifact() {
         .insert("execution_mode".to_string(), serde_json::json!("call"));
     request.options.values.insert(
         "mcp_allowlist".to_string(),
-        serde_json::json!(["labby/search"]),
+        serde_json::json!(["labby/search_complete_source_metadata_reference_for_characterization"]),
     );
     request.options.values.insert(
         "mcp_caller_command".to_string(),
@@ -424,10 +444,13 @@ async fn dispatch_mcp_tool_call_captures_artifact() {
     let routed = resolve_execution_route(&request, "mcp tool should route");
     let snapshot = execute_snapshot();
 
-    let policy = super::tool_auth::ToolExecutionPolicy::test_mcp("labby/search", "/bin/echo");
+    let policy = super::tool_auth::ToolExecutionPolicy::test_mcp(
+        "labby/search_complete_source_metadata_reference_for_characterization",
+        "/bin/echo",
+    );
     let counts = run_mcp_tool(
         &runtime,
-        "mcp:labby/search",
+        "mcp:labby/search_complete_source_metadata_reference_for_characterization",
         Some(&snapshot),
         &routed.route,
         &policy,

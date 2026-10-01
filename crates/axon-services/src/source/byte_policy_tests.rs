@@ -39,7 +39,7 @@ enum Expected {
     Skip(ContentSkipReason),
 }
 fn fixtures() -> Vec<(&'static str, Vec<u8>, Expected)> {
-    let text = "Hello café";
+    let text = "Hello café with complete useful source context shared by all acquisition adapters.";
     let le = [
         vec![0xff, 0xfe],
         text.encode_utf16().flat_map(u16::to_le_bytes).collect(),

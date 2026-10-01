@@ -21,56 +21,78 @@ pub(crate) fn plain_text_windows_with_limits(
     let max_bytes = max_bytes.max(4);
     let max_chars = max_chars.max(1);
     let positions = SourcePositions::new(text);
-    paragraphs(text)
+    let spans = paragraphs(text);
+    let mut packed = Vec::new();
+    for (start, end) in spans {
+        if let Some(&(previous_start, _)) = packed.last() {
+            if end - previous_start <= max_bytes
+                && text[previous_start..end].chars().count() <= max_chars
+            {
+                *packed.last_mut().unwrap() = (previous_start, end);
+                continue;
+            }
+        }
+        packed.extend(bounded_windows(text, start, end, max_bytes, max_chars));
+    }
+    packed
         .into_iter()
-        .flat_map(|(start, end)| bounded_windows(text, start, end, max_bytes, max_chars))
         .map(|(start, end)| {
             DocumentChunk::new(
                 text[start..end].to_string(),
                 positions.source_range(start, end),
             )
         })
-        .filter(|chunk| !chunk.content.is_empty())
         .collect()
 }
 
-struct SourcePositions {
-    chars: Vec<u64>,
-    lines: Vec<u32>,
+/// Sparse character/line checkpoints bound each position lookup to 256 bytes.
+pub(crate) struct SourcePositions<'a> {
+    source: &'a str,
+    checkpoints: Vec<(usize, u64, u32)>,
 }
 
-impl SourcePositions {
-    fn new(text: &str) -> Self {
-        let mut chars = vec![0; text.len() + 1];
-        let mut lines = vec![1; text.len() + 1];
-        let mut char_count = 0_u64;
-        let mut line = 1_u32;
-        for (start, character) in text.char_indices() {
-            let end = start + character.len_utf8();
-            for offset in start..end {
-                chars[offset] = char_count;
-                lines[offset] = line;
+impl<'a> SourcePositions<'a> {
+    pub(crate) fn new(text: &'a str) -> Self {
+        let mut checkpoints = vec![(0, 0, 1)];
+        let mut chars = 0;
+        let mut line = 1;
+        for (byte, character) in text.char_indices() {
+            if byte - checkpoints.last().unwrap().0 >= 256 {
+                checkpoints.push((byte, chars, line));
             }
-            char_count += 1;
+            chars += 1;
             if character == '\n' {
                 line += 1;
             }
-            chars[end] = char_count;
-            lines[end] = line;
         }
-        Self { chars, lines }
+        Self {
+            source: text,
+            checkpoints,
+        }
     }
 
-    fn source_range(&self, start: usize, end: usize) -> SourceRange {
-        let line_end_offset = end.saturating_sub(1).min(self.lines.len() - 1);
-        source_range_from_positions(
-            start,
-            end,
-            self.lines[start],
-            self.lines[line_end_offset],
-            self.chars[start],
-            self.chars[end],
+    fn position(&self, mut byte: usize) -> (u64, u32) {
+        byte = byte.min(self.source.len());
+        while !self.source.is_char_boundary(byte) {
+            byte -= 1;
+        }
+        let index = self
+            .checkpoints
+            .partition_point(|&(offset, _, _)| offset <= byte)
+            - 1;
+        let (start, chars, line) = self.checkpoints[index];
+        let tail = &self.source[start..byte];
+        (
+            chars + tail.chars().count() as u64,
+            line + tail.bytes().filter(|&b| b == b'\n').count() as u32,
         )
+    }
+
+    pub(crate) fn source_range(&self, start: usize, end: usize) -> SourceRange {
+        let (char_start, line_start) = self.position(start);
+        let (char_end, _) = self.position(end);
+        let (_, line_end) = self.position(end.saturating_sub(1));
+        source_range_from_positions(start, end, line_start, line_end, char_start, char_end)
     }
 }
 

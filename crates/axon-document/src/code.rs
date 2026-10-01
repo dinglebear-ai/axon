@@ -1,18 +1,14 @@
 //! Code-oriented chunk builders.
 //!
-//! Symbol extraction here is a lightweight keyword heuristic, not a real
-//! tree-sitter/AST parser (see `docs/pipeline-unification/sources/
-//! chunking-contract.md` "Code Chunking" for the target contract). Every
-//! chunk is stamped with `code_language`, `code_chunk_source`, and
-//! `symbol_extraction_status` so callers can tell heuristic output from a
-//! real AST parse, and oversized symbols are split into line-window
-//! sub-chunks with explicit fallback metadata rather than shipped as one
-//! giant chunk.
+//! Parser facts partition source into disjoint symbol and module intervals.
+//! Without parser facts, keyword heuristics provide an explicit fallback.
+//! Metadata records the parser and recovery status; oversized intervals become
+//! line windows with their symbol provenance retained.
 
 use axon_api::source::SourceParseFacts;
 
 use crate::chunk::DocumentChunk;
-use crate::text::{atomic_text, source_range};
+use crate::text::{SourcePositions, atomic_text};
 
 mod parser_facts;
 
@@ -39,6 +35,7 @@ pub(crate) fn code_manifest(text: &str, path: Option<&str>) -> Vec<DocumentChunk
                 .with_metadata("code_language", language.into())
                 .with_metadata("code_file_type", "config".into())
                 .with_metadata("code_chunk_source", "atomic_manifest".into())
+                .with_metadata("actual_chunking_method", "atomic_manifest".into())
                 .with_metadata("code_parse_status", "unsupported".into())
                 .with_metadata("symbol_extraction_status", "none".into())
         })
@@ -60,18 +57,19 @@ pub(crate) fn code_symbols_with_facts(
     language_hint: Option<&str>,
     parse_facts: &[SourceParseFacts],
 ) -> Vec<DocumentChunk> {
+    let positions = SourcePositions::new(text);
     let raw = if let Some(chunks) = parser_facts::parser_code_symbol_chunks(text, parse_facts) {
         chunks
-    } else if let Some(chunks) = repomix_packed_code_symbols(text) {
+    } else if let Some(chunks) = repomix_packed_code_symbols(text, &positions) {
         chunks
     } else {
-        code_symbols_with_base(text, text, 0)
+        code_symbols_with_base(text, 0, &positions)
     };
 
     let language = detect_code_language(path, language_hint);
-    let is_test = is_test_path(path);
+    let is_test = axon_parse::code_path::is_test_path(path);
     raw.into_iter()
-        .flat_map(|chunk| split_if_huge(chunk, text))
+        .flat_map(|chunk| split_if_huge(chunk, &positions))
         .map(|chunk| stamp_code_metadata(chunk, language, is_test))
         .collect()
 }
@@ -88,12 +86,13 @@ fn stamp_code_metadata(
         let (source, parse_status, extraction_status) = if chunk.symbol.is_some() {
             ("heuristic_symbol", "fallback", "fallback")
         } else if language == "unknown" {
-            ("line_window", "unsupported", "unsupported")
+            ("atomic_code", "unsupported", "unsupported")
         } else {
-            ("line_window", "fallback", "none")
+            ("atomic_code", "fallback", "none")
         };
         chunk = chunk
             .with_metadata("code_chunk_source", source.into())
+            .with_metadata("actual_chunking_method", source.into())
             .with_metadata("code_parse_status", parse_status.into())
             .with_metadata("symbol_extraction_status", extraction_status.into());
     }
@@ -104,7 +103,7 @@ fn stamp_code_metadata(
 /// line-window sub-chunks, stamping the contract's fallback metadata
 /// (`chunking_fallback`, `preferred_chunking_method`,
 /// `actual_chunking_method`). Leaves small chunks untouched.
-fn split_if_huge(chunk: DocumentChunk, source: &str) -> Vec<DocumentChunk> {
+fn split_if_huge(chunk: DocumentChunk, positions: &SourcePositions<'_>) -> Vec<DocumentChunk> {
     if chunk.content.len() <= MAX_SYMBOL_CHUNK_BYTES {
         return vec![chunk];
     }
@@ -115,13 +114,13 @@ fn split_if_huge(chunk: DocumentChunk, source: &str) -> Vec<DocumentChunk> {
         .into_iter()
         .enumerate()
         .filter_map(|(idx, (start, end))| {
-            let content = chunk.content[start..end].trim();
+            let content = &chunk.content[start..end];
             if content.is_empty() {
                 return None;
             }
             let mut sub = DocumentChunk::new(
                 content.to_string(),
-                source_range(source, base + start, base + end),
+                positions.source_range(base + start, base + end),
             )
             .with_metadata("code_chunk_source", "line_window".into())
             .with_metadata("code_parse_status", "partial".into())
@@ -129,6 +128,11 @@ fn split_if_huge(chunk: DocumentChunk, source: &str) -> Vec<DocumentChunk> {
             .with_metadata("chunking_fallback", "line_window".into())
             .with_metadata("preferred_chunking_method", "tree_sitter".into())
             .with_metadata("actual_chunking_method", "line_window".into());
+            for (key, value) in &chunk.metadata.0 {
+                sub.metadata
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
             if let Some(symbol) = &symbol {
                 sub = sub.with_symbol(format!("{symbol}#part{idx}"));
             }
@@ -200,21 +204,11 @@ fn language_from_extension(ext: &str) -> Option<&'static str> {
     })
 }
 
-fn is_test_path(path: Option<&str>) -> bool {
-    let Some(path) = path else { return false };
-    let lower = path.to_ascii_lowercase();
-    lower.contains("/test/")
-        || lower.contains("/tests/")
-        || lower.contains("_test.")
-        || lower.contains("_tests.")
-        || lower.contains(".test.")
-        || lower.contains(".tests.")
-        || lower.contains(".spec.")
-        || lower.starts_with("test_")
-        || lower.contains("/test_")
-}
-
-fn code_symbols_with_base(section: &str, source: &str, base: usize) -> Vec<DocumentChunk> {
+fn code_symbols_with_base(
+    section: &str,
+    base: usize,
+    positions: &SourcePositions<'_>,
+) -> Vec<DocumentChunk> {
     let starts: Vec<usize> = section
         .lines()
         .scan(0usize, |offset, line| {
@@ -227,44 +221,48 @@ fn code_symbols_with_base(section: &str, source: &str, base: usize) -> Vec<Docum
         .collect();
 
     if starts.is_empty() {
-        let content = section.trim();
+        let content = section;
         if content.is_empty() {
             return Vec::new();
         }
         return vec![DocumentChunk::new(
             content.to_string(),
-            source_range(source, base, base + section.len()),
+            positions.source_range(base, base + section.len()),
         )];
     }
 
     let mut boundaries = starts;
+    if boundaries.first().copied() != Some(0) {
+        boundaries.insert(0, 0);
+    }
     boundaries.push(section.len());
     boundaries
         .windows(2)
         .filter_map(|pair| {
             let start = pair[0];
             let end = pair[1];
-            let content = section[start..end].trim();
+            let content = &section[start..end];
             if content.is_empty() {
                 return None;
             }
-            let symbol = content
-                .lines()
-                .next()
-                .and_then(symbol_name)
-                .unwrap_or_else(|| format!("symbol_at_{start}"));
-            Some(
-                DocumentChunk::new(
-                    content.to_string(),
-                    source_range(source, base + start, base + end),
-                )
-                .with_symbol(symbol),
-            )
+            let chunk = DocumentChunk::new(
+                content.to_string(),
+                positions.source_range(base + start, base + end),
+            );
+            let symbol = content.lines().next().and_then(symbol_name);
+            Some(if let Some(symbol) = symbol {
+                chunk.with_symbol(symbol)
+            } else {
+                chunk
+            })
         })
         .collect()
 }
 
-fn repomix_packed_code_symbols(text: &str) -> Option<Vec<DocumentChunk>> {
+fn repomix_packed_code_symbols(
+    text: &str,
+    positions: &SourcePositions<'_>,
+) -> Option<Vec<DocumentChunk>> {
     let lines = line_spans(text);
     let markers: Vec<(usize, String)> = lines
         .iter()
@@ -309,7 +307,7 @@ fn repomix_packed_code_symbols(text: &str) -> Option<Vec<DocumentChunk>> {
         let start = lines[first].start;
         let end = lines[last - 1].end;
         chunks.extend(
-            code_symbols_with_base(&text[start..end], text, start)
+            code_symbols_with_base(&text[start..end], start, positions)
                 .into_iter()
                 .map(|chunk| chunk.with_metadata("original_path", path.clone().into())),
         );

@@ -54,9 +54,44 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
     require_non_negative_integer(metadata, "dropped_field_count")?;
     require_non_negative_integer(metadata, "detector_count")?;
     validate_detector_names(metadata)?;
+    for field in [
+        "source_item_aliases",
+        "source_path_prefixes",
+        "item_canonical_uri_aliases",
+        "code_symbol_aliases",
+    ] {
+        if let Some(value) = metadata.get(field) {
+            let valid = value.as_array().is_some_and(|values| {
+                (field != "source_path_prefixes" || !values.is_empty())
+                    && values
+                        .iter()
+                        .all(|value| value.as_str().is_some_and(|text| !text.trim().is_empty()))
+            });
+            if !valid {
+                return Err(VectorPayloadValidationError::InvalidFieldShape {
+                    field: field.to_string(),
+                });
+            }
+        }
+    }
     validate_optional_non_empty_string(metadata, "content_title")?;
     validate_optional_non_empty_string(metadata, "chunk_title")?;
     validate_parser_provenance(metadata)?;
+    if let Some(value) = metadata.get("code_syntax_recovered") {
+        if !value.is_boolean() {
+            return Err(VectorPayloadValidationError::InvalidFieldShape {
+                field: "code_syntax_recovered".into(),
+            });
+        }
+    }
+    if let Some(value) = metadata.get("code_symbol_source_range") {
+        let range: SourceRange = serde_json::from_value(value.clone()).map_err(|_| {
+            VectorPayloadValidationError::InvalidFieldShape {
+                field: "code_symbol_source_range".into(),
+            }
+        })?;
+        validate_source_range_shape(&range, "code_symbol_source_range")?;
+    }
 
     let locator: ChunkLocator =
         serde_json::from_value(metadata.get("chunk_locator").cloned().ok_or_else(|| {

@@ -104,7 +104,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
     }];
     let preparer = DocumentPreparer::new(DocumentPreparerConfig {
         max_content_bytes: axon_document::content_policy::DEFAULT_CONTENT_BYTE_LIMIT,
-        markdown_max_chars: 48,
+        markdown_max_chars: 96,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
     });
@@ -129,7 +129,7 @@ async fn prepare_documents_uses_the_runtime_injected_markdown_limits() {
         document
             .chunks
             .iter()
-            .all(|chunk| chunk.content.chars().count() <= 48)
+            .all(|chunk| chunk.content.chars().count() <= 96)
     );
 }
 

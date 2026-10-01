@@ -9,9 +9,9 @@ struct SourceObservabilityHarness {
 impl SourceObservabilityHarness {
     async fn with_fake_web() -> Self {
         Self {
-            harness: crate::test_support::source_context_with_fake_web()
+            harness: crate::source_pipeline_differential_tests::web_fixture()
                 .await
-                .expect("source context with fake web"),
+                .expect("source context with meaningful fake web"),
         }
     }
 

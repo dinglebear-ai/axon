@@ -8,6 +8,7 @@
 
 pub mod builtins;
 pub mod code;
+pub mod code_path;
 pub mod config;
 pub mod docker;
 pub mod env;

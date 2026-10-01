@@ -270,15 +270,10 @@ fn supported_python_is_tree_sitter_backed_with_nested_parent_ranges() {
 }
 
 #[test]
-fn malformed_supported_source_discloses_regex_fallback() {
-    let facts = symbol_facts(&input("src/lib.rs", "fn fallback() {\n"));
-
-    assert_eq!(facts.len(), 1);
-    assert_eq!(facts[0].parser_method, "regex_fallback");
-    assert_eq!(
-        facts[0].value["symbol_extraction_status"],
-        "heuristic_fallback"
-    );
+fn malformed_supported_declaration_does_not_become_a_graph_symbol() {
+    let (facts, candidates) = symbol_facts_with_graph(&input("src/lib.rs", "fn broken() {\n"));
+    assert!(facts.is_empty());
+    assert!(candidates.is_empty());
 }
 
 #[test]
@@ -288,4 +283,64 @@ fn unsupported_language_keeps_honest_regex_fallback() {
     assert_eq!(facts.len(), 1);
     assert_eq!(facts[0].parser_method, "regex_fallback");
     assert!(facts[0].confidence < 0.75);
+}
+
+#[test]
+fn syntax_recovery_retains_valid_symbols_without_claiming_malformed_ones() {
+    let text = "fn before() {}\nfn broken() { let x = ; }\nfn after() {}\n";
+    let (facts, candidates) = symbol_facts_with_graph(&input("src/lib.rs", text));
+    let names: Vec<_> = facts.iter().map(|fact| fact.name.as_str()).collect();
+    assert_eq!(names, ["before", "after"]);
+    assert_eq!(candidates.len(), facts.len());
+    for fact in facts {
+        assert_eq!(fact.parser_method, "tree_sitter");
+        assert_eq!(fact.value["code_parse_status"], "partial");
+        assert_eq!(fact.value["code_syntax_recovered"], true);
+    }
+}
+
+#[test]
+fn nested_ast_symbols_keep_full_graph_facts_and_unicode_ranges() {
+    for (path, text, parent, child) in [
+        (
+            "src/lib.rs",
+            "// café\nimpl Widget { fn render() {} }\n",
+            "Widget",
+            "render",
+        ),
+        (
+            "src/widget.ts",
+            "// café\nclass Widget { render() {} }\n",
+            "Widget",
+            "render",
+        ),
+    ] {
+        let (facts, candidates) = symbol_facts_with_graph(&input(path, text));
+        assert_eq!(facts.len(), 2);
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(facts[0].name, parent);
+        assert_eq!(facts[1].name, child);
+        assert_eq!(facts[1].value["parent_symbol"], parent);
+        for fact in &facts {
+            let range = fact.range.as_ref().unwrap();
+            let start = range.byte_start.unwrap() as usize;
+            let end = range.byte_end.unwrap() as usize;
+            assert_eq!(range.char_start, Some(text[..start].chars().count() as u64));
+            assert_eq!(range.char_end, Some(text[..end].chars().count() as u64));
+            assert!(text[start..end].contains(&fact.name));
+        }
+    }
+}
+
+#[test]
+fn shared_declaration_ranges_keep_both_variable_graph_facts() {
+    let (facts, candidates) = symbol_facts_with_graph(&input(
+        "src/config.ts",
+        "export const first = 1, second = 2;\n",
+    ));
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[0].name, "first");
+    assert_eq!(facts[1].name, "second");
+    assert_eq!(facts[0].range, facts[1].range);
+    assert_eq!(candidates.len(), 2);
 }

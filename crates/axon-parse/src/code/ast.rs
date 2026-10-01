@@ -46,6 +46,7 @@ pub(super) struct AstSymbol {
     parent_symbol: Option<String>,
     range: SourceRange,
     quote: String,
+    recovered: bool,
 }
 
 pub(super) fn parse_symbols(input: &ParseInput) -> Result<Vec<AstSymbol>, ()> {
@@ -54,12 +55,20 @@ pub(super) fn parse_symbols(input: &ParseInput) -> Result<Vec<AstSymbol>, ()> {
     let mut parser = Parser::new();
     parser.set_language(&language.grammar()).map_err(|_| ())?;
     let tree = parser.parse(source, None).ok_or(())?;
-    if tree.root_node().has_error() {
-        return Err(());
-    }
 
     let mut symbols = Vec::new();
-    collect_symbols(tree.root_node(), source, language, None, &mut symbols);
+    let offsets = CharOffsets::new(source);
+    collect_symbols(
+        tree.root_node(),
+        source,
+        language,
+        None,
+        &mut symbols,
+        &offsets,
+    );
+    for symbol in &mut symbols {
+        symbol.recovered = tree.root_node().has_error();
+    }
     Ok(symbols)
 }
 
@@ -83,6 +92,8 @@ pub(super) fn facts_with_graph(
                 "parent_symbol": symbol.parent_symbol,
                 "symbol_extraction_status": "ast",
                 "code_symbol_range_truncated": false,
+                "code_parse_status": if symbol.recovered { "partial" } else { "parsed" },
+                "code_syntax_recovered": symbol.recovered,
             }),
             Some(symbol.range.clone()),
         ));
@@ -104,8 +115,14 @@ fn collect_symbols(
     language: CodeLanguage,
     parent_symbol: Option<&str>,
     output: &mut Vec<AstSymbol>,
+    offsets: &CharOffsets<'_>,
 ) {
-    let descriptor = symbol_descriptor(node, source, language);
+    if node.is_error() || node.is_missing() {
+        return;
+    }
+    let descriptor = (!node.has_error() && !declaration_node(node).has_error())
+        .then(|| symbol_descriptor(node, source, language))
+        .flatten();
     let next_parent = descriptor
         .as_ref()
         .map(|descriptor| descriptor.name.clone())
@@ -113,7 +130,7 @@ fn collect_symbols(
 
     if let Some(descriptor) = descriptor {
         let range_node = declaration_node(node);
-        let range = node_range(range_node, source);
+        let range = node_range(range_node, offsets);
         let quote = source[range_node.start_byte()..range_node.end_byte()].to_string();
         output.push(AstSymbol {
             name: descriptor.name,
@@ -123,12 +140,20 @@ fn collect_symbols(
             parent_symbol: parent_symbol.map(str::to_string),
             range,
             quote,
+            recovered: false,
         });
     }
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        collect_symbols(child, source, language, next_parent.as_deref(), output);
+        collect_symbols(
+            child,
+            source,
+            language,
+            next_parent.as_deref(),
+            output,
+            offsets,
+        );
     }
 }
 
@@ -253,7 +278,37 @@ fn declaration_node(mut node: Node<'_>) -> Node<'_> {
     node
 }
 
-fn node_range(node: Node<'_>, source: &str) -> SourceRange {
+/// Sparse byte checkpoints bound each symbol's character-coordinate scan.
+struct CharOffsets<'a> {
+    source: &'a str,
+    checkpoints: Vec<(usize, u64)>,
+}
+
+impl<'a> CharOffsets<'a> {
+    fn new(source: &'a str) -> Self {
+        let mut checkpoints = vec![(0, 0)];
+        for (chars, (byte, _)) in source.char_indices().enumerate() {
+            if byte - checkpoints.last().unwrap().0 >= 256 {
+                checkpoints.push((byte, chars as u64));
+            }
+        }
+        Self {
+            source,
+            checkpoints,
+        }
+    }
+
+    fn at(&self, byte: usize) -> u64 {
+        let index = self
+            .checkpoints
+            .partition_point(|&(offset, _)| offset <= byte)
+            - 1;
+        let (start, chars) = self.checkpoints[index];
+        chars + self.source[start..byte].chars().count() as u64
+    }
+}
+
+fn node_range(node: Node<'_>, offsets: &CharOffsets<'_>) -> SourceRange {
     let start = node.start_byte();
     let end = node.end_byte();
     SourceRange {
@@ -261,8 +316,8 @@ fn node_range(node: Node<'_>, source: &str) -> SourceRange {
         line_end: Some(node.end_position().row as u32 + 1),
         byte_start: Some(start as u64),
         byte_end: Some(end as u64),
-        char_start: Some(source[..start].chars().count() as u64),
-        char_end: Some(source[..end].chars().count() as u64),
+        char_start: Some(offsets.at(start)),
+        char_end: Some(offsets.at(end)),
         time_start_ms: None,
         time_end_ms: None,
         dom_selector: None,
@@ -315,3 +370,7 @@ fn detect_language(input: &ParseInput) -> Option<CodeLanguage> {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "ast_tests.rs"]
+mod tests;

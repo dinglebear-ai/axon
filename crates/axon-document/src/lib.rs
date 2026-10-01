@@ -17,6 +17,7 @@ mod parse;
 pub mod prepared;
 pub mod preparer;
 pub mod profile;
+mod quality;
 pub mod schema;
 pub mod session;
 pub mod source_range;

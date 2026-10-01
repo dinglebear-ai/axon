@@ -50,7 +50,10 @@ async fn concrete_document_preparer_satisfies_boundary_trait() {
     let preparer: Arc<dyn DocumentPreparer> =
         Arc::new(crate::preparer::DocumentPreparer::default());
 
-    let document = source_doc(ContentKind::Markdown, "# Hello\nWorld");
+    let document = source_doc(
+        ContentKind::Markdown,
+        "# Hello\nWorld configuration reference with complete useful context for retrieval.",
+    );
     let prepared = preparer
         .prepare(prepare_request(document, "generation-42"))
         .await
@@ -75,7 +78,13 @@ async fn concrete_document_preparer_prepare_many_short_circuits_on_first_error()
         Arc::new(crate::preparer::DocumentPreparer::default());
 
     let documents = vec![
-        prepare_request(source_doc(ContentKind::Markdown, "# Hello\nWorld"), "g1"),
+        prepare_request(
+            source_doc(
+                ContentKind::Markdown,
+                "# Hello\nWorld configuration reference with complete useful context for retrieval.",
+            ),
+            "g1",
+        ),
         prepare_request(source_doc(ContentKind::Markdown, "# Second\nDoc"), "g1"),
     ];
     let prepared = preparer
@@ -91,7 +100,10 @@ async fn concrete_document_preparer_prepare_many_short_circuits_on_first_error()
 fn concrete_chunk_router_satisfies_boundary_trait() {
     let router: Arc<dyn ChunkRouter> = Arc::new(crate::chunk_router::ChunkRouter);
 
-    let document = source_doc(ContentKind::Markdown, "# Hello\nWorld");
+    let document = source_doc(
+        ContentKind::Markdown,
+        "# Hello\nWorld configuration reference with complete useful context for retrieval.",
+    );
     let profile = router.route(&document).expect("route should succeed");
     assert_eq!(profile, ChunkProfile::MarkdownSections);
 
@@ -104,7 +116,10 @@ fn fake_document_preparer_records_calls_and_supports_modes() {
     use crate::testing::{FakeDocumentMode, FakeDocumentPreparer};
 
     let fake = FakeDocumentPreparer::with_mode(FakeDocumentMode::Success);
-    let document = source_doc(ContentKind::PlainText, "hello");
+    let document = source_doc(
+        ContentKind::PlainText,
+        "hello to everyone reading this complete useful source reference",
+    );
     let result = tokio_test_prepare(&fake, prepare_request(document.clone(), "fake-generation"));
     assert!(result.is_ok());
     assert_eq!(fake.calls().len(), 1);
@@ -113,14 +128,26 @@ fn fake_document_preparer_records_calls_and_supports_modes() {
     let failing = FakeDocumentPreparer::with_mode(FakeDocumentMode::Failure);
     let err = tokio_test_prepare(
         &failing,
-        prepare_request(source_doc(ContentKind::PlainText, "hello"), "g"),
+        prepare_request(
+            source_doc(
+                ContentKind::PlainText,
+                "hello to everyone reading this complete useful source reference",
+            ),
+            "g",
+        ),
     );
     assert!(err.is_err());
 
     let degraded = FakeDocumentPreparer::with_mode(FakeDocumentMode::Degraded);
     let ok = tokio_test_prepare(
         &degraded,
-        prepare_request(source_doc(ContentKind::PlainText, "hello"), "g"),
+        prepare_request(
+            source_doc(
+                ContentKind::PlainText,
+                "hello to everyone reading this complete useful source reference",
+            ),
+            "g",
+        ),
     )
     .expect("degraded mode still returns Ok with a warning");
     let PrepareSourceDocumentResult::Prepared(ok) = ok else {
@@ -174,7 +201,13 @@ async fn concrete_and_fake_boundaries_preserve_skips_in_mixed_batches() {
         };
         let results = preparer
             .prepare_many(vec![
-                prepare_request(source_doc(ContentKind::PlainText, "hello"), "g-mixed"),
+                prepare_request(
+                    source_doc(
+                        ContentKind::PlainText,
+                        "hello to everyone reading this complete useful source reference",
+                    ),
+                    "g-mixed",
+                ),
                 prepare_request(skipped, "g-mixed"),
             ])
             .await

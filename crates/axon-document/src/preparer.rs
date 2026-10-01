@@ -18,7 +18,8 @@ use crate::source_range::bounds_for_text;
 mod chunk_build;
 mod validation;
 use chunk_build::{
-    bound_or_fallback, build_chunks, empty_fallback_warning, parsed_code_method, warning,
+    bound_or_fallback, build_chunks, empty_fallback_warning, finalize_chunks, parsed_code_method,
+    warning,
 };
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document;
@@ -28,7 +29,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-6";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-7";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -94,6 +95,20 @@ impl DocumentPreparer {
     pub fn with_content_byte_limit(mut self, limit: usize) -> Self {
         self.config.max_content_bytes = self.config.max_content_bytes.min(limit);
         self
+    }
+
+    fn selected_profile(
+        &self,
+        request: &PrepareSourceDocumentRequest,
+        parse: &DocumentParse,
+    ) -> Result<ChunkingProfile, String> {
+        match request.profile {
+            Some(profile) => Ok(profile),
+            None => parse
+                .routed_profile()
+                .map(Ok)
+                .unwrap_or_else(|| self.router.route(&request.document)),
+        }
     }
 
     fn classify_document(&self, document: &SourceDocument) -> Result<ContentDisposition, String> {
@@ -183,13 +198,7 @@ impl DocumentPreparer {
             .graph_candidates
             .extend(metadata_parse.graph_candidates);
 
-        let profile = match request.profile {
-            Some(profile) => profile,
-            None => parse
-                .routed_profile()
-                .map(Ok)
-                .unwrap_or_else(|| self.router.route(&request.document))?,
-        };
+        let profile = self.selected_profile(&request, &parse)?;
         let bounds = bounds_for_text(&content.text);
         // Concrete method distinct from the profile name: routes through the
         // same size/adapter/scope-aware decision `ChunkRouter::route_decision`
@@ -219,7 +228,13 @@ impl DocumentPreparer {
             self.config.markdown_limits(),
         );
         let bounded = bound_or_fallback(build.chunks, &content.text);
-        let chunks = bounded.chunks;
+        let chunks = finalize_chunks(
+            profile,
+            bounded.chunks,
+            &content.text,
+            self.config.markdown_limits(),
+            decision.method,
+        );
         if chunks.is_empty() {
             return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
                 request,

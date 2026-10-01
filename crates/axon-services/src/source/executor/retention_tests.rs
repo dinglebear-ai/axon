@@ -200,3 +200,17 @@ async fn central_cap_changes_completeness_only_when_it_truncates() {
         InventoryCompleteness::Partial
     );
 }
+
+#[tokio::test]
+async fn partial_git_refresh_requires_complete_prior_alias_inventory() {
+    let (_, mut prior, _) = fixture().await;
+    prior.items[0]
+        .metadata
+        .insert("source_item_aliases".into(), serde_json::json!(["copy.md"]));
+    let error = require_complete_alias_inventory(true, &prior).unwrap_err();
+    assert!(error.to_string().contains("max_items unset"));
+    // Other source adapters do not use repository alias acquisition.
+    require_complete_alias_inventory(false, &prior).unwrap();
+    prior.items[0].metadata.remove("source_item_aliases");
+    require_complete_alias_inventory(true, &prior).unwrap();
+}

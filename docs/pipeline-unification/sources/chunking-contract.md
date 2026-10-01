@@ -48,33 +48,22 @@ remains owned by the graph pipeline.
 
 ## Current Implementation Snapshot
 
-Implemented today:
+Implemented in the shared source pipeline:
 
-- `axon-vector::ops::SourceDocument` normalizes content for vector preparation.
-  Current fields include `url`, `domain`, `text`, `source_type`, `title`,
-  `extra`, `structured`, and an internal chunk hint.
-- `prepare_source_document` routes file, markdown/plain, plain text, and atomic
-  memory content into `PreparedDoc`.
-- Markdown/plain chunking uses `text_splitter::MarkdownSplitter`, heading
-  breadcrumbs, byte offsets, and source ranges.
-- Code chunking is AST-aware through tree-sitter when supported and falls back
-  to prose chunking for unsupported languages, oversized files, or zero-symbol
-  extraction.
-- Current per-chunk metadata can include `chunk_content_kind`, `chunk_locator`,
-  `source_range`, file line fields, `code_chunking_method`, `symbol_name`,
-  `symbol_kind`, `code_file_path`, `code_language`, `code_file_type`, and
-  `symbol_extraction_status`.
-- Current point IDs default to UUIDv5 over `url:idx`; memory can pass stable
-  chunk point IDs.
-
-Planned by this contract:
-
-- `DocumentPreparer`, `ChunkRouter`, `Parser`, `PreparedDocument`, parse facts,
-  and graph candidates become explicit shared boundaries.
-- Every source adapter emits the target `SourceDocument` shape, and no adapter
-  emits `PreparedDocument` directly.
-- Deterministic chunk ids, content hashes, cleanup keys, graph candidates, and
-  source ledger metadata become required for all source families.
+- Adapters emit `axon_api::source::SourceDocument`; `axon-document` owns
+  `DocumentPreparer`, `ChunkRouter`, and prepared chunks.
+- `axon-parse` produces parser facts and graph candidates. Supported code uses
+  Tree-sitter; unsupported code retains explicit heuristic or window methods.
+- Code embedding partitions nested declaration ranges, while graph facts retain
+  complete declarations. Recoverable syntax errors retain clean AST siblings.
+- The preparer enforces provider size bounds and a shared final quality gate.
+  Compatible small fragments pack with source provenance; meaningless or
+  independently tiny output is skipped.
+- Complete Git inventories deduplicate compatible identical files and retain
+  searchable path aliases. Alias membership participates in refresh identity.
+- Prepared output includes deterministic identities, hashes, cleanup keys,
+  source ranges, parse facts, and graph candidates. `axon-vectors` publishes each
+  chunk's concrete method instead of replacing it with the document summary.
 
 ## Core Types
 
@@ -355,6 +344,24 @@ metadata and raw range in parse facts or artifact metadata.
 ## Code Chunking
 
 Code chunking should be AST/symbol-centric for supported languages.
+
+The embedding partition uses disjoint source intervals: nested methods own their
+bodies, while enclosing declarations retain their headers and remaining text.
+The complete declaration ranges remain available as parser facts for the graph.
+Recoverable syntax errors mark parsing as partial; clean sibling declarations
+still use the AST. Oversized intervals use bounded windows without discarding
+their symbol metadata. Each vector records its own actual chunking method.
+
+The shared preparer packs compatible adjacent fragments within provider limits.
+Its final quality gate rejects chunks with fewer than 50 Unicode characters or
+without letters or digits, after redaction and size enforcement. Short useful
+code can retain bounded neighboring context with source provenance.
+
+Complete Git inventories collapse identical file contents with the same content
+kind and extension before preparation. One deterministic path is canonical;
+other paths remain searchable aliases. Changes to alias membership invalidate
+reuse. A partial refresh of a previously deduplicated inventory requires a
+complete refresh so missing paths cannot silently become stale aliases.
 
 Required behavior:
 
