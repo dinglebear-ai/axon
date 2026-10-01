@@ -1,4 +1,4 @@
-use crate::{DocumentPreparer, PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
+use crate::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use axon_api::source::*;
 
 fn request(path: &str, text: &str) -> PrepareSourceDocumentRequest {
@@ -32,7 +32,7 @@ fn request(path: &str, text: &str) -> PrepareSourceDocumentRequest {
 #[test]
 fn zero_symbol_ast_stays_successful_and_uses_tree_sitter_module_chunks() {
     let text = "// This module intentionally contains no declaration symbols and keeps complete useful source context.\n";
-    let (result, observed) = DocumentPreparer::default()
+    let (result, observed) = crate::testing::preparer_for_small_fixtures()
         .prepare_observed(request("module.rs", text))
         .unwrap();
     assert_eq!(observed.outcome_label(), "ast_zero_symbol");
@@ -56,7 +56,7 @@ fn zero_symbol_ast_stays_successful_and_uses_tree_sitter_module_chunks() {
 
 #[test]
 fn short_ast_document_retains_observation_after_quality_skip() {
-    let (result, observed) = DocumentPreparer::default()
+    let (result, observed) = crate::testing::preparer_for_small_fixtures()
         .prepare_observed(request("module.rs", "// short"))
         .unwrap();
     assert!(matches!(result, PrepareSourceDocumentResult::Skipped(_)));
@@ -73,7 +73,9 @@ fn unsupported_grammar_is_distinct_from_failed_ast_and_reports_heuristic_use() {
         .document
         .metadata
         .insert("code_grammar".into(), serde_json::json!("stale-rust"));
-    let (result, observed) = DocumentPreparer::default().prepare_observed(input).unwrap();
+    let (result, observed) = crate::testing::preparer_for_small_fixtures()
+        .prepare_observed(input)
+        .unwrap();
     assert_eq!(observed.outcome_label(), "unsupported_grammar");
     let PrepareSourceDocumentResult::Prepared(prepared) = result else {
         panic!("fallback must remain searchable")
@@ -104,7 +106,9 @@ fn non_code_preparation_clears_stale_or_caller_supplied_ast_metadata() {
     ] {
         input.document.metadata.insert(key.into(), value);
     }
-    let (result, observed) = DocumentPreparer::default().prepare_observed(input).unwrap();
+    let (result, observed) = crate::testing::preparer_for_small_fixtures()
+        .prepare_observed(input)
+        .unwrap();
     assert_eq!(observed.outcome_label(), "not_observed");
     let PrepareSourceDocumentResult::Prepared(prepared) = result else {
         panic!("article must remain searchable")
@@ -146,7 +150,9 @@ fn malicious_supplied_outcome_is_not_observed_or_published_as_ast_metadata() {
             parser_id: "code_symbols".into(), parser_version: "supplied".into(), parser_method: "tree_sitter".into(),
             range: None, confidence: 1.0, metadata: MetadataMap::new(),
         });
-        let (result, observed) = DocumentPreparer::default().prepare_observed(input).unwrap();
+        let (result, observed) = crate::testing::preparer_for_small_fixtures()
+            .prepare_observed(input)
+            .unwrap();
         assert_eq!(observed.outcome_label(), "not_observed");
         assert_eq!(
             (

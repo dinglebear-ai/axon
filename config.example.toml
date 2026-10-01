@@ -129,6 +129,11 @@
 # job-wait-timeout-secs = 300
 
 [pipeline.chunking]
+# Shared quality cutoff: trimmed characters after bounded source-context packing.
+# Applies across profiles. Below-minimum leftovers are omitted; punctuation-only
+# and structurally empty chunks are omitted regardless of this setting.
+# Env: AXON_CHUNK_MIN_CHARS
+# minimum-chars = 200
 # Markdown chunk target maximum. Env still wins for ad hoc overrides.
 # Env: AXON_MARKDOWN_CHUNK_MAX_CHARS
 # markdown-max-chars = 2000

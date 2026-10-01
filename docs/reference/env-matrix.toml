@@ -4484,3 +4484,15 @@ container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Optional Google-compatible OIDC issuer override."
+
+[[env]]
+key = "AXON_CHUNK_MIN_CHARS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "pipeline.chunking.minimum-chars"
+compatibility = "warn-env-override"
+reason = "Shared trimmed Unicode chunk usefulness minimum, default200; typed TOML tuning with an environment override."

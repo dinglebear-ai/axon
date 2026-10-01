@@ -20,13 +20,13 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-12");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-13");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
 #[test]
 fn heading_only_markdown_is_not_reintroduced_by_empty_fallback() {
-    let result = DocumentPreparer::default()
+    let result = crate::testing::preparer_for_small_fixtures()
         .prepare(request(
             ContentKind::Markdown,
             "# This heading is deliberately long enough to pass the old minimum gate\n## Empty descendant section\n",
@@ -40,7 +40,7 @@ fn heading_only_markdown_is_not_reintroduced_by_empty_fallback() {
 #[test]
 fn oversized_heading_only_markdown_is_skipped_before_fallback_can_split_it() {
     let text = format!("# {}\n", "Empty title ".repeat(500));
-    let result = DocumentPreparer::default()
+    let result = crate::testing::preparer_for_small_fixtures()
         .prepare(request(
             ContentKind::Markdown,
             &text,
@@ -73,7 +73,9 @@ fn fragment_markdown_keeps_fenced_code_comments_that_resemble_headings() {
         .metadata
         .insert("source_adapter".into(), "web_scrape".into());
     let PrepareSourceDocumentResult::Prepared(prepared) =
-        DocumentPreparer::default().prepare(input).unwrap()
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(input)
+            .unwrap()
     else {
         panic!("expected fenced code content");
     };
@@ -110,6 +112,7 @@ fn short_markdown_blocks_borrow_heading_context_before_scaffold_is_omitted() {
     ] {
         let source = format!("# {title}\n\n{body}\n");
         let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+            minimum_chunk_chars: 50,
             markdown_max_chars: 96,
             markdown_min_chars: 1,
             markdown_overlap_chars: 0,
@@ -147,6 +150,7 @@ fn short_markdown_blocks_borrow_heading_context_before_scaffold_is_omitted() {
 #[test]
 fn preparer_uses_injected_markdown_limits_instead_of_ambient_configuration() {
     let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+        minimum_chunk_chars: 50,
         markdown_max_chars: 96,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
@@ -191,7 +195,9 @@ fn preparer_builds_prepared_document_from_inline_source_dto() {
         ChunkingProfile::MarkdownSections,
     );
 
-    let result = DocumentPreparer::default().prepare(request).unwrap();
+    let result = crate::testing::preparer_for_small_fixtures()
+        .prepare(request)
+        .unwrap();
     let PrepareSourceDocumentResult::Prepared(prepared) = result else {
         panic!("expected prepared document")
     };
@@ -239,9 +245,10 @@ fn self_parsed_markdown_overrides_generic_local_code_hint() {
         options: MetadataMap::new(),
     });
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request)
-        .expect("self-parsed markdown should produce chunks")
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request)
+            .expect("self-parsed markdown should produce chunks")
     else {
         panic!("expected prepared document")
     };
@@ -267,7 +274,9 @@ fn large_intact_markdown_preserves_sections_instead_of_paragraph_fallback() {
     );
 
     let PrepareSourceDocumentResult::Prepared(prepared) =
-        DocumentPreparer::default().prepare(request).unwrap()
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request)
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -281,7 +290,7 @@ fn large_intact_markdown_preserves_sections_instead_of_paragraph_fallback() {
 
 #[test]
 fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
-    let mut recorder = RecordingPreparer::new(DocumentPreparer::default());
+    let mut recorder = RecordingPreparer::new(crate::testing::preparer_for_small_fixtures());
     let request = request(
         ContentKind::PlainText,
         "alpha content with enough useful context for embedding\r\n\r\nbeta content providing a second complete paragraph",
@@ -309,7 +318,7 @@ fn preparer_skips_whitespace_only_content() {
     );
 
     assert!(
-        matches!(DocumentPreparer::default().prepare(request).unwrap(),
+        matches!(crate::testing::preparer_for_small_fixtures().prepare(request).unwrap(),
         PrepareSourceDocumentResult::Skipped(skipped) if skipped.reason == axon_api::source::ContentSkipReason::EmptyContent)
     );
 }
@@ -317,14 +326,15 @@ fn preparer_skips_whitespace_only_content() {
 #[test]
 fn preparer_indexes_nonempty_html_when_visible_projection_has_no_chunks() {
     let body = "<script>window.example = \"a complete example value with additional source context\";</script>";
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Html,
-            body,
-            "gen-empty-html-projection",
-            ChunkingProfile::HtmlArticle,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Html,
+                body,
+                "gen-empty-html-projection",
+                ChunkingProfile::HtmlArticle,
+            ))
+            .unwrap()
     else {
         panic!("expected source-text fallback")
     };
@@ -342,7 +352,7 @@ fn preparer_indexes_nonempty_html_when_visible_projection_has_no_chunks() {
 
 #[test]
 fn validate_prepared_document_rejects_duplicate_chunk_identity() {
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = crate::testing::preparer_for_small_fixtures()
         .prepare(request(
             ContentKind::PlainText,
             "alpha useful content with enough context to prepare and validate\n\nbeta useful content with another complete paragraph",
@@ -366,14 +376,15 @@ fn validate_prepared_document_rejects_duplicate_chunk_identity() {
 
 #[test]
 fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::PlainText,
-            "alpha useful content with enough context for range validation",
-            "gen-invalid-range",
-            ChunkingProfile::PlainTextWindows,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::PlainText,
+                "alpha useful content with enough context for range validation",
+                "gen-invalid-range",
+                ChunkingProfile::PlainTextWindows,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -394,14 +405,15 @@ fn validate_prepared_document_rejects_impossible_ranges_and_empty_content() {
 
 #[test]
 fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::PlainText,
-            "PORT=3000\nDESCRIPTION=Complete configuration reference for local testing\n",
-            "gen-bounds",
-            ChunkingProfile::PlainTextWindows,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::PlainText,
+                "PORT=3000\nDESCRIPTION=Complete configuration reference for local testing\n",
+                "gen-bounds",
+                ChunkingProfile::PlainTextWindows,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -424,14 +436,15 @@ fn preparer_degrades_chunk_and_parse_fact_ranges_outside_normalized_document() {
 #[test]
 fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
     let source_text = "FROM alpine:3\n# Complete container reference for graph bounds testing\n";
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::PlainText,
-            source_text,
-            "gen-graph-bounds",
-            ChunkingProfile::PlainTextWindows,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::PlainText,
+                source_text,
+                "gen-graph-bounds",
+                ChunkingProfile::PlainTextWindows,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -494,7 +507,7 @@ fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
 
 #[test]
 fn preparer_rejects_unordered_time_and_turn_ranges() {
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
+    let PrepareSourceDocumentResult::Prepared(prepared) = crate::testing::preparer_for_small_fixtures()
         .prepare(request(
             ContentKind::PlainText,
             "first complete line containing useful preparable information\nsecond complete line\n",
@@ -527,17 +540,18 @@ fn tool_output_chunks_promote_jsonl_record_metadata() {
     doc.metadata
         .insert("source_family".to_string(), serde_json::json!("tool"));
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-tool-output"),
-            profile: Some(ChunkingProfile::ToolOutput),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-tool-output"),
+                profile: Some(ChunkingProfile::ToolOutput),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -563,7 +577,7 @@ pub fn alpha() { let descriptive_value = 42; println!(\"{descriptive_value}\"); 
 File: src/main.rs\n\
 ================================================================\n\
 fn main() { let descriptive_value = 42; println!(\"{descriptive_value}\"); }\n";
-    let result = DocumentPreparer::default()
+    let result = crate::testing::preparer_for_small_fixtures()
         .prepare(request(
             ContentKind::Code,
             packed,
@@ -638,20 +652,21 @@ fn preparer_carries_parse_artifacts_to_prepared_document() {
         cause: None,
     };
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: source_doc(
-                ContentKind::PlainText,
-                "A complete useful body with enough context to prepare its parse artifacts.",
-            ),
-            generation: SourceGenerationId::from("gen-artifacts"),
-            profile: Some(ChunkingProfile::PlainTextWindows),
-            parse_facts: vec![fact.clone()],
-            graph_candidates: vec![candidate.clone()],
-            warnings: vec![warning.clone()],
-            errors: vec![error.clone()],
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: source_doc(
+                    ContentKind::PlainText,
+                    "A complete useful body with enough context to prepare its parse artifacts.",
+                ),
+                generation: SourceGenerationId::from("gen-artifacts"),
+                profile: Some(ChunkingProfile::PlainTextWindows),
+                parse_facts: vec![fact.clone()],
+                graph_candidates: vec![candidate.clone()],
+                warnings: vec![warning.clone()],
+                errors: vec![error.clone()],
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -710,17 +725,18 @@ fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() 
         serde_json::to_value(vec![candidate.clone()]).unwrap(),
     );
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-vertical"),
-            profile: Some(ChunkingProfile::MarkdownSections),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-vertical"),
+                profile: Some(ChunkingProfile::MarkdownSections),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -749,14 +765,15 @@ fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() 
 
 #[test]
 fn malformed_structured_text_degrades_with_fallback_warning() {
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Json,
-            "{\"broken\": \"a malformed record containing enough useful text for fallback",
-            "gen-structured",
-            ChunkingProfile::StructuredRecords,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Json,
+                "{\"broken\": \"a malformed record containing enough useful text for fallback",
+                "gen-structured",
+                ChunkingProfile::StructuredRecords,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -815,7 +832,9 @@ fn unsupported_content_returns_skipped_identity_without_a_document() {
         );
         input.document.content = content;
         let PrepareSourceDocumentResult::Skipped(skipped) =
-            DocumentPreparer::default().prepare(input).unwrap()
+            crate::testing::preparer_for_small_fixtures()
+                .prepare(input)
+                .unwrap()
         else {
             panic!("expected skipped identity, never a placeholder document")
         };
@@ -836,7 +855,9 @@ fn authored_atomic_metadata_remains_searchable() {
         ChunkingProfile::AtomicMetadata,
     );
     let PrepareSourceDocumentResult::Prepared(prepared) =
-        DocumentPreparer::default().prepare(input).unwrap()
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(input)
+            .unwrap()
     else {
         panic!("authored metadata should prepare")
     };
@@ -849,6 +870,7 @@ fn authored_atomic_metadata_remains_searchable() {
 fn preparation_enforces_content_ceiling_and_rejects_admitted_malformed_base64() {
     use axon_api::source::ContentSkipReason;
     let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+        minimum_chunk_chars: 50,
         max_content_bytes: 4,
         ..DocumentPreparerConfig::default()
     });
@@ -900,7 +922,9 @@ fn decoded_utf16_is_redacted_before_parsing_and_range_validation() {
         mime_type: "application/octet-stream".into(),
     };
     let PrepareSourceDocumentResult::Prepared(prepared) =
-        DocumentPreparer::default().prepare(input).unwrap()
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(input)
+            .unwrap()
     else {
         panic!("UTF16 source text should prepare")
     };
@@ -934,14 +958,15 @@ fn large_code_document_dispatches_to_windowed_fallback_not_code_symbols() {
     }
     assert!(body.len() > 200_000, "fixture must exceed the threshold");
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Code,
-            &body,
-            "gen-large-code",
-            ChunkingProfile::CodeSymbol,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Code,
+                &body,
+                "gen-large-code",
+                ChunkingProfile::CodeSymbol,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -970,17 +995,18 @@ fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback()
         serde_json::json!("web_scrape"),
     );
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-fragment"),
-            profile: Some(ChunkingProfile::CodeSymbol),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-fragment"),
+                profile: Some(ChunkingProfile::CodeSymbol),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1006,7 +1032,9 @@ fn large_html_document_still_removes_non_content_payloads() {
     );
 
     let PrepareSourceDocumentResult::Prepared(prepared) =
-        DocumentPreparer::default().prepare(request).unwrap()
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request)
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1044,17 +1072,18 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
         "blob": {"@type": "Article", "headline": "Intro"},
     }));
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-web-structured"),
-            profile: Some(ChunkingProfile::MarkdownSections),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-web-structured"),
+                profile: Some(ChunkingProfile::MarkdownSections),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1094,17 +1123,18 @@ fn structured_payload_kind_falls_back_when_schema_type_is_absent() {
         "blob": {"props": {}},
     }));
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-web-nextdata"),
-            profile: Some(ChunkingProfile::MarkdownSections),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-web-nextdata"),
+                profile: Some(ChunkingProfile::MarkdownSections),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1130,17 +1160,18 @@ fn structured_payload_is_not_projected_outside_the_web_family() {
         "blob": {"@type": "Article"},
     }));
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(PrepareSourceDocumentRequest {
-            document: doc,
-            generation: SourceGenerationId::from("gen-nonweb"),
-            profile: Some(ChunkingProfile::MarkdownSections),
-            parse_facts: Vec::new(),
-            graph_candidates: Vec::new(),
-            warnings: Vec::new(),
-            errors: Vec::new(),
-        })
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-nonweb"),
+                profile: Some(ChunkingProfile::MarkdownSections),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1167,14 +1198,15 @@ fn oversized_structured_record_is_bounded_before_embedding() {
     body.push_str("]}");
     assert!(body.len() > 200_000, "fixture must exceed the threshold");
 
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Json,
-            &body,
-            "gen-large-structured",
-            ChunkingProfile::StructuredRecords,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Json,
+                &body,
+                "gen-large-structured",
+                ChunkingProfile::StructuredRecords,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1199,14 +1231,15 @@ fn oversized_structured_record_is_bounded_before_embedding() {
 #[test]
 fn oversized_manifest_line_keeps_exact_source_ranges() {
     let body = format!("name = \"{}\"", "x".repeat(12_000));
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Toml,
-            &body,
-            "gen-large-manifest",
-            ChunkingProfile::CodeManifest,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Toml,
+                &body,
+                "gen-large-manifest",
+                ChunkingProfile::CodeManifest,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1223,14 +1256,15 @@ fn oversized_manifest_line_keeps_exact_source_ranges() {
 #[test]
 fn oversized_session_turn_keeps_turn_id_and_exact_ranges() {
     let body = format!("{}\nsecond turn", "α".repeat(4_000));
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Transcript,
-            &body,
-            "gen-large-session",
-            ChunkingProfile::SessionTurns,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Transcript,
+                &body,
+                "gen-large-session",
+                ChunkingProfile::SessionTurns,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1252,14 +1286,15 @@ fn oversized_session_turn_keeps_turn_id_and_exact_ranges() {
 #[test]
 fn multi_megabyte_json_record_has_bounded_embedding_chunks() {
     let body = format!("{{\"payload\":\"{}\"}}", "x".repeat(3_000_000));
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::Json,
-            &body,
-            "gen-large-json",
-            ChunkingProfile::StructuredRecords,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::Json,
+                &body,
+                "gen-large-json",
+                ChunkingProfile::StructuredRecords,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1280,14 +1315,15 @@ fn embedding_backstop_drops_whitespace_only_windows() {
         " ".repeat(6_000),
         "useful end context ".repeat(4)
     );
-    let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-        .prepare(request(
-            ContentKind::PlainText,
-            &body,
-            "gen-spaced-metadata",
-            ChunkingProfile::AtomicMetadata,
-        ))
-        .unwrap()
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(request(
+                ContentKind::PlainText,
+                &body,
+                "gen-spaced-metadata",
+                ChunkingProfile::AtomicMetadata,
+            ))
+            .unwrap()
     else {
         panic!("expected prepared document")
     };
@@ -1361,7 +1397,7 @@ fn redacted_content_parses_and_validates_after_scrub() {
     // from the content instead of being pre-supplied.
     request.profile = None;
 
-    let result = DocumentPreparer::default()
+    let result = crate::testing::preparer_for_small_fixtures()
         .prepare(request)
         .expect("preparation must survive pre-chunk redaction");
     let PrepareSourceDocumentResult::Prepared(prepared) = result else {
@@ -1420,9 +1456,10 @@ fn manifest_graph_evidence_survives_real_document_preparation() {
         request.document.path = Some(path.to_string());
         request.document.canonical_uri = format!("file:///repo/{path}");
         request.profile = None;
-        let PrepareSourceDocumentResult::Prepared(prepared) = DocumentPreparer::default()
-            .prepare(request)
-            .unwrap_or_else(|error| panic!("{path}: {error}"))
+        let PrepareSourceDocumentResult::Prepared(prepared) =
+            crate::testing::preparer_for_small_fixtures()
+                .prepare(request)
+                .unwrap_or_else(|error| panic!("{path}: {error}"))
         else {
             panic!("{path}: expected prepared document")
         };
@@ -1444,7 +1481,7 @@ fn tutorial_credential_examples_are_preserved_before_chunking() {
         "passwd=hunter2\n",
         "postgres://user:password@localhost/app\n",
     );
-    let result = DocumentPreparer::default()
+    let result = crate::testing::preparer_for_small_fixtures()
         .prepare(request(
             ContentKind::PlainText,
             text,
@@ -1498,6 +1535,7 @@ fn markdown_windowed_fallback_honors_injected_limits() {
 
     let PrepareSourceDocumentResult::Prepared(prepared) =
         DocumentPreparer::new(DocumentPreparerConfig {
+            minimum_chunk_chars: 50,
             markdown_max_chars: 96,
             markdown_min_chars: 1,
             markdown_overlap_chars: 0,
@@ -1554,7 +1592,9 @@ fn acquisition_size_omission_preserves_identity_and_reason() {
         .insert("binary_policy".into(), serde_json::json!("include"));
     let expected_id = input.document.document_id.clone();
     let PrepareSourceDocumentResult::Skipped(skipped) =
-        DocumentPreparer::default().prepare(input).unwrap()
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(input)
+            .unwrap()
     else {
         panic!("expected size skip")
     };
@@ -1567,6 +1607,7 @@ fn content_limit_override_never_raises_configured_ceiling() {
     use axon_api::source::ContentSkipReason;
     for limit in [0, 2, usize::MAX] {
         let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+            minimum_chunk_chars: 50,
             max_content_bytes: 2,
             ..Default::default()
         })
@@ -1598,7 +1639,9 @@ fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
             .metadata
             .insert("binary_policy".into(), serde_json::json!(policy));
         let PrepareSourceDocumentResult::Prepared(prepared) =
-            DocumentPreparer::default().prepare(input).unwrap()
+            crate::testing::preparer_for_small_fixtures()
+                .prepare(input)
+                .unwrap()
         else {
             panic!("expected supported Local text")
         };
@@ -1630,7 +1673,7 @@ fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
     ];
     for profile in profiles {
         for source in ["identifier".to_string(), "{}();---\n".repeat(20)] {
-            let result = DocumentPreparer::default()
+            let result = crate::testing::preparer_for_small_fixtures()
                 .prepare(request(
                     ContentKind::PlainText,
                     &source,
@@ -1667,7 +1710,9 @@ fn code_without_ast_symbols_preserves_actual_ast_success_or_partial_status() {
         input.document.path = Some("src/fallback.rs".into());
         input.document.language = Some("rust".into());
         let PrepareSourceDocumentResult::Prepared(prepared) =
-            DocumentPreparer::default().prepare(input).unwrap()
+            crate::testing::preparer_for_small_fixtures()
+                .prepare(input)
+                .unwrap()
         else {
             panic!("expected useful source context")
         };
@@ -1687,4 +1732,62 @@ fn code_without_ast_symbols_preserves_actual_ast_success_or_partial_status() {
                 .all(|fact| fact.fact_kind != "code_symbol")
         );
     }
+}
+
+#[test]
+fn default_quality_cutoff_rejects_a_sub_200_character_document() {
+    let text = "Meaningful text that clears fifty characters but remains below the configured two hundred character default.";
+    assert!((50..200).contains(&text.chars().count()));
+    let result = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            text,
+            "gen-short-cutoff",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap();
+    assert!(matches!(result, PrepareSourceDocumentResult::Skipped(_)));
+}
+
+#[test]
+fn injected_quality_cutoff_controls_filtering_without_changing_the_source() {
+    let text = "Meaningful text that clears fifty characters but remains below the configured two hundred character default.";
+    for (minimum, retained) in [(50, true), (200, false)] {
+        let result = DocumentPreparer::new(DocumentPreparerConfig {
+            minimum_chunk_chars: minimum,
+            ..Default::default()
+        })
+        .prepare(request(
+            ContentKind::PlainText,
+            text,
+            "gen-configurable-cutoff",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap();
+        assert_eq!(
+            matches!(result, PrepareSourceDocumentResult::Prepared(_)),
+            retained
+        );
+    }
+}
+
+#[test]
+fn shared_minimum_cannot_exceed_non_markdown_chunk_capacity() {
+    let preparer = DocumentPreparer::new(DocumentPreparerConfig {
+        markdown_max_chars: 8_000,
+        minimum_chunk_chars: 5_000,
+        ..Default::default()
+    });
+    assert_eq!(preparer.semantic_config().minimum_chunk_chars, 2_000);
+    let text =
+        "Useful searchable source information about document preparation and indexing. ".repeat(60);
+    let result = preparer
+        .prepare(request(
+            ContentKind::PlainText,
+            &text,
+            "gen-feasible-minimum",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap();
+    assert!(matches!(result, PrepareSourceDocumentResult::Prepared(_)));
 }

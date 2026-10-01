@@ -54,7 +54,7 @@ fn test_runtime_with_jobs(
     ledger: Arc<FakeLedgerStore>,
     jobs: Arc<FakeJobWatchStore>,
 ) -> TargetLocalSourceRuntime {
-    TargetLocalSourceRuntime::new(
+    crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
         jobs,
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
@@ -62,7 +62,7 @@ fn test_runtime_with_jobs(
         ProviderId::new("fake-embedding"),
         "fake-embedding",
         8,
-    )
+    ))
 }
 
 fn test_runtime(
@@ -1438,15 +1438,16 @@ async fn shared_skips_publish_without_embedding_and_retire_prior_text_in_both_mo
         let ledger = Arc::new(FakeLedgerStore::new());
         let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
         let embedding = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
-        let mut runtime = TargetLocalSourceRuntime::new(
-            Arc::new(FakeJobWatchStore::new()),
-            ledger.clone(),
-            embedding.clone(),
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
-        );
+        let mut runtime =
+            crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
+                Arc::new(FakeJobWatchStore::new()),
+                ledger.clone(),
+                embedding.clone(),
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ));
         runtime.embed_scheduler_enabled = scheduled;
         let mixed = StampingSourceAdapter {
             inner: FakeSourceAdapter::new(route.adapter.clone())
@@ -1536,15 +1537,16 @@ async fn repeated_all_skipped_generations_do_not_require_embedding_or_collection
         let embedding = Arc::new(
             FakeEmbeddingProvider::new("fake-embedding", 8).with_health(HealthStatus::Unavailable),
         );
-        let mut runtime = TargetLocalSourceRuntime::new(
-            Arc::new(FakeJobWatchStore::new()),
-            ledger.clone(),
-            embedding.clone(),
-            vectors.clone(),
-            ProviderId::new("fake-embedding"),
-            "fake-embedding",
-            8,
-        );
+        let mut runtime =
+            crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
+                Arc::new(FakeJobWatchStore::new()),
+                ledger.clone(),
+                embedding.clone(),
+                vectors.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                8,
+            ));
         runtime.embed_scheduler_enabled = scheduled;
         for content in ["%PDF-1.7", "%PDF-1.8 changed"] {
             let skipped = StampingSourceAdapter {

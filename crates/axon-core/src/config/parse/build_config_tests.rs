@@ -650,7 +650,7 @@ fn markdown_chunking_limits_are_resolved_once_into_config() {
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(
         f,
-        "[pipeline.chunking]\nmarkdown-max-chars = 900\nmarkdown-min-chars = 300\noverlap-chars = 75\n"
+        "[pipeline.chunking]\nmarkdown-max-chars = 900\nmarkdown-min-chars = 300\nminimum-chars = 240\noverlap-chars = 75\n"
     )
     .unwrap();
 
@@ -660,10 +660,12 @@ fn markdown_chunking_limits_are_resolved_once_into_config() {
             "AXON_MARKDOWN_CHUNK_MAX_CHARS",
             "AXON_MARKDOWN_CHUNK_MIN_CHARS",
             "AXON_CHUNK_OVERLAP_CHARS",
+            "AXON_CHUNK_MIN_CHARS",
         ],
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::set_var("AXON_MARKDOWN_CHUNK_MAX_CHARS", "800");
+            env::remove_var("AXON_CHUNK_MIN_CHARS");
             env::remove_var("AXON_MARKDOWN_CHUNK_MIN_CHARS");
             env::remove_var("AXON_CHUNK_OVERLAP_CHARS");
 
@@ -671,6 +673,21 @@ fn markdown_chunking_limits_are_resolved_once_into_config() {
 
             assert_eq!(cfg.chunking_markdown_max_chars, 800);
             assert_eq!(cfg.chunking_markdown_min_chars, 300);
+            assert_eq!(cfg.chunking_min_chars, 240);
+            env::set_var("AXON_CHUNK_MIN_CHARS", "120");
+            let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+            assert_eq!(cfg.chunking_min_chars, 120);
+            for (value, expected) in [("0", 1), ("9999", 800), ("invalid", 240)] {
+                env::set_var("AXON_CHUNK_MIN_CHARS", value);
+                let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+                assert_eq!(cfg.chunking_min_chars, expected);
+            }
+
+            env::set_var("AXON_MARKDOWN_CHUNK_MAX_CHARS", "8000");
+            env::set_var("AXON_CHUNK_MIN_CHARS", "5000");
+            let bounded = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+            assert_eq!(bounded.chunking_min_chars, 2_000);
+
             assert_eq!(cfg.chunking_overlap_chars, 75);
         },
     );

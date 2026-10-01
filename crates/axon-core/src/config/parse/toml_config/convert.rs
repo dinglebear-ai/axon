@@ -194,6 +194,7 @@ fn apply_pipeline(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.workers.qdrant_point_buffer = p.qdrant_point_buffer;
     flat.workers.job_wait_timeout_secs = p.job_wait_timeout_secs;
     flat.chunking.markdown_min_chars = p.chunking.markdown_min_chars;
+    flat.chunking.minimum_chars = p.chunking.minimum_chars;
     flat.chunking.markdown_max_chars = p.chunking.markdown_max_chars;
     flat.chunking.overlap_chars = p.chunking.overlap_chars;
     flat.endpoints.bundle_concurrency = p.endpoints.bundle_concurrency;
