@@ -175,6 +175,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
+      - name: Set up pinned credentialless Rust cache
+        uses: kunobi-ninja/kache-action@ad7317540dcdd71c904f7a60a87b620a0c0e67ed
+        with:
+          version: '0.28.1'
+          github-cache: 'true'
+          max-size: '10GB'
+          pr-comment: 'false'
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/palette-tauri/src-tauri
