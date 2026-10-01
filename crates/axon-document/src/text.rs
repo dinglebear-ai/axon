@@ -24,13 +24,12 @@ pub(crate) fn plain_text_windows_with_limits(
     let spans = paragraphs(text);
     let mut packed = Vec::new();
     for (start, end) in spans {
-        if let Some(&(previous_start, _)) = packed.last() {
-            if end - previous_start <= max_bytes
-                && text[previous_start..end].chars().count() <= max_chars
-            {
-                *packed.last_mut().unwrap() = (previous_start, end);
-                continue;
-            }
+        if let Some(&(previous_start, _)) = packed.last()
+            && end - previous_start <= max_bytes
+            && text[previous_start..end].chars().count() <= max_chars
+        {
+            *packed.last_mut().unwrap() = (previous_start, end);
+            continue;
         }
         packed.extend(bounded_windows(text, start, end, max_bytes, max_chars));
     }
@@ -54,13 +53,11 @@ pub(crate) struct SourcePositions<'a> {
 impl<'a> SourcePositions<'a> {
     pub(crate) fn new(text: &'a str) -> Self {
         let mut checkpoints = vec![(0, 0, 1)];
-        let mut chars = 0;
         let mut line = 1;
-        for (byte, character) in text.char_indices() {
+        for (chars, (byte, character)) in text.char_indices().enumerate() {
             if byte - checkpoints.last().unwrap().0 >= 256 {
-                checkpoints.push((byte, chars, line));
+                checkpoints.push((byte, chars as u64, line));
             }
-            chars += 1;
             if character == '\n' {
                 line += 1;
             }

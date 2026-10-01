@@ -77,12 +77,12 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
     validate_optional_non_empty_string(metadata, "content_title")?;
     validate_optional_non_empty_string(metadata, "chunk_title")?;
     validate_parser_provenance(metadata)?;
-    if let Some(value) = metadata.get("code_syntax_recovered") {
-        if !value.is_boolean() {
-            return Err(VectorPayloadValidationError::InvalidFieldShape {
-                field: "code_syntax_recovered".into(),
-            });
-        }
+    if let Some(value) = metadata.get("code_syntax_recovered")
+        && !value.is_boolean()
+    {
+        return Err(VectorPayloadValidationError::InvalidFieldShape {
+            field: "code_syntax_recovered".into(),
+        });
     }
     if let Some(value) = metadata.get("code_symbol_source_range") {
         let range: SourceRange = serde_json::from_value(value.clone()).map_err(|_| {

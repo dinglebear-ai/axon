@@ -153,19 +153,18 @@ pub(crate) fn useful_chunks_with_limit(
     let positions = std::cell::OnceCell::new();
     let mut packed: Vec<DocumentChunk> = Vec::new();
     for chunk in chunks.into_iter().filter(meaningful) {
-        if let Some(previous) = packed.last_mut() {
-            if (short(previous) || short(&chunk))
-                && compatible(previous, &chunk, source)
-                && combine(
-                    previous,
-                    &chunk,
-                    source,
-                    positions.get_or_init(|| text::SourcePositions::new(source)),
-                    max_chars,
-                )
-            {
-                continue;
-            }
+        if let Some(previous) = packed.last_mut()
+            && (short(previous) || short(&chunk))
+            && compatible(previous, &chunk, source)
+            && combine(
+                previous,
+                &chunk,
+                source,
+                positions.get_or_init(|| text::SourcePositions::new(source)),
+                max_chars,
+            )
+        {
+            continue;
         }
         packed.push(chunk);
     }
