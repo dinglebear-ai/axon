@@ -34,7 +34,7 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
         .expect("git init");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn answer() -> i32 { 42 }\n",
+        "pub fn answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n",
     )
     .expect("source file");
 
@@ -112,7 +112,7 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
         .expect("git init");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn answer() -> i32 { 42 }\n",
+        "pub fn answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n",
     )
     .expect("source file");
 
@@ -172,7 +172,7 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     std::fs::create_dir_all(repo.path().join("docs")).expect("docs dir");
     std::fs::write(
         repo.path().join("src/lib.rs"),
-        "pub fn target_answer() -> i32 { 42 }\n",
+        "pub fn target_answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n",
     )
     .expect("source file");
     std::fs::write(
@@ -290,7 +290,7 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     assert_eq!(searched.results[0].file_path.as_deref(), Some("src/lib.rs"));
     assert_eq!(
         searched.results[0].snippet,
-        "pub fn target_answer() -> i32 { 42 }"
+        "pub fn target_answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }"
     );
     assert_eq!(
         vectors.calls().await,
@@ -318,7 +318,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
         .expect("git init");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn target_answer() -> i32 { 42 }\n",
+        "pub fn target_answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n",
     )
     .expect("source file");
 
@@ -342,7 +342,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await
         .expect("initial target refresh");
-    std::fs::write(repo.path().join("new.rs"), "pub fn fresh() {}\n").expect("new source file");
+    std::fs::write(repo.path().join("new.rs"), "pub fn fresh() { let refreshed_fixture_value = 42; assert_eq!(refreshed_fixture_value, 42); }\n").expect("new source file");
     let failing_ctx = ctx
         .clone()
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
@@ -432,7 +432,7 @@ async fn target_code_search_refresh_reports_stale_when_runtime_missing() {
         .expect("git init");
     std::fs::write(
         repo.path().join("lib.rs"),
-        "pub fn answer() -> i32 { 42 }\n",
+        "pub fn answer() -> i32 { let fixture_answer_value = 42; fixture_answer_value }\n",
     )
     .expect("source file");
 

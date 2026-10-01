@@ -42,6 +42,11 @@ impl SourceParser for CodeSymbolsParser {
                 "tsx".to_string(),
                 "js".to_string(),
                 "jsx".to_string(),
+                "sh".to_string(),
+                "bash".to_string(),
+                "css".to_string(),
+                "ex".to_string(),
+                "exs".to_string(),
             ],
             path_suffixes: Vec::new(),
             sniff_prefixes: Vec::new(),
@@ -50,18 +55,15 @@ impl SourceParser for CodeSymbolsParser {
     }
 
     fn parse(&self, input: &ParseInput) -> ParseResult {
-        let (facts, graph_candidates) = code::symbol_facts_with_graph(input);
-        let used_fallback = facts
-            .iter()
-            .any(|fact| fact.parser_method == code::FALLBACK_PARSER_METHOD);
+        let (facts, graph_candidates, used_fallback) = code::parse_with_outcome(input);
         if !used_fallback {
             return completed_result(input, self.capability(), facts, graph_candidates);
         }
         let warning = axon_api::source::SourceWarning {
             code: "parse.code_ast_unavailable".to_string(),
             severity: axon_api::source::Severity::Info,
-            message: "tree-sitter was unsupported or could not parse this input; code symbols \
-                      were extracted with the disclosed regex_fallback heuristic"
+            message: "No compatible AST grammar or parser result was available; the disclosed \
+                      regex_fallback heuristic was attempted for code symbols"
                 .to_string(),
             source_item_key: Some(input.document.source_item_key.clone()),
             retryable: false,

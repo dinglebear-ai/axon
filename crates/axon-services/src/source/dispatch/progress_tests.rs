@@ -204,7 +204,7 @@ async fn embed_false_skips_vector_phases_without_stale_fetching_counts() {
     let source = crate::test_support::visible_tempdir().unwrap();
     std::fs::write(
         source.path().join("doc.md"),
-        "# Progress\n\nNo embeddings requested.\n",
+        "# Progress\n\nNo embeddings requested while complete useful document context remains prepared.\n",
     )
     .unwrap();
     let jobs = Arc::new(FakeJobWatchStore::new());

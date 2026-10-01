@@ -103,10 +103,9 @@ pub(super) async fn resolve_acquisition(
         );
         if !reuse_required(&item) {
             let item_key = item.manifest_item.source_item_key.clone();
-            let same_content = previous_items.get(&item_key).is_some_and(|previous| {
-                previous.content_hash.is_some()
-                    && previous.content_hash == item.manifest_item.content_hash
-            });
+            let same_content = previous_items
+                .get(&item_key)
+                .is_some_and(|previous| same_prepared_identity(previous, &item.manifest_item));
             if same_content
                 && reusable.contains(&item_key)
                 && reuse_cached_document(runtime, diff, &item_key)
@@ -230,6 +229,19 @@ fn copy_validator(previous: &ManifestItem, current: &mut ManifestItem, source: &
     if let Some(value) = previous.metadata.get(source) {
         current.metadata.insert(target.to_string(), value.clone());
     }
+}
+
+fn same_prepared_identity(previous: &ManifestItem, current: &ManifestItem) -> bool {
+    previous.content_hash.is_some()
+        && previous.content_hash == current.content_hash
+        && previous.version == current.version
+        && [
+            "source_item_aliases",
+            "item_canonical_uri_aliases",
+            "source_path_prefixes",
+        ]
+        .iter()
+        .all(|field| previous.metadata.get(*field) == current.metadata.get(*field))
 }
 
 fn reuse_required(item: &AcquiredSourceItem) -> bool {

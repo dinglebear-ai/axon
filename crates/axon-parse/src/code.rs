@@ -18,9 +18,52 @@ pub fn symbol_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
 
 pub fn symbol_facts_with_graph(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     if let Ok(symbols) = ast::parse_symbols(input) {
-        return ast::facts_with_graph(input, symbols);
+        return ast::facts_with_graph(input, symbols.symbols);
     }
     fallback_symbol_facts_with_graph(input)
+}
+
+pub(crate) fn parse_with_outcome(
+    input: &ParseInput,
+) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>, bool) {
+    let (mut facts, graph, status, grammar) = match ast::parse_symbols(input) {
+        Ok(parsed) => {
+            let status = if parsed.recovered {
+                "partial"
+            } else {
+                "parsed"
+            };
+            let (facts, graph) = ast::facts_with_graph(input, parsed.symbols);
+            (facts, graph, status, Some(parsed.grammar))
+        }
+        Err(status) => {
+            let (facts, graph) = fallback_symbol_facts_with_graph(input);
+            (facts, graph, status, None)
+        }
+    };
+    let fallback = matches!(status, "unsupported" | "failed");
+    let count = facts.len();
+    facts.push(source_fact_ranged(
+        input,
+        "code_symbols",
+        if fallback {
+            FALLBACK_PARSER_METHOD
+        } else {
+            AST_PARSER_METHOD
+        },
+        "code_parse_outcome",
+        "document",
+        json!({
+            "code_ast_status": status,
+            "code_grammar": grammar,
+            "code_symbol_count": count,
+            "symbol_extraction_status": if fallback {
+                if count == 0 { "none" } else { "heuristic_fallback" }
+            } else { "ast" },
+        }),
+        None,
+    ));
+    (facts, graph, fallback)
 }
 
 fn fallback_symbol_facts_with_graph(

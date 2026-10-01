@@ -66,6 +66,9 @@ pub(super) fn collection_spec(collection: &str, dimensions: u32) -> CollectionSp
             "source_id",
             "source_generation",
             "source_item_key",
+            "source_item_aliases",
+            "source_path_prefixes",
+            "item_canonical_uri_aliases",
             "document_id",
             "chunk_id",
         ]

@@ -594,7 +594,7 @@ fn embedding_provider_provenance_is_checked_without_batch_id() {
 #[test]
 fn build_with_skipped_count_returns_the_clean_partial_batch() {
     let mut document = test_prepared_document();
-    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string();
+    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string(); // gitleaks:allow - synthetic redaction test fixture
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
     let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
@@ -617,4 +617,30 @@ fn build_with_skipped_count_reports_zero_when_nothing_is_redacted() {
 
     assert_eq!(batch.points.len(), 2);
     assert_eq!(skipped_redaction, 0);
+}
+
+#[test]
+fn mixed_chunk_methods_use_each_chunks_actual_method() {
+    let mut document = test_prepared_document();
+    document.chunking_method = "plain_text_windows".into();
+    document.chunks[0]
+        .metadata
+        .insert("actual_chunking_method".into(), json!("code_symbols"));
+    document.chunks[1]
+        .metadata
+        .insert("actual_chunking_method".into(), json!("plain_text_windows"));
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+    let batch = builder(test_collection_spec(3), document, embeddings)
+        .build()
+        .unwrap();
+    assert_eq!(batch.points[0].payload["chunking_method"], "code_symbols");
+    assert_eq!(
+        batch.points[1].payload["chunking_method"],
+        "plain_text_windows"
+    );
+    assert!(
+        !batch.points[0]
+            .payload
+            .contains_key("actual_chunking_method")
+    );
 }

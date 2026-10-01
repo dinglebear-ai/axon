@@ -122,6 +122,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "xtask/src/schemas/projections.rs",
         "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
+        "xtask/src/schemas/vector_payload_fields.rs",
         "docs/pipeline-unification/schemas/api-dto-schema.md",
         "docs/pipeline-unification/schemas/cli-schema.md",
         "docs/pipeline-unification/schemas/openapi-schema.md",

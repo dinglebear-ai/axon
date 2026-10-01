@@ -5,6 +5,7 @@
 //! the plan, and retains the temporary checkout through the service bridge.
 
 mod acquire;
+mod dedup;
 mod discovery;
 mod metadata;
 mod target;
@@ -195,6 +196,9 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         collect_git_manifest_items_parallel(plan, &root, &base_uri, &exclude_paths)?
     };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
+    if !truncated {
+        items = dedup::deduplicate_items(items)?;
+    }
 
     let mut manifest = SourceManifest {
         source_id: plan.route.source.source_id.clone(),

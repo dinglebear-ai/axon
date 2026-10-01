@@ -121,7 +121,7 @@ fn canonical_uri_filter_has_bare_should_without_min_should() {
     assert_eq!(
         should.len(),
         4,
-        "item/source/source-key/chunk canonical URI arms"
+        "canonical URI arms preserve whole-document deletion semantics"
     );
     let keys = should
         .iter()
@@ -193,9 +193,13 @@ fn search_filter_json_converts_path_prefix_to_source_path_should_filter() {
         .expect("path should array");
 
     assert_eq!(path_filter.len(), 2);
-    assert_eq!(path_filter[0]["key"], "source_item_key");
-    assert_eq!(path_filter[1]["key"], "chunk_locator.path");
-    assert_eq!(path_filter[0]["match"]["text"], "src");
+    assert_eq!(path_filter[0]["key"], "source_path_prefixes");
+    assert_eq!(path_filter[0]["match"]["value"], "src");
+    assert_eq!(
+        path_filter[1]["must"][0]["is_empty"]["key"],
+        "source_path_prefixes"
+    );
+    assert_eq!(path_filter[1]["should"][1]["key"], "source_item_aliases");
 }
 
 #[test]

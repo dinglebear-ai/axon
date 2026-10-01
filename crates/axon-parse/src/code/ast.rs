@@ -8,6 +8,8 @@ use crate::parser::ParseInput;
 
 use super::AST_PARSER_METHOD;
 
+mod dialects;
+
 #[derive(Clone, Copy)]
 enum CodeLanguage {
     Rust,
@@ -15,11 +17,17 @@ enum CodeLanguage {
     JavaScript,
     TypeScript,
     Tsx,
+    Bash,
+    Css,
+    Elixir,
 }
 
 impl CodeLanguage {
     fn name(self) -> &'static str {
         match self {
+            Self::Bash => "bash",
+            Self::Css => "css",
+            Self::Elixir => "elixir",
             Self::Rust => "rust",
             Self::Python => "python",
             Self::JavaScript => "javascript",
@@ -27,8 +35,19 @@ impl CodeLanguage {
         }
     }
 
+    fn grammar_name(self) -> &'static str {
+        if matches!(self, Self::Tsx) {
+            "tsx"
+        } else {
+            self.name()
+        }
+    }
+
     fn grammar(self) -> Language {
         match self {
+            Self::Bash => tree_sitter_bash::LANGUAGE.into(),
+            Self::Css => tree_sitter_css::LANGUAGE.into(),
+            Self::Elixir => tree_sitter_elixir::LANGUAGE.into(),
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
             Self::Python => tree_sitter_python::LANGUAGE.into(),
             Self::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
@@ -46,21 +65,43 @@ pub(super) struct AstSymbol {
     parent_symbol: Option<String>,
     range: SourceRange,
     quote: String,
+    recovered: bool,
+    arity: Option<usize>,
 }
 
-pub(super) fn parse_symbols(input: &ParseInput) -> Result<Vec<AstSymbol>, ()> {
-    let language = detect_language(input).ok_or(())?;
+pub(super) struct AstParse {
+    pub symbols: Vec<AstSymbol>,
+    pub grammar: &'static str,
+    pub recovered: bool,
+}
+
+pub(super) fn parse_symbols(input: &ParseInput) -> Result<AstParse, &'static str> {
+    let language = detect_language(input).ok_or("unsupported")?;
     let source = inline_text(input);
     let mut parser = Parser::new();
-    parser.set_language(&language.grammar()).map_err(|_| ())?;
-    let tree = parser.parse(source, None).ok_or(())?;
-    if tree.root_node().has_error() {
-        return Err(());
-    }
+    parser
+        .set_language(&language.grammar())
+        .map_err(|_| "failed")?;
+    let tree = parser.parse(source, None).ok_or("failed")?;
 
     let mut symbols = Vec::new();
-    collect_symbols(tree.root_node(), source, language, None, &mut symbols);
-    Ok(symbols)
+    let offsets = CharOffsets::new(source);
+    collect_symbols(
+        tree.root_node(),
+        source,
+        language,
+        None,
+        &mut symbols,
+        &offsets,
+    );
+    for symbol in &mut symbols {
+        symbol.recovered = tree.root_node().has_error();
+    }
+    Ok(AstParse {
+        symbols,
+        grammar: language.grammar_name(),
+        recovered: tree.root_node().has_error(),
+    })
 }
 
 pub(super) fn facts_with_graph(
@@ -70,6 +111,11 @@ pub(super) fn facts_with_graph(
     let mut facts = Vec::with_capacity(symbols.len());
     let mut candidates = Vec::with_capacity(symbols.len());
     for symbol in symbols {
+        let graph_name = if symbol.language == "elixir" {
+            dialects::graph_name(&symbol.name, symbol.parent_symbol.as_deref(), symbol.arity)
+        } else {
+            symbol.name.clone()
+        };
         facts.push(source_fact_ranged(
             input,
             "code_symbols",
@@ -78,22 +124,33 @@ pub(super) fn facts_with_graph(
             symbol.name.clone(),
             json!({
                 "language": symbol.language,
+                "symbol_arity": symbol.arity,
                 "symbol_kind": symbol.kind,
                 "symbol_visibility": symbol.visibility,
                 "parent_symbol": symbol.parent_symbol,
                 "symbol_extraction_status": "ast",
                 "code_symbol_range_truncated": false,
+                "code_parse_status": if symbol.recovered { "partial" } else { "parsed" },
+                "code_syntax_recovered": symbol.recovered,
             }),
             Some(symbol.range.clone()),
         ));
-        candidates.push(graph_candidate_ranged(
+        let mut candidate = graph_candidate_ranged(
             input,
             "code_symbols",
             "code_symbol",
-            &symbol.name,
+            &graph_name,
             Some(symbol.range),
             Some(symbol.quote),
-        ));
+        );
+        if symbol.language == "elixir" {
+            let properties = &mut candidate.nodes[1].properties;
+            properties.insert("symbol_name".into(), json!(symbol.name));
+            properties.insert("symbol_arity".into(), json!(symbol.arity));
+            properties.insert("symbol_kind".into(), json!(symbol.kind));
+            properties.insert("parent_symbol".into(), json!(symbol.parent_symbol));
+        }
+        candidates.push(candidate);
     }
     (facts, candidates)
 }
@@ -104,17 +161,46 @@ fn collect_symbols(
     language: CodeLanguage,
     parent_symbol: Option<&str>,
     output: &mut Vec<AstSymbol>,
+    offsets: &CharOffsets<'_>,
 ) {
-    let descriptor = symbol_descriptor(node, source, language);
+    if node.is_error() || node.is_missing() {
+        return;
+    }
+    let descriptor = (!node.has_error() && !declaration_node(node).has_error())
+        .then(|| symbol_descriptor(node, source, language))
+        .flatten();
+    let recovered_scope = (matches!(language, CodeLanguage::Elixir) && descriptor.is_none())
+        .then(|| dialects::module_scope(node, source))
+        .flatten();
     let next_parent = descriptor
         .as_ref()
-        .map(|descriptor| descriptor.name.clone())
+        .or(recovered_scope.as_ref())
+        .map(|descriptor| {
+            if matches!(language, CodeLanguage::Elixir) {
+                if matches!(descriptor.kind, "module" | "impl") {
+                    dialects::graph_name(&descriptor.name, parent_symbol, None)
+                } else {
+                    parent_symbol.unwrap_or_default().to_string()
+                }
+            } else {
+                descriptor.name.clone()
+            }
+        })
+        .filter(|parent| !parent.is_empty())
         .or_else(|| parent_symbol.map(str::to_string));
 
     if let Some(descriptor) = descriptor {
         let range_node = declaration_node(node);
-        let range = node_range(range_node, source);
-        let quote = source[range_node.start_byte()..range_node.end_byte()].to_string();
+        let mut range = node_range(range_node, offsets);
+        let start_node = if matches!(language, CodeLanguage::Elixir) {
+            dialects::attribute_start(range_node, source)
+        } else {
+            range_node
+        };
+        range.byte_start = Some(start_node.start_byte() as u64);
+        range.char_start = Some(offsets.at(start_node.start_byte()));
+        range.line_start = Some(start_node.start_position().row as u32 + 1);
+        let quote = source[start_node.start_byte()..range_node.end_byte()].to_string();
         output.push(AstSymbol {
             name: descriptor.name,
             kind: descriptor.kind,
@@ -123,12 +209,27 @@ fn collect_symbols(
             parent_symbol: parent_symbol.map(str::to_string),
             range,
             quote,
+            recovered: false,
+            arity: if matches!(language, CodeLanguage::Elixir)
+                && matches!(descriptor.kind, "function" | "macro")
+            {
+                dialects::arity(node)
+            } else {
+                None
+            },
         });
     }
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        collect_symbols(child, source, language, next_parent.as_deref(), output);
+        collect_symbols(
+            child,
+            source,
+            language,
+            next_parent.as_deref(),
+            output,
+            offsets,
+        );
     }
 }
 
@@ -142,6 +243,9 @@ fn symbol_descriptor(
     source: &str,
     language: CodeLanguage,
 ) -> Option<SymbolDescriptor> {
+    if matches!(language, CodeLanguage::Css | CodeLanguage::Elixir) {
+        return dialects::descriptor(node, source, language);
+    }
     let kind = match node.kind() {
         "function_item" | "function_definition" | "function_declaration" => "function",
         "method_definition" => "method",
@@ -197,6 +301,8 @@ fn variable_kind(node: Node<'_>, source: &str) -> &'static str {
 
 fn visibility(node: Node<'_>, source: &str, language: CodeLanguage) -> &'static str {
     match language {
+        CodeLanguage::Bash | CodeLanguage::Css => "public",
+        CodeLanguage::Elixir => dialects::visibility(node, source),
         CodeLanguage::Rust => {
             let mut cursor = node.walk();
             if node
@@ -253,7 +359,37 @@ fn declaration_node(mut node: Node<'_>) -> Node<'_> {
     node
 }
 
-fn node_range(node: Node<'_>, source: &str) -> SourceRange {
+/// Sparse byte checkpoints bound each symbol's character-coordinate scan.
+struct CharOffsets<'a> {
+    source: &'a str,
+    checkpoints: Vec<(usize, u64)>,
+}
+
+impl<'a> CharOffsets<'a> {
+    fn new(source: &'a str) -> Self {
+        let mut checkpoints = vec![(0, 0)];
+        for (chars, (byte, _)) in source.char_indices().enumerate() {
+            if byte - checkpoints.last().unwrap().0 >= 256 {
+                checkpoints.push((byte, chars as u64));
+            }
+        }
+        Self {
+            source,
+            checkpoints,
+        }
+    }
+
+    fn at(&self, byte: usize) -> u64 {
+        let index = self
+            .checkpoints
+            .partition_point(|&(offset, _)| offset <= byte)
+            - 1;
+        let (start, chars) = self.checkpoints[index];
+        chars + self.source[start..byte].chars().count() as u64
+    }
+}
+
+fn node_range(node: Node<'_>, offsets: &CharOffsets<'_>) -> SourceRange {
     let start = node.start_byte();
     let end = node.end_byte();
     SourceRange {
@@ -261,8 +397,8 @@ fn node_range(node: Node<'_>, source: &str) -> SourceRange {
         line_end: Some(node.end_position().row as u32 + 1),
         byte_start: Some(start as u64),
         byte_end: Some(end as u64),
-        char_start: Some(source[..start].chars().count() as u64),
-        char_end: Some(source[..end].chars().count() as u64),
+        char_start: Some(offsets.at(start)),
+        char_end: Some(offsets.at(end)),
         time_start_ms: None,
         time_end_ms: None,
         dom_selector: None,
@@ -289,7 +425,28 @@ fn detect_language(input: &ParseInput) -> Option<CodeLanguage> {
         .as_deref()
         .unwrap_or(input.document.canonical_uri.as_str())
         .to_ascii_lowercase();
-    if hint == "rust" || path.ends_with(".rs") {
+    let shebang = inline_text(input).lines().next().unwrap_or_default();
+    if matches!(hint.as_str(), "zsh" | "scss" | "sass" | "heex")
+        || path.ends_with(".zsh")
+        || (shebang.starts_with("#!") && shebang.contains("zsh"))
+        || path.ends_with(".scss")
+        || path.ends_with(".sass")
+        || path.ends_with(".heex")
+    {
+        return None;
+    }
+    if hint == "bash"
+        || hint == "shell"
+        || hint == "sh"
+        || path.ends_with(".sh")
+        || path.ends_with(".bash")
+    {
+        Some(CodeLanguage::Bash)
+    } else if hint == "css" || path.ends_with(".css") {
+        Some(CodeLanguage::Css)
+    } else if hint == "elixir" || path.ends_with(".ex") || path.ends_with(".exs") {
+        Some(CodeLanguage::Elixir)
+    } else if hint == "rust" || path.ends_with(".rs") {
         Some(CodeLanguage::Rust)
     } else if hint == "python" || path.ends_with(".py") || path.ends_with(".pyi") {
         Some(CodeLanguage::Python)
@@ -315,3 +472,7 @@ fn detect_language(input: &ParseInput) -> Option<CodeLanguage> {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "ast_tests.rs"]
+mod tests;

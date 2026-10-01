@@ -20,6 +20,28 @@ pub(super) struct BoundedChunks {
     pub(super) empty_fallback: bool,
 }
 
+pub(super) fn finalize_chunks(
+    profile: ChunkingProfile,
+    chunks: Vec<DocumentChunk>,
+    source: &str,
+    markdown_limits: MarkdownChunkLimits,
+    fallback_method: &str,
+) -> Vec<DocumentChunk> {
+    let max_chars = if profile == ChunkingProfile::MarkdownSections {
+        markdown_limits.max_chars()
+    } else {
+        text::MAX_PLAIN_TEXT_CHUNK_CHARS
+    };
+    let mut chunks = crate::quality::useful_chunks_with_limit(chunks, source, max_chars);
+    for chunk in &mut chunks {
+        chunk
+            .metadata
+            .entry("actual_chunking_method".into())
+            .or_insert_with(|| fallback_method.into());
+    }
+    chunks
+}
+
 pub(super) fn bound_or_fallback(chunks: Vec<DocumentChunk>, source: &str) -> BoundedChunks {
     let (mut chunks, size_backstop) = bound_embedding_chunks(chunks, source);
     let empty_fallback = chunks.is_empty();
@@ -311,6 +333,7 @@ fn structured_or_fallback(
                 .map(|chunk| {
                     chunk
                         .with_metadata("chunking_fallback", "atomic_text".into())
+                        .with_metadata("actual_chunking_method", "atomic_fallback".into())
                         .with_metadata("chunking_fallback_from", profile.as_str().into())
                         .with_metadata("structured_parse_error", error.clone().into())
                 })

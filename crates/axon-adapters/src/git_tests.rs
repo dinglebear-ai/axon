@@ -519,3 +519,6 @@ async fn git_inventory_completeness_distinguishes_exact_cap_from_truncation() {
     }
     fs::remove_dir_all(repo).unwrap();
 }
+
+#[path = "git/dedup_tests.rs"]
+mod dedup_tests;

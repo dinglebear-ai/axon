@@ -1,6 +1,6 @@
 # Metadata Payload
 
-Last Modified: 2026-07-19
+Last Modified: 2026-09-30
 
 Every vector point carries a structured payload that makes it traceable to its
 source, generation, document, chunk, and embedding. Payloads are the queryable
@@ -59,6 +59,19 @@ Optional: `graph_node_ids`, `graph_edge_ids`, `graph_confidence`,
 `authority_score`, `freshness_score`, `quality_score`, `dedupe_key`,
 `artifact_id`, `redaction_profile`, `tenant_id`.
 
+Identical Git files can share a canonical document. `source_item_aliases` and
+`item_canonical_uri_aliases` retain its other repository paths and URIs as arrays;
+path filters include these aliases. Alias membership participates in refresh and
+prepared-document reuse. Inventories exceeding the alias count or payload budget
+retain separate documents instead of truncating paths.
+`source_path_prefixes` records canonical and aliased directory ancestors for
+exact directory filtering on complete Git inventories, including older Qdrant
+versions without native prefix matching. Legacy points retain their prior text
+matching behavior until refreshed.
+Removing an aliased file is reconciled by a complete source refresh. Standalone
+canonical-URI point deletion targets the canonical document only; an alias URI
+does not delete the shared document and its other paths.
+
 ## Code-specific fields
 
 `code_file_path` (required for code), `code_language`, `code_file_type`
@@ -72,6 +85,20 @@ forms are rejected for the `code` family), `symbol_kind` ∈
 `symbol_qualified_name`, `symbol_signature`, `symbol_visibility`,
 `symbol_parent`, `symbol_extraction_status`, `dependency_manifest_kind`,
 `schema_kind`.
+
+`code_symbol_aliases` retains multiple symbols sharing one source interval.
+`code_symbol_source_range` records the original declaration range when its
+embedding interval is partitioned. `code_syntax_recovered` identifies clean AST
+symbols retained from a partially parsed file. `chunking_method` describes the
+individual chunk, including any bounded-window fallback.
+`code_ast_status` records the document's actual AST result (`parsed`, `partial`,
+`unsupported`, or `failed`), independently of symbol extraction. `code_grammar`
+names the grammar when available; `code_symbol_count` includes zero-symbol
+successful parses. Unsupported grammars are excluded from supported-parse
+attempt counts. Heuristic extraction is reported separately.
+Methods can include `tree_sitter`, `heuristic_symbol`, `atomic_code`,
+`atomic_manifest`, `line_window`, `plain_text_windows`, `source_adjacent_packing`,
+or `source_context`; a document summary does not overwrite that chunk's method.
 
 ## Visibility, redaction, hashing
 

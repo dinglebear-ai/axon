@@ -30,6 +30,7 @@ pub(super) async fn merge_inventory(
         })?;
     let git_repo = plan.route.source.source_kind == SourceKind::Git
         && matches!(plan.route.scope, SourceScope::Repo | SourceScope::Directory);
+    require_complete_alias_inventory(git_repo, &prior)?;
     let existing_paths = if git_repo {
         let wanted = prior
             .items
@@ -41,6 +42,24 @@ pub(super) async fn merge_inventory(
         None
     };
     retain_unvisited(plan, manifest, prior, existing_paths.as_ref())
+}
+
+fn require_complete_alias_inventory(git_repo: bool, prior: &SourceManifest) -> anyhow::Result<()> {
+    if git_repo
+        && prior.items.iter().any(|item| {
+            item.metadata
+                .get("source_item_aliases")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|aliases| !aliases.is_empty())
+        })
+    {
+        return Err(ApiError::new(
+            "source.git.alias_inventory_requires_complete_refresh",
+            ErrorStage::Discovering,
+            "partial repository refresh cannot verify previously deduplicated file aliases; rerun with max_items unset to discover the complete checkout before publication",
+        ).with_context("source_id", prior.source_id.0.clone()).into());
+    }
+    Ok(())
 }
 
 fn retain_unvisited(
