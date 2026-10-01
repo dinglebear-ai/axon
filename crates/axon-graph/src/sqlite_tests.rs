@@ -1210,3 +1210,6 @@ async fn nodes_for_source_filters_by_source_id_without_prefix_collisions() {
         .unwrap();
     assert!(none.is_empty());
 }
+
+#[path = "sqlite/item_evidence_index_tests.rs"]
+mod item_evidence_index_tests;
