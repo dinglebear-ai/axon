@@ -195,3 +195,171 @@ async fn finalizer_does_not_retry_nonbusy_or_other_generation_failures() {
         assert_eq!(summary.failed, 3);
     }
 }
+
+#[tokio::test]
+async fn finalizer_finishes_ledger_dependency_after_busy_graph_retry() {
+    let ledger = FakeLedgerStore::new();
+    let (previous, committed) = seed_two_generations(&ledger).await;
+    let mut debt = cleanup_debt(
+        CleanupDebtKind::LedgerPrune,
+        CleanupSelector::LedgerGenerations {
+            source_id: SourceId::new(SRC),
+            up_to_generation: previous.clone(),
+        },
+    );
+    debt.debt_id = CleanupDebtId::new("zzz-ledger-after-graph");
+    debt.created_at = Timestamp::from(chrono::Utc::now() + chrono::Duration::seconds(1));
+    ledger.record_cleanup_debt(debt).await.unwrap();
+    let providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
+        busy: AtomicBool::new(true),
+        retry_generation: Some(committed.clone()),
+    };
+    let summary = super::super::super::finalizer::drain(
+        &ledger,
+        &index_counts(&committed),
+        None,
+        Duration::from_secs(1),
+        Duration::from_millis(1),
+        |retry_only| {
+            providers.retry_only.store(retry_only, Ordering::SeqCst);
+            if retry_only {
+                providers.busy.store(false, Ordering::SeqCst);
+            }
+            run_retry(&ledger, &providers, &committed)
+        },
+    )
+    .await;
+    assert_eq!(summary.failed, 0, "ledger dependency was skipped on retry");
+    assert_eq!(summary.resolved, 3);
+    assert_eq!(providers.vector_calls.load(Ordering::SeqCst), 1);
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        ledger
+            .get_manifest(SourceId::new(SRC), previous)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        ledger
+            .get_manifest(SourceId::new(SRC), committed)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(crate::source::job_tracking::prune_outcome_warning(&summary).is_none());
+}
+
+#[test]
+fn ledger_retry_excludes_current_generation_and_recorded_errors() {
+    let current = SourceGenerationId::new("current");
+    let mut debt = cleanup_debt(
+        CleanupDebtKind::LedgerPrune,
+        CleanupSelector::LedgerGenerations {
+            source_id: SourceId::new(SRC),
+            up_to_generation: SourceGenerationId::new("previous"),
+        },
+    );
+    assert!(super::super::super::finalizer::eligible_retry(
+        &debt,
+        Some(&current)
+    ));
+    assert!(!super::super::super::finalizer::eligible_retry(&debt, None));
+    debt.last_error = Some(SourceError {
+        code: "ledger.storage_error".into(),
+        severity: Severity::Warning,
+        message: "storage unavailable".into(),
+        source_item_key: None,
+        retryable: true,
+        provider_id: None,
+        cause: None,
+    });
+    assert!(!super::super::super::finalizer::eligible_retry(
+        &debt,
+        Some(&current)
+    ));
+    debt.last_error = None;
+    debt.selector = CleanupSelector::LedgerGenerations {
+        source_id: SourceId::new(SRC),
+        up_to_generation: current.clone(),
+    };
+    assert!(!super::super::super::finalizer::eligible_retry(
+        &debt,
+        Some(&current)
+    ));
+}
+
+#[tokio::test]
+async fn finalizer_preserves_pending_nonledger_debt_after_graph_retry() {
+    let ledger = FakeLedgerStore::new();
+    let (previous, committed) = seed_two_generations(&ledger).await;
+    let mut debt = cleanup_debt(
+        CleanupDebtKind::LedgerPrune,
+        CleanupSelector::LedgerGenerations {
+            source_id: SourceId::new(SRC),
+            up_to_generation: previous.clone(),
+        },
+    );
+    debt.debt_id = CleanupDebtId::new("zzz-ledger-after-graph");
+    debt.created_at = Timestamp::from(chrono::Utc::now() + chrono::Duration::seconds(1));
+    ledger.record_cleanup_debt(debt).await.unwrap();
+    let providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(true),
+        busy: AtomicBool::new(true),
+        retry_generation: Some(committed.clone()),
+    };
+    let summary = super::super::super::finalizer::drain(
+        &ledger,
+        &index_counts(&committed),
+        None,
+        Duration::from_secs(1),
+        Duration::from_millis(1),
+        |retry_only| {
+            providers.retry_only.store(retry_only, Ordering::SeqCst);
+            if retry_only {
+                providers.busy.store(false, Ordering::SeqCst);
+            }
+            run_retry(&ledger, &providers, &committed)
+        },
+    )
+    .await;
+    assert_eq!(summary.failed, 2);
+    assert_eq!(summary.resolved, 1);
+    assert_eq!(providers.vector_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        ledger
+            .get_manifest(SourceId::new(SRC), previous)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        ledger
+            .get_manifest(SourceId::new(SRC), committed)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(crate::source::job_tracking::prune_outcome_warning(&summary).is_some());
+}

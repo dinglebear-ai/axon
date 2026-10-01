@@ -101,6 +101,16 @@ pub(in crate::store) async fn delete_generation(
     generation: &SourceGenerationId,
 ) -> Result<u64> {
     let mut state = state.lock().await;
+    if state.cleanup_debt.values().any(|debt| {
+        &debt.source_id == source_id
+            && debt.generation.as_ref() == Some(generation)
+            && debt.completed_at.is_none()
+            && debt.kind != CleanupDebtKind::LedgerPrune
+    }) {
+        return Err(crate::validation::generation_cleanup_pending_error(
+            source_id, generation,
+        ));
+    }
     let mut deleted = 0u64;
     let key = (source_id.clone(), generation.clone());
     if state.generations.remove(&key).is_some() {

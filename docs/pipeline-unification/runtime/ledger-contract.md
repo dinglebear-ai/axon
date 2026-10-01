@@ -134,7 +134,11 @@ Ledger creates cleanup debt for:
 - failed publish leftovers
 
 Cleanup debt is idempotent and retryable. The ledger owns debt state; `axon-prune`
-executes it.
+executes it. Provider effects drain before ledger-prune dependencies. Bounded
+post-publication retries may finish the superseded-ledger dependency after busy
+graph retirement succeeds, preserving current-generation fencing and genuine
+provider failure reporting. Generation deletion atomically rejects unresolved
+non-ledger debt for that generation, retaining its manifest for provider recovery.
 
 **Decision (C4-08, 2026-07-09 audit):** cleanup-debt rows created at
 generation publish time are stamped with the nil UUID as `job_id`, since no

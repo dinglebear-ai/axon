@@ -942,3 +942,6 @@ fn prune_resume_accepts_bounded_remainder_after_failed_chunk() {
         .expect_err("failed chunk may not expand beyond reviewed impact");
     assert!(error.to_string().contains("scope expanded"));
 }
+
+#[path = "prune_tests/vector_debt_tests.rs"]
+mod vector_debt_tests;
