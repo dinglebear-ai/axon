@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::preparation::prepare_documents;
 use super::progress::{PipelineProgress, ProgressCoordinator};
-use super::vector_points::point_batch;
+use super::vector_points::{RedactionSkipsBySourceItem, point_batch};
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
 use crate::reserved_call::{self, ProviderCallContext};
 
@@ -15,6 +15,7 @@ pub(super) mod batching;
 mod bulk_load;
 mod pipeline;
 mod prepared_pool;
+mod redaction_warnings;
 mod skip;
 pub(super) use bulk_load::GenerationVectorState;
 use bulk_load::{bulk_context, finish_bulk_result};
@@ -337,40 +338,15 @@ fn vectorize_result(
     points_by_document: &std::collections::BTreeMap<DocumentId, u32>,
     write: VectorStoreWriteResult,
     skipped_redaction: u64,
-    redaction_skips_by_source_item: &std::collections::BTreeMap<SourceItemKey, u64>,
+    redaction_skips_by_source_item: &RedactionSkipsBySourceItem,
 ) -> VectorizeResult {
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
     result.warnings.extend(embedding_warnings);
-    for (source_item_key, count) in redaction_skips_by_source_item {
-        result.warnings.push(SourceWarning {
-            code: "source.vectorize.redaction_skipped_chunks".to_string(),
-            severity: Severity::Warning,
-            message: format!(
-                "skipped {count} chunk(s) with secret-redaction-forbidden payload values \
-                 (not indexed; reduced vector point count accordingly)"
-            ),
-            source_item_key: Some(source_item_key.clone()),
-            retryable: false,
-        });
-    }
-    let attributed_skips = redaction_skips_by_source_item
-        .values()
-        .copied()
-        .sum::<u64>();
-    if skipped_redaction > attributed_skips {
-        result.warnings.push(SourceWarning {
-            code: "source.vectorize.redaction_skipped_chunks".to_string(),
-            severity: Severity::Warning,
-            message: format!(
-                "skipped {} unattributed chunk(s) with secret-redaction-forbidden payload values \
-                 (not indexed; reduced vector point count accordingly)",
-                skipped_redaction - attributed_skips
-            ),
-            source_item_key: None,
-            retryable: false,
-        });
-    }
+    result.warnings.extend(redaction_warnings::warnings(
+        skipped_redaction,
+        redaction_skips_by_source_item,
+    ));
     for status in &mut result.document_statuses {
         status.vector_point_count = points_by_document
             .get(&status.document_id)

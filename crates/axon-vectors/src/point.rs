@@ -2,6 +2,7 @@
 
 mod build_helpers;
 mod point_payload;
+mod redaction_skip;
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -14,6 +15,10 @@ use build_helpers::stable_point_id;
 use point_payload::build_payload;
 
 pub const MODULE_NAME: &str = "point";
+
+pub use redaction_skip::{
+    RedactionSkipCounts, RedactionSkipDetector, RedactionSkipField, RedactionSkipReason,
+};
 
 #[derive(Debug, Clone)]
 pub struct VectorPointBatchBuilder {
@@ -205,6 +210,18 @@ pub fn build_points_for_document(
     embeddings: EmbeddingResult,
     context: &VectorPointBatchBuildContext,
 ) -> Result<(Vec<VectorPoint>, u64), VectorPointBatchBuildError> {
+    let (points, reasons) =
+        build_points_for_document_with_diagnostics(collection, document, embeddings, context)?;
+    Ok((points, reasons.values().copied().sum()))
+}
+
+/// Build points and retain only fixed classifications and counts for rejected chunks.
+pub fn build_points_for_document_with_diagnostics(
+    collection: &CollectionSpec,
+    document: &PreparedDocument,
+    embeddings: EmbeddingResult,
+    context: &VectorPointBatchBuildContext,
+) -> Result<(Vec<VectorPoint>, RedactionSkipCounts), VectorPointBatchBuildError> {
     let expected_dimensions = collection.dense.dimensions;
     if embeddings.dimensions != expected_dimensions {
         return Err(VectorPointBatchBuildError::DimensionMismatch {
@@ -222,7 +239,7 @@ pub fn build_points_for_document(
     let model = embeddings.model;
     let mut vectors = vectors_by_chunk_id(embeddings.vectors, &chunks, expected_dimensions)?;
     let mut points = Vec::with_capacity(document.chunks.len());
-    let mut skipped_redaction = 0;
+    let mut skipped_redaction = RedactionSkipCounts::new();
     for chunk in &document.chunks {
         let vector = vectors.remove(&chunk.chunk_id).ok_or_else(|| {
             VectorPointBatchBuildError::MissingEmbeddingChunk {
@@ -249,10 +266,12 @@ pub fn build_points_for_document(
         ) {
             Ok(payload) => payload,
             Err(VectorPointBatchBuildError::Payload {
-                source: VectorPayloadValidationError::ForbiddenValue { .. },
+                source: VectorPayloadValidationError::ForbiddenValue { field, detector },
                 ..
             }) => {
-                skipped_redaction += 1;
+                *skipped_redaction
+                    .entry(RedactionSkipReason::classified(&field, &detector))
+                    .or_default() += 1;
                 continue;
             }
             Err(error) => return Err(error),

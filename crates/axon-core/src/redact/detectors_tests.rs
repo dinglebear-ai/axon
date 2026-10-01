@@ -228,10 +228,10 @@ fn contains_pem_private_key_block_matches_common_key_headers() {
     ));
     // Non-secret lookalikes: public keys and unrelated PEM-shaped headers.
     assert!(!contains_pem_private_key_block(
-        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----"
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----" // gitleaks:allow -- synthetic PEM regression fixture
     ));
     assert!(!contains_pem_private_key_block(
-        "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----"
+        "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----" // gitleaks:allow -- synthetic PEM regression fixture
     ));
     assert!(!contains_pem_private_key_block(
         "just some PRIVATE KEY text"
@@ -250,10 +250,12 @@ fn retrievable_body_scrubs_complete_pem_blocks_before_chunking() {
 
     let incomplete = "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl"; // gitleaks:allow
     assert_eq!(
-        retrievable_body_secret_detector(&crate::redact::redact_retrievable_body_secrets(
-            incomplete
-        )),
+        retrievable_body_secret_detector(incomplete),
         Some("pem_private_key")
+    );
+    assert_eq!(
+        crate::redact::redact_retrievable_body_secrets(incomplete),
+        "[REDACTED]"
     );
 }
 
@@ -317,4 +319,70 @@ fn value_is_high_entropy_token_bounds_short_and_low_entropy_values() {
 fn last_field_segment_splits_dotted_paths() {
     assert_eq!(last_field_segment("metadata.gitlab_token"), "gitlab_token");
     assert_eq!(last_field_segment("web_title"), "web_title");
+}
+
+#[test]
+fn retrievable_source_syntax_is_not_secret_material() {
+    for source in [
+        "const password = readQueryParameter('password');",
+        "assert String.starts_with?(key, \"-----BEGIN PRIVATE KEY-----\")", // gitleaks:allow -- synthetic PEM regression fixture
+        "assert key_header == \"-----BEGIN RSA PRIVATE KEY-----\"", // gitleaks:allow -- synthetic PEM regression fixture
+        "db_password:\n  file: \"./fixture-password-file\"\n",
+        "assert text == \"password: \"\nnext_expression(\"benign fixture description\")\n",
+        r#"assert text == "escaped \"quote\" password: "
+next_expression("benign fixture description")"#,
+        "password:\n\"nested \\\"quoted\\\" fixture expression\"",
+    ] {
+        assert_eq!(retrievable_body_secret_detector(source), None);
+        assert_eq!(
+            crate::redact::redact_retrievable_body_secrets(source),
+            source
+        );
+    }
+}
+
+#[test]
+fn retrievable_secret_literals_and_partial_key_material_stay_protected() {
+    for source in [
+        "password=thisisarealpassphrase",
+        "password=readQueryParameter(credential)",
+        "password=\"this is a real passphrase\"",
+        "password=\"firstline\nsecondline\"",
+        "    password: \"firstline\nsecondline\"",
+        "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl", // gitleaks:allow -- synthetic PEM regression fixture
+        r#"key = "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl""#, // gitleaks:allow -- synthetic PEM regression fixture
+        "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl\n-----END PRIVATE KEY-----", // gitleaks:allow -- synthetic PEM regression fixture
+    ] {
+        assert!(retrievable_body_secret_detector(source).is_some());
+        let redacted = crate::redact::redact_retrievable_body_secrets(source);
+        assert_ne!(redacted, source);
+        assert_eq!(retrievable_body_secret_detector(&redacted), None);
+    }
+    let complete = "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl\n-----END PRIVATE KEY-----"; // gitleaks:allow -- synthetic PEM regression fixture
+    assert_eq!(
+        crate::redact::redact_retrievable_body_secrets(complete),
+        "[REDACTED]"
+    );
+}
+
+#[test]
+fn partial_key_scrubbing_keeps_source_delimiters_and_masks_every_encoded_line() {
+    for source in [
+        "before\n-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl\n\nYW5vdGhlci1saW5l\nafter code()", // gitleaks:allow -- synthetic PEM regression fixture
+        r#"assert key == "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl\nYW5vdGhlci1saW5l""#, // gitleaks:allow -- synthetic PEM regression fixture
+        "-----BEGIN PRIVATE KEY-----\n\nZmFrZS1maXh0dXJl\n\nYW5vdGhlci1saW5l", // gitleaks:allow -- synthetic PEM regression fixture
+        "-----BEGIN PRIVATE KEY-----\r\n\r\nZmFrZS1maXh0dXJl\r\n\r\nYW5vdGhlci1saW5l", // gitleaks:allow -- synthetic PEM regression fixture
+        r#"key = "-----BEGIN PRIVATE KEY-----\n\nZmFrZS1maXh0dXJl\n\nYW5vdGhlci1saW5l""#, // gitleaks:allow -- synthetic PEM regression fixture
+    ] {
+        assert_eq!(
+            retrievable_body_secret_detector(source),
+            Some("pem_private_key")
+        );
+        let redacted = crate::redact::redact_retrievable_body_secrets(source);
+        assert!(redacted.contains("[REDACTED]"));
+        assert!(!redacted.contains("ZmFrZS1maXh0dXJl"));
+        assert!(!redacted.contains("YW5vdGhlci1saW5l"));
+        assert_eq!(retrievable_body_secret_detector(&redacted), None);
+        assert_eq!(source.ends_with('"'), redacted.ends_with('"'));
+    }
 }

@@ -41,7 +41,12 @@ fn hash(plan: &SourcePlan, config: DocumentPreparerConfig, resident: usize) -> C
 fn schema_and_each_preparation_knob_invalidate_identity() {
     let config = DocumentPreparerConfig::default();
     let baseline = identity(snapshot(), config, None, PREPARATION_SCHEMA_VERSION);
-    assert_ne!(baseline, identity(snapshot(), config, None, "old-schema"));
+    // The redaction correction must reprepare unchanged files whose previous
+    // publication omitted chunks under the schema-8 detector policy.
+    assert_ne!(
+        baseline,
+        identity(snapshot(), config, None, "axon-document/schema-8")
+    );
     for modified in [
         DocumentPreparerConfig {
             max_content_bytes: config.max_content_bytes - 1,

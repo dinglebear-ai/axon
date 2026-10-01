@@ -757,6 +757,16 @@
     },
     {
       "columns": [
+        "source_id",
+        "coalesce(json_extract(metadata_json, '$.contained_source_item_key'), source_item_key)"
+      ],
+      "name": "idx_graph_evidence_item",
+      "table": "graph_evidence",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "source_id"
       ],
       "name": "idx_graph_evidence_source",
@@ -1567,6 +1577,18 @@
         "graph_write_checkpoints"
       ],
       "version": 3
+    },
+    {
+      "checksum": "0ba9ce29e38e4b2721d763de81a7436b2282627162702db315effb1ba277119a",
+      "file": "crates/axon-graph/src/migrations/0004_item_evidence_index.sql",
+      "name": "0004_item_evidence_index",
+      "owner_crate": "axon-graph",
+      "runtime_namespace": "graph",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "graph_evidence"
+      ],
+      "version": 4
     },
     {
       "checksum": "27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3",
@@ -4318,7 +4340,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:a7a1732db61735b5f21b938bd8b8866cddf047125120d36e9d0a6355bb51900a",
+        "checksum": "sha256:0313bcedb574b359bdd2647b7008aa4381c1817ad3ea9855e606c3c8114a9547",
         "kind": "sql_migration_directory",
         "path": "crates/axon-graph/src/migrations"
       },

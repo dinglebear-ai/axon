@@ -66,6 +66,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::result_map::IndexCounts;
 
 mod drain_ops;
+mod graph_retry;
 mod step_map;
 
 use drain_ops::*;
@@ -91,6 +92,12 @@ pub struct DebtDrainSummary {
 /// scheduler; prune remains provider-handle-neutral.
 #[async_trait]
 pub(crate) trait CleanupProviderOps: Send + Sync {
+    /// Only the post-publication finalizer may retry busy graph debt immediately.
+    /// The retirement generation must still match; provider safety fences remain.
+    fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
+        None
+    }
+
     async fn vector_delete(
         &self,
         selector: VectorDeleteSelector,
@@ -348,7 +355,12 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
     let mut summary = DebtDrainSummary::default();
     let mut vector_groups: BTreeMap<(String, String), Vec<CleanupDebt>> = BTreeMap::new();
     let mut other_debts = Vec::new();
+    let graph_backoff = graph_retry::source_backoff(&pending, provider_ops);
     for debt in pending {
+        if graph_backoff && matches!(debt.selector, CleanupSelector::GraphItemEvidence { .. }) {
+            summary.failed += 1;
+            continue;
+        }
         if debt.kind == CleanupDebtKind::VectorDelete {
             if let Some((source_id, generation)) = vector_debt_scope(&debt) {
                 vector_groups
@@ -396,7 +408,7 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
                 }
             }
         } else {
-            drain_one_debt(
+            if drain_one_debt(
                 ledger,
                 &executor,
                 &authz,
@@ -407,7 +419,10 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
                 adapter_registry,
                 &mut summary,
             )
-            .await;
+            .await
+            {
+                break;
+            }
         }
     }
 

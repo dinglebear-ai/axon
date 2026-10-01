@@ -328,7 +328,16 @@ fn vectorize_result_reports_redaction_skips_per_source_item() {
     let document_id = document.document_id.clone();
     let source_item_key = document.source_item_key.clone();
     let points_by_document = [(document_id, 1)].into_iter().collect();
-    let skips = [(source_item_key.clone(), 1)].into_iter().collect();
+    let reasons = [(
+        axon_vectors::point::RedactionSkipReason {
+            field: axon_vectors::point::RedactionSkipField::Body,
+            detector: axon_vectors::point::RedactionSkipDetector::SecretAssignment,
+        },
+        1,
+    )]
+    .into_iter()
+    .collect();
+    let skips = [(source_item_key.clone(), reasons)].into_iter().collect();
 
     let result = vectorize_result(
         vec![document],
@@ -348,6 +357,8 @@ fn vectorize_result_reports_redaction_skips_per_source_item() {
         .expect("redaction skip warning");
     assert_eq!(warning.source_item_key.as_ref(), Some(&source_item_key));
     assert!(warning.message.contains("skipped 1 chunk"));
+    assert!(warning.message.contains("secret_assignment"));
+    assert!(warning.message.contains("body"));
 }
 
 #[test]
@@ -380,3 +391,6 @@ fn skipped_preparation_keeps_identity_without_prepared_counts_or_warnings() {
     );
     assert_eq!(aggregate.chunks_prepared, 2);
 }
+
+#[path = "vectorize/redaction_warning_tests.rs"]
+mod redaction_warning_tests;

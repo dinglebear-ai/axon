@@ -8,6 +8,12 @@ use std::sync::LazyLock;
 #[path = "detectors/spans.rs"]
 mod spans;
 use spans::*;
+#[path = "detectors/body.rs"]
+mod body;
+use body::{
+    PEM_KEY_MATERIAL_RE, contains_pem_private_key_material,
+    retrievable_assignment_is_high_confidence,
+};
 pub(super) use spans::{
     redact_operational_secret_spans, redact_retrievable_body_secret_spans, redact_secret_spans,
 };
@@ -179,7 +185,7 @@ pub fn retrievable_body_secret_detector(value: &str) -> Option<&'static str> {
         Some("secret_assignment")
     } else if contains_bare_secret_token(value) {
         Some("bare_secret_token")
-    } else if contains_pem_private_key_block(value) {
+    } else if contains_pem_private_key_material(value) {
         Some("pem_private_key")
     } else if contains_high_confidence_url_credentials(value) {
         Some("url_credentials")
@@ -189,15 +195,9 @@ pub fn retrievable_body_secret_detector(value: &str) -> Option<&'static str> {
 }
 
 fn contains_high_confidence_secret_assignment(value: &str) -> bool {
-    SECRET_ASSIGNMENT_RE.captures_iter(value).any(|captures| {
-        let Some(key) = captures.name("key").map(|matched| matched.as_str()) else {
-            return false;
-        };
-        let Some(raw_value) = captures.name("value").map(|matched| matched.as_str()) else {
-            return false;
-        };
-        secret_assignment_is_high_confidence(key, raw_value)
-    })
+    BODY_SECRET_ASSIGNMENT_RE
+        .captures_iter(value)
+        .any(|captures| retrievable_assignment_is_high_confidence(value, &captures))
 }
 
 fn secret_assignment_is_high_confidence(key: &str, raw_value: &str) -> bool {
@@ -254,7 +254,7 @@ fn is_documented_body_example_value(value: &str) -> bool {
 
 fn contains_high_confidence_url_credentials(value: &str) -> bool {
     URL_CREDENTIALS_RE.captures_iter(value).any(|captures| {
-        let password = captures
+        let password = captures // gitleaks:allow -- regex capture, not a credential literal
             .name("password")
             .map_or("", |matched| matched.as_str());
         url_password_is_high_confidence(password)
@@ -393,7 +393,7 @@ pub fn contains_url_embedded_credentials(value: &str) -> bool {
             .name("username")
             .map(|matched| matched.as_str())
             .unwrap_or_default();
-        let password = captures
+        let password = captures // gitleaks:allow -- regex capture, not a credential literal
             .name("password")
             .map(|matched| matched.as_str())
             .unwrap_or_default();

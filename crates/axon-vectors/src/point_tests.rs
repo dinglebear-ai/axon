@@ -644,3 +644,40 @@ fn mixed_chunk_methods_use_each_chunks_actual_method() {
             .contains_key("actual_chunking_method")
     );
 }
+
+#[test]
+fn rejected_chunks_retain_fixed_screening_reason_counts() {
+    use crate::point::{RedactionSkipDetector, RedactionSkipField, RedactionSkipReason};
+    let mut document = test_prepared_document();
+    document.chunks[0].content = "password=thisisarealpassphrase".into();
+    document.chunks[1].content = "-----BEGIN PRIVATE KEY-----\nZmFrZS1maXh0dXJl".into(); // gitleaks:allow -- synthetic PEM regression fixture
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+    let (points, reasons) = crate::point::build_points_for_document_with_diagnostics(
+        &test_collection_spec(3),
+        &document,
+        embeddings,
+        &test_vector_build_context(),
+    )
+    .unwrap();
+    assert!(points.is_empty());
+    assert_eq!(
+        reasons.get(&RedactionSkipReason {
+            field: RedactionSkipField::Body,
+            detector: RedactionSkipDetector::SecretAssignment
+        }),
+        Some(&1)
+    );
+    assert_eq!(
+        reasons.get(&RedactionSkipReason {
+            field: RedactionSkipField::Body,
+            detector: RedactionSkipDetector::PemPrivateKey
+        }),
+        Some(&1)
+    );
+    assert_eq!(reasons.values().sum::<u64>(), 2);
+    for reason in reasons.keys() {
+        let encoded = serde_json::to_string(reason).unwrap();
+        assert!(!encoded.contains("thisisarealpassphrase"));
+        assert!(!encoded.contains("ZmFrZS1maXh0dXJl"));
+    }
+}
