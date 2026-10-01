@@ -32,12 +32,12 @@ pub(super) fn finalize_chunks(
     } else {
         text::MAX_PLAIN_TEXT_CHUNK_CHARS
     };
-    let chunks = if profile == ChunkingProfile::MarkdownSections {
-        markdown::omit_empty_heading_spans(chunks, source)
+    let mut chunks = if profile == ChunkingProfile::MarkdownSections {
+        let chunks = crate::quality::contextual_chunks_with_limit(chunks, source, max_chars);
+        crate::quality::deduplicate_chunks(markdown::omit_empty_heading_spans(chunks, source))
     } else {
-        chunks
+        crate::quality::useful_chunks_with_limit(chunks, source, max_chars)
     };
-    let mut chunks = crate::quality::useful_chunks_with_limit(chunks, source, max_chars);
     for chunk in &mut chunks {
         chunk
             .metadata
@@ -257,7 +257,7 @@ pub(super) fn build_chunks(
             size_fallback_chunks(text, "plain_text_windows", Some(markdown_limits))
         }
         ChunkingProfile::MarkdownSections => {
-            markdown::markdown_sections_with_limits(text, markdown_limits)
+            markdown::markdown_section_windows(text, markdown_limits)
         }
         ChunkingProfile::HtmlArticle => markdown::html_article(text),
         ChunkingProfile::PlainTextWindows => text::plain_text_windows(text),

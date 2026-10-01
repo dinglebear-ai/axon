@@ -58,6 +58,9 @@ rule, independent of heading length; the empty-result fallback also applies it
 so headings are not reintroduced as plain-text content.
 If a fitting list or table forces its headings into a separate bounded
 window, that window is omitted and the body retains the full breadcrumb.
+Preparation lends bounded literal context to short structural bodies before
+omitting heading-only windows. Exact deduplication follows omission so a
+rejected heading cannot own an identical fenced comment's canonical span.
 
 ## ChunkRouter decision
 

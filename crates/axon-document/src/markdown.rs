@@ -66,7 +66,17 @@ pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
     markdown_sections_with_limits(text, CURRENT_STRUCTURAL_DEFAULTS)
 }
 
+#[cfg(test)]
 pub(crate) fn markdown_sections_with_limits(
+    text: &str,
+    limits: MarkdownChunkLimits,
+) -> Vec<DocumentChunk> {
+    omit_empty_heading_spans(markdown_section_windows(text, limits), text)
+}
+
+// Keep scaffold windows until the final quality gate can lend their literal
+// context to a short structural body. Only then omit heading-only windows.
+pub(crate) fn markdown_section_windows(
     text: &str,
     limits: MarkdownChunkLimits,
 ) -> Vec<DocumentChunk> {
@@ -131,7 +141,7 @@ pub(crate) fn markdown_sections_with_limits(
 
     let chunks = scaffold::attach_empty_headings(text, &positions, chunks);
     let chunks = split_oversized_sections(text, &positions, chunks, limits);
-    omit_empty_heading_spans(pack_small_sections(chunks, limits), text)
+    pack_small_sections(chunks, limits)
 }
 
 pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {
