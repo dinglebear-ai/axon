@@ -4,11 +4,15 @@ use axon_api::source::*;
 
 pub fn normalize_collection_spec(mut spec: CollectionSpec) -> CollectionSpec {
     for required in required_retrieval_payload_indexes() {
-        if !spec
+        if let Some(existing) = spec
             .payload_indexes
-            .iter()
-            .any(|index| index.field_name == required.field_name)
+            .iter_mut()
+            .find(|index| index.field_name == required.field_name)
         {
+            // Reserved retrieval fields remain mandatory even when supplied as optional.
+            // Type conflicts are rejected before normalization by store entry points.
+            existing.required_for_filters = true;
+        } else {
             spec.payload_indexes.push(required);
         }
     }
@@ -44,6 +48,19 @@ pub fn validate_collection_spec(spec: &CollectionSpec) -> Result<()> {
             "sparse vector name must be non-empty".to_string(),
         ));
     }
+    let canonical = required_retrieval_payload_indexes();
+    for index in &spec.payload_indexes {
+        if let Some(required) = canonical
+            .iter()
+            .find(|required| required.field_name == index.field_name)
+            && index.field_schema != required.field_schema
+        {
+            return Err(collection_drift(format!(
+                "reserved payload index {} requires {:?}, received {:?}",
+                required.field_name, required.field_schema, index.field_schema
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -71,17 +88,17 @@ pub fn check_collection_drift(existing: &CollectionSpec, incoming: &CollectionSp
             continue;
         };
         if existing_index.field_schema != required.field_schema {
-            let reset_hint = if matches!(
+            let repair_hint = if matches!(
                 required.field_name.as_str(),
                 "source_generation" | "committed_generation"
             ) {
-                "; generation payload index schema changed for the clean-break cutover, run preflight/reset before reusing this collection"
+                "; verify stored generation payload values are integers, then rebuild only the affected payload index during maintenance while preserving collection points"
             } else {
                 ""
             };
             return Err(collection_drift(format!(
                 "collection {} payload index {} has a different field schema{}",
-                existing.collection, required.field_name, reset_hint
+                existing.collection, required.field_name, repair_hint
             )));
         }
     }

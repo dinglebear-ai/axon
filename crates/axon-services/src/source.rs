@@ -328,7 +328,14 @@ async fn finalize_source_index(
     event_emitter
         .running(PipelinePhase::Cleaning, "cleaning source generation debt")
         .await;
-    let drain = drain_source_cleanup_debt(ctx, runtime, collection, &counts).await;
+    let drain = drain_source_cleanup_debt(
+        ctx,
+        runtime,
+        collection,
+        &counts,
+        execution.cancellation.as_ref(),
+    )
+    .await;
     let prune_audit_warning = job_tracking::track_prune(
         Some(runtime.jobs.clone()),
         counts.job_id,
@@ -398,6 +405,7 @@ async fn drain_source_cleanup_debt(
     runtime: &TargetLocalSourceRuntime,
     collection: &str,
     counts: &IndexCounts,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
 ) -> prune::DebtDrainSummary {
     if let Err(error) = prune::bind_vector_cleanup_collection(
         runtime.ledger.as_ref(),
@@ -412,7 +420,8 @@ async fn drain_source_cleanup_debt(
             "failed to persist vector cleanup collection identity; vector debt will stay pending"
         );
     }
-    crate::reserved_call::drain_source_cleanup_debt(ctx, runtime, collection, counts).await
+    crate::reserved_call::drain_source_cleanup_debt(ctx, runtime, collection, counts, cancellation)
+        .await
 }
 
 /// Open the `GraphStore`/`MemoryStore` handles the cleanup-debt drain uses to

@@ -438,7 +438,7 @@ async fn collection_creation_is_idempotent_and_rejects_drift() {
 }
 
 #[tokio::test]
-async fn collection_drift_rejects_missing_required_payload_indexes() {
+async fn collection_validation_rejects_reserved_type_before_creation() {
     let store = FakeVectorStore::new("fake-vector");
     let mut existing = collection();
     existing
@@ -447,9 +447,8 @@ async fn collection_drift_rejects_missing_required_payload_indexes() {
         .find(|index| index.field_name == "source_id")
         .unwrap()
         .field_schema = PayloadFieldSchema::Integer;
-    store.ensure_collection(existing).await.unwrap();
-
-    let err = store.ensure_collection(collection()).await.unwrap_err();
+    let err = store.ensure_collection(existing).await.unwrap_err();
+    assert!(store.collection_spec("axon-test").await.is_none());
 
     assert_eq!(err.code.to_string(), "vector.collection_drift");
     assert!(err.message.contains("source_id"));

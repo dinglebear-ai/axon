@@ -66,6 +66,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::result_map::IndexCounts;
 
 mod drain_ops;
+pub(crate) mod finalizer;
 mod graph_retry;
 mod step_map;
 
@@ -96,6 +97,11 @@ pub(crate) trait CleanupProviderOps: Send + Sync {
     /// The retirement generation must still match; provider safety fences remain.
     fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
         None
+    }
+
+    /// Subsequent finalizer passes may touch only its busy graph retirement group.
+    fn graph_retry_only(&self) -> bool {
+        false
     }
 
     async fn vector_delete(
@@ -357,6 +363,12 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
     let mut other_debts = Vec::new();
     let graph_backoff = graph_retry::source_backoff(&pending, provider_ops);
     for debt in pending {
+        if provider_ops.graph_retry_only()
+            && !finalizer::eligible_retry(&debt, provider_ops.graph_retry_generation())
+        {
+            summary.failed += 1;
+            continue;
+        }
         if graph_backoff && matches!(debt.selector, CleanupSelector::GraphItemEvidence { .. }) {
             summary.failed += 1;
             continue;

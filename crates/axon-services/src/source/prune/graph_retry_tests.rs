@@ -4,6 +4,9 @@ use std::sync::atomic::AtomicUsize;
 struct BusyGraph {
     calls: AtomicUsize,
     busy: AtomicBool,
+    retry_only: AtomicBool,
+    vector_calls: AtomicUsize,
+    vector_fails: AtomicBool,
     retry_generation: Option<SourceGenerationId>,
 }
 
@@ -11,6 +14,10 @@ struct BusyGraph {
 impl CleanupProviderOps for BusyGraph {
     fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
         self.retry_generation.as_ref()
+    }
+
+    fn graph_retry_only(&self) -> bool {
+        self.retry_only.load(Ordering::SeqCst)
     }
 
     async fn graph_retire_item(
@@ -33,6 +40,14 @@ impl CleanupProviderOps for BusyGraph {
         &self,
         _: VectorDeleteSelector,
     ) -> Result<VectorStoreDeleteResult, ApiError> {
+        self.vector_calls.fetch_add(1, Ordering::SeqCst);
+        if self.vector_fails.load(Ordering::SeqCst) {
+            return Err(ApiError::new(
+                "vector.storage_error",
+                ErrorStage::Cleaning,
+                "storage unavailable",
+            ));
+        }
         Ok(VectorStoreDeleteResult {
             collection: COLLECTION.into(),
             points_matched: 1,
@@ -61,6 +76,9 @@ async fn busy_graph_stops_source_drain_and_persists_retry_without_resolving_debt
     let (ledger, generation) = graph_retry_fixture().await;
     let providers = BusyGraph {
         calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
         busy: AtomicBool::new(true),
         retry_generation: None,
     };
@@ -242,6 +260,9 @@ async fn post_publication_finalizer_retries_current_busy_debt_without_waiting() 
     let (ledger, generation) = graph_retry_fixture().await;
     let mut providers = BusyGraph {
         calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
         busy: AtomicBool::new(true),
         retry_generation: None,
     };
@@ -298,6 +319,9 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
     ledger.record_cleanup_debt(delayed).await.unwrap();
     let providers = BusyGraph {
         calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
         busy: AtomicBool::new(false),
         retry_generation: Some(generation.generation.clone()),
     };
@@ -312,6 +336,9 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
     let (busy_ledger, busy_generation) = graph_retry_fixture().await;
     let busy_providers = BusyGraph {
         calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
         busy: AtomicBool::new(true),
         retry_generation: Some(busy_generation.generation.clone()),
     };
@@ -331,3 +358,6 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
         3
     );
 }
+
+#[path = "finalizer_tests.rs"]
+mod finalizer_tests;

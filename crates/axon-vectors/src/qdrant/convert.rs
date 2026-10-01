@@ -44,8 +44,8 @@ pub fn qdrant_collection_request_with_settings(
     spec: &CollectionSpec,
     settings: QdrantCollectionSettings,
 ) -> Result<CreateCollection> {
+    validate_collection_spec(spec)?;
     let spec = normalize_collection_spec(spec.clone());
-    validate_collection_spec(&spec)?;
     let mut dense = HashMap::new();
     dense.insert(
         spec.dense.name.clone(),

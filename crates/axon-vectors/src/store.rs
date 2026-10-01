@@ -273,8 +273,8 @@ impl VectorStore for FakeVectorStore {
         if let Some(err) = self.mode_error() {
             return Err(err);
         }
-        let spec = normalize_collection_spec(spec);
         validate_collection_spec(&spec)?;
+        let spec = normalize_collection_spec(spec);
         if let Some(existing) = state.collections.get(&spec.collection) {
             check_collection_drift(existing, &spec)?;
         } else {

@@ -18,6 +18,7 @@ struct ScheduledCleanupProviderOps {
     graph_store: Option<Arc<dyn GraphStore>>,
     job_id: JobId,
     graph_retry_generation: Option<SourceGenerationId>,
+    graph_retry_only: bool,
 }
 
 impl ScheduledCleanupProviderOps {
@@ -40,6 +41,10 @@ fn cleanup_context(job_id: JobId, operation: &str) -> ProviderCallContext {
 impl CleanupProviderOps for ScheduledCleanupProviderOps {
     fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
         self.graph_retry_generation.as_ref()
+    }
+
+    fn graph_retry_only(&self) -> bool {
+        self.graph_retry_only
     }
 
     async fn vector_delete(
@@ -172,12 +177,14 @@ struct CleanupDrainContext<'a> {
 async fn drain_with_context(
     context: &CleanupDrainContext<'_>,
     counts: &crate::source::result_map::IndexCounts,
+    graph_retry_only: bool,
 ) -> DebtDrainSummary {
     let providers = ScheduledCleanupProviderOps {
         runtime: Arc::clone(&context.runtime),
         graph_store: context.graph_store.clone(),
         job_id: counts.job_id,
         graph_retry_generation: context.graph_retry_generation.clone(),
+        graph_retry_only,
     };
     crate::source::prune::drain_cleanup_debt_with_provider_ops(
         context.runtime.ledger.as_ref(),
@@ -200,6 +207,7 @@ pub async fn drain_source_cleanup_debt(
     runtime: &TargetLocalSourceRuntime,
     collection: &str,
     counts: &crate::source::result_map::IndexCounts,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
 ) -> DebtDrainSummary {
     let (graph_store, memory_store) = crate::source::open_cleanup_debt_stores(ctx).await;
     let registry_result = runtime.source_adapter_registry(ctx).await;
@@ -212,7 +220,15 @@ pub async fn drain_source_cleanup_debt(
         collection,
         graph_retry_generation: Some(counts.generation.clone()),
     };
-    let mut summary = drain_with_context(&drain, counts).await;
+    let mut summary = crate::source::prune::finalizer::drain(
+        runtime.ledger.as_ref(),
+        counts,
+        cancellation,
+        std::time::Duration::from_secs(120),
+        std::time::Duration::from_millis(250),
+        |retry_only| drain_with_context(&drain, counts, retry_only),
+    )
+    .await;
     if let Err(error) = registry_result {
         record_registry_construction_failure(runtime, counts, &error, &mut summary).await;
     }
@@ -307,7 +323,7 @@ async fn run_sweep(context: &CleanupDrainContext<'_>) -> DebtDrainSummary {
     crate::source::prune::drain_all_cleanup_debt(
         context.runtime.ledger.as_ref(),
         256,
-        |counts| async move { drain_with_context(context, &counts).await },
+        |counts| async move { drain_with_context(context, &counts, false).await },
     )
     .await
 }
