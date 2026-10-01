@@ -12,6 +12,7 @@ on:
       - "docs/reference/**"
       - "docs/**"
       - "!docs/sessions/**"
+      - "!openwiki/**"
       - "!.agents/**"
       - "!plugins/**"
       - "plugins/**"
