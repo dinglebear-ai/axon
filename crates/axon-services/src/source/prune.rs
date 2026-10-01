@@ -99,7 +99,7 @@ pub(crate) trait CleanupProviderOps: Send + Sync {
         None
     }
 
-    /// Subsequent finalizer passes may touch only its busy graph retirement group.
+    /// Subsequent finalizer passes retry the busy graph group and superseded-ledger dependency.
     fn graph_retry_only(&self) -> bool {
         false
     }
@@ -416,6 +416,9 @@ pub(crate) async fn drain_cleanup_debt_with_provider_ops(
         debts_to_drain.push(representative);
     }
     debts_to_drain.extend(other_debts);
+    // Provider effects must finish before deleting the rows that describe them.
+    // Keep the existing vector-first order and defer ledger dependencies last.
+    debts_to_drain.sort_by_key(|debt| debt.kind == CleanupDebtKind::LedgerPrune);
 
     for debt in debts_to_drain {
         let target = LedgerPruneTarget {

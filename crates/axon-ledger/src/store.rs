@@ -160,6 +160,8 @@ pub trait LedgerStore: Send + Sync {
     /// cleanup-debt boundary from `docs/pipeline-unification/runtime/
     /// ledger-contract.md` — it never touches the committed/current
     /// generation (callers must fence that, same as vector deletes).
+    /// Atomically rejects deletion while this generation has unresolved
+    /// non-ledger cleanup debt, preserving provider recovery metadata.
     /// Idempotent: deleting an already-deleted or unknown generation is a
     /// no-op returning `0`. Returns the number of ledger rows removed.
     async fn delete_generation(

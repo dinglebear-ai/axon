@@ -615,6 +615,23 @@ async fn sqlite_publish_keeps_distinct_cleanup_debt_for_readded_item_generations
         .collect::<Vec<_>>();
     assert!(ledger_prune_targets.is_empty());
 
+    // Complete provider dependencies before removing recovery metadata.
+    for debt in store
+        .list_pending_cleanup_debt(SourceId::new("src_sqlite"))
+        .await
+        .expect("list intermediate generation debt")
+        .into_iter()
+        .filter(|debt| {
+            debt.generation.as_ref() == Some(&gen2.generation)
+                && debt.kind != CleanupDebtKind::LedgerPrune
+        })
+    {
+        store
+            .resolve_cleanup_debt(debt.debt_id)
+            .await
+            .expect("resolve intermediate generation dependency");
+    }
+
     store
         .delete_generation(SourceId::new("src_sqlite"), gen2.generation.clone())
         .await

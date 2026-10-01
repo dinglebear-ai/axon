@@ -180,6 +180,19 @@ pub(super) async fn delete_generation(
     let mut tx = ImmediateTx::begin_with_gate(&store.pool, &store.write_gate)
         .await
         .map_err(sqlite_error)?;
+    let pending: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM cleanup_debt WHERE source_id = ?1 AND generation_key = ?2 AND completed_at IS NULL AND kind != 'ledger_prune' LIMIT 1",
+    )
+    .bind(&source_id.0)
+    .bind(&generation.0)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(sqlite_error)?;
+    if pending.is_some() {
+        return Err(crate::validation::generation_cleanup_pending_error(
+            source_id,
+        ));
+    }
     let documents =
         sqlx::query("DELETE FROM document_status WHERE source_id = ?1 AND generation = ?2")
             .bind(&source_id.0)

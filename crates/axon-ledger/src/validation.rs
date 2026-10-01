@@ -124,3 +124,13 @@ pub(crate) fn generation_already_published_error(generation: &SourceGeneration) 
     )
     .with_source_id(generation.source_id.0.clone())
 }
+
+/// Preserve generation recovery metadata until all provider cleanup completes.
+pub(crate) fn generation_cleanup_pending_error(source_id: &SourceId) -> ApiError {
+    ApiError::new(
+        "source.ledger.generation_cleanup_pending",
+        ErrorStage::Planning,
+        "generation has unresolved non-ledger cleanup debt",
+    )
+    .with_source_id(source_id.0.clone())
+}

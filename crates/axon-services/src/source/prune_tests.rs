@@ -990,7 +990,7 @@ async fn drain_full_leaves_memory_debt_pending_without_memory_store() {
 }
 
 #[tokio::test]
-async fn drain_full_deletes_superseded_ledger_generation_rows() {
+async fn drain_full_preserves_ledger_rows_when_graph_cleanup_unresolved() {
     let ledger = FakeLedgerStore::new();
     let (previous, committed) = seed_two_generations(&ledger).await;
     let vector = RecordingVectorStore::default();
@@ -1024,18 +1024,16 @@ async fn drain_full_deletes_superseded_ledger_generation_rows() {
     )
     .await;
 
-    // The pre-existing VectorDelete debt from `seed_two_generations` plus the
-    // LedgerPrune debt just added both resolve. The auto-emitted GraphPrune
-    // debt for the same removed "old" item fails closed — this call passes
-    // `graph_store = None`.
-    assert_eq!(summary.resolved, 2);
-    assert_eq!(summary.failed, 1);
+    // Vector cleanup resolves, but the unwired graph provider leaves debt.
+    // Ledger cleanup must retain the manifest until that dependency resolves.
+    assert_eq!(summary.resolved, 1);
+    assert_eq!(summary.failed, 2);
     assert!(
         ledger
             .get_manifest(SourceId::new(SRC), previous)
             .await
             .unwrap()
-            .is_none()
+            .is_some()
     );
 }
 
