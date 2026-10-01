@@ -243,3 +243,111 @@ pub(super) async fn publish_generation(
         .insert(published.source_id.clone(), published.generation.clone());
     Ok(published)
 }
+
+pub(super) async fn recover(
+    state: &Arc<Mutex<FakeLedgerState>>,
+    current: SourceGeneration,
+    lease: LeaseGuard,
+    collection: String,
+) -> Result<u64> {
+    let mut state = state.lock().await;
+    let stored_lease = state.leases.get(&lease.lease_id).cloned();
+    let valid = match stored_lease.as_ref() {
+        Some(stored) => {
+            stored.owner_id == lease.owner_id
+                && stored.lease_key == format!("source:{}", current.source_id.0)
+                && crate::store::util::timestamp_after(&stored.expires_at, &timestamp())?
+        }
+        None => false,
+    };
+    if !valid || collection.trim().is_empty() {
+        return Err(ApiError::new(
+            "source.ledger.recovery_lease_required",
+            ErrorStage::Cleaning,
+            "abandoned generation recovery requires this source's live lease and explicit vector collection; reacquire the source lease before retrying",
+        ));
+    }
+    if !state
+        .generations
+        .get(&(current.source_id.clone(), current.generation.clone()))
+        .is_some_and(|g| {
+            g.status == LifecycleStatus::Running
+                && g.published_at.is_none()
+                && g.publish_state == PublishState::Writing
+        })
+    {
+        return Err(ApiError::new(
+            "source.ledger.recovery_generation_changed",
+            ErrorStage::Cleaning,
+            "active recovery generation is no longer running and unpublished; inspect its state before retrying",
+        ));
+    }
+    let acquired = stored_lease.unwrap().acquired_at;
+    let stored_created_at = state.generations
+        [&(current.source_id.clone(), current.generation.clone())]
+        .created_at
+        .clone();
+    let mut candidates = Vec::new();
+    for g in state.generations.values() {
+        if crate::store::util::timestamp_after(&stored_created_at, &g.created_at)?
+            && crate::store::util::timestamp_after(&acquired, &g.created_at)?
+            && (g.source_id == current.source_id
+                && g.generation != current.generation
+                && !state.cleanup_debt.values().any(|d| {
+                    d.kind == CleanupDebtKind::VectorDelete
+                        && d.source_id == g.source_id
+                        && d.generation.as_ref() == Some(&g.generation)
+                })
+                && g.published_at.is_none()
+                && g.publish_state == PublishState::Writing
+                && matches!(
+                    g.status,
+                    LifecycleStatus::Running | LifecycleStatus::Completed | LifecycleStatus::Failed
+                ))
+            && state
+                .manifests
+                .get(&(g.source_id.clone(), g.generation.clone()))
+                .and_then(|m| {
+                    m.metadata
+                        .get(crate::GENERATION_VECTOR_COLLECTION_METADATA_KEY)
+                })
+                .and_then(|v| v.as_str())
+                .is_some_and(|v| !v.trim().is_empty())
+        {
+            candidates.push(g.clone());
+        }
+    }
+    candidates.sort_by(|a, b| a.created_at.0.cmp(&b.created_at.0));
+    candidates.truncate(64);
+    let mut recovered = 0;
+    for mut old in candidates {
+        let Some(write_collection) = state
+            .manifests
+            .get(&(old.source_id.clone(), old.generation.clone()))
+            .and_then(|m| {
+                m.metadata
+                    .get(crate::GENERATION_VECTOR_COLLECTION_METADATA_KEY)
+            })
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.trim().is_empty())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        old.status = LifecycleStatus::Failed;
+        let mut debt =
+            crate::cleanup_debt::generation_vector_delete_debt(&old.source_id, &old.generation);
+        debt.vector_collection = Some(write_collection);
+        debt.job_id = lease.job_id.unwrap_or(JobId::new(uuid::Uuid::nil()));
+        old.cleanup_debt.push(debt.debt_id.clone());
+        state
+            .generations
+            .insert((old.source_id.clone(), old.generation.clone()), old);
+        state
+            .cleanup_debt
+            .entry(debt.debt_id.clone())
+            .or_insert(debt);
+        recovered += 1;
+    }
+    Ok(recovered)
+}

@@ -202,22 +202,22 @@ impl AdapterRegistry {
                 .with_scope(SourceScope::Version),
             AdapterDefinition::new("feed", "1", SourceKind::Feed, SourceScope::Feed),
             AdapterDefinition::new("github", "1", SourceKind::Git, SourceScope::Repo)
-                .with_options(&["exclude_paths"])
+                .with_options(&["exclude_paths", "include_historical_docs"])
                 .with_scope(SourceScope::Branch)
                 .with_scope(SourceScope::Issue)
                 .with_scope(SourceScope::PullRequest)
                 .with_scope(SourceScope::Release),
             AdapterDefinition::new("git", "1", SourceKind::Git, SourceScope::Repo)
-                .with_options(&["exclude_paths"])
+                .with_options(&["exclude_paths", "include_historical_docs"])
                 .with_scope(SourceScope::Branch),
             AdapterDefinition::new("gitea", "1", SourceKind::Git, SourceScope::Repo)
-                .with_options(&["exclude_paths"])
+                .with_options(&["exclude_paths", "include_historical_docs"])
                 .with_scope(SourceScope::Branch)
                 .with_scope(SourceScope::Issue)
                 .with_scope(SourceScope::PullRequest)
                 .with_scope(SourceScope::Release),
             AdapterDefinition::new("gitlab", "1", SourceKind::Git, SourceScope::Repo)
-                .with_options(&["exclude_paths"])
+                .with_options(&["exclude_paths", "include_historical_docs"])
                 .with_scope(SourceScope::Branch)
                 .with_scope(SourceScope::Issue)
                 .with_scope(SourceScope::MergeRequest)

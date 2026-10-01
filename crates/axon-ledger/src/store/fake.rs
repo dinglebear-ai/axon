@@ -361,6 +361,15 @@ impl LedgerStore for FakeLedgerStore {
         generation::complete_generation(&self.state, generation).await
     }
 
+    async fn recover_abandoned_generations(
+        &self,
+        generation: SourceGeneration,
+        lease: LeaseGuard,
+        collection: String,
+    ) -> Result<u64> {
+        generation::recover(&self.state, generation, lease, collection).await
+    }
+
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
         self.inject_failure(FakeLedgerMode::FailGenerationFailure, "fail_generation")?;
         generation::fail_generation(&self.state, generation).await
@@ -527,21 +536,6 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn capabilities(&self) -> Result<LedgerStoreCapability> {
-        Ok(CapabilityBase {
-            name: "fake-ledger".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            owner_crate: "axon-ledger".to_string(),
-            health: HealthStatus::Healthy,
-            features: vec![
-                "manifest_diff".to_string(),
-                "generation_publish".to_string(),
-                "document_status".to_string(),
-                "cleanup_debt".to_string(),
-                "leases".to_string(),
-                "source_listing".to_string(),
-            ],
-            limits: MetadataMap::new(),
-        }
-        .into())
+        fake_capabilities()
     }
 }

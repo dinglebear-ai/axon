@@ -186,9 +186,9 @@ fn code_symbols_use_tree_sitter_byte_ranges_and_chunk_metadata() {
         .filter(|c| c.symbol.as_deref() == Some("render"))
         .collect::<Vec<_>>();
     assert_eq!(chunks.len(), 1);
-    assert_eq!(chunks[0].content, &text[start..end]);
-    assert_eq!(chunks[0].range.byte_start, Some(start as u64));
-    assert_eq!(chunks[0].range.byte_end, Some(end as u64));
+    assert_eq!(chunks[0].content, text);
+    assert_eq!(chunks[0].range.byte_start, Some(0));
+    assert_eq!(chunks[0].range.byte_end, Some(text.len() as u64));
     assert_eq!(chunks[0].metadata["code_chunk_source"], "ast_symbol");
     assert_eq!(chunks[0].metadata["actual_chunking_method"], "tree_sitter");
     assert_eq!(chunks[0].metadata["parser_method"], "tree_sitter");

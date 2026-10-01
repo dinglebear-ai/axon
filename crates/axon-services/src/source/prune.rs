@@ -142,12 +142,29 @@ pub(crate) async fn bind_vector_cleanup_collection(
             "vector cleanup collection identity must not be empty",
         ));
     }
+    let mut collections = std::collections::BTreeMap::new();
     for mut debt in ledger.list_pending_cleanup_debt(source_id.clone()).await? {
         if debt.kind != CleanupDebtKind::VectorDelete {
             continue;
         }
+        let expected = if let Some(generation) = debt.generation.as_ref() {
+            if !collections.contains_key(generation) {
+                let metadata = ledger
+                    .get_manifest_metadata(source_id.clone(), generation.clone())
+                    .await?;
+                let recorded = metadata
+                    .as_ref()
+                    .and_then(|m| m.get(axon_ledger::GENERATION_VECTOR_COLLECTION_METADATA_KEY))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                collections.insert(generation.clone(), recorded);
+            }
+            collections[generation].as_deref().unwrap_or(collection)
+        } else {
+            collection
+        };
         match debt.vector_collection.as_deref() {
-            Some(existing) if existing != collection => {
+            Some(existing) if existing != expected => {
                 return Err(axon_api::source::ApiError::new(
                     "source.cleanup.vector_collection_immutable",
                     axon_api::source::ErrorStage::Cleaning,
@@ -156,7 +173,7 @@ pub(crate) async fn bind_vector_cleanup_collection(
                 .with_source_id(source_id.0.clone()));
             }
             Some(_) => continue,
-            None => debt.vector_collection = Some(collection.to_string()),
+            None => debt.vector_collection = Some(expected.to_string()),
         }
         ledger.record_cleanup_debt(debt).await?;
     }

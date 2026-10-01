@@ -352,7 +352,8 @@
       },
       {
         "allowed_option_keys": [
-          "exclude_paths"
+          "exclude_paths",
+          "include_historical_docs"
         ],
         "chunking_hints": [],
         "credential_requirements": [],
@@ -374,7 +375,8 @@
       },
       {
         "allowed_option_keys": [
-          "exclude_paths"
+          "exclude_paths",
+          "include_historical_docs"
         ],
         "chunking_hints": [],
         "credential_requirements": [],
@@ -399,7 +401,8 @@
       },
       {
         "allowed_option_keys": [
-          "exclude_paths"
+          "exclude_paths",
+          "include_historical_docs"
         ],
         "chunking_hints": [],
         "credential_requirements": [],
@@ -424,7 +427,8 @@
       },
       {
         "allowed_option_keys": [
-          "exclude_paths"
+          "exclude_paths",
+          "include_historical_docs"
         ],
         "chunking_hints": [],
         "credential_requirements": [],
@@ -1653,7 +1657,7 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:e2ea3ea7700b0dc705d6cb57a2a2f04db699c59ea71cea5705d6ab62f742a126",
+        "checksum": "sha256:74a1c053a337b96c5e77003e8a0bd8b7c2e31a49e6f7055046ee393fcf0a5445",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

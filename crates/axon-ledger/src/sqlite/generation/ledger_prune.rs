@@ -16,7 +16,7 @@
 use axon_api::source::*;
 
 use crate::LEDGER_GENERATION_RETENTION_COMMITTED;
-use crate::cleanup_debt::ledger_prune_debt;
+use crate::cleanup_debt::{generation_vector_delete_debt, ledger_prune_debt};
 use crate::migration::sqlite_error;
 use crate::store::Result;
 
@@ -55,6 +55,28 @@ pub(super) async fn ledger_prune_cleanup_debt_in_tx(
     .map_err(sqlite_error)?;
     let mut cleanup_debt = Vec::new();
     for candidate in candidates.into_iter().map(SourceGenerationId::new) {
+        let mut vector_debt = generation_vector_delete_debt(source_id, &candidate);
+        vector_debt.vector_collection = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT json_extract(manifest_json, '$.metadata.\"axon.vector_write_collection\"')
+             FROM source_manifests WHERE source_id=? AND generation=?",
+        )
+        .bind(&source_id.0)
+        .bind(&candidate.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlite_error)?
+        .flatten();
+        let complete: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM cleanup_debt WHERE debt_id=? AND completed_at IS NOT NULL",
+        )
+        .bind(&vector_debt.debt_id.0)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlite_error)?;
+        if complete.is_none() {
+            cleanup_debt.push(vector_debt);
+            continue;
+        }
         if !has_unresolved_non_ledger_debt_in_tx(tx, source_id, &candidate).await? {
             cleanup_debt.push(ledger_prune_debt(source_id, &candidate));
         }

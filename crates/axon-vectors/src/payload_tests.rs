@@ -669,3 +669,22 @@ fn typed_payload_fields_reject_incomplete_locator_and_empty_ranges() {
         }
     );
 }
+
+#[test]
+fn duplicate_locations_require_nonempty_valid_ranges() {
+    for value in [
+        serde_json::json!([]),
+        serde_json::json!([{}]),
+        serde_json::json!([{"byte_start": 10, "byte_end": 2}]),
+    ] {
+        let mut metadata = fixture("web.valid.json");
+        metadata.insert("additional_source_ranges".into(), value);
+        assert!(VectorPayload::try_from_metadata(metadata).is_err());
+    }
+    let mut metadata = fixture("web.valid.json");
+    metadata.insert(
+        "additional_source_ranges".into(),
+        serde_json::json!([{"byte_start": 10, "byte_end": 20}]),
+    );
+    assert!(VectorPayload::try_from_metadata(metadata).is_ok());
+}

@@ -135,6 +135,18 @@ impl LedgerStore for DbLimitedLedgerStore {
         self.inner.complete_generation(generation).await
     }
 
+    async fn recover_abandoned_generations(
+        &self,
+        generation: SourceGeneration,
+        lease: LeaseGuard,
+        collection: String,
+    ) -> Result<u64> {
+        let _permit = self.permit().await?;
+        self.inner
+            .recover_abandoned_generations(generation, lease, collection)
+            .await
+    }
+
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
         let _permit = self.permit().await?;
         self.inner.fail_generation(generation).await

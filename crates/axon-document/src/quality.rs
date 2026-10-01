@@ -1,13 +1,15 @@
 //! Final shared quality gate, run after structural fallback and size bounding.
 use crate::{chunk::DocumentChunk, text};
 
+mod dedup;
+
 pub(crate) const MIN_CHUNK_CHARS: usize = 50;
 
 fn meaningful(chunk: &DocumentChunk) -> bool {
     chunk.content.chars().any(char::is_alphanumeric)
 }
 fn short(chunk: &DocumentChunk) -> bool {
-    chunk.content.chars().count() < MIN_CHUNK_CHARS
+    chunk.content.trim().chars().count() < MIN_CHUNK_CHARS
 }
 fn literal(chunk: &DocumentChunk, source: &str) -> Option<(usize, usize)> {
     let start = usize::try_from(chunk.range.byte_start?).ok()?;
@@ -38,7 +40,7 @@ fn fits(content: &str, max_chars: usize) -> bool {
     content.len() <= text::MAX_PLAIN_TEXT_CHUNK_BYTES
         && content.chars().count() <= max_chars.min(text::MAX_PLAIN_TEXT_CHUNK_CHARS)
 }
-fn remember_symbols(target: &mut DocumentChunk, other: &DocumentChunk) {
+pub(crate) fn remember_symbols(target: &mut DocumentChunk, other: &DocumentChunk) {
     let mut symbols = Vec::new();
     for chunk in [&*target, other] {
         if let Some(symbol) = &chunk.symbol {
@@ -173,10 +175,12 @@ pub(crate) fn useful_chunks_with_limit(
         borrow_following_context(&mut packed, source, positions, max_chars);
         borrow_previous_context(&mut packed, source, positions, max_chars);
     }
-    packed
-        .into_iter()
-        .filter(|chunk| !short(chunk) && meaningful(chunk))
-        .collect()
+    dedup::deduplicate(
+        packed
+            .into_iter()
+            .filter(|chunk| !short(chunk) && meaningful(chunk))
+            .collect(),
+    )
 }
 
 fn borrow_following_context(
@@ -194,11 +198,21 @@ fn borrow_following_context(
         let (start, _) = literal(&packed[index], source).unwrap();
         let (_, upper) = literal(&packed[index + 1], source).unwrap();
         let end = source[start..upper]
-            .char_indices()
-            .nth(MIN_CHUNK_CHARS)
-            .map(|(offset, _)| start + offset)
+            .split_inclusive('\n')
+            .scan(start, |offset, line| {
+                *offset += line.len();
+                Some(*offset)
+            })
+            .find(|&end| source[start..end].trim().chars().count() >= MIN_CHUNK_CHARS)
             .unwrap_or(upper);
-        if fits(&source[start..end], max_chars) {
+        let end = if fits(&source[start..end], max_chars) {
+            end
+        } else {
+            bounded_context_end(source, start, upper, max_chars)
+        };
+        if fits(&source[start..end], max_chars)
+            && source[start..end].trim().chars().count() >= MIN_CHUNK_CHARS
+        {
             packed[index].content = source[start..end].into();
             update_literal_range(&mut packed[index], positions, start, end);
             packed[index]
@@ -209,6 +223,18 @@ fn borrow_following_context(
                 .insert("actual_chunking_method".into(), "source_context".into());
         }
     }
+}
+
+fn bounded_context_end(source: &str, start: usize, upper: usize, max_chars: usize) -> usize {
+    source[start..upper]
+        .char_indices()
+        .enumerate()
+        .take_while(|(count, (offset, ch))| {
+            *count < max_chars.min(text::MAX_PLAIN_TEXT_CHUNK_CHARS)
+                && *offset + ch.len_utf8() <= text::MAX_PLAIN_TEXT_CHUNK_BYTES
+        })
+        .last()
+        .map_or(start, |(_, (offset, ch))| start + offset + ch.len_utf8())
 }
 
 fn borrow_previous_context(
@@ -222,17 +248,34 @@ fn borrow_previous_context(
         if !short(&packed[index]) {
             continue;
         }
-        let missing = MIN_CHUNK_CHARS - packed[index].content.chars().count();
+        let missing = MIN_CHUNK_CHARS - packed[index].content.trim().chars().count();
         if compatible(&packed[index - 1], &packed[index], source) {
             let (lower, _) = literal(&packed[index - 1], source).unwrap();
             let (start, end) = literal(&packed[index], source).unwrap();
-            let context_start = source[lower..start]
-                .char_indices()
+            let mut context_start = source[lower..start]
+                .split_inclusive('\n')
                 .rev()
-                .nth(missing.saturating_sub(1))
-                .map(|(offset, _)| lower + offset)
+                .scan(start, |offset, line| {
+                    *offset -= line.len();
+                    Some(*offset)
+                })
+                .find(|&left| source[left..end].trim().chars().count() >= MIN_CHUNK_CHARS)
                 .unwrap_or(lower);
-            if fits(&source[context_start..end], max_chars) {
+            if !fits(&source[context_start..end], max_chars) {
+                context_start = source[lower..end]
+                    .char_indices()
+                    .rev()
+                    .enumerate()
+                    .take_while(|(count, (offset, _))| {
+                        *count < max_chars.min(text::MAX_PLAIN_TEXT_CHUNK_CHARS)
+                            && end - (lower + *offset) <= text::MAX_PLAIN_TEXT_CHUNK_BYTES
+                    })
+                    .last()
+                    .map_or(start, |(_, (offset, _))| lower + offset);
+            }
+            if fits(&source[context_start..end], max_chars)
+                && source[context_start..end].trim().chars().count() >= MIN_CHUNK_CHARS
+            {
                 packed[index].content = source[context_start..end].into();
                 update_literal_range(&mut packed[index], positions, context_start, end);
             }

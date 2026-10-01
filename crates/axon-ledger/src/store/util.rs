@@ -157,3 +157,22 @@ fn lease_ttl_invalid_error() -> ApiError {
         "lease ttl is too large to represent as a timestamp",
     )
 }
+
+pub(super) fn fake_capabilities() -> Result<LedgerStoreCapability> {
+    Ok(CapabilityBase {
+        name: "fake-ledger".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        owner_crate: "axon-ledger".to_string(),
+        health: HealthStatus::Healthy,
+        features: vec![
+            "manifest_diff".to_string(),
+            "generation_publish".to_string(),
+            "document_status".to_string(),
+            "cleanup_debt".to_string(),
+            "leases".to_string(),
+            "source_listing".to_string(),
+        ],
+        limits: MetadataMap::new(),
+    }
+    .into())
+}
