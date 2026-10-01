@@ -34,11 +34,23 @@ async fn persist_failure(
     }
 }
 
+/// A finalizer retries only its own generation's stale busy delay. It still
+/// acquires the source writer lease and checks current manifest/status in the provider.
+fn retry_after_publication(debt: &CleanupDebt, provider_ops: &dyn CleanupProviderOps) -> bool {
+    matches!(&debt.selector, CleanupSelector::GraphItemEvidence { retirement_generation, .. }
+        if provider_ops.graph_retry_generation() == Some(retirement_generation))
+        && debt
+            .last_error
+            .as_ref()
+            .is_some_and(|error| error.code == "graph.source_busy")
+}
+
 /// A persisted busy lease delay applies to the source, not just its first item.
-pub(super) fn source_backoff(debts: &[CleanupDebt]) -> bool {
+pub(super) fn source_backoff(debts: &[CleanupDebt], provider_ops: &dyn CleanupProviderOps) -> bool {
     let now = Timestamp::from(chrono::Utc::now());
     debts.iter().any(|debt| {
         matches!(debt.selector, CleanupSelector::GraphItemEvidence { .. })
+            && !retry_after_publication(debt, provider_ops)
             && debt
                 .last_error
                 .as_ref()
@@ -62,10 +74,11 @@ pub(super) async fn drain(
         retirement_generation,
     } = &debt.selector
     {
-        if debt
-            .next_retry_at
-            .as_ref()
-            .is_some_and(|retry| retry.0 > Timestamp::from(chrono::Utc::now()).0)
+        if !retry_after_publication(debt, provider_ops)
+            && debt
+                .next_retry_at
+                .as_ref()
+                .is_some_and(|retry| retry.0 > Timestamp::from(chrono::Utc::now()).0)
         {
             summary.failed += 1;
             return false;

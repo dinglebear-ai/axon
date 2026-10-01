@@ -17,6 +17,7 @@ struct ScheduledCleanupProviderOps {
     runtime: Arc<TargetLocalSourceRuntime>,
     graph_store: Option<Arc<dyn GraphStore>>,
     job_id: JobId,
+    graph_retry_generation: Option<SourceGenerationId>,
 }
 
 impl ScheduledCleanupProviderOps {
@@ -37,6 +38,10 @@ fn cleanup_context(job_id: JobId, operation: &str) -> ProviderCallContext {
 
 #[async_trait]
 impl CleanupProviderOps for ScheduledCleanupProviderOps {
+    fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
+        self.graph_retry_generation.as_ref()
+    }
+
     async fn vector_delete(
         &self,
         selector: VectorDeleteSelector,
@@ -157,6 +162,7 @@ struct CleanupDrainContext<'a> {
     memory_store: Option<&'a dyn axon_memory::store::MemoryStore>,
     registry: Option<&'a SourceAdapterRegistry>,
     collection: &'a str,
+    graph_retry_generation: Option<SourceGenerationId>,
 }
 
 // LEARNED: publication and autonomous cleanup independently wiring the same
@@ -171,6 +177,7 @@ async fn drain_with_context(
         runtime: Arc::clone(&context.runtime),
         graph_store: context.graph_store.clone(),
         job_id: counts.job_id,
+        graph_retry_generation: context.graph_retry_generation.clone(),
     };
     crate::source::prune::drain_cleanup_debt_with_provider_ops(
         context.runtime.ledger.as_ref(),
@@ -185,6 +192,9 @@ async fn drain_with_context(
     .await
 }
 
+/// Post-publication finalization: retry the busy delay observed while this
+/// generation held its graph lease. Retirement still reacquires the lease and
+/// validates the current generation, manifest and document status.
 pub async fn drain_source_cleanup_debt(
     ctx: &ServiceContext,
     runtime: &TargetLocalSourceRuntime,
@@ -200,6 +210,7 @@ pub async fn drain_source_cleanup_debt(
         memory_store: memory_store.as_deref(),
         registry,
         collection,
+        graph_retry_generation: Some(counts.generation.clone()),
     };
     let mut summary = drain_with_context(&drain, counts).await;
     if let Err(error) = registry_result {
@@ -284,6 +295,7 @@ pub async fn spawn_cleanup_debt_worker(
                     memory_store: memory_store.as_deref(),
                     registry: Some(&registry),
                     collection: &collection,
+                    graph_retry_generation: None,
                 };
                 tokio_runtime.block_on(run_sweep(&drain));
             }

@@ -4,10 +4,15 @@ use std::sync::atomic::AtomicUsize;
 struct BusyGraph {
     calls: AtomicUsize,
     busy: AtomicBool,
+    retry_generation: Option<SourceGenerationId>,
 }
 
 #[async_trait]
 impl CleanupProviderOps for BusyGraph {
+    fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
+        self.retry_generation.as_ref()
+    }
+
     async fn graph_retire_item(
         &self,
         _: SourceId,
@@ -57,6 +62,7 @@ async fn busy_graph_stops_source_drain_and_persists_retry_without_resolving_debt
     let providers = BusyGraph {
         calls: AtomicUsize::new(0),
         busy: AtomicBool::new(true),
+        retry_generation: None,
     };
     let summary = run_retry(&ledger, &providers, &generation.generation).await;
     assert_eq!(
@@ -229,4 +235,99 @@ async fn assert_pending_audit(summary: &DebtDrainSummary) {
     assert_eq!(event.status, LifecycleStatus::Failed);
     assert_eq!(event.severity, axon_api::source::Severity::Warning);
     assert!(event.message.contains("failed=3"));
+}
+
+#[tokio::test]
+async fn post_publication_finalizer_retries_current_busy_debt_without_waiting() {
+    let (ledger, generation) = graph_retry_fixture().await;
+    let mut providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        busy: AtomicBool::new(true),
+        retry_generation: None,
+    };
+    let busy = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(busy.failed, 1);
+    providers.busy.store(false, Ordering::SeqCst);
+    // Autonomous sweeps still honor the persisted delay despite availability.
+    let autonomous = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(autonomous.failed, 3);
+    assert_eq!(providers.calls.load(Ordering::SeqCst), 1);
+    // A different generation cannot override this source's delayed retirement.
+    providers.retry_generation = Some(SourceGenerationId::new("different-generation"));
+    let wrong_generation = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(wrong_generation.failed, 3);
+    assert_eq!(providers.calls.load(Ordering::SeqCst), 1);
+    providers.retry_generation = Some(generation.generation.clone());
+    let finalized = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(
+        finalized.failed, 0,
+        "available finalizer must not degrade solely due to stale busy delay"
+    );
+    assert_eq!(finalized.resolved, 3);
+    assert_eq!(providers.calls.load(Ordering::SeqCst), 4);
+    assert!(crate::source::job_tracking::prune_outcome_warning(&finalized).is_none());
+    assert!(
+        ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
+    let (ledger, generation) = graph_retry_fixture().await;
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    let mut delayed = pending[0].clone();
+    delayed.next_retry_at = Some(Timestamp::from(
+        chrono::Utc::now() + chrono::Duration::seconds(300),
+    ));
+    delayed.last_error = Some(axon_api::source::SourceError {
+        code: "graph.storage_error".into(),
+        severity: axon_api::source::Severity::Warning,
+        message: "storage unavailable".into(),
+        source_item_key: None,
+        retryable: true,
+        provider_id: None,
+        cause: None,
+    });
+    ledger.record_cleanup_debt(delayed).await.unwrap();
+    let providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        busy: AtomicBool::new(false),
+        retry_generation: Some(generation.generation.clone()),
+    };
+    let nonbusy = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(nonbusy.resolved, 2);
+    assert_eq!(nonbusy.failed, 1);
+    assert_eq!(
+        providers.calls.load(Ordering::SeqCst),
+        2,
+        "storage-error delay is preserved by finalizer"
+    );
+    let (busy_ledger, busy_generation) = graph_retry_fixture().await;
+    let busy_providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        busy: AtomicBool::new(true),
+        retry_generation: Some(busy_generation.generation.clone()),
+    };
+    let busy = run_retry(&busy_ledger, &busy_providers, &busy_generation.generation).await;
+    assert_eq!(busy.resolved, 0);
+    assert_eq!(
+        busy.failed, 1,
+        "finalization cannot pretend an active source lease is available"
+    );
+    assert_eq!(busy_providers.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        busy_ledger
+            .list_pending_cleanup_debt(SourceId::new(SRC))
+            .await
+            .unwrap()
+            .len(),
+        3
+    );
 }
