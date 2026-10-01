@@ -221,13 +221,13 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     codeql_all = any_match(paths, lambda p: p == ".github/workflows/codeql.yml")
     docs = agent_docs or any_match(
         paths,
-        lambda p: starts(p, "docs/", "openwiki/")
+        lambda p: starts(p, "docs/")
         or p in {"README.md", "CHANGELOG.md"}
         or p in DOC_CI_HELPER_SCRIPTS,
     )
     docs_contracts = agent_docs or any_match(
         paths,
-        lambda p: starts(p, "docs/", "openwiki/", "plugins/")
+        lambda p: starts(p, "docs/", "plugins/")
         or p in {"README.md", "CHANGELOG.md", "CLAUDE.md"}
         or p in OPERATIONAL_TEST_ENTRYPOINTS
         or p in DOC_CI_HELPER_SCRIPTS,
