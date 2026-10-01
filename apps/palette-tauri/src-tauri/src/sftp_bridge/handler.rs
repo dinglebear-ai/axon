@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use russh::keys::PublicKey;
+use russh::keys::PublicKeyOrCertificate;
 
 use crate::sftp_known_hosts::{
     HostKeyDecision, KnownHostEntry, KnownHostsStore, evaluate_host_key,
@@ -39,6 +39,7 @@ pub(crate) enum HandshakeOutcome {
         pinned_fingerprint: String,
         seen_fingerprint: String,
     },
+    UnsupportedCertificate,
 }
 
 /// Implements `russh::client::Handler` for one connection attempt.
@@ -64,8 +65,20 @@ impl russh::client::Handler for SftpClientHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        let PublicKeyOrCertificate::PublicKey {
+            key: server_public_key,
+            ..
+        } = server_public_key
+        else {
+            // The known-hosts store pins raw keys, not SSH certificates.
+            // Never accept a certificate by trusting only its embedded key.
+            if let Ok(mut guard) = self.outcome.lock() {
+                *guard = Some(HandshakeOutcome::UnsupportedCertificate);
+            }
+            return Ok(false);
+        };
         let key_type = server_public_key.algorithm().to_string();
         let fingerprint = server_public_key
             .fingerprint(Default::default())

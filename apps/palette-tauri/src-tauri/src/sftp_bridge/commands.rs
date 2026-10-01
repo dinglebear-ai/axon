@@ -191,6 +191,12 @@ async fn establish_sftp_session(
                 profile.host, profile.port
             ));
         }
+        Some(HandshakeOutcome::UnsupportedCertificate) => {
+            return Err(format!(
+                "host {}:{} presented an SSH host certificate; Palette SFTP only supports pinned raw host keys. Configure the server to present a raw host key before retrying.",
+                profile.host, profile.port
+            ));
+        }
         Some(HandshakeOutcome::Proceeded { entry }) => Some(entry),
         None => None,
     };
