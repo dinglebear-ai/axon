@@ -11,11 +11,14 @@ use crate::chunk_router::{ChunkRouter, decision_for_profile, source_adapter, sou
 use crate::content_policy::{ContentDisposition, DEFAULT_CONTENT_BYTE_LIMIT, classify_content};
 use crate::markdown::MarkdownChunkLimits;
 use crate::parse::{DocumentParse, parse_document_owned};
-use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
+use crate::prepared::{
+    PreparationObservation, PrepareSourceDocumentRequest, PrepareSourceDocumentResult,
+};
 use crate::profile::ChunkingProfile;
 use crate::source_range::bounds_for_text;
 
 mod chunk_build;
+mod observed;
 mod validation;
 use chunk_build::{
     bound_or_fallback, build_chunks, empty_fallback_warning, finalize_chunks, parsed_code_method,
@@ -29,7 +32,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-7";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-8";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -97,20 +100,6 @@ impl DocumentPreparer {
         self
     }
 
-    fn selected_profile(
-        &self,
-        request: &PrepareSourceDocumentRequest,
-        parse: &DocumentParse,
-    ) -> Result<ChunkingProfile, String> {
-        match request.profile {
-            Some(profile) => Ok(profile),
-            None => parse
-                .routed_profile()
-                .map(Ok)
-                .unwrap_or_else(|| self.router.route(&request.document)),
-        }
-    }
-
     fn classify_document(&self, document: &SourceDocument) -> Result<ContentDisposition, String> {
         if document
             .metadata
@@ -126,9 +115,10 @@ impl DocumentPreparer {
             .map_err(|error| error.to_string())
     }
 
-    pub fn prepare(
+    fn prepare_inner(
         &self,
         mut request: PrepareSourceDocumentRequest,
+        observation: &mut PreparationObservation,
     ) -> Result<PrepareSourceDocumentResult, String> {
         let text = match self.classify_document(&request.document)? {
             ContentDisposition::Text(text) => text,
@@ -197,6 +187,8 @@ impl DocumentPreparer {
         request
             .graph_candidates
             .extend(metadata_parse.graph_candidates);
+
+        observed::record_observation(&mut request, observation);
 
         let profile = self.selected_profile(&request, &parse)?;
         let bounds = bounds_for_text(&content.text);

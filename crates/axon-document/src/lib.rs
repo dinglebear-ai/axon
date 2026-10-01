@@ -27,7 +27,9 @@ pub mod text;
 pub mod transcript;
 
 pub use chunk_router::ChunkRouter;
-pub use prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
+pub use prepared::{
+    PreparationObservation, PrepareSourceDocumentRequest, PrepareSourceDocumentResult,
+};
 pub use preparer::{DocumentPreparer, DocumentPreparerConfig};
 pub use profile::ChunkingProfile;
 
@@ -47,3 +49,6 @@ pub const CRATE_NAME: &str = "axon-document";
 
 #[cfg(test)]
 mod performance_measurement;
+
+#[cfg(test)]
+mod observation_tests;

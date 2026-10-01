@@ -29,6 +29,9 @@ fn generated_chunk_alias_and_recovery_fields_accept_runtime_shapes() {
         ),
         ("code_symbol_aliases", json!(["first", "second"])),
         ("code_syntax_recovered", json!(true)),
+        ("code_ast_status", json!("partial")),
+        ("code_grammar", json!("elixir")),
+        ("code_symbol_count", json!(3)),
         ("code_symbol_source_range", payload["source_range"].clone()),
     ] {
         payload[field] = value;
@@ -52,10 +55,27 @@ fn generated_chunk_alias_and_recovery_fields_accept_runtime_shapes() {
         "source_path_prefixes",
         "code_symbol_aliases",
         "code_syntax_recovered",
+        "code_ast_status",
+        "code_symbol_count",
         "code_symbol_source_range",
     ] {
         let mut invalid = payload.clone();
         invalid[field] = json!("wrong shape");
         assert!(!validator.is_valid(&invalid), "{field}");
+    }
+    for (field, value) in [
+        ("code_ast_status", json!("claimed_success")),
+        ("code_grammar", json!(null)),
+        ("code_grammar", json!(" \t")),
+        ("code_symbol_count", json!(-1)),
+        ("code_symbol_count", json!(1.5)),
+    ] {
+        let mut invalid = payload.clone();
+        invalid[field] = value;
+        assert!(!validator.is_valid(&invalid), "{field}");
+        let runtime = axon_api::source::MetadataMap(
+            invalid.as_object().unwrap().clone().into_iter().collect(),
+        );
+        assert!(axon_vectors::payload::VectorPayload::try_from_metadata(runtime).is_err());
     }
 }

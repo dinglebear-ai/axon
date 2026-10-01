@@ -50,7 +50,7 @@ fn code_document_yields_ast_symbol_facts_and_code_route() {
         parse
             .parse_facts
             .iter()
-            .all(|f| f.fact_kind == "code_symbol")
+            .all(|f| matches!(f.fact_kind.as_str(), "code_symbol" | "code_parse_outcome"))
     );
     assert!(
         !parse.graph_candidates.is_empty(),

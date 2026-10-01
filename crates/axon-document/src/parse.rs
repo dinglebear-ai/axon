@@ -75,15 +75,26 @@ pub(crate) fn parse_document_owned(document: SourceDocument) -> (DocumentParse, 
 
     let result = registry().parse(&input);
 
+    let observation = result
+        .facts
+        .iter()
+        .find(|fact| fact.fact_kind == "code_parse_outcome")
+        .map(|fact| crate::prepared::PreparationObservation::from_value(&fact.value))
+        .unwrap_or_default();
     tracing::info!(
         target: "axon_document::parse",
         document_id = %input.document.document_id.0,
-        canonical_uri = %input.document.canonical_uri,
+        source_path = input.document.path.as_deref().filter(|path| std::path::Path::new(path).is_relative() && !path.contains("://")),
+        code_grammar = observation.grammar(),
         parser_id = %result.parser_id,
         parser_version = %result.parser_version,
+        code_parse_outcome = observation.outcome_label(),
+        code_ast_status = observation.ast_status().unwrap_or("not_observed"),
+        heuristic_fallback = observation.heuristic_fallback(),
+        code_symbols = observation.symbol_count(),
         facts = result.facts.len(),
         graph_candidates = result.graph_candidates.len(),
-        "axon-parse produced parse facts for document preparation"
+        "document parser outcome"
     );
 
     let parsed = DocumentParse {

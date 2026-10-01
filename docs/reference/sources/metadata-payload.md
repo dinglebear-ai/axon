@@ -91,6 +91,11 @@ forms are rejected for the `code` family), `symbol_kind` ∈
 embedding interval is partitioned. `code_syntax_recovered` identifies clean AST
 symbols retained from a partially parsed file. `chunking_method` describes the
 individual chunk, including any bounded-window fallback.
+`code_ast_status` records the document's actual AST result (`parsed`, `partial`,
+`unsupported`, or `failed`), independently of symbol extraction. `code_grammar`
+names the grammar when available; `code_symbol_count` includes zero-symbol
+successful parses. Unsupported grammars are excluded from supported-parse
+attempt counts. Heuristic extraction is reported separately.
 Methods can include `tree_sitter`, `heuristic_symbol`, `atomic_code`,
 `atomic_manifest`, `line_window`, `plain_text_windows`, `source_adjacent_packing`,
 or `source_context`; a document summary does not overwrite that chunk's method.

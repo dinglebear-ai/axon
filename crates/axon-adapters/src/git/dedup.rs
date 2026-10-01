@@ -33,7 +33,21 @@ pub(super) fn deduplicate_items(items: Vec<ManifestItem>) -> Result<Vec<Manifest
             .unwrap_or("")
             .to_ascii_lowercase();
         let is_test = axon_parse::code_path::is_test_path(Some(path));
-        let key = format!("{hash}\0{:?}\0{extension}\0{is_test}", item.content_kind);
+        let directory_parser = path.ends_with(".devcontainer/devcontainer.json");
+        // Non-Markdown parsers and chunk routing can depend on the basename
+        // (Compose, environment, schema and session files). Preserve it.
+        let basename = if matches!(extension.as_str(), "md" | "markdown" | "mdown") {
+            ""
+        } else {
+            Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(path)
+        };
+        let key = format!(
+            "{hash}\0{:?}\0{extension}\0{is_test}\0{directory_parser}\0{basename}",
+            item.content_kind
+        );
         groups.entry(key).or_default().push(item);
     }
     for (_, mut group) in groups {

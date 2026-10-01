@@ -36,7 +36,23 @@ pub(super) fn parser_code_symbol_chunks(
     }
     spans.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
     if spans.is_empty() {
-        return None;
+        let outcome = parse_facts
+            .iter()
+            .find(|fact| fact.fact_kind == "code_parse_outcome")?;
+        let observation = crate::PreparationObservation::from_value(&outcome.value);
+        let status = observation.ast_status()?;
+        if !matches!(status, "parsed" | "partial") || text.is_empty() {
+            return None;
+        }
+        return Some(vec![
+            DocumentChunk::new(text.to_string(), positions.source_range(0, text.len()))
+                .with_metadata("code_chunk_source", "module_remainder".into())
+                .with_metadata("code_parse_status", status.into())
+                .with_metadata("actual_chunking_method", "tree_sitter".into())
+                .with_metadata("parser_method", "tree_sitter".into())
+                .with_metadata("code_syntax_recovered", (status == "partial").into())
+                .with_metadata("symbol_extraction_status", "none".into()),
+        ]);
     }
 
     let module_method = spans[0].2.parser_method.clone();

@@ -77,6 +77,7 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
     validate_optional_non_empty_string(metadata, "content_title")?;
     validate_optional_non_empty_string(metadata, "chunk_title")?;
     validate_parser_provenance(metadata)?;
+    validate_code_observation(metadata)?;
     if let Some(value) = metadata.get("code_syntax_recovered")
         && !value.is_boolean()
     {
@@ -119,6 +120,24 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
             field: "source_range".to_string(),
         })?;
     validate_source_range_shape(&range, "source_range")?;
+    Ok(())
+}
+
+fn validate_code_observation(metadata: &MetadataMap) -> Result<(), VectorPayloadValidationError> {
+    if let Some(value) = metadata.get("code_ast_status")
+        && !matches!(
+            value.as_str(),
+            Some("parsed" | "partial" | "unsupported" | "failed")
+        )
+    {
+        return Err(VectorPayloadValidationError::InvalidFieldShape {
+            field: "code_ast_status".into(),
+        });
+    }
+    validate_optional_non_empty_string(metadata, "code_grammar")?;
+    if metadata.contains_key("code_symbol_count") {
+        require_non_negative_integer(metadata, "code_symbol_count")?;
+    }
     Ok(())
 }
 

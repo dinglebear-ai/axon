@@ -27,6 +27,11 @@ pub(super) fn shared_chunk_field_schema(field: &str) -> Option<Value> {
             json!({ "type": "array", "items": { "type": "string", "minLength": 1, "pattern": r"\S" } })
         }
         "code_syntax_recovered" => json!({ "type": "boolean" }),
+        "code_ast_status" => {
+            json!({ "type": "string", "enum": ["parsed", "partial", "unsupported", "failed"] })
+        }
+        "code_grammar" => json!({ "type": "string", "minLength": 1, "pattern": r"\S" }),
+        "code_symbol_count" => json!({ "type": "integer", "minimum": 0 }),
         "code_symbol_source_range" => json!({ "$ref": "#/$defs/SourceRange" }),
         _ => return None,
     })

@@ -8498,6 +8498,15 @@
       "minLength": 1,
       "type": "string"
     },
+    "code_ast_status": {
+      "enum": [
+        "parsed",
+        "partial",
+        "unsupported",
+        "failed"
+      ],
+      "type": "string"
+    },
     "code_chunk_source": {
       "minLength": 1,
       "type": "string"
@@ -8507,6 +8516,11 @@
       "type": "string"
     },
     "code_file_type": {
+      "type": "string"
+    },
+    "code_grammar": {
+      "minLength": 1,
+      "pattern": "\\S",
       "type": "string"
     },
     "code_is_test": {
@@ -8525,6 +8539,10 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "code_symbol_count": {
+      "minimum": 0,
+      "type": "integer"
     },
     "code_symbol_kind": {
       "type": "string"
@@ -10743,7 +10761,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:d9ef64bc363bff8abca1c4bf524f82930031053faa035513a50481a3628e2a20",
+        "checksum": "sha256:a5a655b18a45b04d0a3a17b098b179aac8756a79e53955522170db0e9d90436a",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -10768,7 +10786,7 @@
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
       {
-        "checksum": "sha256:dbab3ae11359fd9a4a5a06adb2d195ccdd02fd85a2f525740dcfb1e574ec8698",
+        "checksum": "sha256:d0233067e8ab42be1a0d1451d5f0e3a7df7953c42d54de761b6ae4d068b1a01b",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
@@ -10778,7 +10796,7 @@
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
       {
-        "checksum": "sha256:5b1ae4e9a1b5b3838bf5250856f6cd738adeb0838b679626c0e533d876285ba7",
+        "checksum": "sha256:921bae71f3381b68aeca865c6633798f249bc564659c5e02dfa3244b351e3e5e",
         "kind": "rust_module",
         "path": "xtask/src/schemas/vector_payload_fields.rs"
       },

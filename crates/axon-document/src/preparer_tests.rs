@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-7");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-8");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -1527,15 +1527,15 @@ fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
 }
 
 #[test]
-fn code_without_ast_symbols_reports_the_actual_heuristic_or_atomic_method() {
-    for (source, method) in [
+fn code_without_ast_symbols_preserves_actual_ast_success_or_partial_status() {
+    for (source, status) in [
         (
             "fn broken(\n// This malformed declaration retains complete useful source context for retrieval.\n",
-            "heuristic_symbol",
+            "partial",
         ),
         (
             "// A complete useful source comment without any recognized declarations or symbols.\n",
-            "atomic_code",
+            "parsed",
         ),
     ] {
         let mut input = request(
@@ -1551,12 +1551,14 @@ fn code_without_ast_symbols_reports_the_actual_heuristic_or_atomic_method() {
         else {
             panic!("expected useful source context")
         };
-        assert_eq!(prepared.chunking_method, method);
+        assert_eq!(prepared.chunking_method, "tree_sitter");
+        assert_eq!(prepared.metadata["code_ast_status"], status);
+        assert_eq!(prepared.metadata["code_symbol_count"], 0);
         assert!(
             prepared
                 .chunks
                 .iter()
-                .all(|chunk| chunk.metadata["actual_chunking_method"] == method)
+                .all(|chunk| chunk.metadata["actual_chunking_method"] == "tree_sitter")
         );
         assert!(
             prepared

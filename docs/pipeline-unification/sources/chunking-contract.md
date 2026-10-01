@@ -357,8 +357,10 @@ Its final quality gate rejects chunks with fewer than 50 Unicode characters or
 without letters or digits, after redaction and size enforcement. Short useful
 code can retain bounded neighboring context with source provenance.
 
-Complete Git inventories collapse identical file contents with the same content
-kind and extension before preparation. One deterministic path is canonical;
+Complete Git inventories collapse identical file contents with compatible content
+kind, extension, test classification, and filename/path parser semantics before
+preparation. Non-Markdown files retain matching basenames and directory-sensitive
+parser selection. One deterministic path is canonical;
 other paths remain searchable aliases. Changes to alias membership invalidate
 reuse. A partial refresh of a previously deduplicated inventory requires a
 complete refresh so missing paths cannot silently become stale aliases.
@@ -388,20 +390,37 @@ Code chunk metadata:
 | `code_parser` | no | Parser name. |
 | `code_parser_version` | no | Parser/grammar version. |
 | `code_parse_status` | yes | `parsed`, `partial`, `fallback`, `unsupported`, `failed`. |
+| `code_ast_status` | no | Actual AST outcome: `parsed`, `partial`, `unsupported`, `failed`. |
+| `code_grammar` | no | Selected AST grammar; absent when unavailable. |
+| `code_symbol_count` | no | Nonnegative extracted-symbol count, including zero. |
 | `code_chunk_source` | yes | `ast_symbol`, `ast_node`, `line_window`, etc. |
 | `symbol_name` | no | Extracted symbol. |
 | `symbol_kind` | no | Function/class/type/etc. |
 | `symbol_qualified_name` | no | Fully qualified name. |
 | `symbol_signature` | no | Normalized signature. |
 | `symbol_parent` | no | Parent/module symbol. |
-| `symbol_extraction_status` | yes | `parsed`, `fallback`, `unsupported`, `failed`, `none`. |
+| `symbol_extraction_status` | yes | `ast`, `heuristic_fallback`, or `none`; use `code_ast_status` for the AST outcome. |
 
 Supported language contract:
 
 - A language is "supported" only when parser coverage, symbol extraction rules,
   and fallback tests exist.
 - Unsupported languages still produce line-aware chunks.
-- `symbol_extraction_status=unsupported` is valid and searchable.
+- Unsupported AST grammars report `code_ast_status=unsupported`; symbol extraction
+  separately reports `heuristic_fallback` or `none`.
+
+Current AST grammars cover Rust, Python, JavaScript/JSX, TypeScript/TSX,
+Bash/POSIX shell (`.sh`, `.bash`), CSS (`.css`), and Elixir (`.ex`, `.exs`).
+CSS uses selector rules and at-rules as structural chunks; Shell uses function
+definitions; Elixir uses module, function, and macro declarations with arity.
+Unclaimed dialects such as Zsh, SCSS, and HEEx remain explicitly unsupported.
+Valid source outside extracted declarations remains searchable.
+
+The `code_symbols` parser ID alone does not establish AST success. Preparation
+logs report explicit document outcomes and durable per-batch summaries of clean,
+partial, zero-symbol, failed, unsupported, and heuristic results, including files
+skipped by the final quality gate. Supported-attempt counts exclude unsupported
+grammars; per-chunk method counts describe actual chunking separately.
 
 Initial language/parser targets:
 

@@ -8,6 +8,21 @@ use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest, PrepareSourc
 use futures_util::{StreamExt, stream};
 use tokio::sync::Semaphore;
 
+mod observability;
+use observability::PreparationSummary;
+
+#[derive(Debug)]
+pub(super) struct PreparedBatch {
+    pub(super) outcomes: Vec<PrepareSourceDocumentResult>,
+    summary: PreparationSummary,
+}
+
+impl PreparedBatch {
+    pub(super) fn summary_message(&self) -> String {
+        self.summary.message()
+    }
+}
+
 /// Shared by execution and publication compatibility; only the derived ceiling
 /// affects prepared output, not concurrency or the raw admission budget.
 pub(super) fn effective_content_limit(
@@ -30,10 +45,11 @@ pub(super) async fn prepare_documents(
     concurrency: usize,
     max_in_flight_bytes: usize,
     max_bytes_per_item: Option<u64>,
-) -> anyhow::Result<Vec<PrepareSourceDocumentResult>> {
+) -> anyhow::Result<PreparedBatch> {
     let content_limit = effective_content_limit(&preparer, max_in_flight_bytes, max_bytes_per_item);
     let preparer = preparer.with_content_byte_limit(content_limit);
     let generation = generation.clone();
+    let observed_generation = generation.clone();
     let work_items = documents
         .into_iter()
         .map(|document| {
@@ -44,15 +60,15 @@ pub(super) async fn prepare_documents(
             (document, graph_candidates)
         })
         .collect::<Vec<_>>();
-    bounded_blocking_map_in_order(
+    let observed = bounded_blocking_map_in_order(
         work_items,
         concurrency,
         max_in_flight_bytes,
         |(document, _)| source_document_bytes(document),
         move |(document, graph_candidates)| {
             let item_key = document.source_item_key.0.clone();
-            Ok(preparer
-                .prepare(PrepareSourceDocumentRequest {
+            let observed = preparer
+                .prepare_observed(PrepareSourceDocumentRequest {
                     document,
                     generation: generation.clone(),
                     profile: None,
@@ -68,10 +84,23 @@ pub(super) async fn prepare_documents(
                         format!("failed to prepare document: {error}"),
                     )
                     .with_source_item_key(item_key)
-                })?)
+                })?;
+            observability::trace_document(&observed.0, &observed.1);
+            Ok(observed)
         },
     )
-    .await
+    .await?;
+    let mut summary = PreparationSummary::default();
+    let outcomes = observed
+        .into_iter()
+        .map(|(result, observation)| {
+            summary.observe(&result, &observation);
+            result
+        })
+        .collect();
+    tracing::info!(target: "axon_services::source::preparation", generation = %observed_generation.0,
+        summary = %summary.message(), "source preparation batch outcomes");
+    Ok(PreparedBatch { outcomes, summary })
 }
 
 fn source_document_bytes(document: &SourceDocument) -> usize {
