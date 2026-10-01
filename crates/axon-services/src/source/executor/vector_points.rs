@@ -1,14 +1,19 @@
 //! Vector point construction for unified source vectorization.
 
 use axon_api::source::*;
-use axon_vectors::point::{VectorPointBatchBuildContext, build_points_for_document};
+use axon_vectors::point::{
+    RedactionSkipCounts, VectorPointBatchBuildContext, build_points_for_document_with_diagnostics,
+};
 
 use super::timestamp;
+
+pub(super) type RedactionSkipsBySourceItem =
+    std::collections::BTreeMap<SourceItemKey, RedactionSkipCounts>;
 
 pub(super) struct VectorPointBuild {
     pub(super) batch: VectorPointBatch,
     pub(super) skipped_redaction: u64,
-    pub(super) redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64>,
+    pub(super) redaction_skips_by_source_item: RedactionSkipsBySourceItem,
     #[cfg_attr(not(test), allow(dead_code))]
     pub(super) points_by_document: std::collections::BTreeMap<DocumentId, u32>,
 }
@@ -30,7 +35,7 @@ pub(super) fn point_batch(
         embedded_at: timestamp(),
     };
     let mut skipped_redaction = 0u64;
-    let mut redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64> =
+    let mut redaction_skips_by_source_item: RedactionSkipsBySourceItem =
         std::collections::BTreeMap::new();
     let mut points_by_document = std::collections::BTreeMap::new();
     for document in documents {
@@ -53,14 +58,22 @@ pub(super) fn point_batch(
             },
             warnings: Vec::new(),
         };
-        let (document_points, document_skipped) =
-            build_points_for_document(&collection, document, document_embeddings, &point_context)?;
+        let (document_points, document_reasons) = build_points_for_document_with_diagnostics(
+            &collection,
+            document,
+            document_embeddings,
+            &point_context,
+        )?;
+        let document_skipped = document_reasons.values().copied().sum::<u64>();
         skipped_redaction = skipped_redaction.saturating_add(document_skipped);
         if document_skipped > 0 {
-            redaction_skips_by_source_item
+            let reasons = redaction_skips_by_source_item
                 .entry(document.source_item_key.clone())
-                .and_modify(|count| *count = count.saturating_add(document_skipped))
-                .or_insert(document_skipped);
+                .or_default();
+            for (reason, count) in document_reasons {
+                let existing = reasons.entry(reason).or_default();
+                *existing = existing.saturating_add(count);
+            }
         }
         let document_point_count = u32::try_from(document_points.len()).unwrap_or(u32::MAX);
         points_by_document.insert(document.document_id.clone(), document_point_count);
