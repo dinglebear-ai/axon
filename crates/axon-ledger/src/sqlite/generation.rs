@@ -165,7 +165,16 @@ pub(super) async fn publish_generation(
     let mut tx = ImmediateTx::begin_with_gate(&store.pool, &store.write_gate)
         .await
         .map_err(sqlite_error)?;
-    let generation = generation_in_tx(&mut tx, &request.source_id, &request.generation).await?;
+    let generation = store.publish_generation_in_tx(&mut tx, request).await?;
+    tx.commit().await.map_err(sqlite_error)?;
+    Ok(generation)
+}
+
+pub(super) async fn publish_generation_in_tx(
+    tx: &mut sqlx::SqliteConnection,
+    request: PublishGenerationRequest,
+) -> Result<SourceGeneration> {
+    let generation = generation_in_tx(tx, &request.source_id, &request.generation).await?;
     ensure_generation_publishable(&generation)?;
 
     let manifest_exists: Option<i64> = sqlx::query_scalar(
@@ -184,7 +193,7 @@ pub(super) async fn publish_generation(
         return Err(manifest_missing_error(&generation));
     }
 
-    let previous = current_committed_generation_in_tx(&mut tx, &generation.source_id).await?;
+    let previous = current_committed_generation_in_tx(tx, &generation.source_id).await?;
     if previous != request.expected_previous_generation
         || generation.previous_generation != request.expected_previous_generation
     {
@@ -199,22 +208,18 @@ pub(super) async fn publish_generation(
         .with_source_id(generation.source_id.0));
     }
 
-    carry_retained_statuses_in_tx(&mut tx, &request, previous.as_ref()).await?;
+    carry_retained_statuses_in_tx(tx, &request, previous.as_ref()).await?;
 
     let mut committed_generation = generation.clone();
     committed_generation.published_at = Some(timestamp());
     let mut cleanup_debt =
-        stale_item_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?;
+        stale_item_cleanup_debt_in_tx(tx, &committed_generation, previous.as_ref()).await?;
     cleanup_debt.extend(
-        graph_prune_cleanup_debt_in_tx(&mut tx, &committed_generation, previous.as_ref()).await?,
+        graph_prune_cleanup_debt_in_tx(tx, &committed_generation, previous.as_ref()).await?,
     );
     cleanup_debt.extend(
-        ledger_prune_cleanup_debt_in_tx(
-            &mut tx,
-            &committed_generation.source_id,
-            previous.as_ref(),
-        )
-        .await?,
+        ledger_prune_cleanup_debt_in_tx(tx, &committed_generation.source_id, previous.as_ref())
+            .await?,
     );
     for debt in &mut cleanup_debt {
         debt.job_id = request.job_id;
@@ -229,9 +234,9 @@ pub(super) async fn publish_generation(
         .iter()
         .map(|debt| debt.debt_id.clone())
         .collect();
-    upsert_generation_in_tx(&mut tx, &committed_generation, None).await?;
+    upsert_generation_in_tx(tx, &committed_generation, None).await?;
     for debt in cleanup_debt {
-        insert_cleanup_debt_once_in_tx(&mut tx, debt).await?;
+        insert_cleanup_debt_once_in_tx(tx, debt).await?;
     }
 
     let result = sqlx::query(
@@ -264,8 +269,7 @@ pub(super) async fn publish_generation(
         )
         .with_source_id(committed_generation.source_id.0));
     }
-    record_committed_epoch(&mut tx, &committed_generation).await?;
-    tx.commit().await.map_err(sqlite_error)?;
+    record_committed_epoch(tx, &committed_generation).await?;
     Ok(committed_generation)
 }
 

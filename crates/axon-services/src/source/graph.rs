@@ -51,6 +51,7 @@ use crate::context::TargetLocalSourceRuntime;
 use crate::reserved_call::ProviderCallContext;
 
 mod publication;
+pub(crate) mod staging;
 
 /// Confidence stamped on baseline skeleton nodes/edges. These are structural
 /// containment facts derived directly from the acquired manifest, not inferred

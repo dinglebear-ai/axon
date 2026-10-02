@@ -150,7 +150,7 @@ async fn write_resolved_candidate(
 }
 
 async fn write_candidate(
-    tx: &mut ImmediateTx,
+    tx: &mut sqlx::SqliteConnection,
     candidate: &GraphCandidate,
     resolved_nodes: &[ResolvedNode],
     resolved_edges: &[ResolvedEdgeEvidence<'_>],
@@ -196,7 +196,7 @@ async fn write_candidate(
     sqlx::query("DELETE FROM graph_write_checkpoints WHERE job_id = ? AND candidate_id = ?")
         .bind(candidate.job_id.0.to_string())
         .bind(&candidate.candidate_id)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(|error| {
             graph_storage_error(format!("failed to clear graph checkpoint: {error}"))
@@ -469,4 +469,18 @@ async fn execute_alias_batch(
         .await
         .map_err(|e| graph_storage_error(format!("failed to batch upsert aliases: {e}")))?;
     Ok(())
+}
+
+/// Apply candidates inside the caller's publication transaction.
+pub(crate) async fn replay_in_tx(
+    tx: &mut sqlx::SqliteConnection,
+    candidates: &[GraphCandidate],
+) -> StoreResult<GraphWriteResult> {
+    let source = prevalidate_candidate_batch(candidates)?;
+    let mut totals = CandidateCounts::default();
+    for candidate in candidates {
+        let (nodes, edges) = resolve_candidate(candidate);
+        totals.add(write_candidate(tx, candidate, &nodes, &edges).await?);
+    }
+    Ok(totals.result(source))
 }

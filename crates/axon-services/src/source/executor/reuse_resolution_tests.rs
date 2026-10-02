@@ -94,6 +94,7 @@ async fn resolve_case(
     plan.route.source.source_id = SourceId::new("src_reuse");
     let execution = crate::source::SourceExecutionContext::inline(request, None);
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: "test",

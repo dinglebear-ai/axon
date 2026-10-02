@@ -93,11 +93,11 @@ fn migration_records_match_runtime_identity_and_order() {
             // full provider-kind registry, followed by projection batch
             // correlation. Graph carries its base schema, publication state,
             // durable write checkpoints, the item evidence index, and the
-            // stable-key node retirement index.
+            // stable-key node retirement index, and private generation stages.
             // Memory carries three.
             "ledger", "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs", "jobs",
             "jobs", "jobs", "jobs", "observe", "graph", "graph", "graph", "graph", "graph",
-            "memory", "memory", "memory"
+            "graph", "memory", "memory", "memory"
         ]
     );
     for migration in &schema.migrations {

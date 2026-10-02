@@ -303,7 +303,7 @@ async fn build_source_job_identity_harness(
     let store: Arc<dyn JobStore> = Arc::new(SqliteUnifiedJobStore::new(pool.clone()));
 
     let ledger: Arc<dyn LedgerStore> = match ledger_backend {
-        LedgerBackend::SharedSqlite => Arc::new(SqliteLedgerStore::from_pool(pool)),
+        LedgerBackend::SharedSqlite => Arc::new(SqliteLedgerStore::from_pool(pool.clone())),
     };
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let core = Arc::new(FakeCoreBoundaries::new());
@@ -317,6 +317,7 @@ async fn build_source_job_identity_harness(
             "fake-embedding",
             8,
         ));
+    target.graph_stage_pool = Some(pool);
     target.artifact_store = core.clone();
     target.document_cache = core.clone();
     target.web_source_adapter = Arc::new(WebSourceAdapter::new(

@@ -70,6 +70,7 @@ impl Fixture {
     }
     fn input(&self) -> SourcePipelineInput<'_> {
         SourcePipelineInput {
+            graph_stage: None,
             adapter: &self.adapter,
             plan: self.plan.clone(),
             collection: "test",

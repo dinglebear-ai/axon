@@ -8,45 +8,9 @@ use std::collections::BTreeSet;
 
 pub(super) const SCHEMA_EPOCH: i64 = 1;
 
-const CANONICAL_TABLES: &[&str] = &[
-    "axon_applied_migrations",
-    "axon_observe_events",
-    "axon_observe_heartbeats",
-    "axon_observe_provider_health",
-    "axon_source_watch_runs",
-    "axon_source_watches",
-    "cleanup_debt",
-    "config_snapshots",
-    "document_status",
-    "embedding_vector_cache",
-    "embedding_vector_cache_state",
-    "graph_aliases",
-    "graph_conflicts",
-    "graph_edges",
-    "graph_evidence",
-    "graph_nodes",
-    "graph_publication_state",
-    "graph_write_checkpoints",
-    "job_artifacts",
-    "job_attempts",
-    "job_events",
-    "job_heartbeats",
-    "job_stages",
-    "jobs",
-    "leases",
-    "memory_links",
-    "memory_records",
-    "memory_reinforcement",
-    "memory_reviews",
-    "provider_identity_cache",
-    "provider_reservations",
-    "projection_batch_items",
-    "source_generations",
-    "source_items",
-    "source_manifests",
-    "source_publication_state",
-    "sources",
-];
+#[path = "identity/tables.rs"]
+mod tables;
+use tables::CANONICAL_TABLES;
 
 const CANONICAL_FOREIGN_KEYS: &[(&str, &str, &str, &str, &str)] = &[
     (

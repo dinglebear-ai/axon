@@ -106,3 +106,41 @@ impl axon_adapters::boundary::RenderProvider for LongRender {
         axon_adapters::boundary::RenderProvider::capabilities(self.0.as_ref()).await
     }
 }
+
+#[tokio::test]
+async fn generation_graph_is_staged_before_source_publication() {
+    let provider = Arc::new(axon_adapters::boundary::FakeAdapterProviders::new());
+    let h = crate::test_support::source_context_with_web_providers(
+        provider.clone(),
+        Arc::new(LongRender(provider, std::sync::atomic::AtomicUsize::new(0))),
+    )
+    .await
+    .unwrap();
+    let mut request = SourceRequest::new("https://example.test/staging");
+    request.scope = Some(SourceScope::Page);
+    request.refresh = SourceRefreshPolicy::Force;
+    let output = index_source_with_auth(
+        request,
+        h.ctx(),
+        Some(AuthSnapshot::trusted_system("stage-test")),
+    )
+    .await
+    .unwrap();
+    let pool = h.ctx().sqlite_pool().unwrap();
+    let messages: Vec<String> =
+        sqlx::query_scalar("SELECT message FROM job_events WHERE job_id = ? ORDER BY sequence")
+            .bind(output.job_id.0.to_string())
+            .fetch_all(pool.as_ref())
+            .await
+            .unwrap();
+    let staged = messages
+        .iter()
+        .position(|m| m == "generation graph staging complete")
+        .expect("graph must finish staging before publication");
+    let published = messages
+        .iter()
+        .position(|m| m == "published source generation")
+        .unwrap();
+    assert!(staged < published);
+    assert!(!output.graph.degraded);
+}

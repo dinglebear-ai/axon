@@ -283,3 +283,6 @@ mod document_carry_tests;
 
 #[path = "sqlite_tests/bulk_lookup_tests.rs"]
 pub(crate) mod bulk_lookup_tests;
+
+#[path = "sqlite_tests/publication_transaction_tests.rs"]
+mod publication_transaction_tests;

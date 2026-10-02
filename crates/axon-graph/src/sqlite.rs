@@ -10,12 +10,12 @@
 //! preserved as explicit rows rather than silently overwritten.
 
 mod conflict;
-mod header;
+pub(crate) mod header;
 mod query;
 mod resolve;
 mod retirement;
 mod row;
-mod upsert;
+pub(crate) mod upsert;
 
 use async_trait::async_trait;
 use axon_api::source::{

@@ -296,19 +296,24 @@ async fn finalize_source_index(
         execution.priority,
         format!("graph:{}:{}", counts.source_id.0, counts.generation.0),
     );
-    let graph = graph::write_baseline_graph_with_db_gate(
-        Some(runtime),
-        Some(graph_context),
-        kind,
-        ctx.jobs.sqlite_pool(),
-        runtime.ledger.as_ref(),
-        &graph_counts,
-        &route.source.canonical_uri,
-        graph_manifest,
-        graph_candidates,
-        Some(Arc::clone(&runtime.db_stage_slots)),
-    )
-    .await;
+    let graph = match graph::staging::activated_summary(runtime, &counts).await? {
+        Some(summary) => summary,
+        None => {
+            graph::write_baseline_graph_with_db_gate(
+                Some(runtime),
+                Some(graph_context),
+                kind,
+                ctx.jobs.sqlite_pool(),
+                runtime.ledger.as_ref(),
+                &graph_counts,
+                &route.source.canonical_uri,
+                graph_manifest,
+                graph_candidates,
+                Some(Arc::clone(&runtime.db_stage_slots)),
+            )
+            .await
+        }
+    };
 
     let graph_audit_warning = job_tracking::track_graph_mutation(
         Some(runtime.jobs.clone()),
@@ -459,3 +464,7 @@ mod byte_policy_tests;
 #[cfg(test)]
 #[path = "source/deferred_cleanup_tests.rs"]
 mod deferred_cleanup_tests;
+
+#[cfg(test)]
+#[path = "source/concurrent_graph_tests.rs"]
+mod concurrent_graph_tests;

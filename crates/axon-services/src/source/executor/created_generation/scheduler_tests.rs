@@ -60,6 +60,7 @@ async fn scheduler_publishes_eight_small_documents_in_one_provider_batch() {
         crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
     let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: "scheduler-test",
