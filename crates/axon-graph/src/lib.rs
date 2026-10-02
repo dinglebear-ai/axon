@@ -45,5 +45,10 @@ mod fixture_tests;
 mod schema_fixture_tests;
 pub mod schema_registry;
 #[cfg(test)]
+mod stage_tests;
+#[cfg(test)]
 #[path = "store_tests.rs"]
 mod store_tests;
+
+pub mod stage;
+pub use stage::GraphStage;

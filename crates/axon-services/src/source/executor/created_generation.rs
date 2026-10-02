@@ -49,6 +49,23 @@ pub(super) async fn run_created_generation(
     previous: Option<SourceSummary>,
     coordinator: &ProgressCoordinator,
 ) -> anyhow::Result<IndexCounts> {
+    let graph_stage = match &runtime.graph_stage_pool {
+        Some(pool) => Some(std::sync::Arc::new(
+            axon_graph::stage::GraphStage::begin(
+                pool.clone(),
+                generation.source_id.clone(),
+                generation.generation.clone(),
+                input.plan.job_id,
+                input.execution.attempt,
+            )
+            .await?,
+        )),
+        None => None,
+    };
+    let input = &SourcePipelineInput {
+        graph_stage: graph_stage.clone(),
+        ..input.clone()
+    };
     let mut artifact_cleanup = ArtifactCleanupGuard::new(
         runtime,
         input.plan.job_id,
@@ -69,6 +86,12 @@ pub(super) async fn run_created_generation(
         &mut artifact_cleanup,
     )
     .await;
+    if let Some(stage) = graph_stage {
+        if let Err(error) = stage.mark_disposable().await {
+            tracing::warn!(job_id=?input.plan.job_id, error=%error,
+                "private graph stage remains registered for durable worker disposal");
+        }
+    }
     let cleanup = artifact_cleanup.finish().await;
     merge_generation_cleanup(result, cleanup)
 }
@@ -106,6 +129,7 @@ async fn run_created_generation_inner(
     output::initialize_durable_export(&input.plan).await?;
     let archive_requested = input.adapter.wants_archive(&input.plan);
     let mut accumulated = GenerationAccumulator::new(&generation.generation).await?;
+    accumulated.graph_stage = input.graph_stage.clone();
     let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
     let mut stage = GenerationStageProgress::default();
 
@@ -134,10 +158,28 @@ async fn run_created_generation_inner(
     )
     .await?;
 
-    let finalized = accumulated
+    let mut finalized = accumulated
         .finalize(runtime, input, artifact_cleanup, &mut manifest, diff)
         .await?;
     super::refresh_inventory::validate_rebuilt(runtime.ledger.as_ref(), &manifest).await?;
+
+    crate::source::graph::staging::stage_baseline(
+        runtime,
+        input,
+        &generation,
+        &manifest,
+        &finalized.vectorized.document_statuses,
+    )
+    .await?;
+    if input.graph_stage.is_some() {
+        finalized.vectorized.graph_candidates.clear();
+        emitter
+            .completed(
+                PipelinePhase::Upserting,
+                "generation graph staging complete",
+            )
+            .await;
+    }
 
     coordinator
         .report(

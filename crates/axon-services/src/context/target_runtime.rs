@@ -347,6 +347,7 @@ async fn build_target_runtime(
     );
 
     let runtime = TargetLocalSourceRuntime {
+        graph_stage_pool: Some(pool.clone()),
         jobs,
         ledger,
         embedding_provider,
@@ -357,6 +358,7 @@ async fn build_target_runtime(
         graph_scheduler: Some(Arc::new(graph_scheduler)),
         artifact_scheduler: Some(Arc::new(artifact_scheduler)),
         sqlite_write_gate,
+        publication_settlement_gate: SqliteWriteGate::default(),
         #[cfg(test)]
         embedding_cache_store,
         embedding_provider_id,

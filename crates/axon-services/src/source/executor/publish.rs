@@ -78,13 +78,7 @@ pub(super) async fn publish(
 ) -> anyhow::Result<PublishOutcome> {
     if !embed || (expected_new_points == 0 && generation.previous_generation.is_none()) {
         return Ok(PublishOutcome {
-            generation: publish_ledger(
-                runtime.ledger.as_ref(),
-                input,
-                generation,
-                retained_statuses,
-            )
-            .await?,
+            generation: publish_ledger(runtime, input, generation, retained_statuses).await?,
             warnings: Vec::new(),
         });
     }
@@ -104,14 +98,7 @@ pub(super) async fn publish(
         );
     }
 
-    let published = match publish_ledger(
-        runtime.ledger.as_ref(),
-        input,
-        generation,
-        retained_statuses,
-    )
-    .await
-    {
+    let published = match publish_ledger(runtime, input, generation, retained_statuses).await {
         Ok(published) => published,
         Err(error) => {
             return Err(rollback_new_generation_vectors(
@@ -196,21 +183,24 @@ async fn stage_vector_visibility(
 }
 
 async fn publish_ledger(
-    ledger: &dyn LedgerStore,
+    runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     generation: &SourceGeneration,
     retained_statuses: &[DocumentStatus],
 ) -> anyhow::Result<SourceGeneration> {
-    Ok(ledger
-        .publish_generation(PublishGenerationRequest {
-            job_id: input.plan.job_id,
-            attempt: input.execution.attempt,
-            source_id: generation.source_id.clone(),
-            generation: generation.generation.clone(),
-            expected_previous_generation: generation.previous_generation.clone(),
-            retained_statuses: retained_statuses.to_vec(),
-        })
-        .await?)
+    let request = PublishGenerationRequest {
+        job_id: input.plan.job_id,
+        attempt: input.execution.attempt,
+        source_id: generation.source_id.clone(),
+        generation: generation.generation.clone(),
+        expected_previous_generation: generation.previous_generation.clone(),
+        retained_statuses: retained_statuses.to_vec(),
+    };
+    if input.graph_stage.is_some() {
+        crate::source::graph::staging::publish_ledger_and_graph(runtime, input, request).await
+    } else {
+        Ok(runtime.ledger.publish_generation(request).await?)
+    }
 }
 
 async fn rollback_new_generation_vectors(
@@ -221,6 +211,12 @@ async fn rollback_new_generation_vectors(
     cause: impl Into<anyhow::Error>,
 ) -> anyhow::Error {
     let error = cause.into();
+    if error
+        .downcast_ref::<ApiError>()
+        .is_some_and(|error| error.code.to_string() == "graph.publication_commit_unknown")
+    {
+        return error;
+    }
     match reserved_call::delete_vectors(
         runtime,
         publish_context(input, generation, "rollback-new-generation"),

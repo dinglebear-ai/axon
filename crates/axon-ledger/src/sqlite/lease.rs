@@ -238,3 +238,29 @@ pub(super) async fn heartbeat_lease(
     }
     Ok(Some(guard))
 }
+
+/// Validate ownership against normalized instants, not RFC3339 string ordering.
+pub(super) async fn ensure_publication_lease_in_tx(
+    tx: &mut sqlx::SqliteConnection,
+    source_id: &SourceId,
+    owner_id: &str,
+) -> Result<()> {
+    let live: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM leases WHERE lease_key = ?1 AND owner_id = ?2
+         AND julianday(expires_at) > julianday(?3)",
+    )
+    .bind(format!("publication:{}", source_id.0))
+    .bind(owner_id)
+    .bind(timestamp().0)
+    .fetch_optional(tx)
+    .await
+    .map_err(sqlite_error)?;
+    if live.is_none() {
+        return Err(ApiError::new(
+            "source.ledger.publication_lease_lost",
+            ErrorStage::Publishing,
+            "source publication lease is missing, expired, or owned by another finalizer; roll back publication and reacquire the source publication lease before retrying",
+        ).with_source_id(source_id.0.clone()));
+    }
+    Ok(())
+}

@@ -66,7 +66,9 @@ fn first_acquire_batch_size(default_size: usize) -> usize {
         .unwrap_or(default_size)
         .clamp(1, 1024)
 }
+#[derive(Clone)]
 pub(super) struct SourcePipelineInput<'a> {
+    pub(super) graph_stage: Option<std::sync::Arc<axon_graph::stage::GraphStage>>,
     pub(super) adapter: &'a dyn SourceAdapter,
     pub(super) plan: SourcePlan,
     pub(super) collection: &'a str,

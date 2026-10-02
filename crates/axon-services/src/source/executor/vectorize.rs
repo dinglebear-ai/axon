@@ -107,8 +107,9 @@ pub(super) async fn prepare_embed_publish(
                 "prepared source documents",
             )
             .await;
-        let batches = chunk_batches(prepared, runtime.embed_pool_max_inputs);
+        let mut batches = chunk_batches(prepared, runtime.embed_pool_max_inputs);
         if !input.plan.request.embed {
+            stage_unembedded_batches(runtime, input, &mut batches).await?;
             merge_prepared_batches(&mut output, batches);
             continue;
         }
@@ -156,6 +157,28 @@ pub(super) async fn prepare_embed_publish(
         merge_vectorize_result(&mut output, result);
     }
     persist_vectorize_result(runtime, output).await
+}
+
+async fn stage_unembedded_batches(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    batches: &mut [Vec<PreparedDocument>],
+) -> anyhow::Result<()> {
+    for batch in batches {
+        crate::source::graph::staging::stage_prepared(
+            runtime,
+            input,
+            batch,
+            PipelinePhase::Preparing,
+        )
+        .await?;
+        if input.graph_stage.is_some() {
+            for document in batch {
+                document.graph_candidates.clear();
+            }
+        }
+    }
+    Ok(())
 }
 
 fn merge_prepared_batches(output: &mut VectorizeResult, batches: Vec<Vec<PreparedDocument>>) {

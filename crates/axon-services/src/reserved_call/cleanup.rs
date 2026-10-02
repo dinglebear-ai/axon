@@ -249,7 +249,13 @@ pub async fn spawn_cleanup_debt_worker(
     Ok(Arc::new(QueueSummaryTask::new(stop, thread)))
 }
 
+#[path = "cleanup_stages.rs"]
+mod stages;
+
 async fn run_sweep(context: &CleanupDrainContext<'_>) -> DebtDrainSummary {
+    if let Some(pool) = context.runtime.graph_stage_pool.as_ref() {
+        stages::sweep(pool, context.runtime.jobs.as_ref()).await;
+    }
     crate::source::prune::drain_all_cleanup_debt(
         context.runtime.ledger.as_ref(),
         256,

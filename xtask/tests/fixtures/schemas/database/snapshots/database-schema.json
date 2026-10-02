@@ -804,6 +804,17 @@
     },
     {
       "columns": [
+        "source_id",
+        "generation_id",
+        "activated_at DESC"
+      ],
+      "name": "idx_graph_stage_receipts_generation",
+      "table": "graph_stage_receipts",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "lease_key",
         "expires_at"
       ],
@@ -1610,6 +1621,20 @@
         "graph_nodes"
       ],
       "version": 5
+    },
+    {
+      "checksum": "c88898538d98233149753bca42a15c5430f35772084e180e96dcc26e83344e9b",
+      "file": "crates/axon-graph/src/migrations/0006_graph_stages.sql",
+      "name": "0006_graph_stages",
+      "owner_crate": "axon-graph",
+      "runtime_namespace": "graph",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "graph_revision",
+        "graph_stage_receipts",
+        "graph_stages"
+      ],
+      "version": 6
     },
     {
       "checksum": "27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3",
@@ -2720,6 +2745,147 @@
       "owner_crate": "axon-graph",
       "primary_key": [
         "source_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "singleton",
+          "nullable": true,
+          "primary_key": true,
+          "type": "integer"
+        },
+        {
+          "name": "revision",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-graph/src/migrations/0006_graph_stages.sql",
+      "name": "graph_revision",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "singleton"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "stage_id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "summary_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "activated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-graph/src/migrations/0006_graph_stages.sql",
+      "name": "graph_stage_receipts",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "stage_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "stage_id",
+          "nullable": true,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "generation_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "path",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "state",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "summary_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "journal_digest",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "write_set_digest",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-graph/src/migrations/0006_graph_stages.sql",
+      "name": "graph_stages",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "stage_id"
       ]
     },
     {
@@ -4361,12 +4527,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:ae1820ee9f43004a046e4f164cbbc36a2261adae0a860fed673a04414d6b0bbb",
+        "checksum": "sha256:222ae287de4e9bbeb3966b778ae3c68fccac17ab72cf773d6b6b5b6112c3873c",
         "kind": "sql_migration_directory",
         "path": "crates/axon-graph/src/migrations"
       },
       {
-        "checksum": "sha256:dbbc4ff5a54f08c9740b871a73664e26dd24af9c84e0de9b0e5c07f9940e3d15",
+        "checksum": "sha256:747ea27f11d0c7daca8e6b35a199f9a630f7495dc2eaa21e77b5b198604baebd",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },

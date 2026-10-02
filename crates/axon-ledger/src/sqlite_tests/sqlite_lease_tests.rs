@@ -240,3 +240,65 @@ async fn sqlite_store_enables_foreign_keys() {
 
     assert!(store.foreign_keys_enabled().await.expect("foreign keys"));
 }
+
+#[tokio::test]
+async fn publication_transaction_requires_current_source_lease_owner() {
+    let store = SqliteLedgerStore::in_memory().await.unwrap();
+    let source_id = SourceId::new("src_sqlite");
+    let key = format!("publication:{}", source_id.0);
+    let mut tx = axon_core::sqlite::ImmediateTx::begin(&store.pool)
+        .await
+        .unwrap();
+    let missing = store
+        .ensure_publication_lease_in_tx(&mut tx, &source_id, "owner-a")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        missing.code.to_string(),
+        "source.ledger.publication_lease_lost"
+    );
+    tx.rollback().await;
+
+    store
+        .acquire_lease(lease_request(&key, "owner-a"))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut tx = axon_core::sqlite::ImmediateTx::begin(&store.pool)
+        .await
+        .unwrap();
+    store
+        .ensure_publication_lease_in_tx(&mut tx, &source_id, "owner-a")
+        .await
+        .unwrap();
+    let wrong_owner = store
+        .ensure_publication_lease_in_tx(&mut tx, &source_id, "owner-b")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        wrong_owner.code.to_string(),
+        "source.ledger.publication_lease_lost"
+    );
+    let wrong_source = store
+        .ensure_publication_lease_in_tx(&mut tx, &SourceId::new("other-source"), "owner-a")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        wrong_source.code.to_string(),
+        "source.ledger.publication_lease_lost"
+    );
+    sqlx::query("UPDATE leases SET expires_at='2000-01-01T00:00:00+00:00' WHERE lease_key=?")
+        .bind(&key)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let expired = store
+        .ensure_publication_lease_in_tx(&mut tx, &source_id, "owner-a")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        expired.code.to_string(),
+        "source.ledger.publication_lease_lost"
+    );
+    tx.rollback().await;
+}

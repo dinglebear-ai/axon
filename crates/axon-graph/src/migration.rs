@@ -51,6 +51,11 @@ pub const MIGRATIONS: &[SqlMigration] = &[
         name: "0005_node_retirement_index",
         sql: include_str!("migrations/0005_node_retirement_index.sql"),
     },
+    SqlMigration {
+        version: 6,
+        name: "0006_graph_stages",
+        sql: include_str!("migrations/0006_graph_stages.sql"),
+    },
 ];
 
 /// The graph [`MigrationSet`] for composition into the unified runner.
@@ -172,5 +177,9 @@ pub async fn ensure_schema(pool: &SqlitePool) -> Result<(), axon_api::source::Ap
             .await
             .map_err(|e| graph_storage_error(format!("failed to run graph migration: {e}")))?;
     }
+    sqlx::raw_sql(include_str!("migrations/0006_graph_stages.sql"))
+        .execute(pool)
+        .await
+        .map_err(|e| graph_storage_error(format!("graph stage schema: {e}")))?;
     Ok(())
 }
