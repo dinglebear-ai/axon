@@ -49,7 +49,53 @@ pub(in crate::source) async fn stage_baseline(
     let Some(stage) = &input.graph_stage else {
         return Ok(());
     };
+    let graph_manifest = eligible_manifest(runtime, input, generation, manifest, statuses).await?;
+    let counts = IndexCounts {
+        documents_skipped: 0,
+        job_id: input.plan.job_id,
+        source_id: manifest.source_id.clone(),
+        generation: manifest.generation.clone(),
+        items_discovered: manifest.items.len() as u64,
+        documents_prepared: 0,
+        chunks_prepared: 0,
+        vector_points_written: 0,
+        removed: 0,
+        published_manifest: None,
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
+    };
+    for candidate in super::baseline_candidates(
+        input.plan.route.source.source_kind,
+        &counts,
+        &input.plan.route.source.canonical_uri,
+        &graph_manifest,
+    ) {
+        let stage = Arc::clone(stage);
+        reserved_call::graph_operation(
+            runtime,
+            graph_context(input, format!("baseline:{}", stage.id())),
+            move || async move { stage.write_candidates(vec![candidate]).await },
+        )
+        .await??;
+    }
+    Ok(())
+}
+
+async fn eligible_manifest(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    generation: &SourceGeneration,
+    manifest: &SourceManifest,
+    statuses: &[DocumentStatus],
+) -> anyhow::Result<SourceManifest> {
     let mut graph_manifest = manifest.clone();
+    // Mapping records discovered inventory without preparing or indexing documents.
+    if input.plan.route.scope == SourceScope::Map {
+        graph_manifest.items.clear();
+        return Ok(graph_manifest);
+    }
     let historical = runtime
         .ledger
         .document_statuses_for_items(
@@ -63,18 +109,21 @@ pub(in crate::source) async fn stage_baseline(
         .await?;
     let mut dispositions =
         std::collections::BTreeMap::<SourceItemKey, Vec<DocumentLifecycleStatus>>::new();
+    let mut current =
+        std::collections::BTreeMap::<SourceItemKey, Vec<DocumentLifecycleStatus>>::new();
     for status in historical {
-        if status.generation.as_ref() == Some(&manifest.generation)
-            || status.generation.as_ref() == generation.previous_generation.as_ref()
-        {
+        if status.generation.as_ref() == Some(&manifest.generation) {
+            current
+                .entry(status.source_item_key)
+                .or_default()
+                .push(status.status);
+        } else if status.generation.as_ref() == generation.previous_generation.as_ref() {
             dispositions
                 .entry(status.source_item_key)
                 .or_default()
                 .push(status.status);
         }
     }
-    let mut current =
-        std::collections::BTreeMap::<SourceItemKey, Vec<DocumentLifecycleStatus>>::new();
     for status in statuses {
         if status.source_id != manifest.source_id
             || status.generation.as_ref() != Some(&manifest.generation)
@@ -122,37 +171,7 @@ pub(in crate::source) async fn stage_baseline(
             .iter()
             .any(|s| *s != DocumentLifecycleStatus::Skipped)
     });
-    let counts = IndexCounts {
-        documents_skipped: 0,
-        job_id: input.plan.job_id,
-        source_id: manifest.source_id.clone(),
-        generation: manifest.generation.clone(),
-        items_discovered: manifest.items.len() as u64,
-        documents_prepared: 0,
-        chunks_prepared: 0,
-        vector_points_written: 0,
-        removed: 0,
-        published_manifest: None,
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        artifacts: Vec::new(),
-        inline: None,
-    };
-    for candidate in super::baseline_candidates(
-        input.plan.route.source.source_kind,
-        &counts,
-        &input.plan.route.source.canonical_uri,
-        &graph_manifest,
-    ) {
-        let stage = Arc::clone(stage);
-        reserved_call::graph_operation(
-            runtime,
-            graph_context(input, format!("baseline:{}", stage.id())),
-            move || async move { stage.write_candidates(vec![candidate]).await },
-        )
-        .await??;
-    }
-    Ok(())
+    Ok(graph_manifest)
 }
 
 fn graph_context(input: &SourcePipelineInput<'_>, operation: String) -> ProviderCallContext {

@@ -246,3 +246,88 @@ async fn graph_stage_writes_progress_while_embedding_blocks_publication() {
 async fn embedding_failure_after_graph_progress_preserves_unpublished_live_state() {
     Box::pin(exercise_blocked_embedding(true)).await;
 }
+
+#[tokio::test]
+async fn map_inventory_publishes_only_source_container_graph_without_document_claims() {
+    let harness = Box::pin(crate::test_support::source_context_with_fake_web())
+        .await
+        .unwrap();
+    let urls = [
+        "https://example.test/docs/intro",
+        "https://example.test/docs/api",
+    ];
+    let mut request = SourceRequest::new("https://example.test/docs");
+    request.scope = Some(SourceScope::Map);
+    request.refresh = SourceRefreshPolicy::Force;
+    request
+        .options
+        .values
+        .insert("map_urls".to_string(), serde_json::json!(urls));
+    let result = Box::pin(index_source_with_auth(
+        request,
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("map-graph-regression")),
+    ))
+    .await
+    .unwrap();
+    assert_eq!(result.status, LifecycleStatus::Completed);
+    assert!(result.errors.is_empty());
+    assert!(result.warnings.is_empty());
+    assert!(!result.graph.degraded);
+    assert_eq!(result.counts.items_total, 2);
+    assert_eq!(result.counts.documents_total, 0);
+    assert_eq!(result.counts.chunks_total, 0);
+    let manifest = harness
+        .ledger()
+        .get_manifest(result.source_id.clone(), result.ledger.generation.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    let mut retained_urls = manifest
+        .items
+        .iter()
+        .map(|item| item.canonical_uri.as_str())
+        .collect::<Vec<_>>();
+    retained_urls.sort_unstable();
+    let mut expected_urls = urls.to_vec();
+    expected_urls.sort_unstable();
+    assert_eq!(
+        retained_urls, expected_urls,
+        "discovery inventory retains both mapped URLs"
+    );
+    let pool = harness.ctx().sqlite_pool().unwrap();
+    let summary = axon_graph::GraphStage::activation_summary(
+        pool.as_ref(),
+        &result.source_id,
+        &result.ledger.generation,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(summary.nodes_upserted, 1);
+    assert_eq!(summary.edges_upserted, 0);
+    let nodes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_nodes")
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+    let edges: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_edges")
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap();
+    assert_eq!(
+        (nodes, edges),
+        (1, 0),
+        "Map publishes its source container without discovered document graph rows"
+    );
+    let statuses: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM document_status WHERE source_id=?")
+            .bind(&result.source_id.0)
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap();
+    assert_eq!(
+        statuses, 0,
+        "discovered URLs must not claim indexed document dispositions"
+    );
+    assert!(harness.embedder().calls().await.is_empty());
+}
