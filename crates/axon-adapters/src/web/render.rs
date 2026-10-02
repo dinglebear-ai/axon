@@ -26,7 +26,7 @@ pub(super) async fn acquire_via_auto_switch(
         ))
         .await
         .map_err(|error| sanitize_provider_error(error, &item.canonical_uri))?;
-    if first.markdown.chars().count() >= min_markdown_chars {
+    if rendered_is_missing(&first) || first.markdown.chars().count() >= min_markdown_chars {
         return Ok(AcquiredItem {
             item: Some(acquired_from_rendered(item, first, "auto_switch_http")?),
             warnings,
@@ -99,9 +99,17 @@ pub(super) fn build_render_request(
 
 pub(super) fn acquired_from_rendered(
     item: &ManifestItem,
-    rendered: RenderedResource,
+    mut rendered: RenderedResource,
     method_tag: &'static str,
 ) -> Result<AcquiredSourceItem> {
+    if rendered_is_missing(&rendered) {
+        rendered.markdown.clear();
+        rendered.html = None;
+        rendered.text = None;
+        rendered.metadata.remove("web_title");
+        tracing::info!(source_id = %item.source_id.0, source_item_key = %item.source_item_key.0,
+            "confirmed missing rendered page; excluding response body from indexing");
+    }
     reject_binary_rendered_payload(item, &rendered.markdown)?;
     let mut manifest_item = item.clone();
     manifest_item.content_kind = Some(ContentKind::Markdown);
@@ -113,6 +121,13 @@ pub(super) fn acquired_from_rendered(
     manifest_item.version = None;
 
     let mut metadata = MetadataMap::new();
+    if let Some(status) = rendered
+        .metadata
+        .get("web_status")
+        .and_then(serde_json::Value::as_u64)
+    {
+        metadata.insert("web_status".into(), serde_json::json!(status));
+    }
     if let Some(title) = rendered
         .metadata
         .get("web_title")
@@ -149,6 +164,16 @@ pub(super) fn acquired_from_rendered(
         fetched_at: rendered.captured_at,
         metadata,
     })
+}
+
+fn rendered_is_missing(rendered: &RenderedResource) -> bool {
+    matches!(
+        rendered
+            .metadata
+            .get("web_status")
+            .and_then(serde_json::Value::as_u64),
+        Some(404 | 410)
+    )
 }
 
 fn render_mode_tag(mode: RenderMode) -> &'static str {

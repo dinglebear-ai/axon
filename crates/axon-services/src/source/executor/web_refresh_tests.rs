@@ -105,12 +105,22 @@ impl Fixture {
         refresh: SourceRefreshPolicy,
         max_items: Option<u64>,
     ) -> anyhow::Result<IndexCounts> {
+        self.run_render_mode(refresh, max_items, axon_core::config::RenderMode::Http)
+            .await
+    }
+
+    async fn run_render_mode(
+        &self,
+        refresh: SourceRefreshPolicy,
+        max_items: Option<u64>,
+        render_mode: axon_core::config::RenderMode,
+    ) -> anyhow::Result<IndexCounts> {
         let source = "https://example.test/docs";
         let mut request = SourceRequest::new(source);
         request.refresh = refresh;
         let route = crate::source::routing::resolve_source_route(&request)?.route;
         let cfg = axon_core::config::Config {
-            render_mode: axon_core::config::RenderMode::Http,
+            render_mode,
             ..Default::default()
         };
         crate::source::family_dispatch::dispatch_web_kind(
@@ -148,6 +158,22 @@ impl Fixture {
 struct GoneFetch(u16);
 
 #[async_trait::async_trait]
+impl axon_adapters::boundary::RenderProvider for GoneFetch {
+    async fn render(&self, request: RenderRequest) -> Result<RenderedResource, ApiError> {
+        let mut rendered =
+            axon_adapters::boundary::RenderProvider::render(&FakeAdapterProviders::new(), request)
+                .await?;
+        rendered
+            .metadata
+            .insert("web_status".into(), serde_json::json!(self.0));
+        Ok(rendered)
+    }
+    async fn capabilities(&self) -> Result<ProviderCapability, ApiError> {
+        axon_adapters::boundary::RenderProvider::capabilities(&FakeAdapterProviders::new()).await
+    }
+}
+
+#[async_trait::async_trait]
 impl axon_adapters::boundary::FetchProvider for GoneFetch {
     async fn fetch(&self, request: FetchRequest) -> Result<FetchedResource, ApiError> {
         let mut fetched = axon_adapters::boundary::FetchProvider::fetch(
@@ -166,47 +192,54 @@ impl axon_adapters::boundary::FetchProvider for GoneFetch {
 
 #[tokio::test]
 async fn web_inventory_rebuild_retires_confirmed_missing_pages() {
-    for status in [404, 410] {
-        let mut fixture = Fixture::new();
-        let initial = fixture.legacy_inventory().await;
-        assert!(!fixture.vectors.points("refresh").await.is_empty());
-        Arc::get_mut(&mut fixture.adapter).unwrap().web = WebSourceAdapter::new(
-            Arc::new(GoneFetch(status)),
-            Arc::new(FakeAdapterProviders::new()),
-        );
-        let refreshed = fixture.run(SourceRefreshPolicy::Force, None).await.unwrap();
-        assert_eq!(refreshed.chunks_prepared, 0);
-        assert_ne!(refreshed.generation, initial.generation);
-        let manifest = refreshed.published_manifest.unwrap();
-        let statuses = fixture
-            .ledger
-            .document_statuses_for_items(
-                refreshed.source_id.clone(),
-                manifest
-                    .items
+    for mode in [
+        axon_core::config::RenderMode::Http,
+        axon_core::config::RenderMode::AutoSwitch,
+        axon_core::config::RenderMode::Chrome,
+    ] {
+        for status in [404, 410] {
+            let mut fixture = Fixture::new();
+            let initial = fixture.legacy_inventory().await;
+            assert!(!fixture.vectors.points("refresh").await.is_empty());
+            Arc::get_mut(&mut fixture.adapter).unwrap().web =
+                WebSourceAdapter::new(Arc::new(GoneFetch(status)), Arc::new(GoneFetch(status)));
+            let refreshed = fixture
+                .run_render_mode(SourceRefreshPolicy::Force, None, mode)
+                .await
+                .unwrap();
+            assert_eq!(refreshed.chunks_prepared, 0);
+            assert_ne!(refreshed.generation, initial.generation);
+            let manifest = refreshed.published_manifest.unwrap();
+            let statuses = fixture
+                .ledger
+                .document_statuses_for_items(
+                    refreshed.source_id.clone(),
+                    manifest
+                        .items
+                        .iter()
+                        .map(|item| item.source_item_key.clone())
+                        .collect(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(statuses.len(), 2);
+            assert!(
+                statuses
                     .iter()
-                    .map(|item| item.source_item_key.clone())
-                    .collect(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(statuses.len(), 2);
-        assert!(
-            statuses
-                .iter()
-                .all(|row| row.status == DocumentLifecycleStatus::Skipped
-                    && row.generation.as_ref() == Some(&refreshed.generation))
-        );
-        let points = fixture.vectors.points("refresh").await;
-        assert!(!points.is_empty());
-        assert!(points.iter().all(|point| {
-            point
-                .payload
-                .get("retired_epoch")
-                .and_then(serde_json::Value::as_i64)
-                .is_some_and(|epoch| epoch > 0)
-        }));
-        assert!(fixture.vectors.calls().await.contains(&"retire_generation"));
+                    .all(|row| row.status == DocumentLifecycleStatus::Skipped
+                        && row.generation.as_ref() == Some(&refreshed.generation))
+            );
+            let points = fixture.vectors.points("refresh").await;
+            assert!(!points.is_empty());
+            assert!(points.iter().all(|point| {
+                point
+                    .payload
+                    .get("retired_epoch")
+                    .and_then(serde_json::Value::as_i64)
+                    .is_some_and(|epoch| epoch > 0)
+            }));
+            assert!(fixture.vectors.calls().await.contains(&"retire_generation"));
+        }
     }
 }
 

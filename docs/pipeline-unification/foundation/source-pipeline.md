@@ -296,8 +296,10 @@ The merged inventory must fit the requested `max_items`/`max_pages` limit;
 otherwise `source.refresh.inventory_limit` reports the required limit before
 acquisition. An incomplete rebuild fails with
 `source.refresh.inventory_incomplete` and preserves the committed generation.
-Confirmed HTTP 404/410 pages produce skipped document status with no indexed
-error body; successful publication retires their previous vectors.
+Confirmed HTTP 404/410 pages, including auto-switch and Chrome acquisition,
+produce skipped document status with no indexed error body. Auto-switch does
+not retry confirmed missing pages in Chrome. Successful publication retires
+their previous vectors.
 
 ### Generation Lifecycle
 
