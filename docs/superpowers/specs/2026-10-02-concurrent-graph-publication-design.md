@@ -60,6 +60,11 @@ does not authorize an unlimited journal. Seeded rows and their baseline images
 also have an explicit bounded byte charge. Exceeding it returns an actionable
 error and leaves the prior generation visible.
 
+The combined journal and side-effect payload is capped at 256 MiB. Physical
+SQLite storage has a separate 1 GiB aggregate cap across the database, WAL, SHM,
+and rollback journal, allowing for canonical rows, indexes, and transaction
+overhead. These physical bytes must not consume the logical payload allowance.
+
 Seed only identities referenced by incoming candidates, including endpoint nodes,
 existing edges, evidence, aliases, and conflicts needed by the merge. Capture
 baseline images from one consistent read snapshot per seed group. Record absent
