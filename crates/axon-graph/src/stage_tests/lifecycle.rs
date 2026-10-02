@@ -33,6 +33,9 @@ async fn dropped_stage_retains_owner_until_private_connections_settle() {
     // after its handle is dropped, modelling queued/canceled SQLx work.
     let held = stage.test_acquire_private_connection().await;
     drop(stage);
+    // Let the settlement thread drain the forced idle connection before
+    // checking that the held connection still prevents disposal.
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     GraphStage::mark_disposable_ids(live.pool(), std::slice::from_ref(&id))
         .await
         .unwrap();
@@ -44,7 +47,8 @@ async fn dropped_stage_retains_owner_until_private_connections_settle() {
     assert_eq!(state, "building");
     assert!(std::path::Path::new(&path).exists());
     drop(held);
-    for _ in 0..100 {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
         GraphStage::mark_disposable_ids(live.pool(), std::slice::from_ref(&id))
             .await
             .unwrap();
@@ -55,7 +59,7 @@ async fn dropped_stage_retains_owner_until_private_connections_settle() {
         {
             return;
         }
-        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     panic!("stage owner did not release after its private pool settled");
 }
@@ -95,4 +99,43 @@ async fn graph_journal_and_external_side_effects_share_one_budget() {
     GraphStage::reap(live.pool(), &[stage.id().into()])
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn explicit_disposal_waits_for_private_connections_to_settle() {
+    let live = SqliteGraphStore::connect(":memory:").await.unwrap();
+    let stage = GraphStage::begin(
+        live.pool().clone(),
+        SourceId::new("b"),
+        SourceGenerationId::new("g"),
+        JobId::new(Uuid::new_v4()),
+        1,
+    )
+    .await
+    .unwrap();
+    let held = stage.test_acquire_private_connection().await;
+    let disposing = stage.mark_disposable();
+    tokio::pin!(disposing);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(25), &mut disposing)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        GraphStage::reap(live.pool(), &[stage.id().into()])
+            .await
+            .unwrap(),
+        0
+    );
+    drop(held);
+    tokio::time::timeout(std::time::Duration::from_secs(5), &mut disposing)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        GraphStage::reap(live.pool(), &[stage.id().into()])
+            .await
+            .unwrap(),
+        1
+    );
 }

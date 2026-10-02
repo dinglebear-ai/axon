@@ -21,7 +21,7 @@ impl Drop for GraphStage {
                     .build()
                 {
                     Ok(runtime) => {
-                        runtime.block_on(pool.close());
+                        runtime.block_on(settle_private_pool(&pool));
                         drop(thread_owner);
                     }
                     // Fail closed: retain ownership until process exit rather
@@ -74,4 +74,14 @@ pub(super) async fn mark_disposable_ids(pool: &SqlitePool, ids: &[String]) -> Re
             .map_err(storage::error)?;
     }
     Ok(())
+}
+
+/// SQLx 0.8 can finish close early: draining an idle connection releases
+/// an additional semaphore permit. Size reaches zero only after every
+/// checked-out connection and its SQLite worker have closed.
+pub(super) async fn settle_private_pool(pool: &SqlitePool) {
+    pool.close().await;
+    while pool.size() != 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }

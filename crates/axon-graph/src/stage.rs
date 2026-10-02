@@ -272,7 +272,7 @@ impl GraphStage {
             .map_err(storage::error)?;
         self.sealed
             .store(true, std::sync::atomic::Ordering::Release);
-        self.store.pool().close().await;
+        lifecycle::settle_private_pool(self.store.pool()).await;
         self.owner.lock().await.take();
         Ok(())
     }
@@ -388,7 +388,14 @@ impl GraphStage {
     pub(crate) async fn test_acquire_private_connection(
         &self,
     ) -> sqlx::pool::PoolConnection<sqlx::Sqlite> {
-        self.store.pool().acquire().await.unwrap()
+        let held = self.store.pool().acquire().await.unwrap();
+        // SQLx 0.8 close can over-release permits while draining idle
+        // connections. Force both an idle connection and a checked-out one.
+        let mut idle = self.store.pool().acquire().await.unwrap();
+        idle.return_to_pool().await;
+        assert!(self.store.pool().num_idle() >= 1);
+        assert!(storage::owner_lock(&self.path).is_err());
+        held
     }
 }
 
