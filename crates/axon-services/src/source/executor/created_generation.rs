@@ -137,6 +137,7 @@ async fn run_created_generation_inner(
     let finalized = accumulated
         .finalize(runtime, input, artifact_cleanup, &mut manifest, diff)
         .await?;
+    super::refresh_inventory::validate_rebuilt(runtime.ledger.as_ref(), &manifest).await?;
 
     coordinator
         .report(

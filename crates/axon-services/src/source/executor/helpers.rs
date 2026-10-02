@@ -1,5 +1,6 @@
 //! Small schema and provider helpers for the canonical source pipeline.
 
+use anyhow::Context as _;
 use axon_adapters::SourceEnricher;
 use axon_api::source::*;
 use axon_ledger::store::LedgerStore;
@@ -318,4 +319,33 @@ pub(super) fn take_enrichment_graph_candidates(
 /// Project diagnostics before direct persistence to jobs.last_error_json.
 pub(super) fn terminal_source_error(error: &anyhow::Error) -> SourceError {
     crate::source::diagnostics::source_error(error)
+}
+
+pub(super) async fn record_source_failure(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    previous: Option<&SourceSummary>,
+    result: &anyhow::Result<IndexCounts>,
+) -> anyhow::Result<()> {
+    let Err(error) = result else {
+        return Ok(());
+    };
+    crate::source::progress::pipeline_failed(emitter, error).await;
+    let counts = previous
+        .map(preserved_source_counts)
+        .unwrap_or_else(empty_source_counts);
+    runtime
+        .ledger
+        .upsert_source(super::metadata::source_summary(
+            input,
+            LifecycleStatus::Failed,
+            counts,
+            previous,
+        ))
+        .await
+        .with_context(|| {
+            format!("source failed with `{error}` and its summary could not be finalized")
+        })?;
+    Ok(())
 }

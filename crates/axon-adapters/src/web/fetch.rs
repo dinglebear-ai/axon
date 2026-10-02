@@ -8,6 +8,10 @@ use super::acquire::sanitize_provider_error;
 use crate::adapter::Result;
 use crate::boundary::FetchProvider;
 
+#[cfg(test)]
+#[path = "fetch_gone_tests.rs"]
+mod gone_tests;
+
 /// HTTP-mode acquisition. A conditional 304 response returns a sentinel item
 /// so the services layer can reuse the previous committed representation or
 /// perform an unconditional refetch before publication.
@@ -135,10 +139,19 @@ fn invalid_unconditional_304(item: &ManifestItem, cache_policy: CachePolicy) -> 
 
 fn acquired_from_fetched(
     item: &ManifestItem,
-    fetched: FetchedResource,
+    mut fetched: FetchedResource,
     prior_etag: Option<&str>,
     prior_last_modified: Option<&str>,
 ) -> AcquiredSourceItem {
+    if matches!(fetched.status, 404 | 410) {
+        // A confirmed missing page is not an error document. Empty content
+        // advances its skipped status and retires prior vectors on publication.
+        fetched.content = ContentRef::InlineText {
+            text: String::new(),
+        };
+        tracing::info!(source_id = %item.source_id.0, source_item_key = %item.source_item_key.0,
+            status = fetched.status, "confirmed missing HTTP page; excluding response body from indexing");
+    }
     let mut manifest_item = item.clone();
     manifest_item.content_kind = Some(content_kind_for_fetch(&fetched));
     manifest_item.content_hash = Some(super::manifest_items::content_ref_hash(&fetched.content));

@@ -76,7 +76,15 @@ fn retain_unvisited(
         .collect();
     let git_repo = plan.route.source.source_kind == SourceKind::Git
         && matches!(plan.route.scope, SourceScope::Repo | SourceScope::Directory);
+    let web_policy = (plan.route.source.source_kind == SourceKind::Web)
+        .then(|| axon_adapters::web::RetainedUrlPolicy::from_plan(plan, &manifest.metadata));
     for item in prior.items {
+        if web_policy
+            .as_ref()
+            .is_some_and(|policy| !policy.allows(&item.canonical_uri))
+        {
+            continue;
+        }
         let allowed = !git_repo
             || item
                 .display_path
