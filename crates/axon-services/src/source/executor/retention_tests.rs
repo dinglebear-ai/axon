@@ -2,6 +2,104 @@ use super::*;
 use axon_adapters::{FakeSourceAdapter, SourceAdapter};
 use axon_ledger::store::FakeLedgerStore;
 
+#[tokio::test]
+async fn partial_web_refresh_excludes_blacklisted_retained_pages() {
+    let (_, mut manifest, _) = fixture().await;
+    let request = SourceRequest::new("https://example.test/docs/sdk");
+    let route = crate::source::routing::resolve_source_route(&request).unwrap();
+    let mut plan = SourcePlan {
+        job_id: JobId::new(uuid::Uuid::nil()),
+        request,
+        route: route.route,
+        limits: EffectiveLimits {
+            request: Default::default(),
+            adapter_defaults: Default::default(),
+            config_defaults: Default::default(),
+            effective: Default::default(),
+        },
+        stage_plan: Vec::new(),
+        config_snapshot_id: ConfigSnapshotId::new("test"),
+        provider_reservations: Vec::new(),
+    };
+    plan.route
+        .validated_options
+        .values
+        .insert("url_blacklist".into(), serde_json::json!(["/private"]));
+    let template = manifest.items[0].clone();
+    let mut prior = manifest.clone();
+    prior.items = ["private/a", "public/b", "privateer/c"]
+        .into_iter()
+        .map(|path| {
+            let mut item = template.clone();
+            item.source_item_key = SourceItemKey::new(path);
+            item.canonical_uri = format!("https://example.test/docs/sdk/{path}");
+            item
+        })
+        .collect();
+    manifest.items.clear();
+    let unvisited = retain_unvisited(&plan, &mut manifest, prior, None).unwrap();
+    assert_eq!(unvisited.len(), 2);
+    assert_eq!(
+        manifest
+            .items
+            .iter()
+            .map(|item| item.source_item_key.0.as_str())
+            .collect::<Vec<_>>(),
+        ["public/b", "privateer/c"]
+    );
+}
+
+#[tokio::test]
+async fn partial_web_refresh_exclusions_use_redirected_discovery_scope() {
+    let (_, mut manifest, _) = fixture().await;
+    let request = SourceRequest::new("https://example.test/docs");
+    let route = crate::source::routing::resolve_source_route(&request).unwrap();
+    let mut plan = SourcePlan {
+        job_id: JobId::new(uuid::Uuid::nil()),
+        request,
+        route: route.route,
+        limits: EffectiveLimits {
+            request: Default::default(),
+            adapter_defaults: Default::default(),
+            config_defaults: Default::default(),
+            effective: Default::default(),
+        },
+        stage_plan: Vec::new(),
+        config_snapshot_id: ConfigSnapshotId::new("test"),
+        provider_reservations: Vec::new(),
+    };
+    plan.route
+        .validated_options
+        .values
+        .insert("url_blacklist".into(), serde_json::json!(["/private"]));
+    let template = manifest.items[0].clone();
+    let mut prior = manifest.clone();
+    prior.items = ["private/a", "public/b", "privateer/c"]
+        .into_iter()
+        .map(|path| {
+            let mut item = template.clone();
+            item.source_item_key = SourceItemKey::new(path);
+            item.canonical_uri = format!("https://example.test/en/latest/{path}");
+            item
+        })
+        .collect();
+    manifest.items.clear();
+    manifest.metadata.insert(
+        "web_map_scope_prefix".into(),
+        serde_json::json!("/en/latest"),
+    );
+    let unvisited = retain_unvisited(&plan, &mut manifest, prior, None).unwrap();
+    assert_eq!(unvisited.len(), 2);
+    assert_eq!(
+        manifest
+            .items
+            .iter()
+            .map(|item| item.source_item_key.0.as_str())
+            .collect::<Vec<_>>(),
+        ["public/b", "privateer/c"]
+    );
+}
+
 fn status(key: &str, chunks: u32, skipped: bool) -> DocumentStatus {
     DocumentStatus {
         document_id: DocumentId::new(format!("doc-{key}")),

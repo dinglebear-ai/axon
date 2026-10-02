@@ -284,7 +284,7 @@ impl ChromeRenderProvider {
             crate::web_engine::chrome_bootstrap::apply_bootstrap_outcome(&mut cfg, &bootstrap);
         }
         let render_mode = cfg.render_mode;
-        crate::web_engine::scrape::scrape_to_result_with_timeout_policy(
+        crate::web_engine::scrape::scrape_to_result_with_http_outcomes(
             &cfg,
             &request.uri,
             timeout_policy,
@@ -294,6 +294,14 @@ impl ChromeRenderProvider {
         .map(|result| {
             let mut metadata = request.metadata;
             metadata.remove("web_title");
+            metadata.remove("web_status");
+            if let Some(status) = result
+                .payload
+                .get("status_code")
+                .and_then(serde_json::Value::as_u64)
+            {
+                metadata.insert("web_status".into(), serde_json::json!(status));
+            }
             if let Some(title) = result
                 .payload
                 .get("title")
@@ -320,48 +328,13 @@ impl ChromeRenderProvider {
     }
 }
 
-pub(crate) fn map_render_mode(mode: RenderMode) -> CoreRenderMode {
-    match mode {
-        RenderMode::Http => CoreRenderMode::Http,
-        RenderMode::Chrome => CoreRenderMode::Chrome,
-        RenderMode::AutoSwitch => CoreRenderMode::AutoSwitch,
-    }
-}
+#[path = "chrome_render/modes.rs"]
+mod modes;
+pub(crate) use modes::{map_core_render_mode, map_render_mode};
 
-pub(crate) fn map_core_render_mode(mode: CoreRenderMode) -> RenderMode {
-    match mode {
-        CoreRenderMode::Http => RenderMode::Http,
-        CoreRenderMode::Chrome => RenderMode::Chrome,
-        CoreRenderMode::AutoSwitch => RenderMode::AutoSwitch,
-    }
-}
-
-/// Classification of a `scrape_to_result` failure, derived from its
-/// `Box<dyn Error>` message text — the underlying axon-crawl error carries no
-/// typed status to match on (unlike `HttpFetchProvider`, which classifies a
-/// real `reqwest::StatusCode`). Mirrors the same three-way health mapping: a
-/// transient timeout is `Degraded`, a rate-limited response is `Cooling`,
-/// everything else (5xx, connection failure, SSRF rejection) is `Unavailable`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RenderFailureClass {
-    Timeout,
-    RateLimited,
-    Transient,
-    Fatal,
-}
-
-pub(crate) fn classify_render_error(message: &str) -> RenderFailureClass {
-    let lower = message.to_ascii_lowercase();
-    if lower.contains("http 429") || lower.contains("rate limit") {
-        RenderFailureClass::RateLimited
-    } else if lower.contains("timeout") || lower.contains("timed out") {
-        RenderFailureClass::Timeout
-    } else if lower.contains("http 5") {
-        RenderFailureClass::Transient
-    } else {
-        RenderFailureClass::Fatal
-    }
-}
+#[path = "chrome_render/failure.rs"]
+mod failure;
+pub(crate) use failure::{RenderFailureClass, classify_render_error};
 
 #[async_trait]
 impl RenderProvider for ChromeRenderProvider {

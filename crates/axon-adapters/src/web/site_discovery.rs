@@ -99,6 +99,10 @@ pub(super) async fn manifest_items(
 
     let mut metadata = MetadataMap::new();
     metadata.insert(
+        "web_map_scope_prefix".into(),
+        serde_json::json!(result.scope_prefix),
+    );
+    metadata.insert(
         "map_source".to_string(),
         serde_json::json!(result.map_source),
     );

@@ -18,9 +18,9 @@ use super::super::sitemap::{
 use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
-    MapDiscoveryOutcome, MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
-    merge_discovery_and_anchor_urls, merge_discovery_candidate_urls, merge_map_candidate_urls,
-    resolve_map_seed_url_with_metadata,
+    MapDiscoveryOutcome, MapResult, build_discovery_map_result, derive_map_scope,
+    derive_map_scope_url, is_excluded_map_url, merge_discovery_and_anchor_urls,
+    merge_discovery_candidate_urls, merge_map_candidate_urls, resolve_map_seed_url_with_metadata,
 };
 use crate::boundary::{FetchProvider, RenderProvider};
 
@@ -252,33 +252,6 @@ fn scope_and_filter_map_urls(
         .collect()
 }
 
-/// Build a `MapResult` for a discovery-sourced map (sitemap / sitemap+llms / llms).
-fn build_discovery_map_result(
-    urls: Vec<String>,
-    raw_sitemap_count: usize,
-    map_source: &str,
-    elapsed_ms: u128,
-    warning: Option<String>,
-) -> MapResult {
-    let outcome = if urls.is_empty() && warning.is_some() {
-        MapDiscoveryOutcome::Failed
-    } else if urls.is_empty() {
-        MapDiscoveryOutcome::Empty
-    } else {
-        MapDiscoveryOutcome::Completed
-    };
-    MapResult {
-        summary: CrawlSummary {
-            elapsed_ms,
-            ..Default::default()
-        },
-        sitemap_urls: raw_sitemap_count,
-        urls,
-        map_source: map_source.to_string(),
-        outcome,
-        warning,
-    }
-}
 /// Outcome of the three discovery probes run concurrently before scoping.
 struct DiscoveryProbes {
     resolved_start_url: String,
@@ -443,6 +416,7 @@ pub async fn discover_site_urls_with_metadata(
                 )
             });
         return Ok(build_discovery_map_result(
+            &scope,
             discovery_urls,
             raw_sitemap_count,
             discovery_source.unwrap_or("sitemap"),
@@ -464,6 +438,7 @@ pub async fn discover_site_urls_with_metadata(
         )
     {
         return Ok(build_discovery_map_result(
+            &scope,
             discovery_urls,
             raw_sitemap_count,
             source,
@@ -514,6 +489,7 @@ pub async fn discover_site_urls_with_metadata(
     };
 
     Ok(MapResult {
+        scope_prefix: scope.path_prefix.clone(),
         summary: CrawlSummary {
             elapsed_ms: start.elapsed().as_millis(),
             ..Default::default()

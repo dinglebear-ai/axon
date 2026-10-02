@@ -27,7 +27,7 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:4d06c11b5dd034ce1f2cf4d32dd9de77a2d1b0911503f98eefaaf8a0b76d6cb8"
+          "checksum": "sha256:3f9f4c2f386d8181215ffee80f2558a1ea7a366803b3d8a184d52bc466a6b936"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
@@ -45,7 +45,7 @@
           "checksum": "sha256:0468d29d96b581762ceee6f32adb7b3b091d1fa0af4b6d71c33b7c4e2819ac7f"
         }
       ],
-      "manifest_checksum": "sha256:00c1011432e89244364c20cea1dfd238f414a87b1444773d7fd0ca89dac01d0a"
+      "manifest_checksum": "sha256:22e4140a1d583f93fb0190d2f0b787c949908e08a3b335af36aef09764851c26"
     },
     {
       "family": "api",
