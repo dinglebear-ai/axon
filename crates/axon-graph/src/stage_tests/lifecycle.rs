@@ -14,12 +14,13 @@ async fn stage_receipt_generation_lookup_uses_durable_index() {
 #[tokio::test]
 async fn dropped_stage_retains_owner_until_private_connections_settle() {
     let live = SqliteGraphStore::connect(":memory:").await.unwrap();
-    let stage = GraphStage::begin(
+    let stage = GraphStage::begin_with_private_connections(
         live.pool().clone(),
         SourceId::new("b"),
         SourceGenerationId::new("g"),
         JobId::new(Uuid::new_v4()),
         1,
+        2,
     )
     .await
     .unwrap();
@@ -104,12 +105,13 @@ async fn graph_journal_and_external_side_effects_share_one_budget() {
 #[tokio::test]
 async fn explicit_disposal_waits_for_private_connections_to_settle() {
     let live = SqliteGraphStore::connect(":memory:").await.unwrap();
-    let stage = GraphStage::begin(
+    let stage = GraphStage::begin_with_private_connections(
         live.pool().clone(),
         SourceId::new("b"),
         SourceGenerationId::new("g"),
         JobId::new(Uuid::new_v4()),
         1,
+        2,
     )
     .await
     .unwrap();

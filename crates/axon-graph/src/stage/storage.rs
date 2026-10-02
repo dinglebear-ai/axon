@@ -262,13 +262,21 @@ pub(super) async fn bulk_apply(conn: &mut SqliteConnection) -> Result<()> {
             "graph_aliases" => &["alias_kind", "alias_value"],
             _ => &["conflict_id"],
         };
-        let updates = cols
+        let mutable_cols = cols
             .iter()
             .filter(|c| !keys.contains(&c.as_str()) && c.as_str() != "created_at")
+            .collect::<Vec<_>>();
+        let updates = mutable_cols
+            .iter()
             .map(|c| format!("{c}=excluded.{c}"))
             .collect::<Vec<_>>()
             .join(",");
-        sqlx::query(&format!("INSERT INTO main.{table} SELECT * FROM axon_stage.{table} WHERE true ON CONFLICT({}) DO UPDATE SET {updates}",keys.join(","))).execute(&mut *conn).await.map_err(error)?;
+        let changed = mutable_cols
+            .iter()
+            .map(|c| format!("{table}.{c} IS NOT excluded.{c}"))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        sqlx::query(&format!("INSERT INTO main.{table} SELECT * FROM axon_stage.{table} WHERE true ON CONFLICT({}) DO UPDATE SET {updates} WHERE {changed}",keys.join(","))).execute(&mut *conn).await.map_err(error)?;
     }
     Ok(())
 }
