@@ -4,6 +4,10 @@ use sqlx::Row;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+// Allow SQLite canonical rows, indexes, seed data, and journals their own
+// bounded overhead without reducing the logical generation payload budget.
+const PHYSICAL_STAGE_LIMIT: u64 = 4 * LIMIT;
 pub(super) fn error(e: sqlx::Error) -> axon_api::source::ApiError {
     graph_storage_error(format!(
         "graph stage SQLite operation: {e}; retry only after checking activation receipt"
@@ -74,16 +78,19 @@ pub(super) fn create_private_file(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 pub(super) fn check_size(path: &std::path::Path) -> Result<()> {
-    let mut size = 0;
+    let mut size = 0_u64;
     for suffix in ["", "-wal", "-shm", "-journal"] {
-        size += fs::metadata(format!("{}{suffix}", path.display()))
+        let bytes = fs::metadata(format!("{}{suffix}", path.display()))
             .map(|m| m.len())
             .unwrap_or(0);
+        size = size.saturating_add(bytes);
     }
-    if size > LIMIT {
-        return Err(graph_storage_error(
-            "graph stage file exceeds 256 MiB; reduce generation size and retry",
-        ));
+    if size > PHYSICAL_STAGE_LIMIT {
+        return Err(graph_storage_error(format!(
+            "graph stage physical files exceed 1 GiB budget ({size} > {PHYSICAL_STAGE_LIMIT} bytes); reduce generation size and retry",
+        ))
+        .with_context("observed_bytes", size.to_string())
+        .with_context("limit_bytes", PHYSICAL_STAGE_LIMIT.to_string()));
     }
     Ok(())
 }
@@ -255,13 +262,21 @@ pub(super) async fn bulk_apply(conn: &mut SqliteConnection) -> Result<()> {
             "graph_aliases" => &["alias_kind", "alias_value"],
             _ => &["conflict_id"],
         };
-        let updates = cols
+        let mutable_cols = cols
             .iter()
             .filter(|c| !keys.contains(&c.as_str()) && c.as_str() != "created_at")
+            .collect::<Vec<_>>();
+        let updates = mutable_cols
+            .iter()
             .map(|c| format!("{c}=excluded.{c}"))
             .collect::<Vec<_>>()
             .join(",");
-        sqlx::query(&format!("INSERT INTO main.{table} SELECT * FROM axon_stage.{table} WHERE true ON CONFLICT({}) DO UPDATE SET {updates}",keys.join(","))).execute(&mut *conn).await.map_err(error)?;
+        let changed = mutable_cols
+            .iter()
+            .map(|c| format!("{table}.{c} IS NOT excluded.{c}"))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        sqlx::query(&format!("INSERT INTO main.{table} SELECT * FROM axon_stage.{table} WHERE true ON CONFLICT({}) DO UPDATE SET {updates} WHERE {changed}",keys.join(","))).execute(&mut *conn).await.map_err(error)?;
     }
     Ok(())
 }
@@ -464,3 +479,6 @@ pub(super) async fn validate_disposal_path(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

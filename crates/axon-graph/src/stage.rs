@@ -1,5 +1,7 @@
 //! Durable, private graph construction and atomic publication.
 mod lifecycle;
+#[cfg(test)]
+mod private_connection_tests;
 mod redaction;
 mod storage;
 use crate::{SqliteGraphStore, error::graph_storage_error};
@@ -33,6 +35,29 @@ impl GraphStage {
         job: JobId,
         attempt: u32,
     ) -> Result<Self> {
+        Self::begin_inner(live, source, generation, job, attempt, 1).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn begin_with_private_connections(
+        live: SqlitePool,
+        source: SourceId,
+        generation: SourceGenerationId,
+        job: JobId,
+        attempt: u32,
+        max_connections: u32,
+    ) -> Result<Self> {
+        Self::begin_inner(live, source, generation, job, attempt, max_connections).await
+    }
+
+    async fn begin_inner(
+        live: SqlitePool,
+        source: SourceId,
+        generation: SourceGenerationId,
+        job: JobId,
+        attempt: u32,
+        max_connections: u32,
+    ) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
         let main: String =
             sqlx::query_scalar("SELECT file FROM pragma_database_list WHERE name='main'")
@@ -49,9 +74,10 @@ impl GraphStage {
             .bind(&id).bind(&source.0).bind(&generation.0).bind(job.0.to_string()).bind(attempt).bind(path.to_string_lossy().as_ref()).execute(&live).await.map_err(storage::error)?;
         let owner = storage::owner_lock(&path)?;
         storage::create_private_file(&path)?;
-        let store = SqliteGraphStore::connect(
+        let store = SqliteGraphStore::connect_private_stage(
             path.to_str()
                 .ok_or_else(|| graph_storage_error("graph stage path is not UTF-8"))?,
+            max_connections,
         )
         .await?;
         storage::disable_private_revision_triggers(store.pool()).await?;

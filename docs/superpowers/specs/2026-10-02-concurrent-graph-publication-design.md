@@ -52,6 +52,9 @@ permissions; never accept a caller-supplied database path. Register ownership
 and disposal durably before any staging write. Do not use the Unraid share path
 for production SQLite files: deployment uses the direct cache mount.
 
+The private writer is serial and uses one SQLite connection with a bounded
+64 MiB page cache. DELETE journaling and FULL synchronization remain enabled.
+
 The private store uses the canonical graph schema and existing merge code. A
 bounded candidate journal preserves the exact ordered claims needed to rebuild
 when a concurrently published source changes a shared identity. Candidate bytes
@@ -59,6 +62,11 @@ remain charged against the existing generation side-effect budget; disk staging
 does not authorize an unlimited journal. Seeded rows and their baseline images
 also have an explicit bounded byte charge. Exceeding it returns an actionable
 error and leaves the prior generation visible.
+
+The combined journal and side-effect payload is capped at 256 MiB. Physical
+SQLite storage has a separate 1 GiB aggregate cap across the database, WAL, SHM,
+and rollback journal, allowing for canonical rows, indexes, and transaction
+overhead. These physical bytes must not consume the logical payload allowance.
 
 Seed only identities referenced by incoming candidates, including endpoint nodes,
 existing edges, evidence, aliases, and conflicts needed by the merge. Capture
@@ -70,7 +78,9 @@ reinsert unrelated rows or overwrite untouched evidence.
 ## Concurrent scheduling
 
 After preparation, submit graph candidates to a bounded generation-owned writer
-while the embedding scheduler consumes prepared chunks. Both paths use existing
+while the embedding scheduler consumes prepared chunks. Both paths remain independently polled while ordered buffers consume earlier
+results, so a suspended speculative completion cannot retain the writer needed
+by an earlier checkpoint. Both paths use existing
 provider reservations, heartbeats, cancellation, and byte admission. Stage writes
 use their private writer lane; copying baseline rows reads the live store without
 holding its writer lane during embedding network calls.
@@ -99,7 +109,9 @@ its captured baseline image. Node, edge, evidence, alias, and relevant conflict
 changes all participate; timestamps alone are not a sufficient change detector.
 
 When unchanged, insert/update the stage write set using bounded bulk statements
-inside that transaction, preserving existing timestamps and merge output. When
+inside that transaction, preserving existing timestamps and merge output. Skip
+conflict updates when every mutable column is identical using null-safe
+comparisons, avoiding index and revision-trigger writes for unchanged seed rows. When
 changed, rebuild affected candidate components against the current rows through
 the existing authority and conflict rules. Candidate connectivity defines the
 rebuild closure, so an edge cannot be activated with a stale endpoint or alias.

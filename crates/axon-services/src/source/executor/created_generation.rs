@@ -86,6 +86,12 @@ pub(super) async fn run_created_generation(
         &mut artifact_cleanup,
     )
     .await;
+    if let Err(error) = &result {
+        let diagnostic = terminal_source_error(error);
+        tracing::warn!(job_id=?input.plan.job_id, code=%diagnostic.code,
+            message=%diagnostic.message, cause=?diagnostic.cause,
+            "source generation failed before private graph disposal; inspect committed generation and activation receipt before retrying");
+    }
     if let Some(stage) = graph_stage {
         if let Err(error) = stage.mark_disposable().await {
             tracing::warn!(job_id=?input.plan.job_id, error=%error,

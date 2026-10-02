@@ -61,6 +61,27 @@ impl SqliteGraphStore {
         Ok(Self::from_pool(pool))
     }
 
+    pub(crate) async fn connect_private_stage(path: &str, max_connections: u32) -> Result<Self> {
+        use sqlx::sqlite::{
+            SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
+        };
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Delete)
+            .synchronous(SqliteSynchronous::Full)
+            .pragma("cache_size", "-65536");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(max_connections)
+            .connect_with(options)
+            .await
+            .map_err(|e| {
+                graph_storage_error(format!("failed to open private graph sqlite pool: {e}"))
+            })?;
+        ensure_schema(&pool).await?;
+        Ok(Self::from_pool(pool))
+    }
+
     /// Access the underlying pool (for tests / introspection).
     pub fn pool(&self) -> &SqlitePool {
         &self.pool

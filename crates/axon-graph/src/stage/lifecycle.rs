@@ -80,8 +80,73 @@ pub(super) async fn mark_disposable_ids(pool: &SqlitePool, ids: &[String]) -> Re
 /// an additional semaphore permit. Size reaches zero only after every
 /// checked-out connection and its SQLite worker have closed.
 pub(super) async fn settle_private_pool(pool: &SqlitePool) {
-    pool.close().await;
-    while pool.size() != 0 {
+    loop {
+        pool.close().await;
+        if pool.size() == 0 {
+            break;
+        }
+        // A return already past its is_closed check can enqueue an idle
+        // connection after the last drain. Close again to drain late arrivals.
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    #[tokio::test]
+    async fn settlement_drains_connections_returned_after_shutdown_started() {
+        let armed = Arc::new(AtomicBool::new(false));
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(2)
+            .after_release({
+                let armed = armed.clone();
+                let entered = entered.clone();
+                let release = release.clone();
+                move |_, _| {
+                    let wait = armed.swap(false, Ordering::SeqCst);
+                    let entered = entered.clone();
+                    let release = release.clone();
+                    Box::pin(async move {
+                        if wait {
+                            entered.notify_one();
+                            release.notified().await;
+                        }
+                        Ok(true)
+                    })
+                }
+            })
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let mut returning = pool.acquire().await.unwrap();
+        let mut idle = pool.acquire().await.unwrap();
+        idle.return_to_pool().await;
+        armed.store(true, Ordering::SeqCst);
+        let returning = tokio::spawn(async move { returning.return_to_pool().await });
+        entered.notified().await;
+        let settling = tokio::spawn({
+            let pool = pool.clone();
+            async move { settle_private_pool(&pool).await }
+        });
+        pool.close_event().await;
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        assert_eq!(pool.size(), 1);
+        // SQLx checked is_closed before entering after_release; after the
+        // barrier it puts this connection into the already-closed idle queue.
+        release.notify_one();
+        returning.await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), settling)
+            .await
+            .expect("late idle connection must be drained")
+            .unwrap();
+        assert_eq!(pool.size(), 0);
     }
 }

@@ -29,14 +29,19 @@ pub(in crate::source) async fn stage_prepared(
     let mut context = graph_context(input, format!("stage:{}", stage.id()));
     context.phase = Some(heartbeat);
     let started = std::time::Instant::now();
-    let result = reserved_call::graph_operation(runtime, context, move || async move {
-        stage.write_candidates(candidates).await
+    let runtime = runtime.clone();
+    let job_id = input.plan.job_id;
+    run_staging_independently(async move {
+        let result = reserved_call::graph_operation(&runtime, context, move || async move {
+            stage.write_candidates(candidates).await
+        })
+        .await??;
+        tracing::info!(job_id=?job_id, nodes=result.nodes_upserted,
+            edges=result.edges_upserted, elapsed_ms=started.elapsed().as_millis() as u64,
+            "private generation graph batch staged");
+        Ok(())
     })
-    .await??;
-    tracing::info!(job_id=?input.plan.job_id, nodes=result.nodes_upserted,
-        edges=result.edges_upserted, elapsed_ms=started.elapsed().as_millis() as u64,
-        "private generation graph batch staged");
-    Ok(())
+    .await
 }
 
 pub(in crate::source) async fn stage_baseline(
@@ -340,3 +345,15 @@ pub(crate) async fn activated_summary(
             }),
     )
 }
+
+async fn run_staging_independently<T: Send + 'static>(
+    work: impl std::future::Future<Output = anyhow::Result<T>> + Send + 'static,
+) -> anyhow::Result<T> {
+    // A buffered caller can stop polling while an earlier result awaits the
+    // live writer held by this reservation's completion. Keep completion
+    // progressing independently, and abort owned work when its caller drops.
+    tokio_util::task::AbortOnDropHandle::new(tokio::spawn(work)).await?
+}
+
+#[cfg(test)]
+mod tests;
