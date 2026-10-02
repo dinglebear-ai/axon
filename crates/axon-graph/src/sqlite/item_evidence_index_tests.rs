@@ -76,3 +76,29 @@ async fn item_retirement_uses_index_for_fresh_and_existing_graph_databases() {
         .unwrap();
     assert_eq!(sources, vec!["source-b"]);
 }
+
+async fn assert_node_retirement_indexed(pool: &SqlitePool) {
+    let plan = sqlx::query("EXPLAIN QUERY PLAN DELETE FROM graph_nodes WHERE stable_key IN (SELECT value FROM json_each(?1)) AND json_array_length(source_ids_json) = 1 AND json_extract(source_ids_json, '$[0]') = ?2 AND NOT EXISTS (SELECT 1 FROM graph_edges e WHERE e.from_node_id = graph_nodes.node_id OR e.to_node_id = graph_nodes.node_id)")
+        .bind(r#"["item", "other-item"]"#).bind("source").fetch_all(pool).await.unwrap();
+    let details: Vec<String> = plan.iter().map(|row| row.get("detail")).collect();
+    assert!(
+        details
+            .iter()
+            .any(|s| s.contains("SEARCH graph_nodes") && s.contains("stable_key=?")),
+        "node retirement must use an indexed lookup: {details:?}"
+    );
+}
+
+#[tokio::test]
+async fn node_retirement_lookup_indexed_on_fresh_and_upgraded_databases() {
+    let fresh = super::store().await;
+    assert_node_retirement_indexed(&fresh.pool).await;
+    let pool = SqlitePool::connect(":memory:").await.unwrap();
+    for migration in crate::migration::MIGRATIONS.iter().take(4) {
+        sqlx::raw_sql(migration.sql).execute(&pool).await.unwrap();
+    }
+    for migration in crate::migration::MIGRATIONS.iter().skip(4) {
+        sqlx::raw_sql(migration.sql).execute(&pool).await.unwrap();
+    }
+    assert_node_retirement_indexed(&pool).await;
+}

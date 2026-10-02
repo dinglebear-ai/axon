@@ -283,3 +283,7 @@ fn validate_sets(sets: &[MigrationSet]) -> Result<(), sqlx::Error> {
 #[cfg(test)]
 #[path = "migrations_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "migrations/missing_schema_tests.rs"]
+mod missing_schema_tests;

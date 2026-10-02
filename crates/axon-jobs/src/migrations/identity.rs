@@ -1,3 +1,6 @@
+#[path = "identity/receipted_schema.rs"]
+mod receipted_schema;
+
 use axon_api::migration::MigrationSet;
 use sha2::{Digest, Sha256};
 use sqlx::{Executor, Row, SqliteConnection};
@@ -249,6 +252,7 @@ async fn validate_upgrade_source(
     validate_epoch(connection).await?;
     validate_receipt_shape(connection).await?;
     validate_receipt_prefix(connection, sets).await?;
+    receipted_schema::validate_required_tables(connection, sets).await?;
     validate_table_subset(connection).await?;
     validate_foreign_key_subset(connection).await?;
     Ok(())
@@ -386,13 +390,7 @@ async fn validate_receipts(
 pub(super) async fn validate_table_subset(
     connection: &mut SqliteConnection,
 ) -> Result<(), sqlx::Error> {
-    let actual = table_inventory(connection).await?;
-    let canonical = canonical_table_inventory();
-    let unknown = actual.difference(&canonical).cloned().collect::<Vec<_>>();
-    require(
-        unknown.is_empty(),
-        format!("table inventory contains unknown tables: {unknown:?}"),
-    )
+    receipted_schema::validate_table_subset(connection).await
 }
 
 async fn validate_tables(connection: &mut SqliteConnection) -> Result<(), sqlx::Error> {

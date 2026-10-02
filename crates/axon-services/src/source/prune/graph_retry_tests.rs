@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicUsize;
 struct BusyGraph {
     calls: AtomicUsize,
     busy: AtomicBool,
+    status_unknown: AtomicBool,
     retry_only: AtomicBool,
     vector_calls: AtomicUsize,
     vector_fails: AtomicBool,
@@ -23,10 +24,17 @@ impl CleanupProviderOps for BusyGraph {
     async fn graph_retire_item(
         &self,
         _: SourceId,
-        _: SourceItemKey,
+        item: SourceItemKey,
         _: SourceGenerationId,
     ) -> Result<GraphDeleteResult, ApiError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.status_unknown.load(Ordering::SeqCst) && item.0 == "removed-one" {
+            return Err(ApiError::new(
+                "graph.retirement_status_unknown",
+                ErrorStage::Graphing,
+                "current item status is uncertain",
+            ));
+        }
         if !self.busy.load(Ordering::SeqCst) {
             return Ok(GraphDeleteResult::default());
         }
@@ -35,6 +43,22 @@ impl CleanupProviderOps for BusyGraph {
             ErrorStage::Graphing,
             "source publication is busy",
         ))
+    }
+    async fn graph_retire_items(
+        &self,
+        source: SourceId,
+        items: Vec<SourceItemKey>,
+        generation: SourceGenerationId,
+    ) -> Result<GraphDeleteResult, ApiError> {
+        if self.status_unknown.load(Ordering::SeqCst) && items.len() > 1 {
+            return Err(ApiError::new(
+                "graph.retirement_status_unknown",
+                ErrorStage::Graphing,
+                "one current item status is uncertain",
+            ));
+        }
+        self.graph_retire_item(source, items.into_iter().next().unwrap(), generation)
+            .await
     }
     async fn vector_delete(
         &self,
@@ -79,6 +103,7 @@ async fn busy_graph_stops_source_drain_and_persists_retry_without_resolving_debt
         retry_only: AtomicBool::new(false),
         vector_calls: AtomicUsize::new(0),
         vector_fails: AtomicBool::new(false),
+        status_unknown: AtomicBool::new(false),
         busy: AtomicBool::new(true),
         retry_generation: None,
     };
@@ -89,7 +114,7 @@ async fn busy_graph_stops_source_drain_and_persists_retry_without_resolving_debt
         "a busy source must not retry every item in the same sweep"
     );
     assert_eq!(summary.resolved, 0);
-    assert_eq!(summary.failed, 1);
+    assert_eq!(summary.failed, 3);
     let pending = ledger
         .list_pending_cleanup_debt(SourceId::new(SRC))
         .await
@@ -160,16 +185,21 @@ async fn busy_graph_stops_source_drain_and_persists_retry_without_resolving_debt
     );
     assert_eq!(retry_summary.failed, 1);
     // A due retry resumes cleanup; no debt is abandoned after contention.
-    let mut due = retried.clone();
-    due.next_retry_at = Some(Timestamp::from(
-        chrono::Utc::now() - chrono::Duration::seconds(1),
-    ));
-    ledger.record_cleanup_debt(due).await.unwrap();
+    for mut due in ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap()
+    {
+        due.next_retry_at = Some(Timestamp::from(
+            chrono::Utc::now() - chrono::Duration::seconds(1),
+        ));
+        ledger.record_cleanup_debt(due).await.unwrap();
+    }
     providers.busy.store(false, Ordering::SeqCst);
     let resumed = run_retry(&ledger, &providers, &generation.generation).await;
     assert_eq!(resumed.resolved, 3);
     assert_eq!(resumed.failed, 0);
-    assert_eq!(providers.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(providers.calls.load(Ordering::SeqCst), 2);
     assert!(
         ledger
             .list_pending_cleanup_debt(SourceId::new(SRC))
@@ -263,11 +293,12 @@ async fn post_publication_finalizer_retries_current_busy_debt_without_waiting() 
         retry_only: AtomicBool::new(false),
         vector_calls: AtomicUsize::new(0),
         vector_fails: AtomicBool::new(false),
+        status_unknown: AtomicBool::new(false),
         busy: AtomicBool::new(true),
         retry_generation: None,
     };
     let busy = run_retry(&ledger, &providers, &generation.generation).await;
-    assert_eq!(busy.failed, 1);
+    assert_eq!(busy.failed, 3);
     providers.busy.store(false, Ordering::SeqCst);
     // Autonomous sweeps still honor the persisted delay despite availability.
     let autonomous = run_retry(&ledger, &providers, &generation.generation).await;
@@ -285,7 +316,7 @@ async fn post_publication_finalizer_retries_current_busy_debt_without_waiting() 
         "available finalizer must not degrade solely due to stale busy delay"
     );
     assert_eq!(finalized.resolved, 3);
-    assert_eq!(providers.calls.load(Ordering::SeqCst), 4);
+    assert_eq!(providers.calls.load(Ordering::SeqCst), 2);
     assert!(crate::source::job_tracking::prune_outcome_warning(&finalized).is_none());
     assert!(
         ledger
@@ -322,6 +353,7 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
         retry_only: AtomicBool::new(false),
         vector_calls: AtomicUsize::new(0),
         vector_fails: AtomicBool::new(false),
+        status_unknown: AtomicBool::new(false),
         busy: AtomicBool::new(false),
         retry_generation: Some(generation.generation.clone()),
     };
@@ -330,8 +362,8 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
     assert_eq!(nonbusy.failed, 1);
     assert_eq!(
         providers.calls.load(Ordering::SeqCst),
-        2,
-        "storage-error delay is preserved by finalizer"
+        1,
+        "eligible items share a batch while storage-error delay is preserved"
     );
     let (busy_ledger, busy_generation) = graph_retry_fixture().await;
     let busy_providers = BusyGraph {
@@ -339,13 +371,14 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
         retry_only: AtomicBool::new(false),
         vector_calls: AtomicUsize::new(0),
         vector_fails: AtomicBool::new(false),
+        status_unknown: AtomicBool::new(false),
         busy: AtomicBool::new(true),
         retry_generation: Some(busy_generation.generation.clone()),
     };
     let busy = run_retry(&busy_ledger, &busy_providers, &busy_generation.generation).await;
     assert_eq!(busy.resolved, 0);
     assert_eq!(
-        busy.failed, 1,
+        busy.failed, 3,
         "finalization cannot pretend an active source lease is available"
     );
     assert_eq!(busy_providers.calls.load(Ordering::SeqCst), 1);
@@ -359,5 +392,51 @@ async fn finalizer_preserves_nonbusy_delays_and_actual_busy_failures() {
     );
 }
 
-#[path = "finalizer_tests.rs"]
-mod finalizer_tests;
+#[tokio::test]
+async fn due_graph_items_retire_in_one_bounded_provider_batch() {
+    let (ledger, generation) = graph_retry_fixture().await;
+    let providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
+        status_unknown: AtomicBool::new(false),
+        busy: AtomicBool::new(false),
+        retry_generation: None,
+    };
+    let summary = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(summary.resolved, 3);
+    assert_eq!(
+        providers.calls.load(Ordering::SeqCst),
+        1,
+        "due graph items should share one bounded retirement operation"
+    );
+}
+
+#[tokio::test]
+async fn uncertain_item_does_not_block_safe_siblings() {
+    let (ledger, generation) = graph_retry_fixture().await;
+    let providers = BusyGraph {
+        calls: AtomicUsize::new(0),
+        retry_only: AtomicBool::new(false),
+        vector_calls: AtomicUsize::new(0),
+        vector_fails: AtomicBool::new(false),
+        busy: AtomicBool::new(false),
+        status_unknown: AtomicBool::new(true),
+        retry_generation: None,
+    };
+    let summary = run_retry(&ledger, &providers, &generation.generation).await;
+    assert_eq!(summary.resolved, 2);
+    assert_eq!(summary.failed, 1);
+    let pending = ledger
+        .list_pending_cleanup_debt(SourceId::new(SRC))
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].debt_id.0, "removed-one");
+    assert_eq!(
+        pending[0].last_error.as_ref().unwrap().code,
+        "graph.retirement_status_unknown"
+    );
+    assert!(pending[0].next_retry_at.is_some());
+}

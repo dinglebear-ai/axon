@@ -164,6 +164,14 @@ impl GraphStore for SqliteGraphStore {
         retirement::retire(&self.pool, &self.write_gate, &source_id, &item).await
     }
 
+    async fn retire_items_evidence(
+        &self,
+        source_id: SourceId,
+        items: Vec<axon_api::source::SourceItemKey>,
+    ) -> Result<GraphDeleteResult> {
+        retirement::retire_many(&self.pool, &self.write_gate, &source_id, &items).await
+    }
+
     async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {
         if stable_keys.is_empty() {
             return Ok(GraphDeleteResult::default());
