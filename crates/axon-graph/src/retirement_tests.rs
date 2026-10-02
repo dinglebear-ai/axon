@@ -129,3 +129,83 @@ async fn containment_item_metadata_overrides_shared_candidate_key() {
         );
     }
 }
+
+#[tokio::test]
+async fn batched_retirement_preserves_evidence_outside_the_group() {
+    let stores: Vec<Arc<dyn GraphStore>> = vec![
+        Arc::new(FakeGraphStore::new()),
+        Arc::new(crate::SqliteGraphStore::connect(":memory:").await.unwrap()),
+    ];
+    for store in stores {
+        let candidates = ["a", "b", "c"]
+            .into_iter()
+            .map(|item| {
+                let mut value = supported_candidate();
+                value.candidate_id = item.into();
+                value.source_item_key = SourceItemKey::new(item);
+                value.evidence[0].source_item_key = value.source_item_key.clone();
+                value.evidence[0].evidence_id = item.into();
+                value.edges[0].evidence_ids = vec![item.into()];
+                value
+            })
+            .collect();
+        store.upsert_candidates(candidates).await.unwrap();
+        let result = store
+            .retire_items_evidence(
+                SourceId::new("src_a"),
+                vec![SourceItemKey::new("a"), SourceItemKey::new("b")],
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.edges_deleted, 0);
+        let nodes = store
+            .nodes_for_source(SourceId::new("src_a"))
+            .await
+            .unwrap();
+        let edges = store.node_edges(nodes[0].node_id.clone()).await.unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].evidence.len(), 1);
+        assert_eq!(edges[0].evidence[0].source_item_key.0, "c");
+        assert_eq!(
+            store
+                .retire_items_evidence(SourceId::new("src_a"), vec![SourceItemKey::new("c")])
+                .await
+                .unwrap()
+                .edges_deleted,
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn batched_retirement_crosses_transaction_boundaries_idempotently() {
+    let store = crate::SqliteGraphStore::connect(":memory:").await.unwrap();
+    let items: Vec<_> = (0..65)
+        .map(|i| SourceItemKey::new(format!("file-{i}")))
+        .collect();
+    for item in &items {
+        let mut value = supported_candidate();
+        value.candidate_id = item.0.clone();
+        value.source_item_key = item.clone();
+        value.nodes[1].stable_key = item.0.clone();
+        value.nodes[1].node_kind = "repo_file".into();
+        value.edges[0].to_stable_key = item.0.clone();
+        value.evidence[0].evidence_id = item.0.clone();
+        value.evidence[0].source_item_key = item.clone();
+        value.edges[0].evidence_ids = vec![item.0.clone()];
+        store.upsert_candidates(vec![value]).await.unwrap();
+    }
+    let result = store
+        .retire_items_evidence(SourceId::new("src_a"), items.clone())
+        .await
+        .unwrap();
+    assert_eq!(result.nodes_deleted, 65);
+    assert_eq!(result.edges_deleted, 65);
+    assert_eq!(
+        store
+            .retire_items_evidence(SourceId::new("src_a"), items)
+            .await
+            .unwrap(),
+        GraphDeleteResult::default()
+    );
+}

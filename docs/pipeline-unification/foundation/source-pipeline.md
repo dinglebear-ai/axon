@@ -97,10 +97,13 @@ Partially implemented:
   dispatches acquire+prepare+embed+publish through the source-family
   orchestrator first,
   then calls `graph::write_baseline_graph` (which reads the already-published
-  manifest to build the source container + document nodes/edges) and only
-  after that runs `prune::drain_cleanup_debt`. So the real order is
-  `... -> upserting -> publishing -> graphing -> cleaning -> complete`, with
-  graph writes derived from committed state rather than gating it. See
+  manifest to build the source container + document nodes/edges). Physical
+  cleanup is deferred to the existing durable background worker; the `cleaning`
+  event records that handoff. The job completes after graph publication, while
+  pending debt remains available for fenced, idempotent retries. Graph writes
+  remain derived from committed state rather than gating it. Parser graph
+  extraction overlaps embedding; graph persistence uses shared visible identities
+  and therefore waits for publication. See
   `crates/axon-services/src/source.rs::index_source_with_auth` and
   `crates/axon-services/src/source/graph.rs::write_baseline_graph`.
 
@@ -476,7 +479,7 @@ General rules:
 - redaction failures fail before public/vector output
 - embedding failure before publish fails the generation unless policy allows
   partial degraded publish
-- cleanup failure after publish records cleanup debt and degraded status
+- physical cleanup after publish runs in the durable background worker; failures retain pending debt and retry state independently of the completed source job
 
 ## Observability
 

@@ -776,6 +776,15 @@
     },
     {
       "columns": [
+        "stable_key"
+      ],
+      "name": "idx_graph_nodes_retirement_key",
+      "table": "graph_nodes",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "kind",
         "stable_key"
       ],
@@ -1589,6 +1598,18 @@
         "graph_evidence"
       ],
       "version": 4
+    },
+    {
+      "checksum": "696a2495fca2c343f12057d9aa2079dff1899385a20019de2a840f0a9b6f0a71",
+      "file": "crates/axon-graph/src/migrations/0005_node_retirement_index.sql",
+      "name": "0005_node_retirement_index",
+      "owner_crate": "axon-graph",
+      "runtime_namespace": "graph",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "graph_nodes"
+      ],
+      "version": 5
     },
     {
       "checksum": "27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3",
@@ -4340,7 +4361,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:0313bcedb574b359bdd2647b7008aa4381c1817ad3ea9855e606c3c8114a9547",
+        "checksum": "sha256:ae1820ee9f43004a046e4f164cbbc36a2261adae0a860fed673a04414d6b0bbb",
         "kind": "sql_migration_directory",
         "path": "crates/axon-graph/src/migrations"
       },

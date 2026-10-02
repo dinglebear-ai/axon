@@ -46,6 +46,11 @@ pub const MIGRATIONS: &[SqlMigration] = &[
         name: "0004_item_evidence_index",
         sql: include_str!("migrations/0004_item_evidence_index.sql"),
     },
+    SqlMigration {
+        version: 5,
+        name: "0005_node_retirement_index",
+        sql: include_str!("migrations/0005_node_retirement_index.sql"),
+    },
 ];
 
 /// The graph [`MigrationSet`] for composition into the unified runner.
@@ -93,6 +98,7 @@ const SCHEMA: &[&str] = &[
         ON graph_edges (kind, from_node_id, to_node_id)",
     "CREATE INDEX IF NOT EXISTS idx_graph_edges_from ON graph_edges (from_node_id)",
     "CREATE INDEX IF NOT EXISTS idx_graph_edges_to ON graph_edges (to_node_id)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_nodes_retirement_key ON graph_nodes (stable_key)",
     // Evidence records, linked to the edge they justify plus their originating
     // source/item/document/chunk. One row per (edge_id, evidence_id).
     "CREATE TABLE IF NOT EXISTS graph_evidence (
