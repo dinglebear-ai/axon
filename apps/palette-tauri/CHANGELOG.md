@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.3](https://github.com/dinglebear-ai/axon/compare/palette-v6.2.2...palette-v6.2.3) (2026-10-01)
+
+
+### Fixed
+
+* **ingest:** improve chunk quality and parser coverage ([#648](https://github.com/dinglebear-ai/axon/issues/648)) ([9cc53b8](https://github.com/dinglebear-ai/axon/commit/9cc53b8aa1e8af7d73d4dbdb5baf5b15852f411b))
+
 ## [6.2.2](https://github.com/dinglebear-ai/axon/compare/palette-v6.2.1...palette-v6.2.2) (2026-09-30)
 
 
