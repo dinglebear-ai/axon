@@ -19,9 +19,9 @@ android {
         applicationId = "com.axon.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 23 // x-release-please-version-code 2.1.1
+        versionCode = 24 // x-release-please-version-code 2.1.2
         // x-release-please-start-version
-        versionName = "2.1.1"
+        versionName = "2.1.2"
         // x-release-please-end
         manifestPlaceholders["appAuthRedirectScheme"] = "com.axon.app"
     }
