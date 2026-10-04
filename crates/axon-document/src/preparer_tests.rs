@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-13");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-14");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -1052,14 +1052,8 @@ fn large_html_document_still_removes_non_content_payloads() {
 }
 
 #[test]
-fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
-    // Dead-code recovery (#298): a `"web"`-family document routed to
-    // `MarkdownSections` (the common web/crawl case) never passes
-    // `structured_payload` through `build_chunks`'s structured-parse branch --
-    // that only runs for `StructuredRecords`/`ApiSchema`. Confirm
-    // `project_structured_payload_metadata` still lands it on every chunk (and
-    // on the document itself, since `axon-vectors::point::point_payload`
-    // builds each point's payload from `document.metadata.clone()`).
+fn markdown_web_document_retains_structured_payload_once() {
+    // Markdown chunks inherit this document-level blob only at publication.
     let mut doc = source_doc(
         ContentKind::Markdown,
         "# Intro\nHello from the complete reference documentation for this application.\n\n## More\nText explains additional details of the application configuration.",
@@ -1098,13 +1092,8 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
             .contains("headline")
     );
     for chunk in &prepared.chunks {
-        assert_eq!(chunk.metadata["web_structured_kind"], "Article");
-        assert!(
-            chunk.metadata["web_structured_blob"]
-                .as_str()
-                .unwrap()
-                .contains("headline")
-        );
+        assert!(!chunk.metadata.contains_key("web_structured_kind"));
+        assert!(!chunk.metadata.contains_key("web_structured_blob"));
     }
 }
 
@@ -1657,7 +1646,7 @@ fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
 }
 
 #[test]
-fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
+fn quality_rejects_junk_and_short_unidentified_chunks_but_preserves_turns() {
     let profiles = [
         ChunkingProfile::CodeSymbol,
         ChunkingProfile::CodeManifest,
@@ -1681,10 +1670,14 @@ fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
                     profile,
                 ))
                 .unwrap();
-            assert!(
-                matches!(result, PrepareSourceDocumentResult::Skipped(_)),
-                "{profile}: {source}"
-            );
+            if profile == ChunkingProfile::SessionTurns && source == "identifier" {
+                assert!(matches!(result, PrepareSourceDocumentResult::Prepared(_)));
+            } else {
+                assert!(
+                    matches!(result, PrepareSourceDocumentResult::Skipped(_)),
+                    "{profile}: {source}"
+                );
+            }
         }
     }
 }
@@ -1790,4 +1783,106 @@ fn shared_minimum_cannot_exceed_non_markdown_chunk_capacity() {
         ))
         .unwrap();
     assert!(matches!(result, PrepareSourceDocumentResult::Prepared(_)));
+}
+
+#[test]
+fn large_document_metadata_does_not_fan_out_across_prepared_chunks() {
+    let text = (0..128)
+        .map(|i| {
+            format!(
+                "## Section {i}\n{}\n",
+                "Reference material with useful details. ".repeat(20)
+            )
+        })
+        .collect::<String>();
+    let mut doc = source_doc(ContentKind::Markdown, &text);
+    let shared = "x".repeat(60 * 1024);
+    doc.metadata
+        .insert("web_structured_blob".to_string(), shared.clone().into());
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-metadata-fanout"),
+                profile: Some(ChunkingProfile::MarkdownSections),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+    assert!(prepared.chunks.len() >= 64);
+    assert_eq!(prepared.metadata["web_structured_blob"], shared);
+    // Count owned serialized blob bytes, rather than allocator-dependent RSS.
+    let retained_blob_bytes = std::iter::once(&prepared.metadata)
+        .chain(prepared.chunks.iter().map(|chunk| &chunk.metadata))
+        .filter_map(|metadata| metadata.get("web_structured_blob"))
+        .filter_map(serde_json::Value::as_str)
+        .map(str::len)
+        .sum::<usize>();
+    assert_eq!(retained_blob_bytes, 60 * 1024);
+}
+
+#[test]
+fn short_session_turns_remain_distinct_records() {
+    let input = request(
+        ContentKind::PlainText,
+        "Please explain
+Use the cache",
+        "gen-short-turns",
+        ChunkingProfile::SessionTurns,
+    );
+    let PrepareSourceDocumentResult::Prepared(doc) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("useful turns must survive")
+    };
+    assert_eq!(doc.chunks.len(), 2);
+    assert_ne!(
+        doc.chunks[0].source_range.session_turn_id,
+        doc.chunks[1].source_range.session_turn_id
+    );
+}
+
+#[test]
+fn partial_scope_changes_emitted_chunk_boundaries() {
+    for profile in [
+        ChunkingProfile::PlainTextWindows,
+        ChunkingProfile::MarkdownSections,
+        ChunkingProfile::CodeSymbol,
+    ] {
+        let text = (0..180)
+            .map(|n| format!("useful content record {n:04} with distinct context\n"))
+            .collect::<String>();
+        let mut input = request(ContentKind::PlainText, &text, "gen-partial", profile);
+        let PrepareSourceDocumentResult::Prepared(full) =
+            DocumentPreparer::default().prepare(input.clone()).unwrap()
+        else {
+            panic!("full")
+        };
+        input
+            .document
+            .metadata
+            .insert("source_scope".into(), "partial".into());
+        let PrepareSourceDocumentResult::Prepared(partial) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("partial")
+        };
+        assert!(
+            partial.chunks.len() > full.chunks.len(),
+            "{profile}: partial={}, full={}",
+            partial.chunks.len(),
+            full.chunks.len()
+        );
+        assert!(
+            partial
+                .chunks
+                .iter()
+                .all(|c| c.content.chars().count() <= 1000)
+        );
+    }
 }

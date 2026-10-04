@@ -210,10 +210,10 @@ fn code_symbols_with_base(
     positions: &SourcePositions<'_>,
 ) -> Vec<DocumentChunk> {
     let starts: Vec<usize> = section
-        .lines()
+        .split_inclusive('\n')
         .scan(0usize, |offset, line| {
             let current = *offset;
-            *offset += line.len() + 1;
+            *offset += line.len();
             Some((current, line))
         })
         .filter(|(_, line)| looks_like_symbol(line))

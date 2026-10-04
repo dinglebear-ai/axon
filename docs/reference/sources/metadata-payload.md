@@ -43,6 +43,16 @@ MCP/REST object.
 > deferred promotions, since renaming shipped indexed fields is a breaking
 > payload change.
 
+## Prepared metadata inheritance
+
+Preparation retains shared source metadata once on `PreparedDocument.metadata`.
+`PreparedChunk.metadata` contains chunk-local annotations and overrides. Consumers
+needing an effective chunk field should consult the chunk first, then the document.
+Vector publication resolves this inheritance for every payload before redaction
+and validation; indexed fields and chunk override precedence remain unchanged.
+Large fields such as `web_structured_blob` therefore stay shared during preparation
+and embedding rather than being copied into every prepared chunk.
+
 ## Required fields
 
 `payload_contract_version`, `collection`, `vector_point_id`, `vector_namespace`,

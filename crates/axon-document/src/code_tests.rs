@@ -268,3 +268,24 @@ fn heuristic_and_unsupported_code_publish_the_actual_fallback_method() {
     assert_eq!(chunks[0].metadata["actual_chunking_method"], "atomic_code");
     assert_eq!(chunks[0].metadata["code_parse_status"], "unsupported");
 }
+
+#[test]
+fn heuristic_crlf_offsets_preserve_unicode_and_symbols() {
+    let source = "\r\n\r\n// é\r\nfn x() {}\r\n";
+    let chunks = code_symbols(source, Some("file.rs"), None);
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<String>(),
+        source
+    );
+    let symbol = chunks
+        .iter()
+        .find(|c| c.symbol.as_deref() == Some("x"))
+        .unwrap();
+    assert_eq!(
+        symbol.range.byte_start,
+        Some(source.find("fn x").unwrap() as u64)
+    );
+}

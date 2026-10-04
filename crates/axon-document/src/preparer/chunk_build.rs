@@ -20,6 +20,43 @@ pub(super) struct BoundedChunks {
     pub(super) empty_fallback: bool,
 }
 
+/// Scale concrete ceilings by advisory routing budgets without pretending
+/// character counts are tokenizer counts. Packing uses the same ceiling.
+pub(super) fn scoped_limits(
+    profile: ChunkingProfile,
+    routed: crate::chunk_router::ChunkLimits,
+    configured: MarkdownChunkLimits,
+) -> (MarkdownChunkLimits, usize) {
+    let baseline = crate::chunk_router::decision_for_profile(profile, 0, None, None).limits;
+    let scale = |value: usize| {
+        value
+            .saturating_mul(routed.max_chunk_tokens as usize)
+            .checked_div(baseline.max_chunk_tokens as usize)
+            .unwrap_or(value)
+            .max(1)
+    };
+    let markdown = MarkdownChunkLimits::new(
+        scale(configured.max_chars()),
+        scale(configured.min_chars()),
+        configured
+            .overlap_chars()
+            .saturating_mul(routed.overlap_tokens as usize)
+            .checked_div(baseline.overlap_tokens as usize)
+            .unwrap_or(0),
+    );
+    let max_chars = if profile == ChunkingProfile::MarkdownSections {
+        markdown
+            .max_chars()
+            .min(scale(text::MAX_PLAIN_TEXT_CHUNK_CHARS))
+    } else {
+        scale(text::MAX_PLAIN_TEXT_CHUNK_CHARS)
+    };
+    (
+        MarkdownChunkLimits::new(max_chars, markdown.min_chars(), markdown.overlap_chars()),
+        max_chars,
+    )
+}
+
 pub(super) fn finalize_chunks(
     profile: ChunkingProfile,
     chunks: Vec<DocumentChunk>,
@@ -28,11 +65,9 @@ pub(super) fn finalize_chunks(
     fallback_method: &str,
     min_chars: usize,
 ) -> Vec<DocumentChunk> {
-    let max_chars = if profile == ChunkingProfile::MarkdownSections {
-        markdown_limits.max_chars()
-    } else {
-        text::MAX_PLAIN_TEXT_CHUNK_CHARS
-    };
+    let max_chars = markdown_limits
+        .max_chars()
+        .min(text::MAX_PLAIN_TEXT_CHUNK_CHARS);
     let mut chunks = if profile == ChunkingProfile::MarkdownSections {
         let chunks =
             crate::quality::contextual_chunks_with_limit(chunks, source, max_chars, min_chars);
@@ -49,20 +84,33 @@ pub(super) fn finalize_chunks(
     chunks
 }
 
+#[cfg(test)]
 pub(super) fn bound_or_fallback(chunks: Vec<DocumentChunk>, source: &str) -> BoundedChunks {
-    let (mut chunks, size_backstop) = bound_embedding_chunks(chunks, source);
+    bound_or_fallback_with_limits(chunks, source, text::MAX_PLAIN_TEXT_CHUNK_CHARS)
+}
+
+pub(super) fn bound_or_fallback_with_limits(
+    chunks: Vec<DocumentChunk>,
+    source: &str,
+    max_chars: usize,
+) -> BoundedChunks {
+    let (mut chunks, size_backstop) = bound_embedding_chunks_with_limits(chunks, source, max_chars);
     let empty_fallback = chunks.is_empty();
     if empty_fallback {
         // Structural chunkers can find no records in otherwise useful text.
-        chunks = text::plain_text_windows(source)
-            .into_iter()
-            .filter(|chunk| !chunk.content.trim().is_empty())
-            .map(|chunk| {
-                chunk
-                    .with_metadata("chunking_fallback", "empty_structural_result".into())
-                    .with_metadata("actual_chunking_method", "plain_text_windows".into())
-            })
-            .collect();
+        chunks = text::plain_text_windows_with_limits(
+            source,
+            text::MAX_PLAIN_TEXT_CHUNK_BYTES,
+            max_chars,
+        )
+        .into_iter()
+        .filter(|chunk| !chunk.content.trim().is_empty())
+        .map(|chunk| {
+            chunk
+                .with_metadata("chunking_fallback", "empty_structural_result".into())
+                .with_metadata("actual_chunking_method", "plain_text_windows".into())
+        })
+        .collect();
     }
     BoundedChunks {
         chunks,
@@ -101,26 +149,40 @@ pub(super) fn parsed_code_method(
 /// limit, including records produced by structural parsers and atomic profiles.
 /// Source-backed fragments retain exact positions; synthetic JSON records keep
 /// their JSON pointer because they have no literal source byte span.
+#[cfg(test)]
 pub(super) fn bound_embedding_chunks(
     chunks: Vec<DocumentChunk>,
     source: &str,
+) -> (Vec<DocumentChunk>, bool) {
+    bound_embedding_chunks_with_limits(chunks, source, text::MAX_PLAIN_TEXT_CHUNK_CHARS)
+}
+
+fn bound_embedding_chunks_with_limits(
+    chunks: Vec<DocumentChunk>,
+    source: &str,
+    max_chars: usize,
 ) -> (Vec<DocumentChunk>, bool) {
     let mut bounded = Vec::new();
     let mut split_any = false;
     for chunk in chunks {
         if chunk.content.len() <= text::MAX_PLAIN_TEXT_CHUNK_BYTES
-            && chunk.content.chars().count() <= text::MAX_PLAIN_TEXT_CHUNK_CHARS
+            && chunk.content.chars().count() <= max_chars
         {
             bounded.push(chunk);
             continue;
         }
         split_any = true;
-        split_chunk_streaming(&chunk, source, &mut bounded);
+        split_chunk_streaming(&chunk, source, &mut bounded, max_chars);
     }
     (bounded, split_any)
 }
 
-fn split_chunk_streaming(chunk: &DocumentChunk, source: &str, output: &mut Vec<DocumentChunk>) {
+fn split_chunk_streaming(
+    chunk: &DocumentChunk,
+    source: &str,
+    output: &mut Vec<DocumentChunk>,
+    max_chars: usize,
+) {
     let literal_start = chunk
         .range
         .byte_start
@@ -141,7 +203,7 @@ fn split_chunk_streaming(chunk: &DocumentChunk, source: &str, output: &mut Vec<D
     for (byte, ch) in chunk.content.char_indices() {
         if byte > start_byte
             && (byte + ch.len_utf8() - start_byte > text::MAX_PLAIN_TEXT_CHUNK_BYTES
-                || char_index - start_char >= text::MAX_PLAIN_TEXT_CHUNK_CHARS as u64)
+                || char_index - start_char >= max_chars as u64)
         {
             let (end_byte, end_char, end_line, split_at_line) =
                 match last_line_break.filter(|(break_byte, _, _)| *break_byte > start_byte) {

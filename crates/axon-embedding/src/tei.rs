@@ -102,6 +102,7 @@ struct AdmissionKey {
 
 #[derive(Debug)]
 struct TeiAdmissionGates {
+    tokenization: Arc<client::TokenizationState>,
     request_slots: Arc<Semaphore>,
     input_slots: Arc<Semaphore>,
     max_concurrent_requests: usize,
@@ -123,6 +124,7 @@ fn shared_admission_gates(config: &TeiEmbeddingConfig) -> Arc<TeiAdmissionGates>
         return gates;
     }
     let gates = Arc::new(TeiAdmissionGates {
+        tokenization: Arc::new(client::TokenizationState::default()),
         request_slots: Arc::new(Semaphore::new(config.max_concurrent_requests.max(1))),
         input_slots: Arc::new(Semaphore::new(config.max_in_flight_inputs.max(1))),
         max_concurrent_requests: config.max_concurrent_requests.max(1),
@@ -240,6 +242,7 @@ impl TeiEmbeddingProvider {
             Arc::clone(&self.admission.request_slots),
             Arc::clone(&self.admission.input_slots),
         )
+        .map(|client| client.with_tokenization(Arc::clone(&self.admission.tokenization)))
     }
 
     fn error(&self, code: &str, message: &str) -> ApiError {
@@ -307,6 +310,8 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
         let duration_ms = started.elapsed().as_millis() as u64;
         let raw = outcome.vectors;
         let requests = outcome.requests;
+        let input_tokens = outcome.input_tokens;
+        let tokenization_fallback = outcome.tokenization_fallback;
 
         if raw.len() != batch.items.len() {
             return Err(self.error(
@@ -323,6 +328,15 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
         // embeddings in the order they were submitted.
         let mut vectors = Vec::with_capacity(raw.len());
         let mut warnings = Vec::new();
+        if let Some(reason) = tokenization_fallback {
+            warnings.push(SourceWarning {
+                code: "embedding.tei.tokenization_fallback".to_string(),
+                severity: Severity::Warning,
+                message: format!("TEI token counting unavailable ({reason}); packing uses conservative UTF-8 byte counts and actual token usage is unknown. Enable authenticated POST /tokenize on the embedding endpoint; unsupported endpoints are cached for this provider lifetime."),
+                source_item_key: None,
+                retryable: false,
+            });
+        }
         for (item, values) in batch.items.iter().zip(raw) {
             if values.len() as u32 != dimensions {
                 warnings.push(SourceWarning {
@@ -351,7 +365,7 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
             dimensions,
             vectors,
             usage: ProviderUsage {
-                input_tokens: None,
+                input_tokens,
                 output_tokens: None,
                 requests,
                 duration_ms,

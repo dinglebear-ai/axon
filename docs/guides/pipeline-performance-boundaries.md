@@ -1,7 +1,7 @@
 ---
 title: "Pipeline performance and resource boundaries"
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-10-04
 ---
 
 # Pipeline performance and resource boundaries
@@ -29,6 +29,13 @@ Markdown source positions use a document-wide index instead of repeatedly
 scanning prefixes. Splitting an oversized section copies its selected window,
 not the entire section. These changes preserve content and source ranges.
 
+Document metadata stays on the prepared document; chunks retain their own
+overrides. Vector publication inherits shared fields before applying those
+overrides, avoiding preparation-time copies of large structured payloads.
+Structured CSV, XML, YAML and TOML source positions also reuse one document
+index. Deduplication hashes borrowed identities and verifies matches against
+retained chunks instead of storing serialized copies.
+
 ## Embedding and publication
 
 TEI request and weighted-input admission are shared by normalized endpoint.
@@ -37,6 +44,27 @@ same endpoint. The first live owner establishes that endpoint's limits; later
 profiles may be stricter but cannot raise its global limits. New limits take
 effect after all owners of the old endpoint admission state have gone away.
 Restart or drain long-running consumers when applying such changes.
+
+TEI packing obtains model-matched counts, including special tokens, through
+authenticated `/tokenize` requests. Counting shares provider admission and has
+a five-second maximum total budget, 256 KiB request windows and a 16 MiB
+response bound. Unsupported endpoints are cached; unavailable counting uses
+conservative UTF-8 byte accounting with a warning and fallback metric. JSON
+payload byte limits remain independent of token limits. Packing computes its
+sort keys once. The MLX direct server exposes the same tokenizer used for
+embedding through `/tokenize`.
+
+Tokenization latency and request metrics expose the added round-trip cost.
+Packed budget utilization, input counts and padding ratios distinguish
+`provider_tokens` from fallback `utf8_bytes`; exact counts also populate
+provider input-token usage. These measurements support corpus-specific tuning
+without claiming a GPU throughput improvement from source changes alone.
+
+The generation scheduler admits a rolling window of up to three pools when
+embedding/publication overlap is enabled. It publishes in source order and
+retains work admission through durable accounting, including completed pools
+waiting for an earlier pool. Disabling overlap uses a single pool and finishes
+publication before starting the next embedding operation.
 
 A TEI `Retry-After` beyond the in-call wait budget is returned as provider
 cooling rather than keeping request permits occupied during a long sleep.

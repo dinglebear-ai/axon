@@ -97,7 +97,11 @@ async fn embed_returns_vectors_in_request_order() {
     assert_eq!(result.provider_id, ProviderId::new("tei"));
     assert_eq!(result.model, "qwen3-embedding");
     assert_eq!(result.usage.requests, 1);
-    assert!(result.warnings.is_empty());
+    assert_eq!(
+        result.warnings[0].code,
+        "embedding.tei.tokenization_fallback"
+    );
+    assert_eq!(result.usage.input_tokens, None);
 }
 
 #[tokio::test]
@@ -227,8 +231,8 @@ async fn embed_surfaces_dimension_mismatch_warning() {
         .expect("embed should succeed but warn");
 
     assert_eq!(result.vectors.len(), 1);
-    assert_eq!(result.warnings.len(), 1);
-    assert_eq!(result.warnings[0].code, "embedding.tei.dimension_mismatch");
+    assert_eq!(result.warnings.len(), 2);
+    assert_eq!(result.warnings[1].code, "embedding.tei.dimension_mismatch");
 }
 
 #[tokio::test]
@@ -488,7 +492,8 @@ async fn shared_endpoint_admission(
         let release = Arc::clone(&release);
         async move {
             let mut connections = tokio::task::JoinSet::new();
-            for _ in 0..3 {
+            // Three bounded tokenize windows plus three embedding requests.
+            for _ in 0..6 {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let release = Arc::clone(&release);
                 let arrivals = arrivals.clone();
@@ -501,16 +506,23 @@ async fn shared_endpoint_admission(
                         assert!(request.len() < 16384);
                     }
                     let headers = String::from_utf8(request).unwrap();
-                    assert!(headers.starts_with("POST /embed "));
+                    let tokenizing = headers.starts_with("POST /tokenize ");
+                    assert!(tokenizing || headers.starts_with("POST /embed "));
                     let length = headers.lines().find_map(|line| {
                         let (name, value) = line.split_once(':')?;
                         name.eq_ignore_ascii_case("content-length")
                             .then(|| value.trim().parse::<usize>().unwrap())
                     }).unwrap();
                     socket.read_exact(&mut vec![0; length]).await.unwrap();
-                    arrivals.send(()).unwrap();
-                    release.acquire().await.unwrap().forget();
-                    let body = "[[0.1,0.2]]";
+                    let body = if tokenizing {
+                        // Capability discovery/counting still takes shared admission,
+                        // but this fixture parks GPU requests to test replenishment.
+                        "[[{\"id\":1}]]"
+                    } else {
+                        arrivals.send(()).unwrap();
+                        release.acquire().await.unwrap().forget();
+                        "[[0.1,0.2]]"
+                    };
                     socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
                 });
             }

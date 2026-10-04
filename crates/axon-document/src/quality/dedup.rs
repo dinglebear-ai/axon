@@ -1,9 +1,11 @@
 //! Deduplicate identical fragments within one document, retaining their locations.
 use crate::chunk::DocumentChunk;
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
 
 pub(super) fn deduplicate(chunks: Vec<DocumentChunk>) -> Vec<DocumentChunk> {
-    let mut positions = HashMap::new();
+    let mut positions: HashMap<u64, Vec<usize>> = HashMap::new();
+    let mut provenance_bytes = HashMap::<usize, usize>::new();
     let mut output: Vec<DocumentChunk> = Vec::new();
     for chunk in chunks {
         if chunk.range.session_turn_id.is_some()
@@ -19,36 +21,39 @@ pub(super) fn deduplicate(chunks: Vec<DocumentChunk>) -> Vec<DocumentChunk> {
         }
         // Record boundaries matter even for identical text: one session turn or
         // structured field cannot silently stand in for a different one.
-        let key = serde_json::json!([
-            chunk.content,
-            chunk.title,
-            chunk.heading_path,
-            chunk.range.session_turn_id,
-            chunk.range.json_pointer,
-            chunk.range.yaml_path,
-            chunk.range.xml_xpath,
-            chunk.range.csv_row,
-            chunk.range.time_start_ms,
-            chunk.range.time_end_ms,
-            chunk.range.turn_start,
-            chunk.range.turn_end,
-        ])
-        .to_string();
-        if let Some(&index) = positions.get(&key) {
-            let existing: &mut DocumentChunk = &mut output[index];
-            let mut ranges = existing
+        let mut hasher = DefaultHasher::new();
+        // All record identity fields checked above are None here. The remaining
+        // fields preserve the former JSON key without copying chunk text.
+        identity(&chunk).hash(&mut hasher);
+        let key = hasher.finish();
+        let matching = positions.get(&key).and_then(|bucket| {
+            bucket
+                .iter()
+                .position(|&index| identity(&output[index]) == identity(&chunk))
+        });
+        if let Some(slot) = matching {
+            let index = positions[&key][slot];
+            let existing = &mut output[index];
+            let range = serde_json::to_value(&chunk.range).unwrap();
+            let ranges = existing
                 .metadata
                 .get("additional_source_ranges")
-                .and_then(|value| value.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let range = serde_json::to_value(&chunk.range).unwrap();
-            if chunk.range != existing.range && !ranges.contains(&range) {
-                ranges.push(range);
-            }
-            // Bound provider metadata without losing locations: start another
-            // canonical group if this group's provenance would become too large.
-            if serde_json::to_vec(&ranges).unwrap().len() <= 32 * 1024 {
+                .and_then(|value| value.as_array());
+            let append = chunk.range != existing.range
+                && !ranges.is_some_and(|ranges| ranges.contains(&range));
+            let count = ranges.map_or(0, Vec::len);
+            let bytes = provenance_bytes.entry(index).or_insert_with(|| {
+                ranges.map_or(2, |ranges| serde_json::to_vec(ranges).unwrap().len())
+            });
+            let next_bytes = if append {
+                *bytes + serde_json::to_vec(&range).unwrap().len() + usize::from(count > 0)
+            } else {
+                *bytes
+            };
+            // Bound provenance exactly as before, without cloning or encoding
+            // the entire growing array for every duplicate.
+            if next_bytes <= 32 * 1024 {
+                *bytes = next_bytes;
                 super::remember_symbols(existing, &chunk);
                 if chunk
                     .metadata
@@ -78,16 +83,42 @@ pub(super) fn deduplicate(chunks: Vec<DocumentChunk>) -> Vec<DocumentChunk> {
                         "source_adjacent_packing".into(),
                     );
                 }
-                if !ranges.is_empty() {
-                    existing
+                if append {
+                    let value = existing
                         .metadata
-                        .insert("additional_source_ranges".into(), ranges.into());
+                        .entry("additional_source_ranges".into())
+                        .or_insert_with(|| serde_json::json!([]));
+                    if !value.is_array() {
+                        *value = serde_json::json!([]);
+                    }
+                    value.as_array_mut().unwrap().push(range);
                 }
                 continue;
             }
+            // A full group yields to a new canonical group of the same identity.
+            positions.get_mut(&key).unwrap()[slot] = output.len();
+        } else {
+            positions.entry(key).or_default().push(output.len());
         }
-        positions.insert(key, output.len());
         output.push(chunk);
     }
     output
+}
+
+fn identity(
+    chunk: &DocumentChunk,
+) -> (
+    &str,
+    &Option<String>,
+    &[String],
+    Option<u64>,
+    &Option<String>,
+) {
+    (
+        &chunk.content,
+        &chunk.title,
+        &chunk.heading_path,
+        chunk.range.time_end_ms,
+        &chunk.range.turn_end,
+    )
 }

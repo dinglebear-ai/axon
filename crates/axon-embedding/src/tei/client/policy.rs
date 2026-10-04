@@ -18,36 +18,47 @@ pub(super) fn credential_transport_is_safe(endpoint: &url::Url, credentials_pres
 }
 
 pub(super) fn estimated_tokens(text: &str) -> usize {
-    let (ascii, non_ascii_bytes) = text.chars().fold((0_usize, 0_usize), |counts, ch| {
-        if ch.is_ascii() {
-            (counts.0 + 1, counts.1)
-        } else {
-            (counts.0, counts.1 + ch.len_utf8())
-        }
-    });
-    // A character can be a token on code, JSON, or punctuation-heavy input.
-    // Counting every ASCII character keeps the request below TEI's token cap.
-    ascii.saturating_add(non_ascii_bytes).max(1)
+    // Conservative byte-based upper bound, not a model tokenizer count.
+    text.len().max(1)
 }
 
+#[cfg(test)]
 pub(super) fn pack_batches(
     inputs: &[String],
     limits: BatchLimits,
 ) -> Result<Vec<IndexedBatch<'_>>, &'static str> {
-    let mut ordered = inputs.iter().enumerate().collect::<Vec<_>>();
-    ordered.sort_by_key(|(index, text)| (estimated_tokens(text), text.chars().count(), *index));
+    let counts = inputs
+        .iter()
+        .map(|text| estimated_tokens(text))
+        .collect::<Vec<_>>();
+    pack_batches_counted(inputs, &counts, limits)
+}
+
+pub(super) fn pack_batches_counted<'a>(
+    inputs: &'a [String],
+    counts: &[usize],
+    limits: BatchLimits,
+) -> Result<Vec<IndexedBatch<'a>>, &'static str> {
+    if counts.len() != inputs.len() {
+        return Err("token counts do not match embedding inputs");
+    }
+    let mut ordered = inputs
+        .iter()
+        .enumerate()
+        .map(|(index, text)| (counts[index], text.len(), index, text))
+        .collect::<Vec<_>>();
+    ordered.sort_by_key(|&(tokens, chars, index, _)| (tokens, chars, index));
     let mut batches = Vec::new();
     let mut indices = Vec::new();
     let mut texts = Vec::new();
     let mut batch_tokens = 0_usize;
-    let mut batch_bytes = 0_usize;
-    for (index, text) in ordered {
-        let tokens = estimated_tokens(text);
-        let bytes = text.len().saturating_add(4);
-        if bytes > limits.max_batch_bytes {
+    let mut batch_bytes = 32_usize;
+    for (tokens, _, index, text) in ordered {
+        let bytes = serialized_input_bytes(text);
+        if bytes.saturating_add(32) > limits.max_batch_bytes {
             return Err("one embedding input exceeds the configured payload limit");
         }
-        if tokens > limits.max_input_tokens {
+        if tokens > limits.max_input_tokens || tokens > limits.max_batch_tokens {
             return Err("one embedding input exceeds the configured token limit");
         }
         if !texts.is_empty()
@@ -57,7 +68,7 @@ pub(super) fn pack_batches(
         {
             push_batch(&mut batches, &mut indices, &mut texts);
             batch_tokens = 0;
-            batch_bytes = 0;
+            batch_bytes = 32;
         }
         indices.push(index);
         texts.push(text.as_str());
@@ -118,4 +129,15 @@ pub fn retry_delay(attempt: usize, started: Instant, base_ms: u64) -> Duration {
     let capped_ms = scaled_ms.min(MAX_BACKOFF_MS);
     let jitter_ms = (started.elapsed().subsec_nanos() as u64) % 500;
     Duration::from_millis(capped_ms + jitter_ms)
+}
+
+/// JSON string bytes plus comma; reserve envelope bytes separately.
+pub(super) fn serialized_input_bytes(text: &str) -> usize {
+    text.bytes().fold(3_usize, |size, byte| {
+        size.saturating_add(match byte {
+            b'"' | b'\\' | b'\n' | b'\r' | b'\t' | 8 | 12 => 2,
+            0..=31 => 6,
+            _ => 1,
+        })
+    })
 }

@@ -149,3 +149,10 @@ Git inventory excludes historical plan/session documentation directories by
 default. Set the source option `include_historical_docs: true` to include them;
 `exclude_paths` still applies. Normal product documentation, tests, and generated
 reference documentation remain eligible.
+
+Partial source scopes (`diff`, `partial`, `fragment`, and `incremental`)
+proportionally reduce concrete character ceilings using the routed token-budget
+ratio. Markdown packing and overlap use the same scope adjustment. Token budgets
+remain advisory; this adjustment does not claim exact tokenizer enforcement.
+Meaningful session turns and structured records retain their identities even when
+shorter than the general minimum chunk length.

@@ -247,3 +247,88 @@ fn configured_cutoff_controls_unicode_lengths_and_context_packing() {
         useful_chunks_with_limit(vec![chunk(&short, 0, short.len())], &short, 1000, 200).is_empty()
     );
 }
+
+#[test]
+fn dedup_does_not_allocate_a_content_sized_key() {
+    let content = "escaped \"text\"\n東京".repeat(16_384);
+    let chunks = vec![DocumentChunk::new(content, text::source_range("", 0, 0))];
+    let (output, work) = crate::performance_measurement::measure(|| deduplicate_chunks(chunks));
+    assert_eq!(output.len(), 1);
+    assert!(
+        work.allocated_bytes < 32 * 1024,
+        "allocated {} bytes",
+        work.allocated_bytes
+    );
+}
+
+#[test]
+fn dedup_preserves_end_only_record_identity() {
+    let mut first = DocumentChunk::new("same content", text::source_range("", 0, 0));
+    first.range.turn_end = Some("one".into());
+    let mut second = first.clone();
+    second.range.turn_end = Some("two".into());
+    assert_eq!(deduplicate_chunks(vec![first, second]).len(), 2);
+}
+
+#[test]
+fn dedup_bounds_provenance_without_losing_locations() {
+    let chunks = (0..512)
+        .map(|index| {
+            let mut range = text::source_range("", 0, 0);
+            range.byte_start = Some(index * 32);
+            range.byte_end = Some(index * 32 + 12);
+            DocumentChunk::new("same content", range)
+        })
+        .collect();
+    let output = deduplicate_chunks(chunks);
+    assert!(output.len() > 1, "provenance must split at its byte limit");
+    let mut locations = Vec::new();
+    for chunk in output {
+        locations.push(chunk.range.byte_start.unwrap());
+        if let Some(ranges) = chunk.metadata.get("additional_source_ranges") {
+            assert!(serde_json::to_vec(ranges).unwrap().len() <= 32 * 1024);
+            locations.extend(
+                ranges
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|r| r["byte_start"].as_u64().unwrap()),
+            );
+        }
+    }
+    locations.sort_unstable();
+    assert_eq!(
+        locations,
+        (0..512).map(|index| index * 32).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn short_identified_records_survive_without_cross_record_packing() {
+    let source = "enabled
+disabled";
+    let mut first = chunk(source, 0, 7);
+    first.range.json_pointer = Some("/first".into());
+    let mut second = chunk(source, 8, source.len());
+    second.range.json_pointer = Some("/second".into());
+    let retained = useful_chunks_with_limit(vec![first, second], source, 2000, 200);
+    assert_eq!(retained.len(), 2);
+    assert_eq!(retained[0].content, "enabled");
+    assert_eq!(retained[1].content, "disabled");
+    let mut junk = chunk("{}", 0, 2);
+    junk.range.session_turn_id = Some("turn-0".into());
+    assert!(useful_chunks_with_limit(vec![junk], "{}", 2000, 200).is_empty());
+}
+
+#[test]
+fn short_turn_ranges_do_not_pack_across_distinct_turns() {
+    let source = "enabled\ndisabled";
+    let mut first = chunk(source, 0, 7);
+    first.range.turn_end = Some("turn-1".into());
+    let mut second = chunk(source, 8, source.len());
+    second.range.turn_end = Some("turn-2".into());
+    let retained = useful_chunks_with_limit(vec![first, second], source, 2000, 200);
+    assert_eq!(retained.len(), 2);
+    assert_eq!(retained[0].content, "enabled");
+    assert_eq!(retained[1].content, "disabled");
+}

@@ -1,7 +1,7 @@
 //! Source document preparation entry point.
 
 use axon_api::source::{
-    ChunkId, ChunkLocator, CleanupKey, ContentRef, ContentSkipReason, MetadataMap, PreparedChunk,
+    ChunkId, ChunkLocator, CleanupKey, ContentRef, ContentSkipReason, PreparedChunk,
     PreparedDocument, Severity, SkippedDocument, SourceDocument, SourceItemKey, SourceWarning,
 };
 use axon_parse::vertical::take_metadata_artifacts;
@@ -21,8 +21,8 @@ mod chunk_build;
 mod observed;
 mod validation;
 use chunk_build::{
-    bound_or_fallback, build_chunks, empty_fallback_warning, finalize_chunks, parsed_code_method,
-    warning,
+    bound_or_fallback_with_limits, build_chunks, empty_fallback_warning, finalize_chunks,
+    parsed_code_method, warning,
 };
 #[cfg(test)]
 pub(crate) use validation::validate_prepared_document;
@@ -32,7 +32,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-13";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-14";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -215,6 +215,8 @@ impl DocumentPreparer {
         // fallback swaps the structural chunker for a generic windowed split
         // so `chunking_method` never claims a method that did not run.
         let use_size_or_adapter_fallback = decision.method != decision.fallback_chain[0];
+        let (markdown_limits, max_chars) =
+            chunk_build::scoped_limits(profile, decision.limits, self.config.markdown_limits());
         let build = build_chunks(
             profile,
             &content.text,
@@ -225,16 +227,16 @@ impl DocumentPreparer {
             request.document.content_kind,
             &request.parse_facts,
             use_size_or_adapter_fallback,
-            self.config.markdown_limits(),
+            markdown_limits,
         );
-        let bounded = bound_or_fallback(build.chunks, &content.text);
+        let bounded = bound_or_fallback_with_limits(build.chunks, &content.text, max_chars);
         let chunks = finalize_chunks(
             profile,
             bounded.chunks,
             &content.text,
-            self.config.markdown_limits(),
+            markdown_limits,
             decision.method,
-            self.semantic_config().minimum_chunk_chars,
+            self.semantic_config().minimum_chunk_chars.min(max_chars),
         );
         if chunks.is_empty() {
             return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
@@ -243,8 +245,7 @@ impl DocumentPreparer {
             )));
         }
         let parsed_code_method = parsed_code_method(profile, use_size_or_adapter_fallback, &chunks);
-        let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
-            .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
+        let parser_stamp = observed::parser_stamp(&parse);
         let chunking_method = actual_chunking_method(
             bounded.size_backstop || bounded.empty_fallback,
             !build.warnings.is_empty(),
@@ -337,16 +338,10 @@ const MAX_STRUCTURED_METADATA_BYTES: usize = 64 * 1024;
 /// to (`ContentKind::Markdown`) -- never touches it, so without this
 /// projection the value never reaches a chunk or a Qdrant payload at all.
 ///
-/// Instead of threading a new parameter through every chunk builder, this
-/// mirrors the payload into `document.metadata` *before* chunking, reusing
-/// two mechanisms that already exist:
-/// - `build_prepared_chunk`'s `merge_metadata` call below copies any
-///   document-level metadata key down onto every chunk's own metadata (this
-///   is how `web_title`/`web_domain` already reach every chunk).
-/// - `axon-vectors::point::point_payload::build_payload` starts each vector
-///   point's payload from `document.metadata.clone()` before layering
-///   per-chunk metadata on top, so the projected fields land in the Qdrant
-///   payload for every chunk of the document regardless of profile.
+/// The projected fields remain on `PreparedDocument::metadata`, once per
+/// document. `axon-vectors` inherits document metadata when assembling each
+/// final payload, then overlays chunk-local annotations. Keeping the blob out
+/// of prepared chunks avoids multiplying its retained allocation by chunk count.
 ///
 /// Gated to the `web` source family: `web_structured_kind`/
 /// `web_structured_blob` are declared only in that family's vector-payload
@@ -503,7 +498,9 @@ fn build_prepared_chunk(
     );
     let chunk_id = ChunkId::from(format!("chunk_{}", stable_token(&chunk_key)));
     let symbol = chunk.symbol.clone();
-    let mut metadata = merge_metadata(&request.document.metadata, chunk.metadata);
+    // Document metadata stays shared on PreparedDocument. Publication resolves
+    // inheritance, with these chunk-local annotations taking precedence.
+    let mut metadata = chunk.metadata;
     if profile == ChunkingProfile::CodeSymbol
         && let Some(symbol) = &symbol
     {
@@ -536,13 +533,6 @@ fn build_prepared_chunk(
         metadata,
         content: chunk.content,
     }
-}
-
-fn merge_metadata(doc: &MetadataMap, mut chunk: MetadataMap) -> MetadataMap {
-    for (key, value) in doc.iter() {
-        chunk.entry(key.clone()).or_insert_with(|| value.clone());
-    }
-    chunk
 }
 
 fn simple_hash(text: &str) -> String {

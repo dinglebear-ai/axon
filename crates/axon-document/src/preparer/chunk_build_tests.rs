@@ -68,3 +68,40 @@ fn scaffold_omission_precedes_dedup_of_identical_fenced_body_text() {
     assert_eq!(output[0].range.byte_start, Some(body_start as u64));
     assert!(!output[0].metadata.contains_key("additional_source_ranges"));
 }
+
+#[test]
+fn scope_limits_scale_operator_settings_without_affecting_other_profiles() {
+    let full =
+        crate::chunk_router::decision_for_profile(ChunkingProfile::MarkdownSections, 0, None, None);
+    let partial = crate::chunk_router::decision_for_profile(
+        ChunkingProfile::MarkdownSections,
+        0,
+        None,
+        Some("partial"),
+    );
+    let configured = MarkdownChunkLimits::new(800, 300, 100);
+    let (limits, cap) = scoped_limits(
+        ChunkingProfile::MarkdownSections,
+        partial.limits,
+        configured,
+    );
+    assert_eq!(
+        (
+            limits.max_chars(),
+            limits.min_chars(),
+            limits.overlap_chars(),
+            cap
+        ),
+        (400, 150, 50, 400)
+    );
+    assert_eq!(
+        scoped_limits(ChunkingProfile::MarkdownSections, full.limits, configured),
+        (configured, 800)
+    );
+    let plain =
+        crate::chunk_router::decision_for_profile(ChunkingProfile::PlainTextWindows, 0, None, None);
+    assert_eq!(
+        scoped_limits(ChunkingProfile::PlainTextWindows, plain.limits, configured).1,
+        2000
+    );
+}
