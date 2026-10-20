@@ -67,7 +67,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "stream",
 ] }
-russh = "0.63.2"
+russh = "0.64.1"
 russh-sftp = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
