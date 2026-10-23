@@ -141,3 +141,7 @@ pub(super) fn serialized_input_bytes(text: &str) -> usize {
         })
     })
 }
+
+#[cfg(test)]
+#[path = "policy_packing_tests.rs"]
+mod packing_tests;

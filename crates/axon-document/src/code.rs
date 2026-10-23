@@ -66,7 +66,11 @@ pub(crate) fn code_symbols_with_facts(
         code_symbols_with_base(text, 0, &positions)
     };
 
-    let language = detect_code_language(path, language_hint);
+    let inferred = language_hint.or_else(|| {
+        path.filter(|path| std::path::Path::new(path).extension().is_none())
+            .and_then(|_| axon_parse::code::shebang_language(text))
+    });
+    let language = detect_code_language(path, inferred);
     let is_test = axon_parse::code_path::is_test_path(path);
     raw.into_iter()
         .flat_map(|chunk| split_if_huge(chunk, &positions))
@@ -179,8 +183,8 @@ fn detect_code_language(path: Option<&str>, language_hint: Option<&str>) -> &'st
 fn language_from_extension(ext: &str) -> Option<&'static str> {
     Some(match ext {
         "rs" => "rust",
-        "py" | "pyi" => "python",
-        "js" | "mjs" | "cjs" | "jsx" => "javascript",
+        "py" | "pyi" | "python" => "python",
+        "js" | "mjs" | "cjs" | "jsx" | "javascript" => "javascript",
         "ts" | "mts" | "cts" | "tsx" => "typescript",
         "go" => "go",
         "java" => "java",
@@ -190,7 +194,7 @@ fn language_from_extension(ext: &str) -> Option<&'static str> {
         "cs" => "csharp",
         "c" | "h" => "c",
         "cc" | "cpp" | "cxx" | "hpp" | "hh" => "cpp",
-        "sh" | "bash" | "zsh" => "shell",
+        "sh" | "bash" | "zsh" | "shell" | "fish" => "shell",
         "ps1" => "powershell",
         "dart" => "dart",
         "ex" | "exs" => "elixir",
@@ -344,13 +348,10 @@ fn looks_like_symbol(line: &str) -> bool {
 fn symbol_name(line: &str) -> Option<String> {
     let trimmed = line.trim_start();
     let after_keyword = normalized_symbol_prefix(trimmed)?;
-    Some(
-        after_keyword
-            .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
-            .next()
-            .unwrap_or("symbol")
-            .to_string(),
-    )
+    let name = after_keyword
+        .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
+        .next()?;
+    (!name.trim().is_empty()).then(|| name.to_string())
 }
 
 pub(crate) fn code_symbol_kind_for_content(content: &str) -> &'static str {

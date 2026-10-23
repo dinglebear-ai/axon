@@ -236,3 +236,24 @@ fn large_executable_retains_locals_without_repeating_owner_metadata_per_interval
     assert!(!chunks[0].metadata.contains_key("preparation_owner_span"));
     assert!(work.range_scan_bytes <= source.len() * 4);
 }
+
+#[test]
+fn supplied_blank_fact_names_do_not_become_aliases() {
+    let source = "struct { int field; } value;\n";
+    let facts = vec![
+        fact(source, " ", 0, source.len()),
+        fact(source, "named", 0, source.len()),
+    ];
+    let chunks = parser_code_symbol_chunks(source, &facts).unwrap();
+    assert_eq!(
+        chunks[0].metadata["code_symbol_aliases"],
+        serde_json::json!(["named"])
+    );
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|chunk| chunk.content.as_str())
+            .collect::<String>(),
+        source
+    );
+}

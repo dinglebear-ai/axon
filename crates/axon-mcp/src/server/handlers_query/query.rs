@@ -55,6 +55,7 @@ impl AxonMcpServer {
                 "query": query,
                 "limit": pagination.limit,
                 "offset": pagination.offset,
+                "warnings": result.warnings,
                 "results": serde_json::to_value(&result.results).map_err(|e| internal_error(format!("serialize query results: {e}")))?,
             }),
             InlineHint::Default,

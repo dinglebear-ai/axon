@@ -13,9 +13,9 @@ use crate::context::TargetLocalSourceRuntime;
 use crate::reserved_call::ArtifactCleanupGuard;
 use crate::source::output::{self, SourceOutput};
 
-// Archive construction and candidate delivery currently require a complete
-// generation. This lifetime charge is separate from the rolling prepared-work
-// admission budget, and applies equally to disk spill and memory fallback.
+// Archive construction, diagnostics, and memory fallback still retain whole
+// generation state. Keep the lifetime charge separate from rolling prepared-work
+// admission until every finalization path has qualified memory bounds.
 const MAX_GENERATION_SIDE_EFFECT_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Default)]
@@ -34,12 +34,14 @@ pub(super) struct GenerationAccumulator {
     artifacts: Vec<ArtifactRef>,
     output: SourceOutput,
     archive_items: Vec<AcquiredSourceItem>,
+    streamed_archive: Option<axon_adapters::GeneratedArchiveFile>,
     artifact_candidates: Vec<ArtifactCandidate>,
     warnings: Vec<SourceWarning>,
     reused_item_keys: BTreeSet<SourceItemKey>,
     refreshed_manifest_items: Vec<ManifestItem>,
     spool: Option<GenerationSpool>,
     spool_sequence: u64,
+    durable_required: bool,
     side_effect_bytes: usize,
     pub(super) graph_stage: Option<std::sync::Arc<axon_graph::stage::GraphStage>>,
     #[cfg(test)]
@@ -54,38 +56,74 @@ pub(super) struct FinalizedGeneration {
     pub(super) artifacts: Vec<ArtifactRef>,
     pub(super) artifact_candidates: Vec<ArtifactCandidate>,
     pub(super) inline: Option<InlineSourceResult>,
+    pub(super) candidates_staged: bool,
+    // Retain the sealed owner through normal publication and delivery settlement.
+    // Cancellation-safe persistent recovery remains a separate integration.
+    pub(super) spool: Option<GenerationSpool>,
 }
 
 impl GenerationAccumulator {
-    pub(super) async fn new(generation: &SourceGenerationId) -> anyhow::Result<Self> {
-        let generation = generation.0.clone();
-        tokio::task::spawn_blocking(move || {
-        let spool = match GenerationSpool::temporary(&generation) {
-            Ok(spool) => Some(spool),
-            Err(error) => {
-                tracing::warn!(error = %error, "generation spool unavailable; retaining side effects in memory");
-                None
-            }
+    pub(super) async fn new(
+        generation: &SourceGeneration,
+        job_id: JobId,
+        attempt: u32,
+        runtime: &TargetLocalSourceRuntime,
+    ) -> anyhow::Result<Self> {
+        let root = runtime.generation_work_root.clone();
+        let durable_required = root.is_some();
+        let slot = if root.is_some() {
+            Some(
+                runtime
+                    .generation_work_slots
+                    .clone()
+                    .acquire_owned()
+                    .await?,
+            )
+        } else {
+            None
         };
-        Self {
-            spool,
-            ..Self::default()
-        }
-        }).await.context("generation spool initialization worker failed")
+        super::generation_registry::recover(runtime).await?;
+        let work_gate = runtime.generation_work_gate.clone().lock_owned().await;
+        let source_id = generation.source_id.clone();
+        let generation = generation.generation.clone();
+        tokio::task::spawn_blocking(move || {
+            let _gate = work_gate;
+            let mut spool = if let Some(root) = root {
+                Some(GenerationSpool::persistent_for(&root, source_id, generation, job_id, attempt)?)
+            } else {
+                match GenerationSpool::temporary_for(&source_id, &generation, job_id, attempt) {
+                    Ok(spool) => Some(spool),
+                    Err(error) => {
+                        tracing::warn!(error = %error, "generation spool unavailable; retaining side effects in memory");
+                        None
+                    }
+                }
+            };
+            if let Some(spool) = &mut spool { spool.hold_admission(slot); }
+            Ok::<_, anyhow::Error>(Self { spool, durable_required, ..Self::default() })
+        }).await.context("generation spool initialization worker failed")?
     }
 
     pub(super) async fn absorb_pretracked_side_effects(
         &mut self,
         batch: PreparedBatchSideEffects,
     ) -> anyhow::Result<()> {
+        let started = std::time::Instant::now();
         if let Some(stage) = &self.graph_stage {
             let bytes = batch
                 .estimated_resident_bytes()
                 .max(batch.estimated_bytes()?);
             stage.reserve_side_effect_bytes(bytes as u64).await?;
         }
-        self.blocking_step(move |state| state.append_side_effects(batch))
-            .await
+        let result = self
+            .blocking_step(move |state| state.append_side_effects(batch))
+            .await;
+        tracing::info!(
+            elapsed_us = started.elapsed().as_micros() as u64,
+            success = result.is_ok(),
+            "source side effects staged"
+        );
+        result
     }
 
     /// Borrowing `self` admits only one outstanding append/replay per generation.
@@ -144,6 +182,9 @@ impl GenerationAccumulator {
             .as_mut()
             .and_then(|spool| spool.append(&key, &record).err());
         if let Some(error) = append_error {
+            if self.durable_required {
+                return Err(error).context("durable generation work append failed; refusing in-memory fallback for a registered attempt");
+            }
             tracing::warn!(error = %error, "generation spool append failed; retaining side effects in memory");
             if let Some(spool) = self.spool.take() {
                 spool
@@ -179,14 +220,99 @@ impl GenerationAccumulator {
             .extend(record.refreshed_manifest_items);
     }
 
+    #[cfg(test)]
     fn replay_spool(&mut self) -> anyhow::Result<()> {
-        if let Some(spool) = self.spool.take() {
+        if let Some(mut spool) = self.spool.take() {
+            spool.seal()?;
             spool.replay_each::<SideEffectsSpoolRecord>(|_, record| {
                 self.absorb_side_effect_record(record);
                 Ok(())
             })?;
         }
         Ok(())
+    }
+
+    async fn finalize_side_effects(
+        &mut self,
+        runtime: &TargetLocalSourceRuntime,
+        input: &SourcePipelineInput<'_>,
+        manifest: &mut SourceManifest,
+        generation: &SourceGenerationId,
+    ) -> anyhow::Result<bool> {
+        let archive = if input.plan.request.output.artifact_mode != ArtifactMode::None
+            && input.adapter.wants_archive(&input.plan)
+        {
+            if let Some(spool) = &self.spool {
+                input
+                    .adapter
+                    .begin_archive_in(&input.plan, spool.work_directory()?)
+                    .await?
+            } else {
+                input.adapter.begin_archive(&input.plan).await?
+            }
+        } else {
+            None
+        };
+        let Some(spool) = self.spool.take() else {
+            if let Some(mut writer) = archive {
+                let items = std::mem::take(&mut self.archive_items);
+                self.streamed_archive = tokio::task::spawn_blocking(move || {
+                    if items.is_empty() {
+                        return Ok::<_, std::io::Error>(None);
+                    }
+                    for item in items {
+                        writer.append(&item)?;
+                    }
+                    writer.finish().map(Some)
+                })
+                .await
+                .context("archive worker failed")??;
+            }
+            return Ok(false);
+        };
+        let (mut records, worker) = spool.replay_stream_archived(archive);
+        let manifest_positions = manifest
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| (item.source_item_key.clone(), index))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut candidates_staged = false;
+        while let Some(mut record) = records.recv().await {
+            // Apply manifest replacements directly; do not rebuild a second
+            // generation-wide vector and map during replay.
+            for replacement in record.refreshed_manifest_items.drain(..) {
+                if let Some(&index) = manifest_positions.get(&replacement.source_item_key) {
+                    manifest.items[index] = replacement;
+                }
+            }
+            if let Some(outbox) = &runtime.artifact_candidate_outbox {
+                let mut candidates = record.artifact_candidates.into_iter();
+                loop {
+                    let page = candidates.by_ref().take(16).collect::<Vec<_>>();
+                    if page.is_empty() {
+                        break;
+                    }
+                    outbox
+                        .stage(
+                            input.plan.job_id,
+                            input.plan.route.source.source_id.clone(),
+                            generation.clone(),
+                            page,
+                        )
+                        .await?;
+                    candidates_staged = true;
+                }
+                record.artifact_candidates = Vec::new();
+            }
+            self.absorb_side_effect_record(record);
+        }
+        let (spool, archive) = worker
+            .await
+            .context("generation finalization worker failed")??;
+        self.spool = Some(spool);
+        self.streamed_archive = archive;
+        Ok(candidates_staged)
     }
 
     pub(super) fn absorb_vectorized(&mut self, vectorized: vectorize::VectorizeResult) {
@@ -224,11 +350,18 @@ impl GenerationAccumulator {
         manifest: &mut SourceManifest,
         diff: SourceManifestDiff,
     ) -> anyhow::Result<FinalizedGeneration> {
-        self.blocking_step(Self::replay_spool).await?;
+        let generation = manifest.generation.clone();
+        let candidates_staged = self
+            .finalize_side_effects(runtime, input, manifest, &generation)
+            .await?;
         self.vectorized.warnings.splice(0..0, self.warnings);
-        let archive =
+        let archive = if let Some(archive) = self.streamed_archive.take() {
+            output::store_streamed_archive(runtime, input.adapter, &input.plan, archive, cleanup)
+                .await?
+        } else {
             output::store_adapter_archive(runtime, input.adapter, &input.plan, &self.archive_items)
-                .await?;
+                .await?
+        };
         cleanup.track(&archive.artifacts).await?;
         self.output.merge(archive);
         self.artifacts.append(&mut self.output.artifacts);
@@ -256,6 +389,8 @@ impl GenerationAccumulator {
             artifacts: self.artifacts,
             artifact_candidates: self.artifact_candidates,
             inline: self.output.inline,
+            candidates_staged,
+            spool: self.spool,
         })
     }
 }

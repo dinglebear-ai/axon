@@ -19,6 +19,7 @@ pub(crate) use crate::reset::artifacts::{artifact_root, count_files, purge_files
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 200;
 
+mod content_read;
 #[path = "artifacts/index.rs"]
 mod index;
 use index::*;
@@ -170,87 +171,13 @@ pub async fn read_artifact_content(
     range: Option<&str>,
 ) -> Result<ArtifactContentDescriptor, ApiError> {
     let content = artifact_content(ctx, artifact_id).await?;
-    let bytes = tokio::fs::read(&content.path)
-        .await
-        .map_err(|error| io_error("artifact.read_failed", &content.path, error))?;
-    let bytes = match range {
-        Some(range) => apply_byte_range(&bytes, range)?,
-        None => bytes,
-    };
+    let bytes = content_read::read_range(&content.path, range).await?;
     Ok(ArtifactContentDescriptor {
         artifact_id: content.artifact_id,
         content_type: content.content_type,
         disposition: content.disposition,
         bytes,
     })
-}
-
-fn apply_byte_range(bytes: &[u8], raw: &str) -> Result<Vec<u8>, ApiError> {
-    let range = raw.trim().strip_prefix("bytes=").unwrap_or(raw.trim());
-    if range.contains(',') {
-        return Err(artifact_error(
-            "artifact.invalid_range",
-            "multiple artifact byte ranges are not supported",
-        ));
-    }
-    let Some((start, end)) = range.split_once('-') else {
-        return Err(artifact_error(
-            "artifact.invalid_range",
-            "byte range must use START-END, START-, or -SUFFIX_LENGTH",
-        ));
-    };
-    if bytes.is_empty() {
-        return Err(artifact_error(
-            "artifact.range_not_satisfiable",
-            "byte range cannot be satisfied for empty content",
-        ));
-    }
-    let (start, end_exclusive) = if start.is_empty() {
-        let suffix = end.parse::<usize>().map_err(|_| {
-            artifact_error(
-                "artifact.invalid_range",
-                "byte range suffix length must be an integer",
-            )
-        })?;
-        if suffix == 0 {
-            return Err(artifact_error(
-                "artifact.invalid_range",
-                "byte range suffix length must be greater than zero",
-            ));
-        }
-        (bytes.len().saturating_sub(suffix), bytes.len())
-    } else {
-        let start = start.parse::<usize>().map_err(|_| {
-            artifact_error(
-                "artifact.invalid_range",
-                "byte range start must be an integer",
-            )
-        })?;
-        if start >= bytes.len() {
-            return Err(artifact_error(
-                "artifact.range_not_satisfiable",
-                "byte range starts beyond the end of the artifact",
-            ));
-        }
-        let end = if end.is_empty() {
-            bytes.len() - 1
-        } else {
-            end.parse::<usize>().map_err(|_| {
-                artifact_error(
-                    "artifact.invalid_range",
-                    "byte range end must be an integer",
-                )
-            })?
-        };
-        if end < start {
-            return Err(artifact_error(
-                "artifact.invalid_range",
-                "byte range end must not precede its start",
-            ));
-        }
-        (start, end.saturating_add(1).min(bytes.len()))
-    };
-    Ok(bytes[start..end_exclusive].to_vec())
 }
 
 pub async fn artifact_content(
@@ -326,13 +253,15 @@ async fn read_manifest(
 }
 
 async fn parse_manifest(path: &Path) -> Result<StoredArtifactManifest, ApiError> {
-    let bytes = tokio::fs::read(path).await.map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            artifact_error("artifact.not_found", "artifact not found")
-        } else {
-            io_error("artifact.read_failed", path, error)
-        }
-    })?;
+    let bytes = content_read::read_bounded(path, 1024 * 1024)
+        .await
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                artifact_error("artifact.not_found", "artifact not found")
+            } else {
+                io_error("artifact.read_failed", path, error)
+            }
+        })?;
     serde_json::from_slice(&bytes).map_err(|error| {
         artifact_error(
             "artifact.invalid_manifest",

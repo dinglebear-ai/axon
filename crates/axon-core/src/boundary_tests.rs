@@ -344,3 +344,46 @@ async fn fake_core_rate_limiter_returns_failure_modes_and_records_calls() {
     assert!(err.retryable);
     assert_eq!(fake.calls().await, vec!["rate_limit.acquire"]);
 }
+
+#[tokio::test]
+async fn streamed_file_artifact_verifies_receipt_and_publishes_atomically() {
+    use sha2::{Digest as _, Sha256};
+    use std::io::Write as _;
+    let directory = tempfile::tempdir().unwrap();
+    let store = FileArtifactStore::new(directory.path());
+    let mut file = tempfile::tempfile().unwrap();
+    file.write_all(b"sealed bytes").unwrap();
+    let make = |file, hash: &str, size| ArtifactFileWriteRequest {
+        file,
+        size_bytes: size,
+        content_hash: hash.into(),
+        kind: ArtifactKind::Warc,
+        content_type: "application/warc".into(),
+        source_id: Some(SourceId::new("source")),
+        job_id: None,
+        metadata: MetadataMap::new(),
+    };
+    assert!(
+        store
+            .put_file(make(file.try_clone().unwrap(), "sha256:bad", 12))
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    let hash = format!("sha256:{}", hex::encode(Sha256::digest(b"sealed bytes")));
+    assert!(
+        store
+            .put_file(make(file.try_clone().unwrap(), &hash, 10))
+            .await
+            .is_err()
+    );
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+    let request = make(file, &hash, 12);
+    let expected = store.sealed_file_identity(&request).unwrap().unwrap();
+    let handle = store.put_file(request).await.unwrap();
+    assert_eq!(handle, expected);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 3);
+    let retrieved = store.get(handle.clone()).await.unwrap();
+    assert!(retrieved.content.is_some());
+    store.delete(handle).await.unwrap();
+}

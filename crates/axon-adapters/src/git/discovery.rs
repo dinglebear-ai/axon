@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use crate::adapter::Result;
 use crate::manifest::item_identity;
 
+use super::classification::{classify_repository_file, repository_path_candidate};
 use super::{GIT_DISCOVERY_HASH_MAX_THREADS, fs_error, hex_prefix};
 
 fn git_walk_builder(root: &Path) -> WalkBuilder {
@@ -57,7 +58,7 @@ pub(super) fn collect_capped_git_keys(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if !policy.allows(&key) {
+        if !policy.allows(&key) || classify_repository_file(entry.path(), &key)?.is_none() {
             continue;
         }
         truncated |= selected.len() == limit;
@@ -199,10 +200,10 @@ fn git_manifest_item(
     base_uri: &str,
     key: &str,
 ) -> Result<Option<ManifestItem>> {
-    if !is_code_or_documentation(key) {
-        return Ok(None);
-    }
     let path = safe_item_path(root, key)?;
+    let Some(content_kind) = classify_repository_file(&path, key)? else {
+        return Ok(None);
+    };
     let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
     if !meta.is_file() {
         return Ok(None);
@@ -228,7 +229,7 @@ fn git_manifest_item(
         source_item_key: identity.source_item_key,
         canonical_uri: identity.canonical_uri,
         item_kind: ItemKind::RepoFile,
-        content_kind: Some(content_kind_for(&path)),
+        content_kind: Some(content_kind),
         display_path: Some(key.to_string()),
         parent_key: None,
         size_bytes: Some(meta.len()),
@@ -245,9 +246,10 @@ fn git_key_excluded(key: &str, exclude_paths: &[String]) -> bool {
     exclude_paths.iter().any(|excluded| key.contains(excluded))
 }
 
-/// Apply the same repository inventory policy to both new and retained items.
+/// Path-only eligibility; extensionless candidates also require a recognized script header.
+/// Discovery and retained-path checks apply that bounded content check after ignore rules.
 pub fn repository_path_allowed(key: &str, exclude_paths: &[String]) -> bool {
-    is_code_or_documentation(key) && !git_key_excluded(key, exclude_paths)
+    repository_path_candidate(key) && !git_key_excluded(key, exclude_paths)
 }
 
 pub(super) fn existing_repository_paths(
@@ -262,47 +264,14 @@ pub(super) fn existing_repository_paths(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if wanted.contains(&key) && policy.allows(&key) {
+        if wanted.contains(&key)
+            && policy.allows(&key)
+            && classify_repository_file(entry.path(), &key)?.is_some()
+        {
             existing.insert(key);
         }
     }
     Ok(existing)
-}
-
-fn is_code_or_documentation(key: &str) -> bool {
-    let path = Path::new(key);
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("");
-    let name = name.to_ascii_lowercase();
-    if matches!(name.as_str(), "dockerfile" | "makefile" | "justfile") {
-        return true;
-    }
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or("");
-    let extension = extension.to_ascii_lowercase();
-    if (extension.is_empty() || extension == "txt")
-        && [
-            "readme",
-            "license",
-            "licence",
-            "changelog",
-            "contributing",
-            "authors",
-            "notice",
-        ]
-        .iter()
-        .any(|prefix| name == *prefix || name.starts_with(&format!("{prefix}.")))
-    {
-        return true;
-    }
-    matches!(
-        content_kind_for(path),
-        ContentKind::Code | ContentKind::Markdown | ContentKind::Html
-    )
 }
 
 fn record_git_parallel_error(slot: &Mutex<Option<ApiError>>, error: ApiError) {
@@ -375,22 +344,4 @@ fn content_fingerprint(path: &Path, cap: u64) -> Result<Option<String>> {
         hasher.update(&buffer[..read]);
     }
     Ok(Some(hex_prefix(&hasher.finalize(), 64)))
-}
-
-fn content_kind_for(path: &Path) -> ContentKind {
-    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-    match extension.to_ascii_lowercase().as_str() {
-        "md" | "markdown" | "mdx" | "rst" | "adoc" | "asciidoc" => ContentKind::Markdown,
-        "html" | "htm" => ContentKind::Html,
-        "json" => ContentKind::Json,
-        "yaml" | "yml" => ContentKind::Yaml,
-        "toml" => ContentKind::Toml,
-        "xml" => ContentKind::Xml,
-        "rs" | "go" | "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "py" | "java" | "kt"
-        | "kts" | "swift" | "c" | "cc" | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh"
-        | "zsh" | "fish" | "ex" | "exs" | "erl" | "hrl" | "hs" | "scala" | "sc" | "sql" | "lua"
-        | "pl" | "r" | "jl" | "dart" | "vue" | "svelte" | "proto" | "css" | "scss" | "less"
-        | "tf" | "nix" => ContentKind::Code,
-        _ => ContentKind::PlainText,
-    }
 }

@@ -69,12 +69,15 @@ pub(crate) fn remember_symbols(target: &mut DocumentChunk, other: &DocumentChunk
             symbols.extend(values.iter().filter_map(|v| v.as_str().map(str::to_string)));
         }
     }
+    symbols.retain(|symbol| !symbol.trim().is_empty());
     symbols.sort();
     symbols.dedup();
     if !symbols.is_empty() {
         target
             .metadata
             .insert("code_symbol_aliases".into(), serde_json::json!(symbols));
+    } else {
+        target.metadata.remove("code_symbol_aliases");
     }
 }
 fn combine(

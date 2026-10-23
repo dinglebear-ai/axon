@@ -332,3 +332,24 @@ fn short_turn_ranges_do_not_pack_across_distinct_turns() {
     assert_eq!(retained[0].content, "enabled");
     assert_eq!(retained[1].content, "disabled");
 }
+
+#[test]
+fn symbol_aliases_reject_blank_names_but_preserve_named_symbols() {
+    let mut target = DocumentChunk::new("useful", text::source_range("", 0, 0))
+        .with_symbol("")
+        .with_metadata("code_symbol_aliases", serde_json::json!(["", " ", "valid"]));
+    let other = DocumentChunk::new("context", text::source_range("", 0, 0)).with_symbol("other");
+    remember_symbols(&mut target, &other);
+    assert_eq!(
+        target.metadata["code_symbol_aliases"],
+        serde_json::json!(["other", "valid"])
+    );
+    target
+        .metadata
+        .insert("code_symbol_aliases".into(), serde_json::json!([" "]));
+    remember_symbols(
+        &mut target,
+        &DocumentChunk::new("context", text::source_range("", 0, 0)),
+    );
+    assert!(!target.metadata.contains_key("code_symbol_aliases"));
+}

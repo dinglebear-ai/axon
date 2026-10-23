@@ -4,13 +4,19 @@ use async_trait::async_trait;
 use axon_api::source::*;
 use base64::Engine as _;
 
+mod read;
+mod stream;
+use stream::{artifact_disk_owner, artifact_io_error, file_identity, put_sealed_file};
+
 use super::{
-    ArtifactBytesWriteRequest, ArtifactStore, Result, capability, redact_artifact_metadata,
+    ArtifactBytesWriteRequest, ArtifactFileWriteRequest, ArtifactStore, Result, capability,
+    redact_artifact_metadata,
 };
 
 #[derive(Debug, Clone)]
 pub struct FileArtifactStore {
     root: PathBuf,
+    write_gate: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -34,7 +40,10 @@ struct FileArtifactWrite {
 
 impl FileArtifactStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            write_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+        }
     }
 
     fn content_path(&self, artifact_id: &ArtifactId) -> PathBuf {
@@ -152,18 +161,45 @@ impl ArtifactStore for FileArtifactStore {
         .await
     }
 
+    fn sealed_file_identity(
+        &self,
+        artifact: &ArtifactFileWriteRequest,
+    ) -> Result<Option<ArtifactHandle>> {
+        Ok(Some(file_identity(artifact)?))
+    }
+
+    async fn put_file(&self, artifact: ArtifactFileWriteRequest) -> Result<ArtifactHandle> {
+        let gate = self.write_gate.clone().lock_owned().await;
+        let root = self.root.clone();
+        tokio::task::spawn_blocking(move || {
+            let _gate = gate;
+            let _disk_owner = artifact_disk_owner(&root, false)?;
+            put_sealed_file(root, artifact)
+        })
+        .await
+        .map_err(|error| {
+            ApiError::new(
+                "artifact.worker_failed",
+                ErrorStage::Publishing,
+                error.to_string(),
+            )
+        })?
+    }
+
     async fn get(&self, handle: ArtifactHandle) -> Result<ArtifactReadResult> {
         let manifest_path = self.manifest_path(&handle.artifact_id);
-        let manifest_bytes = tokio::fs::read(&manifest_path).await.map_err(|err| {
-            ApiError::new(
-                "artifact.not_found",
-                ErrorStage::Retrieving,
-                format!(
-                    "failed to read artifact manifest {}: {err}",
-                    manifest_path.display()
-                ),
-            )
-        })?;
+        let manifest_bytes = read::bounded_read(&manifest_path, read::MAX_MANIFEST_BYTES)
+            .await
+            .map_err(|err| {
+                ApiError::new(
+                    "artifact.not_found",
+                    ErrorStage::Retrieving,
+                    format!(
+                        "failed to read artifact manifest {}: {err}",
+                        manifest_path.display()
+                    ),
+                )
+            })?;
         let manifest: FileArtifactManifest =
             serde_json::from_slice(&manifest_bytes).map_err(|err| {
                 ApiError::new(
@@ -188,13 +224,15 @@ impl ArtifactStore for FileArtifactStore {
             ));
         }
         let content_path = self.root.join(&manifest.content_path);
-        let bytes = tokio::fs::read(&content_path).await.map_err(|err| {
-            ApiError::new(
-                "artifact.read_failed",
-                ErrorStage::Retrieving,
-                format!("failed to read artifact {}: {err}", content_path.display()),
-            )
-        })?;
+        let bytes = read::bounded_read(&content_path, MAX_UPLOAD_BYTES)
+            .await
+            .map_err(|err| {
+                ApiError::new(
+                    "artifact.read_failed",
+                    ErrorStage::Retrieving,
+                    format!("failed to read artifact {}: {err}", content_path.display()),
+                )
+            })?;
         let content = match manifest.content_kind.as_str() {
             "inline_text" => Some(ContentRef::InlineText {
                 text: String::from_utf8(bytes).map_err(|err| {
@@ -220,8 +258,29 @@ impl ArtifactStore for FileArtifactStore {
     }
 
     async fn delete(&self, handle: ArtifactHandle) -> Result<()> {
+        let _gate = self.write_gate.lock().await;
+        if !tokio::fs::try_exists(&self.root)
+            .await
+            .map_err(artifact_io_error)?
+        {
+            return Ok(());
+        }
+        // Cross-process cleanup must not overtake a detached archive writer.
+        let _owner = artifact_disk_owner(&self.root, true)?;
         remove_file_if_exists(self.content_path(&handle.artifact_id)).await?;
         remove_file_if_exists(self.manifest_path(&handle.artifact_id)).await?;
+        let prefix = format!(".{}.stream-", safe_artifact_id(&handle.artifact_id));
+        let manifest_prefix = format!(".{}.manifest-", safe_artifact_id(&handle.artifact_id));
+        let mut entries = tokio::fs::read_dir(&self.root)
+            .await
+            .map_err(artifact_io_error)?;
+        while let Some(entry) = entries.next_entry().await.map_err(artifact_io_error)? {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(&prefix) || name.starts_with(&manifest_prefix) {
+                remove_file_if_exists(entry.path()).await?;
+            }
+        }
         Ok(())
     }
 

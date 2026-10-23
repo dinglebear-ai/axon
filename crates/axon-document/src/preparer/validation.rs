@@ -131,8 +131,9 @@ pub(crate) fn validate_prepared_document_ranges_against_bounds(
             );
         }
     }
+    let source_lines = source_text.map(SourceLines::new);
     for candidate in &document.graph_candidates {
-        validate_graph_candidate_ranges(candidate, bounds, source_text)?;
+        validate_graph_candidate_ranges(candidate, bounds, source_lines.as_ref())?;
     }
     Ok(())
 }
@@ -140,7 +141,7 @@ pub(crate) fn validate_prepared_document_ranges_against_bounds(
 fn validate_graph_candidate_ranges(
     candidate: &axon_api::source::GraphCandidate,
     bounds: &SourceRangeBounds,
-    source_text: Option<&str>,
+    source_lines: Option<&SourceLines<'_>>,
 ) -> Result<(), String> {
     for evidence in &candidate.evidence {
         if let Some(range) = &evidence.range {
@@ -150,10 +151,10 @@ fn validate_graph_candidate_ranges(
                     candidate.candidate_id, evidence.evidence_id
                 )
             })?;
-            if let (Some(source_text), Some(quote)) = (source_text, evidence.quote.as_deref())
+            if let (Some(source_lines), Some(quote)) = (source_lines, evidence.quote.as_deref())
                 && should_validate_quote(quote)
-                && let Some(slice) = line_slice_for_range(source_text, range)
-                && !slice.contains(quote)
+                && let Some(contains) = source_lines.contains(range, quote)
+                && !contains
             {
                 return Err(format!(
                     "graph candidate {} evidence {} quote outside source range",
@@ -170,21 +171,158 @@ fn should_validate_quote(quote: &str) -> bool {
     !trimmed.is_empty() && !trimmed.to_ascii_lowercase().contains("redacted")
 }
 
-fn line_slice_for_range(text: &str, range: &SourceRange) -> Option<String> {
-    let start = range.line_start? as usize;
-    let end = range.line_end.unwrap_or(start as u32) as usize;
-    if start == 0 || end < start {
-        return None;
+/// One offset per 256 line breaks. Including spare Vec capacity, index memory
+/// is bounded by16 + input_bytes/16. Each lookup skips at most255 lines.
+struct SourceLines<'a> {
+    text: &'a str,
+    checkpoints: Vec<usize>,
+}
+impl<'a> SourceLines<'a> {
+    const STRIDE: usize = 256;
+    fn new(text: &'a str) -> Self {
+        let mut checkpoints = vec![0];
+        let mut lines = 0;
+        for (offset, byte) in text.bytes().enumerate() {
+            if byte == b'\n' {
+                lines += 1;
+                if lines % Self::STRIDE == 0 {
+                    checkpoints.push(offset + 1);
+                }
+            }
+        }
+        Self { text, checkpoints }
     }
-    let lines = text
-        .lines()
-        .enumerate()
-        .filter_map(|(idx, line)| {
-            let line_no = idx + 1;
-            (line_no >= start && line_no <= end).then_some(line)
-        })
-        .collect::<Vec<_>>();
-    (!lines.is_empty()).then(|| lines.join("\n"))
+    fn lines_for_range(
+        &self,
+        range: &SourceRange,
+    ) -> Option<std::iter::Take<std::iter::Skip<std::str::Lines<'a>>>> {
+        let start = range.line_start? as usize;
+        let end = range.line_end.unwrap_or(start as u32) as usize;
+        if start == 0 || end < start {
+            return None;
+        }
+        let zero_based = start - 1;
+        let offset = *self.checkpoints.get(zero_based / Self::STRIDE)?;
+        let text: &'a str = self.text;
+        Some(
+            text[offset..]
+                .lines()
+                .skip(zero_based % Self::STRIDE)
+                .take(end - start + 1),
+        )
+    }
+
+    fn contains(&self, range: &SourceRange, quote: &str) -> Option<bool> {
+        // Parser byte coordinates and quotes refer to literal source. Joining
+        // str::lines normalizes CRLF and can reject valid multiline evidence.
+        if let Some((start, end)) = range.byte_start.zip(range.byte_end) {
+            let start = usize::try_from(start).ok()?;
+            let end = usize::try_from(end).ok()?;
+            return self.text.get(start..end).map(|slice| slice.contains(quote));
+        }
+        if quote.contains('\n') {
+            return self.slice(range).map(|slice| slice.contains(quote));
+        }
+        let mut lines = self.lines_for_range(range)?;
+        let first = lines.next()?;
+        Some(first.contains(quote) || lines.any(|line| line.contains(quote)))
+    }
+
+    fn slice(&self, range: &SourceRange) -> Option<std::borrow::Cow<'a, str>> {
+        let mut lines = self.lines_for_range(range)?;
+        let first = lines.next()?;
+        let Some(second) = lines.next() else {
+            return Some(std::borrow::Cow::Borrowed(first));
+        };
+        let mut joined = first.to_owned();
+        joined.push('\n');
+        joined.push_str(second);
+        for line in lines {
+            joined.push('\n');
+            joined.push_str(line);
+        }
+        Some(std::borrow::Cow::Owned(joined))
+    }
+}
+
+#[cfg(test)]
+mod line_index_tests {
+    use super::*;
+
+    #[test]
+    fn byte_located_multiline_evidence_preserves_literal_crlf() {
+        let source = "// é\r\nfn run() {\r\n    complete();\r\n}\r\noutside();";
+        let start = source.find("fn run").unwrap();
+        let end = source.find("}\r\n").unwrap() + 1;
+        let range: SourceRange = serde_json::from_value(serde_json::json!({
+            "byte_start": start, "byte_end": end, "line_start": 2, "line_end": 4
+        }))
+        .unwrap();
+        let lines = SourceLines::new(source);
+        assert_eq!(lines.contains(&range, &source[start..end]), Some(true));
+        assert_eq!(lines.contains(&range, "outside();"), Some(false));
+        assert_eq!(
+            lines.contains(&range, "fn run() {\n    complete();\n}"),
+            Some(false)
+        );
+    }
+
+    fn legacy(text: &str, range: &SourceRange) -> Option<String> {
+        let start = range.line_start? as usize;
+        let end = range.line_end.unwrap_or(start as u32) as usize;
+        if start == 0 || end < start {
+            return None;
+        }
+        let lines = text
+            .lines()
+            .enumerate()
+            .filter_map(|(index, line)| (index + 1 >= start && index + 1 <= end).then_some(line))
+            .collect::<Vec<_>>();
+        (!lines.is_empty()).then(|| lines.join("\n"))
+    }
+    #[test]
+    fn indexed_quote_ranges_match_existing_crlf_utf8_and_boundary_semantics() {
+        let text = (0..1025)
+            .map(|index| format!("{index}: é中{}", if index % 2 == 0 { "\r\n" } else { "\n" }))
+            .collect::<String>()
+            + "last\r";
+        for text in ["", "\n", "a\r", "a\r\n", text.as_str()] {
+            let indexed = SourceLines::new(text);
+            for start in [
+                0, 1, 2, 254, 255, 256, 257, 258, 511, 512, 513, 1024, 1025, 1026, 2048,
+            ] {
+                for width in [0, 1, 2, 255, 256, 500] {
+                    let range: SourceRange = serde_json::from_value(
+                        serde_json::json!({"line_start":start,"line_end":start+width}),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        indexed.slice(&range).map(|value| value.into_owned()),
+                        legacy(text, &range),
+                        "start={start} width={width}"
+                    );
+                    for quote in ["", "é", "中", "last\r", "é中\n", "outside"] {
+                        assert_eq!(
+                            indexed.contains(&range, quote),
+                            legacy(text, &range).map(|slice| slice.contains(quote))
+                        );
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn sparse_index_stays_bounded_for_the_worst_line_density() {
+        let text = "\n".repeat(1024 * 1024);
+        let indexed = SourceLines::new(&text);
+        assert_eq!(indexed.checkpoints.len(), 4097);
+        assert!(indexed.checkpoints.capacity() * size_of::<usize>() <= 16 + text.len() / 16);
+        let range: SourceRange = serde_json::from_value(
+            serde_json::json!({"line_start":1_000_000,"line_end":1_000_000}),
+        )
+        .unwrap();
+        assert_eq!(indexed.slice(&range).as_deref(), Some(""));
+    }
 }
 
 fn document_bounds(document: &PreparedDocument) -> Option<SourceRangeBounds> {

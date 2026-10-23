@@ -253,3 +253,29 @@ fn nodes_only_candidate_without_edges_needs_no_evidence() {
     c.evidence.clear();
     assert!(validate_candidate(&c).is_ok());
 }
+
+#[test]
+fn large_candidate_endpoint_membership_preserves_unknown_endpoint_rejection() {
+    let mut candidate = base_candidate();
+    let prototype = candidate.nodes[0].clone();
+    let edge = candidate.edges[0].clone();
+    candidate.nodes = (0..10_000)
+        .map(|index| {
+            let mut node = prototype.clone();
+            node.stable_key = format!("repo:{index}");
+            node
+        })
+        .collect();
+    candidate.edges = (0..10_000)
+        .map(|index| {
+            let mut item = edge.clone();
+            item.from_stable_key = "repo:0".into();
+            item.to_stable_key = format!("repo:{index}");
+            item
+        })
+        .collect();
+    validate_candidate(&candidate).expect("large valid candidate");
+    candidate.edges.last_mut().unwrap().to_stable_key = "missing".into();
+    let error = validate_candidate(&candidate).unwrap_err();
+    assert!(error.message.contains("unknown to stable_key"));
+}

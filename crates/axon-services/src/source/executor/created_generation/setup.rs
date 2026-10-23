@@ -27,3 +27,21 @@ pub(in crate::source::executor) async fn ensure_generation_collection(
     .await?;
     Ok(())
 }
+
+use super::{GenerationAccumulator, SourceGeneration};
+
+pub(super) async fn initialize_accumulator(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    generation: &SourceGeneration,
+) -> anyhow::Result<GenerationAccumulator> {
+    let mut accumulated = GenerationAccumulator::new(
+        generation,
+        input.plan.job_id,
+        input.execution.attempt,
+        runtime,
+    )
+    .await?;
+    accumulated.graph_stage = input.graph_stage.clone();
+    Ok(accumulated)
+}
