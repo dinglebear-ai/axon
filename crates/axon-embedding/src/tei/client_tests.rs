@@ -408,11 +408,18 @@ async fn embed_all_splits_batches_at_the_configured_token_boundary() {
     let server = MockServer::start_async().await;
     let tokenize = server
         .mock_async(|when, then| {
-            when.method("POST").path("/tokenize").json_body(
-                serde_json::json!({"inputs":["aaaa", "bbbb"],"add_special_tokens":true}),
-            );
-            then.status(200)
-                .json_body(serde_json::json!([[{"id":1}],[{"id":2}]]));
+            when.method("POST")
+                .path("/tokenize")
+                .json_body(serde_json::json!({"inputs":"aaaa","add_special_tokens":true}));
+            then.status(200).json_body(serde_json::json!([{"id":1}]));
+        })
+        .await;
+    let second_tokenize = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/tokenize")
+                .json_body(serde_json::json!({"inputs":"bbbb","add_special_tokens":true}));
+            then.status(200).json_body(serde_json::json!([{"id":2}]));
         })
         .await;
     let endpoint = server
@@ -443,6 +450,7 @@ async fn embed_all_splits_batches_at_the_configured_token_boundary() {
     assert_eq!(outcome.requests, 2);
     endpoint.assert_calls_async(2).await;
     tokenize.assert_calls_async(1).await;
+    second_tokenize.assert_calls_async(1).await;
     assert_eq!(outcome.input_tokens, Some(2));
 }
 
@@ -798,6 +806,12 @@ async fn live_embed_all_drains_more_than_two_admission_waves() {
 
     assert_eq!(outcome.vectors.len(), inputs.len());
     assert_eq!(outcome.requests, 6);
+    assert_eq!(outcome.tokenization_fallback, None);
+    assert!(
+        outcome
+            .input_tokens
+            .is_some_and(|tokens| tokens >= inputs.len() as u64)
+    );
 }
 
 #[test]

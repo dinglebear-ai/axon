@@ -26,10 +26,21 @@ async fn server_tokens_improve_packing_and_preserve_order() {
             when.method("POST")
                 .path("/tokenize")
                 .json_body(serde_json::json!({
-                    "inputs": ["long ASCII sentence", "漢字"], "add_special_tokens": true
+                    "inputs": "long ASCII sentence", "add_special_tokens": true
                 }));
             then.status(200)
-                .json_body(serde_json::json!([[{"id":1},{"id":2}], [{"id":3},{"id":4}]]));
+                .json_body(serde_json::json!([{"id":1},{"id":2}]));
+        })
+        .await;
+    let unicode = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/tokenize")
+                .json_body(serde_json::json!({
+                    "inputs": "漢字", "add_special_tokens": true
+                }));
+            then.status(200)
+                .json_body(serde_json::json!([{"id":3},{"id":4}]));
         })
         .await;
     let embed = server
@@ -51,6 +62,7 @@ async fn server_tokens_improve_packing_and_preserve_order() {
     assert_eq!(result.input_tokens, Some(4));
     assert_eq!(result.tokenization_fallback, None);
     tokenize.assert_calls_async(1).await;
+    unicode.assert_calls_async(1).await;
     embed.assert_calls_async(1).await;
 }
 
@@ -81,7 +93,12 @@ async fn unsupported_capability_is_shared_and_fallback_is_visible() {
 
 #[tokio::test]
 async fn malformed_and_denied_counts_never_relax_limits() {
-    for (status, body) in [(200, "[[{}]]"), (200, "[]"), (403, "denied")] {
+    for (status, body) in [
+        (200, "[{}]"),
+        (200, "[]"),
+        (200, "[[], []]"),
+        (403, "denied"),
+    ] {
         let server = MockServer::start_async().await;
         server
             .mock_async(|when, then| {
@@ -160,17 +177,16 @@ async fn tokenization_admission_timeout_releases_every_permit() {
 }
 
 #[tokio::test]
-async fn tokenizer_windows_share_configured_request_and_input_limits() {
+async fn tokenizer_inputs_share_configured_request_and_input_limits() {
     let server = MockServer::start_async().await;
     let tokenize = server
         .mock_async(|when, then| {
             when.method("POST")
                 .path("/tokenize")
                 .json_body(serde_json::json!({
-                    "inputs": ["a", "a"], "add_special_tokens": true
+                    "inputs": "a", "add_special_tokens": true
                 }));
-            then.status(200)
-                .json_body(serde_json::json!([[{"id":1}], [{"id":1}]]));
+            then.status(200).json_body(serde_json::json!([{"id":1}]));
         })
         .await;
     let mut transport = client(server.base_url());
@@ -180,5 +196,41 @@ async fn tokenizer_windows_share_configured_request_and_input_limits() {
         .await;
     assert_eq!(counts, vec![1, 1, 1, 1]);
     assert_eq!(fallback, None);
-    tokenize.assert_calls_async(2).await;
+    tokenize.assert_calls_async(4).await;
+}
+
+#[tokio::test]
+async fn singleton_nested_token_response_is_accepted() {
+    let server = MockServer::start_async().await;
+    let tokenize = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/tokenize")
+                .json_body(serde_json::json!({
+                    "inputs": "a", "add_special_tokens": true
+                }));
+            then.status(200).json_body(serde_json::json!([[{"id":1}]]));
+        })
+        .await;
+    assert_eq!(
+        client(server.base_url()).token_counts(&["a".into()]).await,
+        (vec![1], None)
+    );
+    tokenize.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn oversized_tokenizer_input_is_rejected_before_sending() {
+    let server = MockServer::start_async().await;
+    let tokenize = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/tokenize");
+            then.status(200).json_body(serde_json::json!([{"id":1}]));
+        })
+        .await;
+    let (_, reason) = client(server.base_url())
+        .token_counts(&["\0".repeat(TOKENIZE_REQUEST_BYTES / 6)])
+        .await;
+    assert_eq!(reason, Some("tokenization_payload_limit"));
+    tokenize.assert_calls_async(0).await;
 }

@@ -194,15 +194,21 @@ def validate_tokenize_payload(payload: Any) -> tuple[list[str], bool]:
     add_special = payload.get("add_special_tokens", True)
     if not isinstance(add_special, bool) or payload.get("prompt_name") is not None:
         raise RequestLimitError("unsupported tokenizer options")
-    return validate_payload({"inputs": payload.get("inputs")}), add_special
+    texts = payload.get("inputs")
+    if isinstance(texts, str):
+        texts = [texts]
+    return validate_payload({"inputs": texts}), add_special
 
 
-def tokenize_response(encodings) -> list[list[dict[str, Any]]]:
-    return [[{"id": token, "text": text, "special": bool(special),
+def tokenize_response(
+    encodings, *, single: bool = False
+) -> list[dict[str, Any]] | list[list[dict[str, Any]]]:
+    rows = [[{"id": token, "text": text, "special": bool(special),
               "start": None if special else start, "stop": None if special else stop}
              for token, text, special, (start, stop) in
              zip(row.ids, row.tokens, row.special_tokens_mask, row.offsets)]
             for row in encodings]
+    return rows[0] if single else rows
 
 
 if not TEST_MODE:
@@ -497,7 +503,7 @@ if not TEST_MODE:
             encodings = await anyio.to_thread.run_sync(encode, abandon_on_cancel=False)
             if sum(len(row.ids) for row in encodings) > MAX_REQUEST_TOKENS:
                 raise RequestLimitError("aggregate tokens exceed configured limit")
-            encoded = orjson.dumps(tokenize_response(encodings))
+            encoded = orjson.dumps(tokenize_response(encodings, single=isinstance(payload["inputs"], str)))
             if len(encoded) > MAX_BODY_BYTES:
                 raise RequestLimitError("token response exceeds configured byte limit")
             return Response(encoded, media_type="application/json")

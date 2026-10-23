@@ -1,4 +1,4 @@
-//! Provider-matched counts from TEI's authenticated, batched `/tokenize` API.
+//! Provider-matched counts from TEI's authenticated `/tokenize` API.
 //! No local tokenizer artifacts or model downloads are needed. The API performs
 //! tokenization again at embedding time, so expose that overhead separately.
 
@@ -20,7 +20,7 @@ pub(crate) struct TokenizationState {
 
 #[derive(serde::Serialize)]
 struct TokenizeRequest<'a> {
-    inputs: &'a [String],
+    inputs: &'a str,
     add_special_tokens: bool,
 }
 
@@ -30,6 +30,29 @@ struct Token {
     // accepted as tokenizer output. Text/offsets need not be allocated.
     #[serde(rename = "id")]
     _id: u32,
+}
+
+// Older TEI returns a flat array; newer versions may wrap a single input's
+// tokens in one row. Never accept multiple rows for one requested input.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum TokenizeResponse {
+    Single(Vec<Token>),
+    Rows(Vec<Vec<Token>>),
+}
+
+impl TokenizeResponse {
+    fn count(self) -> Result<usize, &'static str> {
+        let tokens = match self {
+            Self::Single(tokens) => tokens,
+            Self::Rows(mut rows) if rows.len() == 1 => rows.pop().unwrap(),
+            Self::Rows(_) => return Err("tokenization_count_mismatch"),
+        };
+        if tokens.is_empty() {
+            return Err("tokenization_count_mismatch");
+        }
+        Ok(tokens.len())
+    }
 }
 
 impl TokenizationState {
@@ -80,7 +103,7 @@ impl TeiClient {
         }
         let result = tokio::time::timeout(
             budget.saturating_sub(started.elapsed()),
-            self.count_windows(inputs),
+            self.count_inputs(inputs),
         )
         .await;
         metrics::histogram!("axon_tei_tokenization_seconds")
@@ -95,26 +118,18 @@ impl TeiClient {
         }
     }
 
-    async fn count_windows(&self, inputs: &[String]) -> Result<Vec<usize>, &'static str> {
+    async fn count_inputs(&self, inputs: &[String]) -> Result<Vec<usize>, &'static str> {
         let mut counts = Vec::with_capacity(inputs.len());
-        let mut start = 0;
-        while start < inputs.len() {
-            let mut end = start;
-            let mut bytes = 64_usize;
-            while end < inputs.len() && end - start < self.max_batch_inputs {
-                let next = policy::serialized_input_bytes(&inputs[end]);
-                if bytes.saturating_add(next) > TOKENIZE_REQUEST_BYTES {
-                    break;
-                }
-                bytes += next;
-                end += 1;
-            }
-            if end == start {
+        // The portable TEI contract accepts one string, not an embedding batch.
+        // Count in source order under the existing total budget and admission.
+        for input in inputs {
+            if 64_usize.saturating_add(policy::serialized_input_bytes(input))
+                > TOKENIZE_REQUEST_BYTES
+            {
                 return Err("tokenization_payload_limit");
             }
-            let window = &inputs[start..end];
             let (_profile, _request, _inputs) = self
-                .acquire_admission(window.len())
+                .acquire_admission(1)
                 .await
                 .map_err(|_| "tokenization_admission_closed")?;
             let mut request = self.client.post(&self.tokenize_url);
@@ -125,7 +140,7 @@ impl TeiClient {
             let resp = request
                 .timeout(self.request_timeout.min(TOKENIZE_BUDGET))
                 .json(&TokenizeRequest {
-                    inputs: window,
+                    inputs: input,
                     add_special_tokens: true,
                 })
                 .send()
@@ -143,14 +158,10 @@ impl TeiClient {
                     _ => "tokenization_http_error",
                 });
             }
-            let rows: Vec<Vec<Token>> = response::read_json(resp, TOKENIZE_BODY_LIMIT)
+            let tokens: TokenizeResponse = response::read_json(resp, TOKENIZE_BODY_LIMIT)
                 .await
                 .map_err(|_| "tokenization_invalid_or_oversized_response")?;
-            if rows.len() != window.len() || rows.iter().any(Vec::is_empty) {
-                return Err("tokenization_count_mismatch");
-            }
-            counts.extend(rows.iter().map(Vec::len));
-            start = end;
+            counts.push(tokens.count()?);
         }
         Ok(counts)
     }

@@ -22,6 +22,15 @@ class MlxTeiDirectTests(unittest.TestCase):
             {"id": 2, "text": "hello", "special": False, "start": 0, "stop": 5},
         ]])
 
+    def test_scalar_tokenize_matches_standard_tei(self):
+        from types import SimpleNamespace
+        self.assertEqual(SERVER.validate_tokenize_payload({"inputs": "漢字"}), (["漢字"], True))
+        self.assertEqual(SERVER.validate_tokenize_payload({"inputs": "", "add_special_tokens": False}), ([""], False))
+        row = SimpleNamespace(ids=[1], tokens=["hello"], special_tokens_mask=[0], offsets=[(0, 5)])
+        self.assertEqual(SERVER.tokenize_response([row], single=True), [
+            {"id": 1, "text": "hello", "special": False, "start": 0, "stop": 5},
+        ])
+
     def test_tokenize_payload_preserves_special_tokens_option(self):
         self.assertEqual(SERVER.validate_tokenize_payload({"inputs": ["a", "漢字"]}), (["a", "漢字"], True))
         self.assertEqual(SERVER.validate_tokenize_payload({"inputs": ["a"], "add_special_tokens": False}), (["a"], False))

@@ -46,9 +46,10 @@ effect after all owners of the old endpoint admission state have gone away.
 Restart or drain long-running consumers when applying such changes.
 
 TEI packing obtains model-matched counts, including special tokens, through
-authenticated `/tokenize` requests. Counting shares provider admission and has
-a five-second maximum total budget, 256 KiB request windows and a 16 MiB
-response bound. Unsupported endpoints are cached; unavailable counting uses
+authenticated `/tokenize` requests, sending one input string per request for
+compatibility across TEI versions. Flat token arrays and singleton nested rows
+are accepted. Counting shares provider admission and has a five-second maximum
+total budget, a 256 KiB per-request limit and a 16 MiB response bound. Unsupported endpoints are cached; unavailable counting uses
 conservative UTF-8 byte accounting with a warning and fallback metric. JSON
 payload byte limits remain independent of token limits. Packing computes its
 sort keys once. The MLX direct server exposes the same tokenizer used for
