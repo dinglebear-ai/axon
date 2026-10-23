@@ -33,7 +33,7 @@
     "openapi-typescript": "^7.13.0",
     "shadcn": "^4.11.0",
     "typescript": "^5.9.3",
-    "vite": "^7.2.4",
+    "vite": "^7.3.7",
     "vitest": "^5.0.0"
   },
   "name": "axon-palette-tauri",
