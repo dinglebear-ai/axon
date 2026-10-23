@@ -384,6 +384,9 @@ async fn build_target_runtime(
         document_cache: Arc::new(document_cache),
         artifact_candidate_sink,
         artifact_candidate_outbox: Some(artifact_candidate_outbox),
+        generation_work_root: Some(cfg.output_dir.join("generation-work")),
+        generation_work_gate: Arc::new(tokio::sync::Mutex::new(())),
+        generation_work_slots: Arc::new(Semaphore::new(crate::context::GENERATION_WORK_ADMISSION)),
         source_adapters: Arc::new(tokio::sync::OnceCell::new()),
         enricher: Arc::new(NoopSourceEnricher::new()),
     };

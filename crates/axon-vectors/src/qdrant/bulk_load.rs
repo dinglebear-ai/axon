@@ -14,6 +14,7 @@ const OPTIMIZER_READY_TIMEOUT: Duration = Duration::from_secs(300);
 
 mod journal;
 mod provider;
+mod recovery;
 use journal::BulkLoadJournal;
 #[cfg(test)]
 use journal::{JournalWriteBoundary, PendingBulkLoad};
@@ -447,54 +448,6 @@ impl QdrantVectorStore {
             state.process_lease = None;
         }
         restoring.and(journal_completion)
-    }
-
-    pub(super) async fn recover_bulk_load_transitions(&self) -> Result<()> {
-        let Some(journal) = configured_journal()? else {
-            return Ok(());
-        };
-        self.recover_bulk_load_transitions_from(&journal).await
-    }
-
-    async fn recover_bulk_load_transitions_from(&self, journal: &BulkLoadJournal) -> Result<()> {
-        let endpoint = self.bulk_journal_endpoint()?;
-        for transition in journal.pending().map_err(|error| {
-            ApiError::new(
-                "vector.qdrant.bulk_journal",
-                ErrorStage::Upserting,
-                format!("failed to read bulk-load recovery state: {error}"),
-            )
-        })? {
-            if transition.endpoint != endpoint {
-                continue;
-            }
-            let key = BulkLoadKey {
-                endpoint: endpoint.clone(),
-                collection: transition.collection.clone(),
-            };
-            // A live owner retains this lease through restoration. Recovery
-            // waits for it (or for the OS to release it after a crash) before
-            // touching provider configuration.
-            let _lease = journal.acquire_collection_lease(&key).map_err(|error| {
-                ApiError::new(
-                    "vector.qdrant.bulk_lease",
-                    ErrorStage::Upserting,
-                    format!("failed to acquire recovery lease: {error}"),
-                )
-            })?;
-            self.set_indexing_threshold(&transition.collection, transition.restore_threshold)
-                .await?;
-            self.wait_for_optimizer_ready(&transition.collection)
-                .await?;
-            journal.complete(&key).map_err(|error| {
-                ApiError::new(
-                    "vector.qdrant.bulk_journal",
-                    ErrorStage::Upserting,
-                    format!("failed to clear recovered bulk-load state: {error}"),
-                )
-            })?;
-        }
-        Ok(())
     }
 }
 

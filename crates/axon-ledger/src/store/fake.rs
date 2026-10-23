@@ -11,6 +11,7 @@ mod document;
 mod failure_injection;
 mod generation;
 mod lease;
+mod receipt;
 
 use super::util::*;
 use super::{LedgerStore, Result};
@@ -355,6 +356,14 @@ impl LedgerStore for FakeLedgerStore {
             ));
         }
         generation::committed_generation(&self.state, source_id).await
+    }
+
+    async fn generation_receipt(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<super::GenerationReceipt>> {
+        receipt::generation_receipt(&self.state, source_id, generation).await
     }
 
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {

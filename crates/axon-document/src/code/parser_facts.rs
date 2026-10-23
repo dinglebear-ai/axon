@@ -30,7 +30,7 @@ pub(super) fn parser_code_symbol_chunks(
     let mut aliases = std::collections::BTreeMap::<(usize, usize), Vec<String>>::new();
     for (start, end, fact) in &spans {
         let names = aliases.entry((*start, *end)).or_default();
-        if names.last() != Some(&fact.name) {
+        if !fact.name.trim().is_empty() && names.last() != Some(&fact.name) {
             names.push(fact.name.clone());
         }
     }
@@ -150,6 +150,7 @@ fn attach_owner_aliases(
             {
                 names.extend(values.iter().filter_map(|v| v.as_str().map(str::to_string)));
             }
+            names.retain(|name| !name.trim().is_empty());
             chunk
                 .metadata
                 .insert("code_symbol_aliases".into(), serde_json::json!(names));

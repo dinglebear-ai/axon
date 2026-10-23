@@ -5,6 +5,7 @@
 //! the plan, and retains the temporary checkout through the service bridge.
 
 mod acquire;
+mod classification;
 mod dedup;
 mod discovery;
 mod metadata;

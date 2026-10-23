@@ -268,3 +268,22 @@ fn heuristic_and_unsupported_code_publish_the_actual_fallback_method() {
     assert_eq!(chunks[0].metadata["actual_chunking_method"], "atomic_code");
     assert_eq!(chunks[0].metadata["code_parse_status"], "unsupported");
 }
+
+#[test]
+fn terraform_type_assignment_has_no_empty_fallback_symbol() {
+    let source = "variable \"project_id\" {\n  type = string\n  sensitive = true\n}\n";
+    let chunks = code_symbols(source, Some("variables.tf"), None);
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|chunk| chunk.content.as_str())
+            .collect::<String>(),
+        source
+    );
+    assert!(chunks.iter().all(|chunk| {
+        chunk
+            .symbol
+            .as_ref()
+            .is_none_or(|symbol| !symbol.trim().is_empty())
+    }));
+}

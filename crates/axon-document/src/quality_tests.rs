@@ -247,3 +247,24 @@ fn configured_cutoff_controls_unicode_lengths_and_context_packing() {
         useful_chunks_with_limit(vec![chunk(&short, 0, short.len())], &short, 1000, 200).is_empty()
     );
 }
+
+#[test]
+fn symbol_aliases_reject_blank_names_but_preserve_named_symbols() {
+    let mut target = DocumentChunk::new("useful", text::source_range("", 0, 0))
+        .with_symbol("")
+        .with_metadata("code_symbol_aliases", serde_json::json!(["", " ", "valid"]));
+    let other = DocumentChunk::new("context", text::source_range("", 0, 0)).with_symbol("other");
+    remember_symbols(&mut target, &other);
+    assert_eq!(
+        target.metadata["code_symbol_aliases"],
+        serde_json::json!(["other", "valid"])
+    );
+    target
+        .metadata
+        .insert("code_symbol_aliases".into(), serde_json::json!([" "]));
+    remember_symbols(
+        &mut target,
+        &DocumentChunk::new("context", text::source_range("", 0, 0)),
+    );
+    assert!(!target.metadata.contains_key("code_symbol_aliases"));
+}

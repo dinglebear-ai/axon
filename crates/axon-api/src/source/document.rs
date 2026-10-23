@@ -18,6 +18,8 @@ pub enum ContentSkipReason {
     UnsupportedBinary,
     UnsupportedEncoding,
     EmptyContent,
+    /// Nonempty content produced no chunks after the bounded shared quality gate.
+    NoSearchableChunks,
     UnresolvedContentReference,
     SizeLimitExceeded,
 }
@@ -28,6 +30,7 @@ impl ContentSkipReason {
             Self::UnsupportedBinary => "unsupported_binary",
             Self::UnsupportedEncoding => "unsupported_encoding",
             Self::EmptyContent => "empty_content",
+            Self::NoSearchableChunks => "no_searchable_chunks",
             Self::UnresolvedContentReference => "unresolved_content_reference",
             Self::SizeLimitExceeded => "size_limit_exceeded",
         }

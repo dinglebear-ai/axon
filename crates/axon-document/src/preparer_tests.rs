@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-13");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-18");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -937,9 +937,9 @@ fn decoded_utf16_is_redacted_before_parsing_and_range_validation() {
     );
     assert!(prepared.graph_candidates.iter().any(|candidate| {
         candidate
-            .merge_key
-            .as_deref()
-            .is_some_and(|key| key.contains("After the secret"))
+            .nodes
+            .iter()
+            .any(|node| node.label == "After the secret")
     }));
     assert!(prepared.warnings.iter().any(|warning| {
         warning.code == "document.content.pre_chunk_redacted" && warning.severity == Severity::Info
@@ -1220,12 +1220,12 @@ fn oversized_structured_record_is_bounded_before_embedding() {
             .iter()
             .all(|chunk| chunk.content.len() <= 4096)
     );
-    assert!(
-        prepared
-            .chunks
-            .iter()
-            .all(|chunk| chunk.source_range.json_pointer.as_deref() == Some("/items"))
-    );
+    for chunk in &prepared.chunks {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert!(start < end);
+        assert_eq!(chunk.content, body[start..end]);
+    }
 }
 
 #[test]
@@ -1285,7 +1285,10 @@ fn oversized_session_turn_keeps_turn_id_and_exact_ranges() {
 
 #[test]
 fn multi_megabyte_json_record_has_bounded_embedding_chunks() {
-    let body = format!("{{\"payload\":\"{}\"}}", "x".repeat(3_000_000));
+    let payload = (0..125_000)
+        .map(|i| format!("{i:012}abcdefghijkl"))
+        .collect::<String>();
+    let body = format!("{{\"payload\":\"{payload}\"}}");
     let PrepareSourceDocumentResult::Prepared(prepared) =
         crate::testing::preparer_for_small_fixtures()
             .prepare(request(
@@ -1417,9 +1420,9 @@ fn redacted_content_parses_and_validates_after_scrub() {
     // redacted line.
     assert!(
         prepared.graph_candidates.iter().any(|candidate| candidate
-            .merge_key
-            .as_deref()
-            .is_some_and(|key| key.contains("After the secret"))),
+            .nodes
+            .iter()
+            .any(|node| node.label == "After the secret")),
         "heading candidates after the redacted line must survive validation; got: {:?}",
         prepared
             .graph_candidates
@@ -1746,7 +1749,10 @@ fn default_quality_cutoff_rejects_a_sub_200_character_document() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap();
-    assert!(matches!(result, PrepareSourceDocumentResult::Skipped(_)));
+    assert!(
+        matches!(result, PrepareSourceDocumentResult::Skipped(skipped)
+        if skipped.reason == axon_api::source::ContentSkipReason::NoSearchableChunks)
+    );
 }
 
 #[test]
@@ -1790,4 +1796,205 @@ fn shared_minimum_cannot_exceed_non_markdown_chunk_capacity() {
         ))
         .unwrap();
     assert!(matches!(result, PrepareSourceDocumentResult::Prepared(_)));
+}
+
+#[test]
+fn concise_ast_code_and_structured_records_survive_default_quality_floor() {
+    for (kind, profile, path, body) in [
+        (
+            ContentKind::Code,
+            ChunkingProfile::CodeSymbol,
+            "cleanup.py",
+            "def cleanup():\n    return True\n",
+        ),
+        (
+            ContentKind::Code,
+            ChunkingProfile::CodeSymbol,
+            "run.sh",
+            "#!/bin/sh\nexec service start\n",
+        ),
+        (
+            ContentKind::Json,
+            ChunkingProfile::StructuredRecords,
+            "settings.json",
+            r#"{"enabled":true}"#,
+        ),
+        (
+            ContentKind::Toml,
+            ChunkingProfile::StructuredRecords,
+            "settings.toml",
+            "enabled = true\n",
+        ),
+    ] {
+        let mut input = request(kind, body, "tiny-structural", profile);
+        input.document.path = Some(path.into());
+        input.document.canonical_uri = format!("file:///{path}");
+        input.document.source_item_key = SourceItemKey::from(path);
+        let result = DocumentPreparer::default().prepare(input).unwrap();
+        let PrepareSourceDocumentResult::Prepared(doc) = result else {
+            panic!("missing {path}");
+        };
+        assert!(!doc.chunks.is_empty());
+        validate_prepared_document(&doc).unwrap();
+    }
+}
+
+#[test]
+fn tiny_comments_imports_and_malformed_code_do_not_bypass_quality_floor() {
+    for body in ["# comment only\n", "import os\n", "def broken(\n"] {
+        let mut input = request(
+            ContentKind::Code,
+            body,
+            "tiny-noise",
+            ChunkingProfile::CodeSymbol,
+        );
+        input.document.path = Some("module.py".into());
+        assert!(matches!(
+            DocumentPreparer::default().prepare(input).unwrap(),
+            PrepareSourceDocumentResult::Skipped(_)
+        ));
+    }
+}
+
+#[test]
+fn malformed_and_scalar_structured_documents_keep_quality_floor() {
+    for (kind, body) in [
+        (ContentKind::Json, "{broken"),
+        (ContentKind::Yaml, "# only comment"),
+        (ContentKind::Toml, "enabled = ["),
+        (ContentKind::Yaml, "just a scalar"),
+    ] {
+        assert!(matches!(
+            DocumentPreparer::default()
+                .prepare(request(
+                    kind,
+                    body,
+                    "tiny-invalid-record",
+                    ChunkingProfile::StructuredRecords
+                ))
+                .unwrap(),
+            PrepareSourceDocumentResult::Skipped(_)
+        ));
+    }
+}
+
+#[test]
+fn default_routing_recovers_complete_valid_configs_after_short_record_filtering() {
+    let entries = (0..28)
+        .map(|i| {
+            (
+                format!("provenance_field_{i}"),
+                format!("build_identifier_{i}"),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let json = serde_json::to_string_pretty(&entries).unwrap();
+    let yaml = entries
+        .iter()
+        .map(|(k, v)| format!("{k}: {v}\n"))
+        .collect::<String>();
+    for (kind, path, body) in [
+        (ContentKind::Json, "assets/provenance.json", json),
+        (ContentKind::Yaml, "runtime/config.yaml", yaml),
+    ] {
+        assert!(body.len() > 700);
+        let mut input = request(
+            kind,
+            &body,
+            "structured-fallback",
+            ChunkingProfile::StructuredRecords,
+        );
+        input.profile = None;
+        input.document.path = Some(path.into());
+        input.document.canonical_uri = format!("file:///{path}");
+        input.document.source_item_key = SourceItemKey::from(path);
+        let PrepareSourceDocumentResult::Prepared(doc) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("complete config omitted: {path}");
+        };
+        if kind == ContentKind::Json {
+            assert!(
+                doc.warnings
+                    .iter()
+                    .any(|w| w.code == "chunk.structured_quality_fallback")
+            );
+            assert_eq!(doc.chunking_method, "plain_text_windows");
+        }
+        assert_eq!(doc.prepare_version, "axon-document/schema-18");
+        for (key, value) in &entries {
+            assert!(
+                doc.chunks
+                    .iter()
+                    .any(|c| c.content.contains(key) && c.content.contains(value))
+            );
+        }
+        for chunk in &doc.chunks {
+            let start = chunk.source_range.byte_start.unwrap() as usize;
+            let end = chunk.source_range.byte_end.unwrap() as usize;
+            assert_eq!(chunk.content, body[start..end]);
+            assert!(chunk.content.len() <= crate::text::MAX_PLAIN_TEXT_CHUNK_BYTES);
+            assert!(chunk.content.chars().count() <= crate::text::MAX_PLAIN_TEXT_CHUNK_CHARS);
+        }
+        validate_prepared_document(&doc).unwrap();
+    }
+}
+
+#[test]
+fn default_routing_does_not_recover_malformed_or_scalar_configs() {
+    for (kind, path, body) in [
+        (ContentKind::Json, "config.json", "{broken"),
+        (ContentKind::Yaml, "config.yaml", "just a scalar"),
+        (ContentKind::Toml, "config.toml", "enabled = ["),
+        (ContentKind::Json, "config.json", "true"),
+    ] {
+        let mut input = request(
+            kind,
+            body,
+            "invalid-config",
+            ChunkingProfile::StructuredRecords,
+        );
+        input.profile = None;
+        input.document.path = Some(path.into());
+        input.document.canonical_uri = format!("file:///{path}");
+        input.document.source_item_key = SourceItemKey::from(path);
+        assert!(matches!(
+            DocumentPreparer::default().prepare(input).unwrap(),
+            PrepareSourceDocumentResult::Skipped(_)
+        ));
+    }
+}
+
+#[test]
+fn default_json_projection_never_publishes_empty_citation_ranges() {
+    let body = serde_json::json!({"objective": "Operators safely manage persistent sessions and recovery through the QA VM controller. ".repeat(5)}).to_string();
+    let mut input = request(
+        ContentKind::Json,
+        &body,
+        "json-citation",
+        ChunkingProfile::StructuredRecords,
+    );
+    input.profile = None;
+    input.document.path = Some("review-marker.json".into());
+    input.document.canonical_uri = "file:///review-marker.json".into();
+    let PrepareSourceDocumentResult::Prepared(doc) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("valid record omitted")
+    };
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.code == "chunk.structured_quality_fallback")
+    );
+    for chunk in doc.chunks {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert!(start < end);
+        assert_eq!(chunk.content, body[start..end]);
+        let lines = body.lines().collect::<Vec<_>>();
+        let lo = chunk.source_range.line_start.unwrap() as usize;
+        let hi = chunk.source_range.line_end.unwrap() as usize;
+        assert!(lines[lo - 1..hi].join("\n").contains(&chunk.content));
+    }
 }

@@ -18,7 +18,9 @@ use crate::profile::ChunkingProfile;
 use crate::source_range::bounds_for_text;
 
 mod chunk_build;
+mod embedding_context;
 mod observed;
+mod structural_quality;
 mod validation;
 use chunk_build::{
     bound_or_fallback, build_chunks, empty_fallback_warning, finalize_chunks, parsed_code_method,
@@ -32,7 +34,7 @@ use validation::validate_prepared_document_with_bounds;
 
 /// Durable preparation-output schema. Bump only when redaction, parsing,
 /// routing, chunk construction, or emitted provenance semantics change.
-pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-13";
+pub const PREPARATION_SCHEMA_VERSION: &str = "axon-document/schema-18";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentPreparerConfig {
@@ -174,22 +176,7 @@ impl DocumentPreparer {
         // facts (or explicitly forced a profile) keep their supplied artifacts.
         // The self-parse sees the same post-redaction text that chunking and
         // range validation use.
-        let parse = if request.parse_facts.is_empty() && metadata_parse.facts.is_empty() {
-            // Clone only lightweight identity/metadata. Move the redacted body
-            // through the synchronous parser and recover it afterward so no
-            // full source-body clone is live before parsing.
-            let mut parse_doc = request.document.clone();
-            parse_doc.content = ContentRef::InlineText {
-                text: std::mem::take(&mut content.text),
-            };
-            let (parse, parsed_doc) = parse_document_owned(parse_doc);
-            if let ContentRef::InlineText { text } = parsed_doc.content {
-                content.text = text;
-            }
-            parse
-        } else {
-            DocumentParse::default()
-        };
+        let parse = self_parse(&request, &mut content, metadata_parse.facts.is_empty());
         merge_parse_artifacts(&mut request, &parse);
         request.parse_facts.extend(metadata_parse.facts);
         request
@@ -228,25 +215,27 @@ impl DocumentPreparer {
             self.config.markdown_limits(),
         );
         let bounded = bound_or_fallback(build.chunks, &content.text);
-        let chunks = finalize_chunks(
+        let (chunks, structural_warning) = self.finish_quality(
+            &request,
             profile,
             bounded.chunks,
             &content.text,
-            self.config.markdown_limits(),
             decision.method,
-            self.semantic_config().minimum_chunk_chars,
         );
         if chunks.is_empty() {
-            return Ok(PrepareSourceDocumentResult::Skipped(skipped_document(
-                request,
-                ContentSkipReason::EmptyContent,
-            )));
+            return Ok(PrepareSourceDocumentResult::Skipped(
+                structural_quality::quality_filtered_document(
+                    request,
+                    content.text.len(),
+                    self.semantic_config().minimum_chunk_chars,
+                ),
+            ));
         }
         let parsed_code_method = parsed_code_method(profile, use_size_or_adapter_fallback, &chunks);
         let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
             .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
         let chunking_method = actual_chunking_method(
-            bounded.size_backstop || bounded.empty_fallback,
+            bounded.size_backstop || bounded.empty_fallback || structural_warning.is_some(),
             !build.warnings.is_empty(),
             parsed_code_method.as_deref(),
             decision.method,
@@ -255,6 +244,7 @@ impl DocumentPreparer {
         let mut warnings = request.warnings;
         warnings.extend(content.warnings);
         warnings.extend(build.warnings);
+        warnings.extend(structural_warning);
         if bounded.empty_fallback {
             warnings.push(empty_fallback_warning(&request.document.source_item_key));
         }
@@ -512,13 +502,23 @@ fn build_prepared_chunk(
             .entry("code_symbol_kind".to_string())
             .or_insert_with(|| crate::code::code_symbol_kind_for_content(&chunk.content).into());
     }
+    let embedding_text = if profile == ChunkingProfile::CodeSymbol {
+        embedding_context::code_context(
+            &chunk.content,
+            path.as_deref(),
+            symbol.as_deref(),
+            &metadata,
+        )
+    } else {
+        None
+    };
     PreparedChunk {
         chunk_id,
         chunk_key,
         document_id: request.document.document_id.clone(),
         chunk_index: idx as u32,
         content_hash,
-        embedding_text: None,
+        embedding_text,
         chunk_locator: ChunkLocator {
             canonical_uri: request.document.canonical_uri.clone(),
             path,
@@ -598,4 +598,27 @@ fn stable_chunk_key(
         profile.as_str(),
         stable_token(&raw_key)
     )
+}
+
+fn self_parse(
+    request: &PrepareSourceDocumentRequest,
+    content: &mut PreparedContentText,
+    metadata_facts_empty: bool,
+) -> DocumentParse {
+    if request.parse_facts.is_empty() && metadata_facts_empty {
+        // Clone only lightweight identity/metadata. Move the redacted body
+        // through the synchronous parser and recover it afterward so no
+        // full source-body clone is live before parsing.
+        let mut parse_doc = request.document.clone();
+        parse_doc.content = ContentRef::InlineText {
+            text: std::mem::take(&mut content.text),
+        };
+        let (parse, parsed_doc) = parse_document_owned(parse_doc);
+        if let ContentRef::InlineText { text } = parsed_doc.content {
+            content.text = text;
+        }
+        parse
+    } else {
+        DocumentParse::default()
+    }
 }

@@ -173,6 +173,9 @@ async fn retrieval_ask_context_with_ranking(
         )))
     })?;
 
+    for warning in &result.warnings {
+        axon_core::logging::log_warn(&format!("{}: {}", warning.code, warning.message));
+    }
     let retrieval_elapsed_ms = retrieval_started.elapsed().as_millis();
     let mut ranked =
         ranking::rank_candidates(cfg, question, result.hits, cfg.hybrid_search_enabled);

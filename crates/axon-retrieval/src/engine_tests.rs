@@ -1207,3 +1207,45 @@ impl EmbeddingProvider for MalformedEmbeddingProvider {
             .await
     }
 }
+
+#[test]
+fn query_prompt_is_asymmetric_and_scoped_to_known_qwen_embedding_models() {
+    let query = "How does address renewal differ from bringing an interface up?";
+    for model in [
+        "Qwen/Qwen3-Embedding-0.6B",
+        "Qwen/Qwen3-Embedding-4B",
+        "Qwen/Qwen3-Embedding-8B",
+    ] {
+        assert_eq!(
+            crate::engine::query_embedding_text(model, query),
+            format!(
+                "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{query}"
+            )
+        );
+    }
+    for model in [
+        "fake-embedding",
+        "text-embedding-3-small",
+        "Qwen/Qwen3-Reranker-0.6B",
+        "local/Qwen3-Embedding-0.6B-custom",
+    ] {
+        assert_eq!(crate::engine::query_embedding_text(model, query), query);
+    }
+}
+
+#[test]
+fn query_instruction_policy_respects_effective_provider_capability() {
+    use axon_api::source::InstructionSupport;
+    for support in [InstructionSupport::None, InstructionSupport::DocumentOnly] {
+        assert!(!crate::engine::query_instruction_supported(support));
+    }
+    for support in [
+        InstructionSupport::QueryOnly,
+        InstructionSupport::QueryAndDocument,
+    ] {
+        assert!(crate::engine::query_instruction_supported(support));
+    }
+}
+
+#[path = "engine_tests/query_policy.rs"]
+mod query_policy;

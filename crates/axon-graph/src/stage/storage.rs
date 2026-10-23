@@ -1,5 +1,8 @@
 use super::*;
+
+mod integrity;
 use futures_util::TryStreamExt;
+pub(super) use integrity::digests;
 use sqlx::Row;
 use std::fs;
 #[cfg(unix)]
@@ -101,6 +104,41 @@ const TABLES: &[(&str, &str)] = &[
     ("graph_aliases", "alias_kind || ':' || alias_value"),
     ("graph_conflicts", "conflict_id"),
 ];
+const MAX_STORED_ROW_BYTES: u64 = 8 * 1024 * 1024;
+
+pub(super) async fn bound_private_rows(pool: &SqlitePool) -> Result<()> {
+    let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
+        .fetch_one(pool)
+        .await
+        .map_err(error)?;
+    sqlx::query(&format!(
+        "PRAGMA max_page_count={}",
+        PHYSICAL_STAGE_LIMIT / page_size as u64
+    ))
+    .execute(pool)
+    .await
+    .map_err(error)?;
+    for (table, _) in TABLES {
+        let columns = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await
+            .map_err(error)?;
+        let bytes = columns
+            .iter()
+            .map(|row| {
+                let name: String = row.get("name");
+                format!("coalesce(length(CAST(NEW.{name} AS BLOB)),0)")
+            })
+            .collect::<Vec<_>>()
+            .join("+");
+        for operation in ["INSERT", "UPDATE"] {
+            sqlx::raw_sql(&format!("CREATE TRIGGER stage_bound_{table}_{operation} BEFORE {operation} ON {table} WHEN ({bytes})>{MAX_STORED_ROW_BYTES} BEGIN SELECT RAISE(ABORT,'private graph row exceeds 8 MiB stored window'); END;"))
+                .execute(pool).await.map_err(error)?;
+        }
+    }
+    Ok(())
+}
+
 pub(super) async fn seed(
     live: &SqlitePool,
     scratch: &SqlitePool,
@@ -169,8 +207,13 @@ pub(super) async fn seed(
                 "target_id IN (SELECT value FROM json_each(?1)) OR target_id IN (SELECT value FROM json_each(?2))"
             }
         };
+        let row_bytes = cols
+            .iter()
+            .map(|column| format!("coalesce(length(CAST({column} AS BLOB)),0)"))
+            .collect::<Vec<_>>()
+            .join("+");
         let query = format!(
-            "SELECT {key} AS row_key,json_object({objects}) AS image FROM {table} WHERE {filter}"
+            "SELECT {key} AS row_key,CASE WHEN ({row_bytes})<={MAX_STORED_ROW_BYTES} THEN json_object({objects}) END AS image FROM {table} WHERE {filter}"
         );
         let q = sqlx::query(&query).bind(&ids_json).bind(&edges_json);
         let mut rows = q.fetch(&mut *snapshot);
@@ -181,7 +224,9 @@ pub(super) async fn seed(
             .join(",");
         let mut images = Vec::new();
         while let Some(row) = rows.try_next().await.map_err(error)? {
-            let image: String = row.get("image");
+            let image: Option<String> = row.get("image");
+            let image = image
+                .ok_or_else(|| graph_storage_error("graph seed row exceeds 8 MiB stored window"))?;
             charged += image.len() as u64;
             if charged > LIMIT {
                 return Err(graph_storage_error(
@@ -210,15 +255,16 @@ pub(super) async fn replay_journal(
     conn: &mut SqliteConnection,
     source: &SourceId,
 ) -> Result<GraphWriteResult> {
-    let mut rows = sqlx::query_scalar::<_, String>(
-        "SELECT candidate_json FROM stage_journal ORDER BY sequence",
+    let mut rows = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT CASE WHEN length(CAST(candidate_json AS BLOB))<=12582912 THEN candidate_json END FROM stage_journal ORDER BY sequence",
     )
     .fetch(pool);
     let mut summary = summary(source, &[]);
     while let Some(json) = rows.try_next().await.map_err(error)? {
-        let candidate: GraphCandidate = serde_json::from_str(&json).map_err(|_| {
-            graph_storage_error("graph stage journal corrupt; abandon stage and retry generation")
+        let json = json.ok_or_else(|| {
+            graph_storage_error("graph journal encoded record exceeds admitted window")
         })?;
+        let candidate = journal::decode(&json)?;
         let result = crate::sqlite::upsert::replay_in_tx(conn, &[candidate]).await?;
         summary.candidates_seen += result.candidates_seen;
         summary.nodes_upserted += result.nodes_upserted;
@@ -391,46 +437,6 @@ pub(super) async fn disable_private_revision_triggers(pool: &SqlitePool) -> Resu
     }
     sqlx::raw_sql(&sql).execute(pool).await.map_err(error)?;
     Ok(())
-}
-
-pub(super) async fn digests(pool: &SqlitePool) -> Result<(String, String)> {
-    use sha2::{Digest, Sha256};
-    let mut journal = Sha256::new();
-    let mut rows = sqlx::query_scalar::<_, String>(
-        "SELECT candidate_json FROM stage_journal ORDER BY sequence",
-    )
-    .fetch(pool);
-    while let Some(json) = rows.try_next().await.map_err(error)? {
-        journal.update((json.len() as u64).to_le_bytes());
-        journal.update(json.as_bytes());
-    }
-    drop(rows);
-    let mut writes = Sha256::new();
-    for (table, key) in TABLES {
-        writes.update(table.as_bytes());
-        let cols = sqlx::query(&format!("PRAGMA table_info({table})"))
-            .fetch_all(pool)
-            .await
-            .map_err(error)?
-            .iter()
-            .map(|r| r.get::<String, _>("name"))
-            .collect::<Vec<_>>();
-        let objects = cols
-            .iter()
-            .map(|c| format!("'{c}',{c}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let query = format!("SELECT json_object({objects}) FROM {table} ORDER BY {key}");
-        let mut rows = sqlx::query_scalar::<_, String>(&query).fetch(pool);
-        while let Some(json) = rows.try_next().await.map_err(error)? {
-            writes.update((json.len() as u64).to_le_bytes());
-            writes.update(json.as_bytes());
-        }
-    }
-    Ok((
-        format!("{:x}", journal.finalize()),
-        format!("{:x}", writes.finalize()),
-    ))
 }
 
 pub(super) async fn validate_disposal_path(

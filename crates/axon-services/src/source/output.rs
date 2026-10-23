@@ -271,6 +271,58 @@ pub(crate) async fn store_adapter_archive(
     Ok(output)
 }
 
+pub(crate) async fn store_streamed_archive(
+    runtime: &TargetLocalSourceRuntime,
+    adapter: &dyn SourceAdapter,
+    plan: &SourcePlan,
+    mut archive: axon_adapters::GeneratedArchiveFile,
+    cleanup: &mut crate::reserved_call::ArtifactCleanupGuard,
+) -> anyhow::Result<SourceOutput> {
+    archive
+        .metadata
+        .insert("producer".into(), serde_json::json!(adapter.name()));
+    let request = axon_core::boundary::ArtifactFileWriteRequest {
+        file: archive.file.reopen()?,
+        size_bytes: archive.size_bytes,
+        content_hash: archive.content_hash.clone(),
+        kind: archive.kind,
+        content_type: archive.content_type,
+        source_id: Some(plan.route.source.source_id.clone()),
+        job_id: Some(plan.job_id),
+        metadata: archive.metadata,
+    };
+    if let Some(identity) = reserved_call::sealed_artifact_identity(runtime, &request)? {
+        cleanup
+            .track(&[ArtifactRef {
+                artifact_id: identity.artifact_id,
+                artifact_kind: identity.artifact_kind,
+                uri: identity.uri.unwrap_or_default(),
+                size_bytes: Some(archive.size_bytes),
+                content_hash: Some(archive.content_hash.clone()),
+                created_at: timestamp(),
+            }])
+            .await?;
+    }
+    let handle = reserved_call::put_artifact_file(
+        runtime,
+        artifact_call_context(plan, format!("archive:{}", archive.content_hash)),
+        request,
+    )
+    .await?;
+    let artifact = ArtifactRef {
+        artifact_id: handle.artifact_id,
+        artifact_kind: handle.artifact_kind,
+        uri: handle.uri.unwrap_or_default(),
+        size_bytes: Some(archive.size_bytes),
+        content_hash: Some(archive.content_hash),
+        created_at: timestamp(),
+    };
+    let mut output = SourceOutput::default();
+    output.artifact_index.push_generation(artifact.clone());
+    output.artifacts.push(artifact);
+    Ok(output)
+}
+
 pub(crate) async fn record_artifacts_on_manifest(
     ledger: &dyn axon_ledger::store::LedgerStore,
     manifest: &mut SourceManifest,

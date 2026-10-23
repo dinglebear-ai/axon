@@ -306,7 +306,10 @@ fn mixed_code_search_outcomes_preserve_order_and_summary() {
         BatchItem {
             index: 0,
             input: Some("first".to_string()),
-            outcome: BatchOutcome::Completed(QueryResult { results: vec![] }),
+            outcome: BatchOutcome::Completed(QueryResult {
+                results: vec![],
+                warnings: Vec::new(),
+            }),
         },
         BatchItem {
             index: 1,
@@ -320,7 +323,10 @@ fn mixed_code_search_outcomes_preserve_order_and_summary() {
         BatchItem {
             index: 2,
             input: Some("third".to_string()),
-            outcome: BatchOutcome::Completed(QueryResult { results: vec![] }),
+            outcome: BatchOutcome::Completed(QueryResult {
+                results: vec![],
+                warnings: Vec::new(),
+            }),
         },
     ];
     let result = finish_code_search_batch(BatchId::new(uuid::Uuid::nil()), items, 64 * 1024)

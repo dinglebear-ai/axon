@@ -151,6 +151,12 @@ fn sanitize_drops_facts_with_invalid_ranges_and_degrades_status() {
     assert_eq!(sanitized.warnings.len(), 1);
     assert_eq!(sanitized.warnings[0].code, INVALID_RANGE_WARNING_CODE);
     assert_eq!(sanitized.header.warnings.len(), 1);
+    assert!(
+        !sanitized
+            .warnings
+            .iter()
+            .any(|warning| warning.code == GRAPH_EVIDENCE_REJECTED_WARNING_CODE)
+    );
 }
 
 #[test]
@@ -168,6 +174,12 @@ fn sanitize_drops_candidate_when_its_only_evidence_range_is_invalid() {
     assert!(
         sanitized.graph_candidates.is_empty(),
         "a candidate whose only evidence has an impossible range must never publish"
+    );
+    assert!(
+        sanitized
+            .warnings
+            .iter()
+            .any(|warning| warning.code == GRAPH_EVIDENCE_REJECTED_WARNING_CODE)
     );
     assert_eq!(sanitized.header.status, LifecycleStatus::CompletedDegraded);
 }

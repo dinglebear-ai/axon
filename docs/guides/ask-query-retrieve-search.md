@@ -26,3 +26,13 @@ ranked evidence. Use `retrieve` when you already know the source identity. Use
 
 The commands must not bypass source identity, freshness, vector filters, or
 authorization rules.
+
+## Query score interpretation
+
+Ordinary query output labels its provider value as `score`. Dense search returns
+similarity and hybrid search returns a fusion score. Structured hits identify
+this with `score_kind` (`dense_similarity`, `hybrid_fusion`, or `code_search`);
+neither is an answer
+probability. The serialized `rerank_score` field is retained for compatibility
+and currently mirrors the retrieval score in this path. Its presence does not
+mean a separate reranking model ran.

@@ -15,14 +15,14 @@ pub(in crate::source) async fn stage_prepared(
     let Some(stage) = &input.graph_stage else {
         return Ok(());
     };
-    let candidates = super::filter_valid_candidates(
+    let (candidates, rejected) = super::filter_valid_candidates(
         documents
             .iter()
             .flat_map(|d| d.graph_candidates.iter().cloned())
             .collect(),
         &input.plan.route.source.source_id,
     );
-    if candidates.is_empty() {
+    if candidates.is_empty() && rejected == 0 {
         return Ok(());
     }
     let stage = Arc::clone(stage);
@@ -33,6 +33,7 @@ pub(in crate::source) async fn stage_prepared(
     let job_id = input.plan.job_id;
     run_staging_independently(async move {
         let result = reserved_call::graph_operation(&runtime, context, move || async move {
+            stage.record_rejected_candidates(rejected).await?;
             stage.write_candidates(candidates).await
         })
         .await??;
@@ -329,7 +330,7 @@ fn ensure_not_cancelled(
 
 pub(crate) async fn activated_summary(
     runtime: &TargetLocalSourceRuntime,
-    counts: &IndexCounts,
+    counts: &mut IndexCounts,
 ) -> anyhow::Result<Option<GraphWriteSummary>> {
     let Some(pool) = &runtime.graph_stage_pool else {
         return Ok(None);
@@ -337,11 +338,23 @@ pub(crate) async fn activated_summary(
     Ok(
         GraphStage::activation_summary(pool, &counts.source_id, &counts.generation)
             .await?
-            .map(|summary| GraphWriteSummary {
-                nodes_upserted: summary.nodes_upserted,
-                edges_upserted: summary.edges_upserted,
-                evidence_records: summary.evidence_records,
-                degraded: false,
+            .map(|summary| {
+                let degraded = !summary.warnings.is_empty()
+                    || summary.header.status == LifecycleStatus::CompletedDegraded
+                    || super::has_incomplete_extraction(counts);
+                for warning in summary.warnings {
+                    if !counts.warnings.iter().any(|existing| {
+                        existing.code == warning.code && existing.message == warning.message
+                    }) {
+                        counts.warnings.push(warning);
+                    }
+                }
+                GraphWriteSummary {
+                    nodes_upserted: summary.nodes_upserted,
+                    edges_upserted: summary.edges_upserted,
+                    evidence_records: summary.evidence_records,
+                    degraded,
+                }
             }),
     )
 }

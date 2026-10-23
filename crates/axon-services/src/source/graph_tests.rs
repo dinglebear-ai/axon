@@ -581,8 +581,8 @@ async fn invalid_graph_candidates_are_dropped_not_written() {
 
     // The invalid candidate is filtered out before the write, so only the
     // baseline skeleton (1 container + 1 document, 1 containment edge) lands
-    // — the write is not degraded, and the bad candidate is not published.
-    assert!(!summary.degraded);
+    // — publication succeeds, but the dropped fact is reported as degraded.
+    assert!(summary.degraded);
     assert_eq!(summary.nodes_upserted, 2);
     assert_eq!(summary.edges_upserted, 1);
 
@@ -644,3 +644,18 @@ async fn unchanged_item_reuse_does_not_double_write() {
 
 #[path = "graph/retirement_tests.rs"]
 mod retirement_tests;
+
+#[test]
+fn graph_completeness_uses_specific_evidence_loss_not_unrelated_parse_warning() {
+    let mut counts = counts("source", "generation");
+    counts.warnings.push(axon_api::source::SourceWarning {
+        code: "parse.invalid_source_range".to_string(),
+        severity: axon_api::source::Severity::Warning,
+        message: "a non-graph fact was rejected".to_string(),
+        source_item_key: None,
+        retryable: false,
+    });
+    assert!(!has_incomplete_extraction(&counts));
+    counts.warnings[0].code = "parse.graph_evidence_rejected".to_string();
+    assert!(has_incomplete_extraction(&counts));
+}

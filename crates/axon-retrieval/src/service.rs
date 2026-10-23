@@ -62,6 +62,7 @@ pub struct QueryServiceHit {
 /// Result of [`run_query`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryServiceResult {
+    pub warnings: Vec<axon_api::source::SourceWarning>,
     pub hits: Vec<QueryServiceHit>,
 }
 
@@ -153,7 +154,10 @@ pub async fn run_query(
     retain_latest_document_generations(&mut hits);
     hits.truncate(requested_limit as usize);
 
-    Ok(QueryServiceResult { hits })
+    Ok(QueryServiceResult {
+        hits,
+        warnings: result.warnings,
+    })
 }
 
 /// Remove hits from older committed generations of the same stable document.

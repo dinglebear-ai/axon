@@ -936,3 +936,37 @@ async fn cancelled_finish_completes_restore_and_cleans_registry_state() {
     .await
     .expect("cancelled finish must clean its registry entry");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recovery_skips_live_collection_owner_without_blocking_async_workers() {
+    let server = MockServer::start_async().await;
+    let restore = server
+        .mock_async(|when, then| {
+            when.method("PATCH");
+            then.status(200);
+        })
+        .await;
+    let directory =
+        std::env::temp_dir().join(format!("axon-bulk-live-recovery-{}", uuid::Uuid::new_v4()));
+    let journal = BulkLoadJournal::open(&directory).unwrap();
+    let key = bulk_key(server.base_url(), "active");
+    journal.record(&key, 20_000).unwrap();
+    let owner = journal.acquire_collection_lease(&key).unwrap();
+    let other = BulkLoadJournal::open(&directory).unwrap();
+    let store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    let task = tokio::spawn(async move { store.recover_bulk_load_transitions_from(&other).await });
+    let outcome = tokio::time::timeout(Duration::from_millis(500), task).await;
+    // Release before asserting so a regression cannot strand the test runtime.
+    drop(owner);
+    outcome
+        .expect("recovery must not wait on an active owner")
+        .unwrap()
+        .unwrap();
+    restore.assert_calls_async(0).await;
+    assert_eq!(
+        journal.pending().unwrap().len(),
+        1,
+        "live recovery receipt preserved"
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}
