@@ -943,7 +943,7 @@ async fn four_outer_pools_keep_provider_busy_and_publish_in_sequence() {
     assert!(
         outcomes[1..]
             .iter()
-            .all(|outcome| matches!(outcome, super::super::PushOutcome::Published(_)))
+            .all(|outcome| matches!(outcome, super::super::PushOutcome::Published))
     );
 }
 

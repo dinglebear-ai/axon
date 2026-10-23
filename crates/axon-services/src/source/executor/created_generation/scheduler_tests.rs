@@ -1,26 +1,4 @@
 use super::*;
-
-#[test]
-fn small_prepared_envelopes_coalesce_until_the_chunk_budget_or_final_item() {
-    let mut pending_chunks = 0;
-    let mut pending_envelopes = 0;
-    let mut published_batch_sizes = Vec::new();
-    for item in 0..8 {
-        pending_chunks += 1;
-        pending_envelopes += 1;
-        if should_flush(pending_chunks, pending_envelopes, 16, item == 7, false) {
-            published_batch_sizes.push(pending_chunks);
-            pending_chunks = 0;
-            pending_envelopes = 0;
-        }
-    }
-    assert_eq!(
-        published_batch_sizes,
-        vec![8],
-        "small documents must share a provider batch instead of flushing every two envelopes"
-    );
-}
-
 #[tokio::test]
 async fn scheduler_publishes_eight_small_documents_in_one_provider_batch() {
     use crate::source::executor::generation_work::{
@@ -145,46 +123,5 @@ async fn scheduler_publishes_eight_small_documents_in_one_provider_batch() {
     assert_eq!(vectors.points(input.collection).await.len(), 8);
 }
 
-#[test]
-fn scheduler_flush_policy_covers_full_group_final_and_close_without_a_timer() {
-    let pool = 512;
-    assert!(!should_flush(pool, 1, pool, false, false));
-    // Prepared work retains permits from a three-pool semaphore until flush.
-    // Flush at two pools so one maximum-sized envelope always
-    // has enough headroom to reach the receiver and cannot deadlock its sender.
-    assert!(should_flush(pool * 2, 2, pool, false, false));
-    assert!(!should_flush(2, 2, pool, false, false));
-    assert!(should_flush(0, 1024, pool, false, false));
-    assert!(should_flush(1, 1, pool, true, false));
-    assert!(should_flush(1, 1, pool, false, true));
-}
-
-#[tokio::test]
-async fn oldest_item_deadline_flushes_when_no_more_work_can_arrive() {
-    use crate::source::executor::generation_work::prepared_work_channel;
-    let (_sender, mut receiver) = prepared_work_channel(16).unwrap();
-    let cancel = CancellationToken::new();
-    let wake = tokio::time::timeout(
-        std::time::Duration::from_secs(1),
-        next_scheduler_wake(&mut receiver, &cancel, Some(tokio::time::Instant::now())),
-    )
-    .await
-    .expect("byte-blocked or idle producers must not prevent a partial pool flush")
-    .unwrap();
-    assert!(matches!(wake, SchedulerWake::Flush));
-}
-
-#[tokio::test]
-async fn partial_pool_wait_remains_cancellable() {
-    use crate::source::executor::generation_work::prepared_work_channel;
-    let (_sender, mut receiver) = prepared_work_channel(16).unwrap();
-    let cancel = CancellationToken::new();
-    cancel.cancel();
-    let result = next_scheduler_wake(
-        &mut receiver,
-        &cancel,
-        Some(tokio::time::Instant::now() + std::time::Duration::from_secs(30)),
-    )
-    .await;
-    assert!(result.is_err());
-}
+#[path = "scheduler_stream_tests.rs"]
+mod stream_tests;

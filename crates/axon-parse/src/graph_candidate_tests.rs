@@ -111,3 +111,95 @@ fn input(source_id: &str, item_key: &str, uri: &str) -> ParseInput {
         },
     }
 }
+
+#[test]
+fn encoded_identity_preserves_long_unicode_controls_and_full_evidence() {
+    let source = input(
+        "src-a",
+        "tab\tfile",
+        &format!("file:///{}", "深".repeat(300)),
+    );
+    for name in [
+        "NL_DEBUG\t(name)\nsecond".to_string(),
+        "深い関数".repeat(300),
+    ] {
+        let candidate = graph_candidate(
+            &source,
+            "test",
+            "code_symbol",
+            &name,
+            Some(1),
+            Some(name.clone()),
+        );
+        axon_graph::candidate::validate_candidate(&candidate).unwrap();
+        let key = candidate.merge_key.as_ref().unwrap();
+        assert!(key.len() <= 512);
+        assert!(!key.chars().any(char::is_control));
+        assert_eq!(candidate.nodes[1].label, name);
+        assert_eq!(candidate.evidence[0].quote.as_deref(), Some(name.as_str()));
+        assert_eq!(
+            candidate,
+            graph_candidate(
+                &source,
+                "test",
+                "code_symbol",
+                &name,
+                Some(1),
+                Some(name.clone())
+            )
+        );
+    }
+}
+
+#[test]
+fn identity_uses_unambiguous_fields_and_source_scope_for_merge_and_evidence() {
+    let left = input("a|item=b", "c", "file:///same");
+    let right = input("a", "b|item=c", "file:///same");
+    let make =
+        |input: &ParseInput| graph_candidate(input, "test", "code_symbol", "run", Some(1), None);
+    let a = make(&left);
+    let b = make(&right);
+    assert_ne!(a.candidate_id, b.candidate_id);
+    assert_ne!(a.merge_key, b.merge_key);
+    assert_ne!(a.evidence[0].evidence_id, b.evidence[0].evidence_id);
+    let mut other = left.clone();
+    other.document.source_id = SourceId::from("other");
+    assert_ne!(a.merge_key, make(&other).merge_key);
+    other = left.clone();
+    other.job_id = JobId(uuid::Uuid::from_u128(42));
+    assert_eq!(a.merge_key, make(&other).merge_key);
+}
+
+#[test]
+fn relationship_identity_includes_both_endpoints_and_provenance() {
+    let make = |input: &ParseInput, from: &str, line: u32| {
+        crate::graph_candidate::candidate_edge(
+            input,
+            "docker_manifest",
+            "container_manifest",
+            "local_checkout",
+            from,
+            "container_image",
+            "docker:postgres",
+            "repo_uses_container_image",
+            "container_manifest",
+            Some(line),
+            Some("FROM postgres".to_string()),
+        )
+    };
+    let source = input("src-a", "Dockerfile", "file:///same");
+    let a = make(&source, "local:a", 1);
+    let moved = make(&source, "local:a", 9);
+    assert_eq!(a.candidate_id, moved.candidate_id);
+    assert_eq!(a.merge_key, moved.merge_key);
+    assert_ne!(a.evidence[0].evidence_id, moved.evidence[0].evidence_id);
+    let other_from = make(&source, "local:b", 1);
+    assert_ne!(a.candidate_id, other_from.candidate_id);
+    let other = make(&input("src-b", "Dockerfile", "file:///same"), "local:a", 1);
+    assert_ne!(a.candidate_id, other.candidate_id);
+    assert_ne!(a.merge_key, other.merge_key);
+    assert_ne!(a.evidence[0].evidence_id, other.evidence[0].evidence_id);
+    for candidate in [a, moved, other_from, other] {
+        axon_graph::candidate::validate_candidate(&candidate).unwrap();
+    }
+}

@@ -12,6 +12,8 @@ use axon_vectors::store::VectorStore;
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::reserved_call::{self, ProviderCallContext};
 
+mod publication_fence;
+
 pub(super) struct ReadExecution {
     runtime: Arc<TargetLocalSourceRuntime>,
     descriptor: Option<JobDescriptor>,
@@ -328,7 +330,10 @@ impl VectorStore for ScheduledVectorStore {
     }
 
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult, ApiError> {
-        reserved_call::search_vectors(&self.runtime, self.context("search"), request).await
+        let result =
+            reserved_call::search_vectors(&self.runtime, self.context("search"), request.clone())
+                .await?;
+        publication_fence::reconcile(self.runtime.ledger.as_ref(), &request, result).await
     }
 
     async fn capabilities(&self) -> Result<ProviderCapability, ApiError> {

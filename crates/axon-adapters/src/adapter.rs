@@ -73,6 +73,21 @@ pub struct GeneratedArchive {
     pub metadata: MetadataMap,
 }
 
+/// A private, incremental archive sink. It never owns the final destination.
+pub trait SourceArchiveWriter: Send {
+    fn append(&mut self, item: &AcquiredSourceItem) -> std::io::Result<()>;
+    fn finish(self: Box<Self>) -> std::io::Result<GeneratedArchiveFile>;
+}
+
+pub struct GeneratedArchiveFile {
+    pub file: tempfile::NamedTempFile,
+    pub kind: ArtifactKind,
+    pub content_type: String,
+    pub size_bytes: u64,
+    pub content_hash: String,
+    pub metadata: MetadataMap,
+}
+
 #[async_trait]
 pub trait SourceAdapter: Send + Sync {
     fn name(&self) -> &'static str;
@@ -177,6 +192,21 @@ pub trait SourceAdapter: Send + Sync {
     /// shared runner owns persistence and lifecycle metadata; adapters own
     /// only source-specific serialization. Stateless/non-archival adapters
     /// use the default no-op.
+    async fn begin_archive(
+        &self,
+        _plan: &SourcePlan,
+    ) -> Result<Option<Box<dyn SourceArchiveWriter>>> {
+        Ok(None)
+    }
+
+    async fn begin_archive_in(
+        &self,
+        plan: &SourcePlan,
+        _directory: &std::path::Path,
+    ) -> Result<Option<Box<dyn SourceArchiveWriter>>> {
+        self.begin_archive(plan).await
+    }
+
     fn build_archive(
         &self,
         _plan: &SourcePlan,

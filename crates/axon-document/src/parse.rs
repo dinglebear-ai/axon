@@ -73,7 +73,9 @@ pub(crate) fn parse_document_owned(document: SourceDocument) -> (DocumentParse, 
         requested_parser: None,
     };
 
+    let started = std::time::Instant::now();
     let result = registry().parse(&input);
+    let parse_elapsed_us = started.elapsed().as_micros() as u64;
 
     let observation = result
         .facts
@@ -84,6 +86,7 @@ pub(crate) fn parse_document_owned(document: SourceDocument) -> (DocumentParse, 
     tracing::info!(
         target: "axon_document::parse",
         document_id = %input.document.document_id.0,
+        parse_elapsed_us,
         source_path = input.document.path.as_deref().filter(|path| std::path::Path::new(path).is_relative() && !path.contains("://")),
         code_grammar = observation.grammar(),
         parser_id = %result.parser_id,

@@ -134,3 +134,32 @@ async fn skipped_status_accounting_survives_spill_and_memory_paths() {
         assert_eq!(state.vectorized.points_written, 0);
     }
 }
+
+#[tokio::test]
+async fn registered_generation_append_failure_preserves_work_and_never_enters_memory_fallback() {
+    let mut state = GenerationAccumulator::default();
+    state.durable_required = true;
+    state.spool = Some(GenerationSpool::temporary("required-durable").unwrap());
+    state.spool.as_mut().unwrap().inject_failure_after_flush();
+    let error = state
+        .absorb_pretracked_side_effects(warning_batch())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("refusing in-memory fallback"));
+    assert!(state.spool.is_some());
+    assert!(state.warnings.is_empty());
+    let mut recovered = 0;
+    state
+        .spool
+        .as_ref()
+        .unwrap()
+        .replay_each::<SideEffectsSpoolRecord>(|_, record| {
+            recovered += record.warnings.len();
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        recovered, 1,
+        "an ambiguous committed append remains recoverable under the owner fence"
+    );
+}

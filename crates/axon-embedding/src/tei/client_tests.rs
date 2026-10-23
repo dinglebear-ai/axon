@@ -159,6 +159,7 @@ async fn embed_retries_timeout_reading_success_response_body() {
         retry_backoff_base_ms: 1,
     })
     .unwrap();
+    client.tokenization.mark_unsupported();
     let result = client.embed_all(&["document".into()]).await;
     server.abort();
     assert_eq!(
@@ -405,6 +406,22 @@ async fn embed_all_rejects_a_long_singleton_before_provider_submission() {
 #[tokio::test]
 async fn embed_all_splits_batches_at_the_configured_token_boundary() {
     let server = MockServer::start_async().await;
+    let tokenize = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/tokenize")
+                .json_body(serde_json::json!({"inputs":"aaaa","add_special_tokens":true}));
+            then.status(200).json_body(serde_json::json!([{"id":1}]));
+        })
+        .await;
+    let second_tokenize = server
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/tokenize")
+                .json_body(serde_json::json!({"inputs":"bbbb","add_special_tokens":true}));
+            then.status(200).json_body(serde_json::json!([{"id":2}]));
+        })
+        .await;
     let endpoint = server
         .mock_async(|when, then| {
             when.method("POST").path("/embed");
@@ -432,6 +449,9 @@ async fn embed_all_splits_batches_at_the_configured_token_boundary() {
     assert_eq!(outcome.vectors.len(), 2);
     assert_eq!(outcome.requests, 2);
     endpoint.assert_calls_async(2).await;
+    tokenize.assert_calls_async(1).await;
+    second_tokenize.assert_calls_async(1).await;
+    assert_eq!(outcome.input_tokens, Some(2));
 }
 
 #[test]
@@ -786,6 +806,12 @@ async fn live_embed_all_drains_more_than_two_admission_waves() {
 
     assert_eq!(outcome.vectors.len(), inputs.len());
     assert_eq!(outcome.requests, 6);
+    assert_eq!(outcome.tokenization_fallback, None);
+    assert!(
+        outcome
+            .input_tokens
+            .is_some_and(|tokens| tokens >= inputs.len() as u64)
+    );
 }
 
 #[test]
@@ -863,4 +889,16 @@ fn exhausted_cooling_attaches_provider_cooling_metadata_and_marks_retryable() {
     assert_eq!(cooling.provider_id.as_deref(), Some("tei"));
     assert!(cooling.cooldown_until > before);
     assert_eq!(cooled.cooldown_until, Some(cooling.cooldown_until));
+}
+
+#[test]
+fn conservative_token_estimate_matches_legacy_unicode_accounting() {
+    for text in ["", "ASCII punctuation: {}", "café 東京 🦀", "\0\n\t"] {
+        let legacy = text
+            .chars()
+            .map(|ch| if ch.is_ascii() { 1 } else { ch.len_utf8() })
+            .sum::<usize>()
+            .max(1);
+        assert_eq!(estimated_tokens(text), legacy);
+    }
 }

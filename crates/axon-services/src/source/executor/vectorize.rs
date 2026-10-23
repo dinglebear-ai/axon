@@ -15,6 +15,7 @@ pub(super) mod batching;
 mod bulk_load;
 mod pipeline;
 mod prepared_pool;
+mod prepared_stream;
 mod redaction_warnings;
 mod skip;
 pub(super) use bulk_load::GenerationVectorState;
@@ -23,7 +24,9 @@ use skip::partition_prepared;
 
 use batching::chunk_batches;
 use pipeline::{embed_and_build_batch, publish_and_build_next, publish_built_batch};
-pub(super) use prepared_pool::{PreparedPoolVectorizer, PushOutcome};
+pub(super) use prepared_pool::PreparedPoolVectorizer;
+#[cfg(test)]
+pub(super) use prepared_pool::PushOutcome;
 
 #[derive(Debug, Default)]
 pub(super) struct VectorizeResult {

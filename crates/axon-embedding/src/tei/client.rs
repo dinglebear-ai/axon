@@ -22,14 +22,16 @@ mod admission;
 mod errors;
 mod policy;
 mod response;
+mod tokenization;
 mod types;
-#[cfg(test)]
-use policy::estimated_tokens;
 use policy::{
-    credential_transport_is_safe, error_category, pack_batches, parse_retry_after,
+    credential_transport_is_safe, error_category, pack_batches_counted, parse_retry_after,
     resolve_batch_size,
 };
+#[cfg(test)]
+use policy::{estimated_tokens, pack_batches};
 pub use policy::{is_batch_too_large, is_retryable_status, retry_delay};
+pub(crate) use tokenization::TokenizationState;
 pub use types::{TeiEmbedOutcome, TeiInfo};
 /// Opaque endpoint context marker attached to errors.
 ///
@@ -118,6 +120,8 @@ pub struct TeiClient {
     client: Client,
     embed_url: String,
     info_url: String,
+    tokenize_url: String,
+    tokenization: Arc<TokenizationState>,
     provider_id: String,
     bearer_token: Option<String>,
     max_batch_inputs: usize,
@@ -191,6 +195,8 @@ impl TeiClient {
             client: SHARED_CLIENT.clone(),
             embed_url,
             info_url,
+            tokenize_url: format!("{base}/tokenize"),
+            tokenization: Arc::new(TokenizationState::default()),
             provider_id: params.provider_id,
             bearer_token,
             max_batch_inputs,
@@ -209,6 +215,11 @@ impl TeiClient {
             retry_backoff_base_ms: params.retry_backoff_base_ms,
             cumulative_requests: AtomicU64::new(0),
         })
+    }
+
+    pub(crate) fn with_tokenization(mut self, state: Arc<TokenizationState>) -> Self {
+        self.tokenization = state;
+        self
     }
 
     /// Fetch the TEI `/info` document (single attempt, no retries). Errors carry
@@ -259,6 +270,8 @@ impl TeiClient {
             return Ok(TeiEmbedOutcome {
                 vectors: Vec::new(),
                 requests: 0,
+                input_tokens: Some(0),
+                tokenization_fallback: None,
             });
         }
 
@@ -270,8 +283,15 @@ impl TeiClient {
         // so arrival-order slicing can waste most of a Metal dispatch on
         // padding. Keep original indices beside the reordered text so response
         // vectors still satisfy this method's input-order contract.
-        let pending = pack_batches(
+        let (counts, tokenization_fallback) = self.token_counts(inputs).await;
+        let input_tokens = tokenization_fallback.is_none().then(|| {
+            counts
+                .iter()
+                .fold(0_u64, |sum, count| sum.saturating_add(*count as u64))
+        });
+        let pending = pack_batches_counted(
             inputs,
+            &counts,
             BatchLimits {
                 max_inputs: self.max_batch_inputs,
                 max_input_tokens: self.max_input_tokens,
@@ -280,6 +300,12 @@ impl TeiClient {
             },
         )
         .map_err(|message| self.error("embedding.tei.input_too_large", message))?;
+        tokenization::record_packing(
+            &pending,
+            &counts,
+            self.max_batch_tokens,
+            tokenization_fallback.is_none(),
+        );
         let mut pending = pending;
 
         let invocation_requests = Arc::new(AtomicU64::new(0));
@@ -324,6 +350,8 @@ impl TeiClient {
         Ok(TeiEmbedOutcome {
             vectors: slots,
             requests: invocation_requests.load(Ordering::Relaxed),
+            input_tokens,
+            tokenization_fallback,
         })
     }
 

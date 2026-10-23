@@ -9,6 +9,14 @@ pub use fake::FakeLedgerStore;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
+/// Bounded publication evidence without loading a manifest or cleanup inventory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GenerationReceipt {
+    pub status: LifecycleStatus,
+    pub publish_state: PublishState,
+    pub published: bool,
+}
+
 #[async_trait]
 pub trait LedgerStore: Send + Sync {
     async fn upsert_source(&self, source: SourceSummary) -> Result<()>;
@@ -93,6 +101,13 @@ pub trait LedgerStore: Send + Sync {
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration>;
     async fn committed_generation(&self, source_id: SourceId)
     -> Result<Option<SourceGenerationId>>;
+    async fn generation_receipt(
+        &self,
+        _source_id: SourceId,
+        _generation: SourceGenerationId,
+    ) -> Result<Option<GenerationReceipt>> {
+        Ok(None)
+    }
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration>;
     /// Reconcile unpublished older snapshots only while holding this source's
     /// live lease. Never touches committed snapshots or a newer generation.

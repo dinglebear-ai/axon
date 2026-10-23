@@ -1,6 +1,8 @@
 use super::*;
+#[cfg(test)]
 use futures_util::{StreamExt, stream};
 use std::time::Instant;
+#[cfg(test)]
 use tokio_util::sync::CancellationToken;
 
 #[derive(Default)]
@@ -8,15 +10,17 @@ pub(in crate::source::executor) struct PreparedPoolVectorizer {
     pub(super) providers_ready: bool,
     pub(super) bulk_guard: Option<reserved_call::BulkLoadCompletionGuard>,
     pub(super) bulk_collection: Option<CollectionSpec>,
+    #[cfg(test)]
     pub(super) ready: Option<pipeline::BuiltVectorBatch>,
     pub(super) cumulative: HashMap<DocumentId, DocumentStatus>,
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 pub(in crate::source::executor) enum PushOutcome {
     NoPublication,
-    StatusesOnly(VectorizeResult),
-    Published(VectorizeResult),
+    StatusesOnly,
+    Published,
 }
 
 impl PreparedPoolVectorizer {
@@ -26,6 +30,7 @@ impl PreparedPoolVectorizer {
     /// complete-drain barrier between outer pools without relaxing ordering or
     /// retaining more than `pools.len()` pool payloads.
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub(in crate::source::executor) async fn push_many(
         &mut self,
         runtime: &TargetLocalSourceRuntime,
@@ -63,7 +68,7 @@ impl PreparedPoolVectorizer {
                         result.graph_candidates.clear();
                     }
                     self.checkpoint(runtime, &result).await?;
-                    outcomes.push(PushOutcome::StatusesOnly(result));
+                    outcomes.push(PushOutcome::StatusesOnly);
                     continue;
                 }
                 coordinator
@@ -79,32 +84,7 @@ impl PreparedPoolVectorizer {
             }
 
             if !embedding_work.is_empty() {
-                if !self.providers_ready {
-                    super::super::helpers::ensure_providers_ready(runtime).await?;
-                }
-                let plane = runtime.verified_embedding_plane().await?;
-                collection = super::super::helpers::collection_spec(
-                    input.collection,
-                    plane.identity.dimensions,
-                );
-                if !self.providers_ready {
-                    super::super::created_generation::setup::ensure_generation_collection(
-                        runtime,
-                        input,
-                        &collection,
-                    )
-                    .await?;
-                    self.bulk_guard = Some(
-                        reserved_call::start_bulk_load_guard(
-                            runtime,
-                            bulk_context(input, &collection, "begin-bulk-load"),
-                            collection.collection.clone(),
-                        )
-                        .await?,
-                    );
-                    self.bulk_collection = Some(collection.clone());
-                    self.providers_ready = true;
-                }
+                collection = self.ensure_pool_providers(runtime, input).await?;
             }
             outcomes.extend(
                 self.embed_pools(
@@ -137,7 +117,39 @@ impl PreparedPoolVectorizer {
         result
     }
 
+    pub(super) async fn ensure_pool_providers(
+        &mut self,
+        runtime: &TargetLocalSourceRuntime,
+        input: &SourcePipelineInput<'_>,
+    ) -> anyhow::Result<CollectionSpec> {
+        if let Some(collection) = &self.bulk_collection {
+            return Ok(collection.clone());
+        }
+        super::super::helpers::ensure_providers_ready(runtime).await?;
+        let plane = runtime.verified_embedding_plane().await?;
+        let collection =
+            super::super::helpers::collection_spec(input.collection, plane.identity.dimensions);
+        super::super::created_generation::setup::ensure_generation_collection(
+            runtime,
+            input,
+            &collection,
+        )
+        .await?;
+        self.bulk_guard = Some(
+            reserved_call::start_bulk_load_guard(
+                runtime,
+                bulk_context(input, &collection, "begin-bulk-load"),
+                collection.collection.clone(),
+            )
+            .await?,
+        );
+        self.bulk_collection = Some(collection.clone());
+        self.providers_ready = true;
+        Ok(collection)
+    }
+
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     async fn embed_pools(
         &mut self,
         runtime: &TargetLocalSourceRuntime,
@@ -166,7 +178,11 @@ impl PreparedPoolVectorizer {
                 .await;
                 (sequence, prepared, result)
             })
-            .buffered(3);
+            .buffered(if runtime.vector_upsert_embed_overlap {
+                3
+            } else {
+                1
+            });
         tokio::pin!(embedded);
         let mut next = embedded.next().await;
         while let Some((sequence, prepared, embeddings)) = next {
@@ -204,13 +220,35 @@ impl PreparedPoolVectorizer {
                 // Keep polling the ordered embedding stream while Qdrant
                 // publishes the previously built batch. This removes the
                 // TEI-then-Qdrant phase barrier without changing ordering.
-                let (published, following) = tokio::join!(
-                    publish_built_batch(runtime, input, current, emitter, coordinator, progress),
-                    embedded.next(),
-                );
+                let (published, following) = if runtime.vector_upsert_embed_overlap {
+                    tokio::join!(
+                        publish_built_batch(
+                            runtime,
+                            input,
+                            current,
+                            emitter,
+                            coordinator,
+                            progress
+                        ),
+                        embedded.next(),
+                    )
+                } else {
+                    let published = publish_built_batch(
+                        runtime,
+                        input,
+                        current,
+                        emitter,
+                        coordinator,
+                        progress,
+                    )
+                    .await;
+                    let published = published?;
+                    let following = embedded.next().await;
+                    (Ok(published), following)
+                };
                 let result = published?;
                 self.checkpoint(runtime, &result).await?;
-                outcomes.push(PushOutcome::Published(result));
+                outcomes.push(PushOutcome::Published);
                 next = following;
             } else {
                 outcomes.push(PushOutcome::NoPublication);
@@ -220,33 +258,7 @@ impl PreparedPoolVectorizer {
         Ok(outcomes)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub(in crate::source::executor) async fn finish(
-        &mut self,
-        runtime: &TargetLocalSourceRuntime,
-        input: &SourcePipelineInput<'_>,
-        emitter: &SourceEventEmitter,
-        coordinator: &ProgressCoordinator,
-        progress: &mut PipelineProgress,
-    ) -> anyhow::Result<Option<VectorizeResult>> {
-        let result = async {
-            let Some(ready) = self.ready.take() else {
-                return Ok(None);
-            };
-            let result =
-                publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
-            self.checkpoint(runtime, &result).await?;
-            Ok(Some(result))
-        }
-        .await;
-        if let Some(collection) = self.bulk_collection.take() {
-            finish_bulk_result(runtime, input, &collection, self.bulk_guard.take(), result).await
-        } else {
-            result
-        }
-    }
-
-    async fn checkpoint(
+    pub(super) async fn checkpoint(
         &mut self,
         runtime: &TargetLocalSourceRuntime,
         result: &VectorizeResult,

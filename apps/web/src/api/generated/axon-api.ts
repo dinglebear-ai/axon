@@ -82,7 +82,7 @@ export type components = {
         "AgentTurnResult": {
             "answer"?: string | null;
             "correlation": components['schemas']['AgentCorrelation'];
-            "pendingApproval"?: null | components['schemas']['AgentToolProposal'];
+            "pendingApproval"?: components['schemas']['AgentToolProposal'] | null;
             "status": components['schemas']['AgentTurnStatus'];
             "turnId": string;
         };
@@ -119,10 +119,10 @@ export type components = {
         "ArtifactKind": "raw_content" | "normalized_content" | "manifest" | "report" | "screenshot" | "warc" | "provider_trace";
         "ArtifactListRequest": {
             "cursor"?: string | null;
-            "job_id"?: null | components['schemas']['JobId'];
-            "kind"?: null | components['schemas']['ArtifactKind'];
+            "job_id"?: components['schemas']['JobId'] | null;
+            "kind"?: components['schemas']['ArtifactKind'] | null;
             "limit"?: number | null;
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
         };
         "ArtifactMode": "none" | "on_large_output" | "always";
         "ArtifactRef": {
@@ -137,11 +137,11 @@ export type components = {
             "artifact_id": components['schemas']['ArtifactId'];
             "content_type"?: string | null;
             "created_at": components['schemas']['Timestamp'];
-            "job_id"?: null | components['schemas']['JobId'];
+            "job_id"?: components['schemas']['JobId'] | null;
             "kind": components['schemas']['ArtifactKind'];
             "label"?: string | null;
             "size_bytes": number;
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
         };
         "AuthorityEvidence": {
             "confidence": number;
@@ -168,6 +168,7 @@ export type components = {
         "BatchOutcome_QueryResult": {
             "data": {
             "results": components['schemas']['QueryHit'][];
+            "warnings"?: components['schemas']['SourceWarning'][];
         };
             "status": "completed";
         } | {
@@ -187,8 +188,8 @@ export type components = {
             "counts": components['schemas']['SourceCounts'];
             "errors"?: components['schemas']['SourceError'][];
             "graph": components['schemas']['GraphWriteSummary'];
-            "inline"?: null | components['schemas']['InlineSourceResult'];
-            "job"?: null | components['schemas']['JobDescriptor'];
+            "inline"?: components['schemas']['InlineSourceResult'] | null;
+            "job"?: components['schemas']['JobDescriptor'] | null;
             "job_id": components['schemas']['JobId'];
             "ledger": components['schemas']['LedgerSummary'];
             "scope": components['schemas']['SourceScope'];
@@ -196,7 +197,7 @@ export type components = {
             "source_kind": components['schemas']['SourceKind'];
             "status": components['schemas']['LifecycleStatus'];
             "warnings": components['schemas']['SourceWarning'][];
-            "watch"?: null | components['schemas']['WatchResult'];
+            "watch"?: components['schemas']['WatchResult'] | null;
         };
             "status": "completed";
         } | {
@@ -356,7 +357,7 @@ export type components = {
             "credential_kind": components['schemas']['CredentialKind'];
             "reason": string;
             "required": boolean;
-            "secret_ref"?: null | components['schemas']['SecretRef'];
+            "secret_ref"?: components['schemas']['SecretRef'] | null;
         };
         "DeleteMobileSessionResponse": {
             "ok": boolean;
@@ -376,11 +377,11 @@ export type components = {
             "first_party": boolean;
             "kind": components['schemas']['EndpointKind'];
             "normalized_url"?: string | null;
-            "rpc_probe"?: null | components['schemas']['RpcProbeResult'];
+            "rpc_probe"?: components['schemas']['RpcProbeResult'] | null;
             "source": components['schemas']['EndpointSourceKind'];
             "source_url"?: string | null;
             "value": string;
-            "verified"?: null | components['schemas']['EndpointVerification'];
+            "verified"?: components['schemas']['EndpointVerification'] | null;
         };
         "DocumentBackend": "qdrant" | "stored_source" | "live_scrape";
         "DocumentId": string;
@@ -405,7 +406,7 @@ export type components = {
             "options"?: components['schemas']['AdapterOptions'];
             "output"?: components['schemas']['OutputPolicy'];
             "refresh"?: components['schemas']['SourceRefreshPolicy'];
-            "scope"?: null | components['schemas']['SourceScope'];
+            "scope"?: components['schemas']['SourceScope'] | null;
         };
         "EmbedRequest": {
             "inputs": components['schemas']['SourceProjectionInput'][];
@@ -513,14 +514,14 @@ export type components = {
         };
         "GraphEdgeId": string;
         "GraphEvidence": {
-            "chunk_id"?: null | components['schemas']['ChunkId'];
+            "chunk_id"?: components['schemas']['ChunkId'] | null;
             "confidence": number;
-            "document_id"?: null | components['schemas']['DocumentId'];
+            "document_id"?: components['schemas']['DocumentId'] | null;
             "evidence_id": string;
             "evidence_kind": string;
             "metadata": components['schemas']['MetadataMap'];
             "quote"?: string | null;
-            "range"?: null | components['schemas']['SourceRange'];
+            "range"?: components['schemas']['SourceRange'] | null;
             "source_id": components['schemas']['SourceId'];
             "source_item_key": components['schemas']['SourceItemKey'];
         };
@@ -528,9 +529,9 @@ export type components = {
             "canonical_uri"?: string | null;
             "kind": string;
             "metadata": components['schemas']['MetadataMap'];
-            "node_id"?: null | components['schemas']['GraphNodeId'];
-            "source_id"?: null | components['schemas']['SourceId'];
-            "source_item_key"?: null | components['schemas']['SourceItemKey'];
+            "node_id"?: components['schemas']['GraphNodeId'] | null;
+            "source_id"?: components['schemas']['SourceId'] | null;
+            "source_item_key"?: components['schemas']['SourceItemKey'] | null;
             "value"?: string | null;
         };
         "GraphKindDocument": {
@@ -543,13 +544,13 @@ export type components = {
             "authority": components['schemas']['AuthorityLevel'];
             "canonical_uri": string;
             "confidence": number;
-            "created_at"?: null | components['schemas']['Timestamp'];
+            "created_at"?: components['schemas']['Timestamp'] | null;
             "display_name": string;
             "kind": string;
             "metadata": components['schemas']['MetadataMap'];
             "node_id": components['schemas']['GraphNodeId'];
             "source_ids"?: components['schemas']['SourceId'][];
-            "updated_at"?: null | components['schemas']['Timestamp'];
+            "updated_at"?: components['schemas']['Timestamp'] | null;
         };
         "GraphNodeId": string;
         "GraphQueryFilters": {
@@ -563,7 +564,7 @@ export type components = {
             "depth": number;
             "direction": components['schemas']['GraphDirection'];
             "edges"?: string[];
-            "filters"?: null | components['schemas']['GraphQueryFilters'];
+            "filters"?: components['schemas']['GraphQueryFilters'] | null;
             "limit": number;
             "start": components['schemas']['GraphIdentifier'];
         };
@@ -576,8 +577,8 @@ export type components = {
         };
         "GraphRef": {
             "candidate_id"?: string | null;
-            "edge_id"?: null | components['schemas']['GraphEdgeId'];
-            "node_id"?: null | components['schemas']['GraphNodeId'];
+            "edge_id"?: components['schemas']['GraphEdgeId'] | null;
+            "node_id"?: components['schemas']['GraphNodeId'] | null;
         };
         "GraphResolveMatch": {
             "confidence": number;
@@ -619,14 +620,14 @@ export type components = {
             "options"?: components['schemas']['AdapterOptions'];
             "output"?: components['schemas']['OutputPolicy'];
             "refresh"?: components['schemas']['SourceRefreshPolicy'];
-            "scope"?: null | components['schemas']['SourceScope'];
+            "scope"?: components['schemas']['SourceScope'] | null;
         };
         "IngestRequest": {
             "inputs": components['schemas']['SourceProjectionInput'][];
             "options"?: components['schemas']['IngestOptions'];
         };
         "InlineSourceResult": {
-            "content"?: null | components['schemas']['ContentRef'];
+            "content"?: components['schemas']['ContentRef'] | null;
             "metadata": components['schemas']['MetadataMap'];
             "summary"?: string | null;
         };
@@ -641,21 +642,21 @@ export type components = {
             "reason"?: string | null;
         };
         "JobCancelResult": {
-            "canceled_at"?: null | components['schemas']['Timestamp'];
+            "canceled_at"?: components['schemas']['Timestamp'] | null;
             "canceled_by"?: string | null;
             "cleanup_debt_ids"?: string[];
             "job_id": components['schemas']['JobId'];
-            "last_safe_stage"?: null | components['schemas']['PipelinePhase'];
+            "last_safe_stage"?: components['schemas']['PipelinePhase'] | null;
             "reason"?: string | null;
             "side_effects"?: string[];
             "status": components['schemas']['LifecycleStatus'];
         };
         "JobCleanupRequest": {
             "dry_run": boolean;
-            "kind"?: null | components['schemas']['JobKind'];
+            "kind"?: components['schemas']['JobKind'] | null;
             "limit"?: number | null;
-            "older_than"?: null | components['schemas']['Timestamp'];
-            "status"?: null | components['schemas']['LifecycleStatus'];
+            "older_than"?: components['schemas']['Timestamp'] | null;
+            "status"?: components['schemas']['LifecycleStatus'] | null;
         };
         "JobCleanupResult": {
             "artifacts_pruned": number;
@@ -672,13 +673,13 @@ export type components = {
         };
         "JobClearRequest": {
             "confirm": boolean;
-            "kind"?: null | components['schemas']['JobKind'];
-            "older_than"?: null | components['schemas']['Timestamp'];
-            "status"?: null | components['schemas']['LifecycleStatus'];
+            "kind"?: components['schemas']['JobKind'] | null;
+            "older_than"?: components['schemas']['Timestamp'] | null;
+            "status"?: components['schemas']['LifecycleStatus'] | null;
         };
         "JobClearResult": {
             "deleted": number;
-            "status"?: null | components['schemas']['LifecycleStatus'];
+            "status"?: components['schemas']['LifecycleStatus'] | null;
             "warnings": components['schemas']['SourceWarning'][];
         };
         "JobDescriptor": {
@@ -700,7 +701,7 @@ export type components = {
             "phase": components['schemas']['PipelinePhase'];
             "sequence": number;
             "severity": components['schemas']['Severity'];
-            "stage_id"?: null | components['schemas']['StageId'];
+            "stage_id"?: components['schemas']['StageId'] | null;
             "status": components['schemas']['LifecycleStatus'];
             "timestamp": components['schemas']['Timestamp'];
             "visibility"?: components['schemas']['Visibility'];
@@ -728,9 +729,9 @@ export type components = {
             "phase": components['schemas']['JobPhase'];
         };
         "JobRecoveryRequest": {
-            "kind"?: null | components['schemas']['JobKind'];
+            "kind"?: components['schemas']['JobKind'] | null;
             "limit"?: number | null;
-            "stale_before"?: null | components['schemas']['Timestamp'];
+            "stale_before"?: components['schemas']['Timestamp'] | null;
         };
         "JobRecoveryResult": {
             "job_ids": components['schemas']['JobId'][];
@@ -739,7 +740,7 @@ export type components = {
         };
         "JobRetryMode": "same_config" | "with_overrides";
         "JobRetryRequest": {
-            "from_phase"?: null | components['schemas']['PipelinePhase'];
+            "from_phase"?: components['schemas']['PipelinePhase'] | null;
             "idempotency_key"?: string | null;
             "mode": components['schemas']['JobRetryMode'];
             "overrides"?: components['schemas']['MetadataMap'];
@@ -750,19 +751,19 @@ export type components = {
             "retry_job": components['schemas']['JobDescriptor'];
         };
         "JobSummary": {
-            "counts"?: null | components['schemas']['StageCounts'];
+            "counts"?: components['schemas']['StageCounts'] | null;
             "created_at": components['schemas']['Timestamp'];
             "job_id": components['schemas']['JobId'];
             "kind": components['schemas']['JobKind'];
-            "last_error"?: null | components['schemas']['SourceError'];
+            "last_error"?: components['schemas']['SourceError'] | null;
             "phase": components['schemas']['PipelinePhase'];
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
             "status": components['schemas']['LifecycleStatus'];
             "updated_at": components['schemas']['Timestamp'];
-            "watch_id"?: null | components['schemas']['WatchId'];
+            "watch_id"?: components['schemas']['WatchId'] | null;
         };
         "LedgerSummary": {
-            "committed_generation"?: null | components['schemas']['SourceGenerationId'];
+            "committed_generation"?: components['schemas']['SourceGenerationId'] | null;
             "counts": components['schemas']['SourceCounts'];
             "generation": components['schemas']['SourceGenerationId'];
             "source_id": components['schemas']['SourceId'];
@@ -800,7 +801,7 @@ export type components = {
             "host_kind": components['schemas']['McpHostKind'];
             "outcome": components['schemas']['McpProbeOutcome'];
             "path": string;
-            "rpc_probe"?: null | components['schemas']['RpcProbeResult'];
+            "rpc_probe"?: components['schemas']['RpcProbeResult'] | null;
             "url": string;
         };
         "McpHostKind": "same_host" | "apex_subdomain";
@@ -816,13 +817,13 @@ export type components = {
             "context": components['schemas']['MemoryContext'];
         };
         "MemoryDecayPolicy": {
-            "expires_at"?: null | components['schemas']['Timestamp'];
+            "expires_at"?: components['schemas']['Timestamp'] | null;
             "half_life_days"?: number | null;
-            "last_reinforced_at"?: null | components['schemas']['Timestamp'];
+            "last_reinforced_at"?: components['schemas']['Timestamp'] | null;
             "pinned"?: boolean;
             "profile": string;
             "reinforcement_count"?: number;
-            "review_after"?: null | components['schemas']['Timestamp'];
+            "review_after"?: components['schemas']['Timestamp'] | null;
         };
         "MemoryEdgeItem": {
             "created_at": number;
@@ -838,10 +839,10 @@ export type components = {
         "MemoryExportRequest": {
             "include_archived"?: boolean;
             "include_working"?: boolean;
-            "scope"?: null | components['schemas']['MemoryScope'];
+            "scope"?: components['schemas']['MemoryScope'] | null;
         };
         "MemoryExportResult": {
-            "artifact"?: null | components['schemas']['ArtifactRef'];
+            "artifact"?: components['schemas']['ArtifactRef'] | null;
             "count": number;
             "records": components['schemas']['MemoryRecord'][];
         };
@@ -887,7 +888,7 @@ export type components = {
             "workspace"?: string | null;
         };
         "MemoryItemResponse": {
-            "memory"?: null | components['schemas']['MemoryItem'];
+            "memory"?: components['schemas']['MemoryItem'] | null;
         };
         "MemoryItemsResponse": {
             "memories": components['schemas']['MemoryItem'][];
@@ -901,8 +902,8 @@ export type components = {
         "MemoryRecord": {
             "body": string;
             "confidence": number;
-            "contradicts"?: null | components['schemas']['MemoryId'];
-            "decay"?: null | components['schemas']['MemoryDecayPolicy'];
+            "contradicts"?: components['schemas']['MemoryId'] | null;
+            "decay"?: components['schemas']['MemoryDecayPolicy'] | null;
             "embedding_refs"?: components['schemas']['VectorPointId'][];
             "history": components['schemas']['MemoryHistoryEvent'][];
             "links"?: components['schemas']['MemoryLink'][];
@@ -911,7 +912,7 @@ export type components = {
             "salience": number;
             "scope": components['schemas']['MemoryScope'];
             "status": components['schemas']['MemoryStatus'];
-            "superseded_by"?: null | components['schemas']['MemoryId'];
+            "superseded_by"?: components['schemas']['MemoryId'] | null;
             "title"?: string | null;
             "visibility"?: components['schemas']['Visibility'];
         };
@@ -989,11 +990,11 @@ export type components = {
             "artifact_id": components['schemas']['ArtifactId'];
             "content_type"?: string | null;
             "created_at": components['schemas']['Timestamp'];
-            "job_id"?: null | components['schemas']['JobId'];
+            "job_id"?: components['schemas']['JobId'] | null;
             "kind": components['schemas']['ArtifactKind'];
             "label"?: string | null;
             "size_bytes": number;
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
         }[];
             "limit": number;
             "next_cursor"?: string | null;
@@ -1001,16 +1002,16 @@ export type components = {
         };
         "Page_JobSummary": {
             "items": {
-            "counts"?: null | components['schemas']['StageCounts'];
+            "counts"?: components['schemas']['StageCounts'] | null;
             "created_at": components['schemas']['Timestamp'];
             "job_id": components['schemas']['JobId'];
             "kind": components['schemas']['JobKind'];
-            "last_error"?: null | components['schemas']['SourceError'];
+            "last_error"?: components['schemas']['SourceError'] | null;
             "phase": components['schemas']['PipelinePhase'];
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
             "status": components['schemas']['LifecycleStatus'];
             "updated_at": components['schemas']['Timestamp'];
-            "watch_id"?: null | components['schemas']['WatchId'];
+            "watch_id"?: components['schemas']['WatchId'] | null;
         }[];
             "limit": number;
             "next_cursor"?: string | null;
@@ -1018,14 +1019,14 @@ export type components = {
         };
         "Page_UploadStatus": {
             "items": {
-            "artifact_id"?: null | components['schemas']['ArtifactId'];
+            "artifact_id"?: components['schemas']['ArtifactId'] | null;
             "bytes_received": number;
             "content_type": string;
             "created_at": components['schemas']['Timestamp'];
             "expires_at": components['schemas']['Timestamp'];
             "filename": string;
             "purpose": components['schemas']['UploadPurpose'];
-            "retention_until"?: null | components['schemas']['Timestamp'];
+            "retention_until"?: components['schemas']['Timestamp'] | null;
             "sha256"?: string | null;
             "size_bytes": number;
             "source_ref"?: string | null;
@@ -1039,8 +1040,8 @@ export type components = {
         "Page_WatchSummary": {
             "items": {
             "enabled": boolean;
-            "last_job_id"?: null | components['schemas']['JobId'];
-            "last_status"?: null | components['schemas']['LifecycleStatus'];
+            "last_job_id"?: components['schemas']['JobId'] | null;
+            "last_status"?: components['schemas']['LifecycleStatus'] | null;
             "next_run_at": components['schemas']['Timestamp'];
             "schedule": components['schemas']['WatchSchedule'];
             "source_id": components['schemas']['SourceId'];
@@ -1137,19 +1138,19 @@ export type components = {
         "PruneStep": {
             "description": string;
             "estimated_deletes": number;
-            "generation"?: null | components['schemas']['SourceGenerationId'];
+            "generation"?: components['schemas']['SourceGenerationId'] | null;
             "graph_edge_ids"?: components['schemas']['GraphEdgeId'][] | null;
             "graph_stable_keys"?: string[] | null;
             "memory_ids"?: components['schemas']['MemoryId'][] | null;
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
             "target": components['schemas']['PruneTargetKind'];
-            "vector_selector"?: null | components['schemas']['VectorDeleteSelector'];
+            "vector_selector"?: components['schemas']['VectorDeleteSelector'] | null;
         };
         "PruneStepResult": {
             "deleted": number;
-            "generation"?: null | components['schemas']['SourceGenerationId'];
+            "generation"?: components['schemas']['SourceGenerationId'] | null;
             "skipped_reason"?: string | null;
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
             "status": components['schemas']['LifecycleStatus'];
             "target": components['schemas']['PruneTargetKind'];
         };
@@ -1168,6 +1169,7 @@ export type components = {
             "rank": number;
             "rerank_score": number;
             "score": number;
+            "score_kind"?: components['schemas']['QueryScoreKind'] | null;
             "snippet": string;
             "source": string;
             "start_line"?: number | null;
@@ -1180,7 +1182,9 @@ export type components = {
         };
         "QueryResult": {
             "results": components['schemas']['QueryHit'][];
+            "warnings"?: components['schemas']['SourceWarning'][];
         };
+        "QueryScoreKind": "dense_similarity" | "hybrid_fusion" | "code_search";
         "ReadAction": "account_read" | "rate_limits_read" | "account_usage_read" | "account_workspace_messages_read" | "account_bedrock_discover" | "models_list" | "model_provider_capabilities_read" | "collaboration_modes_list" | "permission_profiles_list" | "config_read" | "config_requirements_read" | "mcp_servers_list" | "mcp_server_resource_read" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "skills_list" | "external_agent_config_detect" | "external_agent_config_import_read_histories" | "hooks_list" | "apps_list" | "apps_installed" | "app_read" | "experimental_features_list";
         "ReadinessBody": {
             "ok": boolean;
@@ -1306,7 +1310,7 @@ export type components = {
         };
         "ResponseMode": "auto" | "summary" | "full" | "inline" | "artifact" | "path" | "job_only";
         "RestAskRequest": {
-            "agent"?: null | components['schemas']['AgentTurnOptions'];
+            "agent"?: components['schemas']['AgentTurnOptions'] | null;
             "ask_authoritative_boost"?: number | null;
             "ask_authoritative_domains"?: string[] | null;
             "ask_backfill_chunks"?: number | null;
@@ -1324,7 +1328,7 @@ export type components = {
             "diagnostics"?: boolean | null;
             "explain"?: boolean | null;
             "hybrid_search"?: boolean | null;
-            "loadout"?: null | components['schemas']['LoadoutBinding'];
+            "loadout"?: components['schemas']['LoadoutBinding'] | null;
             "query": string;
             "since"?: string | null;
         };
@@ -1332,20 +1336,20 @@ export type components = {
             "url": string;
         };
         "RestChatRequest": {
-            "agent"?: null | components['schemas']['AgentTurnOptions'];
-            "loadout"?: null | components['schemas']['LoadoutBinding'];
+            "agent"?: components['schemas']['AgentTurnOptions'] | null;
+            "loadout"?: components['schemas']['LoadoutBinding'] | null;
             "message": string;
             "session_id"?: string | null;
         };
         "RestChatResponse": {
-            "agent"?: null | components['schemas']['AgentTurnResult'];
+            "agent"?: components['schemas']['AgentTurnResult'] | null;
             "answer": string;
-            "loadout"?: null | components['schemas']['LoadoutResolution'];
+            "loadout"?: components['schemas']['LoadoutResolution'] | null;
             "message": string;
             "model"?: string | null;
         };
         "RestDiffRequest": {
-            "render_mode"?: null | components['schemas']['RenderMode'];
+            "render_mode"?: components['schemas']['RenderMode'] | null;
             "url_a": string;
             "url_b": string;
         };
@@ -1364,9 +1368,9 @@ export type components = {
             "embed"?: boolean | null;
             "headers"?: string[];
             "max_pages"?: number | null;
-            "mode"?: null | components['schemas']['RestExtractMode'];
+            "mode"?: components['schemas']['RestExtractMode'] | null;
             "prompt"?: string | null;
-            "render_mode"?: null | components['schemas']['RenderMode'];
+            "render_mode"?: components['schemas']['RenderMode'] | null;
             "urls": string[];
         };
         "RestMapRequest": {
@@ -1382,12 +1386,12 @@ export type components = {
             "body"?: string | null;
             "confidence"?: number | null;
             "depth"?: number | null;
-            "edge_type"?: null | components['schemas']['RestMemoryEdgeType'];
+            "edge_type"?: components['schemas']['RestMemoryEdgeType'] | null;
             "file"?: string | null;
             "id"?: string | null;
             "limit"?: number | null;
             "memory_ids"?: string[] | null;
-            "memory_type"?: null | components['schemas']['RestMemoryNodeType'];
+            "memory_type"?: components['schemas']['RestMemoryNodeType'] | null;
             "pinned"?: boolean | null;
             "project"?: string | null;
             "query"?: string | null;
@@ -1396,7 +1400,7 @@ export type components = {
             "source_id"?: string | null;
             "status"?: string | null;
             "strategy"?: string | null;
-            "subaction"?: null | components['schemas']['RestMemorySubaction'];
+            "subaction"?: components['schemas']['RestMemorySubaction'] | null;
             "target_id"?: string | null;
             "title"?: string | null;
             "token_budget"?: number | null;
@@ -1444,13 +1448,13 @@ export type components = {
         "RestSummarizeRequest": {
             "exclude_selector"?: string | null;
             "headers"?: string[];
-            "render_mode"?: null | components['schemas']['RenderMode'];
+            "render_mode"?: components['schemas']['RenderMode'] | null;
             "root_selector"?: string | null;
             "url"?: string | null;
             "urls"?: string[] | null;
         };
         "RetrieveResult": {
-            "backend"?: null | components['schemas']['DocumentBackend'];
+            "backend"?: components['schemas']['DocumentBackend'] | null;
             "chunk_count": number;
             "content": string;
             "matched_url"?: string | null;
@@ -1481,11 +1485,11 @@ export type components = {
         };
         "RpcProbeResult": {
             "methods"?: string[];
-            "protocol"?: null | components['schemas']['RpcProtocol'];
+            "protocol"?: components['schemas']['RpcProtocol'] | null;
             "server_name"?: string | null;
             "server_version"?: string | null;
             "tools"?: string[];
-            "transport"?: null | components['schemas']['RpcTransport'];
+            "transport"?: components['schemas']['RpcTransport'] | null;
         };
         "RpcProtocol": "jsonrpc2" | "openrpc" | "mcp";
         "RpcTransport": "http" | "sse";
@@ -1548,10 +1552,10 @@ export type components = {
             "cause"?: string | null;
             "code": string;
             "message": string;
-            "provider_id"?: null | components['schemas']['ProviderId'];
+            "provider_id"?: components['schemas']['ProviderId'] | null;
             "retryable": boolean;
             "severity": components['schemas']['Severity'];
-            "source_item_key"?: null | components['schemas']['SourceItemKey'];
+            "source_item_key"?: components['schemas']['SourceItemKey'] | null;
         };
         "SourceGenerationId": string;
         "SourceId": string;
@@ -1592,7 +1596,7 @@ export type components = {
         "SourceRefreshPolicy": "if_stale" | "force" | "never";
         "SourceRequest": {
             "adapter"?: string | null;
-            "authority_hint"?: null | components['schemas']['AuthorityHint'];
+            "authority_hint"?: components['schemas']['AuthorityHint'] | null;
             "collection"?: string | null;
             "embed"?: boolean;
             "execution"?: components['schemas']['ExecutionPolicy'];
@@ -1603,7 +1607,7 @@ export type components = {
             "options"?: components['schemas']['AdapterOptions'];
             "output"?: components['schemas']['OutputPolicy'];
             "refresh"?: components['schemas']['SourceRefreshPolicy'];
-            "scope"?: null | components['schemas']['SourceScope'];
+            "scope"?: components['schemas']['SourceScope'] | null;
             "source": string;
             "watch"?: components['schemas']['SourceWatchPolicy'];
         };
@@ -1614,8 +1618,8 @@ export type components = {
             "counts": components['schemas']['SourceCounts'];
             "errors"?: components['schemas']['SourceError'][];
             "graph": components['schemas']['GraphWriteSummary'];
-            "inline"?: null | components['schemas']['InlineSourceResult'];
-            "job"?: null | components['schemas']['JobDescriptor'];
+            "inline"?: components['schemas']['InlineSourceResult'] | null;
+            "job"?: components['schemas']['JobDescriptor'] | null;
             "job_id": components['schemas']['JobId'];
             "ledger": components['schemas']['LedgerSummary'];
             "scope": components['schemas']['SourceScope'];
@@ -1623,7 +1627,7 @@ export type components = {
             "source_kind": components['schemas']['SourceKind'];
             "status": components['schemas']['LifecycleStatus'];
             "warnings": components['schemas']['SourceWarning'][];
-            "watch"?: null | components['schemas']['WatchResult'];
+            "watch"?: components['schemas']['WatchResult'] | null;
         };
         "SourceScope": "page" | "site" | "docs" | "repo" | "workspace" | "branch" | "org" | "package" | "version" | "feed" | "subreddit" | "thread" | "comment" | "video" | "playlist" | "channel" | "issue" | "pull_request" | "merge_request" | "release" | "wiki" | "file" | "directory" | "map" | "tool" | "script" | "api";
         "SourceSummary": {
@@ -1634,22 +1638,22 @@ export type components = {
             "created_at": components['schemas']['Timestamp'];
             "display_name": string;
             "graph_node_ids"?: components['schemas']['GraphNodeId'][];
-            "last_job_id"?: null | components['schemas']['JobId'];
-            "last_refreshed_at"?: null | components['schemas']['Timestamp'];
+            "last_job_id"?: components['schemas']['JobId'] | null;
+            "last_refreshed_at"?: components['schemas']['Timestamp'] | null;
             "source_id": components['schemas']['SourceId'];
             "source_kind": components['schemas']['SourceKind'];
             "status": components['schemas']['LifecycleStatus'];
             "tags"?: string[];
             "updated_at": components['schemas']['Timestamp'];
             "user_label"?: string | null;
-            "watch_id"?: null | components['schemas']['WatchId'];
+            "watch_id"?: components['schemas']['WatchId'] | null;
         };
         "SourceWarning": {
             "code": string;
             "message": string;
             "retryable": boolean;
             "severity": components['schemas']['Severity'];
-            "source_item_key"?: null | components['schemas']['SourceItemKey'];
+            "source_item_key"?: components['schemas']['SourceItemKey'] | null;
         };
         "SourceWatchPolicy": "disabled" | "ensure" | "enabled";
         "SourcesResponse": components['schemas']['IndexedSourcesResponse'] | components['schemas']['DomainSourcesResponse'];
@@ -1672,14 +1676,14 @@ export type components = {
         };
         "StreamEvent": {
             "data"?: unknown;
-            "error"?: null | components['schemas']['ApiError'];
+            "error"?: components['schemas']['ApiError'] | null;
             "event_id": string;
-            "job_id"?: null | components['schemas']['JobId'];
+            "job_id"?: components['schemas']['JobId'] | null;
             "kind": components['schemas']['StreamKind'];
             "request_id"?: string | null;
             "sequence": number;
             "timestamp": components['schemas']['Timestamp'];
-            "warning"?: null | components['schemas']['SourceWarning'];
+            "warning"?: components['schemas']['SourceWarning'] | null;
         };
         "StreamKind": "progress" | "token" | "citation" | "artifact" | "warning" | "error" | "final";
         "SuccessEnvelope_QueryResult": {
@@ -1687,10 +1691,11 @@ export type components = {
             "contract_version": string;
             "data": {
             "results": components['schemas']['QueryHit'][];
+            "warnings"?: components['schemas']['SourceWarning'][];
         };
-            "job"?: null | components['schemas']['JobDescriptor'];
+            "job"?: components['schemas']['JobDescriptor'] | null;
             "ok": boolean;
-            "pagination"?: null | components['schemas']['PageInfo'];
+            "pagination"?: components['schemas']['PageInfo'] | null;
             "request_id": string;
             "trace": components['schemas']['TraceContext'];
             "warnings": components['schemas']['SourceWarning'][];
@@ -1699,7 +1704,7 @@ export type components = {
             "artifacts": components['schemas']['ArtifactRef'][];
             "contract_version": string;
             "data": {
-            "backend"?: null | components['schemas']['DocumentBackend'];
+            "backend"?: components['schemas']['DocumentBackend'] | null;
             "chunk_count": number;
             "content": string;
             "matched_url"?: string | null;
@@ -1712,9 +1717,9 @@ export type components = {
             "variant_errors"?: components['schemas']['ServiceRetrieveVariantError'][];
             "warnings"?: string[];
         };
-            "job"?: null | components['schemas']['JobDescriptor'];
+            "job"?: components['schemas']['JobDescriptor'] | null;
             "ok": boolean;
-            "pagination"?: null | components['schemas']['PageInfo'];
+            "pagination"?: components['schemas']['PageInfo'] | null;
             "request_id": string;
             "trace": components['schemas']['TraceContext'];
             "warnings": components['schemas']['SourceWarning'][];
@@ -1752,7 +1757,7 @@ export type components = {
             "sha256"?: string | null;
             "size_bytes": number;
             "source_hint"?: string | null;
-            "source_id"?: null | components['schemas']['SourceId'];
+            "source_id"?: components['schemas']['SourceId'] | null;
         };
         "UploadCreateResult": {
             "expires_at": components['schemas']['Timestamp'];
@@ -1763,18 +1768,18 @@ export type components = {
         "UploadListRequest": {
             "cursor"?: string | null;
             "limit"?: number | null;
-            "status"?: null | components['schemas']['UploadStatusKind'];
+            "status"?: components['schemas']['UploadStatusKind'] | null;
         };
         "UploadPurpose": "source_artifact" | "import" | "evaluation";
         "UploadStatus": {
-            "artifact_id"?: null | components['schemas']['ArtifactId'];
+            "artifact_id"?: components['schemas']['ArtifactId'] | null;
             "bytes_received": number;
             "content_type": string;
             "created_at": components['schemas']['Timestamp'];
             "expires_at": components['schemas']['Timestamp'];
             "filename": string;
             "purpose": components['schemas']['UploadPurpose'];
-            "retention_until"?: null | components['schemas']['Timestamp'];
+            "retention_until"?: components['schemas']['Timestamp'] | null;
             "sha256"?: string | null;
             "size_bytes": number;
             "source_ref"?: string | null;
@@ -1791,7 +1796,7 @@ export type components = {
         };
         "VectorDeleteSelector": {
             "collection": string;
-            "generation"?: null | components['schemas']['SourceGenerationId'];
+            "generation"?: components['schemas']['SourceGenerationId'] | null;
             "kind": "source";
             "source_id": components['schemas']['SourceId'];
         } | {
@@ -1805,7 +1810,7 @@ export type components = {
         } | {
             "collection": string;
             "document_id": components['schemas']['DocumentId'];
-            "generation"?: null | components['schemas']['SourceGenerationId'];
+            "generation"?: components['schemas']['SourceGenerationId'] | null;
             "kind": "document";
         } | {
             "chunk_ids": components['schemas']['ChunkId'][];
@@ -1833,7 +1838,7 @@ export type components = {
         };
         "WatchExecRequest": {
             "reason"?: string | null;
-            "refresh"?: null | components['schemas']['SourceRefreshPolicy'];
+            "refresh"?: components['schemas']['SourceRefreshPolicy'] | null;
             "wait"?: boolean | null;
         };
         "WatchHistoryResult": {
@@ -1850,15 +1855,15 @@ export type components = {
             "metadata"?: components['schemas']['MetadataMap'];
             "options": components['schemas']['AdapterOptions'];
             "schedule": components['schemas']['WatchSchedule'];
-            "scope"?: null | components['schemas']['SourceScope'];
+            "scope"?: components['schemas']['SourceScope'] | null;
             "source": string;
         };
         "WatchResult": {
             "adapter": components['schemas']['AdapterRef'];
             "canonical_uri": string;
             "enabled": boolean;
-            "job"?: null | components['schemas']['JobDescriptor'];
-            "latest_job"?: null | components['schemas']['JobDescriptor'];
+            "job"?: components['schemas']['JobDescriptor'] | null;
+            "latest_job"?: components['schemas']['JobDescriptor'] | null;
             "schedule": components['schemas']['WatchSchedule'];
             "scope": components['schemas']['SourceScope'];
             "source_id": components['schemas']['SourceId'];
@@ -1871,13 +1876,13 @@ export type components = {
             "timezone"?: string | null;
         };
         "WatchStatusResponse": {
-            "latest_job_summary"?: null | components['schemas']['JobSummary'];
+            "latest_job_summary"?: components['schemas']['JobSummary'] | null;
             "watch": components['schemas']['WatchResult'];
         };
         "WatchSummary": {
             "enabled": boolean;
-            "last_job_id"?: null | components['schemas']['JobId'];
-            "last_status"?: null | components['schemas']['LifecycleStatus'];
+            "last_job_id"?: components['schemas']['JobId'] | null;
+            "last_status"?: components['schemas']['LifecycleStatus'] | null;
             "next_run_at": components['schemas']['Timestamp'];
             "schedule": components['schemas']['WatchSchedule'];
             "source_id": components['schemas']['SourceId'];
@@ -1887,10 +1892,10 @@ export type components = {
             "collection"?: string | null;
             "embed"?: boolean | null;
             "enabled"?: boolean | null;
-            "limits"?: null | components['schemas']['SourceLimits'];
-            "metadata"?: null | components['schemas']['MetadataMap'];
-            "options"?: null | components['schemas']['AdapterOptions'];
-            "schedule"?: null | components['schemas']['WatchSchedule'];
+            "limits"?: components['schemas']['SourceLimits'] | null;
+            "metadata"?: components['schemas']['MetadataMap'] | null;
+            "options"?: components['schemas']['AdapterOptions'] | null;
+            "schedule"?: components['schemas']['WatchSchedule'] | null;
         };
     };
 };
@@ -2115,7 +2120,7 @@ export type operations = {
     "watches_update": { method: "patch"; path: "/v1/watches/{watch_id}"; operationId: "watches_update"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: components['schemas']['WatchUpdateRequest']; responses: { "200": components['schemas']['WatchResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_delete": { method: "delete"; path: "/v1/watches/{watch_id}"; operationId: "watches_delete"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": components['schemas']['WatchDeleteResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_exec": { method: "post"; path: "/v1/watches/{watch_id}/exec"; operationId: "watches_exec"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: components['schemas']['WatchExecRequest']; responses: { "200": components['schemas']['JobDescriptor']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "watches_history": { method: "get"; path: "/v1/watches/{watch_id}/history"; operationId: "watches_history"; parameters: { query: { "limit"?: number | null; "cursor"?: string | null; "status"?: null | components['schemas']['LifecycleStatus'] }; path: { "watch_id": string } }; requestBody: never; responses: { "200": components['schemas']['WatchHistoryResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "watches_history": { method: "get"; path: "/v1/watches/{watch_id}/history"; operationId: "watches_history"; parameters: { query: { "limit"?: number | null; "cursor"?: string | null; "status"?: components['schemas']['LifecycleStatus'] | null }; path: { "watch_id": string } }; requestBody: never; responses: { "200": components['schemas']['WatchHistoryResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_pause": { method: "post"; path: "/v1/watches/{watch_id}/pause"; operationId: "watches_pause"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": components['schemas']['WatchResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_resume": { method: "post"; path: "/v1/watches/{watch_id}/resume"; operationId: "watches_resume"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": components['schemas']['WatchResult']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_status": { method: "get"; path: "/v1/watches/{watch_id}/status"; operationId: "watches_status"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": components['schemas']['WatchStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

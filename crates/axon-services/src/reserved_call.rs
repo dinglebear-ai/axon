@@ -476,3 +476,33 @@ pub async fn put_artifact_bytes(
 }
 
 pub(crate) use vector::{BulkLoadCompletionGuard, start_bulk_load_guard};
+
+/// Predict a sealed artifact identity without provider IO or admission.
+pub(crate) fn sealed_artifact_identity(
+    runtime: &TargetLocalSourceRuntime,
+    request: &axon_core::boundary::ArtifactFileWriteRequest,
+) -> Result<Option<ArtifactHandle>, ApiError> {
+    runtime.artifact_store.sealed_file_identity(request)
+}
+
+/// Publish a sealed archive through the same provider reservation lane.
+pub async fn put_artifact_file(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    request: axon_core::boundary::ArtifactFileWriteRequest,
+) -> Result<ArtifactHandle, ApiError> {
+    let Some(scheduler) = runtime.artifact_scheduler.as_deref() else {
+        return runtime.artifact_store.put_file(request).await;
+    };
+    let store = Arc::clone(&runtime.artifact_store);
+    map_reserved(
+        call_reserved::<ArtifactLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { store.put_file(request).await },
+        )
+        .await,
+        ErrorStage::Publishing,
+        "artifact",
+    )
+}

@@ -151,3 +151,83 @@ fn build_archive_digest_changes_with_content() {
 
     assert_ne!(first.sha256, second.sha256);
 }
+
+#[test]
+fn streamed_archive_matches_legacy_record_bytes_except_generated_ids_and_dates() {
+    use crate::SourceArchiveWriter as _;
+    let items = vec![
+        item(
+            "https://example.com/a",
+            Some(200),
+            ContentKind::Html,
+            "<p>hello</p>",
+        ),
+        item(
+            "https://example.com/b",
+            Some(404),
+            ContentKind::Markdown,
+            "# missing",
+        ),
+    ];
+    let legacy = build_archive(&items);
+    let mut streamed = Box::new(StreamingArchive::new().unwrap());
+    for item in &items {
+        streamed.append(item).unwrap();
+    }
+    let archive = streamed.finish().unwrap();
+    let bytes = std::fs::read(archive.file.path()).unwrap();
+    fn normalized(bytes: &[u8]) -> String {
+        String::from_utf8_lossy(bytes)
+            .split_inclusive('\n')
+            .filter(|line| !line.starts_with("WARC-Record-ID:") && !line.starts_with("WARC-Date:"))
+            .collect()
+    }
+    assert_eq!(normalized(&bytes), normalized(&legacy.bytes));
+    assert_eq!(archive.size_bytes, bytes.len() as u64);
+    assert_eq!(
+        archive.content_hash,
+        format!("sha256:{}", sha256_hex(&bytes))
+    );
+}
+
+#[test]
+fn streamed_archive_rejects_disk_admission_before_writing_beyond_limit() {
+    let mut archive = StreamingArchive::new().unwrap();
+    let before = archive.file.as_file().metadata().unwrap().len();
+    archive.bytes = 256 * 1024 * 1024;
+    assert!(archive.write_bytes(b"x").is_err());
+    assert_eq!(archive.file.as_file().metadata().unwrap().len(), before);
+}
+
+#[test]
+#[ignore = "explicit streamed archive memory/disk profile"]
+fn streamed_archive_memory_profile() {
+    use crate::SourceArchiveWriter as _;
+    let records: usize = std::env::var("AXON_WARC_PROFILE_RECORDS")
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=200).contains(&records));
+    let body = "x".repeat(1024 * 1024);
+    let acquired = item(
+        "https://example.com/profile",
+        Some(200),
+        ContentKind::Markdown,
+        &body,
+    );
+    let mut writer = Box::new(StreamingArchive::new().unwrap());
+    for _ in 0..records {
+        writer.append(&acquired).unwrap();
+    }
+    let archive = writer.finish().unwrap();
+    assert!(archive.size_bytes >= records as u64 * 1024 * 1024);
+    assert_eq!(
+        archive.file.as_file().metadata().unwrap().len(),
+        archive.size_bytes
+    );
+    println!(
+        "WARC_PROFILE records={records} archive_bytes={} body_bytes={}",
+        archive.size_bytes,
+        body.len()
+    );
+}

@@ -1,4 +1,6 @@
 //! Durable, private graph construction and atomic publication.
+mod diagnostics;
+pub(crate) mod journal;
 mod lifecycle;
 #[cfg(test)]
 mod private_connection_tests;
@@ -81,16 +83,19 @@ impl GraphStage {
         )
         .await?;
         storage::disable_private_revision_triggers(store.pool()).await?;
+        storage::bound_private_rows(store.pool()).await?;
         sqlx::query("CREATE TABLE stage_journal(sequence INTEGER PRIMARY KEY, candidate_json TEXT NOT NULL)").execute(store.pool()).await.map_err(storage::error)?;
-        sqlx::query("CREATE TABLE stage_stats(singleton INTEGER PRIMARY KEY, bytes INTEGER NOT NULL, journal_bytes INTEGER NOT NULL, summary_json TEXT NOT NULL)").execute(store.pool()).await.map_err(storage::error)?;
-        sqlx::query("INSERT INTO stage_stats VALUES(1,0,0,?)")
-            .bind(
-                serde_json::to_string(&storage::summary(&source, &[]))
-                    .map_err(|_| graph_storage_error("graph stage summary serialization failed"))?,
-            )
-            .execute(store.pool())
-            .await
-            .map_err(storage::error)?;
+        sqlx::query("CREATE TABLE stage_stats(singleton INTEGER PRIMARY KEY, bytes INTEGER NOT NULL, journal_bytes INTEGER NOT NULL, raw_journal_bytes INTEGER NOT NULL DEFAULT 0, rejected_candidates INTEGER NOT NULL DEFAULT 0, summary_json TEXT NOT NULL)").execute(store.pool()).await.map_err(storage::error)?;
+        sqlx::query(
+            "INSERT INTO stage_stats(singleton,bytes,journal_bytes,summary_json) VALUES(1,0,0,?)",
+        )
+        .bind(
+            serde_json::to_string(&storage::summary(&source, &[]))
+                .map_err(|_| graph_storage_error("graph stage summary serialization failed"))?,
+        )
+        .execute(store.pool())
+        .await
+        .map_err(storage::error)?;
         Ok(Self {
             id,
             live,
@@ -143,6 +148,8 @@ impl GraphStage {
             .map(redaction::sanitize)
             .collect::<Result<Vec<_>>>()?;
         let mut encoded = Vec::new();
+        let mut encoded_bytes = 0_u64;
+        let mut raw_bytes = 0_u64;
         for candidate in &candidates {
             crate::candidate::validate_candidate(candidate)?;
             if candidate.source_id != self.source {
@@ -150,19 +157,31 @@ impl GraphStage {
                     "graph stage candidate source differs from owner",
                 ));
             }
-            encoded
-                .push(serde_json::to_string(candidate).map_err(|_| {
-                    graph_storage_error("graph stage journal serialization failed")
-                })?);
+            let (record, raw) = journal::encode(candidate)?;
+            encoded_bytes = encoded_bytes
+                .checked_add(record.len() as u64)
+                .filter(|next| *next <= journal::MAX_BATCH_BYTES)
+                .ok_or_else(|| {
+                    graph_storage_error("graph journal write batch exceeds 64 MiB encoded window")
+                })?;
+            raw_bytes = raw_bytes
+                .checked_add(raw)
+                .filter(|next| *next <= journal::MAX_BATCH_BYTES)
+                .ok_or_else(|| {
+                    graph_storage_error("graph journal write batch exceeds 64 MiB decoded window")
+                })?;
+            encoded.push(record);
         }
         let bytes: i64 = sqlx::query_scalar("SELECT bytes FROM stage_stats WHERE singleton=1")
             .fetch_one(self.store.pool())
             .await
             .map_err(storage::error)?;
-        if bytes as u64 + encoded.iter().map(|s| s.len() as u64).sum::<u64>() > LIMIT {
-            return Err(graph_storage_error(
-                "graph journal and generation side effects exceed combined 256 MiB budget; reduce generation size and retry",
-            ));
+        let requested = encoded.iter().map(|s| s.len() as u64).sum::<u64>();
+        if (bytes as u64)
+            .checked_add(requested)
+            .is_none_or(|total| total > LIMIT)
+        {
+            return Err(self.budget_error(bytes as u64, requested, "graph_journal"));
         }
         storage::seed(&self.live, self.store.pool(), &candidates).await?;
         storage::check_size(&self.path)?;
@@ -187,12 +206,13 @@ impl GraphStage {
         summary.nodes_upserted += result.nodes_upserted;
         summary.edges_upserted += result.edges_upserted;
         summary.evidence_records += result.evidence_records;
-        sqlx::query("UPDATE stage_stats SET bytes=bytes+?1,journal_bytes=journal_bytes+?1,summary_json=?2 WHERE singleton=1")
+        sqlx::query("UPDATE stage_stats SET bytes=bytes+?1,journal_bytes=journal_bytes+?1,summary_json=?2,raw_journal_bytes=raw_journal_bytes+?3 WHERE singleton=1")
             .bind(added_bytes)
             .bind(
                 serde_json::to_string(&summary)
                     .map_err(|_| graph_storage_error("graph stage summary serialization failed"))?,
             )
+            .bind(raw_bytes as i64)
             .execute(&mut *tx)
             .await
             .map_err(storage::error)?;
@@ -261,6 +281,11 @@ impl GraphStage {
                 .fetch_one(self.store.pool())
                 .await
                 .map_err(storage::error)?;
+        let raw_journal_bytes: i64 =
+            sqlx::query_scalar("SELECT raw_journal_bytes FROM stage_stats WHERE singleton=1")
+                .fetch_one(self.store.pool())
+                .await
+                .map_err(storage::error)?;
         let started = std::time::Instant::now();
         let mut result = if replay {
             storage::replay_journal(self.store.pool(), conn, &self.source).await?
@@ -271,9 +296,24 @@ impl GraphStage {
         tracing::info!(stage_id=%self.id,source_id=%self.source.0,job_id=%self.job.0,
             generation_id=%self.generation.0,attempt=self.attempt,replay,
             activation_strategy=if replay {"replay"} else {"bulk"},
-            fallback_candidates=if replay {result.candidates_seen} else {0},journal_bytes,
+            fallback_candidates=if replay {result.candidates_seen} else {0},journal_bytes,raw_journal_bytes,
+            journal_encoding="zlib-v1",
             activation_elapsed_ms=started.elapsed().as_millis() as u64,
             "private graph activation prepared; caller transaction remains uncommitted");
+        // Replay reconstructs valid rows only; retain durable rejection diagnostics.
+        let staged = self.summary().await?;
+        for warning in staged.warnings {
+            if !result
+                .warnings
+                .iter()
+                .any(|existing| existing.code == warning.code)
+            {
+                result.warnings.push(warning);
+            }
+        }
+        if !result.warnings.is_empty() {
+            result.header.status = axon_api::source::LifecycleStatus::CompletedDegraded;
+        }
         result.source_id = self.source.clone();
         let json = serde_json::to_string(&result)
             .map_err(|_| graph_storage_error("graph stage receipt serialization failed"))?;
@@ -347,24 +387,6 @@ impl GraphStage {
         lifecycle::mark_disposable_ids(pool, ids).await
     }
 }
-impl GraphStage {
-    pub async fn activation_summary(
-        pool: &SqlitePool,
-        source: &SourceId,
-        generation: &SourceGenerationId,
-    ) -> Result<Option<GraphWriteResult>> {
-        let receipt: Option<String> = sqlx::query_scalar("SELECT summary_json FROM graph_stage_receipts WHERE source_id=? AND generation_id=? ORDER BY activated_at DESC LIMIT 1").bind(&source.0).bind(&generation.0).fetch_optional(pool).await.map_err(storage::error)?;
-        receipt
-            .map(|json| {
-                serde_json::from_str(&json).map_err(|_| {
-                    graph_storage_error(
-                        "graph activation receipt corrupt; inspect generation commit state",
-                    )
-                })
-            })
-            .transpose()
-    }
-}
 
 impl GraphStage {
     fn context(
@@ -426,6 +448,23 @@ impl GraphStage {
 }
 
 impl GraphStage {
+    fn budget_error(
+        &self,
+        used: u64,
+        requested: u64,
+        component: &str,
+    ) -> axon_api::source::ApiError {
+        graph_storage_error(
+            "graph journal and generation side effects exceed combined 256 MiB budget; \
+             this is a cumulative generation limit, not a concurrency limit; \
+             inspect byte accounting and use a bounded generation implementation before retrying",
+        )
+        .with_context("used_bytes", used.to_string())
+        .with_context("requested_bytes", requested.to_string())
+        .with_context("limit_bytes", LIMIT.to_string())
+        .with_context("budget_component", component)
+    }
+
     /// Charge non-graph generation side effects against the shared journal budget.
     pub async fn reserve_side_effect_bytes(&self, bytes: u64) -> Result<()> {
         let _guard = self.gate.lock().await;
@@ -445,7 +484,10 @@ impl GraphStage {
             .checked_add(bytes)
             .is_none_or(|total| total > LIMIT)
         {
-            return Err(self.context(graph_storage_error("graph journal and generation side effects exceed combined 256 MiB budget; reduce generation size and retry"),"private_stage_uncommitted"));
+            return Err(self.context(
+                self.budget_error(used as u64, bytes, "generation_side_effects"),
+                "private_stage_uncommitted",
+            ));
         }
         sqlx::query("UPDATE stage_stats SET bytes=bytes+? WHERE singleton=1")
             .bind(bytes as i64)

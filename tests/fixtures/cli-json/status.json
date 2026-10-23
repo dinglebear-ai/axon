@@ -18,16 +18,13 @@
     "active_lock_path": "[REDACTED]",
     "active_owner_observed": true,
     "active_owner_probe_error": null,
-    "corrupted_count": 0,
     "exists": true,
-    "latest_corrupted_path": null,
     "ok": true,
     "path": "[REDACTED]",
-    "quick_check": "ok",
-    "quick_check_error": null,
     "runtime_ioerr_count": 0,
     "runtime_last_error": null,
-    "runtime_last_error_at_ms": null
+    "runtime_last_error_at_ms": null,
+    "check": "runtime"
   },
   "totals": {
     "extract": 0,

@@ -5,6 +5,8 @@
 pub struct TeiEmbedOutcome {
     pub vectors: Vec<Vec<f32>>,
     pub requests: u64,
+    pub input_tokens: Option<u64>,
+    pub tokenization_fallback: Option<&'static str>,
 }
 
 /// The model identity returned by TEI's `/info` endpoint.

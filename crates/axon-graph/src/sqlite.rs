@@ -70,7 +70,9 @@ impl SqliteGraphStore {
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Delete)
             .synchronous(SqliteSynchronous::Full)
-            .pragma("cache_size", "-65536");
+            .pragma("cache_size", "-65536")
+            .pragma("mmap_size", "0")
+            .pragma("cache_spill", "ON");
         let pool = SqlitePoolOptions::new()
             .max_connections(max_connections)
             .connect_with(options)

@@ -46,6 +46,8 @@ pub(super) async fn prepare_documents(
     max_in_flight_bytes: usize,
     max_bytes_per_item: Option<u64>,
 ) -> anyhow::Result<PreparedBatch> {
+    let started = std::time::Instant::now();
+    let document_count = documents.len();
     let content_limit = effective_content_limit(&preparer, max_in_flight_bytes, max_bytes_per_item);
     let preparer = preparer.with_content_byte_limit(content_limit);
     let generation = generation.clone();
@@ -99,7 +101,7 @@ pub(super) async fn prepare_documents(
         })
         .collect();
     tracing::info!(target: "axon_services::source::preparation", generation = %observed_generation.0,
-        summary = %summary.message(), "source preparation batch outcomes");
+        summary = %summary.message(), documents = document_count, elapsed_us = started.elapsed().as_micros() as u64, "source preparation batch outcomes");
     Ok(PreparedBatch { outcomes, summary })
 }
 

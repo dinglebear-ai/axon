@@ -89,7 +89,7 @@ pub async fn qdrant_search(
     let dense_name = &spec.dense.name;
 
     let body = match (&request.sparse_vector, spec.sparse.as_ref()) {
-        (Some(sparse), Some(sparse_cfg)) => hybrid_body(
+        (Some(sparse), Some(sparse_cfg)) if !sparse.indices.is_empty() => hybrid_body(
             dense,
             dense_name,
             sparse,
@@ -126,7 +126,9 @@ fn hybrid_body(
     hybrid_candidates: Option<usize>,
     filter: Option<&serde_json::Value>,
 ) -> serde_json::Value {
-    let candidates = hybrid_candidates.unwrap_or_else(|| DEFAULT_HYBRID_CANDIDATES.max(limit));
+    let candidates = hybrid_candidates
+        .unwrap_or(DEFAULT_HYBRID_CANDIDATES)
+        .max(limit);
     let mut body = serde_json::json!({
         "prefetch": [
             {

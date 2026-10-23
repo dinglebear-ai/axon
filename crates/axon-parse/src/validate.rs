@@ -13,6 +13,7 @@ use axon_api::source::{LifecycleStatus, Severity, SourceRange, SourceWarning};
 use crate::parser::ParseResult;
 
 pub const INVALID_RANGE_WARNING_CODE: &str = "parse.invalid_source_range";
+pub const GRAPH_EVIDENCE_REJECTED_WARNING_CODE: &str = "parse.graph_evidence_rejected";
 
 /// True when every start/end pair present on `range` is ordered (`start <=
 /// end`). A range with no bounds set at all, or only one side of a pair set,
@@ -79,6 +80,19 @@ pub fn sanitize_result(mut result: ParseResult) -> ParseResult {
     }
     result.header.warnings.push(warning.clone());
     result.warnings.push(warning);
+    if dropped_evidence > 0 {
+        let warning = SourceWarning {
+            code: GRAPH_EVIDENCE_REJECTED_WARNING_CODE.to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "Parsing rejected {dropped_evidence} graph evidence record(s) with invalid source ranges, dropping {dropped_candidates} candidate(s). Graph extraction is incomplete; repair parser range production and refresh this source."
+            ),
+            source_item_key: None,
+            retryable: false,
+        };
+        result.header.warnings.push(warning.clone());
+        result.warnings.push(warning);
+    }
     result
 }
 

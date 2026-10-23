@@ -264,6 +264,7 @@ pub async fn execute_code_search_projection_batch(
             .await;
             let outcome = match result {
                 Ok(result) => BatchOutcome::Completed(QueryResult {
+                    warnings: Vec::new(),
                     results: result.results,
                 }),
                 Err(error) => BatchOutcome::Failed(ApiError::new(

@@ -62,6 +62,7 @@ pub struct QueryServiceHit {
 /// Result of [`run_query`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryServiceResult {
+    pub warnings: Vec<axon_api::source::SourceWarning>,
     pub hits: Vec<QueryServiceHit>,
 }
 
@@ -107,7 +108,10 @@ pub async fn run_query(
         // generation cannot consume the entire public result window. Qdrant also
         // filters retired generations, so this primarily covers legacy/cutover
         // fossils whose `retired_epoch` was never stamped.
-        limit: requested_limit.saturating_mul(2),
+        // A small public limit still needs the complete first diversity window.
+        limit: requested_limit
+            .saturating_mul(2)
+            .max(crate::rank::DIVERSITY_WINDOW_SIZE as u32),
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
@@ -151,9 +155,18 @@ pub async fn run_query(
         .collect();
 
     retain_latest_document_generations(&mut hits);
+    crate::rank::diversify_documents(&mut hits, |hit| {
+        (
+            hit.citation.source_id.clone(),
+            hit.citation.document_id.clone(),
+        )
+    });
     hits.truncate(requested_limit as usize);
 
-    Ok(QueryServiceResult { hits })
+    Ok(QueryServiceResult {
+        hits,
+        warnings: result.warnings,
+    })
 }
 
 /// Remove hits from older committed generations of the same stable document.

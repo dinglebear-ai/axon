@@ -2141,7 +2141,7 @@
         "path": "crates/axon-authz/src/policy.rs"
       },
       {
-        "checksum": "sha256:c3b7ab8dd174b9d6388c56e0cb24670a17eabbd154cb39933eb14d1d7ec57ef3",
+        "checksum": "sha256:17e8f26f5d29e0203564d26bc9ced2bb8b34d97685177fce32f21a84cb614503",
         "kind": "rust_module",
         "path": "crates/axon-core/src/boundary.rs"
       },

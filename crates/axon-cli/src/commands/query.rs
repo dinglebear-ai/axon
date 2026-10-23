@@ -23,7 +23,7 @@ pub async fn run_query(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
         limit: cfg.search_limit.max(1),
         offset: 0,
     };
-    let results = query_svc::query(ctx, cfg, &query, opts)
+    let result = query_svc::query(ctx, cfg, &query, opts)
         .await
         .inspect_err(|err| {
             if cfg.ask_diagnostics
@@ -31,8 +31,11 @@ pub async fn run_query(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
             {
                 eprintln!("{} {}", muted("Diagnostics:"), diag);
             }
-        })?
-        .results;
+        })?;
+    for warning in &result.warnings {
+        eprintln!("{}: {}", warning.code, warning.message);
+    }
+    let results = result.results;
 
     if cfg.json_output {
         for result in &results {
@@ -57,10 +60,10 @@ pub async fn run_query(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
     println!("{} {}\n", muted("Showing"), results.len());
     for result in &results {
         println!(
-            "  \u{2022} {}. {} rerank={:.3} {}",
+            "  \u{2022} {}. {} score={:.3} {}",
             result.rank,
             status_text("completed"),
-            result.rerank_score,
+            result.score,
             accent(&result.source)
         );
         println!("    {}", result.snippet);

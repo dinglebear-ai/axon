@@ -268,3 +268,43 @@ fn heuristic_and_unsupported_code_publish_the_actual_fallback_method() {
     assert_eq!(chunks[0].metadata["actual_chunking_method"], "atomic_code");
     assert_eq!(chunks[0].metadata["code_parse_status"], "unsupported");
 }
+
+#[test]
+fn heuristic_crlf_offsets_preserve_unicode_and_symbols() {
+    let source = "\r\n\r\n// é\r\nfn x() {}\r\n";
+    let chunks = code_symbols(source, Some("file.rs"), None);
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<String>(),
+        source
+    );
+    let symbol = chunks
+        .iter()
+        .find(|c| c.symbol.as_deref() == Some("x"))
+        .unwrap();
+    assert_eq!(
+        symbol.range.byte_start,
+        Some(source.find("fn x").unwrap() as u64)
+    );
+}
+
+#[test]
+fn terraform_type_assignment_has_no_empty_fallback_symbol() {
+    let source = "variable \"project_id\" {\n  type = string\n  sensitive = true\n}\n";
+    let chunks = code_symbols(source, Some("variables.tf"), None);
+    assert_eq!(
+        chunks
+            .iter()
+            .map(|chunk| chunk.content.as_str())
+            .collect::<String>(),
+        source
+    );
+    assert!(chunks.iter().all(|chunk| {
+        chunk
+            .symbol
+            .as_ref()
+            .is_none_or(|symbol| !symbol.trim().is_empty())
+    }));
+}

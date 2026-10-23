@@ -12,7 +12,28 @@ pub fn heading_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCan
     let mut candidates = Vec::new();
     let mut heading_path: Vec<String> = Vec::new();
 
+    let mut fence: Option<(u8, usize)> = None;
     for (idx, line) in inline_text(input).lines().enumerate() {
+        let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+        let trimmed = &line[indent..];
+        if let Some((marker, length)) = fence {
+            let run = trimmed.bytes().take_while(|byte| *byte == marker).count();
+            if indent <= 3 && run >= length && trimmed[run..].trim().is_empty() {
+                fence = None;
+            }
+            continue;
+        }
+        if indent <= 3 {
+            let marker = trimmed.as_bytes().first().copied().unwrap_or_default();
+            let run = trimmed.bytes().take_while(|byte| *byte == marker).count();
+            if matches!(marker, b'`' | b'~')
+                && run >= 3
+                && (marker != b'`' || !trimmed[run..].contains('`'))
+            {
+                fence = Some((marker, run));
+                continue;
+            }
+        }
         let Some((level, heading)) = parse_atx_heading(line) else {
             continue;
         };
@@ -48,16 +69,29 @@ pub fn heading_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCan
 }
 
 fn parse_atx_heading(line: &str) -> Option<(usize, &str)> {
-    let trimmed = line.trim_start();
-    let level = trimmed.chars().take_while(|ch| *ch == '#').count();
+    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indent > 3 {
+        return None;
+    }
+    let trimmed = &line[indent..];
+    let level = trimmed.bytes().take_while(|byte| *byte == b'#').count();
     if !(1..=6).contains(&level) {
         return None;
     }
-    let rest = trimmed[level..].trim();
-    if rest.is_empty() {
+    let rest = &trimmed[level..];
+    if !rest.is_empty() && !rest.starts_with([' ', '\t']) {
         return None;
     }
-    Some((level, rest.trim_end_matches('#').trim()))
+    let rest = rest.trim_matches([' ', '\t']);
+    // Closing hashes are decoration only when preceded by whitespace.
+    let without_hashes = rest.trim_end_matches('#');
+    let heading = if without_hashes.is_empty() || without_hashes.ends_with([' ', '\t']) {
+        without_hashes.trim_end_matches([' ', '\t'])
+    } else {
+        rest
+    };
+    // Empty headings have no meaningful entity to put in the graph.
+    (!heading.is_empty()).then_some((level, heading))
 }
 
 fn heading_anchor(heading: &str) -> String {

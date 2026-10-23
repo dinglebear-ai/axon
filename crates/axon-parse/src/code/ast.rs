@@ -73,6 +73,7 @@ pub(super) struct AstParse {
     pub symbols: Vec<AstSymbol>,
     pub grammar: &'static str,
     pub recovered: bool,
+    pub searchable_structure: bool,
 }
 
 pub(super) fn parse_symbols(input: &ParseInput) -> Result<AstParse, &'static str> {
@@ -101,7 +102,48 @@ pub(super) fn parse_symbols(input: &ParseInput) -> Result<AstParse, &'static str
         symbols,
         grammar: language.grammar_name(),
         recovered: tree.root_node().has_error(),
+        searchable_structure: !tree.root_node().has_error()
+            && searchable_structure(tree.root_node()),
     })
+}
+
+// AST evidence only: comments, strings and import-only files cannot bypass quality policy.
+fn searchable_structure(node: Node<'_>) -> bool {
+    if matches!(
+        node.kind(),
+        "function_item"
+            | "function_definition"
+            | "function_declaration"
+            | "class_definition"
+            | "class_declaration"
+            | "struct_item"
+            | "enum_item"
+            | "const_item"
+            | "static_item"
+            | "assignment"
+            | "assignment_expression"
+            | "variable_declarator"
+            | "call_expression"
+            | "call"
+            | "command"
+            | "variable_assignment"
+            | "rule_set"
+    ) {
+        return true;
+    }
+    if matches!(
+        node.kind(),
+        "comment"
+            | "string"
+            | "string_literal"
+            | "import_statement"
+            | "import_from_statement"
+            | "use_declaration"
+    ) {
+        return false;
+    }
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor).any(searchable_structure)
 }
 
 pub(super) fn facts_with_graph(
@@ -417,6 +459,12 @@ fn detect_language(input: &ParseInput) -> Option<CodeLanguage> {
         .document
         .language
         .as_deref()
+        .or_else(|| {
+            super::shebang_language(inline_text(input)).filter(|_| {
+                let path = input.document.path.as_deref().unwrap_or("");
+                std::path::Path::new(path).extension().is_none()
+            })
+        })
         .unwrap_or_default()
         .to_ascii_lowercase();
     let path = input

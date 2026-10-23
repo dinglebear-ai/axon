@@ -681,3 +681,34 @@ fn rejected_chunks_retain_fixed_screening_reason_counts() {
         assert!(!encoded.contains("ZmFrZS1maXh0dXJl"));
     }
 }
+
+#[test]
+fn document_metadata_is_inherited_with_chunk_overrides_at_publication() {
+    let mut document = test_prepared_document();
+    document
+        .metadata
+        .insert("web_title".to_string(), json!("Shared title"));
+    document
+        .metadata
+        .insert("web_structured_kind".to_string(), json!("Article"));
+    let blob = "x".repeat(60 * 1024);
+    document
+        .metadata
+        .insert("web_structured_blob".to_string(), json!(blob));
+    for chunk in &document.chunks {
+        assert!(!chunk.metadata.contains_key("web_structured_blob"));
+    }
+    document.chunks[0]
+        .metadata
+        .insert("web_title".to_string(), json!("Chunk title"));
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+    let batch = builder(test_collection_spec(3), document, embeddings)
+        .build()
+        .unwrap();
+    assert_eq!(batch.points[0].payload["web_title"], "Chunk title");
+    assert_eq!(batch.points[1].payload["web_title"], "Shared title");
+    for point in &batch.points {
+        assert_eq!(point.payload["web_structured_kind"], "Article");
+        assert_eq!(point.payload["web_structured_blob"], blob);
+    }
+}

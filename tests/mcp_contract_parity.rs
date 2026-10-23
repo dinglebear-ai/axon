@@ -262,6 +262,7 @@ fn doctor_result_wraps_payload() {
 #[test]
 fn query_result_has_results_vec() {
     let v = vec![QueryHit {
+        score_kind: None,
         rank: 1,
         score: 0.9,
         rerank_score: 0.9,
@@ -282,7 +283,10 @@ fn query_result_has_results_vec() {
         chunking_method: None,
         symbol_extraction_status: None,
     }];
-    let r = QueryResult { results: v };
+    let r = QueryResult {
+        results: v,
+        warnings: Vec::new(),
+    };
     assert_eq!(r.results.len(), 1);
     assert_eq!(r.results[0].score, 0.9);
 }

@@ -50,6 +50,7 @@ pub struct RetrievalMatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetrievalResult {
+    pub warnings: Vec<axon_api::source::SourceWarning>,
     pub plan: RetrievalPlan,
     pub matches: Vec<RetrievalMatch>,
     pub context: ContextBundle,

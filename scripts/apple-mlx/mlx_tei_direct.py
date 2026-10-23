@@ -188,6 +188,29 @@ def validate_payload(payload: Any) -> list[str]:
     return texts
 
 
+def validate_tokenize_payload(payload: Any) -> tuple[list[str], bool]:
+    if not isinstance(payload, dict) or set(payload) - {"inputs", "add_special_tokens", "prompt_name"}:
+        raise RequestLimitError("unsupported tokenizer options")
+    add_special = payload.get("add_special_tokens", True)
+    if not isinstance(add_special, bool) or payload.get("prompt_name") is not None:
+        raise RequestLimitError("unsupported tokenizer options")
+    texts = payload.get("inputs")
+    if isinstance(texts, str):
+        texts = [texts]
+    return validate_payload({"inputs": texts}), add_special
+
+
+def tokenize_response(
+    encodings, *, single: bool = False
+) -> list[dict[str, Any]] | list[list[dict[str, Any]]]:
+    rows = [[{"id": token, "text": text, "special": bool(special),
+              "start": None if special else start, "stop": None if special else stop}
+             for token, text, special, (start, stop) in
+             zip(row.ids, row.tokens, row.special_tokens_mask, row.offsets)]
+            for row in encodings]
+    return rows[0] if single else rows
+
+
 if not TEST_MODE:
     import queue
     import sys
@@ -466,6 +489,26 @@ if not TEST_MODE:
             return denied
         with METRICS_LOCK:
             return dict(METRICS)
+
+    @app.post("/tokenize")
+    async def tokenize(request: Request) -> Response:
+        denied = require_auth(request)
+        if denied:
+            return denied
+        try:
+            payload = orjson.loads(await read_limited_body(request))
+            texts, add_special = validate_tokenize_payload(payload)
+            def encode():
+                return RAW_TOKENIZER.encode_batch(texts, add_special_tokens=add_special)
+            encodings = await anyio.to_thread.run_sync(encode, abandon_on_cancel=False)
+            if sum(len(row.ids) for row in encodings) > MAX_REQUEST_TOKENS:
+                raise RequestLimitError("aggregate tokens exceed configured limit")
+            encoded = orjson.dumps(tokenize_response(encodings, single=isinstance(payload["inputs"], str)))
+            if len(encoded) > MAX_BODY_BYTES:
+                raise RequestLimitError("token response exceeds configured byte limit")
+            return Response(encoded, media_type="application/json")
+        except (RequestLimitError, orjson.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return ORJSONResponse({"error": "invalid or oversized tokenize request"}, status_code=400)
 
     @app.post("/embed")
     async def embed(request: Request) -> Response:
