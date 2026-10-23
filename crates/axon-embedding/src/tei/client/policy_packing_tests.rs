@@ -28,7 +28,7 @@ fn cached_keys_preserve_ties_unicode_and_all_batch_boundaries() {
     let inputs = ["", "a", "λ", "ab", "漢", "abcd", "😀", "aaaa"].map(String::from);
     let batches = pack_batches(
         &inputs,
-        super::super::BatchLimits {
+        BatchLimits {
             max_inputs: 3,
             max_input_tokens: 8,
             max_batch_tokens: 6,
@@ -108,7 +108,7 @@ fn packing_accounts_for_escaped_json_bytes_and_envelope() {
     let batches = pack_batches_counted(
         &inputs,
         &[1, 1, 1],
-        super::super::BatchLimits {
+        BatchLimits {
             max_inputs: 3,
             max_input_tokens: 8,
             max_batch_tokens: 8,
@@ -146,7 +146,7 @@ fn counted_packing_uses_byte_length_then_original_index_for_ties() {
     let batches = pack_batches_counted(
         &inputs,
         &[1; 4],
-        super::super::BatchLimits {
+        BatchLimits {
             max_inputs: 4,
             max_input_tokens: 8,
             max_batch_tokens: 8,

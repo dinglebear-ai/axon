@@ -55,6 +55,7 @@ pub trait ArtifactStore: Send + Sync {
         .await
     }
     /// Pure identity prediction permits durable cleanup ownership before a write.
+    #[allow(clippy::result_large_err)] // ArtifactStore exposes structured ApiError values.
     fn sealed_file_identity(
         &self,
         _artifact: &ArtifactFileWriteRequest,

@@ -799,7 +799,7 @@
         {
           "path": "crates/axon-core/src/boundary.rs",
           "kind": "rust_module",
-          "checksum": "sha256:07f1185d3e9effb65c526c3e9cf3de81937f220b8fe6ec303e6c37d9ae22b078"
+          "checksum": "sha256:17e8f26f5d29e0203564d26bc9ced2bb8b34d97685177fce32f21a84cb614503"
         },
         {
           "path": "crates/axon-embedding/src/fake.rs",
@@ -842,7 +842,7 @@
           "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
         }
       ],
-      "manifest_checksum": "sha256:ba785da6f6d9d804a3157efcc68c2dc2fcc346006a11e6b6f0bf9468a5c346b7"
+      "manifest_checksum": "sha256:0d886135e9bfeb9ee22c8bc0ca62fd1d391267bef7fd1377de6f548c51404073"
     },
     {
       "family": "vector-payload",

@@ -47,7 +47,8 @@ fn xml_records_returns_empty_for_malformed_input() {
 
 #[test]
 fn structured_record_ranges_match_legacy_offsets_without_prefix_rescans() {
-    let cases: Vec<(String, fn(&str) -> Vec<DocumentChunk>)> = vec![
+    type RecordChunker = fn(&str) -> Vec<DocumentChunk>;
+    let cases: Vec<(String, RecordChunker)> = vec![
         (
             format!("name,value\r\n{}", "café,東京\r\n".repeat(512)),
             csv_records,

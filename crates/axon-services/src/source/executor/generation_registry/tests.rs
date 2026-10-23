@@ -273,7 +273,8 @@ async fn concurrent_generations_share_admission_and_wait_for_a_settled_slot() {
         );
     }
     let mut tasks = Vec::new();
-    for generation in generations[..4].iter().cloned() {
+    for generation in &generations[..4] {
+        let generation = generation.clone();
         let runtime = runtime.clone();
         tasks.push(tokio::spawn(async move {
             super::super::generation_state::GenerationAccumulator::new(

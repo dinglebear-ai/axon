@@ -19,8 +19,8 @@ pub(in crate::source::executor) struct PreparedPoolVectorizer {
 #[derive(Debug)]
 pub(in crate::source::executor) enum PushOutcome {
     NoPublication,
-    StatusesOnly(VectorizeResult),
-    Published(VectorizeResult),
+    StatusesOnly,
+    Published,
 }
 
 impl PreparedPoolVectorizer {
@@ -68,7 +68,7 @@ impl PreparedPoolVectorizer {
                         result.graph_candidates.clear();
                     }
                     self.checkpoint(runtime, &result).await?;
-                    outcomes.push(PushOutcome::StatusesOnly(result));
+                    outcomes.push(PushOutcome::StatusesOnly);
                     continue;
                 }
                 coordinator
@@ -248,7 +248,7 @@ impl PreparedPoolVectorizer {
                 };
                 let result = published?;
                 self.checkpoint(runtime, &result).await?;
-                outcomes.push(PushOutcome::Published(result));
+                outcomes.push(PushOutcome::Published);
                 next = following;
             } else {
                 outcomes.push(PushOutcome::NoPublication);
@@ -256,33 +256,6 @@ impl PreparedPoolVectorizer {
             }
         }
         Ok(outcomes)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[cfg(test)]
-    pub(in crate::source::executor) async fn finish(
-        &mut self,
-        runtime: &TargetLocalSourceRuntime,
-        input: &SourcePipelineInput<'_>,
-        emitter: &SourceEventEmitter,
-        coordinator: &ProgressCoordinator,
-        progress: &mut PipelineProgress,
-    ) -> anyhow::Result<Option<VectorizeResult>> {
-        let result = async {
-            let Some(ready) = self.ready.take() else {
-                return Ok(None);
-            };
-            let result =
-                publish_built_batch(runtime, input, ready, emitter, coordinator, progress).await?;
-            self.checkpoint(runtime, &result).await?;
-            Ok(Some(result))
-        }
-        .await;
-        if let Some(collection) = self.bulk_collection.take() {
-            finish_bulk_result(runtime, input, &collection, self.bulk_guard.take(), result).await
-        } else {
-            result
-        }
     }
 
     pub(super) async fn checkpoint(

@@ -34,6 +34,13 @@ pub(super) struct SideEffectsSpoolRecord {
     pub(super) refreshed_manifest_items: Vec<ManifestItem>,
 }
 
+pub(super) type ArchivedReplay = (
+    tokio::sync::mpsc::Receiver<SideEffectsSpoolRecord>,
+    tokio::task::JoinHandle<
+        anyhow::Result<(GenerationSpool, Option<axon_adapters::GeneratedArchiveFile>)>,
+    >,
+);
+
 impl GenerationSpool {
     #[cfg(test)]
     pub(super) fn create(path: &Path) -> anyhow::Result<Self> {
@@ -151,12 +158,7 @@ impl GenerationSpool {
     pub(super) fn replay_stream_archived(
         mut self,
         mut archive: Option<Box<dyn axon_adapters::SourceArchiveWriter>>,
-    ) -> (
-        tokio::sync::mpsc::Receiver<SideEffectsSpoolRecord>,
-        tokio::task::JoinHandle<
-            anyhow::Result<(Self, Option<axon_adapters::GeneratedArchiveFile>)>,
-        >,
-    ) {
+    ) -> ArchivedReplay {
         let (sender, receiver) = tokio::sync::mpsc::channel(1);
         let worker = tokio::task::spawn_blocking(move || {
             self.seal()?;

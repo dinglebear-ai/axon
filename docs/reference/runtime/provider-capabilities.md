@@ -31,7 +31,7 @@ Provider capabilities report health, limits, cooling, reservation policy, reserv
 | `crates/axon-api/src/schema_registry.rs` | `sha256:4cb12ff492247305468c3126a142a850cf9616120d7cc51f73b3527e38da4ee8` |
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
 | `crates/axon-authz/src/policy.rs` | `sha256:56c0a64d7310d77a16dddf2de636afe2e0a9c581d35fa319418dc458c10046c9` |
-| `crates/axon-core/src/boundary.rs` | `sha256:07f1185d3e9effb65c526c3e9cf3de81937f220b8fe6ec303e6c37d9ae22b078` |
+| `crates/axon-core/src/boundary.rs` | `sha256:17e8f26f5d29e0203564d26bc9ced2bb8b34d97685177fce32f21a84cb614503` |
 | `crates/axon-embedding/src/fake.rs` | `sha256:042f8b08ad4cfc4e3ae03a71d5ff3f20c19717efc24242c6a74ac3bb8bc1a178` |
 | `crates/axon-embedding/src/provider.rs` | `sha256:6ea8b3fc76cae8f4aef0eb1a9602e4f3dc7cb7b2c9cf22ce2c5a050adee767ba` |
 | `crates/axon-llm/src/fake.rs` | `sha256:99fb9c1ac34b9438587208eb1217469435f2308bd937a843ecc1c09f7946c89c` |

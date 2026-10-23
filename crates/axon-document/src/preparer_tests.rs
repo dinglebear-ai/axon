@@ -2115,10 +2115,10 @@ fn crlf_ast_graph_quotes_validate_against_literal_source() {
     assert!(!doc.graph_candidates.is_empty());
     for candidate in &doc.graph_candidates {
         for evidence in &candidate.evidence {
-            if let (Some(range), Some(quote)) = (&evidence.range, &evidence.quote) {
-                if let Some((start, end)) = range.byte_start.zip(range.byte_end) {
-                    assert!(body[start as usize..end as usize].contains(quote));
-                }
+            if let (Some(range), Some(quote)) = (&evidence.range, &evidence.quote)
+                && let Some((start, end)) = range.byte_start.zip(range.byte_end)
+            {
+                assert!(body[start as usize..end as usize].contains(quote));
             }
         }
     }

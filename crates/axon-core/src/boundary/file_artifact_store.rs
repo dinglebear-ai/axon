@@ -168,6 +168,7 @@ impl ArtifactStore for FileArtifactStore {
         Ok(Some(file_identity(artifact)?))
     }
 
+    #[allow(clippy::result_large_err)] // Blocking worker retains the ArtifactStore error contract.
     async fn put_file(&self, artifact: ArtifactFileWriteRequest) -> Result<ArtifactHandle> {
         let gate = self.write_gate.clone().lock_owned().await;
         let root = self.root.clone();

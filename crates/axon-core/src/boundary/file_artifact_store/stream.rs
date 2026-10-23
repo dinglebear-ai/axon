@@ -15,6 +15,7 @@ impl Drop for ArtifactDiskOwner {
         let _ = self.0.unlock();
     }
 }
+#[allow(clippy::result_large_err)] // Preserve the ArtifactStore structured ApiError contract.
 pub(super) fn artifact_disk_owner(root: &Path, nonblocking: bool) -> Result<ArtifactDiskOwner> {
     std::fs::create_dir_all(root).map_err(artifact_io_error)?;
     let mut options = std::fs::OpenOptions::new();
@@ -50,6 +51,7 @@ pub(super) fn artifact_disk_owner(root: &Path, nonblocking: bool) -> Result<Arti
     Ok(ArtifactDiskOwner(file))
 }
 
+#[allow(clippy::result_large_err)] // Preserve the ArtifactStore structured ApiError contract.
 pub(super) fn file_identity(artifact: &ArtifactFileWriteRequest) -> Result<ArtifactHandle> {
     let digest = artifact
         .content_hash
@@ -83,6 +85,7 @@ pub(super) fn file_identity(artifact: &ArtifactFileWriteRequest) -> Result<Artif
     })
 }
 
+#[allow(clippy::result_large_err)] // Preserve the ArtifactStore structured ApiError contract.
 pub(super) fn put_sealed_file(
     root: PathBuf,
     mut artifact: ArtifactFileWriteRequest,

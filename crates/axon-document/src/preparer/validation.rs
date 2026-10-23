@@ -245,6 +245,41 @@ impl<'a> SourceLines<'a> {
     }
 }
 
+fn document_bounds(document: &PreparedDocument) -> Option<SourceRangeBounds> {
+    Some(SourceRangeBounds {
+        line_count: document.metadata.get("normalized_line_count")?.as_u64()? as u32,
+        byte_len: document.metadata.get("normalized_byte_len")?.as_u64()?,
+        char_count: document.metadata.get("normalized_char_count")?.as_u64()?,
+    })
+}
+
+fn range_errors(label: &str, range: &SourceRange, errors: &mut Vec<String>) {
+    if starts_after(range.line_start, range.line_end) {
+        errors.push(format!("{label} line_start > line_end"));
+    }
+    if starts_after(range.byte_start, range.byte_end) {
+        errors.push(format!("{label} byte_start > byte_end"));
+    }
+    if starts_after(range.char_start, range.char_end) {
+        errors.push(format!("{label} char_start > char_end"));
+    }
+    if starts_after(range.time_start_ms, range.time_end_ms) {
+        errors.push(format!("{label} time_start_ms > time_end_ms"));
+    }
+    if range
+        .turn_start
+        .as_ref()
+        .zip(range.turn_end.as_ref())
+        .is_some_and(|(start, end)| start > end)
+    {
+        errors.push(format!("{label} turn_start > turn_end"));
+    }
+}
+
+fn starts_after<T: Ord>(start: Option<T>, end: Option<T>) -> bool {
+    start.zip(end).is_some_and(|(start, end)| start > end)
+}
+
 #[cfg(test)]
 mod line_index_tests {
     use super::*;
@@ -276,7 +311,7 @@ mod line_index_tests {
         let lines = text
             .lines()
             .enumerate()
-            .filter_map(|(index, line)| (index + 1 >= start && index + 1 <= end).then_some(line))
+            .filter_map(|(index, line)| (index + 1 >= start && index < end).then_some(line))
             .collect::<Vec<_>>();
         (!lines.is_empty()).then(|| lines.join("\n"))
     }
@@ -323,39 +358,4 @@ mod line_index_tests {
         .unwrap();
         assert_eq!(indexed.slice(&range).as_deref(), Some(""));
     }
-}
-
-fn document_bounds(document: &PreparedDocument) -> Option<SourceRangeBounds> {
-    Some(SourceRangeBounds {
-        line_count: document.metadata.get("normalized_line_count")?.as_u64()? as u32,
-        byte_len: document.metadata.get("normalized_byte_len")?.as_u64()?,
-        char_count: document.metadata.get("normalized_char_count")?.as_u64()?,
-    })
-}
-
-fn range_errors(label: &str, range: &SourceRange, errors: &mut Vec<String>) {
-    if starts_after(range.line_start, range.line_end) {
-        errors.push(format!("{label} line_start > line_end"));
-    }
-    if starts_after(range.byte_start, range.byte_end) {
-        errors.push(format!("{label} byte_start > byte_end"));
-    }
-    if starts_after(range.char_start, range.char_end) {
-        errors.push(format!("{label} char_start > char_end"));
-    }
-    if starts_after(range.time_start_ms, range.time_end_ms) {
-        errors.push(format!("{label} time_start_ms > time_end_ms"));
-    }
-    if range
-        .turn_start
-        .as_ref()
-        .zip(range.turn_end.as_ref())
-        .is_some_and(|(start, end)| start > end)
-    {
-        errors.push(format!("{label} turn_start > turn_end"));
-    }
-}
-
-fn starts_after<T: Ord>(start: Option<T>, end: Option<T>) -> bool {
-    start.zip(end).is_some_and(|(start, end)| start > end)
 }

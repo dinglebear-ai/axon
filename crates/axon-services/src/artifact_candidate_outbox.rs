@@ -1,6 +1,6 @@
 //! Durable post-commit delivery intent for artifact candidates.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -420,12 +420,12 @@ fn finding(code: &'static str, file_name: String) -> ArtifactCandidateOutboxFind
 }
 
 async fn quarantine(
-    path: &PathBuf,
+    path: &Path,
     code: &'static str,
     file_name: String,
 ) -> ArtifactCandidateOutboxFinding {
     let quarantine = path.with_extension(format!("invalid.{}", uuid::Uuid::new_v4()));
-    let path = path.clone();
+    let path = path.to_path_buf();
     let result = tokio::task::spawn_blocking(move || {
         quota::quarantine_file(
             &path,
