@@ -1915,6 +1915,7 @@ export interface components {
         BatchOutcome_QueryResult: {
             data: {
                 results: components["schemas"]["QueryHit"][];
+                warnings?: components["schemas"]["SourceWarning"][];
             };
             /** @enum {string} */
             status: "completed";
@@ -3269,10 +3270,18 @@ export interface components {
             provider?: string | null;
             /** Format: int64 */
             rank: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Legacy compatibility field; ordinary query currently mirrors `score`.
+             *     This field alone does not establish that a separate reranker ran.
+             */
             rerank_score: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Provider retrieval score (dense similarity or hybrid fusion score).
+             */
             score: number;
+            score_kind?: null | components["schemas"]["QueryScoreKind"];
             snippet: string;
             source: string;
             /** Format: int32 */
@@ -3286,7 +3295,13 @@ export interface components {
         };
         QueryResult: {
             results: components["schemas"]["QueryHit"][];
+            warnings?: components["schemas"]["SourceWarning"][];
         };
+        /**
+         * @description Scoring semantics of a returned retrieval result, independent of its numeric value.
+         * @enum {string}
+         */
+        QueryScoreKind: "dense_similarity" | "hybrid_fusion" | "code_search";
         /**
          * @description Read-only actions accepted by direct control-plane read endpoints.
          *
@@ -3964,6 +3979,7 @@ export interface components {
             contract_version: string;
             data: {
                 results: components["schemas"]["QueryHit"][];
+                warnings?: components["schemas"]["SourceWarning"][];
             };
             job?: null | components["schemas"]["JobDescriptor"];
             ok: boolean;

@@ -10489,6 +10489,12 @@
                     "items": {
                       "$ref": "#/components/schemas/QueryHit"
                     }
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SourceWarning"
+                    }
                   }
                 }
               },
@@ -15884,11 +15890,23 @@
           },
           "rerank_score": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Legacy compatibility field; ordinary query currently mirrors `score`.\nThis field alone does not establish that a separate reranker ran."
           },
           "score": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Provider retrieval score (dense similarity or hybrid fusion score)."
+          },
+          "score_kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryScoreKind"
+              }
+            ]
           },
           "snippet": {
             "type": "string"
@@ -15944,8 +15962,23 @@
             "items": {
               "$ref": "#/components/schemas/QueryHit"
             }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
           }
         }
+      },
+      "QueryScoreKind": {
+        "type": "string",
+        "description": "Scoring semantics of a returned retrieval result, independent of its numeric value.",
+        "enum": [
+          "dense_similarity",
+          "hybrid_fusion",
+          "code_search"
+        ]
       },
       "ReadAction": {
         "type": "string",
@@ -18788,6 +18821,12 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/QueryHit"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceWarning"
                 }
               }
             }

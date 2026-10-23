@@ -168,6 +168,7 @@ export type components = {
         "BatchOutcome_QueryResult": {
             "data": {
             "results": components['schemas']['QueryHit'][];
+            "warnings"?: components['schemas']['SourceWarning'][];
         };
             "status": "completed";
         } | {
@@ -1168,6 +1169,7 @@ export type components = {
             "rank": number;
             "rerank_score": number;
             "score": number;
+            "score_kind"?: null | components['schemas']['QueryScoreKind'];
             "snippet": string;
             "source": string;
             "start_line"?: number | null;
@@ -1180,7 +1182,9 @@ export type components = {
         };
         "QueryResult": {
             "results": components['schemas']['QueryHit'][];
+            "warnings"?: components['schemas']['SourceWarning'][];
         };
+        "QueryScoreKind": "dense_similarity" | "hybrid_fusion" | "code_search";
         "ReadAction": "account_read" | "rate_limits_read" | "account_usage_read" | "account_workspace_messages_read" | "account_bedrock_discover" | "models_list" | "model_provider_capabilities_read" | "collaboration_modes_list" | "permission_profiles_list" | "config_read" | "config_requirements_read" | "mcp_servers_list" | "mcp_server_resource_read" | "plugins_list" | "plugins_installed" | "plugin_search" | "plugin_read" | "plugin_skill_read" | "plugin_share_list" | "skills_list" | "external_agent_config_detect" | "external_agent_config_import_read_histories" | "hooks_list" | "apps_list" | "apps_installed" | "app_read" | "experimental_features_list";
         "ReadinessBody": {
             "ok": boolean;
@@ -1687,6 +1691,7 @@ export type components = {
             "contract_version": string;
             "data": {
             "results": components['schemas']['QueryHit'][];
+            "warnings"?: components['schemas']['SourceWarning'][];
         };
             "job"?: null | components['schemas']['JobDescriptor'];
             "ok": boolean;
