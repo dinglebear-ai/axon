@@ -250,3 +250,62 @@ fn palette_launch_accepts_a_running_child() {
     reaped.unwrap();
     started.unwrap();
 }
+
+fn palette_zip_fixture(name: &str, method: zip::CompressionMethod) -> Vec<u8> {
+    use std::io::Write;
+    let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    archive
+        .start_file(
+            name,
+            zip::write::SimpleFileOptions::default().compression_method(method),
+        )
+        .unwrap();
+    archive.write_all(b"palette executable").unwrap();
+    archive.finish().unwrap().into_inner()
+}
+
+#[test]
+fn palette_zip_extracts_supported_nested_binary() {
+    for method in [
+        zip::CompressionMethod::Stored,
+        zip::CompressionMethod::Deflated,
+        zip::CompressionMethod::Bzip2,
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let bytes = palette_zip_fixture(&format!("release/bin/{PALETTE_BIN}"), method);
+        extract_zip(&bytes, root.path()).unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join(PALETTE_BIN)).unwrap(),
+            b"palette executable"
+        );
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+}
+
+#[test]
+fn palette_zip_rejects_missing_binary_and_malformed_archive() {
+    let root = tempfile::tempdir().unwrap();
+    let bytes = palette_zip_fixture("README.txt", zip::CompressionMethod::Stored);
+    assert!(
+        extract_zip(&bytes, root.path())
+            .unwrap_err()
+            .to_string()
+            .contains("did not contain")
+    );
+    assert!(extract_zip(&b"not a zip".to_vec(), root.path()).is_err());
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn palette_zip_always_writes_to_fixed_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let dest = root.path().join("install");
+    std::fs::create_dir(&dest).unwrap();
+    let bytes = palette_zip_fixture(&format!("../{PALETTE_BIN}"), zip::CompressionMethod::Stored);
+    extract_zip(&bytes, &dest).unwrap();
+    assert!(!root.path().join(PALETTE_BIN).exists());
+    assert_eq!(
+        std::fs::read(dest.join(PALETTE_BIN)).unwrap(),
+        b"palette executable"
+    );
+}

@@ -146,6 +146,20 @@ fn byte_range(length: u64, raw: &str) -> Result<(u64, u64), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn artifact_reader_rejects_symlinks_and_non_regular_files() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(outside.path(), b"private outside bytes").unwrap();
+        let link = root.path().join("art_link.bin");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        assert!(read_bounded(&link, 1024).await.is_err());
+        assert!(read_range(&link, None).await.is_err());
+        assert!(read_bounded(root.path(), 1024).await.is_err());
+        assert!(read_range(root.path(), None).await.is_err());
+    }
+
     #[test]
     fn range_boundaries_reject_invalid_input_without_overflow() {
         assert_eq!(

@@ -506,6 +506,26 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
     assert!(ui.headers().contains_key("content-security-policy"));
     assert!(ui.headers().contains_key("permissions-policy"));
 
+    let html = ui.text().await.expect("Swagger HTML");
+    assert!(html.contains("swagger-ui-bundle.js"));
+    for asset in [
+        "swagger-ui-bundle.js",
+        "swagger-ui.css",
+        "swagger-initializer.js",
+    ] {
+        let response = client
+            .get(format!("{base}/docs/{asset}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "Swagger asset {asset}");
+        let body = response.text().await.unwrap();
+        assert!(!body.is_empty(), "Swagger asset {asset}");
+        if asset == "swagger-initializer.js" {
+            assert!(body.contains("/api-docs/openapi.json"));
+        }
+    }
+
     let spec_json: serde_json::Value = spec.json().await.expect("openapi json");
     let paths = spec_json["paths"].as_object().expect("openapi paths");
     for path in [

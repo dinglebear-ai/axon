@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [7.5.1] - 2026-10-23
 
+### Security
+
+- Update vulnerable TLS, QUIC, certificate roots and ZIP dependencies across workspace, desktop and vendored authentication lockfiles. Migrate Swagger/OpenAPI integration to Utoipa 6 while preserving embedded documentation and palette archive codecs.
+
 ### Changed
 
 - Consolidate bounded ingestion recovery, parser and chunk-quality fixes, scalar TEI tokenization, Qdrant encoding improvements, and document-diverse retrieval with preserved citation windows.

@@ -296,17 +296,13 @@ fn extract_targz(bytes: &Vec<u8>, dest_dir: &Path) -> Result<(), Box<dyn Error>>
     Err(format!("release archive did not contain {PALETTE_BIN}").into())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 fn extract_zip(bytes: &Vec<u8>, dest_dir: &Path) -> Result<(), Box<dyn Error>> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let name = file.name().to_owned();
-        if std::path::Path::new(&name)
-            .file_name()
-            .and_then(|n| n.to_str())
-            == Some(PALETTE_BIN)
-        {
+        let name = file.name()?.into_owned();
+        if Path::new(&name).file_name().and_then(|n| n.to_str()) == Some(PALETTE_BIN) {
             let dest = dest_dir.join(PALETTE_BIN);
             let mut out = std::fs::File::create(&dest)?;
             std::io::copy(&mut file, &mut out)?;

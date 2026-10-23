@@ -412,7 +412,7 @@ fn auth_error_response(description: &'static str) -> RefOr<Response> {
     // that don't declare their own 401/403 response.
     response.content.insert(
         "application/json".to_string(),
-        Content::new(Some(Ref::from_schema_name("ErrorBody"))),
+        RefOr::T(Content::new(Some(Ref::from_schema_name("ErrorBody")))),
     );
     RefOr::T(response)
 }
