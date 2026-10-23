@@ -216,9 +216,27 @@ impl<'a> SourceLines<'a> {
         // Parser byte coordinates and quotes refer to literal source. Joining
         // str::lines normalizes CRLF and can reject valid multiline evidence.
         if let Some((start, end)) = range.byte_start.zip(range.byte_end) {
-            let start = usize::try_from(start).ok()?;
-            let end = usize::try_from(end).ok()?;
-            return self.text.get(start..end).map(|slice| slice.contains(quote));
+            let (Ok(start), Ok(end)) = (usize::try_from(start), usize::try_from(end)) else {
+                return Some(false);
+            };
+            let Some(slice) = self.text.get(start..end) else {
+                return Some(false);
+            };
+            // Both coordinate systems describe the same evidence. Preserve raw
+            // line endings while requiring byte spans to fit supplied lines.
+            if range.line_start.is_some() || range.line_end.is_some() {
+                let first = range.line_start.unwrap_or(1) as usize;
+                let last = range.line_end.unwrap_or(first as u32) as usize;
+                let enclosure = self.raw_line_start(first).zip(self.raw_line_start(last));
+                let Some((left, last_start)) = enclosure.filter(|_| first <= last) else {
+                    return Some(false);
+                };
+                let last_len = self.text[last_start..].split_inclusive('\n').next()?.len();
+                if start < left || end > last_start + last_len {
+                    return Some(false);
+                }
+            }
+            return Some(slice.contains(quote));
         }
         if quote.contains('\n') {
             return self.slice(range).map(|slice| slice.contains(quote));
@@ -226,6 +244,18 @@ impl<'a> SourceLines<'a> {
         let mut lines = self.lines_for_range(range)?;
         let first = lines.next()?;
         Some(first.contains(quote) || lines.any(|line| line.contains(quote)))
+    }
+
+    /// Resolve one raw line using at most STRIDE line scans, without CRLF normalization.
+    fn raw_line_start(&self, line: usize) -> Option<usize> {
+        let zero_based = line.checked_sub(1)?;
+        let mut offset = *self.checkpoints.get(zero_based / Self::STRIDE)?;
+        let mut lines = self.text[offset..].split_inclusive('\n');
+        for _ in 0..zero_based % Self::STRIDE {
+            offset += lines.next()?.len();
+        }
+        lines.next()?;
+        Some(offset)
     }
 
     fn slice(&self, range: &SourceRange) -> Option<std::borrow::Cow<'a, str>> {
@@ -283,6 +313,30 @@ fn starts_after<T: Ord>(start: Option<T>, end: Option<T>) -> bool {
 #[cfg(test)]
 mod line_index_tests {
     use super::*;
+
+    #[test]
+    fn byte_evidence_rejects_contradictory_lines_and_invalid_utf8_boundaries() {
+        let source = "éwrong\r\nactual";
+        let lines = SourceLines::new(source);
+        let start = source.find("actual").unwrap();
+        for coordinates in [
+            serde_json::json!({"byte_start":start,"byte_end":source.len(),"line_start":1,"line_end":1}),
+            serde_json::json!({"byte_start":start,"byte_end":source.len(),"line_end":1}),
+            serde_json::json!({"byte_start":1,"byte_end":source.len()}),
+            serde_json::json!({"byte_start":0,"byte_end":1}),
+        ] {
+            let range = serde_json::from_value(coordinates).unwrap();
+            assert_eq!(lines.contains(&range, "actual"), Some(false));
+        }
+        let range = serde_json::from_value(serde_json::json!({
+            "byte_start":start,"byte_end":source.len(),"line_start":2,"line_end":2
+        }))
+        .unwrap();
+        assert_eq!(lines.contains(&range, "actual"), Some(true));
+        let line_only =
+            serde_json::from_value(serde_json::json!({"line_start":2,"line_end":2})).unwrap();
+        assert_eq!(lines.contains(&line_only, "actual"), Some(true));
+    }
 
     #[test]
     fn byte_located_multiline_evidence_preserves_literal_crlf() {
