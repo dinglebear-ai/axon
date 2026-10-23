@@ -1348,3 +1348,30 @@ async fn v1_sources_allows_public_network_source_with_write_scope() {
     assert_ne!(status, StatusCode::UNAUTHORIZED, "valid bearer rejected");
     assert_ne!(status, StatusCode::FORBIDDEN, "valid bearer rejected");
 }
+
+#[test]
+fn openapi_serializes_required_response_descriptions_for_android_codegen() {
+    let document = serde_json::to_value(crate::server::openapi_document()).unwrap();
+    for (path, item) in document["paths"].as_object().unwrap() {
+        for (method, operation) in item.as_object().unwrap() {
+            let Some(responses) = operation
+                .get("responses")
+                .and_then(serde_json::Value::as_object)
+            else {
+                continue;
+            };
+            for (status, response) in responses {
+                if response.get("$ref").is_some() {
+                    continue;
+                }
+                assert!(
+                    response
+                        .get("description")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|value| !value.is_empty()),
+                    "missing serialized response description: {method} {path} {status}"
+                );
+            }
+        }
+    }
+}

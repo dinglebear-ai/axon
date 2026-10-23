@@ -82,6 +82,7 @@
         ],
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -111,6 +112,7 @@
             }
           },
           "404": {
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -155,6 +157,7 @@
         ],
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -184,6 +187,7 @@
             }
           },
           "502": {
+            "description": "HTTP 502 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -261,6 +265,7 @@
             }
           },
           "404": {
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -315,6 +320,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -4495,6 +4501,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -5006,6 +5013,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8199,6 +8207,7 @@
         ],
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8261,6 +8270,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8270,6 +8280,7 @@
             }
           },
           "400": {
+            "description": "HTTP 400 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8334,6 +8345,7 @@
         ],
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8363,6 +8375,7 @@
             }
           },
           "404": {
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8415,6 +8428,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8444,6 +8458,7 @@
             }
           },
           "404": {
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8498,6 +8513,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8507,6 +8523,7 @@
             }
           },
           "400": {
+            "description": "HTTP 400 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8586,6 +8603,7 @@
         },
         "responses": {
           "200": {
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8595,6 +8613,7 @@
             }
           },
           "400": {
+            "description": "HTTP 400 response",
             "content": {
               "application/json": {
                 "schema": {

@@ -4271,6 +4271,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4297,6 +4298,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4318,6 +4320,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4344,6 +4347,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 502 response */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -4392,6 +4396,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4417,6 +4422,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7188,6 +7194,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7547,6 +7554,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9737,6 +9745,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9778,6 +9787,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9786,6 +9796,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadCreateResult"];
                 };
             };
+            /** @description HTTP 400 response */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -9825,6 +9836,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9851,6 +9863,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9876,6 +9889,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9902,6 +9916,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9927,6 +9942,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9935,6 +9951,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadCompleteResult"];
                 };
             };
+            /** @description HTTP 400 response */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -9978,6 +9995,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9986,6 +10004,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadStatus"];
                 };
             };
+            /** @description HTTP 400 response */
             400: {
                 headers: {
                     [name: string]: unknown;
