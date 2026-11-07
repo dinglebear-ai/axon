@@ -14,6 +14,43 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class ReviewRegressions(unittest.TestCase):
+    def test_android_release_checksums_verify_after_flat_download(self):
+        cases = [
+            ("android-release.yml", "out", "axon-android-2.1.2.apk"),
+            ("android-release.yml", "out", "axon-android-2.1.2-unsigned.apk"),
+            ("palette-release.yml", "apk", "axon-palette-android-6.2.3.apk"),
+            ("palette-release.yml", "apk", "axon-palette-android-6.2.3-unsigned.apk"),
+            ("palette-release.yml", "aab", "axon-palette-android-6.2.3.aab"),
+            ("palette-release.yml", "aab", "axon-palette-android-6.2.3-unsigned.aab"),
+        ]
+        for workflow, variable, filename in cases:
+            with self.subTest(workflow=workflow, filename=filename):
+                lines = (ROOT / ".github/workflows" / workflow).read_text().splitlines()
+                commands = [
+                    line.strip() for line in lines
+                    if "sha256sum" in line and f'${variable}.sha256' in line
+                ]
+                self.assertEqual(len(commands), 1, commands)
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    artifact = root / "bin" / filename
+                    artifact.parent.mkdir()
+                    artifact.write_bytes(b"synthetic release artifact")
+                    subprocess.run(
+                        ["bash", "-euc", commands[0]], cwd=root, check=True,
+                        env={**os.environ, variable: f"bin/{filename}"},
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    download = root / "download"
+                    download.mkdir()
+                    shutil.copy(artifact, download / filename)
+                    shutil.copy(str(artifact) + ".sha256", download / (filename + ".sha256"))
+                    result = subprocess.run(
+                        ["sha256sum", "-c", filename + ".sha256"],
+                        cwd=download, capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_skill_install_uses_shipped_skills(self):
         with tempfile.TemporaryDirectory() as d:
             home = Path(d)

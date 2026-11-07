@@ -204,7 +204,7 @@ jobs:
             signed=false
           fi
 
-          sha256sum "$out" > "$out.sha256"
+          ( cd "$(dirname "$out")" && sha256sum "$(basename "$out")" ) > "$out.sha256"
           echo "apk=$out" >> "$GITHUB_OUTPUT"
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
 
