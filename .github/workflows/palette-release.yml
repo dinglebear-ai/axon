@@ -352,8 +352,8 @@ jobs:
             cp "$unsigned_aab" "$aab"
             signed=false
           fi
-          sha256sum "$apk" > "$apk.sha256"
-          sha256sum "$aab" > "$aab.sha256"
+          ( cd "$(dirname "$apk")" && sha256sum "$(basename "$apk")" ) > "$apk.sha256"
+          ( cd "$(dirname "$aab")" && sha256sum "$(basename "$aab")" ) > "$aab.sha256"
           {
             echo "apk=$apk"
             echo "aab=$aab"
