@@ -10,7 +10,9 @@
 use crate::chunk::DocumentChunk;
 use crate::text::{plain_text_windows, source_range};
 
+mod scaffold;
 mod semantics;
+pub(crate) use scaffold::omit_empty_heading_spans;
 mod windowing;
 use windowing::{closes_fence, opens_fence, pack_small_sections, split_oversized_sections};
 
@@ -64,7 +66,17 @@ pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
     markdown_sections_with_limits(text, CURRENT_STRUCTURAL_DEFAULTS)
 }
 
+#[cfg(test)]
 pub(crate) fn markdown_sections_with_limits(
+    text: &str,
+    limits: MarkdownChunkLimits,
+) -> Vec<DocumentChunk> {
+    omit_empty_heading_spans(markdown_section_windows(text, limits), text)
+}
+
+// Keep scaffold windows until the final quality gate can lend their literal
+// context to a short structural body. Only then omit heading-only windows.
+pub(crate) fn markdown_section_windows(
     text: &str,
     limits: MarkdownChunkLimits,
 ) -> Vec<DocumentChunk> {
@@ -127,6 +139,7 @@ pub(crate) fn markdown_sections_with_limits(
         chunks.push(chunk);
     }
 
+    let chunks = scaffold::attach_empty_headings(text, &positions, chunks);
     let chunks = split_oversized_sections(text, &positions, chunks, limits);
     pack_small_sections(chunks, limits)
 }
@@ -246,7 +259,7 @@ fn fence_aware_headings(text: &str, from: usize) -> Vec<Heading> {
             }
         } else if let Some((marker, width, _)) = opens_fence(stripped) {
             open_fence = Some((marker, width));
-        } else if let Some(level) = atx_heading_level(stripped) {
+        } else if let Some(level) = line_heading_level(trimmed) {
             let title = stripped
                 .trim_start_matches('#')
                 .trim()
@@ -262,6 +275,13 @@ fn fence_aware_headings(text: &str, from: usize) -> Vec<Heading> {
         offset += line.len();
     }
     headings
+}
+
+fn line_heading_level(line: &str) -> Option<usize> {
+    let indent = line.bytes().take_while(|ch| *ch == b' ').count();
+    (indent <= 3)
+        .then(|| atx_heading_level(&line[indent..]))
+        .flatten()
 }
 
 fn atx_heading_level(line: &str) -> Option<usize> {

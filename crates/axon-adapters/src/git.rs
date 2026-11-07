@@ -8,6 +8,7 @@ mod acquire;
 mod dedup;
 mod discovery;
 mod metadata;
+mod policy;
 mod target;
 mod vertical;
 
@@ -42,8 +43,8 @@ pub async fn retained_repository_paths(
 ) -> Result<BTreeSet<String>> {
     tokio::task::spawn_blocking(move || {
         let root = repo_root(&plan)?;
-        let excludes = option_string_array(&plan.request.options, "exclude_paths")?;
-        discovery::existing_repository_paths(&root, &wanted, &excludes)
+        let policy = policy::GitInventoryPolicy::from_options(&plan.request.options)?;
+        discovery::existing_repository_paths(&root, &wanted, &policy)
     })
     .await
     .map_err(blocking_join_error)?
@@ -181,7 +182,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     let root = repo_root(plan)?;
 
     let base_uri = target.web_url.trim_end_matches('/').to_string();
-    let exclude_paths = option_string_array(&plan.request.options, "exclude_paths")?;
+    let policy = policy::GitInventoryPolicy::from_options(&plan.request.options)?;
     let max_items = plan
         .limits
         .effective
@@ -189,11 +190,11 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
     let mut truncated = false;
     let mut items = if let Some(limit) = max_items {
-        let (keys, was_truncated) = collect_capped_git_keys(&root, &exclude_paths, limit)?;
+        let (keys, was_truncated) = collect_capped_git_keys(&root, &policy, limit)?;
         truncated = was_truncated;
         hash_git_keys_parallel(plan, &root, &base_uri, &keys)?
     } else {
-        collect_git_manifest_items_parallel(plan, &root, &base_uri, &exclude_paths)?
+        collect_git_manifest_items_parallel(plan, &root, &base_uri, &policy)?
     };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
     if !truncated {

@@ -20,7 +20,7 @@ fn test_runtime_with_jobs(
     ledger: Arc<FakeLedgerStore>,
 ) -> (TargetLocalSourceRuntime, Arc<FakeJobWatchStore>) {
     let jobs = Arc::new(FakeJobWatchStore::new());
-    let runtime = TargetLocalSourceRuntime::new(
+    let runtime = crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
         jobs.clone(),
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
@@ -28,7 +28,7 @@ fn test_runtime_with_jobs(
         ProviderId::new("fake-embedding"),
         "fake-embedding",
         8,
-    );
+    ));
     (runtime, jobs)
 }
 

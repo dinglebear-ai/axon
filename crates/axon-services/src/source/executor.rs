@@ -17,6 +17,7 @@ mod progress;
 mod publish;
 pub(super) use index::index_materialized_source;
 mod finalization;
+mod refresh_inventory;
 mod retention;
 mod reuse;
 mod vector_points;
@@ -32,6 +33,9 @@ use axon_api::source::*;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use helpers::*;
+#[cfg(test)]
+#[path = "executor/web_refresh_tests.rs"]
+mod web_refresh_tests;
 use std::future::Future;
 const SOURCE_LEASE_TTL_SECONDS: u64 = 30 * 60;
 const PUBLICATION_CONFIG_KEY: &str = "axon_publication_config_snapshot_id";
@@ -62,42 +66,15 @@ fn first_acquire_batch_size(default_size: usize) -> usize {
         .unwrap_or(default_size)
         .clamp(1, 1024)
 }
+#[derive(Clone)]
 pub(super) struct SourcePipelineInput<'a> {
+    pub(super) graph_stage: Option<std::sync::Arc<axon_graph::stage::GraphStage>>,
     pub(super) adapter: &'a dyn SourceAdapter,
     pub(super) plan: SourcePlan,
     pub(super) collection: &'a str,
     pub(super) owner_id: &'a str,
     pub(super) auth_snapshot: Option<&'a AuthSnapshot>,
     pub(super) execution: &'a SourceExecutionContext,
-}
-
-async fn record_source_failure(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    previous: Option<&SourceSummary>,
-    result: &anyhow::Result<IndexCounts>,
-) -> anyhow::Result<()> {
-    let Err(error) = result else {
-        return Ok(());
-    };
-    source_progress::pipeline_failed(emitter, error).await;
-    let counts = previous
-        .map(preserved_source_counts)
-        .unwrap_or_else(empty_source_counts);
-    runtime
-        .ledger
-        .upsert_source(metadata::source_summary(
-            input,
-            LifecycleStatus::Failed,
-            counts,
-            previous,
-        ))
-        .await
-        .with_context(|| {
-            format!("source failed with `{error}` and its summary could not be finalized")
-        })?;
-    Ok(())
 }
 
 async fn merge_source_and_release(
@@ -180,18 +157,6 @@ async fn discover_and_diff(
     Ok((manifest, diff, unvisited))
 }
 
-fn require_compatible_inventory(
-    diff: &SourceManifestDiff,
-    compatible: bool,
-    retains_unvisited: bool,
-) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        compatible || diff.previous_generation.is_none() || !retains_unvisited,
-        "partial refresh cannot change processing configuration; complete refresh required"
-    );
-    Ok(())
-}
-
 async fn run_generation(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
@@ -205,21 +170,8 @@ async fn run_generation(
         discover_and_diff(runtime, input, emitter, &coordinator),
     )
     .await?;
-    let publication_config_unchanged = match diff.previous_generation.as_ref() {
-        Some(generation) => runtime
-            .ledger
-            .get_manifest_metadata(manifest.source_id.clone(), generation.clone())
-            .await?
-            .is_some_and(|metadata| {
-                publication_config_metadata_matches(
-                    &metadata,
-                    &retention::processing_identity(runtime, input),
-                )
-            }),
-        None => false,
-    };
-    require_compatible_inventory(&diff, publication_config_unchanged, !unvisited.is_empty())?;
-    retention::validate_retained(runtime.ledger.as_ref(), &mut diff, &unvisited).await?;
+    let publication_config_unchanged =
+        refresh_inventory::prepare(runtime, input, &mut manifest, &mut diff, &unvisited).await?;
     if !manifest_has_changes(&diff)
         && publication_config_unchanged
         && input.plan.request.refresh != SourceRefreshPolicy::Force
@@ -254,11 +206,27 @@ async fn run_generation(
         reserve_unoccupied_generation(runtime, input, &manifest.source_id).await?;
     diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
+    manifest.metadata.insert(
+        axon_ledger::GENERATION_VECTOR_COLLECTION_METADATA_KEY.into(),
+        input.collection.into(),
+    );
     // Boxed: this is by far the largest future in the pipeline, and holding
     // it inline alongside the cancellation select overflows the default test
     // stack in debug builds.
     let run = Box::pin(async {
         runtime.ledger.put_manifest_ref(&manifest).await?;
+        let recovered = runtime
+            .ledger
+            .recover_abandoned_generations(
+                generation.clone(),
+                lease.clone(),
+                input.collection.to_string(),
+            )
+            .await?;
+        if recovered > 0 {
+            tracing::info!(source_id = %generation.source_id.0, generation = %generation.generation.0, recovered,
+                "recorded lease-fenced cleanup for abandoned source generations");
+        }
         created_generation::run_created_generation(
             runtime,
             input,

@@ -204,6 +204,7 @@ pub(in crate::config) struct RawPipelineSection {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(in crate::config) struct RawChunkingSection {
     pub markdown_min_chars: Option<usize>,
+    pub minimum_chars: Option<usize>,
     pub markdown_max_chars: Option<usize>,
     pub overlap_chars: Option<usize>,
 }

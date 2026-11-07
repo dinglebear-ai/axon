@@ -23,7 +23,7 @@ pub fn test_collection_spec(dimensions: u32) -> CollectionSpec {
             },
             PayloadIndexSpec {
                 field_name: "source_generation".to_string(),
-                field_schema: PayloadFieldSchema::Keyword,
+                field_schema: PayloadFieldSchema::Integer,
                 required_for_filters: true,
             },
             PayloadIndexSpec {

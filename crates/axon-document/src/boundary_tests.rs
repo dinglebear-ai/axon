@@ -48,7 +48,7 @@ fn prepare_request(document: SourceDocument, generation: &str) -> PrepareSourceD
 #[tokio::test]
 async fn concrete_document_preparer_satisfies_boundary_trait() {
     let preparer: Arc<dyn DocumentPreparer> =
-        Arc::new(crate::preparer::DocumentPreparer::default());
+        Arc::new(crate::testing::preparer_for_small_fixtures());
 
     let document = source_doc(
         ContentKind::Markdown,
@@ -75,7 +75,7 @@ async fn concrete_document_preparer_satisfies_boundary_trait() {
 #[tokio::test]
 async fn concrete_document_preparer_prepare_many_short_circuits_on_first_error() {
     let preparer: Arc<dyn DocumentPreparer> =
-        Arc::new(crate::preparer::DocumentPreparer::default());
+        Arc::new(crate::testing::preparer_for_small_fixtures());
 
     let documents = vec![
         prepare_request(
@@ -190,7 +190,7 @@ fn tokio_test_prepare(
 async fn concrete_and_fake_boundaries_preserve_skips_in_mixed_batches() {
     use axon_api::source::ContentSkipReason;
     let preparers: Vec<Box<dyn DocumentPreparer>> = vec![
-        Box::new(crate::preparer::DocumentPreparer::default()),
+        Box::new(crate::testing::preparer_for_small_fixtures()),
         Box::new(crate::testing::FakeDocumentPreparer::default()),
     ];
     for preparer in preparers {

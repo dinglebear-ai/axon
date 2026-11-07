@@ -79,6 +79,7 @@ fn identity(
             "markdown_max_chars": config.markdown_max_chars,
             "markdown_min_chars": config.markdown_min_chars,
             "markdown_overlap_chars": config.markdown_overlap_chars,
+            "minimum_chunk_chars": config.minimum_chunk_chars,
         },
         "local_file_limit": local_file_limit,
     });

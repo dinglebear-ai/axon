@@ -16,7 +16,10 @@ mod manifest_items;
 mod metadata;
 mod options;
 mod render;
+mod retained_policy;
 mod site_discovery;
+mod stage_header;
+use self::stage_header::stage_header;
 mod url_parts;
 mod vertical;
 mod warc;
@@ -41,6 +44,7 @@ use axon_core::config::Config;
 use self::manifest_items::{map_urls_manifest_items, page_manifest_item};
 use self::metadata::{manifest_metadata, web_source_document};
 
+pub use self::retained_policy::RetainedUrlPolicy;
 pub use self::warc::{WarcArchive, build_archive as build_warc_archive};
 pub use crate::web_engine::scrape::map_scrape_payload;
 
@@ -471,34 +475,6 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
-}
-
-fn stage_header(
-    job_id: JobId,
-    stage_id: &'static str,
-    phase: PipelinePhase,
-    item_count: usize,
-) -> StageResultHeader {
-    StageResultHeader {
-        job_id,
-        stage_id: StageId::new(Uuid::new_v5(&Uuid::NAMESPACE_OID, stage_id.as_bytes())),
-        phase,
-        status: LifecycleStatus::Completed,
-        started_at: timestamp(),
-        completed_at: Some(timestamp()),
-        counts: StageCounts {
-            items_total: Some(item_count as u64),
-            items_done: item_count as u64,
-            documents_total: Some(item_count as u64),
-            documents_done: item_count as u64,
-            chunks_total: None,
-            chunks_done: 0,
-            bytes_total: None,
-            bytes_done: 0,
-        },
-        warnings: Vec::new(),
-        error: None,
-    }
 }
 
 pub(crate) fn timestamp() -> Timestamp {

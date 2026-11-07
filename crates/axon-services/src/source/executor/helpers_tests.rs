@@ -132,3 +132,16 @@ fn terminal_source_error_redacts_secrets_in_message_and_cause() {
         "expected the secret token to be redacted from cause, got: {cause}"
     );
 }
+
+#[test]
+fn production_collection_spec_uses_canonical_payload_index_types() {
+    let spec = collection_spec("axon", 1024);
+    let canonical = axon_vectors::collection::required_retrieval_payload_indexes();
+    let generation = spec
+        .payload_indexes
+        .iter()
+        .find(|index| index.field_name == "source_generation")
+        .unwrap();
+    assert_eq!(generation.field_schema, PayloadFieldSchema::Integer);
+    assert_eq!(spec.payload_indexes, canonical);
+}

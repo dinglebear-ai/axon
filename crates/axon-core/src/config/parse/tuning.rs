@@ -262,6 +262,13 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         1,
         cfg.chunking_markdown_max_chars,
     );
+    cfg.chunking_min_chars = resolve_clamped_usize(
+        "AXON_CHUNK_MIN_CHARS",
+        toml.chunking.minimum_chars,
+        200.min(cfg.chunking_markdown_max_chars),
+        1,
+        cfg.chunking_markdown_max_chars.min(2_000),
+    );
     cfg.chunking_overlap_chars = resolve_clamped_usize(
         "AXON_CHUNK_OVERLAP_CHARS",
         toml.chunking.overlap_chars,

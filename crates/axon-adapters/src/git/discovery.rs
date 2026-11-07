@@ -40,7 +40,7 @@ fn git_hash_threads(work_items: usize) -> usize {
 
 pub(super) fn collect_capped_git_keys(
     root: &Path,
-    exclude_paths: &[String],
+    policy: &super::policy::GitInventoryPolicy,
     limit: usize,
 ) -> Result<(Vec<String>, bool)> {
     if limit == 0 {
@@ -57,7 +57,7 @@ pub(super) fn collect_capped_git_keys(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if !repository_path_allowed(&key, exclude_paths) {
+        if !policy.allows(&key) {
             continue;
         }
         truncated |= selected.len() == limit;
@@ -126,7 +126,7 @@ pub(super) fn collect_git_manifest_items_parallel(
     plan: &SourcePlan,
     root: &Path,
     base_uri: &str,
-    exclude_paths: &[String],
+    policy: &super::policy::GitInventoryPolicy,
 ) -> Result<Vec<ManifestItem>> {
     let mut builder = git_walk_builder(root);
     builder.threads(git_hash_threads(usize::MAX));
@@ -162,7 +162,7 @@ pub(super) fn collect_git_manifest_items_parallel(
                     return WalkState::Quit;
                 }
             };
-            if !repository_path_allowed(&key, exclude_paths) {
+            if !policy.allows(&key) {
                 return WalkState::Continue;
             }
             match git_manifest_item(plan, root, base_uri, &key) {
@@ -253,7 +253,7 @@ pub fn repository_path_allowed(key: &str, exclude_paths: &[String]) -> bool {
 pub(super) fn existing_repository_paths(
     root: &Path,
     wanted: &BTreeSet<String>,
-    exclude_paths: &[String],
+    policy: &super::policy::GitInventoryPolicy,
 ) -> Result<BTreeSet<String>> {
     let mut existing = BTreeSet::new();
     for entry in git_walk_builder(root).build() {
@@ -262,7 +262,7 @@ pub(super) fn existing_repository_paths(
             continue;
         }
         let key = relative_key(root, entry.path())?;
-        if wanted.contains(&key) && repository_path_allowed(&key, exclude_paths) {
+        if wanted.contains(&key) && policy.allows(&key) {
             existing.insert(key);
         }
     }

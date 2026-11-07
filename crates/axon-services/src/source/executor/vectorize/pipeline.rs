@@ -91,6 +91,7 @@ pub(super) async fn embed_and_build_batch(
 ) -> anyhow::Result<BuiltVectorBatch> {
     let mut embeddings =
         embed_prepared_batch(runtime, input, &documents, emitter, coordinator, progress).await?;
+    let documents = release_staged_candidates(input, documents);
     build_vector_batch(
         documents,
         collection,
@@ -191,6 +192,7 @@ pub(super) async fn publish_and_build_next(
         })
         .await?;
 
+    let next_documents = release_staged_candidates(input, next_documents);
     build_vector_batch(
         next_documents,
         collection,
@@ -305,11 +307,37 @@ pub(super) async fn call_embedding(
     )
     .with_counts(counts);
     context.phase = Some(heartbeat_phase);
+    let runtime_ref = runtime;
     let runtime = runtime.clone();
-    run_embedding_independently(
-        async move { Ok(reserved_call::embed(&runtime, context, batch).await?) },
-    )
-    .await
+    let embedding = run_embedding_independently(async move {
+        Ok(reserved_call::embed(&runtime, context, batch).await?)
+    });
+    let staging = crate::source::graph::staging::stage_prepared(
+        runtime_ref,
+        input,
+        documents,
+        heartbeat_phase,
+    );
+    let (staged, embedded) = tokio::join!(staging, embedding);
+    match (staged, embedded) {
+        (Ok(()), embedded) => embedded,
+        (Err(error), Ok(_)) => Err(error),
+        (Err(error), Err(secondary)) => {
+            Err(error.context(format!("concurrent embedding also failed: {secondary:#}")))
+        }
+    }
+}
+
+pub(super) fn release_staged_candidates(
+    input: &SourcePipelineInput<'_>,
+    mut documents: Vec<PreparedDocument>,
+) -> Vec<PreparedDocument> {
+    if input.graph_stage.is_some() {
+        for document in &mut documents {
+            document.graph_candidates.clear();
+        }
+    }
+    documents
 }
 
 async fn run_embedding_independently<T: Send + 'static>(

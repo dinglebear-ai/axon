@@ -123,7 +123,7 @@ runs:
         components: ${{ inputs.components }}
         targets: ${{ inputs.targets }}
 
-    # Pinned exactly. The private fleet and hosted CI share the 0.15.1 S3
+    # Pinned exactly. The private fleet and hosted CI share the 0.28.1 S3
     # object layout and daemon protocol. Floating this version could split cache
     # epochs or layouts without an obvious workflow failure. Bump deliberately,
     # never via tag drift.

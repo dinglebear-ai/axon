@@ -47,6 +47,20 @@ pub(crate) fn vector_delete_debt(
     }
 }
 
+/// Whole-generation reconciliation for retired or abandoned vector snapshots.
+pub(crate) fn generation_vector_delete_debt(
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+) -> CleanupDebt {
+    let mut debt = vector_delete_debt(source_id, generation, &SourceItemKey::new(""));
+    debt.debt_id = cleanup_debt_id("generation-vectors", source_id, generation, "all");
+    debt.selector = CleanupSelector::Generation {
+        source_id: source_id.clone(),
+        generation: generation.clone(),
+    };
+    debt
+}
+
 pub(crate) fn artifact_delete_debt_for_metadata(
     source_id: &SourceId,
     previous_generation: &SourceGenerationId,

@@ -51,6 +51,17 @@ or other incompatible Markdown block metadata. A fenced code block remains
 intact even when it alone exceeds `markdown-max-chars`; surrounding prose is
 still bounded by the configured maximum.
 
+Empty ancestor headings attach to their first content-bearing descendant,
+retaining the literal source span and full heading breadcrumb. Empty sibling
+or trailing sections do not produce standalone points. This is a structural
+rule, independent of heading length; the empty-result fallback also applies it
+so headings are not reintroduced as plain-text content.
+If a fitting list or table forces its headings into a separate bounded
+window, that window is omitted and the body retains the full breadcrumb.
+Preparation lends bounded literal context to short structural bodies before
+omitting heading-only windows. Exact deduplication follows omission so a
+rejected heading cannot own an identical fenced comment's canonical span.
+
 ## ChunkRouter decision
 
 Inputs: content kind, MIME, file path/extension, source kind & adapter, scope,
@@ -110,3 +121,31 @@ in parse facts or an artifact.
 
 If the chunk profiles or sizing change, update this file and
 `crates/axon-document/src/chunk_router.rs::profile_defaults` in the same PR.
+
+## Semantic quality and duplicate locations
+
+Executable bodies retain their nested locals and closures. Container scaffold,
+imports, and declaration annotations attach to nearby declarations rather than
+becoming standalone embeddings. Parser facts still retain the nested symbols
+for graph construction. Provider size limits can split an oversized body.
+
+The shared quality gate counts trimmed characters against
+`pipeline.chunking.minimum-chars` (default 200; environment override
+`AXON_CHUNK_MIN_CHARS`). Short symbols and path references first borrow
+compatible, bounded literal context. Chunks that still fall below the configured
+minimum are omitted. Punctuation-only and structurally empty chunks are removed
+regardless of the minimum. This quality floor is separate from Markdown's
+`markdown-min-chars` packing target. The effective minimum is clamped to 1 through
+the smaller of 2,000 and the resolved Markdown maximum, and is included in processing identity, so changing
+it re-prepares otherwise unchanged source documents.
+
+Within a document, identical text with compatible context shares one embedding.
+`additional_source_ranges` preserves the other literal locations and
+`code_symbol_aliases` preserves their symbols. Structured records, session turns,
+and temporal records keep their distinct identities. Deduplication never
+normalizes code whitespace or literals.
+
+Git inventory excludes historical plan/session documentation directories by
+default. Set the source option `include_historical_docs: true` to include them;
+`exclude_paths` still applies. Normal product documentation, tests, and generated
+reference documentation remain eligible.

@@ -7,6 +7,15 @@ pub(super) async fn finalize_failed_generation(
     generation: SourceGeneration,
     mut error: anyhow::Error,
 ) -> anyhow::Error {
+    if error
+        .downcast_ref::<ApiError>()
+        .is_some_and(|e| e.code.to_string() == "graph.publication_commit_unknown")
+    {
+        return error;
+    }
+    // A detached atomic publisher retains this gate until commit/rollback settles.
+    let settlement = runtime.publication_settlement_gate.lock().await;
+    let writer = runtime.sqlite_write_gate.lock().await;
     let committed = match runtime
         .ledger
         .committed_generation(generation.source_id.clone())
@@ -20,6 +29,8 @@ pub(super) async fn finalize_failed_generation(
             None
         }
     };
+    drop(writer);
+    drop(settlement);
     if committed == Some(true) {
         return error;
     }
@@ -49,3 +60,7 @@ pub(super) async fn finalize_failed_generation(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "../graph/publication_settlement_tests.rs"]
+mod publication_settlement_tests;

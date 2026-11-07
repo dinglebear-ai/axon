@@ -39,3 +39,17 @@ pub(super) fn retire(
     }
     deleted
 }
+
+pub(super) async fn retire_many<S: GraphStore + ?Sized>(
+    store: &S,
+    source: SourceId,
+    items: Vec<SourceItemKey>,
+) -> Result<GraphDeleteResult> {
+    let mut total = GraphDeleteResult::default();
+    for item in items {
+        let result = store.retire_item_evidence(source.clone(), item).await?;
+        total.nodes_deleted += result.nodes_deleted;
+        total.edges_deleted += result.edges_deleted;
+    }
+    Ok(total)
+}

@@ -21,7 +21,7 @@ fn progress_runtime(
     vectors: Arc<FakeVectorStore>,
     ledger: Arc<FakeLedgerStore>,
 ) -> TargetLocalSourceRuntime {
-    TargetLocalSourceRuntime::new(
+    crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
         jobs,
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
@@ -29,7 +29,7 @@ fn progress_runtime(
         ProviderId::new("fake-embedding"),
         "fake-embedding",
         8,
-    )
+    ))
 }
 
 fn write_large_local_fixture(root: &std::path::Path) {

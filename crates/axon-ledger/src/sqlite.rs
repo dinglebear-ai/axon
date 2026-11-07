@@ -5,6 +5,7 @@ mod document;
 mod generation;
 mod lease;
 mod manifest;
+mod recovery;
 mod source;
 mod util;
 
@@ -76,6 +77,33 @@ pub struct SqliteLedgerStore {
 }
 
 impl SqliteLedgerStore {
+    /// Verify the caller still owns this source's live publication lease.
+    ///
+    /// Call within the immediate transaction that activates the graph and
+    /// publishes the ledger generation, so lease validation shares its snapshot.
+    pub async fn ensure_publication_lease_in_tx(
+        &self,
+        tx: &mut sqlx::SqliteConnection,
+        source_id: &SourceId,
+        owner_id: &str,
+    ) -> Result<()> {
+        lease::ensure_publication_lease_in_tx(tx, source_id, owner_id).await
+    }
+
+    /// Publish using the caller's transaction on the shared live ledger database.
+    ///
+    /// The caller must begin an immediate transaction under the shared SQLite
+    /// writer gate and commit only after every participating domain succeeds.
+    /// This method neither starts nor commits a transaction. On any error the
+    /// caller must roll back, because publication may already have written rows.
+    pub async fn publish_generation_in_tx(
+        &self,
+        tx: &mut sqlx::SqliteConnection,
+        request: PublishGenerationRequest,
+    ) -> Result<SourceGeneration> {
+        generation::publish_generation_in_tx(tx, request).await
+    }
+
     pub(crate) fn new(pool: SqlitePool) -> Self {
         Self::from_pool_with_write_gate(pool, axon_core::sqlite::SqliteWriteGate::default())
     }
@@ -237,6 +265,15 @@ impl LedgerStore for SqliteLedgerStore {
             generation::complete_generation(self, generation.clone())
         })
         .await
+    }
+
+    async fn recover_abandoned_generations(
+        &self,
+        generation: SourceGeneration,
+        lease: LeaseGuard,
+        collection: String,
+    ) -> Result<u64> {
+        recovery::recover(self, generation, lease, collection).await
     }
 
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {

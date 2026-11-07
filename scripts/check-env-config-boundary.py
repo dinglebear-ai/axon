@@ -242,6 +242,7 @@ MIGRATION_ACTION_CLASSIFICATIONS = {
 }
 
 VALID_TOML_DESTINATIONS = {
+    "pipeline.chunking.minimum-chars",
     "pipeline.max-active-source-jobs",
     "jobs.event-retention-days",
     "jobs.failed-event-retention-days",

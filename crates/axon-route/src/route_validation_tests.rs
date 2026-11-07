@@ -519,3 +519,35 @@ fn router_accepts_local_exclude_paths_and_rejects_malformed_values() {
         "route.options.unsupported"
     );
 }
+
+#[test]
+fn git_history_option_is_boolean_for_every_git_adapter() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    for name in ["git", "github", "gitlab", "gitea"] {
+        let mut request = SourceRequest::new("https://github.com/dinglebear-ai/labby");
+        let mut resolved = resolver.resolve(&request).unwrap();
+        resolved.adapter.name = name.into();
+        for value in [json!(true), json!(false)] {
+            request
+                .options
+                .values
+                .insert("include_historical_docs".into(), value.clone());
+            let route = router.route(&request, resolved.clone()).unwrap();
+            assert_eq!(
+                route.validated_options.values["include_historical_docs"],
+                value
+            );
+        }
+        for value in [json!("true"), json!(0), json!(null)] {
+            request
+                .options
+                .values
+                .insert("include_historical_docs".into(), value);
+            assert_eq!(
+                router.route(&request, resolved.clone()).unwrap_err().code.0,
+                "route.options.invalid"
+            );
+        }
+    }
+}

@@ -8437,6 +8437,13 @@
       "minLength": 1,
       "type": "string"
     },
+    "additional_source_ranges": {
+      "items": {
+        "$ref": "#/$defs/SourceRange"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
     "born_epoch": {
       "minimum": 0,
       "type": "integer",
@@ -10761,7 +10768,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:a5a655b18a45b04d0a3a17b098b179aac8756a79e53955522170db0e9d90436a",
+        "checksum": "sha256:3f2b92811dfd0c0342a1b336ce11b718506b8193f943fc947e17a8ee2676ad41",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
@@ -10796,7 +10803,7 @@
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
       {
-        "checksum": "sha256:921bae71f3381b68aeca865c6633798f249bc564659c5e02dfa3244b351e3e5e",
+        "checksum": "sha256:e8ee6ba0a28ac13cd53ab84fc0363443337625a1a31f5143b2bb5656dce24f1a",
         "kind": "rust_module",
         "path": "xtask/src/schemas/vector_payload_fields.rs"
       },

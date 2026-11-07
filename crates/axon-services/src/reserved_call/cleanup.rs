@@ -18,6 +18,7 @@ struct ScheduledCleanupProviderOps {
     graph_store: Option<Arc<dyn GraphStore>>,
     job_id: JobId,
     graph_retry_generation: Option<SourceGenerationId>,
+    graph_retry_only: bool,
 }
 
 impl ScheduledCleanupProviderOps {
@@ -40,6 +41,10 @@ fn cleanup_context(job_id: JobId, operation: &str) -> ProviderCallContext {
 impl CleanupProviderOps for ScheduledCleanupProviderOps {
     fn graph_retry_generation(&self) -> Option<&SourceGenerationId> {
         self.graph_retry_generation.as_ref()
+    }
+
+    fn graph_retry_only(&self) -> bool {
+        self.graph_retry_only
     }
 
     async fn vector_delete(
@@ -75,6 +80,20 @@ impl CleanupProviderOps for ScheduledCleanupProviderOps {
             },
         )
         .await
+    }
+
+    async fn graph_retire_items(
+        &self,
+        source: SourceId,
+        items: Vec<SourceItemKey>,
+        _generation: SourceGenerationId,
+    ) -> Result<GraphDeleteResult, ApiError> {
+        let store = self.graph_store.clone().ok_or_else(missing_graph_store)?;
+        let ledger = self.runtime.ledger.clone();
+        let job = self.job_id;
+        graph_cleanup_call(self.runtime.as_ref(), self.context("graph-retire-items"), move || async move {
+            crate::source::graph::lease::retire_many_under_lease(ledger, source, items, job, move |source, items| async move { store.retire_items_evidence(source, items).await }).await
+        }).await
     }
 
     async fn graph_delete_nodes(
@@ -172,12 +191,14 @@ struct CleanupDrainContext<'a> {
 async fn drain_with_context(
     context: &CleanupDrainContext<'_>,
     counts: &crate::source::result_map::IndexCounts,
+    graph_retry_only: bool,
 ) -> DebtDrainSummary {
     let providers = ScheduledCleanupProviderOps {
         runtime: Arc::clone(&context.runtime),
         graph_store: context.graph_store.clone(),
         job_id: counts.job_id,
         graph_retry_generation: context.graph_retry_generation.clone(),
+        graph_retry_only,
     };
     crate::source::prune::drain_cleanup_debt_with_provider_ops(
         context.runtime.ledger.as_ref(),
@@ -190,81 +211,6 @@ async fn drain_with_context(
         counts,
     )
     .await
-}
-
-/// Post-publication finalization: retry the busy delay observed while this
-/// generation held its graph lease. Retirement still reacquires the lease and
-/// validates the current generation, manifest and document status.
-pub async fn drain_source_cleanup_debt(
-    ctx: &ServiceContext,
-    runtime: &TargetLocalSourceRuntime,
-    collection: &str,
-    counts: &crate::source::result_map::IndexCounts,
-) -> DebtDrainSummary {
-    let (graph_store, memory_store) = crate::source::open_cleanup_debt_stores(ctx).await;
-    let registry_result = runtime.source_adapter_registry(ctx).await;
-    let registry = registry_result.as_ref().ok().copied();
-    let drain = CleanupDrainContext {
-        runtime: Arc::new(runtime.clone()),
-        graph_store,
-        memory_store: memory_store.as_deref(),
-        registry,
-        collection,
-        graph_retry_generation: Some(counts.generation.clone()),
-    };
-    let mut summary = drain_with_context(&drain, counts).await;
-    if let Err(error) = registry_result {
-        record_registry_construction_failure(runtime, counts, &error, &mut summary).await;
-    }
-    summary
-}
-
-async fn record_registry_construction_failure(
-    runtime: &TargetLocalSourceRuntime,
-    counts: &crate::source::result_map::IndexCounts,
-    error: &anyhow::Error,
-    summary: &mut DebtDrainSummary,
-) {
-    match runtime
-        .ledger
-        .list_pending_cleanup_debt(counts.source_id.clone())
-        .await
-    {
-        Ok(debts) => {
-            let affected = count_adapter_release_debt(debts.iter().map(|debt| debt.kind));
-            mark_registry_failure(summary, affected);
-            if affected > 0 {
-                tracing::warn!(
-                    source_id = %counts.source_id.0,
-                    affected,
-                    code = "source.cleanup.adapter_registry_unavailable",
-                    error = %error,
-                    "adapter cleanup debt remains pending because its registry could not be constructed"
-                );
-            }
-        }
-        Err(enumeration_error) => {
-            summary.failed = summary.failed.saturating_add(1);
-            summary.enumeration_failed = true;
-            tracing::warn!(
-                source_id = %counts.source_id.0,
-                registry_error = %error,
-                error = %enumeration_error.message,
-                "failed to enumerate adapter cleanup debt after registry construction failure"
-            );
-        }
-    }
-}
-
-fn count_adapter_release_debt(kinds: impl IntoIterator<Item = CleanupDebtKind>) -> u64 {
-    kinds
-        .into_iter()
-        .filter(|kind| *kind == CleanupDebtKind::AdapterRelease)
-        .count() as u64
-}
-
-fn mark_registry_failure(summary: &mut DebtDrainSummary, affected: u64) {
-    summary.failed = summary.failed.saturating_add(affected);
 }
 
 pub async fn spawn_cleanup_debt_worker(
@@ -303,11 +249,17 @@ pub async fn spawn_cleanup_debt_worker(
     Ok(Arc::new(QueueSummaryTask::new(stop, thread)))
 }
 
+#[path = "cleanup_stages.rs"]
+mod stages;
+
 async fn run_sweep(context: &CleanupDrainContext<'_>) -> DebtDrainSummary {
+    if let Some(pool) = context.runtime.graph_stage_pool.as_ref() {
+        stages::sweep(pool, context.runtime.jobs.as_ref()).await;
+    }
     crate::source::prune::drain_all_cleanup_debt(
         context.runtime.ledger.as_ref(),
         256,
-        |counts| async move { drain_with_context(context, &counts).await },
+        |counts| async move { drain_with_context(context, &counts, false).await },
     )
     .await
 }

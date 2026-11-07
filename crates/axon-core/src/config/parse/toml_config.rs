@@ -342,6 +342,7 @@ pub(super) struct TomlEmbedSection {
 #[allow(dead_code)]
 pub(super) struct TomlChunkingSection {
     pub markdown_min_chars: Option<usize>,
+    pub minimum_chars: Option<usize>,
     pub markdown_max_chars: Option<usize>,
     pub overlap_chars: Option<usize>,
 }

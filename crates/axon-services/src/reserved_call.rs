@@ -45,7 +45,7 @@ use artifact_cleanup::{
     unresolved_cleanup_units,
 };
 pub use artifact_cleanup::{ArtifactCleanupGuard, BulkLoadCleanupDrain};
-pub use cleanup::{drain_source_cleanup_debt, spawn_cleanup_debt_worker};
+pub use cleanup::spawn_cleanup_debt_worker;
 use support::{
     map_reserved, record_provider_heartbeat, record_provider_queued_heartbeat, scheduler_error,
 };

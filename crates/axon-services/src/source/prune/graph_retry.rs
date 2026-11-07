@@ -68,21 +68,91 @@ pub(super) async fn drain(
     debt: &CleanupDebt,
     summary: &mut DebtDrainSummary,
 ) -> bool {
-    if let CleanupSelector::GraphItemEvidence {
+    drain_group(ledger, provider_ops, std::slice::from_ref(debt), summary).await
+}
+
+pub(super) async fn drain_group(
+    ledger: &dyn LedgerStore,
+    provider_ops: &dyn CleanupProviderOps,
+    debts: &[CleanupDebt],
+    summary: &mut DebtDrainSummary,
+) -> bool {
+    let now = Timestamp::from(chrono::Utc::now());
+    let due: Vec<_> = debts
+        .iter()
+        .filter(|debt| {
+            let due = retry_after_publication(debt, provider_ops)
+                || debt
+                    .next_retry_at
+                    .as_ref()
+                    .is_none_or(|retry| retry.0 <= now.0);
+            if !due {
+                summary.failed += 1;
+            }
+            due
+        })
+        .collect();
+    let Some(first) = due.first() else {
+        return false;
+    };
+    let CleanupSelector::GraphItemEvidence {
         source_id,
-        source_item_key,
         retirement_generation,
-    } = &debt.selector
+        ..
+    } = &first.selector
+    else {
+        return false;
+    };
+    let items = due
+        .iter()
+        .filter_map(|debt| match &debt.selector {
+            CleanupSelector::GraphItemEvidence {
+                source_item_key, ..
+            } => Some(source_item_key.clone()),
+            _ => None,
+        })
+        .collect();
+    match provider_ops
+        .graph_retire_items(source_id.clone(), items, retirement_generation.clone())
+        .await
     {
-        if !retry_after_publication(debt, provider_ops)
-            && debt
-                .next_retry_at
-                .as_ref()
-                .is_some_and(|retry| retry.0 > Timestamp::from(chrono::Utc::now()).0)
-        {
-            summary.failed += 1;
-            return false;
+        Ok(_) => {
+            for debt in due {
+                super::drain_ops::resolve_debt(ledger, debt, summary).await;
+            }
+            false
         }
+        Err(error) if error.code.0 == "graph.retirement_status_unknown" && due.len() > 1 => {
+            // The batch validation fails before writing. Isolate uncertain items;
+            // each single-item call reacquires the lease and checks current state.
+            drain_isolated(ledger, provider_ops, &due, summary).await
+        }
+        Err(error) => {
+            for debt in due {
+                persist_failure(ledger, debt, &error).await;
+                summary.failed += 1;
+                tracing::warn!(debt_id = %debt.debt_id.0, error = %error, "graph item retirement deferred");
+            }
+            error.code.0.as_str() == "graph.source_busy"
+        }
+    }
+}
+
+async fn drain_isolated(
+    ledger: &dyn LedgerStore,
+    provider_ops: &dyn CleanupProviderOps,
+    debts: &[&CleanupDebt],
+    summary: &mut DebtDrainSummary,
+) -> bool {
+    for debt in debts {
+        let CleanupSelector::GraphItemEvidence {
+            source_id,
+            source_item_key,
+            retirement_generation,
+        } = &debt.selector
+        else {
+            continue;
+        };
         match provider_ops
             .graph_retire_item(
                 source_id.clone(),
@@ -96,12 +166,11 @@ pub(super) async fn drain(
                 persist_failure(ledger, debt, &error).await;
                 summary.failed += 1;
                 tracing::warn!(debt_id = %debt.debt_id.0, error = %error, "graph item retirement deferred");
-                // LEARNED: a source writer lease covers publication and all its
-                // graph writes. Retrying every item only competes with its owner.
-                return error.code.0.as_str() == "graph.source_busy";
+                if error.code.0 == "graph.source_busy" {
+                    return true;
+                }
             }
         }
-        return false;
     }
     false
 }

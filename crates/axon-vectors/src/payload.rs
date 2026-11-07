@@ -321,6 +321,7 @@ pub const VECTOR_SHARED_FIELDS: &[&str] = &[
     "source_path_prefixes",
     "item_canonical_uri_aliases",
     "code_symbol_aliases",
+    "additional_source_ranges",
     "code_symbol_source_range",
     "code_syntax_recovered",
     "code_ast_status",

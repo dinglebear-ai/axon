@@ -22,7 +22,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    # Windows cold builds plus the services test binary exceeded 25 minutes
+    # despite passing every smoke; reserve time for governed finalization.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 35 || 25 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:

@@ -609,10 +609,13 @@ dependencies = [
  "axon-error",
  "axon-vectors",
  "chrono",
+ "futures-util",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

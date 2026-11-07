@@ -31,6 +31,7 @@ async fn slow_consumer_bounds_completed_file_acquisitions() {
         let execution =
             crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
         let input = SourcePipelineInput {
+            graph_stage: None,
             adapter: adapter.as_ref(),
             plan,
             collection: "bounded",

@@ -38,6 +38,7 @@ impl MapDiscoveryOutcome {
 /// The unified result of a `map` operation.
 #[derive(Debug, Default)]
 pub struct MapResult {
+    pub scope_prefix: Option<String>,
     pub summary: super::CrawlSummary,
     pub urls: Vec<String>,
     pub sitemap_urls: usize,
@@ -47,7 +48,7 @@ pub struct MapResult {
 }
 
 /// Check URL against exclusions, also applying them relative to the effective scope root.
-fn is_excluded_map_url(url: &str, excludes: &[String], scope_prefix_len: usize) -> bool {
+pub(crate) fn is_excluded_map_url(url: &str, excludes: &[String], scope_prefix_len: usize) -> bool {
     if is_excluded_url_path(url, excludes) {
         return true;
     }
@@ -251,4 +252,34 @@ pub fn derive_map_scope(requested_url: &str, resolved_url: &str) -> Option<MapSc
             Some(path.to_string())
         },
     })
+}
+
+/// Build a `MapResult` for a discovery-sourced map (sitemap / sitemap+llms / llms).
+fn build_discovery_map_result(
+    scope: &MapScope,
+    urls: Vec<String>,
+    raw_sitemap_count: usize,
+    map_source: &str,
+    elapsed_ms: u128,
+    warning: Option<String>,
+) -> MapResult {
+    let outcome = if urls.is_empty() && warning.is_some() {
+        MapDiscoveryOutcome::Failed
+    } else if urls.is_empty() {
+        MapDiscoveryOutcome::Empty
+    } else {
+        MapDiscoveryOutcome::Completed
+    };
+    MapResult {
+        scope_prefix: scope.path_prefix.clone(),
+        summary: super::CrawlSummary {
+            elapsed_ms,
+            ..Default::default()
+        },
+        sitemap_urls: raw_sitemap_count,
+        urls,
+        map_source: map_source.to_string(),
+        outcome,
+        warning,
+    }
 }

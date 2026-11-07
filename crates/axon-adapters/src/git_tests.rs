@@ -173,7 +173,8 @@ async fn discover_keeps_only_code_and_documentation_before_applying_item_cap() {
         ]
     );
 
-    let (capped, truncated) = collect_capped_git_keys(&repo, &[], 2).unwrap();
+    let (capped, truncated) =
+        collect_capped_git_keys(&repo, &policy::GitInventoryPolicy::default(), 2).unwrap();
     assert_eq!(capped, ["README.md", "docs/guide.mdx"]);
     assert!(truncated);
     fs::remove_dir_all(repo).unwrap();
@@ -522,3 +523,26 @@ async fn git_inventory_completeness_distinguishes_exact_cap_from_truncation() {
 
 #[path = "git/dedup_tests.rs"]
 mod dedup_tests;
+
+#[test]
+fn git_inventory_history_policy_is_explicit_and_preserves_real_code() {
+    let policy = policy::GitInventoryPolicy::from_options(&AdapterOptions::default()).unwrap();
+    assert!(!policy.allows("docs/superpowers/plans/old-implementation.md"));
+    assert!(!policy.allows("docs/sessions/2026-05-01.md"));
+    assert!(policy.allows("src/plans/compiler.rs"));
+    assert!(policy.allows("docs/generated/cli-help.md"));
+    assert!(policy.allows("tests/fixtures/parser.rs"));
+    let mut options = AdapterOptions::default();
+    options
+        .values
+        .insert("include_historical_docs".into(), true.into());
+    assert!(
+        policy::GitInventoryPolicy::from_options(&options)
+            .unwrap()
+            .allows("docs/plans/design.md")
+    );
+    options
+        .values
+        .insert("include_historical_docs".into(), "true".into());
+    assert!(policy::GitInventoryPolicy::from_options(&options).is_err());
+}

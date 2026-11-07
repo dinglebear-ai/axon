@@ -315,6 +315,7 @@ impl fmt::Debug for Config {
                 "chunking_markdown_min_chars",
                 &self.chunking_markdown_min_chars,
             )
+            .field("chunking_min_chars", &self.chunking_min_chars)
             .field("chunking_overlap_chars", &self.chunking_overlap_chars)
             .field("embed_max_chunks_per_doc", &self.embed_max_chunks_per_doc)
             .field(
