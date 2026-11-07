@@ -40,6 +40,7 @@ async fn failed_summary_write_still_releases_source_lease() {
     let emitter = SourceEventEmitter::new(None, Some(plan.job_id));
     let lease_key = format!("source:{}", route.source.source_id.0);
     let mut input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: "lease-test",

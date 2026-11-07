@@ -139,10 +139,11 @@ async fn page_source_emits_ordered_phase_events() {
             (PipelinePhase::Embedding, LifecycleStatus::Running),
             (PipelinePhase::Vectorizing, LifecycleStatus::Running),
             (PipelinePhase::Upserting, LifecycleStatus::Running),
+            (PipelinePhase::Upserting, LifecycleStatus::Completed),
             (PipelinePhase::Publishing, LifecycleStatus::Running),
             (PipelinePhase::Publishing, LifecycleStatus::Completed),
             (PipelinePhase::Graphing, LifecycleStatus::Completed),
-            (PipelinePhase::Cleaning, LifecycleStatus::Running),
+            (PipelinePhase::Cleaning, LifecycleStatus::Completed),
             (PipelinePhase::Complete, LifecycleStatus::Completed),
         ]
     );

@@ -100,34 +100,8 @@ pub async fn upsert_candidates(
     Ok(totals.result(source_id))
 }
 
-pub async fn upsert_candidate_iter<I>(
-    pool: &SqlitePool,
-    write_gate: &axon_core::sqlite::SqliteWriteGate,
-    candidates: I,
-) -> StoreResult<GraphWriteResult>
-where
-    I: IntoIterator<Item = GraphCandidate>,
-{
-    let mut source_id: Option<SourceId> = None;
-    let mut totals = CandidateCounts::default();
-    for candidate in candidates {
-        // Validation and deterministic graph resolution are CPU-only and must
-        // not run while SQLite's process-wide writer lane is held.
-        validate_candidate(&candidate)?;
-        if let Some(expected) = &source_id {
-            if expected != &candidate.source_id {
-                return Err(graph_validation_error(
-                    "mixed-source graph batches require per-source receipts",
-                ));
-            }
-        } else {
-            source_id = Some(candidate.source_id.clone());
-        }
-        let (nodes, edges) = resolve_candidate(&candidate);
-        totals.add(write_resolved_candidate(pool, write_gate, &candidate, &nodes, &edges).await?);
-    }
-    Ok(totals.result(source_id))
-}
+mod stream;
+pub use stream::upsert_candidate_iter;
 
 #[derive(Default)]
 struct CandidateCounts {
@@ -176,7 +150,7 @@ async fn write_resolved_candidate(
 }
 
 async fn write_candidate(
-    tx: &mut ImmediateTx,
+    tx: &mut sqlx::SqliteConnection,
     candidate: &GraphCandidate,
     resolved_nodes: &[ResolvedNode],
     resolved_edges: &[ResolvedEdgeEvidence<'_>],
@@ -222,7 +196,7 @@ async fn write_candidate(
     sqlx::query("DELETE FROM graph_write_checkpoints WHERE job_id = ? AND candidate_id = ?")
         .bind(candidate.job_id.0.to_string())
         .bind(&candidate.candidate_id)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(|error| {
             graph_storage_error(format!("failed to clear graph checkpoint: {error}"))
@@ -488,11 +462,25 @@ async fn execute_alias_batch(
     query.push_values(aliases, |mut row, (kind, value, node_id)| {
         row.push_bind(kind).push_bind(value).push_bind(node_id);
     });
-    query.push(" ON CONFLICT(alias_kind, alias_value) DO UPDATE SET node_id = excluded.node_id");
+    query.push(" ON CONFLICT(alias_kind, alias_value) DO UPDATE SET node_id = excluded.node_id WHERE graph_aliases.node_id <> excluded.node_id");
     query
         .build()
         .execute(&mut *tx)
         .await
         .map_err(|e| graph_storage_error(format!("failed to batch upsert aliases: {e}")))?;
     Ok(())
+}
+
+/// Apply candidates inside the caller's publication transaction.
+pub(crate) async fn replay_in_tx(
+    tx: &mut sqlx::SqliteConnection,
+    candidates: &[GraphCandidate],
+) -> StoreResult<GraphWriteResult> {
+    let source = prevalidate_candidate_batch(candidates)?;
+    let mut totals = CandidateCounts::default();
+    for candidate in candidates {
+        let (nodes, edges) = resolve_candidate(candidate);
+        totals.add(write_candidate(tx, candidate, &nodes, &edges).await?);
+    }
+    Ok(totals.result(source))
 }

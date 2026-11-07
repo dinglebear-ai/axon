@@ -98,7 +98,7 @@ fn missing_required_payload_index_is_repairable_drift() {
 }
 
 #[test]
-fn keyword_generation_index_drift_requires_clean_break_reset() {
+fn keyword_generation_index_drift_requires_index_only_repair() {
     let mut existing = normalize_collection_spec(CollectionSpec {
         collection: "axon".to_string(),
         dense: VectorConfig {
@@ -140,6 +140,60 @@ fn keyword_generation_index_drift_requires_clean_break_reset() {
 
     let err = check_collection_drift(&existing, &incoming).expect_err("generation index drift");
 
-    assert!(err.message.contains("clean-break cutover"));
-    assert!(err.message.contains("preflight/reset"));
+    assert!(
+        err.message
+            .contains("verify stored generation payload values are integers")
+    );
+    assert!(
+        err.message
+            .contains("rebuild only the affected payload index")
+    );
+    assert!(err.message.contains("preserving collection points"));
+    assert!(!err.message.contains("preflight/reset"));
+}
+
+#[test]
+fn reserved_payload_index_types_cannot_be_overridden_or_marked_optional() {
+    for required_for_filters in [true, false] {
+        let mut spec = crate::testing::test_collection_spec(3);
+        spec.payload_indexes = vec![PayloadIndexSpec {
+            field_name: "source_generation".into(),
+            field_schema: PayloadFieldSchema::Keyword,
+            required_for_filters,
+        }];
+        let error = crate::collection::validate_collection_spec(&spec)
+            .expect_err("reserved integer payload field cannot use keyword index");
+        assert_eq!(error.code.to_string(), "vector.collection_drift");
+        assert!(error.message.contains("source_generation"));
+    }
+}
+
+#[test]
+fn canonical_payload_index_cannot_be_marked_optional() {
+    let mut spec = crate::testing::test_collection_spec(3);
+    spec.payload_indexes
+        .iter_mut()
+        .find(|index| index.field_name == "source_generation")
+        .unwrap()
+        .required_for_filters = false;
+    let normalized = normalize_collection_spec(spec);
+    assert!(
+        normalized
+            .payload_indexes
+            .iter()
+            .find(|index| index.field_name == "source_generation")
+            .unwrap()
+            .required_for_filters
+    );
+}
+
+#[test]
+fn conflicting_duplicate_reserved_index_is_rejected_before_normalization() {
+    let mut spec = crate::testing::test_collection_spec(3);
+    spec.payload_indexes.push(PayloadIndexSpec {
+        field_name: "source_generation".into(),
+        field_schema: PayloadFieldSchema::Keyword,
+        required_for_filters: false,
+    });
+    assert!(crate::qdrant::qdrant_collection_request(&spec).is_err());
 }

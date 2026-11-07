@@ -95,6 +95,7 @@ impl Drop for QueueSummaryTask {
 
 #[derive(Clone)]
 pub struct TargetLocalSourceRuntime {
+    pub(crate) graph_stage_pool: Option<sqlx::SqlitePool>,
     pub jobs: Arc<dyn JobStore>,
     pub ledger: Arc<dyn LedgerStore>,
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
@@ -122,6 +123,7 @@ pub struct TargetLocalSourceRuntime {
     pub graph_scheduler: Option<Arc<ProviderScheduler>>,
     pub artifact_scheduler: Option<Arc<ProviderScheduler>>,
     pub(crate) sqlite_write_gate: SqliteWriteGate,
+    pub(crate) publication_settlement_gate: SqliteWriteGate,
     #[cfg(test)]
     pub(crate) embedding_cache_store: Option<Arc<SqliteEmbeddingVectorCacheStore>>,
     pub artifact_store: Arc<dyn ArtifactStore>,
@@ -220,6 +222,8 @@ impl TargetLocalSourceRuntime {
             graph_scheduler: None,
             artifact_scheduler: None,
             sqlite_write_gate: SqliteWriteGate::default(),
+            publication_settlement_gate: SqliteWriteGate::default(),
+            graph_stage_pool: None,
             embedding_cache_store: None,
             embedding_provider_id,
             embedding_model: plane.identity.model.clone(),

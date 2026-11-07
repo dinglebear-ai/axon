@@ -43,10 +43,26 @@ async fn migration_overlaps_next_scroll_with_current_upsert_under_backpressure()
             }));
         })
         .await;
+    let payload_schema = required_retrieval_payload_indexes()
+        .into_iter()
+        .map(|index| {
+            let data_type =
+                crate::qdrant::convert::payload_index_json(&index)["field_schema"].clone();
+            (
+                index.field_name,
+                serde_json::json!({"data_type": data_type}),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
     server
         .mock_async(|when, then| {
             when.method("GET").path("/collections/destination");
-            then.status(404);
+            then.status(200).json_body(serde_json::json!({"result": {
+                "config": {"params": {
+                    "vectors": {"dense": {"size":1,"distance":"Cosine"}},
+                    "sparse_vectors": {"bm42":{"modifier":"idf"}}
+                }}, "payload_schema": payload_schema
+            }}));
         })
         .await;
     server

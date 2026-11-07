@@ -13,6 +13,9 @@ pub mod sqlite;
 pub mod store;
 pub mod validation;
 
+/// Trusted manifest evidence written by the source executor before vector writes.
+pub const GENERATION_VECTOR_COLLECTION_METADATA_KEY: &str = "axon.vector_write_collection";
+
 pub const CRATE_NAME: &str = "axon-ledger";
 
 /// Number of most-recently-committed generations kept in the ledger before

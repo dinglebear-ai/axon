@@ -86,6 +86,7 @@ async fn imported_vectors_advance_the_ledger_generation_before_writing() {
     let execution = SourceExecutionContext::inline(plan.request.clone(), None);
     let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: "axon-test",

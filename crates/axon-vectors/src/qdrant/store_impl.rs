@@ -31,8 +31,8 @@ impl QdrantVectorStore {
         self.recover_bulk_load_transitions().await?;
         let stage = ErrorStage::Upserting;
         let http = self.http()?;
-        let spec = normalize_collection_spec(spec);
         validate_collection_spec(&spec)?;
+        let spec = normalize_collection_spec(spec);
 
         if let Some(existing) = self
             .fetch_collection_spec(&http, &spec.collection, stage)
@@ -182,52 +182,50 @@ impl QdrantVectorStore {
                 }
             })
             .buffer_unordered(self.payload_index_parallelism());
-        let mut conflicting_indexes = Vec::new();
         while let Some(result) = pending.next().await {
-            let (index, outcome) = result?;
-            if outcome == PutCreateOutcome::AlreadyExists {
-                conflicting_indexes.push(index);
-            }
+            result?;
         }
-        if !conflicting_indexes.is_empty() {
-            let existing = self
-                .fetch_collection_spec(http, &spec.collection, stage)
-                .await?
+        // Qdrant may acknowledge an idempotent PUT without changing an existing
+        // index. Verify the persisted schema for every requested field, including
+        // optional custom indexes, before caching the requested collection spec.
+        let existing = self
+            .fetch_collection_spec(http, &spec.collection, stage)
+            .await?
+            .ok_or_else(|| {
+                ApiError::new(
+                    "vector.payload_index_verification_failed",
+                    stage,
+                    "Qdrant payload index creation completed but the collection was not visible",
+                )
+            })?;
+        check_collection_drift(&existing, spec)?;
+        for requested in &spec.payload_indexes {
+            let actual = existing
+                .payload_indexes
+                .iter()
+                .find(|index| index.field_name == requested.field_name)
                 .ok_or_else(|| {
                     ApiError::new(
-                        "vector.payload_index_conflict_unverified",
-                        stage,
-                        "Qdrant reported a payload-index conflict but the collection could not be verified",
-                    )
-                })?;
-            check_collection_drift(&existing, spec)?;
-            for conflicting in conflicting_indexes {
-                let actual = existing
-                    .payload_indexes
-                    .iter()
-                    .find(|index| index.field_name == conflicting.field_name)
-                    .ok_or_else(|| {
-                        ApiError::new(
-                            "vector.payload_index_conflict_unverified",
-                            stage,
-                            format!(
-                                "Qdrant reported a payload-index conflict for {} but the existing index was not visible",
-                                conflicting.field_name
-                            ),
-                        )
-                    })?;
-                if actual.field_schema != conflicting.field_schema {
-                    return Err(ApiError::new(
-                        "vector.collection_drift",
+                        "vector.payload_index_verification_failed",
                         stage,
                         format!(
-                            "collection {} payload index {} has a different field schema",
-                            spec.collection, conflicting.field_name
+                            "Qdrant payload index {} was not visible after creation",
+                            requested.field_name
                         ),
-                    ));
-                }
+                    )
+                })?;
+            if actual.field_schema != requested.field_schema {
+                return Err(ApiError::new(
+                    "vector.collection_drift",
+                    stage,
+                    format!(
+                        "collection {} payload index {} has a different field schema",
+                        spec.collection, requested.field_name
+                    ),
+                ));
             }
         }
+
         Ok(())
     }
 }

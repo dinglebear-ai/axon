@@ -120,6 +120,35 @@ pub(crate) async fn retire_under_lease<Fut>(
 where
     Fut: Future<Output = Result<GraphDeleteResult, ApiError>>,
 {
+    retire_many_under_lease(
+        ledger,
+        source,
+        vec![item],
+        job,
+        move |source, items| async move {
+            retire(
+                source,
+                items
+                    .into_iter()
+                    .next()
+                    .expect("nonempty eligible retirement group"),
+            )
+            .await
+        },
+    )
+    .await
+}
+
+pub(crate) async fn retire_many_under_lease<Fut>(
+    ledger: Arc<dyn LedgerStore>,
+    source: SourceId,
+    items: Vec<SourceItemKey>,
+    job: JobId,
+    retire: impl FnOnce(SourceId, Vec<SourceItemKey>) -> Fut,
+) -> Result<GraphDeleteResult, ApiError>
+where
+    Fut: Future<Output = Result<GraphDeleteResult, ApiError>>,
+{
     with_source_lease(ledger.clone(), source.clone(), job, async {
         let generation = ledger
             .committed_generation(source.clone())
@@ -141,34 +170,62 @@ where
                     "committed manifest is unavailable",
                 )
             })?;
-        if manifest
+        let present: std::collections::BTreeSet<_> = manifest
             .items
             .iter()
-            .any(|entry| entry.source_item_key == item)
-        {
-            let statuses = ledger
-                .document_statuses_for_items(source.clone(), vec![item.clone()])
-                .await?;
-            if statuses.is_empty()
-                || statuses.iter().any(|status| {
+            .map(|entry| &entry.source_item_key)
+            .collect();
+        let retained: Vec<_> = items
+            .iter()
+            .filter(|item| present.contains(item))
+            .cloned()
+            .collect();
+        let statuses = ledger
+            .document_statuses_for_items(source.clone(), retained.clone())
+            .await?;
+        let mut by_item = std::collections::BTreeMap::<_, Vec<_>>::new();
+        for status in statuses {
+            by_item
+                .entry(status.source_item_key.clone())
+                .or_default()
+                .push(status);
+        }
+        let mut eligible = Vec::new();
+        for item in items {
+            if present.contains(&item) {
+                let values = by_item
+                    .get(&item)
+                    .filter(|values| !values.is_empty())
+                    .ok_or_else(|| {
+                        ApiError::new(
+                            "graph.retirement_status_unknown",
+                            ErrorStage::Cleaning,
+                            "current item disposition is unavailable",
+                        )
+                    })?;
+                if values.iter().any(|status| {
                     status.generation.as_ref() != Some(&generation)
                         || !eligible_status(status.status)
-                })
-            {
-                return Err(ApiError::new(
-                    "graph.retirement_status_unknown",
-                    ErrorStage::Cleaning,
-                    "current item disposition is unavailable",
-                ));
+                }) {
+                    return Err(ApiError::new(
+                        "graph.retirement_status_unknown",
+                        ErrorStage::Cleaning,
+                        "current item disposition is unavailable",
+                    ));
+                }
+                if values
+                    .iter()
+                    .any(|status| status.status != DocumentLifecycleStatus::Skipped)
+                {
+                    continue;
+                }
             }
-            if statuses
-                .iter()
-                .any(|status| status.status != DocumentLifecycleStatus::Skipped)
-            {
-                return Ok(GraphDeleteResult::default());
-            }
+            eligible.push(item);
         }
-        retire(source, item).await
+        if eligible.is_empty() {
+            return Ok(GraphDeleteResult::default());
+        }
+        retire(source, eligible).await
     })
     .await
 }

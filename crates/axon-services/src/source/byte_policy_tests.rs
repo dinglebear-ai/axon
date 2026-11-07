@@ -120,7 +120,7 @@ async fn normalized(
 
 fn check(document: SourceDocument, expected: &Expected, context: &str) {
     let item = document.source_item_key.clone();
-    let result = DocumentPreparer::default()
+    let result = crate::test_support::document_preparer_for_small_fixtures()
         .prepare(PrepareSourceDocumentRequest {
             document,
             generation: SourceGenerationId::new("gen_policy"),
@@ -224,14 +224,16 @@ async fn web_dispatch_retains_requested_preparation_ceiling_after_raw_fetch() {
     let renderer = Arc::new(FakeAdapterProviders::new());
     let adapter = Arc::new(WebSourceAdapter::new(fetch.clone(), renderer.clone()));
     let ledger = Arc::new(FakeLedgerStore::new());
-    let runtime = crate::context::TargetLocalSourceRuntime::new(
-        Arc::new(FakeJobWatchStore::new()),
-        ledger.clone(),
-        Arc::new(FakeEmbeddingProvider::new("embedding", 8)),
-        Arc::new(FakeVectorStore::new("vectors")),
-        ProviderId::new("embedding"),
-        "embedding",
-        8,
+    let runtime = crate::test_support::runtime_for_small_fixtures(
+        crate::context::TargetLocalSourceRuntime::new(
+            Arc::new(FakeJobWatchStore::new()),
+            ledger.clone(),
+            Arc::new(FakeEmbeddingProvider::new("embedding", 8)),
+            Arc::new(FakeVectorStore::new("vectors")),
+            ProviderId::new("embedding"),
+            "embedding",
+            8,
+        ),
     );
     let source = "https://example.test/payload";
     let route = super::routing::resolve_source_route(&SourceRequest::new(source))

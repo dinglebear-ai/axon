@@ -125,6 +125,18 @@ adapters may additionally implement the additive `artifact_candidates` hook, but
 those candidates remain evidence-only outputs tied to the same changed documents,
 job, and generation.
 
+## Publication and background cleanup
+
+Parser graph extraction can overlap embedding during preparation. Durable graph
+writes follow source publication because graph queries read shared identities
+without generation staging. Source completion includes the graph result and a
+handoff of physical cleanup to the durable worker. The worker resumes pending
+debt every 30 seconds, fences vector deletion against the current generation,
+and preserves failures for retry. Graph retirement groups at most 64 items under
+one source lease, checking the current manifest and item statuses before deleting
+unsupported evidence. Old vectors are retired from retrieval at publication;
+physical deletion does not delay job completion.
+
 ## Transport projections
 
 | Operation | CLI | MCP | REST |

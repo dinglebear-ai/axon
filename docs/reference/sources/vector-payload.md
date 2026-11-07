@@ -15,14 +15,14 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
-| `crates/axon-vectors/src/payload.rs` | `sha256:a5a655b18a45b04d0a3a17b098b179aac8756a79e53955522170db0e9d90436a` |
+| `crates/axon-vectors/src/payload.rs` | `sha256:3f2b92811dfd0c0342a1b336ce11b718506b8193f943fc947e17a8ee2676ad41` |
 | `crates/axon-vectors/src/payload_families.rs` | `sha256:4417afd296fec6781597e5ca3aca8ca403c509a3babbf51a11e2b49b3e9b673d` |
 | `crates/axon-vectors/src/point.rs` | `sha256:ce4cb45eeb921a90accb517f3c04562c999b3457ee64e095d05071344976d016` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:d0233067e8ab42be1a0d1451d5f0e3a7df7953c42d54de761b6ae4d068b1a01b` |
 | `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33` |
-| `xtask/src/schemas/vector_payload_fields.rs` | `sha256:921bae71f3381b68aeca865c6633798f249bc564659c5e02dfa3244b351e3e5e` |
+| `xtask/src/schemas/vector_payload_fields.rs` | `sha256:e8ee6ba0a28ac13cd53ab84fc0363443337625a1a31f5143b2bb5656dce24f1a` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c` |
 
 ## Root Shape

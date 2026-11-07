@@ -521,6 +521,7 @@ async fn run_actual_publish_and_build_next_with_jobs(
     let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
     let collection_name = collection.collection.clone();
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: &collection_name,
@@ -755,6 +756,7 @@ async fn prepared_pool_checkpoints_successful_upsert_before_next_embedding_failu
         crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
     let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: &collection.collection,
@@ -870,6 +872,7 @@ async fn four_outer_pools_keep_provider_busy_and_publish_in_sequence() {
         crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
     let adapter = axon_adapters::FakeSourceAdapter::new(route.adapter.clone());
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: &adapter,
         plan,
         collection: &collection.collection,

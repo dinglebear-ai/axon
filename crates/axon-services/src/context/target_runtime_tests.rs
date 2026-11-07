@@ -681,3 +681,29 @@ fn scheduler_authority_canonicalizes_equivalent_sqlite_paths() {
         super::scheduler_authority_id(&equivalent)
     );
 }
+
+#[test]
+fn production_preparer_uses_configured_chunk_quality_floor() {
+    let mut cfg = Config::default();
+    assert_eq!(
+        super::configured_document_preparer(&cfg)
+            .semantic_config()
+            .minimum_chunk_chars,
+        200
+    );
+    cfg.chunking_min_chars = 120;
+    assert_eq!(
+        super::configured_document_preparer(&cfg)
+            .semantic_config()
+            .minimum_chunk_chars,
+        120
+    );
+    cfg.chunking_markdown_max_chars = 8_000;
+    cfg.chunking_min_chars = 5_000;
+    assert_eq!(
+        super::configured_document_preparer(&cfg)
+            .semantic_config()
+            .minimum_chunk_chars,
+        2_000
+    );
+}

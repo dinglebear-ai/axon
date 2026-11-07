@@ -199,3 +199,21 @@ expiry) directly. Run with:
 ```bash
 cargo test -p axon-ledger
 ```
+
+## Abandoned writes and vector retention
+
+A new source worker reconciles older unpublished writes under its current source
+lease. The store verifies the persisted lease owner, expiry, source, and active
+generation. Generations created during that same lease and published generations
+are protected. Older running, completed, or failed writes with a persisted writer manifest and
+without recorded vector cleanup receive durable whole-generation deletion debt
+for the collection recorded before those writes. Reserved collisions and legacy
+writes without collection evidence require separately reviewed maintenance.
+
+Unchanged refreshes also produce whole-generation vector deletion debt once a
+committed generation ages beyond the retained current and predecessor snapshots.
+Ledger-prune debt is produced on a later publication only after that vector debt
+has completed and other cleanup debt is resolved. A vector failure therefore keeps
+the ledger evidence needed for retry. These rules do not automatically reclaim
+historical vectors whose ledger generation rows were already pruned; those require
+an explicitly scoped maintenance cleanup.

@@ -439,6 +439,11 @@
     },
     {
       "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
+      "key": "pipeline.chunking.minimum-chars",
+      "rust_type": "Option<usize>"
+    },
+    {
+      "defined_in": "crates/axon-core/src/config/parse/toml_config/raw.rs",
       "key": "pipeline.chunking.overlap-chars",
       "rust_type": "Option<usize>"
     },
@@ -1206,15 +1211,15 @@
   "source_inputs": [
     {
       "path": "crates/axon-core/src/config/parse/toml_config/raw.rs",
-      "sha256": "9a773208f828ca94fbb632f482aff6be83cf83748a94c01bb173d4484d43bfee"
+      "sha256": "ec64be8197d192c15b885852b3334cf525b0e1eff6bb9c97134f3cc0410d3b3e"
     },
     {
       "path": "crates/axon-core/src/config/parse/toml_config.rs",
-      "sha256": "3dae7065dc8c7708040af0f1a2804e4381d3b4617d7451e2aae079099fdbe05d"
+      "sha256": "3472188d5924d801c2328cd7ab0c82d819f3f07c6335dc5079baa1e4e92e93d8"
     },
     {
       "path": "crates/axon-core/src/config/parse/toml_config/convert.rs",
-      "sha256": "3efdccd12f8c06708176c0a4ddbe213730d08a71186342f5b16aa022753bb3f9"
+      "sha256": "52c07db49a13a3e909519357d94d81c49a63922f713c8286df0e230aed75639e"
     },
     {
       "path": "xtask/src/runtime_config_docs.rs",

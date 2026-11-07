@@ -64,6 +64,10 @@ fn schema_and_each_preparation_knob_invalidate_identity() {
             markdown_overlap_chars: config.markdown_overlap_chars + 1,
             ..config
         },
+        DocumentPreparerConfig {
+            minimum_chunk_chars: config.minimum_chunk_chars + 1,
+            ..config
+        },
     ] {
         assert_ne!(
             baseline,
@@ -122,6 +126,7 @@ fn normalized_chunk_limits_share_identity() {
         markdown_max_chars: 1,
         markdown_min_chars: 1,
         markdown_overlap_chars: 0,
+        minimum_chunk_chars: 1,
         ..baseline
     };
     let left = DocumentPreparer::new(baseline).semantic_config();

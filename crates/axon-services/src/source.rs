@@ -296,19 +296,24 @@ async fn finalize_source_index(
         execution.priority,
         format!("graph:{}:{}", counts.source_id.0, counts.generation.0),
     );
-    let graph = graph::write_baseline_graph_with_db_gate(
-        Some(runtime),
-        Some(graph_context),
-        kind,
-        ctx.jobs.sqlite_pool(),
-        runtime.ledger.as_ref(),
-        &graph_counts,
-        &route.source.canonical_uri,
-        graph_manifest,
-        graph_candidates,
-        Some(Arc::clone(&runtime.db_stage_slots)),
-    )
-    .await;
+    let graph = match graph::staging::activated_summary(runtime, &counts).await? {
+        Some(summary) => summary,
+        None => {
+            graph::write_baseline_graph_with_db_gate(
+                Some(runtime),
+                Some(graph_context),
+                kind,
+                ctx.jobs.sqlite_pool(),
+                runtime.ledger.as_ref(),
+                &graph_counts,
+                &route.source.canonical_uri,
+                graph_manifest,
+                graph_candidates,
+                Some(Arc::clone(&runtime.db_stage_slots)),
+            )
+            .await
+        }
+    };
 
     let graph_audit_warning = job_tracking::track_graph_mutation(
         Some(runtime.jobs.clone()),
@@ -325,24 +330,14 @@ async fn finalize_source_index(
     .await;
     record_post_publish_audit_warning(runtime, &mut counts, graph_audit_warning).await;
 
+    let cleanup_warning = defer_source_cleanup_debt(runtime, collection, &counts).await;
+    record_post_publish_audit_warning(runtime, &mut counts, cleanup_warning).await;
     event_emitter
-        .running(PipelinePhase::Cleaning, "cleaning source generation debt")
+        .completed(
+            PipelinePhase::Cleaning,
+            "physical cleanup deferred to durable background worker",
+        )
         .await;
-    let drain = drain_source_cleanup_debt(ctx, runtime, collection, &counts).await;
-    let prune_audit_warning = job_tracking::track_prune(
-        Some(runtime.jobs.clone()),
-        counts.job_id,
-        execution.auth_snapshot.as_ref(),
-        &drain,
-    )
-    .await;
-    record_post_publish_audit_warning(
-        runtime,
-        &mut counts,
-        job_tracking::prune_outcome_warning(&drain),
-    )
-    .await;
-    record_post_publish_audit_warning(runtime, &mut counts, prune_audit_warning).await;
     event_emitter
         .completed(PipelinePhase::Complete, "source indexing complete")
         .await;
@@ -393,26 +388,30 @@ fn source_collection(request: &SourceRequest, ctx: &ServiceContext) -> String {
         .unwrap_or_else(|| ctx.cfg().collection.clone())
 }
 
-async fn drain_source_cleanup_debt(
-    ctx: &ServiceContext,
+async fn defer_source_cleanup_debt(
     runtime: &TargetLocalSourceRuntime,
     collection: &str,
     counts: &IndexCounts,
-) -> prune::DebtDrainSummary {
-    if let Err(error) = prune::bind_vector_cleanup_collection(
+) -> Option<SourceWarning> {
+    match prune::bind_vector_cleanup_collection(
         runtime.ledger.as_ref(),
         &counts.source_id,
         collection,
     )
     .await
     {
-        tracing::warn!(
-            source_id = %counts.source_id.0,
-            error = %error.message,
-            "failed to persist vector cleanup collection identity; vector debt will stay pending"
-        );
+        Ok(()) => None,
+        Err(error) => Some(SourceWarning {
+            code: "source.cleanup.vector_collection_unbound".into(),
+            severity: Severity::Warning,
+            message: format!(
+                "source is published, but vector cleanup collection identity could not be persisted; cleanup debt remains pending: {}",
+                error.message
+            ),
+            source_item_key: None,
+            retryable: true,
+        }),
     }
-    crate::reserved_call::drain_source_cleanup_debt(ctx, runtime, collection, counts).await
 }
 
 /// Open the `GraphStore`/`MemoryStore` handles the cleanup-debt drain uses to
@@ -461,3 +460,11 @@ pub(crate) async fn open_cleanup_debt_stores(
 
 #[cfg(test)]
 mod byte_policy_tests;
+
+#[cfg(test)]
+#[path = "source/deferred_cleanup_tests.rs"]
+mod deferred_cleanup_tests;
+
+#[cfg(test)]
+#[path = "source/concurrent_graph_tests.rs"]
+mod concurrent_graph_tests;

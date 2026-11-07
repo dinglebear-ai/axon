@@ -51,8 +51,17 @@ fn nested_symbols_partition_source_once_with_utf8_and_module_context() {
                 text.find("\nrun()").unwrap(),
             )
         };
+        let mut parent = fact(text, "container", start, container_end);
+        parent.value["symbol_kind"] = if text.contains("impl") {
+            "impl"
+        } else if text.contains("class") {
+            "class"
+        } else {
+            "function"
+        }
+        .into();
         let facts = vec![
-            fact(text, "container", start, container_end),
+            parent,
             fact(text, "child", child_start, child_end),
             fact(text, "duplicate", child_start, child_end),
         ];
@@ -73,13 +82,21 @@ fn nested_symbols_partition_source_once_with_utf8_and_module_context() {
             previous_end = right;
         }
         assert_eq!(previous_end, text.len());
+        if text.contains("function outer") {
+            assert_eq!(chunks.len(), 1);
+            assert_eq!(
+                chunks[0].metadata["code_symbol_aliases"],
+                serde_json::json!(["child", "container", "duplicate"])
+            );
+            continue;
+        }
         let child = chunks
             .iter()
             .find(|c| c.symbol.as_deref() == Some("child"))
             .unwrap();
         assert_eq!(
             child.metadata["code_symbol_aliases"],
-            serde_json::json!(["child", "duplicate"])
+            serde_json::json!(["child", "container", "duplicate"])
         );
         assert_eq!(
             chunks
@@ -88,11 +105,7 @@ fn nested_symbols_partition_source_once_with_utf8_and_module_context() {
                 .count(),
             1
         );
-        assert!(
-            chunks
-                .iter()
-                .any(|c| c.symbol.as_deref() == Some("container"))
-        );
+        assert!(child.content.contains("café"));
     }
 }
 
@@ -146,4 +159,80 @@ fn module_remainder_uses_the_parser_method_and_truthful_recovery_status() {
             if recovered { "partial" } else { "parsed" }
         );
     }
+}
+
+#[test]
+fn executable_symbols_keep_nested_locals_in_one_coherent_body() {
+    let source = "function refresh() {\n  const response = fetch();\n  const result = response.json();\n  return result;\n}\n";
+    let mut facts = vec![fact(source, "refresh", 0, source.len() - 1)];
+    for name in ["response", "result"] {
+        let start = source.find(&format!("const {name}")).unwrap();
+        let end = start + source[start..].find(';').unwrap() + 1;
+        let mut local = fact(source, name, start, end);
+        local.value["symbol_kind"] = "constant".into();
+        facts.push(local);
+    }
+    let chunks = parser_code_symbol_chunks(source, &facts).unwrap();
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, source);
+    assert_eq!(chunks[0].symbol.as_deref(), Some("refresh"));
+    assert_eq!(
+        chunks[0].metadata["code_symbol_aliases"],
+        serde_json::json!(["refresh", "response", "result"])
+    );
+}
+
+#[test]
+fn annotations_and_container_scaffold_attach_to_declarations() {
+    let source = "use crate::Widget;\nimpl Widget {\n #[tokio::test(flavor = \"current_thread\")]\n fn works() { assert!(true); }\n}\n";
+    let mut container = fact(
+        source,
+        "Widget",
+        source.find("impl").unwrap(),
+        source.len() - 1,
+    );
+    container.value["symbol_kind"] = "impl".into();
+    let start = source.find("fn works").unwrap();
+    let child = fact(
+        source,
+        "works",
+        start,
+        start + "fn works() { assert!(true); }".len(),
+    );
+    let chunks = parser_code_symbol_chunks(source, &[container, child]).unwrap();
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, source);
+    assert_eq!(chunks[0].symbol.as_deref(), Some("works"));
+}
+
+#[test]
+fn large_executable_retains_locals_without_repeating_owner_metadata_per_interval() {
+    let mut source = "function render() {\n".to_string();
+    let mut locals = Vec::new();
+    for index in 0..2000 {
+        let start = source.len();
+        source.push_str(&format!("const value{index} = useful({index});\n"));
+        locals.push((format!("value{index}"), start, source.len()));
+    }
+    source.push_str("return usefulResult();\n}\n");
+    let mut facts = vec![fact(&source, "render", 0, source.len())];
+    facts.extend(
+        locals
+            .into_iter()
+            .map(|(name, start, end)| fact(&source, &name, start, end)),
+    );
+    let (chunks, work) = crate::performance_measurement::measure(|| {
+        parser_code_symbol_chunks(&source, &facts).unwrap()
+    });
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].content, source);
+    assert_eq!(
+        chunks[0].metadata["code_symbol_aliases"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2001
+    );
+    assert!(!chunks[0].metadata.contains_key("preparation_owner_span"));
+    assert!(work.range_scan_bytes <= source.len() * 4);
 }

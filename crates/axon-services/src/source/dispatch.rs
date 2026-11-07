@@ -432,6 +432,7 @@ where
     index_materialized_source(
         runtime,
         SourcePipelineInput {
+            graph_stage: None,
             adapter,
             plan,
             collection,

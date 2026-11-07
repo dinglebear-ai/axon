@@ -268,6 +268,7 @@ async fn run_actual_generation_batches_with_diff(
     let execution =
         crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: adapter.as_ref(),
         plan,
         collection: "overlap-test",
@@ -364,6 +365,7 @@ async fn run_actual_scheduled_generation_batches(
     let execution =
         crate::source::execution::SourceExecutionContext::inline(plan.request.clone(), None);
     let input = SourcePipelineInput {
+        graph_stage: None,
         adapter: adapter.as_ref(),
         plan,
         collection: "overlap-test",

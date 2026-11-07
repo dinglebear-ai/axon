@@ -205,6 +205,19 @@ impl SourceRouter {
                 "exclude_paths must be an array of strings",
             ));
         }
+        if adapter.source_kind == SourceKind::Git
+            && request
+                .options
+                .values
+                .get("include_historical_docs")
+                .is_some_and(|value| !value.is_boolean())
+        {
+            return Err(ApiError::new(
+                "route.options.invalid",
+                ErrorStage::Routing,
+                "include_historical_docs must be a boolean; use true to include planning/session documents",
+            ));
+        }
         if adapter.adapter.name == "web" {
             crate::web_options::validate(&request.options.values)?;
         }

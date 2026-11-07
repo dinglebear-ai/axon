@@ -1,5 +1,6 @@
 //! Small schema and provider helpers for the canonical source pipeline.
 
+use anyhow::Context as _;
 use axon_adapters::SourceEnricher;
 use axon_api::source::*;
 use axon_ledger::store::LedgerStore;
@@ -62,19 +63,7 @@ pub(super) fn collection_spec(collection: &str, dimensions: u32) -> CollectionSp
             dimensions,
             distance: VectorDistance::Cosine,
         },
-        payload_indexes: [
-            "source_id",
-            "source_generation",
-            "source_item_key",
-            "source_item_aliases",
-            "source_path_prefixes",
-            "item_canonical_uri_aliases",
-            "document_id",
-            "chunk_id",
-        ]
-        .into_iter()
-        .map(payload_index)
-        .collect(),
+        payload_indexes: axon_vectors::collection::required_retrieval_payload_indexes(),
         sparse: Some(SparseVectorConfig {
             name: "bm42".to_string(),
             modifier: SparseVectorModifier::Idf,
@@ -82,14 +71,6 @@ pub(super) fn collection_spec(collection: &str, dimensions: u32) -> CollectionSp
         aliases: Vec::new(),
         distance: Some(VectorDistance::Cosine),
         metadata: MetadataMap::new(),
-    }
-}
-
-pub(super) fn payload_index(field_name: &str) -> PayloadIndexSpec {
-    PayloadIndexSpec {
-        field_name: field_name.to_string(),
-        field_schema: PayloadFieldSchema::Keyword,
-        required_for_filters: true,
     }
 }
 
@@ -338,4 +319,33 @@ pub(super) fn take_enrichment_graph_candidates(
 /// Project diagnostics before direct persistence to jobs.last_error_json.
 pub(super) fn terminal_source_error(error: &anyhow::Error) -> SourceError {
     crate::source::diagnostics::source_error(error)
+}
+
+pub(super) async fn record_source_failure(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    previous: Option<&SourceSummary>,
+    result: &anyhow::Result<IndexCounts>,
+) -> anyhow::Result<()> {
+    let Err(error) = result else {
+        return Ok(());
+    };
+    crate::source::progress::pipeline_failed(emitter, error).await;
+    let counts = previous
+        .map(preserved_source_counts)
+        .unwrap_or_else(empty_source_counts);
+    runtime
+        .ledger
+        .upsert_source(super::metadata::source_summary(
+            input,
+            LifecycleStatus::Failed,
+            counts,
+            previous,
+        ))
+        .await
+        .with_context(|| {
+            format!("source failed with `{error}` and its summary could not be finalized")
+        })?;
+    Ok(())
 }

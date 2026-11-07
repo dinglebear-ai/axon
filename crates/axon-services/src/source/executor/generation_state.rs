@@ -41,6 +41,7 @@ pub(super) struct GenerationAccumulator {
     spool: Option<GenerationSpool>,
     spool_sequence: u64,
     side_effect_bytes: usize,
+    pub(super) graph_stage: Option<std::sync::Arc<axon_graph::stage::GraphStage>>,
     #[cfg(test)]
     side_effect_limit: Option<usize>,
     #[cfg(test)]
@@ -77,6 +78,12 @@ impl GenerationAccumulator {
         &mut self,
         batch: PreparedBatchSideEffects,
     ) -> anyhow::Result<()> {
+        if let Some(stage) = &self.graph_stage {
+            let bytes = batch
+                .estimated_resident_bytes()
+                .max(batch.estimated_bytes()?);
+            stage.reserve_side_effect_bytes(bytes as u64).await?;
+        }
         self.blocking_step(move |state| state.append_side_effects(batch))
             .await
     }

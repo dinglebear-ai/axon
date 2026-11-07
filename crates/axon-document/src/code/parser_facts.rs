@@ -55,6 +55,7 @@ pub(super) fn parser_code_symbol_chunks(
         ]);
     }
 
+    let owned_aliases = owned_aliases(&spans, &aliases);
     let module_method = spans[0].2.parser_method.clone();
     let recovered = spans.iter().any(|(_, _, fact)| {
         fact.value
@@ -68,8 +69,7 @@ pub(super) fn parser_code_symbol_chunks(
         code_status_for_parser_method(&module_method).1
     };
 
-    // Partition the complete source. The innermost symbol owns each interval,
-    // so containers retain their headers/remainders without duplicating children.
+    // Partition complete source into executable bodies and container scaffolding.
     let mut boundaries = vec![0, text.len()];
     for (start, end, _) in &spans {
         boundaries.extend([*start, *end]);
@@ -102,12 +102,17 @@ pub(super) fn parser_code_symbol_chunks(
             }
             event_index += 1;
         }
-        let owner = active.first().map(|&(_, _, index)| spans[index]);
+        // Executable bodies own their locals and nested closures. Containers
+        // still expose independent methods/functions rather than duplicating them.
+        let owner = active
+            .iter()
+            .rev()
+            .find(|&&(_, _, index)| !container_fact(spans[index].2))
+            .or_else(|| active.first())
+            .map(|&(_, _, index)| spans[index]);
         let chunk = if let Some((left, right, fact)) = owner {
-            parser_fact_chunk(text, fact, start, end, &positions).with_metadata(
-                "code_symbol_aliases",
-                serde_json::json!(aliases[&(left, right)]),
-            )
+            parser_fact_chunk(text, fact, start, end, &positions)
+                .with_metadata("preparation_owner_span", serde_json::json!([left, right]))
         } else {
             DocumentChunk::new(
                 text[start..end].to_string(),
@@ -122,7 +127,144 @@ pub(super) fn parser_code_symbol_chunks(
         };
         chunks.push(chunk);
     }
+    let mut chunks = coherent_chunks(chunks, text, &positions);
+    attach_owner_aliases(&mut chunks, &owned_aliases);
     Some(chunks)
+}
+
+fn attach_owner_aliases(
+    chunks: &mut [DocumentChunk],
+    owned_aliases: &std::collections::BTreeMap<(usize, usize), std::collections::BTreeSet<String>>,
+) {
+    for chunk in chunks {
+        if let Some(span) = chunk.metadata.remove("preparation_owner_span") {
+            let key = (
+                span[0].as_u64().unwrap() as usize,
+                span[1].as_u64().unwrap() as usize,
+            );
+            let mut names = owned_aliases[&key].clone();
+            if let Some(values) = chunk
+                .metadata
+                .get("code_symbol_aliases")
+                .and_then(|v| v.as_array())
+            {
+                names.extend(values.iter().filter_map(|v| v.as_str().map(str::to_string)));
+            }
+            chunk
+                .metadata
+                .insert("code_symbol_aliases".into(), serde_json::json!(names));
+        }
+    }
+}
+
+fn owned_aliases(
+    spans: &[(usize, usize, &SourceParseFacts)],
+    aliases: &std::collections::BTreeMap<(usize, usize), Vec<String>>,
+) -> std::collections::BTreeMap<(usize, usize), std::collections::BTreeSet<String>> {
+    let mut ordered = spans.to_vec();
+    ordered.sort_by_key(|(start, end, _)| (*start, std::cmp::Reverse(*end)));
+    let mut output = std::collections::BTreeMap::new();
+    let mut executable = None;
+    for (start, end, fact) in ordered {
+        let key = executable
+            .filter(|&(a, b)| start >= a && end <= b)
+            .unwrap_or((start, end));
+        output
+            .entry(key)
+            .or_insert_with(std::collections::BTreeSet::new)
+            .extend(aliases[&(start, end)].clone());
+        output
+            .entry((start, end))
+            .or_insert_with(std::collections::BTreeSet::new)
+            .extend(aliases[&(start, end)].clone());
+        if key == (start, end) {
+            executable = (!container_fact(fact)).then_some((start, end));
+        }
+    }
+    output
+}
+
+fn container_fact(fact: &SourceParseFacts) -> bool {
+    matches!(
+        fact.value.get("symbol_kind").and_then(|v| v.as_str()),
+        Some("module" | "impl" | "class" | "trait" | "interface" | "struct" | "enum")
+    )
+}
+
+fn coherent_chunks(
+    chunks: Vec<DocumentChunk>,
+    source: &str,
+    positions: &SourcePositions<'_>,
+) -> Vec<DocumentChunk> {
+    let mut output: Vec<DocumentChunk> = Vec::new();
+    let mut pending: Option<DocumentChunk> = None;
+    for mut chunk in chunks {
+        let scaffold = chunk.symbol.is_none()
+            || matches!(
+                chunk
+                    .metadata
+                    .get("code_symbol_kind")
+                    .and_then(|v| v.as_str()),
+                Some("module" | "impl" | "class" | "trait" | "interface" | "struct" | "enum")
+            ) && chunk
+                .metadata
+                .get("code_symbol_source_range")
+                .is_some_and(|range| {
+                    range != &serde_json::to_value(&chunk.range).unwrap_or_default()
+                });
+        if let Some(previous) = output.last_mut()
+            && previous.symbol == chunk.symbol
+            && previous.metadata.get("code_symbol_source_range")
+                == chunk.metadata.get("code_symbol_source_range")
+            && pending.is_none()
+        {
+            join(previous, &chunk, source, positions);
+            continue;
+        }
+        if let Some(mut prefix) = pending.take() {
+            if scaffold {
+                join(&mut prefix, &chunk, source, positions);
+                pending = Some(prefix);
+                continue;
+            }
+            let start = prefix.range.byte_start.unwrap() as usize;
+            crate::quality::remember_symbols(&mut chunk, &prefix);
+            let end = chunk.range.byte_end.unwrap() as usize;
+            chunk.range = positions.source_range(start, end);
+        }
+        if scaffold {
+            pending = Some(chunk);
+        } else {
+            output.push(chunk);
+        }
+    }
+    if let Some(tail) = pending {
+        if let Some(previous) = output.last_mut() {
+            join(previous, &tail, source, positions);
+        } else {
+            output.push(tail);
+        }
+    }
+    for chunk in &mut output {
+        let start = chunk.range.byte_start.unwrap() as usize;
+        let end = chunk.range.byte_end.unwrap() as usize;
+        chunk.content = source[start..end].to_string();
+    }
+    output
+}
+
+fn join(
+    target: &mut DocumentChunk,
+    other: &DocumentChunk,
+    _source: &str,
+    positions: &SourcePositions<'_>,
+) {
+    if target.symbol != other.symbol {
+        crate::quality::remember_symbols(target, other);
+    }
+    let start = target.range.byte_start.unwrap() as usize;
+    let end = other.range.byte_end.unwrap() as usize;
+    target.range = positions.source_range(start, end);
 }
 
 fn parser_fact_chunk(

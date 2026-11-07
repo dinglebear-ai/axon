@@ -104,6 +104,15 @@ pub(crate) fn validate_prepared_document_ranges_against_bounds(
             .map_err(|error| format!("chunk {} source_range {error}", chunk.chunk_id.0))?;
         validate_source_range(&chunk.chunk_locator.range, bounds)
             .map_err(|error| format!("chunk {} locator range {error}", chunk.chunk_id.0))?;
+        if let Some(value) = chunk.metadata.get("additional_source_ranges") {
+            let ranges: Vec<SourceRange> = serde_json::from_value(value.clone())
+                .map_err(|error| format!("chunk {} additional ranges {error}", chunk.chunk_id.0))?;
+            for range in ranges {
+                validate_source_range(&range, bounds).map_err(|error| {
+                    format!("chunk {} additional range {error}", chunk.chunk_id.0)
+                })?;
+            }
+        }
     }
     // Parse facts are internal metadata, not published to the graph or vector
     // store with their ranges. A fact range that survived parser-side

@@ -303,19 +303,21 @@ async fn build_source_job_identity_harness(
     let store: Arc<dyn JobStore> = Arc::new(SqliteUnifiedJobStore::new(pool.clone()));
 
     let ledger: Arc<dyn LedgerStore> = match ledger_backend {
-        LedgerBackend::SharedSqlite => Arc::new(SqliteLedgerStore::from_pool(pool)),
+        LedgerBackend::SharedSqlite => Arc::new(SqliteLedgerStore::from_pool(pool.clone())),
     };
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let core = Arc::new(FakeCoreBoundaries::new());
-    let mut target = TargetLocalSourceRuntime::new(
-        Arc::clone(&store),
-        ledger.clone(),
-        embedder.clone(),
-        vectors.clone(),
-        axon_api::source::ProviderId::new("fake-embedding"),
-        "fake-embedding",
-        8,
-    );
+    let mut target =
+        crate::test_support::runtime_for_small_fixtures(TargetLocalSourceRuntime::new(
+            Arc::clone(&store),
+            ledger.clone(),
+            embedder.clone(),
+            vectors.clone(),
+            axon_api::source::ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        ));
+    target.graph_stage_pool = Some(pool);
     target.artifact_store = core.clone();
     target.document_cache = core.clone();
     target.web_source_adapter = Arc::new(WebSourceAdapter::new(
@@ -393,4 +395,19 @@ pub(crate) async fn source_context_with_local_sqlite_ledger()
         Arc::new(FakeVectorStore::new("fake-vector")),
     )
     .await
+}
+
+/// Keep small fixtures focused on their service contract rather than the default quality floor.
+pub(crate) fn runtime_for_small_fixtures(
+    mut runtime: crate::context::TargetLocalSourceRuntime,
+) -> crate::context::TargetLocalSourceRuntime {
+    runtime.document_preparer = document_preparer_for_small_fixtures();
+    runtime
+}
+
+pub(crate) fn document_preparer_for_small_fixtures() -> axon_document::DocumentPreparer {
+    axon_document::DocumentPreparer::new(axon_document::DocumentPreparerConfig {
+        minimum_chunk_chars: 50,
+        ..Default::default()
+    })
 }

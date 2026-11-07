@@ -94,6 +94,14 @@ pub trait LedgerStore: Send + Sync {
     async fn committed_generation(&self, source_id: SourceId)
     -> Result<Option<SourceGenerationId>>;
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration>;
+    /// Reconcile unpublished older snapshots only while holding this source's
+    /// live lease. Never touches committed snapshots or a newer generation.
+    async fn recover_abandoned_generations(
+        &self,
+        generation: SourceGeneration,
+        lease: LeaseGuard,
+        collection: String,
+    ) -> Result<u64>;
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration>;
     async fn publish_generation(
         &self,
@@ -152,6 +160,8 @@ pub trait LedgerStore: Send + Sync {
     /// cleanup-debt boundary from `docs/pipeline-unification/runtime/
     /// ledger-contract.md` — it never touches the committed/current
     /// generation (callers must fence that, same as vector deletes).
+    /// Atomically rejects deletion while this generation has unresolved
+    /// non-ledger cleanup debt, preserving provider recovery metadata.
     /// Idempotent: deleting an already-deleted or unknown generation is a
     /// no-op returning `0`. Returns the number of ledger rows removed.
     async fn delete_generation(

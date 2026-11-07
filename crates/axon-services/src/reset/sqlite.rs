@@ -108,15 +108,19 @@ fn store_for_table(table: &str) -> Option<&'static str> {
         "sources" | "source_generations" | "source_manifests" | "source_items"
         | "document_status" | "cleanup_debt" | "leases" => Some("ledger"),
         "axon_source_watches" | "axon_source_watch_runs" => Some("watch"),
-        "graph_nodes" | "graph_aliases" | "graph_edges" | "graph_evidence" | "graph_conflicts" => {
-            Some("graph")
-        }
+        "graph_nodes"
+        | "graph_aliases"
+        | "graph_edges"
+        | "graph_evidence"
+        | "graph_conflicts"
+        | "graph_stages"
+        | "graph_stage_receipts" => Some("graph"),
         "memory_records" | "memory_links" | "memory_reinforcement" | "memory_reviews" => {
             Some("memory")
         }
         // Schema bookkeeping is inventoried and checksummed but is not user
         // content, so it does not make a fresh DB appear non-empty.
-        "axon_applied_migrations" | "embedding_vector_cache_state" => None,
+        "axon_applied_migrations" | "embedding_vector_cache_state" | "graph_revision" => None,
         _ => None,
     }
 }
@@ -140,7 +144,7 @@ async fn inventory_tables(
                 rows: count.max(0) as u64,
                 store: if matches!(
                     table.as_str(),
-                    "axon_applied_migrations" | "embedding_vector_cache_state"
+                    "axon_applied_migrations" | "embedding_vector_cache_state" | "graph_revision"
                 ) {
                     None
                 } else {

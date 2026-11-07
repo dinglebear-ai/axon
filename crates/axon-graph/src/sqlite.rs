@@ -10,12 +10,12 @@
 //! preserved as explicit rows rather than silently overwritten.
 
 mod conflict;
-mod header;
+pub(crate) mod header;
 mod query;
 mod resolve;
 mod retirement;
 mod row;
-mod upsert;
+pub(crate) mod upsert;
 
 use async_trait::async_trait;
 use axon_api::source::{
@@ -61,14 +61,34 @@ impl SqliteGraphStore {
         Ok(Self::from_pool(pool))
     }
 
+    pub(crate) async fn connect_private_stage(path: &str, max_connections: u32) -> Result<Self> {
+        use sqlx::sqlite::{
+            SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
+        };
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Delete)
+            .synchronous(SqliteSynchronous::Full)
+            .pragma("cache_size", "-65536");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(max_connections)
+            .connect_with(options)
+            .await
+            .map_err(|e| {
+                graph_storage_error(format!("failed to open private graph sqlite pool: {e}"))
+            })?;
+        ensure_schema(&pool).await?;
+        Ok(Self::from_pool(pool))
+    }
+
     /// Access the underlying pool (for tests / introspection).
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
 
-    /// Upsert a lazy candidate stream in one transaction. This is used by
-    /// source-baseline graph publication so corpus-sized manifests can be
-    /// converted and persisted in bounded chunks without losing atomicity.
+    /// Publish a lazy stream in bounded transactions, releasing the writer
+    /// between groups. On failure, the valid candidate prefix remains committed.
     pub async fn upsert_candidate_iter<I>(&self, candidates: I) -> Result<GraphWriteResult>
     where
         I: IntoIterator<Item = GraphCandidate>,
@@ -163,6 +183,14 @@ impl GraphStore for SqliteGraphStore {
         item: axon_api::source::SourceItemKey,
     ) -> Result<GraphDeleteResult> {
         retirement::retire(&self.pool, &self.write_gate, &source_id, &item).await
+    }
+
+    async fn retire_items_evidence(
+        &self,
+        source_id: SourceId,
+        items: Vec<axon_api::source::SourceItemKey>,
+    ) -> Result<GraphDeleteResult> {
+        retirement::retire_many(&self.pool, &self.write_gate, &source_id, &items).await
     }
 
     async fn delete_nodes(&self, stable_keys: Vec<String>) -> Result<GraphDeleteResult> {

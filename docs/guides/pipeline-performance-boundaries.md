@@ -93,6 +93,24 @@ cancellation token and settles generation cleanup. A transient heartbeat error
 is not treated as proof that ownership was lost. Failure-summary errors no
 longer bypass lease release.
 
+## Graph retirement and physical cleanup
+
+Source jobs complete after publication and graph writes. Physical cleanup is
+owned by the existing durable debt worker and does not run in the completion
+path. A failed deletion remains pending across restart; vector collection
+identity is persisted before handoff, and each sweep uses the current committed
+generation as its deletion fence.
+
+Graph item retirement groups at most 64 debts per provider operation. One source
+lease protects the group's fresh manifest/status checks. SQLite deletes only
+evidence belonging to eligible items and preserves shared edges and currently
+supported nodes. A stable-key-leading index supports node retirement across node
+kinds; each bounded SQL transaction releases the writer gate before the next.
+
+Graph extraction already overlaps embedding. Durable graph writes cannot move
+before publication without hidden generation staging and query visibility gates:
+the current graph uses shared identities and exposes each committed write batch.
+
 ## LLM admission and subprocess lifetime
 
 The completion deadline includes reservation and execution-admission waiting,

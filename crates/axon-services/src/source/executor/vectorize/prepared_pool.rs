@@ -51,7 +51,17 @@ impl PreparedPoolVectorizer {
                     .map(|document| document.chunks.len() as u64)
                     .sum();
                 if !input.plan.request.embed || chunks == 0 {
-                    let result = statuses_only(prepared, DocumentLifecycleStatus::Prepared);
+                    crate::source::graph::staging::stage_prepared(
+                        runtime,
+                        input,
+                        &prepared,
+                        PipelinePhase::Preparing,
+                    )
+                    .await?;
+                    let mut result = statuses_only(prepared, DocumentLifecycleStatus::Prepared);
+                    if input.graph_stage.is_some() {
+                        result.graph_candidates.clear();
+                    }
                     self.checkpoint(runtime, &result).await?;
                     outcomes.push(PushOutcome::StatusesOnly(result));
                     continue;
@@ -179,6 +189,7 @@ impl PreparedPoolVectorizer {
                 }
             };
             pipeline::finish_embedding(coordinator, progress, &embeddings).await;
+            let prepared = pipeline::release_staged_candidates(input, prepared);
             let built = pipeline::build_vector_batch(
                 prepared,
                 collection.clone(),
