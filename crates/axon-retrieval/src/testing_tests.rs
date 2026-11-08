@@ -78,6 +78,7 @@ fn sample_result() -> RetrievalResult {
     }];
     let context = ContextBundle::from_matches(&matches, 4096, 512);
     RetrievalResult {
+        score_kind: axon_api::result::QueryScoreKind::HybridFusion,
         warnings: Vec::new(),
         plan: RetrievalPlan {
             collection: "axon-test".to_string(),

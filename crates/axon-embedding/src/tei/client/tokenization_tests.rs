@@ -234,3 +234,143 @@ async fn oversized_tokenizer_input_is_rejected_before_sending() {
     assert_eq!(reason, Some("tokenization_payload_limit"));
     tokenize.assert_calls_async(0).await;
 }
+
+#[tokio::test]
+async fn delayed_scalar_counts_run_concurrently_in_order_with_shared_admission() {
+    let server = MockServer::start_async().await;
+    let mut mocks = Vec::new();
+    for index in 0..8 {
+        mocks.push(
+            server
+                .mock_async(|when, then| {
+                    when.method("POST")
+                        .path("/tokenize")
+                        .json_body(serde_json::json!({
+                            "inputs": index.to_string(), "add_special_tokens": true
+                        }));
+                    then.status(200)
+                        .delay(Duration::from_millis(if index == 0 { 200 } else { 100 }))
+                        .json_body(serde_json::json!(vec![
+                            serde_json::json!({"id": 1});
+                            index + 1
+                        ]));
+                })
+                .await,
+        );
+    }
+    let transport = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "bounded-tokens".into(),
+        max_batch_inputs: 8,
+        max_input_tokens: 32,
+        max_batch_tokens: 64,
+        max_concurrent_requests: 4,
+        max_in_flight_inputs: 2,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(2),
+        retry_backoff_base_ms: 1,
+    })
+    .unwrap();
+    let inputs = (0..8).map(|index| index.to_string()).collect::<Vec<_>>();
+    // Serial response delays total 900 ms, exceeding this aggregate budget.
+    let counting = transport.token_counts_with_budget(&inputs, Duration::from_millis(750));
+    tokio::pin!(counting);
+    let mut max_requests = 0;
+    let mut max_inputs = 0;
+    let mut max_profile = 0;
+    let result = loop {
+        tokio::select! {
+            result = &mut counting => break result,
+            _ = tokio::time::sleep(Duration::from_millis(1)) => {
+                max_requests = max_requests.max(4 - transport.request_slots.available_permits());
+                max_inputs = max_inputs.max(2 - transport.input_slots.available_permits());
+                max_profile = max_profile.max(2 - transport.profile_input_slots.available_permits());
+            }
+        }
+    };
+    assert_eq!(result, ((1..=8).collect(), None));
+    assert_eq!(max_inputs, 2);
+    assert_eq!(max_profile, 2);
+    assert_eq!(max_requests, 2);
+    assert_eq!(transport.request_slots.available_permits(), 4);
+    assert_eq!(transport.input_slots.available_permits(), 2);
+    assert_eq!(transport.profile_input_slots.available_permits(), 2);
+    for mock in mocks {
+        mock.assert_calls_async(1).await;
+    }
+}
+
+#[tokio::test]
+async fn aggregate_timeout_cools_shared_probe_waiters_and_later_recovers() {
+    let server = MockServer::start_async().await;
+    let tokenizer = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/tokenize");
+            then.status(200)
+                .delay(Duration::from_millis(200))
+                .json_body(serde_json::json!([{"id": 1}]));
+        })
+        .await;
+    let first = client(server.base_url());
+    let second = client(server.base_url()).with_tokenization(first.tokenization.clone());
+    let inputs = vec!["a".into()];
+    let counting = first.token_counts_with_budget(&inputs, Duration::from_millis(50));
+    let waiting = second.token_counts_with_budget(&inputs, Duration::from_secs(1));
+    let (failed, cooled) = tokio::join!(counting, waiting);
+    assert_eq!(failed, (vec![1], Some("tokenization_timeout")));
+    assert_eq!(cooled, (vec![1], Some("tokenization_cooldown")));
+    assert_eq!(
+        first.token_counts(&inputs).await.1,
+        Some("tokenization_cooldown")
+    );
+    tokenizer.assert_calls_async(1).await;
+    assert_eq!(first.request_slots.available_permits(), 1);
+    assert_eq!(first.input_slots.available_permits(), 8);
+    assert_eq!(first.profile_input_slots.available_permits(), 8);
+    // Advance only this state, without sleeping for the production cooldown.
+    *first.tokenization.retry_after.lock().unwrap() = Some(Instant::now());
+    assert_eq!(second.token_counts(&inputs).await, (vec![1], None));
+    tokenizer.assert_calls_async(2).await;
+}
+
+#[tokio::test]
+async fn transient_tokenizer_failure_cools_all_clients_sharing_capability() {
+    let server = MockServer::start_async().await;
+    let tokenizer = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/tokenize");
+            then.status(503);
+        })
+        .await;
+    let first = client(server.base_url());
+    let second = client(server.base_url()).with_tokenization(first.tokenization.clone());
+    let inputs = vec!["safe".into()];
+    assert_eq!(
+        first.token_counts(&inputs).await,
+        (vec![4], Some("tokenization_server_error"))
+    );
+    assert_eq!(
+        second.token_counts(&inputs).await,
+        (vec![4], Some("tokenization_cooldown"))
+    );
+    tokenizer.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn mixed_pool_rejects_later_oversized_input_before_any_request() {
+    let server = MockServer::start_async().await;
+    let tokenize = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/tokenize");
+            then.status(200).json_body(serde_json::json!([{"id": 1}]));
+        })
+        .await;
+    let inputs = vec!["valid".into(), "\0".repeat(TOKENIZE_REQUEST_BYTES / 6)];
+    let (counts, reason) = client(server.base_url()).token_counts(&inputs).await;
+    assert_eq!(reason, Some("tokenization_payload_limit"));
+    assert_eq!(
+        counts,
+        inputs.iter().map(|input| input.len()).collect::<Vec<_>>()
+    );
+    tokenize.assert_calls_async(0).await;
+}

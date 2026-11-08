@@ -452,3 +452,44 @@ async fn source_scope_filters_before_the_result_window_and_sessions_remain_opt_i
         }
     }
 }
+
+#[tokio::test]
+async fn empty_sparse_query_reports_actual_dense_score_semantics() {
+    let store = Arc::new(FakeVectorStore::new("fake-vectors"));
+    store
+        .ensure_collection(test_collection_spec_hybrid(4))
+        .await
+        .unwrap();
+    for (query, expected) in [
+        (
+            "中文问题",
+            axon_api::result::QueryScoreKind::DenseSimilarity,
+        ),
+        (
+            "retrieval documentation",
+            axon_api::result::QueryScoreKind::HybridFusion,
+        ),
+    ] {
+        let result = run_query_candidates(
+            store.clone(),
+            Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4)),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            4,
+            QueryServiceRequest {
+                source_kinds: vec![],
+                source_urls: vec![],
+                query: query.into(),
+                collection: "axon-test".into(),
+                limit: 5,
+                hybrid: true,
+                hybrid_candidates: None,
+                since: None,
+                before: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.score_kind, expected);
+    }
+}

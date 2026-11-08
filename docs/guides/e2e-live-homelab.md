@@ -23,7 +23,12 @@ protected-main pushes and schedules.
 
 The trust credential matches immutable GitHub owner ID `301925356`, repository
 ID `1160613618`, the exact `job_workflow_ref`, generated audience, subject,
-environment, ref, and event. It rejects future, expired, old, or overlong tokens;
+environment, ref, and event. The expected GitHub subject is
+`repo:dinglebear-ai@301925356/axon@1160613618:environment:axon-live-e2e`;
+it binds both names to their immutable IDs. Name-only subjects and mismatched
+owner or repository IDs are rejected. The local policy checks this configured
+subject before the Tailscale exchange; changing this source file alone does not
+change external identity-provider policy. It rejects future, expired, old, or overlong tokens;
 when validating more than one token in the same evaluation session it also
 rejects repeated `jti` values. Cross-invocation replay prevention belongs to
 the Tailscale token exchange, not to a local untrusted CI ledger.

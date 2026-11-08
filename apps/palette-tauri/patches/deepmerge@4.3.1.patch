@@ -1,0 +1,68 @@
+diff --git a/dist/cjs.js b/dist/cjs.js
+--- a/dist/cjs.js
++++ b/dist/cjs.js
+@@ -78,0 +79,9 @@
++function defineOwnProperty(target, key, value) {
++	Object.defineProperty(target, key, {
++		value: value,
++		enumerable: true,
++		configurable: true,
++		writable: true
++	})
++}
++
+@@ -83 +92 @@
+-			destination[key] = cloneUnlessOtherwiseSpecified(target[key], options);
++			defineOwnProperty(destination, key, cloneUnlessOtherwiseSpecified(target[key], options));
+@@ -92 +101 @@
+-			destination[key] = getMergeFunction(key, options)(target[key], source[key], options);
++			defineOwnProperty(destination, key, getMergeFunction(key, options)(target[key], source[key], options));
+@@ -94 +103 @@
+-			destination[key] = cloneUnlessOtherwiseSpecified(source[key], options);
++			defineOwnProperty(destination, key, cloneUnlessOtherwiseSpecified(source[key], options));
+diff --git a/dist/umd.js b/dist/umd.js
+--- a/dist/umd.js
++++ b/dist/umd.js
+@@ -83 +83,10 @@
+-	function mergeObject(target, source, options) {
++	function defineOwnProperty(target, key, value) {
++	Object.defineProperty(target, key, {
++		value: value,
++		enumerable: true,
++		configurable: true,
++		writable: true
++	})
++}
++
++function mergeObject(target, source, options) {
+@@ -87 +96 @@
+-				destination[key] = cloneUnlessOtherwiseSpecified(target[key], options);
++				defineOwnProperty(destination, key, cloneUnlessOtherwiseSpecified(target[key], options));
+@@ -96 +105 @@
+-				destination[key] = getMergeFunction(key, options)(target[key], source[key], options);
++				defineOwnProperty(destination, key, getMergeFunction(key, options)(target[key], source[key], options));
+@@ -98 +107 @@
+-				destination[key] = cloneUnlessOtherwiseSpecified(source[key], options);
++				defineOwnProperty(destination, key, cloneUnlessOtherwiseSpecified(source[key], options));
+diff --git a/index.js b/index.js
+--- a/index.js
++++ b/index.js
+@@ -53,0 +54,9 @@
++function defineOwnProperty(target, key, value) {
++	Object.defineProperty(target, key, {
++		value: value,
++		enumerable: true,
++		configurable: true,
++		writable: true
++	})
++}
++
+@@ -58 +67 @@
+-			destination[key] = cloneUnlessOtherwiseSpecified(target[key], options)
++			defineOwnProperty(destination, key, cloneUnlessOtherwiseSpecified(target[key], options))
+@@ -67 +76 @@
+-			destination[key] = getMergeFunction(key, options)(target[key], source[key], options)
++			defineOwnProperty(destination, key, getMergeFunction(key, options)(target[key], source[key], options))
+@@ -69 +78 @@
+-			destination[key] = cloneUnlessOtherwiseSpecified(source[key], options)
++			defineOwnProperty(destination, key, cloneUnlessOtherwiseSpecified(source[key], options))

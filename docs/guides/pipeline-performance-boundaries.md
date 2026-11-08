@@ -260,6 +260,7 @@ Opening an outbox reconciles legacy files, quarantine and interrupted writes onc
 subsequent page reservations use an indexed SQLite counter instead of rescanning
 the directory. Removal is synced before releasing its reservation. Interrupted
 writes may conservatively overcharge until reopen/reconciliation. The existing
-1 GiB total admission includes 96 MiB reserved overhead: 16 MiB quota database,
-its rollback journal, and one 64 MiB temporary delivery. Corrupt quota state fails
+1 GiB total admission includes 128 MiB reserved overhead: four 16 MiB slots
+for the canonical and initializing quota databases and their rollback journals,
+plus one 64 MiB temporary delivery. Corrupt quota state fails
 closed and preserves files for inspection; it never grants extra disk admission.

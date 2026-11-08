@@ -1,15 +1,17 @@
 //! Authenticated admin projection over the synthesis-account service.
-use super::super::{error::HttpError, json::Json, state::AppState};
+use super::super::{api_error::error_envelope_response_with_status, json::Json, state::AppState};
+use axon_api::ApiError;
 use axon_core::config::Config;
+use axon_error::ErrorStage;
 use axon_services::synthesis_account::AccountStatus;
-use axum::{extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode, response::Response};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 type WebState = (AppState, Arc<Config>);
 
-pub async fn status(State((state, _)): State<WebState>) -> Result<Json<AccountStatus>, HttpError> {
+pub async fn status(State((state, _)): State<WebState>) -> Result<Json<AccountStatus>, Response> {
     state
         .synthesis_account
         .status()
@@ -27,7 +29,7 @@ pub struct LoginBody {
 pub async fn start(
     State((state, _)): State<WebState>,
     Json(body): Json<LoginBody>,
-) -> Result<Json<AccountStatus>, HttpError> {
+) -> Result<Json<AccountStatus>, Response> {
     state
         .synthesis_account
         .start(body.switch_account)
@@ -45,7 +47,7 @@ pub struct CancelBody {
 pub async fn cancel(
     State((state, _)): State<WebState>,
     Json(body): Json<CancelBody>,
-) -> Result<Json<AccountStatus>, HttpError> {
+) -> Result<Json<AccountStatus>, Response> {
     state
         .synthesis_account
         .cancel(&body.login_id)
@@ -54,7 +56,7 @@ pub async fn cancel(
         .map_err(error)
 }
 
-fn error(message: String) -> HttpError {
+fn error(message: String) -> Response {
     let code = match message.split(':').next().unwrap_or_default() {
         "synthesis_account_busy" => "synthesis_account_busy",
         "synthesis_account_login_unknown" => "synthesis_account_login_unknown",
@@ -66,6 +68,7 @@ fn error(message: String) -> HttpError {
         "synthesis_account_home_required" => "synthesis_account_home_required",
         "synthesis_account_protocol_mismatch" => "synthesis_account_protocol_mismatch",
         "synthesis_account_read_failed" => "synthesis_account_read_failed",
+        "synthesis_account_owner_failed" => "synthesis_account_owner_failed",
         _ => "synthesis_account_error",
     };
     let status = if code == "synthesis_account_busy" {
@@ -77,7 +80,13 @@ fn error(message: String) -> HttpError {
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
-    HttpError::new(status, code, &message)
+    let stage = match status {
+        StatusCode::BAD_REQUEST => ErrorStage::Validation,
+        StatusCode::NOT_FOUND => ErrorStage::Resolving,
+        StatusCode::CONFLICT => ErrorStage::Leasing,
+        _ => ErrorStage::Synthesizing,
+    };
+    error_envelope_response_with_status(ApiError::new(code, stage, message), status)
 }
 
 #[utoipa::path(get, path = "/v1/synthesis/account", responses((status = 200, body = AccountStatus), (status = 409, description = "Generation active", body = axon_api::source::ErrorEnvelope), (status = 503, description = "Account unavailable", body = axon_api::source::ErrorEnvelope)), tag = "codex-control")]
@@ -131,6 +140,38 @@ mod tests {
         assert!(properties.get("ok").is_some());
         assert!(properties.get("error").is_some());
         assert!(properties.get("kind").is_none());
+    }
+
+    #[tokio::test]
+    async fn synthesis_account_errors_keep_their_codes_and_statuses() {
+        for (code, status) in [
+            ("synthesis_account_busy", 409),
+            ("synthesis_account_login_unknown", 404),
+            ("synthesis_account_confirmation_required", 400),
+            ("synthesis_account_unavailable", 503),
+            ("synthesis_account_cleanup_failed", 503),
+            ("synthesis_account_login_start_failed", 503),
+            ("synthesis_account_unsupported", 503),
+            ("synthesis_account_home_required", 503),
+            ("synthesis_account_protocol_mismatch", 503),
+            ("synthesis_account_read_failed", 503),
+            ("synthesis_account_owner_failed", 503),
+            ("unexpected_provider_error", 503),
+        ] {
+            let response = error(format!("{code}: safe explanation"));
+            assert_eq!(response.status().as_u16(), status, "{code}");
+            let bytes = axum::body::to_bytes(response.into_body(), 16_384)
+                .await
+                .unwrap();
+            let envelope: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            let expected = if code == "unexpected_provider_error" {
+                "synthesis_account_error"
+            } else {
+                code
+            };
+            assert_eq!(envelope["ok"], false);
+            assert_eq!(envelope["error"]["code"], expected);
+        }
     }
 
     #[test]

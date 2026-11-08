@@ -6,8 +6,9 @@
 unmaintained = "workspace"
 ignore = [
   # RUSTSEC-2023-0071: Marvin Attack timing side-channel in the `rsa` crate.
-  # Source: octocrab -> jsonwebtoken -> rsa; no upgrade path available.
-  # Risk is low for our usage (JWT verification, not key generation/export).
+  # Sources include octocrab/jsonwebtoken and lab-auth JWT signing/key generation.
+  # No patched release exists. No application RSA decryption endpoint was found;
+  # this retained waiver is an upstream risk, not a claim of remediation.
   "RUSTSEC-2023-0071",
 ]
 [licenses]

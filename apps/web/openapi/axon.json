@@ -8179,7 +8179,7 @@
         "operationId": "status_openapi_marker",
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8209,10 +8209,24 @@
             }
           },
           "409": {
-            "description": "Generation active"
+            "description": "Generation active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Account unavailable"
+            "description": "Account unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8221,12 +8235,7 @@
           },
           {
             "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
+              "axon:admin"
             ]
           }
         ]
@@ -8250,11 +8259,21 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or missing account-switch confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -8280,7 +8299,44 @@
             }
           },
           "409": {
-            "description": "Generation or sign-in active"
+            "description": "Generation or sign-in active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported content type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8313,11 +8369,21 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             }
@@ -8343,7 +8409,44 @@
             }
           },
           "404": {
-            "description": "Unknown sign-in"
+            "description": "Unknown sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported content type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           }
         },
         "security": [

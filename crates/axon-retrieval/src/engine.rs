@@ -101,6 +101,15 @@ where
         let sparse_vector = request.hybrid.then(|| {
             axon_vectors::bm42::compute_bm42_sparse(ChunkId::new("query"), &request.query)
         });
+        // Match the vector search body: empty BM42 terms use named dense search.
+        let score_kind = if sparse_vector
+            .as_ref()
+            .is_some_and(|sparse| !sparse.indices.is_empty())
+        {
+            axon_api::result::QueryScoreKind::HybridFusion
+        } else {
+            axon_api::result::QueryScoreKind::DenseSimilarity
+        };
         let mut search_metadata = MetadataMap::new();
         if let Some(hybrid_candidates) = plan.hybrid_candidates {
             search_metadata.insert(
@@ -153,6 +162,7 @@ where
             .collect();
 
         Ok(RetrievalResult {
+            score_kind,
             warnings: search.warnings,
             plan,
             matches,

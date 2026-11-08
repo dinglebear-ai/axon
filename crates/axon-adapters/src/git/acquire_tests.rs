@@ -485,10 +485,10 @@ async fn clone_timeout_reaps_process_group_before_removing_partial_checkout() {
         .parse::<i32>()
         .unwrap();
     assert!(!process_exists(parent_pid), "timeout must reap git leader");
-    assert!(
-        !process_exists(child_pid),
-        "timeout must terminate git helper"
-    );
+    // The leader is reaped above, but the OS may briefly retain an orphaned
+    // helper PID. Keep the same bounded complete-reaping requirement already
+    // exercised by cancellation rather than checking in that scheduling gap.
+    assert_process_exits(child_pid).await;
     assert!(
         !destination.exists(),
         "timeout must remove checkout after process teardown"

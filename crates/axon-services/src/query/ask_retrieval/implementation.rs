@@ -106,20 +106,22 @@ pub(super) fn fuse(
     // every once-only implementation out before the context selector sees it.
     // Retain the best fused hit, and at most one example and production file.
     let mut selected = (0..hits.len().min(limit)).collect::<Vec<_>>();
-    let mut reserved = 1;
+    let mut protected = std::collections::HashSet::new();
+    if !selected.is_empty() {
+        protected.insert(0);
+    }
     for priority in [3, 2] {
-        if reserved >= selected.len() {
-            break;
-        }
         if let Some(index) = hits
             .iter()
             .position(|(hit, _, _)| code_priority(hit) == priority)
         {
             if !selected.contains(&index) {
-                let slot = selected.len() - reserved;
+                let Some(slot) = selected.iter().rposition(|i| !protected.contains(i)) else {
+                    continue;
+                };
                 selected[slot] = index;
             }
-            reserved += 1;
+            protected.insert(index);
         }
     }
     selected.sort_unstable();
@@ -165,18 +167,22 @@ where
     })?;
     // Preserve the configured cosine floor before replacing scores with RRF.
     // Hybrid arm scores already use RRF and cannot use a cosine threshold.
-    let admissible = |hits: Vec<QueryServiceHit>| {
+    let admissible = |hits: Vec<QueryServiceHit>, score_kind: &axon_api::result::QueryScoreKind| {
         hits.into_iter()
-            .filter(|hit| request.hybrid || hit.score >= min_relevance)
+            .filter(|hit| {
+                *score_kind == axon_api::result::QueryScoreKind::HybridFusion
+                    || hit.score >= min_relevance
+            })
             .collect()
     };
     let mut warnings = original.warnings;
     warnings.extend(secondary.warnings);
     Ok(QueryServiceResult {
+        score_kind: axon_api::result::QueryScoreKind::HybridFusion,
         warnings,
         hits: fuse(
-            admissible(original.hits),
-            admissible(secondary.hits),
+            admissible(original.hits, &original.score_kind),
+            admissible(secondary.hits, &secondary.score_kind),
             request.limit as usize,
         ),
     })
@@ -280,7 +286,7 @@ mod tests {
             query: "How do I create a Product 8 extension?".into(),
             collection: "owned".into(),
             limit: 5,
-            hybrid: false,
+            hybrid: true,
             hybrid_candidates: None,
             source_kinds: vec![axon_api::SourceKind::Git],
             source_urls: vec!["https://host.invalid/examples/main.rs".into()],
@@ -308,6 +314,7 @@ mod tests {
                 ]
             };
             std::future::ready(Ok(QueryServiceResult {
+                score_kind: axon_api::result::QueryScoreKind::DenseSimilarity,
                 warnings: vec![warning(if calls.len() == 1 {
                     "original"
                 } else {
@@ -341,6 +348,7 @@ mod tests {
         let result = retrieve(conceptual.clone(), 0.3, |request| {
             calls.push(request);
             std::future::ready(Ok(QueryServiceResult {
+                score_kind: axon_api::result::QueryScoreKind::DenseSimilarity,
                 warnings: vec![warning("conceptual")],
                 hits: vec![],
             }))
@@ -356,6 +364,7 @@ mod tests {
             calls += 1;
             std::future::ready(if calls == 1 {
                 Ok(QueryServiceResult {
+                    score_kind: axon_api::result::QueryScoreKind::DenseSimilarity,
                     warnings: vec![warning("original")],
                     hits: vec![],
                 })
@@ -373,6 +382,24 @@ mod tests {
         let warnings: Vec<axon_api::source::SourceWarning> =
             serde_json::from_str(&error.details["original_retrieval_warnings"]).unwrap();
         assert_eq!(warnings[0].code, "original");
+    }
+    #[test]
+    fn reservation_preserves_already_selected_example_and_best_hit() {
+        let original = vec![
+            hit("a", "https://docs.invalid/a.md"),
+            hit("b", "https://docs.invalid/b.md"),
+            hit("c", "https://docs.invalid/c.md"),
+            hit("example", "https://docs.invalid/examples/demo.rs"),
+            hit("d", "https://docs.invalid/d.md"),
+            hit("production", "https://docs.invalid/src/main.rs"),
+        ];
+        let result = fuse(original.clone(), vec![], 5);
+        let ids = result
+            .iter()
+            .map(|hit| hit.chunk_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["a", "b", "c", "example", "production"]);
+        assert_eq!(result, fuse(original, vec![], 5));
     }
     #[test]
     fn code_classification_uses_path_not_hostname_and_keeps_tests_distinct() {

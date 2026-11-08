@@ -195,22 +195,33 @@ async fn retrieval_ask_context_with_ranking(
         cfg,
         question,
         result.hits,
-        cfg.hybrid_search_enabled || implementation::wants_implementation(question),
+        result.score_kind == axon_api::result::QueryScoreKind::HybridFusion,
     );
     if ranked.ranked_indices.is_empty() {
-        return Err(Box::new(ServiceError::new(if cfg.hybrid_search_enabled {
-            "ask retrieval returned candidates, but none passed source-quality/named-product identity filtering"
+        return Err(Box::new(ServiceError::new(
+            if result.score_kind == axon_api::result::QueryScoreKind::HybridFusion {
+                "ask retrieval returned candidates, but none passed source-quality/named-product identity filtering"
                 .to_string()
-        } else {
-            format!(
-                "ask retrieval returned no candidates above relevance threshold {:.3}",
-                cfg.ask_min_relevance_score
-            )
-        })));
+            } else {
+                format!(
+                    "ask retrieval returned no candidates above relevance threshold {:.3}",
+                    cfg.ask_min_relevance_score
+                )
+            },
+        )));
     }
 
-    let ask_ctx = build_ask_context_from_ranking(cfg, &mut ranked, retrieval_elapsed_ms);
+    let mut ask_ctx = build_ask_context_from_ranking(cfg, &mut ranked, retrieval_elapsed_ms);
+    append_retrieval_warnings(&mut ask_ctx, &result.warnings);
     Ok((ask_ctx, ranked))
+}
+
+fn append_retrieval_warnings(ctx: &mut AskContext, warnings: &[axon_api::source::SourceWarning]) {
+    // Keep stable codes, actionable messages, severity, retryability and lineage
+    // within the existing string-warning wire contract for answers and explain.
+    ctx.warnings.extend(warnings.iter().map(|warning| {
+        serde_json::to_string(warning).expect("source warnings contain JSON-serializable fields")
+    }));
 }
 
 fn validate_retrieval_config(cfg: &Config, label: &str) -> Result<(), Box<dyn Error>> {

@@ -54,7 +54,7 @@ spider_agent = { version = "2.47.89", default-features = false, features = [
   "search_tavily",
   "openai",
 ] }
-ssh2-config = "0.7.1"
+ssh2-config = "0.9.0"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
 tokio = { version = "1", features = [
   "macros",

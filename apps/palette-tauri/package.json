@@ -26,15 +26,15 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
-    "@vitest/coverage-v8": "^5.0.0",
+    "@vitest/coverage-v8": "^5.1.0",
     "jest-axe": "^10.0.0",
     "jsdom": "^29.1.1",
     "lucide-react": "^1.16.0",
     "openapi-typescript": "^7.13.0",
-    "shadcn": "^4.11.0",
+    "shadcn": "^4.23.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.7",
-    "vitest": "^5.0.0"
+    "vitest": "^5.1.0"
   },
   "name": "axon-palette-tauri",
   "description": "Tauri command palette for the Axon REST API.",
@@ -63,12 +63,13 @@
     "preview": "vite preview",
     "qa:ask-stream": "python scripts/qa-ask-stream-transition.py",
     "qa:switcher": "labby gateway code exec --file scripts/qa-switcher-open.js",
-    "test": "vitest run",
+    "test": "pnpm test:dependencies && vitest run",
     "typecheck": "tsc --noEmit",
     "verify": "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm check:api && pnpm typecheck && pnpm vite:build",
     "vite:build": "vite build",
-    "vite:dev": "vite --host 127.0.0.1"
+    "vite:dev": "vite --host 127.0.0.1",
+    "test:dependencies": "node --test scripts/dependency-hardening.mjs"
   },
   "type": "module",
-  "version": "6.2.3"
+  "version": "6.2.2"
 }

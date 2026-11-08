@@ -880,3 +880,39 @@ fn explicit_planning_history_and_missing_implementation_preserve_plan_evidence()
         "Do not erase the only evidence when no implementation is available"
     );
 }
+
+#[test]
+fn retrieval_warnings_survive_answer_and_explain_projection() {
+    let cfg = exgpt_cfg();
+    let (mut ctx, ranked) = context_from_hits(
+        &cfg,
+        "alpha",
+        vec![hit("https://docs.invalid/a", 0.9, "alpha evidence")],
+    );
+    let warning = axon_api::source::SourceWarning {
+        code: "retrieval.noncurrent_candidates_excluded".into(),
+        severity: axon_api::source::Severity::Degraded,
+        message: "Excluded noncurrent evidence; retry after publication cleanup".into(),
+        source_item_key: None,
+        retryable: true,
+    };
+    append_retrieval_warnings(&mut ctx, std::slice::from_ref(&warning));
+    let trace = explain::build_explain_trace(&cfg, "alpha", &ranked, &ctx.context);
+    let explained = assemble_explain_result(&cfg, "alpha", &ctx, trace, 0);
+    let timing = crate::query::synthesis::timing::AskTiming::new(false, std::time::Instant::now());
+    let answered = crate::query::synthesis::assemble::assemble_ask_result(
+        &cfg,
+        "alpha",
+        &ctx,
+        "alpha [1]",
+        0,
+        0,
+        &timing,
+        false,
+    );
+    for result in [explained, answered] {
+        let restored: axon_api::source::SourceWarning =
+            serde_json::from_str(result.warnings.last().unwrap()).unwrap();
+        assert_eq!(restored, warning);
+    }
+}

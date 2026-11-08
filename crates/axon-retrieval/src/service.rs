@@ -64,6 +64,7 @@ pub struct QueryServiceHit {
 /// Result of [`run_query`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryServiceResult {
+    pub score_kind: axon_api::result::QueryScoreKind,
     pub warnings: Vec<axon_api::source::SourceWarning>,
     pub hits: Vec<QueryServiceHit>,
 }
@@ -217,6 +218,7 @@ async fn run_query_with_diversity(
     hits.truncate(requested_limit as usize);
 
     Ok(QueryServiceResult {
+        score_kind: result.score_kind,
         hits,
         warnings: result.warnings,
     })

@@ -2,6 +2,8 @@
 //! No local tokenizer artifacts or model downloads are needed. The API performs
 //! tokenization again at embedding time, so expose that overhead separately.
 
+use futures_util::{StreamExt, TryStreamExt, stream};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -10,12 +12,15 @@ use super::{IndexedBatch, TeiClient, policy, response};
 const TOKENIZE_BODY_LIMIT: usize = 16 * 1024 * 1024;
 const TOKENIZE_REQUEST_BYTES: usize = 256 * 1024;
 const TOKENIZE_BUDGET: Duration = Duration::from_secs(5);
+const TOKENIZE_COOLDOWN: Duration = Duration::from_secs(30);
+const TOKENIZE_CONCURRENCY_LIMIT: usize = 64;
 
 #[derive(Debug, Default)]
 pub(crate) struct TokenizationState {
     unsupported: AtomicBool,
     established: AtomicBool,
     probe: tokio::sync::Mutex<()>,
+    retry_after: Mutex<Option<Instant>>,
 }
 
 #[derive(serde::Serialize)]
@@ -56,6 +61,20 @@ impl TokenizeResponse {
 }
 
 impl TokenizationState {
+    fn cooling(&self) -> bool {
+        self.retry_after
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_some_and(|until| until > Instant::now())
+    }
+
+    fn defer_retry(&self) {
+        *self
+            .retry_after
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(Instant::now() + TOKENIZE_COOLDOWN);
+    }
+
     #[cfg(test)]
     pub(crate) fn mark_unsupported(&self) {
         self.unsupported.store(true, Ordering::Release);
@@ -67,13 +86,22 @@ impl TeiClient {
         &self,
         inputs: &[String],
     ) -> (Vec<usize>, Option<&'static str>) {
+        self.token_counts_with_budget(inputs, self.request_timeout.min(TOKENIZE_BUDGET))
+            .await
+    }
+
+    async fn token_counts_with_budget(
+        &self,
+        inputs: &[String],
+        budget: Duration,
+    ) -> (Vec<usize>, Option<&'static str>) {
         let fallback = |reason| {
             metrics::counter!("axon_tei_tokenization_fallback_total", "reason" => reason)
                 .increment(1);
             tracing::warn!(
                 code = "embedding.tei.tokenization_fallback",
                 reason,
-                "TEI packing uses conservative UTF-8 byte counts; actual token usage is unknown. Enable authenticated POST /tokenize on the configured embedding endpoint."
+                "TEI packing uses conservative UTF-8 byte counts; actual token usage is unknown. Inspect authenticated POST /tokenize availability and latency on the configured embedding endpoint; transient failures retry after a bounded cooldown."
             );
             (
                 inputs
@@ -86,8 +114,10 @@ impl TeiClient {
         if self.tokenization.unsupported.load(Ordering::Acquire) {
             return fallback("unsupported_endpoint");
         }
+        if self.tokenization.cooling() {
+            return fallback("tokenization_cooldown");
+        }
         let started = Instant::now();
-        let budget = self.request_timeout.min(TOKENIZE_BUDGET);
         // Only initial capability discovery is serialized across provider
         // instances. Normal counting uses the same admission gates as embed.
         let _probe = if !self.tokenization.established.load(Ordering::Acquire) {
@@ -101,6 +131,10 @@ impl TeiClient {
         if self.tokenization.unsupported.load(Ordering::Acquire) {
             return fallback("unsupported_endpoint");
         }
+        // A preceding capability probe may have failed while this call waited.
+        if self.tokenization.cooling() {
+            return fallback("tokenization_cooldown");
+        }
         let result = tokio::time::timeout(
             budget.saturating_sub(started.elapsed()),
             self.count_inputs(inputs),
@@ -113,57 +147,89 @@ impl TeiClient {
                 self.tokenization.established.store(true, Ordering::Release);
                 (counts, None)
             }
-            Ok(Err(reason)) => fallback(reason),
-            Err(_) => fallback("tokenization_timeout"),
+            Ok(Err(reason)) => {
+                if matches!(
+                    reason,
+                    "tokenization_transport"
+                        | "tokenization_overloaded"
+                        | "tokenization_server_error"
+                ) {
+                    self.tokenization.defer_retry();
+                }
+                fallback(reason)
+            }
+            Err(_) => {
+                self.tokenization.defer_retry();
+                fallback("tokenization_timeout")
+            }
         }
     }
 
     async fn count_inputs(&self, inputs: &[String]) -> Result<Vec<usize>, &'static str> {
-        let mut counts = Vec::with_capacity(inputs.len());
-        // The portable TEI contract accepts one string, not an embedding batch.
-        // Count in source order under the existing total budget and admission.
-        for input in inputs {
-            if 64_usize.saturating_add(policy::serialized_input_bytes(input))
-                > TOKENIZE_REQUEST_BYTES
-            {
-                return Err("tokenization_payload_limit");
-            }
-            let (_profile, _request, _inputs) = self
-                .acquire_admission(1)
-                .await
-                .map_err(|_| "tokenization_admission_closed")?;
-            let mut request = self.client.post(&self.tokenize_url);
-            if let Some(token) = &self.bearer_token {
-                request = request.bearer_auth(token);
-            }
-            metrics::counter!("axon_tei_tokenization_requests_total").increment(1);
-            let resp = request
-                .timeout(self.request_timeout.min(TOKENIZE_BUDGET))
-                .json(&TokenizeRequest {
-                    inputs: input,
-                    add_special_tokens: true,
-                })
-                .send()
-                .await
-                .map_err(|_| "tokenization_transport")?;
-            if matches!(resp.status().as_u16(), 404 | 405 | 501) {
-                self.tokenization.unsupported.store(true, Ordering::Release);
-                return Err("unsupported_endpoint");
-            }
-            if !resp.status().is_success() {
-                return Err(match resp.status().as_u16() {
-                    401 | 403 => "tokenization_authorization_denied",
-                    413 => "tokenization_payload_rejected",
-                    429 => "tokenization_overloaded",
-                    _ => "tokenization_http_error",
-                });
-            }
-            let tokens: TokenizeResponse = response::read_json(resp, TOKENIZE_BODY_LIMIT)
-                .await
-                .map_err(|_| "tokenization_invalid_or_oversized_response")?;
-            counts.push(tokens.count()?);
+        // Reject borrowed input before creating any owned request futures. A
+        // later oversized item must not allocate another full string or allow
+        // earlier requests to start before the pool is known to be admissible.
+        if inputs.iter().any(|input| {
+            64_usize.saturating_add(policy::serialized_input_bytes(input)) > TOKENIZE_REQUEST_BYTES
+        }) {
+            return Err("tokenization_payload_limit");
+        }
+        // Scalar TEI requests can complete out of order; carry source indices
+        // while bounding pending futures independently of the input pool size.
+        let concurrency = self
+            .max_concurrent_requests
+            .clamp(1, TOKENIZE_CONCURRENCY_LIMIT);
+        let mut requests = stream::iter(inputs.iter().cloned().enumerate())
+            .map(|(index, input)| async move {
+                self.count_input(&input).await.map(|count| (index, count))
+            })
+            .buffer_unordered(concurrency);
+        let mut counts = vec![0; inputs.len()];
+        while let Some((index, count)) = requests.try_next().await? {
+            counts[index] = count;
         }
         Ok(counts)
+    }
+
+    async fn count_input(&self, input: &str) -> Result<usize, &'static str> {
+        if 64_usize.saturating_add(policy::serialized_input_bytes(input)) > TOKENIZE_REQUEST_BYTES {
+            return Err("tokenization_payload_limit");
+        }
+        let (_profile, _request, _inputs) = self
+            .acquire_admission(1)
+            .await
+            .map_err(|_| "tokenization_admission_closed")?;
+        let mut request = self.client.post(&self.tokenize_url);
+        if let Some(token) = &self.bearer_token {
+            request = request.bearer_auth(token);
+        }
+        metrics::counter!("axon_tei_tokenization_requests_total").increment(1);
+        let resp = request
+            .timeout(self.request_timeout.min(TOKENIZE_BUDGET))
+            .json(&TokenizeRequest {
+                inputs: input,
+                add_special_tokens: true,
+            })
+            .send()
+            .await
+            .map_err(|_| "tokenization_transport")?;
+        if matches!(resp.status().as_u16(), 404 | 405 | 501) {
+            self.tokenization.unsupported.store(true, Ordering::Release);
+            return Err("unsupported_endpoint");
+        }
+        if !resp.status().is_success() {
+            return Err(match resp.status().as_u16() {
+                401 | 403 => "tokenization_authorization_denied",
+                413 => "tokenization_payload_rejected",
+                429 => "tokenization_overloaded",
+                500..=599 => "tokenization_server_error",
+                _ => "tokenization_http_error",
+            });
+        }
+        let tokens: TokenizeResponse = response::read_json(resp, TOKENIZE_BODY_LIMIT)
+            .await
+            .map_err(|_| "tokenization_invalid_or_oversized_response")?;
+        tokens.count()
     }
 }
 

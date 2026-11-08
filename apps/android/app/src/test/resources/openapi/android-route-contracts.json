@@ -506,6 +506,21 @@
   },
   {
     "method": "GET",
+    "path": "/v1/synthesis/account",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/synthesis/account/login",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/synthesis/account/login/cancel",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
     "path": "/v1/codex",
     "requiresAuth": true
   },

@@ -1234,6 +1234,12 @@
       "reason": "Generated API parity operation is planned for behavioral E2E coverage."
     },
     {
+      "id": "surface:synthesis",
+      "inventory": "api_parity",
+      "classification": "behavioral_e2e",
+      "reason": "HTTP synthesis account unsupported-backend, explicit-intent and unauthenticated-admin rejection paths run in tests/e2e/scenarios/synthesis/hermetic_entry.py; successful device login remains separately qualified."
+    },
+    {
       "id": "surface:train",
       "inventory": "api_parity",
       "classification": "behavioral_e2e",
