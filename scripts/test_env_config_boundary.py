@@ -30,7 +30,7 @@ class SourceBoundaryTests(unittest.TestCase):
             authored.write_text(authored_key)
             similar_name = tooling / "node_modules_helper.js"
             similar_name.write_text(similar_name_key)
-            with patch.object(checker, "ROOT", root), patch.object(checker, "SCAN_GLOBS", ["scripts/**"]):
+            with patch.object(checker, "ROOT", root):
                 found = checker.scan_env_tokens()
             self.assertNotIn(dependency_key, found)
             self.assertEqual({"scripts/e2e/tooling/helper.js"}, found[authored_key])

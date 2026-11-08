@@ -13,7 +13,7 @@ ENV_RE = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 SCAN_GLOBS = [
     "src/**/*.rs",
     "tests/**/*.rs",
-    "scripts/**",
+    "scripts/**/*",
     "docker-compose.prod.yaml",
     ".env.example",
     "config.example.toml",
