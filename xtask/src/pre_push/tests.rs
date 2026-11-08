@@ -179,3 +179,56 @@ fn router_changes_run_workflow_guards() {
         assert!(!names.contains(&"clippy"));
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn pre_push_preserves_selected_toolchain_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = tempfile::tempdir().expect("create toolchain fixture");
+    let cargo = fixture.path().join("cargo");
+    std::fs::write(
+        &cargo,
+        "#!/bin/sh\nprintf selected-toolchain > \"$AXON_PRE_PUSH_PATH_RESULT\"\n",
+    )
+    .expect("write selected cargo");
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755))
+        .expect("make selected cargo executable");
+    let result = fixture.path().join("result");
+    let path = std::env::join_paths(std::iter::once(fixture.path().to_path_buf()).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .expect("compose isolated PATH");
+    let output = Command::new(std::env::current_exe().expect("current test executable"))
+        .args([
+            "--exact",
+            "pre_push::tests::selected_toolchain_child",
+            "--nocapture",
+        ])
+        .env("PATH", path)
+        .env("AXON_PRE_PUSH_PATH_FIXTURE", fixture.path())
+        .env("AXON_PRE_PUSH_PATH_RESULT", &result)
+        .output()
+        .expect("run isolated toolchain child");
+    assert!(output.status.success(), "child failed: {output:?}");
+    assert_eq!(
+        std::fs::read_to_string(result).expect("selected cargo was invoked"),
+        "selected-toolchain"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn selected_toolchain_child() {
+    let Some(root) = std::env::var_os("AXON_PRE_PUSH_PATH_FIXTURE") else {
+        return;
+    };
+    run_command(
+        Path::new(&root),
+        &PlanStep {
+            name: "selected-toolchain",
+            command: "cargo --version",
+        },
+    )
+    .expect("pre-push runs the caller-selected cargo");
+}
