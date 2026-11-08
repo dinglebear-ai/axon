@@ -1903,6 +1903,63 @@
     {
       "method": "GET",
       "mutates": false,
+      "operation_id": "synthesis_account_status",
+      "path": "/v1/synthesis/account",
+      "request_dto": null,
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "401",
+        "403",
+        "409",
+        "503"
+      ],
+      "result_dto": "AccountStatus",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "synthesis_account_login",
+      "path": "/v1/synthesis/account/login",
+      "request_dto": "LoginBody",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "409",
+        "415",
+        "422",
+        "503"
+      ],
+      "result_dto": "AccountStatus",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "synthesis_account_cancel",
+      "path": "/v1/synthesis/account/login/cancel",
+      "request_dto": "CancelBody",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "415",
+        "422",
+        "503"
+      ],
+      "result_dto": "AccountStatus",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
       "operation_id": "codex_snapshot",
       "path": "/v1/codex",
       "request_dto": null,
@@ -2278,7 +2335,7 @@
         "path": "crates/axon-web/src/schema_registry/agent_routes.rs"
       },
       {
-        "checksum": "sha256:ebcfe554161e465811c11a3afa630f3fc651df0f1c3eeed04adbd486d53de26b",
+        "checksum": "sha256:f35a5b1a21d9cde8344f93e8e58784fde317d03650c321892c4b3eb8876d8e03",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry/codex_routes.rs"
       },

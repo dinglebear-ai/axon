@@ -11,6 +11,7 @@ pub struct PanelRuntimeState {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub(crate) synthesis_account: Arc<axon_services::synthesis_account::SynthesisAccountService>,
     pub(crate) panel: Arc<PanelRuntimeState>,
     pub(crate) service_context: Arc<ServiceContext>,
     pub(crate) codex_control:

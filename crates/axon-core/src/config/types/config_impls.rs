@@ -13,6 +13,8 @@ use std::path::PathBuf;
 impl Default for Config {
     fn default() -> Self {
         Self {
+            retrieval_source_kinds: Vec::new(),
+            retrieval_source_urls: Vec::new(),
             labby_url: None,
             labby_service_token: None,
             labby_integration_id: None,
@@ -159,6 +161,7 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
+            openai_temperature: None,
             openai_chat_model: String::new(),
             tavily_api_key: String::new(),
             searxng_url: String::new(),

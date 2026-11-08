@@ -32,6 +32,8 @@ fn request() -> RetrievalRequest {
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
+        source_kinds: Vec::new(),
+        source_urls: Vec::new(),
         excluded_source_kinds: Vec::new(),
         hybrid: true,
         hybrid_candidates: None,

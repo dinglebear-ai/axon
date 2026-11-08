@@ -96,6 +96,7 @@ impl RankedCandidate {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RankingResult {
+    pub(crate) implementation_intent: bool,
     pub(crate) candidates: Vec<RankedCandidate>,
     pub(crate) ranked_indices: Vec<usize>,
     pub(crate) keyword_query: String,
@@ -144,6 +145,7 @@ pub(crate) fn rank_candidates(
     let product_authority_ratio = ratio(&kept, |c| c.product_authoritative);
     let top_domains = top_domains(&kept, 5);
     RankingResult {
+        implementation_intent: super::implementation::wants_implementation(question),
         candidates,
         ranked_indices,
         keyword_query,

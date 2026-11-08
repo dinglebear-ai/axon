@@ -102,7 +102,12 @@ impl crate::SourceArchiveWriter for StreamingArchive {
                 Cow::Owned(
                     base64::engine::general_purpose::STANDARD
                         .decode(bytes_base64)
-                        .unwrap_or_default(),
+                        .map_err(|_| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "archive item has invalid base64 content; repair the acquired item before retrying archival",
+                            )
+                        })?,
                 )
             }
             ContentRef::Artifact { .. } | ContentRef::External { .. } => Cow::Borrowed(&[]),

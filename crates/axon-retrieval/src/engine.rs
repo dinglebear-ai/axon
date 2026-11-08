@@ -93,6 +93,7 @@ where
     pub async fn retrieve(&self, request: RetrievalRequest) -> Result<RetrievalResult, ApiError> {
         let plan =
             RetrievalPlan::from_request(&request, self.config.access.allowed_visibility.clone());
+        validate_source_urls(&plan.source_urls)?;
         let dense_vector = self.embed_query(&request.query).await?;
         // bm42 sparse arm: compute the query's sparse vector locally (Qdrant
         // applies IDF server-side). An empty sparse vector (all-stopword / tiny
@@ -127,6 +128,7 @@ where
             .results
             .iter()
             .filter(|item| !excluded_by_source_kind(item, &plan))
+            .filter(|item| source_url_allowed(item, &plan))
             .map(match_from_vector)
             .collect::<Result<Vec<_>, _>>()?;
         let context = ContextBundle::from_matches(&matches, plan.byte_budget, plan.token_budget);
@@ -254,7 +256,37 @@ fn excluded_by_source_kind(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bo
         .any(|kind| kind == source_kind)
 }
 
+/// Exact canonical document identities, never host or prefix matching.
+fn source_url_allowed(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bool {
+    plan.source_urls.is_empty()
+        || item
+            .payload
+            .get("chunk_locator")
+            .and_then(|locator| locator.get("canonical_uri"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|uri| plan.source_urls.iter().any(|allowed| allowed == uri))
+}
+
+fn validate_source_urls(urls: &[String]) -> Result<(), ApiError> {
+    if urls.len() > 64
+        || urls.iter().any(|url| {
+            url.is_empty()
+                || url.len() > 4096
+                || url.trim() != url
+                || url.chars().any(char::is_control)
+        })
+    {
+        return Err(ApiError::new(
+            "retrieval.invalid_source_urls",
+            ErrorStage::Retrieving,
+            "source_urls must contain at most 64 exact canonical URIs, each 1-4096 bytes with no surrounding whitespace or control characters; reduce or correct the allowlist before retrying",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiError> {
+    validate_source_urls(&plan.source_urls)?;
     let mut filters = MetadataMap::new();
     filters.insert(
         "visibility".to_string(),
@@ -272,6 +304,18 @@ pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiErr
     );
     if let Some(source_id) = &plan.source_id {
         filters.insert("source_id".to_string(), serde_json::json!(source_id.0));
+    }
+    if !plan.source_urls.is_empty() {
+        filters.insert(
+            "chunk_locator.canonical_uri".to_string(),
+            serde_json::json!(plan.source_urls),
+        );
+    }
+    if !plan.source_kinds.is_empty() {
+        filters.insert(
+            "source_kind".to_string(),
+            serde_json::json!(plan.source_kinds),
+        );
     }
     if !plan.namespace_filters.is_empty() {
         filters.insert(

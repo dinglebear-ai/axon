@@ -366,7 +366,8 @@ class TailscaleAdapter(FileStateAdapter):
         while time.monotonic() < deadline and process.poll() is None:
             try:
                 result, body = self._status(resource)
-                if result.returncode == 0 and isinstance(body, dict) and body.get("Self", {}).get("ID"): break
+                if (socket_path.exists() and result.returncode == 0
+                        and isinstance(body, dict) and body.get("Self", {}).get("ID")): break
             except (OSError, ProviderError): pass
             time.sleep(.05)
         else:

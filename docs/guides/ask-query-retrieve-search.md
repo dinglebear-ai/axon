@@ -42,3 +42,13 @@ mean a separate reranking model ran.
 After committed-generation reconciliation, plain `query` diversifies each fixed ten-result window, keeping up to two chunks from each stable source/document identity in its first pass. Remaining chunks follow in provider order within that same window. Every ten-result evidence set stays intact; single-document searches retain their order and complementary spans remain available. Small public limits fetch at least one complete diversity window so the complete first window is available before public truncation. Pagination applies after this ordering. Provider scores remain the original similarities or fusion scores; they need not decrease monotonically after diversity ordering. This does not change the `ask` context-selection path.
 
 Equal provider scores may arrive in different orders across live searches. A fixed provider result order produces deterministic diversity ordering.
+
+## Limit retrieval to source kinds
+
+REST and MCP `query` and `ask` accept an optional `source_kinds` array, including
+streamed answers. For example, `{"query":"Unraid parity", "source_kinds":["web","git"]}`
+searches indexed web pages and Git sources. The filter applies before dense/sparse
+candidate selection and ranking, so session transcripts cannot consume the result
+window for a document-only search. Use `["session"]` for an intentional session
+search; omitting the array or passing `[]` preserves the existing eligible corpus.
+Memory records still use the dedicated memory retrieval path.

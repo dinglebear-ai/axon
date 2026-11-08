@@ -15,6 +15,10 @@ mod output_limits;
 #[path = "openai_compat_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "openai_compat_temperature_tests.rs"]
+mod temperature_tests;
+
 #[allow(non_upper_case_globals)]
 static OpenAiCompatClients: LazyLock<dashmap::DashMap<u64, reqwest::Client>> =
     LazyLock::new(dashmap::DashMap::new);
@@ -152,11 +156,14 @@ async fn send_chat_completion(
     }
     messages.push(json!({ "role": "user", "content": req.user_prompt }));
 
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "messages": messages,
         "stream": stream,
     });
+    if let Some(temperature) = req.backend.openai_temperature {
+        body["temperature"] = json!(temperature);
+    }
     let timeout_secs = req.backend.completion_timeout_secs.max(1);
     let client = OpenAiCompatClients
         .entry(timeout_secs)

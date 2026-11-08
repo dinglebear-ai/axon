@@ -185,11 +185,11 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/action/prune_request.rs` | `sha256:56370b8c7b8fa0062f040c3d579ad7c12ad29ed36d8a4e48e0f9d13c1013afec` |
-| `crates/axon-api/src/action/requests.rs` | `sha256:cda8958025c515f1ec7a97d42f0d0e6e658e1a9f15ccc4f2f3dcf619a1f70e92` |
+| `crates/axon-api/src/action/requests.rs` | `sha256:8a1aef6466df04ff0e37182ad914ec6d98b3d69c351561c2e9369044891d5415` |
 | `crates/axon-api/src/action/requests/discovery.rs` | `sha256:74cc0184db8d8f39740e9822a92509b4eb468caa1c731a7e23ea557167dfc5d7` |
 | `crates/axon-api/src/action/requests/graph.rs` | `sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1` |
 | `crates/axon-api/src/action/requests/watch.rs` | `sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a` |
-| `crates/axon-api/src/action/utility.rs` | `sha256:622c9ebbf4795bf032a0f45f53c1699f8c0d69585e459a2fa94d67c9b164aed0` |
+| `crates/axon-api/src/action/utility.rs` | `sha256:ac9fa00cf1abb7729800cbe0a4bd1c9e6ef0b5a15c76357bec8cc2169a56da68` |
 | `crates/axon-mcp/src/schema.rs` | `sha256:4e5b3d4f726347ca3dd93cbe6919bafcb7f745b5ba058677a5dace06f032b6e2` |
 | `crates/axon-mcp/src/schema_registry.rs` | `sha256:702c8d8b832392ac9879791c69a3ceabfc22b90d567568df9ad98035a777fac1` |
 | `crates/axon-mcp/src/server.rs` | `sha256:94c1ad9c90317c5ab83732d156162dd457f86f1646fec9e674ff5f9dd2146e10` |

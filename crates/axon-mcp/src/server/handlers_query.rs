@@ -365,6 +365,8 @@ impl AxonMcpServer {
         let cfg = axon_services::transport::apply_ask_overrides(
             self.cfg.as_ref(),
             axon_services::transport::AskTransportOverrides {
+                source_kinds: req.source_kinds.clone(),
+                source_urls: req.source_urls.clone(),
                 collection,
                 since: req.since,
                 before: req.before,

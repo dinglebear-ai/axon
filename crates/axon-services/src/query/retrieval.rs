@@ -69,6 +69,8 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         serde_json::json!({
             "query": text,
             "collection": cfg.collection,
+            "source_kinds": cfg.retrieval_source_kinds,
+            "source_urls": cfg.retrieval_source_urls,
         }),
         auth_snapshot,
     )
@@ -94,6 +96,8 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         model,
         dimensions,
         QueryServiceRequest {
+            source_kinds: cfg.retrieval_source_kinds.clone(),
+            source_urls: cfg.retrieval_source_urls.clone(),
             query: text.to_string(),
             collection: cfg.collection.clone(),
             limit: fetch_limit.max(1),

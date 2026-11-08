@@ -8,6 +8,7 @@
 //!
 //! Wire-protocol logic lives in [`protocol`]; CODEX_HOME isolation in [`home`].
 
+pub mod account_gate;
 mod capabilities;
 mod home;
 pub(super) mod pool;
@@ -45,6 +46,7 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), BoxError> + Send,
 {
+    let _account_guard = account_gate::completion_guard()?;
     validate_codex_cmd(&req.backend)?;
     complete_via_pool(req, on_delta).await
 }
@@ -181,6 +183,15 @@ pub(super) async fn cleanup_codex_child(child: &mut Child) -> Result<String, Str
 /// [`CodexCapabilities`] value — individual method failures are represented as
 /// `Err` variants inside the struct rather than propagated.
 pub async fn probe_codex_capabilities(backend: &LlmBackendConfig) -> CodexCapabilities {
+    let _account_guard = match account_gate::completion_guard() {
+        Ok(guard) => guard,
+        Err(error) => {
+            return CodexCapabilities {
+                models: Err(error.clone()),
+                rate_limits: Err(error),
+            };
+        }
+    };
     use capabilities::run_capability_probe;
     use std::time::Duration;
 

@@ -71,6 +71,8 @@ async fn fake_query_service_returns_seeded_hits() {
     fake.seed(sample_hit("https://example.com/b"));
 
     let request = QueryRequest {
+        source_kinds: None,
+        source_urls: None,
         query: Some("test".to_string()),
         limit: Some(1),
         offset: None,
@@ -88,6 +90,8 @@ async fn fake_query_service_returns_seeded_hits() {
 async fn fake_query_service_works_through_trait_object() {
     let fake: Arc<dyn QueryService> = Arc::new(FakeQueryService::new());
     let request = QueryRequest {
+        source_kinds: None,
+        source_urls: None,
         query: Some("test".to_string()),
         limit: Some(10),
         offset: None,

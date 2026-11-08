@@ -231,3 +231,19 @@ fn streamed_archive_memory_profile() {
         body.len()
     );
 }
+
+#[test]
+fn streamed_archive_rejects_invalid_base64_without_writing_an_empty_record() {
+    use crate::SourceArchiveWriter as _;
+    let mut acquired = item("https://example.com/a", Some(200), ContentKind::Html, "a");
+    acquired.content_ref = ContentRef::InlineBytes {
+        bytes_base64: "not valid base64!".into(),
+        mime_type: "application/octet-stream".into(),
+    };
+    let mut archive = StreamingArchive::new().unwrap();
+    let before = archive.file.as_file().metadata().unwrap().len();
+    let error = archive.append(&acquired).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert!(error.to_string().contains("invalid base64"));
+    assert_eq!(archive.file.as_file().metadata().unwrap().len(), before);
+}

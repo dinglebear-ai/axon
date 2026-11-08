@@ -347,6 +347,23 @@ pub(super) fn pool_for(backend: &LlmBackendConfig) -> Arc<CodexPool> {
         .clone()
 }
 
+/// Reap all idle synthesis children while the exclusive account gate is held.
+pub(super) async fn drain_for_account_change() -> Result<(), String> {
+    let pools: Vec<_> = POOL_MAP.iter().map(|entry| entry.value().clone()).collect();
+    for pool in pools {
+        let slots = std::mem::take(&mut *pool.idle.lock().await);
+        for mut slot in slots {
+            let result = cleanup_codex_child(&mut slot.child).await;
+            if slot.child.id().is_none() {
+                slot.lifecycle.disarm_group();
+            }
+            result.map_err(|_| "synthesis_account_cleanup_failed: cannot reap idle synthesis child; restart service before account changes".to_string())?;
+        }
+    }
+    POOL_MAP.clear();
+    Ok(())
+}
+
 /// Clear the process-global pool map (test helper only).
 #[cfg(test)]
 pub(super) async fn reset_pools_for_tests() {

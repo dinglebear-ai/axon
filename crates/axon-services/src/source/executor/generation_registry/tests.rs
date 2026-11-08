@@ -13,6 +13,19 @@ fn owner(index: u32) -> WorkOwner {
 }
 
 #[test]
+fn rejected_oversized_owner_does_not_consume_registry_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let mut oversized = owner(0);
+    oversized.source = SourceId::new("x".repeat(MAX_OWNER_BYTES as usize));
+    assert!(register(root.path(), &oversized).is_err());
+    assert!(entries(root.path()).unwrap().is_empty());
+    for index in 0..4 {
+        register(root.path(), &owner(index)).unwrap();
+    }
+    assert_eq!(entries(root.path()).unwrap().len(), 4);
+}
+
+#[test]
 fn registration_is_scoped_private_bounded_and_never_reuses_an_attempt() {
     let root = tempfile::tempdir().unwrap();
     for index in 0..4 {

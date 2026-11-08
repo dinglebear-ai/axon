@@ -26,6 +26,8 @@ fn request() -> RetrievalRequest {
         source_id: Some(SourceId::new("src-docs")),
         generation: Some(SourceGenerationId::new("7")),
         namespace_filters: vec!["docs".to_string(), "guides".to_string()],
+        source_kinds: Vec::new(),
+        source_urls: Vec::new(),
         excluded_source_kinds: Vec::new(),
         hybrid: true,
         hybrid_candidates: None,
@@ -1249,3 +1251,6 @@ fn query_instruction_policy_respects_effective_provider_capability() {
 
 #[path = "engine_tests/query_policy.rs"]
 mod query_policy;
+
+#[path = "engine_tests/source_urls.rs"]
+mod source_urls;

@@ -294,6 +294,12 @@ pub struct StatusRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QueryRequest {
+    /// Restrict retrieval before ranking; omitted or empty searches all source kinds.
+    #[serde(default)]
+    pub source_kinds: Option<Vec<crate::source::SourceKind>>,
+    /// Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.
+    #[serde(default)]
+    pub source_urls: Option<Vec<String>>,
     pub query: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,

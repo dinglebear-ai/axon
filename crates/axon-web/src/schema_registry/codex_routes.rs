@@ -3,6 +3,36 @@
 use super::{RestRouteSpec, job_admin, read};
 
 pub(super) static CODEX_ROUTES: &[RestRouteSpec] = &[
+    RestRouteSpec {
+        required_scope: "admin",
+        responses: &["200", "401", "403", "409", "503"],
+        ..read(
+            "GET",
+            "/v1/synthesis/account",
+            "synthesis_account_status",
+            "AccountStatus",
+        )
+    },
+    RestRouteSpec {
+        responses: &["200", "400", "401", "403", "409", "415", "422", "503"],
+        ..job_admin(
+            "POST",
+            "/v1/synthesis/account/login",
+            "synthesis_account_login",
+            Some("LoginBody"),
+            "AccountStatus",
+        )
+    },
+    RestRouteSpec {
+        responses: &["200", "400", "401", "403", "404", "415", "422", "503"],
+        ..job_admin(
+            "POST",
+            "/v1/synthesis/account/login/cancel",
+            "synthesis_account_cancel",
+            Some("CancelBody"),
+            "AccountStatus",
+        )
+    },
     read("GET", "/v1/codex", "codex_snapshot", "CodexControlSnapshot"),
     read(
         "GET",

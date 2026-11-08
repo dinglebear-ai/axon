@@ -1512,6 +1512,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/synthesis/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["status_openapi_marker"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/synthesis/account/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/synthesis/account/login/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_openapi_marker"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/uploads": {
         parameters: {
             query?: never;
@@ -1696,6 +1744,13 @@ export interface components {
             job_id: string;
             status: string;
             status_url: string;
+        };
+        AccountStatus: {
+            /** @description Masked summary of the account used for synthesis, never raw auth. */
+            account: unknown;
+            error?: string | null;
+            login: components["schemas"]["LoginStatus"];
+            rate_limits?: unknown;
         };
         AdapterOptions: {
             values: components["schemas"]["MetadataMap"];
@@ -1999,6 +2054,9 @@ export interface components {
             name?: string | null;
             og_image?: string | null;
             url: string;
+        };
+        CancelBody: {
+            login_id: string;
         };
         /** @description Canonical retrieval lineage for one cited chunk. */
         CanonicalCitation: {
@@ -2671,6 +2729,17 @@ export interface components {
         };
         /** @enum {string} */
         LoadoutResolutionStatus: "effective" | "narrowed";
+        LoginBody: {
+            switch_account: boolean;
+        };
+        LoginStatus: {
+            /** Format: int64 */
+            expires_in_seconds?: number | null;
+            login_id?: string | null;
+            state: string;
+            user_code?: string | null;
+            verification_url?: string | null;
+        };
         LogoVariant: {
             /** @description "favicon" | "apple-touch-icon" | "logo" | "og-image" | "svg" */
             kind: string;
@@ -3523,6 +3592,10 @@ export interface components {
             loadout?: components["schemas"]["LoadoutBinding"] | null;
             query: string;
             since?: string | null;
+            /** @description Restrict retrieval before ranking; omitted or empty searches all source kinds. */
+            source_kinds?: components["schemas"]["SourceKind"][] | null;
+            /** @description Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus. */
+            source_urls?: string[] | null;
         };
         RestBrandRequest: {
             url: string;
@@ -3613,6 +3686,10 @@ export interface components {
             offset?: number | null;
             query: string;
             since?: string | null;
+            /** @description Restrict retrieval before ranking; omitted or empty searches all source kinds. */
+            source_kinds?: components["schemas"]["SourceKind"][] | null;
+            /** @description Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus. */
+            source_urls?: string[] | null;
         };
         RestResearchRequest: {
             limit?: number | null;
@@ -9729,6 +9806,153 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    status_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStatus"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Generation active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Account unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    start_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStatus"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Generation or sign-in active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancel_openapi_marker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStatus"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unknown sign-in */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

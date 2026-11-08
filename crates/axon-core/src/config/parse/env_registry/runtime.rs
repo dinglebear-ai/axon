@@ -223,6 +223,14 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_OPENAI_TEMPERATURE",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
         "AXON_OPENAI_BASE_URL",
         KeepEnv,
         Both,

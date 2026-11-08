@@ -434,6 +434,8 @@ fn populate_services_and_ask_basics(
     cfg.llm_completion_concurrency = 4;
     cfg.llm_completion_timeout_secs = 300;
     cfg.codex_pool_idle_ttl_secs = 300;
+    cfg.openai_temperature =
+        crate::llm::parse_openai_temperature(non_empty_env("AXON_OPENAI_TEMPERATURE").as_deref())?;
     cfg.openai_base_url = non_empty_env("AXON_OPENAI_BASE_URL").unwrap_or_default();
     cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
     cfg.openai_model = non_empty_env("AXON_SYNTHESIS_OPENAI_MODEL")

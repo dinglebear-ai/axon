@@ -4,7 +4,7 @@
 
 This is a **family-name presence inventory**, not proof that requests, results, authorization, or every suboperation are interchangeable. Names come from the canonical [CLI registry](cli/commands.json), [MCP operation catalog](mcp/tool-schema.json), and [REST route registry](rest/openapi.json). Hyphens normalize to underscores; singular/plural and source/list distinctions are intentionally not guessed.
 
-60 family identifiers: 53 CLI roots, 37 MCP actions, 40 REST /v1 segments.
+61 family identifiers: 53 CLI roots, 37 MCP actions, 41 REST /v1 segments.
 
 | Operation | CLI | MCP | REST |
 |---|:--:|:--:|:--:|
@@ -63,6 +63,7 @@ This is a **family-name presence inventory**, not proof that requests, results, 
 | suggest | yes | yes | yes |
 | summarize | yes | yes | yes |
 | sync | yes | no | no |
+| synthesis | no | no | yes |
 | train | yes | no | no |
 | update | yes | no | no |
 | uploads | yes | yes | yes |

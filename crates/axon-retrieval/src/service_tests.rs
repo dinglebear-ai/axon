@@ -7,7 +7,7 @@ use axon_vectors::store::{FakeVectorStore, VectorStore};
 use axon_vectors::testing::{TestPointSpec, test_clean_point, test_collection_spec_hybrid};
 use uuid::Uuid;
 
-use super::{QueryServiceRequest, run_query};
+use super::{QueryServiceRequest, run_query, run_query_candidates};
 
 const BATCH_ID: &str = "00000000-0000-0000-0000-00000000000c";
 const JOB_ID: &str = "00000000-0000-0000-0000-000000000099";
@@ -69,6 +69,8 @@ async fn run_query_returns_mapped_hits_via_trait_objects() {
         "fake-embedding",
         4,
         QueryServiceRequest {
+            source_kinds: Vec::new(),
+            source_urls: Vec::new(),
             query: "alpha beta body".to_string(),
             collection: "axon-test".to_string(),
             limit: 5,
@@ -162,6 +164,8 @@ async fn run_query_keeps_only_latest_generation_for_same_document() {
         "fake-embedding",
         4,
         QueryServiceRequest {
+            source_kinds: Vec::new(),
+            source_urls: Vec::new(),
             query: "alpha body".to_string(),
             collection: "axon-test".to_string(),
             limit: 2,
@@ -232,6 +236,8 @@ async fn run_query_excludes_memory_source_kind_by_default() {
         "fake-embedding",
         4,
         QueryServiceRequest {
+            source_kinds: Vec::new(),
+            source_urls: Vec::new(),
             query: "alpha body".to_string(),
             collection: "axon-test".to_string(),
             limit: 5,
@@ -309,6 +315,8 @@ async fn small_query_limit_keeps_the_same_diversified_prefix_as_a_full_window() 
                 "fake-embedding",
                 4,
                 QueryServiceRequest {
+                    source_kinds: Vec::new(),
+                    source_urls: Vec::new(),
                     query: "evidence".into(),
                     collection: "axon-test".into(),
                     limit,
@@ -332,4 +340,115 @@ async fn small_query_limit_keeps_the_same_diversified_prefix_as_a_full_window() 
             .collect::<Vec<_>>()
     );
     assert_eq!(results[0][2].chunk_id, "chunk-08");
+
+    // Ask selects its own context. Its small candidate set must not inherit
+    // plain-query diversity and discard the third complementary source span.
+    let candidates = run_query_candidates(
+        store,
+        provider,
+        ProviderId::new("fake-embedding"),
+        "fake-embedding",
+        4,
+        QueryServiceRequest {
+            source_kinds: Vec::new(),
+            source_urls: Vec::new(),
+            query: "evidence".into(),
+            collection: "axon-test".into(),
+            limit: 3,
+            hybrid: false,
+            hybrid_candidates: None,
+            since: None,
+            before: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        candidates
+            .hits
+            .iter()
+            .map(|hit| hit.chunk_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["chunk-00", "chunk-01", "chunk-02"]
+    );
+}
+
+#[tokio::test]
+async fn source_scope_filters_before_the_result_window_and_sessions_remain_opt_in() {
+    use axon_api::source::SourceKind;
+    let store = Arc::new(FakeVectorStore::new("fake-vectors"));
+    store
+        .ensure_collection(test_collection_spec_hybrid(4))
+        .await
+        .unwrap();
+    let mut points = Vec::new();
+    for index in 0..8 {
+        let mut entry = point(
+            &format!("point-session-{index}"),
+            &format!("chunk-session-{index}"),
+            &[1.0, 1.0, 1.0, 1.0],
+            "Unraid parity session transcript",
+        );
+        entry
+            .payload
+            .insert("source_kind".into(), serde_json::json!("session"));
+        points.push(entry);
+    }
+    let mut web = point(
+        "point-web",
+        "chunk-web",
+        &[-1.0, -1.0, -1.0, -1.0],
+        "Unraid parity official manual",
+    );
+    web.payload
+        .insert("source_kind".into(), serde_json::json!("web"));
+    points.push(web);
+    store
+        .upsert(VectorPointBatch {
+            batch_id: BatchId::new(Uuid::from_u128(0xc)),
+            collection: "axon-test".into(),
+            model: "fake-embedding".into(),
+            dimensions: 4,
+            sparse_vectors: None,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
+            points,
+        })
+        .await
+        .unwrap();
+    let provider: Arc<dyn EmbeddingProvider> =
+        Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
+    for hybrid in [false, true] {
+        for (source_kinds, expected) in [
+            (Vec::new(), "chunk-session-"),
+            (vec![SourceKind::Web], "chunk-web"),
+            (vec![SourceKind::Session], "chunk-session-"),
+        ] {
+            let result = run_query(
+                store.clone(),
+                provider.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                4,
+                QueryServiceRequest {
+                    source_kinds,
+                    source_urls: Vec::new(),
+                    query: "Unraid parity".into(),
+                    collection: "axon-test".into(),
+                    limit: 1,
+                    hybrid,
+                    hybrid_candidates: None,
+                    since: None,
+                    before: None,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                result.hits.len(),
+                1,
+                "scoping must happen before the limited result window"
+            );
+            assert!(result.hits[0].chunk_id.starts_with(expected));
+        }
+    }
 }

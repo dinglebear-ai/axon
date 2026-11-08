@@ -755,16 +755,35 @@ async fn unrelated_collections_do_not_hold_the_registry_during_provider_io() {
             then.status(200).delay(Duration::from_millis(200));
         })
         .await;
+    server
+        .mock_async(|when, then| {
+            when.method("GET").path("/collections/slow-a");
+            then.status(200).json_body(serde_json::json!({
+                "result": {"status": "green", "optimizer_status": "ok"}
+            }));
+        })
+        .await;
     let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
     configure_bulk_load(&mut store, true, 10_485_760, 20_000);
 
-    let pending = tokio::spawn(async move { store.begin_bulk_load_inner("slow-a").await });
+    let key = store.bulk_load_key("slow-a").unwrap();
+    let pending_store = store.clone();
+    let pending = tokio::spawn(async move { pending_store.begin_bulk_load_inner("slow-a").await });
     tokio::time::sleep(Duration::from_millis(50)).await;
     let registry = tokio::time::timeout(Duration::from_millis(50), BULK_LOAD_USERS.lock())
         .await
         .expect("provider I/O must not retain the global registry lock");
     drop(registry);
     pending.await.unwrap().unwrap();
+    // Release the journal and live lease before httpmock reuses this endpoint.
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        store.finish_bulk_load_inner("slow-a"),
+    )
+    .await
+    .expect("fixture bulk lifecycle must finish")
+    .unwrap();
+    assert!(!BULK_LOAD_USERS.lock().await.contains_key(&key));
 }
 
 #[tokio::test]

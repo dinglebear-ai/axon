@@ -12,6 +12,8 @@ use super::super::utils::auth_snapshot_from_auth;
 
 pub(super) fn ask_transport_overrides(req: &AskRequestBody) -> AskTransportOverrides {
     AskTransportOverrides {
+        source_kinds: req.source_kinds.clone(),
+        source_urls: req.source_urls.clone(),
         collection: req.collection.clone(),
         since: req.since.clone(),
         before: req.before.clone(),

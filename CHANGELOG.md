@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [7.5.1] - 2026-10-23
+## [7.5.1] - 2026-11-07
 
 ### Security
 
-- Update vulnerable TLS, QUIC, certificate roots and ZIP dependencies across workspace, desktop and vendored authentication lockfiles. Migrate Swagger/OpenAPI integration to Utoipa 6 while preserving embedded documentation and palette archive codecs.
+- Update vulnerable TLS, QUIC, certificate roots and ZIP dependencies across workspace, desktop and vendored authentication lockfiles.
+
+### Fixed
+
+- Keep Swagger/OpenAPI generation and embedded documentation compatible with Utoipa 6 while preserving palette archive codecs.
+- Wait for the owned Tailscale socket before reporting test-daemon readiness.
 
 ### Changed
 

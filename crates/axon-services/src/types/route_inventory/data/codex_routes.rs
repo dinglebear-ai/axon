@@ -1,6 +1,13 @@
 use super::super::{RestRouteAuth, RestRouteInfo};
 
 pub(crate) const CODEX_ROUTES: &[RestRouteInfo] = &[
+    route("GET", "/v1/synthesis/account", RestRouteAuth::Admin),
+    route("POST", "/v1/synthesis/account/login", RestRouteAuth::Admin),
+    route(
+        "POST",
+        "/v1/synthesis/account/login/cancel",
+        RestRouteAuth::Admin,
+    ),
     route("GET", "/v1/codex", RestRouteAuth::Read),
     route("GET", "/v1/codex/events", RestRouteAuth::Read),
     route("POST", "/v1/codex/read", RestRouteAuth::Read),

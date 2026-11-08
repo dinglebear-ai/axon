@@ -8,6 +8,8 @@ pub const MODULE_NAME: &str = "plan";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetrievalPlan {
+    pub source_kinds: Vec<axon_api::source::SourceKind>,
+    pub source_urls: Vec<String>,
     pub collection: String,
     pub limit: u32,
     pub source_id: Option<SourceId>,
@@ -35,6 +37,8 @@ impl RetrievalPlan {
             generation: request.generation.clone(),
             allowed_visibility,
             namespace_filters: request.namespace_filters.clone(),
+            source_kinds: request.source_kinds.clone(),
+            source_urls: request.source_urls.clone(),
             excluded_source_kinds: request.excluded_source_kinds.clone(),
             hybrid: request.hybrid,
             hybrid_candidates: request.hybrid_candidates,

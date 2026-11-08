@@ -10,6 +10,12 @@ export type components = {
             "status": string;
             "status_url": string;
         };
+        "AccountStatus": {
+            "account": unknown;
+            "error"?: string | null;
+            "login": components['schemas']['LoginStatus'];
+            "rate_limits"?: unknown;
+        };
         "AdapterOptions": {
             "values": components['schemas']['MetadataMap'];
         };
@@ -243,6 +249,9 @@ export type components = {
             "name"?: string | null;
             "og_image"?: string | null;
             "url": string;
+        };
+        "CancelBody": {
+            "login_id": string;
         };
         "CanonicalCitation": {
             "canonical_uri": string;
@@ -793,6 +802,16 @@ export type components = {
             "unavailableCapabilityCount": number;
         };
         "LoadoutResolutionStatus": "effective" | "narrowed";
+        "LoginBody": {
+            "switch_account": boolean;
+        };
+        "LoginStatus": {
+            "expires_in_seconds"?: number | null;
+            "login_id"?: string | null;
+            "state": string;
+            "user_code"?: string | null;
+            "verification_url"?: string | null;
+        };
         "LogoVariant": {
             "kind": string;
             "url": string;
@@ -1331,6 +1350,8 @@ export type components = {
             "loadout"?: components['schemas']['LoadoutBinding'] | null;
             "query": string;
             "since"?: string | null;
+            "source_kinds"?: components['schemas']['SourceKind'][] | null;
+            "source_urls"?: string[] | null;
         };
         "RestBrandRequest": {
             "url": string;
@@ -1414,6 +1435,8 @@ export type components = {
             "offset"?: number | null;
             "query": string;
             "since"?: string | null;
+            "source_kinds"?: components['schemas']['SourceKind'][] | null;
+            "source_urls"?: string[] | null;
         };
         "RestResearchRequest": {
             "limit"?: number | null;
@@ -1994,6 +2017,9 @@ export type paths = {
     "/v1/suggest": { post: operations["suggest"] };
     "/v1/summarize": { post: operations["summarize"] };
     "/v1/summarize/stream": { post: operations["summarize_stream"] };
+    "/v1/synthesis/account": { get: operations["status_openapi_marker"] };
+    "/v1/synthesis/account/login": { post: operations["start_openapi_marker"] };
+    "/v1/synthesis/account/login/cancel": { post: operations["cancel_openapi_marker"] };
     "/v1/uploads": { get: operations["list_uploads"]; post: operations["create_upload"] };
     "/v1/uploads/{upload_id}": { get: operations["get_upload"]; delete: operations["abort_upload"] };
     "/v1/uploads/{upload_id}/complete": { post: operations["complete_upload"] };
@@ -2108,6 +2134,9 @@ export type operations = {
     "suggest": { method: "post"; path: "/v1/suggest"; operationId: "suggest"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSuggestRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "429": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "summarize": { method: "post"; path: "/v1/summarize"; operationId: "summarize"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSummarizeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "summarize_stream": { method: "post"; path: "/v1/summarize/stream"; operationId: "summarize_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestSummarizeRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "status_openapi_marker": { method: "get"; path: "/v1/synthesis/account"; operationId: "status_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['AccountStatus']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": unknown; "503": unknown }; security: "bearerAuth" | "oauth2" };
+    "start_openapi_marker": { method: "post"; path: "/v1/synthesis/account/login"; operationId: "start_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['LoginBody']; responses: { "200": components['schemas']['AccountStatus']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "409": unknown }; security: "bearerAuth" | "oauth2" };
+    "cancel_openapi_marker": { method: "post"; path: "/v1/synthesis/account/login/cancel"; operationId: "cancel_openapi_marker"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['CancelBody']; responses: { "200": components['schemas']['AccountStatus']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": unknown }; security: "bearerAuth" | "oauth2" };
     "list_uploads": { method: "get"; path: "/v1/uploads"; operationId: "list_uploads"; parameters: { query: { "status"?: components['schemas']['UploadStatusKind']; "limit"?: number; "cursor"?: string }; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['Page_UploadStatus']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "create_upload": { method: "post"; path: "/v1/uploads"; operationId: "create_upload"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['UploadCreateRequest']; responses: { "200": components['schemas']['UploadCreateResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_upload": { method: "get"; path: "/v1/uploads/{upload_id}"; operationId: "get_upload"; parameters: { query: Record<string, never>; path: { "upload_id": string } }; requestBody: never; responses: { "200": components['schemas']['UploadStatus']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };

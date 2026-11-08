@@ -109,6 +109,11 @@ pub(super) fn register_locked(
     owner: &WorkOwner,
 ) -> anyhow::Result<(PathBuf, RegistryLock)> {
     use std::io::Write as _;
+    let encoded = serde_json::to_vec(owner)?;
+    ensure!(
+        encoded.len() as u64 <= MAX_OWNER_BYTES,
+        "generation work owner exceeds admission"
+    );
     let registration = lock(root)?;
     let entries = entries(root)?;
     ensure!(
@@ -123,11 +128,6 @@ pub(super) fn register_locked(
         use std::os::unix::fs::PermissionsExt as _;
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
     }
-    let encoded = serde_json::to_vec(owner)?;
-    ensure!(
-        encoded.len() as u64 <= MAX_OWNER_BYTES,
-        "generation work owner exceeds admission"
-    );
     let mut file = tempfile::NamedTempFile::new_in(&directory)?;
     file.write_all(&encoded)?;
     file.as_file().sync_all()?;

@@ -8171,6 +8171,193 @@
         ]
       }
     },
+    "/v1/synthesis/account": {
+      "get": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "status_openapi_marker",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Generation active"
+          },
+          "503": {
+            "description": "Account unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/synthesis/account/login": {
+      "post": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "start_openapi_marker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Generation or sign-in active"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/synthesis/account/login/cancel": {
+      "post": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "cancel_openapi_marker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown sign-in"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/uploads": {
       "get": {
         "tags": [
@@ -9622,6 +9809,28 @@
           }
         }
       },
+      "AccountStatus": {
+        "type": "object",
+        "required": [
+          "account",
+          "login"
+        ],
+        "properties": {
+          "account": {
+            "description": "Masked summary of the account used for synthesis, never raw auth."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "login": {
+            "$ref": "#/components/schemas/LoginStatus"
+          },
+          "rate_limits": {}
+        }
+      },
       "AdapterOptions": {
         "type": "object",
         "required": [
@@ -10895,6 +11104,18 @@
             "type": "string"
           }
         }
+      },
+      "CancelBody": {
+        "type": "object",
+        "required": [
+          "login_id"
+        ],
+        "properties": {
+          "login_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "CanonicalCitation": {
         "type": "object",
@@ -13798,6 +14019,55 @@
           "effective",
           "narrowed"
         ]
+      },
+      "LoginBody": {
+        "type": "object",
+        "required": [
+          "switch_account"
+        ],
+        "properties": {
+          "switch_account": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoginStatus": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "expires_in_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "login_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "user_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verification_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "LogoVariant": {
         "type": "object",
@@ -16764,6 +17034,26 @@
               "string",
               "null"
             ]
+          },
+          "source_kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SourceKind"
+            },
+            "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds."
+          },
+          "source_urls": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus."
           }
         },
         "additionalProperties": false
@@ -17279,6 +17569,26 @@
               "string",
               "null"
             ]
+          },
+          "source_kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SourceKind"
+            },
+            "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds."
+          },
+          "source_urls": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus."
           }
         },
         "additionalProperties": false

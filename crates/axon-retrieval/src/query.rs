@@ -10,6 +10,8 @@ pub const MODULE_NAME: &str = "query";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetrievalRequest {
+    pub source_kinds: Vec<axon_api::source::SourceKind>,
+    pub source_urls: Vec<String>,
     pub query: String,
     pub collection: String,
     pub limit: u32,

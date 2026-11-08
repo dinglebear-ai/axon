@@ -21,8 +21,7 @@ axon-web = { path = "../axon-web" }
 anyhow = "1"
 flate2 = "1"
 tar = "0.4"
-# Keep the C bzip2 backend used by ZIP 3; retain all archive codecs without
-# introducing the Rust backend's additional license requirement.
+# Retain the explicitly selected archive codecs when upgrading ZIP.
 zip = { version = "9.0.5", default-features = false, features = [
   "aes-crypto",
   "bzip2-rs",
