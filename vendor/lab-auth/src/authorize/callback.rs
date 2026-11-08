@@ -117,9 +117,10 @@ pub async fn callback(
         .query_pairs_mut()
         .append_pair("code", &auth_code)
         .append_pair("state", &request.client_state);
+    // The completed URI contains the authorization code and client
+    // state. Keep only the one-way code fingerprint in diagnostic output.
     debug!(
         auth_code_id = %auth_code_id,
-        redirect_uri = %redirect_uri,
         "oauth callback redirecting client back to registered callback"
     );
 

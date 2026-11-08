@@ -33,3 +33,5 @@ mod flow;
 mod merged_allowlist_callback_tests;
 mod registration;
 mod validation;
+
+mod callback_logs;

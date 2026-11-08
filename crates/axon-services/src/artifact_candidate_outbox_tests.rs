@@ -470,3 +470,6 @@ async fn indexed_payload_corruption_is_detected_without_reopening() {
     assert_eq!(scan.deliveries[0].delivery_key, second.delivery_key);
     assert_eq!(scan.findings[0].code, "artifact_candidate.outbox.corrupt");
 }
+
+#[path = "artifact_candidate_outbox_shutdown_tests.rs"]
+mod shutdown;

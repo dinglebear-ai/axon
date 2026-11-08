@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
+mod operation;
+use operation::{OperationOwner, blocking};
 mod quota;
 use quota::{bounded_encode, lock_disk_admission};
 mod scan;
@@ -46,7 +48,7 @@ pub(crate) struct ArtifactCandidateOutboxScan {
 #[derive(Debug)]
 pub(crate) struct ArtifactCandidateOutbox {
     root: PathBuf,
-    gate: Mutex<()>,
+    gate: Arc<Mutex<()>>,
     draining: AtomicBool,
     drain_requested: AtomicBool,
     drain_cancelled: AtomicBool,
@@ -59,7 +61,7 @@ impl ArtifactCandidateOutbox {
     pub(crate) fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
-            gate: Mutex::new(()),
+            gate: Arc::new(Mutex::new(())),
             draining: AtomicBool::new(false),
             drain_requested: AtomicBool::new(false),
             drain_cancelled: AtomicBool::new(false),
@@ -91,7 +93,7 @@ impl ArtifactCandidateOutbox {
             candidates,
             staged_at_unix_ms: now_unix_ms()?,
         };
-        let _guard = self.gate.lock().await;
+        let owner = self.begin_operation().await;
         create_private_directory(&self.root).await?;
         let path = self.path(&pending.delivery_key);
         match tokio::fs::symlink_metadata(&path).await {
@@ -107,7 +109,7 @@ impl ArtifactCandidateOutbox {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
-        let (pending, bytes) = tokio::task::spawn_blocking(move || {
+        let (pending, bytes) = blocking(owner.clone(), move || {
             let bytes = bounded_encode(&pending, MAX_OUTBOX_FILE_BYTES)?;
             structure::charge(&bytes).map_err(|_| {
                 anyhow::anyhow!("artifact candidate outbox decoded structure budget exceeded")
@@ -118,7 +120,7 @@ impl ArtifactCandidateOutbox {
         let _disk_owner = lock_disk_admission(&self.root)?;
         let root = self.root.clone();
         let quota_ready = self.quota_ready.clone();
-        tokio::task::spawn_blocking(move || {
+        blocking(owner.clone(), move || {
             use std::io::Write as _;
             let _owner = _disk_owner;
             let mut quota = quota::open(&root, !quota_ready.load(Ordering::Acquire))?;
@@ -159,13 +161,12 @@ impl ArtifactCandidateOutbox {
         budget: u64,
         structure_budget: u64,
     ) -> anyhow::Result<ArtifactCandidateOutboxScan> {
-        let _guard = self.gate.lock().await;
+        let owner = self.begin_operation().await;
         if !tokio::fs::try_exists(&self.root).await? {
             return Ok(scan::empty_scan());
         }
         let cursor = self.scan_cursor.lock().expect("outbox cursor lock").clone();
-        let (paths, mut has_more) =
-            scan_paths(&self.root, cursor.as_ref(), self.quota_ready.clone()).await?;
+        let (paths, mut has_more) = scan_paths(owner.clone(), self, cursor.as_ref()).await?;
         let mut admitted_bytes = 0_u64;
         let mut structural_bytes = 0_u64;
         let mut last_visited = cursor;
@@ -177,38 +178,30 @@ impl ArtifactCandidateOutbox {
                 || "<unknown>".to_string(),
                 |value| value.to_string_lossy().into_owned(),
             );
-            let Some(file_key) = path.file_stem().and_then(|value| value.to_str()) else {
+            let Some(file_key) = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .filter(|key| valid_file_key(key))
+            else {
                 findings.push(
-                    quarantine(&path, "artifact_candidate.outbox.invalid_name", file_name).await,
-                );
-                continue;
-            };
-            if !valid_file_key(file_key) {
-                findings.push(
-                    quarantine(&path, "artifact_candidate.outbox.invalid_name", file_name).await,
-                );
-                continue;
-            }
-            let metadata = match tokio::fs::symlink_metadata(&path).await {
-                Ok(metadata) => metadata,
-                Err(_) => {
-                    findings.push(finding(
-                        "artifact_candidate.outbox.metadata_failed",
+                    quarantine(
+                        owner.clone(),
+                        &path,
+                        "artifact_candidate.outbox.invalid_name",
                         file_name,
-                    ));
-                    continue;
-                }
-            };
-            if !metadata.is_file() || metadata.file_type().is_symlink() {
-                findings.push(finding("artifact_candidate.outbox.invalid_file", file_name));
-                continue;
-            }
-            if metadata.len() > MAX_OUTBOX_FILE_BYTES {
-                findings.push(
-                    quarantine(&path, "artifact_candidate.outbox.oversized", file_name).await,
+                    )
+                    .await,
                 );
                 continue;
-            }
+            };
+            let metadata =
+                match scan::admitted_metadata(owner.clone(), &path, file_name.clone()).await {
+                    Ok(metadata) => metadata,
+                    Err(rejected) => {
+                        findings.push(rejected);
+                        continue;
+                    }
+                };
             // Admit one legacy-sized file even with a smaller test budget;
             // subsequent records may not exceed the aggregate scan window.
             if admitted_bytes > 0 && metadata.len() > budget.saturating_sub(admitted_bytes) {
@@ -230,7 +223,7 @@ impl ArtifactCandidateOutbox {
             }
             admitted_bytes = admitted_bytes.saturating_add(bytes.len() as u64);
             let remaining_structure = structure_budget.saturating_sub(structural_bytes);
-            let decoded = decode_record(bytes, remaining_structure).await?;
+            let decoded = decode_record(owner.clone(), bytes, remaining_structure).await?;
             let (record, charged) = match decoded {
                 Ok(Some(value)) => value,
                 Ok(None) => {
@@ -249,7 +242,13 @@ impl ArtifactCandidateOutbox {
                 }
                 Err(structure::Rejected::Corrupt) => {
                     findings.push(
-                        quarantine(&path, "artifact_candidate.outbox.corrupt", file_name).await,
+                        quarantine(
+                            owner.clone(),
+                            &path,
+                            "artifact_candidate.outbox.corrupt",
+                            file_name,
+                        )
+                        .await,
                     );
                     continue;
                 }
@@ -258,6 +257,7 @@ impl ArtifactCandidateOutbox {
             if !scan::record_matches_file(&record, file_key) {
                 findings.push(
                     quarantine(
+                        owner.clone(),
                         &path,
                         "artifact_candidate.outbox.integrity_failed",
                         file_name,
@@ -283,14 +283,14 @@ impl ArtifactCandidateOutbox {
             file_key_for(delivery_key).is_some(),
             "invalid artifact candidate delivery key"
         );
-        let _guard = self.gate.lock().await;
+        let owner = self.begin_operation().await;
         let path = self.path(delivery_key);
         if !tokio::fs::try_exists(&self.root).await? {
             return Ok(());
         }
         let root = self.root.clone();
         let ready = self.quota_ready.clone();
-        tokio::task::spawn_blocking(move || {
+        blocking(owner.clone(), move || {
             let _owner = lock_disk_admission(&root)?;
             let mut quota = quota::open(&root, !ready.load(Ordering::Acquire))?;
             ready.store(true, Ordering::Release);
@@ -321,21 +321,6 @@ impl ArtifactCandidateOutbox {
 
     pub(crate) fn drain_cancelled(&self) -> bool {
         self.drain_cancelled.load(Ordering::Acquire)
-    }
-
-    pub(crate) async fn shutdown_drain(&self) {
-        self.drain_cancelled.store(true, Ordering::Release);
-        self.drain_requested.store(false, Ordering::Release);
-        let task = self
-            .drain_task
-            .lock()
-            .expect("outbox drain task lock")
-            .take();
-        if let Some(task) = task {
-            task.abort();
-            let _ = task.await;
-        }
-        self.draining.store(false, Ordering::Release);
     }
 
     pub(crate) fn start_drain_pass(&self) {
@@ -420,13 +405,14 @@ fn finding(code: &'static str, file_name: String) -> ArtifactCandidateOutboxFind
 }
 
 async fn quarantine(
+    owner: OperationOwner,
     path: &Path,
     code: &'static str,
     file_name: String,
 ) -> ArtifactCandidateOutboxFinding {
     let quarantine = path.with_extension(format!("invalid.{}", uuid::Uuid::new_v4()));
     let path = path.to_path_buf();
-    let result = tokio::task::spawn_blocking(move || {
+    let result = blocking(owner, move || {
         quota::quarantine_file(
             &path,
             &quarantine,

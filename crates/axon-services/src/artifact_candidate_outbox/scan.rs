@@ -3,17 +3,20 @@
 use super::*;
 
 pub(super) async fn scan_paths(
-    root: &std::path::Path,
+    owner: OperationOwner,
+    outbox: &ArtifactCandidateOutbox,
     cursor: Option<&PathBuf>,
-    ready: Arc<AtomicBool>,
 ) -> anyhow::Result<(std::collections::BTreeSet<PathBuf>, bool)> {
-    let root = root.to_path_buf();
+    let root = outbox.root.clone();
+    let ready = outbox.quota_ready.clone();
     let cursor = cursor.cloned();
-    tokio::task::spawn_blocking(move || {
+    blocking(owner, move || {
         // Ownership follows the blocking task through cancellation. Reconcile
         // legacy files once on first access; all current writers reserve names
         // under this same disk fence before making delivery files visible.
         let _owner = lock_disk_admission(&root)?;
+        #[cfg(test)]
+        pause_scan_for_test(&root);
         let db = quota::open(&root, !ready.load(Ordering::Acquire))?;
         ready.store(true, Ordering::Release);
         let cursor_name = cursor
@@ -28,11 +31,38 @@ pub(super) async fn scan_paths(
     .await?
 }
 
+pub(super) async fn admitted_metadata(
+    owner: OperationOwner,
+    path: &Path,
+    file_name: String,
+) -> Result<std::fs::Metadata, ArtifactCandidateOutboxFinding> {
+    let metadata = tokio::fs::symlink_metadata(path).await.map_err(|_| {
+        finding(
+            "artifact_candidate.outbox.metadata_failed",
+            file_name.clone(),
+        )
+    })?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(finding("artifact_candidate.outbox.invalid_file", file_name));
+    }
+    if metadata.len() > MAX_OUTBOX_FILE_BYTES {
+        return Err(quarantine(
+            owner,
+            path,
+            "artifact_candidate.outbox.oversized",
+            file_name,
+        )
+        .await);
+    }
+    Ok(metadata)
+}
+
 pub(super) async fn decode_record(
+    owner: OperationOwner,
     bytes: Vec<u8>,
     remaining_structure: u64,
 ) -> anyhow::Result<Result<Option<(PendingArtifactCandidateDelivery, u64)>, structure::Rejected>> {
-    tokio::task::spawn_blocking(move || {
+    blocking(owner, move || {
         let charged = structure::charge(&bytes)?;
         if charged > remaining_structure {
             return Ok(None);
@@ -63,5 +93,22 @@ pub(super) fn empty_scan() -> ArtifactCandidateOutboxScan {
         deliveries: Vec::new(),
         findings: Vec::new(),
         has_more: false,
+    }
+}
+
+// Files belong to one test's private temporary root, never a global hook.
+#[cfg(test)]
+fn pause_scan_for_test(root: &Path) {
+    if !root.join(".pause-scan-test").exists() {
+        return;
+    }
+    std::fs::write(root.join(".scan-started-test"), b"").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !root.join(".release-scan-test").exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "test scan release timed out"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
 }
