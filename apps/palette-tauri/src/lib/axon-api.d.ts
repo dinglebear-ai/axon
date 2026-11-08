@@ -1785,7 +1785,7 @@ export interface components {
         AgentTurnResult: {
             answer?: string | null;
             correlation: components["schemas"]["AgentCorrelation"];
-            pendingApproval?: null | components["schemas"]["AgentToolProposal"];
+            pendingApproval?: components["schemas"]["AgentToolProposal"] | null;
             status: components["schemas"]["AgentTurnStatus"];
             turnId: string;
         };
@@ -1859,11 +1859,11 @@ export interface components {
         ArtifactKind: "raw_content" | "normalized_content" | "manifest" | "report" | "screenshot" | "warc" | "provider_trace";
         ArtifactListRequest: {
             cursor?: string | null;
-            job_id?: null | components["schemas"]["JobId"];
-            kind?: null | components["schemas"]["ArtifactKind"];
+            job_id?: components["schemas"]["JobId"] | null;
+            kind?: components["schemas"]["ArtifactKind"] | null;
             /** Format: int32 */
             limit?: number | null;
-            source_id?: null | components["schemas"]["SourceId"];
+            source_id?: components["schemas"]["SourceId"] | null;
         };
         /** @enum {string} */
         ArtifactMode: "none" | "on_large_output" | "always";
@@ -1880,12 +1880,12 @@ export interface components {
             artifact_id: components["schemas"]["ArtifactId"];
             content_type?: string | null;
             created_at: components["schemas"]["Timestamp"];
-            job_id?: null | components["schemas"]["JobId"];
+            job_id?: components["schemas"]["JobId"] | null;
             kind: components["schemas"]["ArtifactKind"];
             label?: string | null;
             /** Format: int64 */
             size_bytes: number;
-            source_id?: null | components["schemas"]["SourceId"];
+            source_id?: components["schemas"]["SourceId"] | null;
         };
         AuthorityEvidence: {
             /** Format: float */
@@ -1915,6 +1915,7 @@ export interface components {
         BatchOutcome_QueryResult: {
             data: {
                 results: components["schemas"]["QueryHit"][];
+                warnings?: components["schemas"]["SourceWarning"][];
             };
             /** @enum {string} */
             status: "completed";
@@ -1938,8 +1939,8 @@ export interface components {
                 counts: components["schemas"]["SourceCounts"];
                 errors?: components["schemas"]["SourceError"][];
                 graph: components["schemas"]["GraphWriteSummary"];
-                inline?: null | components["schemas"]["InlineSourceResult"];
-                job?: null | components["schemas"]["JobDescriptor"];
+                inline?: components["schemas"]["InlineSourceResult"] | null;
+                job?: components["schemas"]["JobDescriptor"] | null;
                 job_id: components["schemas"]["JobId"];
                 ledger: components["schemas"]["LedgerSummary"];
                 scope: components["schemas"]["SourceScope"];
@@ -1947,7 +1948,7 @@ export interface components {
                 source_kind: components["schemas"]["SourceKind"];
                 status: components["schemas"]["LifecycleStatus"];
                 warnings: components["schemas"]["SourceWarning"][];
-                watch?: null | components["schemas"]["WatchResult"];
+                watch?: components["schemas"]["WatchResult"] | null;
             };
             /** @enum {string} */
             status: "completed";
@@ -2128,7 +2129,7 @@ export interface components {
             credential_kind: components["schemas"]["CredentialKind"];
             reason: string;
             required: boolean;
-            secret_ref?: null | components["schemas"]["SecretRef"];
+            secret_ref?: components["schemas"]["SecretRef"] | null;
         };
         DeleteMobileSessionResponse: {
             ok: boolean;
@@ -2151,11 +2152,11 @@ export interface components {
             first_party: boolean;
             kind: components["schemas"]["EndpointKind"];
             normalized_url?: string | null;
-            rpc_probe?: null | components["schemas"]["RpcProbeResult"];
+            rpc_probe?: components["schemas"]["RpcProbeResult"] | null;
             source: components["schemas"]["EndpointSourceKind"];
             source_url?: string | null;
             value: string;
-            verified?: null | components["schemas"]["EndpointVerification"];
+            verified?: components["schemas"]["EndpointVerification"] | null;
         };
         /** @enum {string} */
         DocumentBackend: "qdrant" | "stored_source" | "live_scrape";
@@ -2181,7 +2182,7 @@ export interface components {
             options?: components["schemas"]["AdapterOptions"];
             output?: components["schemas"]["OutputPolicy"];
             refresh?: components["schemas"]["SourceRefreshPolicy"];
-            scope?: null | components["schemas"]["SourceScope"];
+            scope?: components["schemas"]["SourceScope"] | null;
         };
         EmbedRequest: {
             inputs: components["schemas"]["SourceProjectionInput"][];
@@ -2324,15 +2325,15 @@ export interface components {
         };
         GraphEdgeId: string;
         GraphEvidence: {
-            chunk_id?: null | components["schemas"]["ChunkId"];
+            chunk_id?: components["schemas"]["ChunkId"] | null;
             /** Format: float */
             confidence: number;
-            document_id?: null | components["schemas"]["DocumentId"];
+            document_id?: components["schemas"]["DocumentId"] | null;
             evidence_id: string;
             evidence_kind: string;
             metadata: components["schemas"]["MetadataMap"];
             quote?: string | null;
-            range?: null | components["schemas"]["SourceRange"];
+            range?: components["schemas"]["SourceRange"] | null;
             source_id: components["schemas"]["SourceId"];
             source_item_key: components["schemas"]["SourceItemKey"];
         };
@@ -2340,9 +2341,9 @@ export interface components {
             canonical_uri?: string | null;
             kind: string;
             metadata: components["schemas"]["MetadataMap"];
-            node_id?: null | components["schemas"]["GraphNodeId"];
-            source_id?: null | components["schemas"]["SourceId"];
-            source_item_key?: null | components["schemas"]["SourceItemKey"];
+            node_id?: components["schemas"]["GraphNodeId"] | null;
+            source_id?: components["schemas"]["SourceId"] | null;
+            source_item_key?: components["schemas"]["SourceItemKey"] | null;
             value?: string | null;
         };
         GraphKindDocument: {
@@ -2356,13 +2357,13 @@ export interface components {
             canonical_uri: string;
             /** Format: float */
             confidence: number;
-            created_at?: null | components["schemas"]["Timestamp"];
+            created_at?: components["schemas"]["Timestamp"] | null;
             display_name: string;
             kind: string;
             metadata: components["schemas"]["MetadataMap"];
             node_id: components["schemas"]["GraphNodeId"];
             source_ids?: components["schemas"]["SourceId"][];
-            updated_at?: null | components["schemas"]["Timestamp"];
+            updated_at?: components["schemas"]["Timestamp"] | null;
         };
         GraphNodeId: string;
         GraphQueryFilters: {
@@ -2378,7 +2379,7 @@ export interface components {
             depth: number;
             direction: components["schemas"]["GraphDirection"];
             edges?: string[];
-            filters?: null | components["schemas"]["GraphQueryFilters"];
+            filters?: components["schemas"]["GraphQueryFilters"] | null;
             /** Format: int32 */
             limit: number;
             start: components["schemas"]["GraphIdentifier"];
@@ -2392,8 +2393,8 @@ export interface components {
         };
         GraphRef: {
             candidate_id?: string | null;
-            edge_id?: null | components["schemas"]["GraphEdgeId"];
-            node_id?: null | components["schemas"]["GraphNodeId"];
+            edge_id?: components["schemas"]["GraphEdgeId"] | null;
+            node_id?: components["schemas"]["GraphNodeId"] | null;
         };
         GraphResolveMatch: {
             /** Format: float */
@@ -2442,14 +2443,14 @@ export interface components {
             options?: components["schemas"]["AdapterOptions"];
             output?: components["schemas"]["OutputPolicy"];
             refresh?: components["schemas"]["SourceRefreshPolicy"];
-            scope?: null | components["schemas"]["SourceScope"];
+            scope?: components["schemas"]["SourceScope"] | null;
         };
         IngestRequest: {
             inputs: components["schemas"]["SourceProjectionInput"][];
             options?: components["schemas"]["IngestOptions"];
         };
         InlineSourceResult: {
-            content?: null | components["schemas"]["ContentRef"];
+            content?: components["schemas"]["ContentRef"] | null;
             metadata: components["schemas"]["MetadataMap"];
             summary?: string | null;
         };
@@ -2470,7 +2471,7 @@ export interface components {
             reason?: string | null;
         };
         JobCancelResult: {
-            canceled_at?: null | components["schemas"]["Timestamp"];
+            canceled_at?: components["schemas"]["Timestamp"] | null;
             /**
              * @description User/system identity that requested the cancellation.
              *     Per `docs/pipeline-unification/runtime/job-contract.md` "Cancellation".
@@ -2479,7 +2480,7 @@ export interface components {
             /** @description Cleanup work created for any published partial side effect. */
             cleanup_debt_ids?: string[];
             job_id: components["schemas"]["JobId"];
-            last_safe_stage?: null | components["schemas"]["PipelinePhase"];
+            last_safe_stage?: components["schemas"]["PipelinePhase"] | null;
             reason?: string | null;
             /** @description Published/written side effects that survived the cooperative unwind. */
             side_effects?: string[];
@@ -2487,11 +2488,11 @@ export interface components {
         };
         JobCleanupRequest: {
             dry_run: boolean;
-            kind?: null | components["schemas"]["JobKind"];
+            kind?: components["schemas"]["JobKind"] | null;
             /** Format: int32 */
             limit?: number | null;
-            older_than?: null | components["schemas"]["Timestamp"];
-            status?: null | components["schemas"]["LifecycleStatus"];
+            older_than?: components["schemas"]["Timestamp"] | null;
+            status?: components["schemas"]["LifecycleStatus"] | null;
         };
         JobCleanupResult: {
             /** Format: int64 */
@@ -2517,14 +2518,14 @@ export interface components {
         };
         JobClearRequest: {
             confirm: boolean;
-            kind?: null | components["schemas"]["JobKind"];
-            older_than?: null | components["schemas"]["Timestamp"];
-            status?: null | components["schemas"]["LifecycleStatus"];
+            kind?: components["schemas"]["JobKind"] | null;
+            older_than?: components["schemas"]["Timestamp"] | null;
+            status?: components["schemas"]["LifecycleStatus"] | null;
         };
         JobClearResult: {
             /** Format: int64 */
             deleted: number;
-            status?: null | components["schemas"]["LifecycleStatus"];
+            status?: components["schemas"]["LifecycleStatus"] | null;
             warnings: components["schemas"]["SourceWarning"][];
         };
         JobDescriptor: {
@@ -2549,7 +2550,7 @@ export interface components {
             /** Format: int64 */
             sequence: number;
             severity: components["schemas"]["Severity"];
-            stage_id?: null | components["schemas"]["StageId"];
+            stage_id?: components["schemas"]["StageId"] | null;
             status: components["schemas"]["LifecycleStatus"];
             timestamp: components["schemas"]["Timestamp"];
             visibility?: components["schemas"]["Visibility"];
@@ -2597,10 +2598,10 @@ export interface components {
             phase: components["schemas"]["JobPhase"];
         };
         JobRecoveryRequest: {
-            kind?: null | components["schemas"]["JobKind"];
+            kind?: components["schemas"]["JobKind"] | null;
             /** Format: int32 */
             limit?: number | null;
-            stale_before?: null | components["schemas"]["Timestamp"];
+            stale_before?: components["schemas"]["Timestamp"] | null;
         };
         JobRecoveryResult: {
             job_ids: components["schemas"]["JobId"][];
@@ -2611,7 +2612,7 @@ export interface components {
         /** @enum {string} */
         JobRetryMode: "same_config" | "with_overrides";
         JobRetryRequest: {
-            from_phase?: null | components["schemas"]["PipelinePhase"];
+            from_phase?: components["schemas"]["PipelinePhase"] | null;
             idempotency_key?: string | null;
             mode: components["schemas"]["JobRetryMode"];
             overrides?: components["schemas"]["MetadataMap"];
@@ -2623,19 +2624,19 @@ export interface components {
             retry_job: components["schemas"]["JobDescriptor"];
         };
         JobSummary: {
-            counts?: null | components["schemas"]["StageCounts"];
+            counts?: components["schemas"]["StageCounts"] | null;
             created_at: components["schemas"]["Timestamp"];
             job_id: components["schemas"]["JobId"];
             kind: components["schemas"]["JobKind"];
-            last_error?: null | components["schemas"]["SourceError"];
+            last_error?: components["schemas"]["SourceError"] | null;
             phase: components["schemas"]["PipelinePhase"];
-            source_id?: null | components["schemas"]["SourceId"];
+            source_id?: components["schemas"]["SourceId"] | null;
             status: components["schemas"]["LifecycleStatus"];
             updated_at: components["schemas"]["Timestamp"];
-            watch_id?: null | components["schemas"]["WatchId"];
+            watch_id?: components["schemas"]["WatchId"] | null;
         };
         LedgerSummary: {
-            committed_generation?: null | components["schemas"]["SourceGenerationId"];
+            committed_generation?: components["schemas"]["SourceGenerationId"] | null;
             counts: components["schemas"]["SourceCounts"];
             generation: components["schemas"]["SourceGenerationId"];
             source_id: components["schemas"]["SourceId"];
@@ -2685,7 +2686,7 @@ export interface components {
             host_kind: components["schemas"]["McpHostKind"];
             outcome: components["schemas"]["McpProbeOutcome"];
             path: string;
-            rpc_probe?: null | components["schemas"]["RpcProbeResult"];
+            rpc_probe?: components["schemas"]["RpcProbeResult"] | null;
             url: string;
         };
         /**
@@ -2714,15 +2715,15 @@ export interface components {
          *     Contract: "Decay Contract" required fields.
          */
         MemoryDecayPolicy: {
-            expires_at?: null | components["schemas"]["Timestamp"];
+            expires_at?: components["schemas"]["Timestamp"] | null;
             /** Format: int32 */
             half_life_days?: number | null;
-            last_reinforced_at?: null | components["schemas"]["Timestamp"];
+            last_reinforced_at?: components["schemas"]["Timestamp"] | null;
             pinned?: boolean;
             profile: string;
             /** Format: int32 */
             reinforcement_count?: number;
-            review_after?: null | components["schemas"]["Timestamp"];
+            review_after?: components["schemas"]["Timestamp"] | null;
         };
         MemoryEdgeItem: {
             /** Format: int64 */
@@ -2750,11 +2751,11 @@ export interface components {
              *     just ask/context; defaults to `false` to match that default.
              */
             include_working?: boolean;
-            scope?: null | components["schemas"]["MemoryScope"];
+            scope?: components["schemas"]["MemoryScope"] | null;
         };
         /** @description Exported memory records. */
         MemoryExportResult: {
-            artifact?: null | components["schemas"]["ArtifactRef"];
+            artifact?: components["schemas"]["ArtifactRef"] | null;
             /** Format: int32 */
             count: number;
             records: components["schemas"]["MemoryRecord"][];
@@ -2831,7 +2832,7 @@ export interface components {
             workspace?: string | null;
         };
         MemoryItemResponse: {
-            memory?: null | components["schemas"]["MemoryItem"];
+            memory?: components["schemas"]["MemoryItem"] | null;
         };
         MemoryItemsResponse: {
             memories: components["schemas"]["MemoryItem"][];
@@ -2849,8 +2850,8 @@ export interface components {
             body: string;
             /** Format: float */
             confidence: number;
-            contradicts?: null | components["schemas"]["MemoryId"];
-            decay?: null | components["schemas"]["MemoryDecayPolicy"];
+            contradicts?: components["schemas"]["MemoryId"] | null;
+            decay?: components["schemas"]["MemoryDecayPolicy"] | null;
             embedding_refs?: components["schemas"]["VectorPointId"][];
             history: components["schemas"]["MemoryHistoryEvent"][];
             links?: components["schemas"]["MemoryLink"][];
@@ -2860,7 +2861,7 @@ export interface components {
             salience: number;
             scope: components["schemas"]["MemoryScope"];
             status: components["schemas"]["MemoryStatus"];
-            superseded_by?: null | components["schemas"]["MemoryId"];
+            superseded_by?: components["schemas"]["MemoryId"] | null;
             title?: string | null;
             /**
              * @description Security classification (contract "Security and Redaction": "classify
@@ -3001,12 +3002,12 @@ export interface components {
                 artifact_id: components["schemas"]["ArtifactId"];
                 content_type?: string | null;
                 created_at: components["schemas"]["Timestamp"];
-                job_id?: null | components["schemas"]["JobId"];
+                job_id?: components["schemas"]["JobId"] | null;
                 kind: components["schemas"]["ArtifactKind"];
                 label?: string | null;
                 /** Format: int64 */
                 size_bytes: number;
-                source_id?: null | components["schemas"]["SourceId"];
+                source_id?: components["schemas"]["SourceId"] | null;
             }[];
             /** Format: int32 */
             limit: number;
@@ -3016,16 +3017,16 @@ export interface components {
         };
         Page_JobSummary: {
             items: {
-                counts?: null | components["schemas"]["StageCounts"];
+                counts?: components["schemas"]["StageCounts"] | null;
                 created_at: components["schemas"]["Timestamp"];
                 job_id: components["schemas"]["JobId"];
                 kind: components["schemas"]["JobKind"];
-                last_error?: null | components["schemas"]["SourceError"];
+                last_error?: components["schemas"]["SourceError"] | null;
                 phase: components["schemas"]["PipelinePhase"];
-                source_id?: null | components["schemas"]["SourceId"];
+                source_id?: components["schemas"]["SourceId"] | null;
                 status: components["schemas"]["LifecycleStatus"];
                 updated_at: components["schemas"]["Timestamp"];
-                watch_id?: null | components["schemas"]["WatchId"];
+                watch_id?: components["schemas"]["WatchId"] | null;
             }[];
             /** Format: int32 */
             limit: number;
@@ -3035,7 +3036,7 @@ export interface components {
         };
         Page_UploadStatus: {
             items: {
-                artifact_id?: null | components["schemas"]["ArtifactId"];
+                artifact_id?: components["schemas"]["ArtifactId"] | null;
                 /** Format: int64 */
                 bytes_received: number;
                 content_type: string;
@@ -3043,7 +3044,7 @@ export interface components {
                 expires_at: components["schemas"]["Timestamp"];
                 filename: string;
                 purpose: components["schemas"]["UploadPurpose"];
-                retention_until?: null | components["schemas"]["Timestamp"];
+                retention_until?: components["schemas"]["Timestamp"] | null;
                 sha256?: string | null;
                 /** Format: int64 */
                 size_bytes: number;
@@ -3060,8 +3061,8 @@ export interface components {
         Page_WatchSummary: {
             items: {
                 enabled: boolean;
-                last_job_id?: null | components["schemas"]["JobId"];
-                last_status?: null | components["schemas"]["LifecycleStatus"];
+                last_job_id?: components["schemas"]["JobId"] | null;
+                last_status?: components["schemas"]["LifecycleStatus"] | null;
                 next_run_at: components["schemas"]["Timestamp"];
                 schedule: components["schemas"]["WatchSchedule"];
                 source_id: components["schemas"]["SourceId"];
@@ -3215,7 +3216,7 @@ export interface components {
             description: string;
             /** Format: int64 */
             estimated_deletes: number;
-            generation?: null | components["schemas"]["SourceGenerationId"];
+            generation?: components["schemas"]["SourceGenerationId"] | null;
             /**
              * @description Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching
              *     `GraphStore::delete_edges`. Additive.
@@ -3232,9 +3233,9 @@ export interface components {
              *     `MemoryStore::forget`. Additive.
              */
             memory_ids?: components["schemas"]["MemoryId"][] | null;
-            source_id?: null | components["schemas"]["SourceId"];
+            source_id?: components["schemas"]["SourceId"] | null;
             target: components["schemas"]["PruneTargetKind"];
-            vector_selector?: null | components["schemas"]["VectorDeleteSelector"];
+            vector_selector?: components["schemas"]["VectorDeleteSelector"] | null;
         };
         /**
          * @description Per-step execution outcome. Records what was actually deleted plus any
@@ -3243,9 +3244,9 @@ export interface components {
         PruneStepResult: {
             /** Format: int64 */
             deleted: number;
-            generation?: null | components["schemas"]["SourceGenerationId"];
+            generation?: components["schemas"]["SourceGenerationId"] | null;
             skipped_reason?: string | null;
-            source_id?: null | components["schemas"]["SourceId"];
+            source_id?: components["schemas"]["SourceId"] | null;
             status: components["schemas"]["LifecycleStatus"];
             target: components["schemas"]["PruneTargetKind"];
         };
@@ -3269,10 +3270,18 @@ export interface components {
             provider?: string | null;
             /** Format: int64 */
             rank: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Legacy compatibility field; ordinary query currently mirrors `score`.
+             *     This field alone does not establish that a separate reranker ran.
+             */
             rerank_score: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Provider retrieval score (dense similarity or hybrid fusion score).
+             */
             score: number;
+            score_kind?: components["schemas"]["QueryScoreKind"] | null;
             snippet: string;
             source: string;
             /** Format: int32 */
@@ -3286,7 +3295,13 @@ export interface components {
         };
         QueryResult: {
             results: components["schemas"]["QueryHit"][];
+            warnings?: components["schemas"]["SourceWarning"][];
         };
+        /**
+         * @description Scoring semantics of a returned retrieval result, independent of its numeric value.
+         * @enum {string}
+         */
+        QueryScoreKind: "dense_similarity" | "hybrid_fusion" | "code_search";
         /**
          * @description Read-only actions accepted by direct control-plane read endpoints.
          *
@@ -3485,7 +3500,7 @@ export interface components {
         /** @enum {string} */
         ResponseMode: "auto" | "summary" | "full" | "inline" | "artifact" | "path" | "job_only";
         RestAskRequest: {
-            agent?: null | components["schemas"]["AgentTurnOptions"];
+            agent?: components["schemas"]["AgentTurnOptions"] | null;
             /** Format: double */
             ask_authoritative_boost?: number | null;
             ask_authoritative_domains?: string[] | null;
@@ -3505,7 +3520,7 @@ export interface components {
             diagnostics?: boolean | null;
             explain?: boolean | null;
             hybrid_search?: boolean | null;
-            loadout?: null | components["schemas"]["LoadoutBinding"];
+            loadout?: components["schemas"]["LoadoutBinding"] | null;
             query: string;
             since?: string | null;
         };
@@ -3513,20 +3528,20 @@ export interface components {
             url: string;
         };
         RestChatRequest: {
-            agent?: null | components["schemas"]["AgentTurnOptions"];
-            loadout?: null | components["schemas"]["LoadoutBinding"];
+            agent?: components["schemas"]["AgentTurnOptions"] | null;
+            loadout?: components["schemas"]["LoadoutBinding"] | null;
             message: string;
             session_id?: string | null;
         };
         RestChatResponse: {
-            agent?: null | components["schemas"]["AgentTurnResult"];
+            agent?: components["schemas"]["AgentTurnResult"] | null;
             answer: string;
-            loadout?: null | components["schemas"]["LoadoutResolution"];
+            loadout?: components["schemas"]["LoadoutResolution"] | null;
             message: string;
             model?: string | null;
         };
         RestDiffRequest: {
-            render_mode?: null | components["schemas"]["RenderMode"];
+            render_mode?: components["schemas"]["RenderMode"] | null;
             url_a: string;
             url_b: string;
         };
@@ -3547,9 +3562,9 @@ export interface components {
             headers?: string[];
             /** Format: int32 */
             max_pages?: number | null;
-            mode?: null | components["schemas"]["RestExtractMode"];
+            mode?: components["schemas"]["RestExtractMode"] | null;
             prompt?: string | null;
-            render_mode?: null | components["schemas"]["RenderMode"];
+            render_mode?: components["schemas"]["RenderMode"] | null;
             urls: string[];
         };
         RestMapRequest: {
@@ -3569,12 +3584,12 @@ export interface components {
             /** Format: double */
             confidence?: number | null;
             depth?: number | null;
-            edge_type?: null | components["schemas"]["RestMemoryEdgeType"];
+            edge_type?: components["schemas"]["RestMemoryEdgeType"] | null;
             file?: string | null;
             id?: string | null;
             limit?: number | null;
             memory_ids?: string[] | null;
-            memory_type?: null | components["schemas"]["RestMemoryNodeType"];
+            memory_type?: components["schemas"]["RestMemoryNodeType"] | null;
             pinned?: boolean | null;
             project?: string | null;
             query?: string | null;
@@ -3583,7 +3598,7 @@ export interface components {
             source_id?: string | null;
             status?: string | null;
             strategy?: string | null;
-            subaction?: null | components["schemas"]["RestMemorySubaction"];
+            subaction?: components["schemas"]["RestMemorySubaction"] | null;
             target_id?: string | null;
             title?: string | null;
             token_budget?: number | null;
@@ -3632,13 +3647,13 @@ export interface components {
         RestSummarizeRequest: {
             exclude_selector?: string | null;
             headers?: string[];
-            render_mode?: null | components["schemas"]["RenderMode"];
+            render_mode?: components["schemas"]["RenderMode"] | null;
             root_selector?: string | null;
             url?: string | null;
             urls?: string[] | null;
         };
         RetrieveResult: {
-            backend?: null | components["schemas"]["DocumentBackend"];
+            backend?: components["schemas"]["DocumentBackend"] | null;
             chunk_count: number;
             content: string;
             matched_url?: string | null;
@@ -3678,14 +3693,14 @@ export interface components {
         RpcProbeResult: {
             /** @description Discovered method names (`system.listMethods` or OpenRPC `methods[].name`). */
             methods?: string[];
-            protocol?: null | components["schemas"]["RpcProtocol"];
+            protocol?: components["schemas"]["RpcProtocol"] | null;
             /** @description MCP `serverInfo.name`. */
             server_name?: string | null;
             /** @description MCP `serverInfo.version`. */
             server_version?: string | null;
             /** @description MCP tool names from `tools/list`. */
             tools?: string[];
-            transport?: null | components["schemas"]["RpcTransport"];
+            transport?: components["schemas"]["RpcTransport"] | null;
         };
         /**
          * @description Detected RPC protocol family. Wire strings match the historical
@@ -3776,10 +3791,10 @@ export interface components {
             cause?: string | null;
             code: string;
             message: string;
-            provider_id?: null | components["schemas"]["ProviderId"];
+            provider_id?: components["schemas"]["ProviderId"] | null;
             retryable: boolean;
             severity: components["schemas"]["Severity"];
-            source_item_key?: null | components["schemas"]["SourceItemKey"];
+            source_item_key?: components["schemas"]["SourceItemKey"] | null;
         };
         SourceGenerationId: string;
         SourceId: string;
@@ -3839,7 +3854,7 @@ export interface components {
         SourceRefreshPolicy: "if_stale" | "force" | "never";
         SourceRequest: {
             adapter?: string | null;
-            authority_hint?: null | components["schemas"]["AuthorityHint"];
+            authority_hint?: components["schemas"]["AuthorityHint"] | null;
             collection?: string | null;
             embed?: boolean;
             execution?: components["schemas"]["ExecutionPolicy"];
@@ -3850,7 +3865,7 @@ export interface components {
             options?: components["schemas"]["AdapterOptions"];
             output?: components["schemas"]["OutputPolicy"];
             refresh?: components["schemas"]["SourceRefreshPolicy"];
-            scope?: null | components["schemas"]["SourceScope"];
+            scope?: components["schemas"]["SourceScope"] | null;
             source: string;
             watch?: components["schemas"]["SourceWatchPolicy"];
         };
@@ -3861,8 +3876,8 @@ export interface components {
             counts: components["schemas"]["SourceCounts"];
             errors?: components["schemas"]["SourceError"][];
             graph: components["schemas"]["GraphWriteSummary"];
-            inline?: null | components["schemas"]["InlineSourceResult"];
-            job?: null | components["schemas"]["JobDescriptor"];
+            inline?: components["schemas"]["InlineSourceResult"] | null;
+            job?: components["schemas"]["JobDescriptor"] | null;
             job_id: components["schemas"]["JobId"];
             ledger: components["schemas"]["LedgerSummary"];
             scope: components["schemas"]["SourceScope"];
@@ -3870,7 +3885,7 @@ export interface components {
             source_kind: components["schemas"]["SourceKind"];
             status: components["schemas"]["LifecycleStatus"];
             warnings: components["schemas"]["SourceWarning"][];
-            watch?: null | components["schemas"]["WatchResult"];
+            watch?: components["schemas"]["WatchResult"] | null;
         };
         /** @enum {string} */
         SourceScope: "page" | "site" | "docs" | "repo" | "workspace" | "branch" | "org" | "package" | "version" | "feed" | "subreddit" | "thread" | "comment" | "video" | "playlist" | "channel" | "issue" | "pull_request" | "merge_request" | "release" | "wiki" | "file" | "directory" | "map" | "tool" | "script" | "api";
@@ -3882,22 +3897,22 @@ export interface components {
             created_at: components["schemas"]["Timestamp"];
             display_name: string;
             graph_node_ids?: components["schemas"]["GraphNodeId"][];
-            last_job_id?: null | components["schemas"]["JobId"];
-            last_refreshed_at?: null | components["schemas"]["Timestamp"];
+            last_job_id?: components["schemas"]["JobId"] | null;
+            last_refreshed_at?: components["schemas"]["Timestamp"] | null;
             source_id: components["schemas"]["SourceId"];
             source_kind: components["schemas"]["SourceKind"];
             status: components["schemas"]["LifecycleStatus"];
             tags?: string[];
             updated_at: components["schemas"]["Timestamp"];
             user_label?: string | null;
-            watch_id?: null | components["schemas"]["WatchId"];
+            watch_id?: components["schemas"]["WatchId"] | null;
         };
         SourceWarning: {
             code: string;
             message: string;
             retryable: boolean;
             severity: components["schemas"]["Severity"];
-            source_item_key?: null | components["schemas"]["SourceItemKey"];
+            source_item_key?: components["schemas"]["SourceItemKey"] | null;
         };
         /** @enum {string} */
         SourceWatchPolicy: "disabled" | "ensure" | "enabled";
@@ -3942,15 +3957,15 @@ export interface components {
          */
         StreamEvent: {
             data?: unknown;
-            error?: null | components["schemas"]["ApiError"];
+            error?: components["schemas"]["ApiError"] | null;
             event_id: string;
-            job_id?: null | components["schemas"]["JobId"];
+            job_id?: components["schemas"]["JobId"] | null;
             kind: components["schemas"]["StreamKind"];
             request_id?: string | null;
             /** Format: int64 */
             sequence: number;
             timestamp: components["schemas"]["Timestamp"];
-            warning?: null | components["schemas"]["SourceWarning"];
+            warning?: components["schemas"]["SourceWarning"] | null;
         };
         /**
          * @description `StreamEvent.kind` — the flat set of streaming event kinds shared by SSE
@@ -3964,10 +3979,11 @@ export interface components {
             contract_version: string;
             data: {
                 results: components["schemas"]["QueryHit"][];
+                warnings?: components["schemas"]["SourceWarning"][];
             };
-            job?: null | components["schemas"]["JobDescriptor"];
+            job?: components["schemas"]["JobDescriptor"] | null;
             ok: boolean;
-            pagination?: null | components["schemas"]["PageInfo"];
+            pagination?: components["schemas"]["PageInfo"] | null;
             request_id: string;
             trace: components["schemas"]["TraceContext"];
             warnings: components["schemas"]["SourceWarning"][];
@@ -3976,7 +3992,7 @@ export interface components {
             artifacts: components["schemas"]["ArtifactRef"][];
             contract_version: string;
             data: {
-                backend?: null | components["schemas"]["DocumentBackend"];
+                backend?: components["schemas"]["DocumentBackend"] | null;
                 chunk_count: number;
                 content: string;
                 matched_url?: string | null;
@@ -3989,9 +4005,9 @@ export interface components {
                 variant_errors?: components["schemas"]["ServiceRetrieveVariantError"][];
                 warnings?: string[];
             };
-            job?: null | components["schemas"]["JobDescriptor"];
+            job?: components["schemas"]["JobDescriptor"] | null;
             ok: boolean;
-            pagination?: null | components["schemas"]["PageInfo"];
+            pagination?: components["schemas"]["PageInfo"] | null;
             request_id: string;
             trace: components["schemas"]["TraceContext"];
             warnings: components["schemas"]["SourceWarning"][];
@@ -4031,7 +4047,7 @@ export interface components {
             /** Format: int64 */
             size_bytes: number;
             source_hint?: string | null;
-            source_id?: null | components["schemas"]["SourceId"];
+            source_id?: components["schemas"]["SourceId"] | null;
         };
         UploadCreateResult: {
             expires_at: components["schemas"]["Timestamp"];
@@ -4043,12 +4059,12 @@ export interface components {
             cursor?: string | null;
             /** Format: int32 */
             limit?: number | null;
-            status?: null | components["schemas"]["UploadStatusKind"];
+            status?: components["schemas"]["UploadStatusKind"] | null;
         };
         /** @enum {string} */
         UploadPurpose: "source_artifact" | "import" | "evaluation";
         UploadStatus: {
-            artifact_id?: null | components["schemas"]["ArtifactId"];
+            artifact_id?: components["schemas"]["ArtifactId"] | null;
             /** Format: int64 */
             bytes_received: number;
             content_type: string;
@@ -4056,7 +4072,7 @@ export interface components {
             expires_at: components["schemas"]["Timestamp"];
             filename: string;
             purpose: components["schemas"]["UploadPurpose"];
-            retention_until?: null | components["schemas"]["Timestamp"];
+            retention_until?: components["schemas"]["Timestamp"] | null;
             sha256?: string | null;
             /** Format: int64 */
             size_bytes: number;
@@ -4075,7 +4091,7 @@ export interface components {
         };
         VectorDeleteSelector: {
             collection: string;
-            generation?: null | components["schemas"]["SourceGenerationId"];
+            generation?: components["schemas"]["SourceGenerationId"] | null;
             /** @enum {string} */
             kind: "source";
             source_id: components["schemas"]["SourceId"];
@@ -4092,7 +4108,7 @@ export interface components {
         } | {
             collection: string;
             document_id: components["schemas"]["DocumentId"];
-            generation?: null | components["schemas"]["SourceGenerationId"];
+            generation?: components["schemas"]["SourceGenerationId"] | null;
             /** @enum {string} */
             kind: "document";
         } | {
@@ -4126,7 +4142,7 @@ export interface components {
         };
         WatchExecRequest: {
             reason?: string | null;
-            refresh?: null | components["schemas"]["SourceRefreshPolicy"];
+            refresh?: components["schemas"]["SourceRefreshPolicy"] | null;
             wait?: boolean | null;
         };
         WatchHistoryResult: {
@@ -4143,15 +4159,15 @@ export interface components {
             metadata?: components["schemas"]["MetadataMap"];
             options: components["schemas"]["AdapterOptions"];
             schedule: components["schemas"]["WatchSchedule"];
-            scope?: null | components["schemas"]["SourceScope"];
+            scope?: components["schemas"]["SourceScope"] | null;
             source: string;
         };
         WatchResult: {
             adapter: components["schemas"]["AdapterRef"];
             canonical_uri: string;
             enabled: boolean;
-            job?: null | components["schemas"]["JobDescriptor"];
-            latest_job?: null | components["schemas"]["JobDescriptor"];
+            job?: components["schemas"]["JobDescriptor"] | null;
+            latest_job?: components["schemas"]["JobDescriptor"] | null;
             schedule: components["schemas"]["WatchSchedule"];
             scope: components["schemas"]["SourceScope"];
             source_id: components["schemas"]["SourceId"];
@@ -4165,13 +4181,13 @@ export interface components {
             timezone?: string | null;
         };
         WatchStatusResponse: {
-            latest_job_summary?: null | components["schemas"]["JobSummary"];
+            latest_job_summary?: components["schemas"]["JobSummary"] | null;
             watch: components["schemas"]["WatchResult"];
         };
         WatchSummary: {
             enabled: boolean;
-            last_job_id?: null | components["schemas"]["JobId"];
-            last_status?: null | components["schemas"]["LifecycleStatus"];
+            last_job_id?: components["schemas"]["JobId"] | null;
+            last_status?: components["schemas"]["LifecycleStatus"] | null;
             next_run_at: components["schemas"]["Timestamp"];
             schedule: components["schemas"]["WatchSchedule"];
             source_id: components["schemas"]["SourceId"];
@@ -4181,10 +4197,10 @@ export interface components {
             collection?: string | null;
             embed?: boolean | null;
             enabled?: boolean | null;
-            limits?: null | components["schemas"]["SourceLimits"];
-            metadata?: null | components["schemas"]["MetadataMap"];
-            options?: null | components["schemas"]["AdapterOptions"];
-            schedule?: null | components["schemas"]["WatchSchedule"];
+            limits?: components["schemas"]["SourceLimits"] | null;
+            metadata?: components["schemas"]["MetadataMap"] | null;
+            options?: components["schemas"]["AdapterOptions"] | null;
+            schedule?: components["schemas"]["WatchSchedule"] | null;
         };
     };
     responses: never;
@@ -4255,6 +4271,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4281,6 +4298,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4302,6 +4320,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4328,6 +4347,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 502 response */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -4376,6 +4396,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4401,6 +4422,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7172,6 +7194,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7531,6 +7554,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9721,6 +9745,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9762,6 +9787,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9770,6 +9796,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadCreateResult"];
                 };
             };
+            /** @description HTTP 400 response */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -9809,6 +9836,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9835,6 +9863,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9860,6 +9889,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9886,6 +9916,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description HTTP 404 response */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9911,6 +9942,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9919,6 +9951,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadCompleteResult"];
                 };
             };
+            /** @description HTTP 400 response */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -9962,6 +9995,7 @@ export interface operations {
             };
         };
         responses: {
+            /** @description HTTP 200 response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9970,6 +10004,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadStatus"];
                 };
             };
+            /** @description HTTP 400 response */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -10351,7 +10386,7 @@ export interface operations {
             query?: {
                 limit?: number | null;
                 cursor?: string | null;
-                status?: null | components["schemas"]["LifecycleStatus"];
+                status?: components["schemas"]["LifecycleStatus"] | null;
             };
             header?: never;
             path: {

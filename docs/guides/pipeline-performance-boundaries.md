@@ -1,7 +1,7 @@
 ---
 title: "Pipeline performance and resource boundaries"
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-10-23
 ---
 
 # Pipeline performance and resource boundaries
@@ -29,6 +29,13 @@ Markdown source positions use a document-wide index instead of repeatedly
 scanning prefixes. Splitting an oversized section copies its selected window,
 not the entire section. These changes preserve content and source ranges.
 
+Document metadata stays on the prepared document; chunks retain their own
+overrides. Vector publication inherits shared fields before applying those
+overrides, avoiding preparation-time copies of large structured payloads.
+Structured CSV, XML, YAML and TOML source positions also reuse one document
+index. Deduplication hashes borrowed identities and verifies matches against
+retained chunks instead of storing serialized copies.
+
 ## Embedding and publication
 
 TEI request and weighted-input admission are shared by normalized endpoint.
@@ -37,6 +44,28 @@ same endpoint. The first live owner establishes that endpoint's limits; later
 profiles may be stricter but cannot raise its global limits. New limits take
 effect after all owners of the old endpoint admission state have gone away.
 Restart or drain long-running consumers when applying such changes.
+
+TEI packing obtains model-matched counts, including special tokens, through
+authenticated `/tokenize` requests, sending one input string per request for
+compatibility across TEI versions. Flat token arrays and singleton nested rows
+are accepted. Counting shares provider admission and has a five-second maximum
+total budget, a 256 KiB per-request limit and a 16 MiB response bound. Unsupported endpoints are cached; unavailable counting uses
+conservative UTF-8 byte accounting with a warning and fallback metric. JSON
+payload byte limits remain independent of token limits. Packing computes its
+sort keys once. The MLX direct server exposes the same tokenizer used for
+embedding through `/tokenize`.
+
+Tokenization latency and request metrics expose the added round-trip cost.
+Packed budget utilization, input counts and padding ratios distinguish
+`provider_tokens` from fallback `utf8_bytes`; exact counts also populate
+provider input-token usage. These measurements support corpus-specific tuning
+without claiming a GPU throughput improvement from source changes alone.
+
+The generation scheduler admits a rolling window of up to three pools when
+embedding/publication overlap is enabled. It publishes in source order and
+retains work admission through durable accounting, including completed pools
+waiting for an earlier pool. Disabling overlap uses a single pool and finishes
+publication before starting the next embedding operation.
 
 A TEI `Retry-After` beyond the in-call wait budget is returned as provider
 cooling rather than keeping request permits occupied during a long sleep.
@@ -53,6 +82,10 @@ Qdrant carry-forward publication uses both point-count and encoded-request-byte
 limits, including the 16 MiB request cap. An individual point that cannot fit
 is rejected explicitly before that oversized request is sent. Requests are
 encoded incrementally rather than collecting every encoded batch in memory.
+Ordinary upsert pools first attempt one capped encoding. Pools fitting the
+16 MiB request limit reuse those bytes directly, avoiding a singleton sizing
+pass. An overflow drops the capped buffer before the existing bounded splitting
+path runs; oversized individual points still fail explicitly.
 
 ## Generation side effects
 
@@ -61,16 +94,69 @@ independently of rolling prepared-work admission. Each accepted batch is charged
 using the larger of its estimated resident size and serialized size. The charge
 applies whether the batch is on disk or in the in-memory fallback.
 
-This is not an exact RSS ceiling. Final archive construction still requires a
-bounded complete generation in memory. A generation exceeding the supported
-side-effect budget fails explicitly; spilling is not permission to accept an
-unlimited generation. This implementation does not add a streaming archive API.
+The private spool stores records and unique keys in SQLite rather than growing
+an in-memory key set. Each record remains capped at 64 MiB. The database has a
+256 MiB page limit, a 4 MiB cache target, cache spilling enabled, and memory
+mapping disabled. The cache target is not an exact process RSS ceiling; record
+encoding, SQLite value buffers, and deserialized values have separate transient
+costs. Rollback journals can temporarily add disk usage beyond the main database.
+
+Appends commit atomically with full SQLite synchronization. A private owner lock
+fences concurrent access, and stored identity includes source, job, generation,
+and attempt. Final replay seals a checksum receipt and rejects changed or
+corrupted records. Storage tests verify reopening committed records and rolling
+back interrupted transactions; production does not reopen a spool to resume an
+interrupted generation. Production work directories are registered
+with durable owner descriptors and discovered at startup. Recovery preserves
+unknown or active work and reaps only a proven terminal or published generation
+under the publication settlement fence. It never republishes private work. Four
+local work permits bound concurrent registered generations. Registered append
+failures fail closed; the bounded in-memory fallback is restricted to legacy
+unregistered callers. Corruption or a seal mismatch also fails closed.
+
+Finalization receives spool records through a one-record Tokio channel. The
+blocking producer owns the cursor and sealed store; a closed receiver releases
+producer backpressure. With the production outbox, candidates are staged in
+pages of at most 16 per record, without rebuilding a generation-wide candidate
+vector. Refreshed manifest items replace the existing inventory directly using
+a key-to-position index. The sealed owner survives normal publication and
+candidate settlement. Conservative cleanup also covers canceled callers and
+process exits. Unsettled or corrupt registrations remain fenced and can exhaust
+the four local work permits until explicitly settled. Delivery pages use the existing outbox format and startup drain;
+publication errors retain intent for ledger-gated recovery. Outbox scans admit
+at most 1,024 paths, 64 MiB serialized bytes, and a separate 64 MiB conservative
+structural charge per pass. A rotating cursor prevents later pages starving.
+A cross-process admission lock enforces a 1 GiB disk quota including quarantined
+files. Historical bounded publication receipts fence delivery and stale cleanup.
+
+This is not an exact RSS ceiling. Web WARC archives stream one acquired item
+at a time into a private registered file with a 256 MiB archive limit. The file
+artifact provider verifies its size and digest while copying through a 64 KiB
+buffer, and publishes its manifest after synchronization. Cleanup intent is
+recorded before the write; provider locks prevent deletion overtaking a detached
+writer. A generation exceeding its side-effect budget still fails explicitly.
 
 Spool creation, serialization, append, fallback replay, and final replay run on
 blocking workers rather than occupying a Tokio async worker. Each accumulator
 has one blocking operation outstanding. A canceled operation retains ownership
 of its private spool until the blocking operation finishes. Ambiguous append
 failure does not replay the same side-effect record twice.
+
+## Private graph journal
+
+The combined graph journal and generation side-effect budget remains **256 MiB**.
+Graph journal records now use lossless compressed JSON in the existing text
+column; legacy JSON records remain readable. Accounting charges the stored
+encoded record size. Decoding is capped at 8 MiB per record, encoded records at
+12 MiB, and raw and encoded batches independently at 64 MiB. Private canonical
+rows reject growth beyond an 8 MiB stored window. The private graph database has
+a 1 GiB main-file page limit and a 64 MiB cache target; rollback journals can
+transiently increase physical usage. These are admission bounds, not total RSS
+ceilings. No graph facts or code indexing are disabled.
+
+Code evidence validation uses sparse source line offsets rather than rescanning
+the entire source for each range. Single-line quote searches avoid constructing
+a complete function-body string; CRLF and Unicode semantics remain equivalent.
 
 ## SQLite scheduling and lifecycle
 
@@ -161,3 +247,19 @@ enqueue may be consumed by an already-running worker sharing its database. Use
 an explicit binary and an isolated data directory, as the benchmark harness
 does, when testing a local build. There is no generic CLI forwarding mode. Do not compare a
 frozen-corpus TEI replay directly with a live acquisition-to-publication crawl.
+
+### Inline artifact reads and outbox quota reservations
+
+Inline artifact resolution admits at most the existing 96 MiB upload limit;
+artifact manifests admit 1 MiB. Larger bodies fail before allocation with an
+actionable streaming-download alternative. CLI byte ranges seek before reading
+and admit only the selected window; they do not load the entire artifact.
+
+Outbox pages reserve bytes durably under the cross-process admission fence.
+Opening an outbox reconciles legacy files, quarantine and interrupted writes once;
+subsequent page reservations use an indexed SQLite counter instead of rescanning
+the directory. Removal is synced before releasing its reservation. Interrupted
+writes may conservatively overcharge until reopen/reconciliation. The existing
+1 GiB total admission includes 96 MiB reserved overhead: 16 MiB quota database,
+its rollback journal, and one 64 MiB temporary delivery. Corrupt quota state fails
+closed and preserves files for inspection; it never grants extra disk admission.

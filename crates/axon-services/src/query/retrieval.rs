@@ -123,6 +123,10 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         ))
     })?;
 
+    let hybrid_scoring = cfg.hybrid_search_enabled
+        && !axon_vectors::bm42::compute_bm42_sparse(axon_api::source::ChunkId::new("query"), text)
+            .indices
+            .is_empty();
     let results = result
         .hits
         .into_iter()
@@ -130,6 +134,11 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
         .enumerate()
         .map(|(idx, hit)| QueryHit {
+            score_kind: Some(if hybrid_scoring {
+                axon_api::result::QueryScoreKind::HybridFusion
+            } else {
+                axon_api::result::QueryScoreKind::DenseSimilarity
+            }),
             rank: (opts.offset + idx + 1) as u64,
             score: hit.score,
             rerank_score: hit.score,
@@ -152,7 +161,10 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         })
         .collect();
 
-    Ok(QueryResult { results })
+    Ok(QueryResult {
+        results,
+        warnings: result.warnings,
+    })
 }
 
 pub(super) fn query_hybrid_candidate_limit(cfg: &Config) -> Option<u32> {

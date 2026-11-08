@@ -91,7 +91,11 @@ fn valid_code_outcome(value: &serde_json::Value) -> bool {
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "code_ast_status" | "code_grammar" | "code_symbol_count" | "symbol_extraction_status"
+            "code_ast_status"
+                | "code_grammar"
+                | "code_symbol_count"
+                | "symbol_extraction_status"
+                | "code_searchable_structure"
         )
     }) {
         return false;
@@ -102,6 +106,14 @@ fn valid_code_outcome(value: &serde_json::Value) -> bool {
     else {
         return false;
     };
+    if let Some(structure) = value.get("code_searchable_structure") {
+        let Some(structure) = structure.as_bool() else {
+            return false;
+        };
+        if structure && status != "parsed" {
+            return false;
+        }
+    }
     let Some(count) = value
         .get("code_symbol_count")
         .and_then(serde_json::Value::as_u64)

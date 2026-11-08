@@ -7,7 +7,7 @@ use crate::types::{BuildIdentity, ServiceJob, StatusResult, StatusTotals};
 use axon_api::service_job::StatusJob;
 use axon_api::source::JobKind;
 use axon_core::config::Config;
-use axon_jobs::store::sqlite_diagnostics;
+use axon_jobs::store::sqlite_readiness;
 use std::error::Error;
 
 pub struct StatusJobs {
@@ -20,7 +20,10 @@ pub struct StatusJobs {
 #[must_use = "full_status returns a Result that should be handled"]
 pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResult, Box<dyn Error>> {
     let (jobs, totals, mut errors) = load_status_jobs(service_context).await?;
-    let sqlite = sqlite_diagnostics(&service_context.cfg.sqlite_path).await;
+    // Routine status must not scan the database. Explicit doctor diagnostics
+    // retain the full integrity check; runtime readiness preserves IOERR and
+    // active-owner failures without adding database-size-dependent latency.
+    let sqlite = sqlite_readiness(&service_context.cfg.sqlite_path);
     if let Some(error) = sqlite_status_error(&sqlite) {
         errors.push(error);
     }
@@ -85,6 +88,12 @@ pub fn sqlite_status_error(sqlite: &serde_json::Value) -> Option<String> {
             "SQLite runtime IOERR detected ({ioerr_count} error{}); restart the Axon process after verifying storage",
             if ioerr_count == 1 { "" } else { "s" }
         ));
+    }
+    if sqlite.get("check").and_then(serde_json::Value::as_str) == Some("runtime") {
+        return Some(
+            "SQLite runtime readiness failed; inspect active database ownership and storage"
+                .to_string(),
+        );
     }
     let quick_check = sqlite
         .get("quick_check")

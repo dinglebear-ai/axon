@@ -318,6 +318,26 @@ pub(super) async fn committed_generation(
     Ok(committed_generation.map(SourceGenerationId::new))
 }
 
+pub(super) async fn generation_receipt(
+    store: &SqliteLedgerStore,
+    source: &SourceId,
+    generation: &SourceGenerationId,
+) -> Result<Option<crate::store::GenerationReceipt>> {
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT status, publish_state, published_at FROM source_generations WHERE source_id=?1 AND generation=?2")
+        .bind(&source.0).bind(&generation.0).fetch_optional(&store.pool).await.map_err(sqlite_error)?;
+    row.map(|(status, state, published)| {
+        Ok(crate::store::GenerationReceipt {
+            status: serde_json::from_value(serde_json::Value::String(status))
+                .map_err(json_error)?,
+            publish_state: serde_json::from_value(serde_json::Value::String(state))
+                .map_err(json_error)?,
+            published: published.is_some(),
+        })
+    })
+    .transpose()
+}
+
 pub(super) async fn upsert_generation_in_tx(
     tx: &mut sqlx::SqliteConnection,
     generation: &SourceGeneration,

@@ -2,7 +2,7 @@ use axon_api::source::{ContentRef, MetadataMap, SourceParseFacts, SourceRange};
 use serde_json::Value;
 
 pub const MODULE_NAME: &str = "facts";
-pub const PARSER_VERSION: &str = "pr8-baseline";
+pub const PARSER_VERSION: &str = "pr9-source-scoped-graph-v2";
 
 use crate::parser::ParseInput;
 

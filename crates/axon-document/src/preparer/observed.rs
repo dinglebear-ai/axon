@@ -72,3 +72,8 @@ pub(super) fn record_observation(
         }
     }
 }
+
+pub(super) fn parser_stamp(parse: &DocumentParse) -> Option<(&str, &str)> {
+    (!parse.parser_id.is_empty() && parse.parser_id != "none")
+        .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()))
+}

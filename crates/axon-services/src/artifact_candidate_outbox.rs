@@ -1,6 +1,6 @@
 //! Durable post-commit delivery intent for artifact candidates.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -8,11 +8,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axon_adapters::artifact_candidate_batch_idempotency_key;
 use axon_api::source::{ArtifactCandidate, JobId, SourceGenerationId, SourceId};
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
+mod quota;
+use quota::{bounded_encode, lock_disk_admission};
+mod scan;
+mod structure;
+use scan::{decode_record, scan_paths};
 const MAX_PENDING_DELIVERIES: usize = 1_024;
 const MAX_OUTBOX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_OUTBOX_DISK_BYTES: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -34,6 +40,7 @@ pub(crate) struct ArtifactCandidateOutboxFinding {
 pub(crate) struct ArtifactCandidateOutboxScan {
     pub(crate) deliveries: Vec<PendingArtifactCandidateDelivery>,
     pub(crate) findings: Vec<ArtifactCandidateOutboxFinding>,
+    pub(crate) has_more: bool,
 }
 
 #[derive(Debug)]
@@ -44,7 +51,8 @@ pub(crate) struct ArtifactCandidateOutbox {
     drain_requested: AtomicBool,
     drain_cancelled: AtomicBool,
     drain_task: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
-    scan_cursor: std::sync::atomic::AtomicUsize,
+    scan_cursor: std::sync::Mutex<Option<PathBuf>>,
+    quota_ready: Arc<AtomicBool>,
 }
 
 impl ArtifactCandidateOutbox {
@@ -56,7 +64,8 @@ impl ArtifactCandidateOutbox {
             drain_requested: AtomicBool::new(false),
             drain_cancelled: AtomicBool::new(false),
             drain_task: std::sync::Mutex::new(None),
-            scan_cursor: std::sync::atomic::AtomicUsize::new(0),
+            scan_cursor: std::sync::Mutex::new(None),
+            quota_ready: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -70,6 +79,7 @@ impl ArtifactCandidateOutbox {
         if candidates.is_empty() {
             return Ok(None);
         }
+        let started = std::time::Instant::now();
         candidates.sort_by(|left, right| left.id.cmp(&right.id));
         let delivery_key =
             artifact_candidate_batch_idempotency_key(&job_id, &source_id, &generation, &candidates);
@@ -84,28 +94,50 @@ impl ArtifactCandidateOutbox {
         let _guard = self.gate.lock().await;
         create_private_directory(&self.root).await?;
         let path = self.path(&pending.delivery_key);
-        if tokio::fs::try_exists(&path).await? {
-            return Ok(Some(pending));
+        match tokio::fs::symlink_metadata(&path).await {
+            Ok(metadata) => {
+                anyhow::ensure!(
+                    metadata.is_file()
+                        && !metadata.file_type().is_symlink()
+                        && metadata.len() <= MAX_OUTBOX_FILE_BYTES,
+                    "existing outbox delivery is not a bounded regular file"
+                );
+                return Ok(Some(pending));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
-        let bytes = serde_json::to_vec(&pending)?;
-        let temporary = self.root.join(format!(
-            ".{}.{}.tmp",
-            file_key_for(&pending.delivery_key).expect("generated delivery key"),
-            uuid::Uuid::new_v4()
-        ));
-        let mut options = tokio::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&temporary).await?;
-        file.write_all(&bytes).await?;
-        file.sync_all().await?;
-        drop(file);
-        tokio::fs::rename(&temporary, &path).await?;
-        sync_directory(self.root.clone()).await?;
+        let (pending, bytes) = tokio::task::spawn_blocking(move || {
+            let bytes = bounded_encode(&pending, MAX_OUTBOX_FILE_BYTES)?;
+            structure::charge(&bytes).map_err(|_| {
+                anyhow::anyhow!("artifact candidate outbox decoded structure budget exceeded")
+            })?;
+            Ok::<_, anyhow::Error>((pending, bytes))
+        })
+        .await??;
+        let _disk_owner = lock_disk_admission(&self.root)?;
+        let root = self.root.clone();
+        let quota_ready = self.quota_ready.clone();
+        tokio::task::spawn_blocking(move || {
+            use std::io::Write as _;
+            let _owner = _disk_owner;
+            let mut quota = quota::open(&root, !quota_ready.load(Ordering::Acquire))?;
+            quota_ready.store(true, Ordering::Release);
+            quota::reserve(
+                &mut quota,
+                &path,
+                bytes.len() as u64,
+                MAX_OUTBOX_DISK_BYTES - quota::DISK_OVERHEAD,
+            )?;
+            let mut temporary = tempfile::NamedTempFile::new_in(&root)?;
+            temporary.write_all(&bytes)?;
+            temporary.as_file().sync_all()?;
+            temporary.persist(path).map_err(|error| error.error)?;
+            std::fs::File::open(root)?.sync_all()?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await??;
+        tracing::info!(job_id=?pending.job_id, candidates=pending.candidates.len(), elapsed_us=started.elapsed().as_micros() as u64, "source outbox page staged");
         Ok(Some(pending))
     }
 
@@ -115,33 +147,32 @@ impl ArtifactCandidateOutbox {
     }
 
     pub(crate) async fn scan(&self) -> anyhow::Result<ArtifactCandidateOutboxScan> {
+        self.scan_with_budget(MAX_OUTBOX_FILE_BYTES).await
+    }
+
+    async fn scan_with_budget(&self, budget: u64) -> anyhow::Result<ArtifactCandidateOutboxScan> {
+        self.scan_with_limits(budget, structure::limit()).await
+    }
+
+    async fn scan_with_limits(
+        &self,
+        budget: u64,
+        structure_budget: u64,
+    ) -> anyhow::Result<ArtifactCandidateOutboxScan> {
         let _guard = self.gate.lock().await;
         if !tokio::fs::try_exists(&self.root).await? {
-            return Ok(ArtifactCandidateOutboxScan {
-                deliveries: Vec::new(),
-                findings: Vec::new(),
-            });
+            return Ok(scan::empty_scan());
         }
-        let mut entries = tokio::fs::read_dir(&self.root).await?;
-        let mut paths = Vec::new();
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if path.extension().and_then(|value| value.to_str()) == Some("json") {
-                paths.push(path);
-            }
-        }
-        paths.sort();
-        if paths.len() > MAX_PENDING_DELIVERIES {
-            let start = self
-                .scan_cursor
-                .fetch_add(MAX_PENDING_DELIVERIES, Ordering::AcqRel)
-                % paths.len();
-            paths.rotate_left(start);
-            paths.truncate(MAX_PENDING_DELIVERIES);
-        }
+        let cursor = self.scan_cursor.lock().expect("outbox cursor lock").clone();
+        let (paths, mut has_more) =
+            scan_paths(&self.root, cursor.as_ref(), self.quota_ready.clone()).await?;
+        let mut admitted_bytes = 0_u64;
+        let mut structural_bytes = 0_u64;
+        let mut last_visited = cursor;
         let mut pending: Vec<PendingArtifactCandidateDelivery> = Vec::new();
         let mut findings = Vec::new();
         for path in paths {
+            let previous_visited = last_visited.replace(path.clone());
             let file_name = path.file_name().map_or_else(
                 || "<unknown>".to_string(),
                 |value| value.to_string_lossy().into_owned(),
@@ -158,7 +189,7 @@ impl ArtifactCandidateOutbox {
                 );
                 continue;
             }
-            let metadata = match tokio::fs::metadata(&path).await {
+            let metadata = match tokio::fs::symlink_metadata(&path).await {
                 Ok(metadata) => metadata,
                 Err(_) => {
                     findings.push(finding(
@@ -168,34 +199,63 @@ impl ArtifactCandidateOutbox {
                     continue;
                 }
             };
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                findings.push(finding("artifact_candidate.outbox.invalid_file", file_name));
+                continue;
+            }
             if metadata.len() > MAX_OUTBOX_FILE_BYTES {
                 findings.push(
                     quarantine(&path, "artifact_candidate.outbox.oversized", file_name).await,
                 );
                 continue;
             }
-            let bytes = match tokio::fs::read(&path).await {
+            // Admit one legacy-sized file even with a smaller test budget;
+            // subsequent records may not exceed the aggregate scan window.
+            if admitted_bytes > 0 && metadata.len() > budget.saturating_sub(admitted_bytes) {
+                last_visited = previous_visited;
+                has_more = true;
+                break;
+            }
+            let bytes = match read_bounded(&path).await {
                 Ok(bytes) => bytes,
                 Err(_) => {
                     findings.push(finding("artifact_candidate.outbox.read_failed", file_name));
                     continue;
                 }
             };
-            let Ok(record) = serde_json::from_slice::<PendingArtifactCandidateDelivery>(&bytes)
-            else {
-                findings
-                    .push(quarantine(&path, "artifact_candidate.outbox.corrupt", file_name).await);
-                continue;
+            if admitted_bytes > 0 && bytes.len() as u64 > budget.saturating_sub(admitted_bytes) {
+                last_visited = previous_visited;
+                has_more = true;
+                break;
+            }
+            admitted_bytes = admitted_bytes.saturating_add(bytes.len() as u64);
+            let remaining_structure = structure_budget.saturating_sub(structural_bytes);
+            let decoded = decode_record(bytes, remaining_structure).await?;
+            let (record, charged) = match decoded {
+                Ok(Some(value)) => value,
+                Ok(None) => {
+                    last_visited = previous_visited;
+                    has_more = true;
+                    break;
+                }
+                Err(structure::Rejected::Complexity) => {
+                    // May be a legacy whole-generation delivery. Preserve it
+                    // for a bounded migration rather than silently deleting evidence.
+                    findings.push(finding(
+                        "artifact_candidate.outbox.structure_limit",
+                        file_name,
+                    ));
+                    continue;
+                }
+                Err(structure::Rejected::Corrupt) => {
+                    findings.push(
+                        quarantine(&path, "artifact_candidate.outbox.corrupt", file_name).await,
+                    );
+                    continue;
+                }
             };
-            let recomputed = artifact_candidate_batch_idempotency_key(
-                &record.job_id,
-                &record.source_id,
-                &record.generation,
-                &record.candidates,
-            );
-            if file_key_for(&record.delivery_key) != Some(file_key)
-                || record.delivery_key != recomputed
-            {
+            structural_bytes += charged;
+            if !scan::record_matches_file(&record, file_key) {
                 findings.push(
                     quarantine(
                         &path,
@@ -208,10 +268,13 @@ impl ArtifactCandidateOutbox {
             }
             pending.push(record);
         }
+        *self.scan_cursor.lock().expect("outbox cursor lock") =
+            if has_more { last_visited } else { None };
         pending.sort_by(|left, right| left.delivery_key.cmp(&right.delivery_key));
         Ok(ArtifactCandidateOutboxScan {
             deliveries: pending,
             findings,
+            has_more,
         })
     }
 
@@ -222,11 +285,26 @@ impl ArtifactCandidateOutbox {
         );
         let _guard = self.gate.lock().await;
         let path = self.path(delivery_key);
-        match tokio::fs::remove_file(path).await {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error.into()),
+        if !tokio::fs::try_exists(&self.root).await? {
+            return Ok(());
         }
+        let root = self.root.clone();
+        let ready = self.quota_ready.clone();
+        tokio::task::spawn_blocking(move || {
+            let _owner = lock_disk_admission(&root)?;
+            let mut quota = quota::open(&root, !ready.load(Ordering::Acquire))?;
+            ready.store(true, Ordering::Release);
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            // Sync removal before freeing its reservation; a crash may overcount, never undercount.
+            std::fs::File::open(&root)?.sync_all()?;
+            quota::release(&mut quota, &path)?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await?
     }
 
     pub(crate) fn begin_drain(&self) -> bool {
@@ -261,6 +339,7 @@ impl ArtifactCandidateOutbox {
     }
 
     pub(crate) fn start_drain_pass(&self) {
+        *self.scan_cursor.lock().expect("outbox cursor lock") = None;
         self.drain_requested.store(false, Ordering::Release);
     }
 
@@ -294,6 +373,27 @@ impl ArtifactCandidateOutbox {
     }
 }
 
+async fn read_bounded(path: &PathBuf) -> anyhow::Result<Vec<u8>> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    let file = options.open(path).await?;
+    anyhow::ensure!(
+        file.metadata().await?.is_file(),
+        "outbox entry must be a regular file"
+    );
+    let mut bytes = Vec::new();
+    file.take(MAX_OUTBOX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .await?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_OUTBOX_FILE_BYTES,
+        "outbox entry exceeds byte limit"
+    );
+    Ok(bytes)
+}
+
 fn valid_file_key(value: &str) -> bool {
     value.len() == 64
         && value
@@ -320,12 +420,21 @@ fn finding(code: &'static str, file_name: String) -> ArtifactCandidateOutboxFind
 }
 
 async fn quarantine(
-    path: &PathBuf,
+    path: &Path,
     code: &'static str,
     file_name: String,
 ) -> ArtifactCandidateOutboxFinding {
     let quarantine = path.with_extension(format!("invalid.{}", uuid::Uuid::new_v4()));
-    if tokio::fs::rename(path, quarantine).await.is_err() {
+    let path = path.to_path_buf();
+    let result = tokio::task::spawn_blocking(move || {
+        quota::quarantine_file(
+            &path,
+            &quarantine,
+            MAX_OUTBOX_DISK_BYTES - quota::DISK_OVERHEAD,
+        )
+    })
+    .await;
+    if !matches!(result, Ok(Ok(()))) {
         return finding("artifact_candidate.outbox.quarantine_failed", file_name);
     }
     finding(code, file_name)
@@ -333,16 +442,16 @@ async fn quarantine(
 
 async fn create_private_directory(path: &PathBuf) -> anyhow::Result<()> {
     tokio::fs::create_dir_all(path).await?;
+    let metadata = tokio::fs::symlink_metadata(path).await?;
+    anyhow::ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        "outbox root must be a private regular directory"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).await?;
     }
-    Ok(())
-}
-
-async fn sync_directory(path: PathBuf) -> anyhow::Result<()> {
-    tokio::task::spawn_blocking(move || std::fs::File::open(path)?.sync_all()).await??;
     Ok(())
 }
 

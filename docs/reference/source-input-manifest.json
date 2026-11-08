@@ -27,7 +27,7 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:3f9f4c2f386d8181215ffee80f2558a1ea7a366803b3d8a184d52bc466a6b936"
+          "checksum": "sha256:9e52221b1476b8dd9b9adcf4e7c7d77194b4e5bfa4c8062064ef0c047a45051a"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
@@ -45,7 +45,7 @@
           "checksum": "sha256:0468d29d96b581762ceee6f32adb7b3b091d1fa0af4b6d71c33b7c4e2819ac7f"
         }
       ],
-      "manifest_checksum": "sha256:22e4140a1d583f93fb0190d2f0b787c949908e08a3b335af36aef09764851c26"
+      "manifest_checksum": "sha256:21f19fa15997717b17b1b966a6abe468ea4b54fc5461dd69b8e3d17a0fbf1baa"
     },
     {
       "family": "api",
@@ -94,7 +94,7 @@
         {
           "path": "crates/axon-api/src/source/document.rs",
           "kind": "rust_module",
-          "checksum": "sha256:a336d5bd224aa9072bbb581f339bb27085e59c5db83ba771dfed42995bdc589d"
+          "checksum": "sha256:7969c51cf01773c35d4d72f2a8b4ce18e8d7960121524a1e66e861dc1e4acd35"
         },
         {
           "path": "crates/axon-api/src/source/embedding_cache.rs",
@@ -317,7 +317,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "sha256:663871b080fdd8f1c87992f03dfbfd6ea77496af5aa96f8f80c2851cbf61546e"
+      "manifest_checksum": "sha256:4c46285c057a726f7738dcb4d0f7dc23d8d25d69fa3d99de56e6c24090ad61db"
     },
     {
       "family": "cli",
@@ -799,7 +799,7 @@
         {
           "path": "crates/axon-core/src/boundary.rs",
           "kind": "rust_module",
-          "checksum": "sha256:c3b7ab8dd174b9d6388c56e0cb24670a17eabbd154cb39933eb14d1d7ec57ef3"
+          "checksum": "sha256:17e8f26f5d29e0203564d26bc9ced2bb8b34d97685177fce32f21a84cb614503"
         },
         {
           "path": "crates/axon-embedding/src/fake.rs",
@@ -842,7 +842,7 @@
           "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
         }
       ],
-      "manifest_checksum": "sha256:6c4c46135fcbe313719127200fe4a93390241d095c286f4a5e82656e29fe7c38"
+      "manifest_checksum": "sha256:0d886135e9bfeb9ee22c8bc0ca62fd1d391267bef7fd1377de6f548c51404073"
     },
     {
       "family": "vector-payload",

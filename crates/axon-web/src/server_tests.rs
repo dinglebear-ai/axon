@@ -506,6 +506,26 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
     assert!(ui.headers().contains_key("content-security-policy"));
     assert!(ui.headers().contains_key("permissions-policy"));
 
+    let html = ui.text().await.expect("Swagger HTML");
+    assert!(html.contains("swagger-ui-bundle.js"));
+    for asset in [
+        "swagger-ui-bundle.js",
+        "swagger-ui.css",
+        "swagger-initializer.js",
+    ] {
+        let response = client
+            .get(format!("{base}/docs/{asset}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "Swagger asset {asset}");
+        let body = response.text().await.unwrap();
+        assert!(!body.is_empty(), "Swagger asset {asset}");
+        if asset == "swagger-initializer.js" {
+            assert!(body.contains("/api-docs/openapi.json"));
+        }
+    }
+
     let spec_json: serde_json::Value = spec.json().await.expect("openapi json");
     let paths = spec_json["paths"].as_object().expect("openapi paths");
     for path in [
@@ -1327,4 +1347,31 @@ async fn v1_sources_allows_public_network_source_with_write_scope() {
     stop(shutdown, handle).await;
     assert_ne!(status, StatusCode::UNAUTHORIZED, "valid bearer rejected");
     assert_ne!(status, StatusCode::FORBIDDEN, "valid bearer rejected");
+}
+
+#[test]
+fn openapi_serializes_required_response_descriptions_for_android_codegen() {
+    let document = serde_json::to_value(crate::server::openapi_document()).unwrap();
+    for (path, item) in document["paths"].as_object().unwrap() {
+        for (method, operation) in item.as_object().unwrap() {
+            let Some(responses) = operation
+                .get("responses")
+                .and_then(serde_json::Value::as_object)
+            else {
+                continue;
+            };
+            for (status, response) in responses {
+                if response.get("$ref").is_some() {
+                    continue;
+                }
+                assert!(
+                    response
+                        .get("description")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|value| !value.is_empty()),
+                    "missing serialized response description: {method} {path} {status}"
+                );
+            }
+        }
+    }
 }

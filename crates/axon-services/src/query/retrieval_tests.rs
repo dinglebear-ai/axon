@@ -103,11 +103,12 @@ async fn query_via_retrieval_maps_engine_hits_from_ctx_runtime() {
         .await
         .unwrap();
 
+    let ledger = Arc::new(publication_fixture::ledger_at_seven().await);
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let ctx = ServiceContext::from_runtime(cfg, Arc::new(NoopServiceRuntime))
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             Arc::new(FakeJobWatchStore::new()),
-            Arc::new(FakeLedgerStore::new()),
+            ledger,
             embedder,
             vectors,
             ProviderId::new("fake-embedding"),
@@ -170,3 +171,6 @@ async fn query_via_retrieval_errors_without_service_urls() {
     .unwrap_err();
     assert!(err.to_string().contains("QDRANT_URL"));
 }
+
+#[path = "retrieval_tests/publication_fixture.rs"]
+mod publication_fixture;

@@ -130,7 +130,9 @@ impl SourceParser for MarkdownParser {
             mime_types: vec!["text/markdown".to_string()],
             file_extensions: vec!["md".to_string(), "mdx".to_string()],
             path_suffixes: Vec::new(),
-            sniff_prefixes: vec!["#".to_string()],
+            // A leading # also identifies C preprocessor directives and shell
+            // comments. Require Markdown kind, MIME, path, or explicit hint.
+            sniff_prefixes: Vec::new(),
             priority: 30,
         })
     }

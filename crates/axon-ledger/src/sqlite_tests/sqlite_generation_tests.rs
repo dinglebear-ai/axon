@@ -933,3 +933,37 @@ async fn abandoned_writes_require_current_source_lease_and_preserve_published_ge
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn generation_receipt_reads_bounded_columns_without_loading_generation_inventory() {
+    let store = SqliteLedgerStore::in_memory().await.unwrap();
+    store.upsert_source(source()).await.unwrap();
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .unwrap();
+    let initial = store
+        .generation_receipt(generation.source_id.clone(), generation.generation.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!initial.published);
+    store.fail_generation(generation.clone()).await.unwrap();
+    sqlx::query("UPDATE source_generations SET generation_json='not JSON' WHERE source_id=? AND generation=?")
+        .bind(&generation.source_id.0).bind(&generation.generation.0).execute(&store.pool).await.unwrap();
+    let receipt = store
+        .generation_receipt(generation.source_id.clone(), generation.generation.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.status, LifecycleStatus::Failed);
+    assert_eq!(receipt.publish_state, PublishState::Writing);
+    assert!(!receipt.published);
+    assert!(
+        store
+            .generation_receipt(generation.source_id, SourceGenerationId::new("missing"))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

@@ -9,6 +9,18 @@ pub(crate) const MIN_CHUNK_CHARS: usize = 50;
 fn meaningful(chunk: &DocumentChunk) -> bool {
     chunk.content.chars().any(char::is_alphanumeric)
 }
+fn record_identity(chunk: &DocumentChunk) -> bool {
+    let range = &chunk.range;
+    range.session_turn_id.is_some()
+        || range.json_pointer.is_some()
+        || range.yaml_path.is_some()
+        || range.xml_xpath.is_some()
+        || range.csv_row.is_some()
+        || range.time_start_ms.is_some()
+        || range.time_end_ms.is_some()
+        || range.turn_start.is_some()
+        || range.turn_end.is_some()
+}
 fn short(chunk: &DocumentChunk, min_chars: usize) -> bool {
     chunk.content.trim().chars().count() < min_chars
 }
@@ -27,6 +39,8 @@ fn compatible(a: &DocumentChunk, b: &DocumentChunk, source: &str) -> bool {
         || a.range.csv_row != b.range.csv_row
         || a.range.time_start_ms != b.range.time_start_ms
         || a.range.time_end_ms != b.range.time_end_ms
+        || a.range.turn_start != b.range.turn_start
+        || a.range.turn_end != b.range.turn_end
     {
         return false;
     }
@@ -55,12 +69,15 @@ pub(crate) fn remember_symbols(target: &mut DocumentChunk, other: &DocumentChunk
             symbols.extend(values.iter().filter_map(|v| v.as_str().map(str::to_string)));
         }
     }
+    symbols.retain(|symbol| !symbol.trim().is_empty());
     symbols.sort();
     symbols.dedup();
     if !symbols.is_empty() {
         target
             .metadata
             .insert("code_symbol_aliases".into(), serde_json::json!(symbols));
+    } else {
+        target.metadata.remove("code_symbol_aliases");
     }
 }
 fn combine(
@@ -202,7 +219,7 @@ pub(crate) fn contextual_chunks_with_limit(
     }
     packed
         .into_iter()
-        .filter(|chunk| !short(chunk, min_chars) && meaningful(chunk))
+        .filter(|chunk| meaningful(chunk) && (!short(chunk, min_chars) || record_identity(chunk)))
         .collect()
 }
 

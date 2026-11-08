@@ -51,6 +51,112 @@ pub fn build_archive(items: &[AcquiredSourceItem]) -> WarcArchive {
     }
 }
 
+pub(super) struct StreamingArchive {
+    file: tempfile::NamedTempFile,
+    digest: Sha256,
+    bytes: u64,
+}
+
+impl StreamingArchive {
+    pub(super) fn new() -> std::io::Result<Self> {
+        let mut writer = Self {
+            file: tempfile::NamedTempFile::new()?,
+            digest: Sha256::new(),
+            bytes: 0,
+        };
+        writer.write_bytes(&warcinfo_record())?;
+        Ok(writer)
+    }
+
+    pub(super) fn new_in(directory: &std::path::Path) -> std::io::Result<Self> {
+        let mut writer = Self {
+            file: tempfile::NamedTempFile::new_in(directory)?,
+            digest: Sha256::new(),
+            bytes: 0,
+        };
+        writer.write_bytes(&warcinfo_record())?;
+        Ok(writer)
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
+        let next = self
+            .bytes
+            .checked_add(bytes.len() as u64)
+            .filter(|next| *next <= MAX_ARCHIVE_BYTES)
+            .ok_or_else(|| std::io::Error::other("archive exceeds 256 MiB disk admission"))?;
+        self.file.write_all(bytes)?;
+        self.digest.update(bytes);
+        self.bytes = next;
+        Ok(())
+    }
+}
+
+impl crate::SourceArchiveWriter for StreamingArchive {
+    fn append(&mut self, item: &AcquiredSourceItem) -> std::io::Result<()> {
+        use std::borrow::Cow;
+        let body: Cow<'_, [u8]> = match &item.content_ref {
+            ContentRef::InlineText { text } => Cow::Borrowed(text.as_bytes()),
+            ContentRef::InlineBytes { bytes_base64, .. } => {
+                use base64::Engine as _;
+                Cow::Owned(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(bytes_base64)
+                        .unwrap_or_default(),
+                )
+            }
+            ContentRef::Artifact { .. } | ContentRef::External { .. } => Cow::Borrowed(&[]),
+        };
+        let status = item
+            .metadata
+            .get("web_status")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(200);
+        let kind = item
+            .manifest_item
+            .content_kind
+            .unwrap_or(ContentKind::Markdown);
+        let payload_header = format!(
+            "HTTP/1.1 {status} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+            reason_phrase(status),
+            mime_type_for_content_kind(kind),
+            body.len()
+        );
+        let mut header = Vec::new();
+        if item.manifest_item.canonical_uri.len() > 64 * 1024 {
+            return Err(std::io::Error::other(
+                "archive target URI exceeds header admission",
+            ));
+        }
+        write_record_headers(
+            &mut header,
+            "response",
+            Some(&item.manifest_item.canonical_uri),
+            "application/http; msgtype=response",
+            payload_header.len() + body.len(),
+        );
+        self.write_bytes(&header)?;
+        self.write_bytes(payload_header.as_bytes())?;
+        self.write_bytes(&body)?;
+        self.write_bytes(b"\r\n\r\n")
+    }
+
+    fn finish(self: Box<Self>) -> std::io::Result<crate::GeneratedArchiveFile> {
+        self.file.as_file().sync_all()?;
+        let mut metadata = MetadataMap::new();
+        metadata.insert("artifact_role".into(), serde_json::json!("source_archive"));
+        metadata.insert("archive_format".into(), serde_json::json!("warc-1.1"));
+        Ok(crate::GeneratedArchiveFile {
+            file: self.file,
+            kind: ArtifactKind::Warc,
+            content_type: "application/warc".into(),
+            size_bytes: self.bytes,
+            content_hash: format!("sha256:{}", hex::encode(self.digest.finalize())),
+            metadata,
+        })
+    }
+}
+
 fn warcinfo_record() -> Vec<u8> {
     let payload = format!(
         "software: axon/{}\r\nformat: WARC File Format 1.1\r\n",

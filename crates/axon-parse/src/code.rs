@@ -12,6 +12,47 @@ pub const AST_PARSER_METHOD: &str = "tree_sitter";
 pub const FALLBACK_PARSER_METHOD: &str = "regex_fallback";
 const MAX_SYMBOL_SCAN_LINES: usize = 4_000;
 
+/// Interpreter language from a bounded, recognized shebang, without executing it.
+/// Explicit language/path selection remains authoritative in the caller.
+pub fn shebang_language(text: &str) -> Option<&'static str> {
+    let prefix = &text.as_bytes()[..text.len().min(512)];
+    let first_line = std::str::from_utf8(prefix.split(|byte| *byte == b'\n').next()?).ok()?;
+    // A header cut off by the probe is not a complete declaration.
+    if first_line.len() >= 512 {
+        return None;
+    }
+    let mut words = first_line.strip_prefix("#!")?.split_whitespace();
+    let mut interpreter = words.next()?.rsplit('/').next()?;
+    if interpreter == "env" {
+        interpreter = words
+            .find(|word| !word.starts_with('-') && !word.contains('='))?
+            .rsplit('/')
+            .next()?;
+    }
+    match interpreter {
+        "python" | "python2" | "python3" => Some("python"),
+        "bash" | "sh" | "dash" | "ash" | "ksh" => Some("shell"),
+        "zsh" => Some("zsh"),
+        "fish" => Some("fish"),
+        "node" | "nodejs" => Some("javascript"),
+        "ruby" => Some("ruby"),
+        "perl" => Some("perl"),
+        "lua" => Some("lua"),
+        "php" => Some("php"),
+        "pwsh" => Some("powershell"),
+        "raku" => Some("raku"),
+        "escript" => Some("erlang"),
+        value
+            if value.strip_prefix("python3.").is_some_and(|version| {
+                !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit())
+            }) =>
+        {
+            Some("python")
+        }
+        _ => None,
+    }
+}
+
 pub fn symbol_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
     symbol_facts_with_graph(input).0
 }
@@ -26,7 +67,8 @@ pub fn symbol_facts_with_graph(input: &ParseInput) -> (Vec<SourceParseFacts>, Ve
 pub(crate) fn parse_with_outcome(
     input: &ParseInput,
 ) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>, bool) {
-    let (mut facts, graph, status, grammar) = match ast::parse_symbols(input) {
+    let (mut facts, graph, status, grammar, searchable_structure) = match ast::parse_symbols(input)
+    {
         Ok(parsed) => {
             let status = if parsed.recovered {
                 "partial"
@@ -34,11 +76,17 @@ pub(crate) fn parse_with_outcome(
                 "parsed"
             };
             let (facts, graph) = ast::facts_with_graph(input, parsed.symbols);
-            (facts, graph, status, Some(parsed.grammar))
+            (
+                facts,
+                graph,
+                status,
+                Some(parsed.grammar),
+                parsed.searchable_structure,
+            )
         }
         Err(status) => {
             let (facts, graph) = fallback_symbol_facts_with_graph(input);
-            (facts, graph, status, None)
+            (facts, graph, status, None, false)
         }
     };
     let fallback = matches!(status, "unsupported" | "failed");
@@ -57,6 +105,7 @@ pub(crate) fn parse_with_outcome(
             "code_ast_status": status,
             "code_grammar": grammar,
             "code_symbol_count": count,
+            "code_searchable_structure": searchable_structure && status == "parsed",
             "symbol_extraction_status": if fallback {
                 if count == 0 { "none" } else { "heuristic_fallback" }
             } else { "ast" },
@@ -90,6 +139,12 @@ fn fallback_symbol_facts_with_graph(
         else {
             continue;
         };
+
+        // Unsupported grammars can resemble declarations without an identifier
+        // (for example C anonymous structs). Keep their text, not an empty fact.
+        if name.trim().is_empty() {
+            continue;
+        }
 
         while parent_stack
             .last()
@@ -365,3 +420,7 @@ fn is_comment_or_string_line(line: &str) -> bool {
 #[cfg(test)]
 #[path = "code_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "code_shebang_tests.rs"]
+mod shebang_tests;

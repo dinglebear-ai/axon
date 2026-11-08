@@ -2,8 +2,10 @@
 
 pub(super) mod artifact_candidates;
 mod created_generation;
+mod generation_registry;
 mod generation_reservation;
 mod generation_spool;
+pub(crate) use generation_registry::recover as recover_generation_work;
 use generation_reservation::reserve_unoccupied_generation;
 mod generation_state;
 mod generation_work;
@@ -33,6 +35,8 @@ use axon_api::source::*;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use helpers::*;
+#[cfg(test)]
+mod core_capacity_tests;
 #[cfg(test)]
 #[path = "executor/web_refresh_tests.rs"]
 mod web_refresh_tests;

@@ -27,10 +27,24 @@ pub struct CanonicalCitation {
     pub redaction: RedactionMetadata,
 }
 
+/// Scoring semantics of a returned retrieval result, independent of its numeric value.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryScoreKind {
+    DenseSimilarity,
+    HybridFusion,
+    CodeSearch,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct QueryHit {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_kind: Option<QueryScoreKind>,
     pub rank: u64,
+    /// Provider retrieval score (dense similarity or hybrid fusion score).
     pub score: f64,
+    /// Legacy compatibility field; ordinary query currently mirrors `score`.
+    /// This field alone does not establish that a separate reranker ran.
     pub rerank_score: f64,
     pub url: String,
     pub source: String,
@@ -64,6 +78,8 @@ pub struct QueryHit {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct QueryResult {
     pub results: Vec<QueryHit>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<crate::source::SourceWarning>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

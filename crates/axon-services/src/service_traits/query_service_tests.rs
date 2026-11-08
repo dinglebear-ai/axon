@@ -41,6 +41,7 @@ fn citation(url: &str) -> axon_api::CanonicalCitation {
 
 fn sample_hit(url: &str) -> QueryHit {
     QueryHit {
+        score_kind: None,
         rank: 1,
         score: 0.9,
         rerank_score: 0.9,

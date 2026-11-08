@@ -130,3 +130,11 @@ retention sweep; see [configuration](../../guides/configuration.md).
 If the job model changes, update this file and
 [`crates/axon-jobs/src/CLAUDE.md`](../../../crates/axon-jobs/src/CLAUDE.md) in
 the same PR.
+
+## Routine status and integrity diagnostics
+
+`axon status` and `GET /v1/status` report SQLite runtime readiness, including
+active database ownership and observed I/O errors. They do not scan the database
+on each request. Use explicit `axon doctor` diagnostics for SQLite integrity
+checks; those checks can take substantially longer on large databases. Startup
+integrity checks remain unchanged.

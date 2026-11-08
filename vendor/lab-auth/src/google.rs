@@ -250,9 +250,10 @@ impl GoogleProvider {
             .map_err(|error| {
                 AuthError::Storage(format!("build google oauth http client: {error}"))
             })?;
-        let authorize_endpoint = Url::parse("https://accounts.google.com/o/oauth2/v2/auth").map_err(|error| {
-            AuthError::Config(format!("parse google authorize endpoint: {error}"))
-        })?;
+        let authorize_endpoint = Url::parse("https://accounts.google.com/o/oauth2/v2/auth")
+            .map_err(|error| {
+                AuthError::Config(format!("parse google authorize endpoint: {error}"))
+            })?;
         let token_endpoint = Url::parse("https://oauth2.googleapis.com/token")
             .map_err(|error| AuthError::Config(format!("parse google token endpoint: {error}")))?;
         let jwks_endpoint = Url::parse("https://www.googleapis.com/oauth2/v3/certs")
@@ -454,7 +455,8 @@ impl GoogleProvider {
             .map(|data| data.claims)
             .map_err(|error| AuthError::Storage(format!("invalid google id_token: {error}")))?;
 
-        let legacy_google_issuer = self.issuer == GOOGLE_ISSUER && claims.iss == "accounts.google.com";
+        let legacy_google_issuer =
+            self.issuer == GOOGLE_ISSUER && claims.iss == "accounts.google.com";
         if claims.iss != self.issuer && !legacy_google_issuer {
             return Err(AuthError::Storage(format!(
                 "invalid google id_token issuer `{}`",
@@ -623,7 +625,7 @@ mod tests {
 
     #[tokio::test]
     async fn google_exchange_parses_subject_and_refresh_token() {
-        let provider = mocked_google_provider().await;
+        let (provider, _server) = mocked_google_provider().await;
         let token = provider.exchange_code("code", "verifier").await.unwrap();
         assert_eq!(token.subject, "google-subject-123");
         assert_eq!(token.refresh_token.as_deref(), Some("refresh-token"));
@@ -631,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn google_exchange_rejects_unsigned_id_tokens() {
-        let provider = mocked_google_provider_with_id_token(test_id_token()).await;
+        let (provider, _server) = mocked_google_provider_with_id_token(test_id_token()).await;
         let error = provider
             .exchange_code("code", "verifier")
             .await
@@ -644,7 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn google_exchange_rejects_wrong_audience_in_id_token() {
-        let provider =
+        let (provider, _server) =
             mocked_google_provider_with_id_token(signed_test_id_token("other-client", false, true))
                 .await;
         let error = provider
@@ -659,7 +661,7 @@ mod tests {
 
     #[tokio::test]
     async fn google_exchange_rejects_expired_id_token() {
-        let provider =
+        let (provider, _server) =
             mocked_google_provider_with_id_token(signed_test_id_token("client-id", true, true))
                 .await;
         let error = provider
@@ -674,7 +676,7 @@ mod tests {
 
     #[tokio::test]
     async fn google_exchange_rejects_wrong_issuer_in_id_token() {
-        let provider =
+        let (provider, _server) =
             mocked_google_provider_with_id_token(signed_test_id_token("client-id", false, false))
                 .await;
         let error = provider
@@ -784,11 +786,13 @@ mod tests {
         .unwrap()
     }
 
-    async fn mocked_google_provider() -> GoogleProvider {
+    async fn mocked_google_provider() -> (GoogleProvider, MockServer) {
         mocked_google_provider_with_id_token(signed_test_id_token("client-id", false, true)).await
     }
 
-    async fn mocked_google_provider_with_id_token(id_token: String) -> GoogleProvider {
+    async fn mocked_google_provider_with_id_token(
+        id_token: String,
+    ) -> (GoogleProvider, MockServer) {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/token"))
@@ -806,12 +810,15 @@ mod tests {
             .mount(&server)
             .await;
 
-        test_google_provider()
+        let provider = test_google_provider()
             .with_endpoints(
                 server.uri().parse::<Url>().unwrap(),
                 server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
             )
-            .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap())
+            .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap());
+        // Keep the mock lease alive through the exchange; dropping it lets another
+        // concurrent test recycle the server and replace its token response.
+        (provider, server)
     }
 
     fn sample_request() -> AuthorizeUrlRequest {

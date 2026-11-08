@@ -422,3 +422,6 @@ mod lifecycle;
 
 #[path = "stage_tests/security.rs"]
 mod security;
+
+#[path = "stage_tests/diagnostics.rs"]
+mod diagnostics;

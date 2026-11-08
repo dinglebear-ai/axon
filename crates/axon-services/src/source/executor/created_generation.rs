@@ -134,8 +134,7 @@ async fn run_created_generation_inner(
     let collection = collection_spec(input.collection, runtime.embedding_dimensions);
     output::initialize_durable_export(&input.plan).await?;
     let archive_requested = input.adapter.wants_archive(&input.plan);
-    let mut accumulated = GenerationAccumulator::new(&generation.generation).await?;
-    accumulated.graph_stage = input.graph_stage.clone();
+    let mut accumulated = setup::initialize_accumulator(runtime, input, &generation).await?;
     let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
     let mut stage = GenerationStageProgress::default();
 
@@ -195,6 +194,8 @@ async fn run_created_generation_inner(
             "publishing source generation",
         )
         .await;
+    let publication_spool = finalized.spool;
+    let candidates_already_staged = finalized.candidates_staged;
     let mut candidates = finalized.artifact_candidates;
     let candidate_generation = generation.generation.clone();
     let staged_delivery = stage_candidate_delivery(
@@ -227,10 +228,14 @@ async fn run_created_generation_inner(
         artifact_cleanup,
         &candidate_generation,
         candidates,
-        staged_delivery,
+        staged_delivery.is_some() || candidates_already_staged,
         &mut result,
     )
     .await?;
+    drop(publication_spool);
+    if let Err(error) = super::generation_registry::recover(runtime).await {
+        tracing::warn!(error=%error, "generation work receipt reconciliation deferred");
+    }
     result
 }
 

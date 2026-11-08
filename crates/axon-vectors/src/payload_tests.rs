@@ -688,3 +688,22 @@ fn duplicate_locations_require_nonempty_valid_ranges() {
     );
     assert!(VectorPayload::try_from_metadata(metadata).is_ok());
 }
+
+#[test]
+fn symbol_alias_payload_contract_rejects_blank_but_accepts_empty_and_named_arrays() {
+    for aliases in [serde_json::json!([""]), serde_json::json!(["named", " "])] {
+        let mut metadata = fixture("web.valid.json");
+        metadata.insert("code_symbol_aliases".into(), aliases);
+        assert_eq!(
+            VectorPayload::try_from_metadata(metadata).unwrap_err(),
+            VectorPayloadValidationError::InvalidFieldShape {
+                field: "code_symbol_aliases".into()
+            }
+        );
+    }
+    for aliases in [serde_json::json!([]), serde_json::json!(["named"])] {
+        let mut metadata = fixture("web.valid.json");
+        metadata.insert("code_symbol_aliases".into(), aliases);
+        VectorPayload::try_from_metadata(metadata).unwrap();
+    }
+}

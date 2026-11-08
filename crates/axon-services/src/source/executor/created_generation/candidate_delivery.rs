@@ -30,15 +30,12 @@ pub(super) async fn finish_candidate_delivery(
     artifact_cleanup: &mut ArtifactCleanupGuard,
     generation: &SourceGenerationId,
     candidates: Vec<ArtifactCandidate>,
-    staged_delivery: Option<String>,
+    staged_delivery: bool,
     result: &mut anyhow::Result<IndexCounts>,
 ) -> anyhow::Result<()> {
     if result.is_err() {
-        if let (Some(outbox), Some(delivery_key)) =
-            (&runtime.artifact_candidate_outbox, staged_delivery)
-        {
-            outbox.complete(&delivery_key).await?;
-        }
+        // A publication error can follow a durable commit. Preserve delivery
+        // intents until the existing recovery worker checks the ledger receipt.
         return Ok(());
     }
 
@@ -53,7 +50,7 @@ pub(super) async fn finish_candidate_delivery(
     let Ok(output) = result else {
         return Ok(());
     };
-    if staged_delivery.is_some() {
+    if staged_delivery {
         artifact_candidates::spawn_outbox_drain(runtime);
         return Ok(());
     }

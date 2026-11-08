@@ -30,6 +30,7 @@ pub mod enqueue;
 pub(crate) mod events;
 pub(crate) mod execution;
 mod executor;
+pub(crate) use executor::recover_generation_work;
 mod family_dispatch;
 
 pub(crate) fn spawn_artifact_candidate_outbox_drain(
@@ -296,7 +297,7 @@ async fn finalize_source_index(
         execution.priority,
         format!("graph:{}:{}", counts.source_id.0, counts.generation.0),
     );
-    let graph = match graph::staging::activated_summary(runtime, &counts).await? {
+    let graph = match graph::staging::activated_summary(runtime, &mut counts).await? {
         Some(summary) => summary,
         None => {
             graph::write_baseline_graph_with_db_gate(

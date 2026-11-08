@@ -83,7 +83,10 @@ impl QueryService for FakeQueryService {
             .take(limit)
             .cloned()
             .collect();
-        Ok(QueryResult { results })
+        Ok(QueryResult {
+            results,
+            warnings: Vec::new(),
+        })
     }
 }
 

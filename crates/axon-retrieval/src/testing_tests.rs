@@ -78,6 +78,7 @@ fn sample_result() -> RetrievalResult {
     }];
     let context = ContextBundle::from_matches(&matches, 4096, 512);
     RetrievalResult {
+        warnings: Vec::new(),
         plan: RetrievalPlan {
             collection: "axon-test".to_string(),
             limit: 3,

@@ -151,6 +151,7 @@ where
             .collect();
 
         Ok(RetrievalResult {
+            warnings: search.warnings,
             plan,
             matches,
             context,
@@ -159,6 +160,13 @@ where
     }
 
     async fn embed_query(&self, query: &str) -> Result<Vec<f32>, ApiError> {
+        // Effective capabilities retain the configured query-instruction gate.
+        // Format before embed so cache keys identify the actual provider input.
+        let capability = self.embedding_provider.capabilities().await?;
+        let query_instruction_enabled = capability
+            .embedding
+            .as_ref()
+            .is_some_and(|embedding| query_instruction_supported(embedding.instruction_support));
         let result = self
             .embedding_provider
             .embed(EmbeddingBatch {
@@ -168,7 +176,11 @@ where
                 model: self.config.embedding_model.clone(),
                 items: vec![EmbeddingInput {
                     chunk_id: ChunkId::new("query"),
-                    text: query.to_string(),
+                    text: if query_instruction_enabled {
+                        query_embedding_text(&self.config.embedding_model, query)
+                    } else {
+                        query.to_string()
+                    },
                     content_kind: ContentKind::PlainText,
                     metadata: MetadataMap::new(),
                 }],
@@ -357,4 +369,28 @@ fn require_clean_redaction_status(item: &VectorSearchMatch) -> Result<(), ApiErr
 
 fn payload_string(payload: &MetadataMap, field: &str) -> Option<String> {
     payload.get(field)?.as_str().map(ToString::to_string)
+}
+
+/// Qwen's asymmetric retrieval contract requires an instruction on queries only.
+/// Keep it in the actual text so providers configured without generic prefix
+/// support still receive the correct input, and embedding caches key it exactly.
+/// https://huggingface.co/Qwen/Qwen3-Embedding-0.6B#transformers-usage
+pub(crate) fn query_embedding_text(model: &str, query: &str) -> String {
+    match model {
+        "Qwen/Qwen3-Embedding-0.6B" | "Qwen/Qwen3-Embedding-4B" | "Qwen/Qwen3-Embedding-8B" => {
+            format!(
+                "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{query}"
+            )
+        }
+        _ => query.to_string(),
+    }
+}
+
+/// Document-only support must never enable query preprocessing.
+pub(crate) fn query_instruction_supported(support: axon_api::source::InstructionSupport) -> bool {
+    matches!(
+        support,
+        axon_api::source::InstructionSupport::QueryOnly
+            | axon_api::source::InstructionSupport::QueryAndDocument
+    )
 }

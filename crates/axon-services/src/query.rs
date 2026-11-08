@@ -59,7 +59,10 @@ pub fn map_query_results(results: Vec<serde_json::Value>) -> Result<QueryResult,
                 .map_err(|e| -> Box<dyn Error> { format!("query result[{idx}]: {e}").into() })
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    Ok(QueryResult { results })
+    Ok(QueryResult {
+        results,
+        warnings: Vec::new(),
+    })
 }
 
 pub fn map_retrieve_result(chunk_count: usize, content: String) -> RetrieveResult {

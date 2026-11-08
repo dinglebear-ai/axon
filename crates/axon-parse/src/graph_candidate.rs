@@ -6,6 +6,8 @@ use serde_json::json;
 
 pub const MODULE_NAME: &str = "graph_candidate";
 
+mod evidence_quote;
+
 use crate::facts::PARSER_VERSION;
 use crate::parser::ParseInput;
 
@@ -35,23 +37,26 @@ pub fn graph_candidate_ranged(
     range: Option<SourceRange>,
     quote: Option<String>,
 ) -> GraphCandidate {
-    let line = range.as_ref().and_then(|range| range.line_start);
-    let source_scope = format!(
-        "source_id={}|item={}|uri={}",
-        input.document.source_id.0, input.document.source_item_key.0, input.document.canonical_uri
-    );
+    let (quote, excerpted, original_bytes) = evidence_quote::bounded(quote, name);
+    // JSON tuples preserve field boundaries even when paths/names contain
+    // delimiters. Identity is source-scoped and independent of job/line moves.
+    let source_scope = source_scope(input);
     let file_key = format!("repo_file:{}", stable_token(&source_scope));
-    let item_identity = format!("{source_scope}|kind={kind}|name={name}");
+    let item_identity = json!([source_scope, kind, name]).to_string();
     let item_token = stable_token(&item_identity);
     let candidate_id = format!("cand_{kind}_{item_token}");
     let item_key = format!("{kind}:{item_token}");
     let evidence_id = format!(
         "ev_{}",
-        stable_token(&format!("{candidate_id}|line={line:?}|quote={quote:?}"))
+        stable_token(&json!([candidate_id, parser_id, range, quote]).to_string())
     );
 
     let mut evidence_metadata = MetadataMap::new();
     evidence_metadata.insert("parser_id".to_string(), json!(parser_id));
+    if excerpted {
+        evidence_metadata.insert("quote_excerpted".into(), json!(true));
+        evidence_metadata.insert("quote_original_bytes".into(), json!(original_bytes));
+    }
 
     GraphCandidate {
         candidate_id: candidate_id.clone(),
@@ -61,7 +66,7 @@ pub fn graph_candidate_ranged(
         item_canonical_uri: input.document.canonical_uri.clone(),
         document_id: Some(input.document.document_id.clone()),
         kind: kind.to_string(),
-        merge_key: Some(format!("{kind}:{}:{name}", input.document.canonical_uri)),
+        merge_key: Some(format!("{kind}:{item_token}")),
         producer: GraphCandidateProducer {
             adapter: "axon-parse".to_string(),
             parser: Some(parser_id.to_string()),
@@ -136,13 +141,19 @@ pub fn candidate_edge(
         turn_start: None,
         turn_end: None,
     });
-    let candidate_token = stable_token(&format!(
-        "{}:{}:{to_stable_key}:{line:?}",
-        input.document.canonical_uri, candidate_kind
-    ));
-    let evidence_token = stable_token(&format!(
-        "{candidate_kind}:{to_stable_key}:{line:?}:{quote:?}"
-    ));
+    let identity = json!([
+        source_scope(input),
+        candidate_kind,
+        from_node_kind,
+        from_stable_key,
+        to_node_kind,
+        to_stable_key,
+        edge_kind
+    ])
+    .to_string();
+    let candidate_token = stable_token(&identity);
+    let evidence_token =
+        stable_token(&json!([identity, parser_id, evidence_range, quote]).to_string());
     let evidence_id = format!("ev_{evidence_token}");
 
     GraphCandidate {
@@ -153,10 +164,7 @@ pub fn candidate_edge(
         item_canonical_uri: input.document.canonical_uri.clone(),
         document_id: Some(input.document.document_id.clone()),
         kind: candidate_kind.to_string(),
-        merge_key: Some(format!(
-            "{candidate_kind}:{}:{to_stable_key}",
-            input.document.canonical_uri
-        )),
+        merge_key: Some(format!("{candidate_kind}:{candidate_token}")),
         producer: GraphCandidateProducer {
             adapter: "axon-parse".to_string(),
             parser: Some(parser_id.to_string()),
@@ -200,13 +208,22 @@ pub fn candidate_edge(
     }
 }
 
+fn source_scope(input: &ParseInput) -> String {
+    json!([
+        input.document.source_id.0,
+        input.document.source_item_key.0,
+        input.document.canonical_uri
+    ])
+    .to_string()
+}
+
 fn stable_token(value: &str) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in value.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{hash:016x}")
+    // UUIDv5 gives a fixed-width 122-bit identity, rather than truncating or
+    // sanitizing names (which would merge distinct facts). Display labels and
+    // evidence retain the complete source text; only identity is encoded.
+    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, value.as_bytes())
+        .simple()
+        .to_string()
 }
 
 #[cfg(test)]

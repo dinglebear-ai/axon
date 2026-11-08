@@ -136,6 +136,9 @@ async fn upsert_chunk_rest(
     max_request_bytes: usize,
     asynchronous: bool,
 ) -> Result<u64> {
+    if chunk.points.is_empty() {
+        return Ok(0);
+    }
     let batch_sparse = chunk
         .sparse_vectors
         .as_deref()
@@ -144,6 +147,18 @@ async fn upsert_chunk_rest(
         .map(|sparse| (sparse.chunk_id.0.as_str(), sparse))
         .collect::<HashMap<_, _>>();
     let max_request_bytes = max_request_bytes.max(1);
+    // Most admitted point pools fit one request. Encode that common case once,
+    // rather than serializing every singleton for sizing and the full pool
+    // again. The capped writer retains the existing wire-byte admission; an
+    // overflow drops its buffer before the bounded splitting path runs.
+    if let Some(body) = encode_upsert_body(
+        &UpsertPointsBody::new(spec, &chunk.points, &batch_sparse),
+        max_request_bytes,
+        stage,
+    )? {
+        send_upsert_body(http, url, body, stage, asynchronous).await?;
+        return Ok(1);
+    }
     let ranges = byte_bounded_ranges(chunk, spec, &batch_sparse, max_request_bytes, stage)?;
     let mut requests = 0u64;
 
@@ -162,17 +177,27 @@ async fn upsert_chunk_rest(
             )
         })?;
 
-        if asynchronous {
-            http.put_json_bytes(stage, url, body, "qdrant_upsert_async")
-                .await?;
-        } else {
-            http.put_json_bytes(stage, url, body, "qdrant_upsert")
-                .await?;
-        }
+        send_upsert_body(http, url, body, stage, asynchronous).await?;
         requests = requests.saturating_add(1);
     }
 
     Ok(requests)
+}
+
+async fn send_upsert_body(
+    http: &QdrantHttp,
+    url: &str,
+    body: Vec<u8>,
+    stage: ErrorStage,
+    asynchronous: bool,
+) -> Result<()> {
+    let operation = if asynchronous {
+        "qdrant_upsert_async"
+    } else {
+        "qdrant_upsert"
+    };
+    http.put_json_bytes(stage, url, body, operation).await?;
+    Ok(())
 }
 
 fn byte_bounded_ranges(
@@ -335,3 +360,7 @@ impl Iterator for ChunkedUpsertBatches {
 #[cfg(test)]
 #[path = "upsert_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "upsert_encoding_tests.rs"]
+mod encoding_tests;

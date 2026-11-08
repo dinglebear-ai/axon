@@ -61,8 +61,7 @@ pub(super) enum JournalWriteBoundary {
 static JOURNAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 impl BulkLoadJournal {
-    pub(super) fn acquire_collection_lease(&self, key: &BulkLoadKey) -> std::io::Result<File> {
-        use fs2::FileExt as _;
+    fn collection_lease_file(&self, key: &BulkLoadKey) -> std::io::Result<File> {
         let digest = Sha256::digest(format!("{}\0{}", key.endpoint, key.collection));
         let path = self
             .path
@@ -75,8 +74,24 @@ impl BulkLoadJournal {
             options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
         }
         let file = options.open(path)?;
+        Ok(file)
+    }
+
+    pub(super) fn acquire_collection_lease(&self, key: &BulkLoadKey) -> std::io::Result<File> {
+        use fs2::FileExt as _;
+        let file = self.collection_lease_file(key)?;
         file.lock_exclusive()?;
         Ok(file)
+    }
+
+    pub(super) fn try_collection_lease(&self, key: &BulkLoadKey) -> std::io::Result<Option<File>> {
+        use fs2::FileExt as _;
+        let file = self.collection_lease_file(key)?;
+        match file.try_lock_exclusive() {
+            Ok(()) => Ok(Some(file)),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub(super) fn open(data_dir: &Path) -> std::io::Result<Self> {

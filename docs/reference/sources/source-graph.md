@@ -116,3 +116,12 @@ consumed by schema generation).
 If the graph vocabulary changes, update this file,
 `crates/axon-graph/src/schema_registry.rs`, and regenerate `graph.schema.json`
 in the same PR.
+
+
+Parser graph evidence retains at most 4096 UTF-8 bytes per quote. Oversized
+quotes become literal excerpts near the named evidence; `quote_excerpted` and
+`quote_original_bytes` disclose this projection. Full names, parser facts,
+source ranges, and searchable source bodies remain available. This prevents
+many facts on one minified line from retaining copies of the whole document.
+JSON/YAML data containing words such as `service` or `message` is not treated
+as Protobuf solely because those words occur inside values.

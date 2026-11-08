@@ -250,3 +250,86 @@ async fn run_query_excludes_memory_source_kind_by_default() {
         "memory-source vector must not appear in plain query results"
     );
 }
+
+#[tokio::test]
+async fn small_query_limit_keeps_the_same_diversified_prefix_as_a_full_window() {
+    let concrete_store = Arc::new(FakeVectorStore::new("fake-vectors"));
+    concrete_store
+        .ensure_collection(test_collection_spec_hybrid(4))
+        .await
+        .unwrap();
+    let points = (0..12)
+        .map(|index| {
+            let mut p = point(
+                &format!("point-{index:02}"),
+                &format!("chunk-{index:02}"),
+                &[1.0, 0.0, 0.0, 0.0],
+                &format!("Literal supporting evidence number {index}"),
+            );
+            let group = if index < 8 {
+                "a".to_string()
+            } else {
+                format!("other-{index}")
+            };
+            p.payload.insert(
+                "document_id".into(),
+                serde_json::json!(format!("doc-{group}")),
+            );
+            p.payload.insert(
+                "source_item_key".into(),
+                serde_json::json!(format!("{group}.md")),
+            );
+            p.payload.get_mut("chunk_locator").unwrap()["canonical_uri"] =
+                serde_json::json!(format!("https://example.com/{group}"));
+            p
+        })
+        .collect();
+    concrete_store
+        .upsert(VectorPointBatch {
+            batch_id: BatchId::new(Uuid::from_u128(0xc)),
+            collection: "axon-test".into(),
+            model: "fake-embedding".into(),
+            dimensions: 4,
+            sparse_vectors: None,
+            payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
+            points,
+        })
+        .await
+        .unwrap();
+    let store: Arc<dyn VectorStore> = concrete_store;
+    let provider: Arc<dyn EmbeddingProvider> =
+        Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
+    let mut results = Vec::new();
+    for limit in [3, 10] {
+        results.push(
+            run_query(
+                store.clone(),
+                provider.clone(),
+                ProviderId::new("fake-embedding"),
+                "fake-embedding",
+                4,
+                QueryServiceRequest {
+                    query: "evidence".into(),
+                    collection: "axon-test".into(),
+                    limit,
+                    hybrid: false,
+                    hybrid_candidates: None,
+                    since: None,
+                    before: None,
+                },
+            )
+            .await
+            .unwrap()
+            .hits,
+        );
+    }
+    assert_eq!(
+        results[0].iter().map(|h| &h.chunk_id).collect::<Vec<_>>(),
+        results[1]
+            .iter()
+            .take(3)
+            .map(|h| &h.chunk_id)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(results[0][2].chunk_id, "chunk-08");
+}

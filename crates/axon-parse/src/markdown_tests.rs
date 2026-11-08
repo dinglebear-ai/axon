@@ -73,3 +73,44 @@ fn extracts_markdown_heading_facts_and_candidates() {
         Some("## Source Pipeline")
     );
 }
+
+#[test]
+fn markdown_headings_exclude_directives_indented_and_fenced_code() {
+    let text = "# Real\n#define NL_DEBUG\t(x)\n#!/bin/bash\n#NoSpace\n    # Indented\n\t# TabIndented\n```c\n# false heading\n~~~\n```\n~~~sh\n# another false heading\n~~~\n##\tUnicode 深い ###\n### Name#\n### ###\n";
+    let (facts, candidates) = heading_facts(&input("guide.md", text));
+    assert_eq!(
+        facts
+            .iter()
+            .map(|fact| fact.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Real", "Unicode 深い", "Name#"]
+    );
+    for candidate in candidates {
+        axon_graph::candidate::validate_candidate(&candidate).unwrap();
+    }
+}
+
+#[test]
+fn production_registry_does_not_sniff_code_comments_as_markdown() {
+    for (path, text) in [
+        (
+            "nl_debug.h",
+            "#define NL_DEBUG\t(x)\n# valid-looking comment\n",
+        ),
+        ("run.sh", "#!/bin/sh\n# This is a comment\n"),
+    ] {
+        let mut input = input(path, text);
+        input.document.content_kind = ContentKind::Code;
+        input.document.mime_type = None;
+        let parsed = crate::builtins::production_registry().parse(&input);
+        assert!(
+            !parsed
+                .facts
+                .iter()
+                .any(|fact| fact.fact_kind == "markdown_heading")
+        );
+        for candidate in parsed.graph_candidates {
+            axon_graph::candidate::validate_candidate(&candidate).unwrap();
+        }
+    }
+}

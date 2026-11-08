@@ -400,6 +400,7 @@ async fn call_upsert(
     batch: VectorPointBatch,
     counts: StageCounts,
 ) -> anyhow::Result<VectorStoreWriteResult> {
+    let started = std::time::Instant::now();
     let expected_points = batch.points.len() as u64;
     let operation = format!("upsert:{}", batch.batch_id.0);
     let write = reserved_call::upsert(
@@ -420,5 +421,6 @@ async fn call_upsert(
         write.points_attempted,
         write.points_written,
     )?;
+    tracing::info!(job_id=?input.plan.job_id, points=expected_points, elapsed_us=started.elapsed().as_micros() as u64, "source vector write completed");
     Ok(write)
 }

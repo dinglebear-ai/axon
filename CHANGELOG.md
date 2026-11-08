@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.5.1] - 2026-10-23
+
+### Security
+
+- Update vulnerable TLS, QUIC, certificate roots and ZIP dependencies across workspace, desktop and vendored authentication lockfiles. Migrate Swagger/OpenAPI integration to Utoipa 6 while preserving embedded documentation and palette archive codecs.
+
 ### Changed
+
+- Consolidate bounded ingestion recovery, parser and chunk-quality fixes, scalar TEI tokenization, Qdrant encoding improvements, and document-diverse retrieval with preserved citation windows.
 
 - Include indexed `web_title` values alongside URLs in domain source pages and their HTTP response, preserving the existing `urls` field for clients that only need canonical addresses.
 - Capture HTML page titles during generic web acquisition so new and refreshed web sources populate `web_title` in the index.

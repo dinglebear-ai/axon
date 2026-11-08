@@ -11,9 +11,23 @@ const HTTP_METHODS: [&str; 5] = ["get", "post", "put", "patch", "delete"];
 
 pub fn api_schema_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let path = input.document.path.as_deref().unwrap_or_default();
-    if path.ends_with(".graphql") || inline_text(input).contains("type Query") {
+    let structured = matches!(
+        input.document.content_kind,
+        axon_api::source::ContentKind::Json
+            | axon_api::source::ContentKind::Yaml
+            | axon_api::source::ContentKind::Structured
+    );
+    let mime = input.document.mime_type.as_deref().unwrap_or_default();
+    if mime == "application/graphql"
+        || path.ends_with(".graphql")
+        || path.ends_with(".graphqls")
+        || (!structured && inline_text(input).trim_start().starts_with("type Query"))
+    {
         graphql_facts(input)
-    } else if path.ends_with(".proto") || inline_text(input).contains("service ") {
+    } else if mime == "application/protobuf"
+        || path.ends_with(".proto")
+        || (!structured && inline_text(input).trim_start().starts_with("service "))
+    {
         proto_facts(input)
     } else {
         openapi_facts(input)
@@ -229,7 +243,7 @@ fn graphql_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandida
                     "graphql_type",
                     name,
                     Some(line_number),
-                    Some(trimmed.to_string()),
+                    Some(name.to_string()),
                 ));
             }
         } else if let Some(parent) = current_type.as_deref() {
@@ -255,7 +269,7 @@ fn graphql_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandida
                     "graphql_field",
                     &name,
                     Some(line_number),
-                    Some(trimmed.to_string()),
+                    Some(field_name.to_string()),
                 ));
             }
         }
@@ -284,7 +298,7 @@ fn proto_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate
                 "proto_service",
                 &service,
                 Some(line_number),
-                Some(line.trim().to_string()),
+                Some(service.clone()),
             ));
         }
         for rpc in rpc_specs(line) {
@@ -303,7 +317,7 @@ fn proto_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate
                 "proto_rpc",
                 &rpc.name,
                 Some(line_number),
-                Some(line.trim().to_string()),
+                Some(rpc.name.clone()),
             ));
         }
         for message in names_after(line, "message ") {
@@ -322,7 +336,7 @@ fn proto_facts(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate
                 "proto_message",
                 &message,
                 Some(line_number),
-                Some(line.trim().to_string()),
+                Some(message.clone()),
             ));
         }
     }

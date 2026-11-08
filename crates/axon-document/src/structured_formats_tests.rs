@@ -44,3 +44,36 @@ fn xml_records_returns_empty_for_malformed_input() {
     let chunks = xml_records("not xml at all");
     assert!(chunks.is_empty());
 }
+
+#[test]
+fn structured_record_ranges_match_legacy_offsets_without_prefix_rescans() {
+    type RecordChunker = fn(&str) -> Vec<DocumentChunk>;
+    let cases: Vec<(String, RecordChunker)> = vec![
+        (
+            format!("name,value\r\n{}", "café,東京\r\n".repeat(512)),
+            csv_records,
+        ),
+        ("clé: 東京\r\n".repeat(512), yaml_records),
+        ("[café]\r\nvalue = \"東京\"\r\n".repeat(512), toml_records),
+        (
+            format!("<root>{}</root>", "<item>東京</item>\r\n".repeat(512)),
+            xml_records,
+        ),
+    ];
+    for (source, chunker) in cases {
+        let (chunks, work) = crate::performance_measurement::measure(|| chunker(&source));
+        assert_eq!(chunks.len(), 512);
+        assert!(work.range_scan_bytes <= source.len() * 4);
+        for chunk in chunks {
+            let expected = crate::text::source_range(
+                &source,
+                chunk.range.byte_start.unwrap() as usize,
+                chunk.range.byte_end.unwrap() as usize,
+            );
+            assert_eq!(chunk.range.char_start, expected.char_start);
+            assert_eq!(chunk.range.char_end, expected.char_end);
+            assert_eq!(chunk.range.line_start, expected.line_start);
+            assert_eq!(chunk.range.line_end, expected.line_end);
+        }
+    }
+}

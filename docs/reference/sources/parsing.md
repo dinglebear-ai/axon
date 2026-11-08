@@ -38,6 +38,22 @@ vectors, persist graph rows, or call LLMs unless routed through
 Each parser reports `parser_id` and `parser_version` in capability and results;
 `graph_candidate.rs` stamps `parser_id` into evidence metadata.
 
+Parser version `pr9-source-scoped-graph` encodes graph identities as UUIDv5
+hashes of JSON tuples containing source ID, item key, canonical URI and the
+entity or relationship fields. Merge keys remain bounded even for long Unicode
+names and control characters; complete labels, quotes and source ranges remain
+in the candidate. Relationship identity includes both endpoints and their kinds.
+Job IDs and line positions do not change entity identity; evidence identity
+includes the range and quote. Refresh existing sources to rebuild facts under
+this parser version.
+
+Markdown extraction requires a Markdown content kind, MIME type, file extension,
+or explicit parser selection. A leading `#` alone is not an identification
+signal because C directives and shell comments share it. ATX headings require
+whitespace after the hash prefix, allow up to three leading spaces, and exclude
+fenced or indented code. Empty headings do not produce graph entities.
+
+
 ## Module map (`crates/axon-parse/src/`)
 
 `parser.rs` (trait + `ParserCapability`), `registry.rs` (language/filetype

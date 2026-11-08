@@ -29,9 +29,12 @@ pub fn validate_candidate(candidate: &GraphCandidate) -> Result<(), ApiError> {
     validate_candidate_identity(candidate)?;
     validate_confidence("candidate", candidate.confidence)?;
 
+    // Borrow stable keys once: expandable candidates must not scan all nodes per edge.
+    let mut node_keys = HashSet::with_capacity(candidate.nodes.len());
     // Every node kind must be in the closed registry.
     for node in &candidate.nodes {
         GraphNodeKind::from_str(&node.node_kind)?;
+        node_keys.insert(node.stable_key.as_str());
         if node.stable_key.trim().is_empty() {
             return Err(graph_validation_error(format!(
                 "node candidate of kind {:?} has an empty stable_key",
@@ -66,21 +69,13 @@ pub fn validate_candidate(candidate: &GraphCandidate) -> Result<(), ApiError> {
     // the evidence records that justify that specific claim.
     for edge in &candidate.edges {
         GraphEdgeKind::from_str(&edge.edge_kind)?;
-        if !candidate
-            .nodes
-            .iter()
-            .any(|n| n.stable_key == edge.from_stable_key)
-        {
+        if !node_keys.contains(edge.from_stable_key.as_str()) {
             return Err(graph_validation_error(format!(
                 "edge {:?} references unknown from stable_key {:?}",
                 edge.edge_kind, edge.from_stable_key
             )));
         }
-        if !candidate
-            .nodes
-            .iter()
-            .any(|n| n.stable_key == edge.to_stable_key)
-        {
+        if !node_keys.contains(edge.to_stable_key.as_str()) {
             return Err(graph_validation_error(format!(
                 "edge {:?} references unknown to stable_key {:?}",
                 edge.edge_kind, edge.to_stable_key

@@ -14,6 +14,32 @@ SPEC.loader.exec_module(SERVER)
 
 
 class MlxTeiDirectTests(unittest.TestCase):
+    def test_tokenize_response_includes_special_tokens_and_offsets(self):
+        from types import SimpleNamespace
+        row = SimpleNamespace(ids=[1, 2], tokens=["[CLS]", "hello"], special_tokens_mask=[1, 0], offsets=[(0, 0), (0, 5)])
+        self.assertEqual(SERVER.tokenize_response([row]), [[
+            {"id": 1, "text": "[CLS]", "special": True, "start": None, "stop": None},
+            {"id": 2, "text": "hello", "special": False, "start": 0, "stop": 5},
+        ]])
+
+    def test_scalar_tokenize_matches_standard_tei(self):
+        from types import SimpleNamespace
+        self.assertEqual(SERVER.validate_tokenize_payload({"inputs": "漢字"}), (["漢字"], True))
+        self.assertEqual(SERVER.validate_tokenize_payload({"inputs": "", "add_special_tokens": False}), ([""], False))
+        row = SimpleNamespace(ids=[1], tokens=["hello"], special_tokens_mask=[0], offsets=[(0, 5)])
+        self.assertEqual(SERVER.tokenize_response([row], single=True), [
+            {"id": 1, "text": "hello", "special": False, "start": 0, "stop": 5},
+        ])
+
+    def test_tokenize_payload_preserves_special_tokens_option(self):
+        self.assertEqual(SERVER.validate_tokenize_payload({"inputs": ["a", "漢字"]}), (["a", "漢字"], True))
+        self.assertEqual(SERVER.validate_tokenize_payload({"inputs": ["a"], "add_special_tokens": False}), (["a"], False))
+
+    def test_tokenize_payload_rejects_drift_and_invalid_options(self):
+        for payload in ({"inputs": ["a"], "prompt_name": "query"}, {"inputs": ["a"], "add_special_tokens": 1}, {"inputs": []}, {"inputs": ["a"], "truncate": True}):
+            with self.assertRaises(SERVER.RequestLimitError):
+                SERVER.validate_tokenize_payload(payload)
+
     def test_summarize_shapes_counts_tokens_and_occupancy(self):
         summary = SERVER.summarize_shapes(
             [SERVER.BatchShape(3, (2, 4, 4)), SERVER.BatchShape(2, (5, 7))], 3, 24
