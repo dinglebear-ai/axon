@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Permission-denial fixtures must run as the invoking user, including inside
+# the Linux network namespace. Root is needed only to configure that namespace.
+if [[ "$(id -u)" == "0" ]]; then
+  echo "Run the hermetic launcher as a non-root user; it escalates only for network isolation. Root bypasses the read-only upgrade fixture." >&2
+  exit 2
+fi
+invoking_user="$(id -un)"
+
 # Native macOS development may use Homebrew OpenSSL, pkg-config discovery, or
 # the vendored openssl-src fallback selected by Cargo. Never depend on a
 # machine-specific /tmp prefix.
@@ -27,5 +35,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   AXON_E2E_NATIVE_ISOLATION=1 sandbox-exec -f scripts/e2e/hermetic.sb just e2e-hermetic-inner
 else
   sudo --preserve-env=PATH unshare --net --fork bash -c \
-    'ip link set lo up; AXON_E2E_NATIVE_ISOLATION=1 just e2e-hermetic-inner'
+    'set -euo pipefail; ip link set lo up; exec runuser -u "$1" -- env PATH="$PATH" AXON_E2E_NATIVE_ISOLATION=1 just e2e-hermetic-inner' \
+    axon-hermetic-namespace "$invoking_user"
 fi

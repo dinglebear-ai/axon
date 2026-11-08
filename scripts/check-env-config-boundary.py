@@ -357,7 +357,8 @@ def scan_env_tokens() -> dict[str, set[str]]:
             if path.is_dir():
                 continue
             rel = path.relative_to(ROOT)
-            if any(part in {".git", ".worktrees", "__pycache__", "target"} for part in rel.parts):
+            # Installed dependencies are not authored runtime configuration.
+            if any(part in {".git", ".worktrees", "__pycache__", "target", "node_modules"} for part in rel.parts):
                 continue
             if str(rel) == "scripts/check_legacy_runtime_terms.sh":
                 continue
