@@ -1227,7 +1227,7 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
-        run: ./target/debug/axon source "docs/reference/mcp/overview.md" --wait true --json
+        run: ./target/debug/axon source "./docs/reference/mcp/overview.md" --scope file --wait true --json
 
       - name: Start axon MCP HTTP server
         env:
