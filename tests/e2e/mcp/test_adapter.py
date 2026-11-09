@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -13,6 +14,34 @@ SPEC.loader.exec_module(adapter)
 
 
 class McpAdapterTests(unittest.TestCase):
+    def test_smoke_help_requests_the_inline_shape_it_asserts(self):
+        script = (ROOT / "scripts/test-mcp-tools-mcporter.sh").read_text()
+        command = next(line for line in script.splitlines() if '"${prefix}_help"' in line)
+        self.assertIn("call_tool action:help response_mode:inline", command)
+        self.assertIn('.data.response_mode == "inline"', command)
+        self.assertIn('.data.inline.actions | type == "object"', command)
+
+    def test_ci_http_sweep_binds_its_owned_instance_and_collection(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        job = workflow.split("\n  mcp-smoke:\n", 1)[1]
+        job = re.split(r"(?m)^  [\w-]+:\s*$", job, maxsplit=1)[0]
+        self.assertIn("\n    env:\n", job, "MCP smoke declares its job-owned test state")
+        environment = job.split("\n    env:\n", 1)[1].split("\n    steps:\n", 1)[0]
+        values = dict(line.strip().split(": ", 1) for line in environment.splitlines() if ": " in line)
+        owned = values["MCP_E2E_OWNED_COLLECTION"]
+        self.assertTrue(owned.startswith("axon_e2e_"))
+        self.assertIn("${{ github.run_id }}", owned)
+        self.assertIn("${{ github.run_attempt }}", owned)
+        self.assertEqual(owned, values["AXON_COLLECTION"])
+        self.assertEqual("1", values["MCP_E2E_ISOLATED_HTTP"].strip("'\""))
+        self.assertEqual("1", values["MCPORTER_SKIP_BUILD"].strip("'\""))
+        self.assertIn("name: axon-linux-smoke", job)
+        self.assertIn("path: target/debug", job)
+        self.assertIn("./target/debug/axon mcp --transport http > .cache/mcporter-test/server.log 2>&1 &", job)
+        self.assertIn('wait "$server_pid"', job)
+        self.assertIn(".cache/mcporter-test/server-exit-code.txt", job)
+        self.assertIn('exit "$smoke_status"', job)
+
     def test_atomic_projected_call_uses_leaf_name_and_drops_only_fixed_fields(self):
         arguments = {"action": "jobs", "subaction": "get", "job_id": "owned", "payload": {"action": "user data"}}
         leaf = adapter.project_call(arguments, "atomic", "test-server.axon")

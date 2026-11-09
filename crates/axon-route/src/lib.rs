@@ -44,3 +44,6 @@ mod route_normalization_tests;
 #[cfg(test)]
 #[path = "route_validation_tests.rs"]
 mod route_validation_tests;
+
+#[cfg(test)]
+mod ci_mcp_smoke_tests;
