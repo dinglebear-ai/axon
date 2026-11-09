@@ -66,7 +66,7 @@ class LiveContractTests(unittest.TestCase):
   for action in re.findall(r"uses:\s*([^\s]+)",text):self.assertRegex(action,r"^[^@]+@[0-9a-f]{40}$")
  def test_wif_claims_are_exact_and_scope_only_ephemeral_tag_creation(self):
   body=json.loads((ROOT/"config/tailscale/axon-ci-wif.json").read_text())
-  self.assertEqual("repo:dinglebear-ai/axon:environment:axon-live-e2e",body["subject"]);self.assertEqual(["refs/heads/main"],body["refs"])
+  self.assertEqual("repo:dinglebear-ai@301925356/axon@1160613618:environment:axon-live-e2e",body["subject"]);self.assertEqual(["refs/heads/main"],body["refs"])
   self.assertEqual(["push","schedule","workflow_dispatch"],body["events"]);self.assertEqual({"auth_keys":"write","tags":["tag:axon-ci-e2e"],"ephemeral_only":True},body["scope"])
   self.assertIn("policy",body["denied_capabilities"]);self.assertIn("other_tags",body["denied_capabilities"])
  def test_wif_evaluator_rejects_mutable_claims_and_same_session_replay(self):
@@ -74,7 +74,7 @@ class LiveContractTests(unittest.TestCase):
   claims={"iss":policy["issuer"],"aud":audience,"repository_owner":policy["repository_owner"],"repository_owner_id":policy["repository_owner_id"],"repository":policy["repository"],"repository_id":policy["repository_id"],"job_workflow_ref":policy["job_workflow_ref"],"ref":"refs/heads/main","environment":policy["environment"],"sub":policy["subject"],"event_name":"push","iat":now-10,"nbf":now-10,"exp":now+300,"jti":"unique-token-identity-123"}
   seen=set();self.assertTrue(wif.validate(claims,policy,audience,"tag:axon-ci-e2e",seen,now))
   with self.assertRaises(wif.ClaimError):wif.validate(claims,policy,audience,"tag:axon-ci-e2e",seen,now)
-  for key,value in (("aud","wrong"),("repository_owner_id","9"),("repository_id","9"),("job_workflow_ref","evil/reusable.yml@refs/heads/main"),("ref","refs/pull/7/merge"),("environment","other"),("event_name","pull_request"),("exp",now-100)):
+  for key,value in (("sub","repo:dinglebear-ai/axon:environment:axon-live-e2e"),("sub","repo:dinglebear-ai@9/axon@1160613618:environment:axon-live-e2e"),("sub","repo:dinglebear-ai@301925356/axon@9:environment:axon-live-e2e"),("aud","wrong"),("repository_owner_id","9"),("repository_id","9"),("job_workflow_ref","evil/reusable.yml@refs/heads/main"),("ref","refs/pull/7/merge"),("environment","other"),("event_name","pull_request"),("exp",now-100)):
    bad=dict(claims);bad["jti"]="another-unique-token-456";bad[key]=value
    with self.assertRaises(wif.ClaimError):wif.validate(bad,policy,audience,"tag:axon-ci-e2e",set(),now)
   with self.assertRaises(wif.ClaimError):wif.validate(dict(claims,jti="third-unique-token-789"),policy,audience,"tag:other",set(),now)

@@ -371,7 +371,7 @@ fn run_command(root: &Path, step: &PlanStep) -> Result<()> {
     println!("\n==> {}\n{}", step.name, step.command);
     let mut command = Command::new("bash");
     command
-        .arg("-lc")
+        .arg("-c")
         .arg(step.command)
         .current_dir(root)
         .env("AXON_ALLOW_FALLBACK_WEB_ASSETS", "1");

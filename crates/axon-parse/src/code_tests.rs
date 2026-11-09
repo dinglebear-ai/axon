@@ -488,3 +488,13 @@ fn elixir_attributes_are_retained_and_quoted_defs_are_not_declarations() {
     assert_eq!(range.line_start, Some(1));
     assert_eq!(facts[0].name, "run");
 }
+
+#[test]
+fn unsupported_c_anonymous_struct_does_not_emit_empty_symbol() {
+    let facts = symbol_facts(&input(
+        "nl_debug.c",
+        "struct {\n int field;\n} value;\nstruct named { int other; };\n",
+    ));
+    assert!(facts.iter().all(|fact| !fact.name.trim().is_empty()));
+    assert!(facts.iter().any(|fact| fact.name == "named"));
+}

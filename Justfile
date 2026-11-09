@@ -358,6 +358,7 @@ validate-plugin:
 # test-catalog: scripts/test-live-cli-portability.sh hermetic-required
 # test-catalog: scripts/test-mcp-tasks-wire.py live-optional
 # test-catalog: scripts/test-mlx-metrics.py hermetic-required
+# test-catalog: scripts/test_env_config_boundary.py hermetic-required
 # test-catalog: scripts/test_mcp_doc_renderer.py hermetic-required
 # test-catalog: scripts/test_qdrant_quality.py hermetic-required
 # test-catalog: scripts/test_qdrant_tune.py hermetic-required
@@ -376,6 +377,7 @@ operational-test-contracts:
     python3 scripts/test-review-remediation.py
     scripts/test-live-cli-portability.sh
     python3 scripts/test-mlx-metrics.py
+    python3 scripts/test_env_config_boundary.py
     python3 scripts/test_mcp_doc_renderer.py
     python3 scripts/test_qdrant_quality.py
     python3 scripts/test_qdrant_tune.py

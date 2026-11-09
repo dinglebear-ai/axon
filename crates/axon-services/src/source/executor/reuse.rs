@@ -68,6 +68,24 @@ pub(super) async fn resolve_acquisition(
     diff: &SourceManifestDiff,
     mut acquisition: SourceAcquisition,
 ) -> anyhow::Result<ResolvedAcquisition> {
+    // Discovery can describe raw HTML while acquisition yields rendered Markdown.
+    // Persist the acquired identity even on a forced cold run; otherwise its next
+    // if_stale refresh compares unlike representations and embeds unchanged content.
+    let acquired_items: BTreeMap<_, _> = acquisition
+        .fetched_items
+        .iter()
+        .map(|item| {
+            (
+                item.manifest_item.source_item_key.clone(),
+                item.manifest_item.clone(),
+            )
+        })
+        .collect();
+    for item in &mut acquisition.manifest.items {
+        if let Some(acquired) = acquired_items.get(&item.source_item_key) {
+            *item = acquired.clone();
+        }
+    }
     // A forced refresh is also the canonical cold-run path: refetch,
     // renormalize, rechunk, and re-embed even when the bytes match the prior
     // generation. Reusing cached documents here made `refresh=force` only a

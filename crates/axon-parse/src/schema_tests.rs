@@ -123,3 +123,102 @@ fn extracts_openapi_operations_schemas_and_auth_requirements() {
             .any(|candidate| candidate.kind == "api_auth_requirement")
     );
 }
+
+#[test]
+fn json_catalog_words_do_not_manufacture_proto_or_graphql_facts() {
+    let body = serde_json::json!({"icons": (0..600).map(|i| format!("customer service Catalog{i} message Label{i} type Query {{ field: String }}")).collect::<Vec<_>>()}).to_string();
+    let (facts, candidates) = api_schema_facts(&input("catalog.json", ContentKind::Json, &body));
+    assert!(facts.is_empty());
+    assert!(candidates.is_empty());
+    let (facts, candidates) = api_schema_facts(&input(
+        "catalog.yaml",
+        ContentKind::Yaml,
+        "description: customer service Catalog message Label type Query",
+    ));
+    assert!(facts.is_empty());
+    assert!(candidates.is_empty());
+}
+
+#[test]
+fn legitimate_minified_proto_keeps_every_fact_without_repeating_the_full_line() {
+    let mut body = String::from("service Actual { rpc Ask (Request) returns (Reply); } ");
+    for i in 0..600 {
+        body.push_str(&format!("message Item{i} {{ string value = 1; }} "));
+    }
+    let (facts, candidates) =
+        api_schema_facts(&input("service.proto", ContentKind::PlainText, &body));
+    assert_eq!(facts.len(), 602);
+    assert_eq!(candidates.len(), facts.len());
+    let total_quote: usize = candidates
+        .iter()
+        .flat_map(|c| &c.evidence)
+        .map(|e| {
+            let quote = e.quote.as_deref().unwrap();
+            assert!(quote.len() <= 4096);
+            assert!(body.contains(quote));
+            quote.len()
+        })
+        .sum();
+    assert!(total_quote < body.len());
+    assert!(facts.iter().any(|f| f.name == "Item599"));
+}
+
+#[test]
+#[ignore = "requires AXON_REAL_CATALOG_FIXTURE pinned private input"]
+fn real_core_catalog_does_not_amplify_graph_evidence() {
+    let path = std::env::var("AXON_REAL_CATALOG_FIXTURE").expect("explicit fixture path required");
+    let body = std::fs::read_to_string(path).unwrap();
+    assert!(body.len() > 4_000_000);
+    let (facts, candidates) = api_schema_facts(&input("catalog.json", ContentKind::Json, &body));
+    assert!(facts.is_empty());
+    assert!(candidates.is_empty());
+}
+
+#[test]
+fn explicit_schema_mime_preserves_extensionless_graphql_and_proto_support() {
+    for (mime, body, fact) in [
+        (
+            "application/graphql",
+            "type Person {\n name: String\n}\n",
+            "graphql_type",
+        ),
+        (
+            "application/protobuf",
+            "syntax = \"proto3\";\nservice Actual {}",
+            "proto_service",
+        ),
+    ] {
+        let mut source = input("schema", ContentKind::PlainText, body);
+        source.document.mime_type = Some(mime.into());
+        let (facts, _) = api_schema_facts(&source);
+        assert!(facts.iter().any(|f| f.fact_kind == fact));
+    }
+}
+
+#[test]
+fn graph_quote_excerpt_preserves_named_fact_and_literal_provenance() {
+    let name = "ActualNamedEntity";
+    let body = format!("{}{}{}", "α".repeat(20_000), name, "β".repeat(20_000));
+    let source = input("schema.proto", ContentKind::PlainText, &body);
+    let candidate = crate::graph_candidate::graph_candidate(
+        &source,
+        "proto_schema",
+        "proto_service",
+        name,
+        Some(1),
+        Some(body.clone()),
+    );
+    assert_eq!(candidate.nodes[1].label, name);
+    let evidence = &candidate.evidence[0];
+    let quote = evidence.quote.as_deref().unwrap();
+    assert!(quote.len() <= 4096 && quote.contains(name) && body.contains(quote));
+    assert_eq!(
+        evidence.metadata["quote_excerpted"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        evidence.metadata["quote_original_bytes"],
+        serde_json::json!(body.len())
+    );
+    assert_eq!(evidence.range.as_ref().unwrap().line_start, Some(1));
+}

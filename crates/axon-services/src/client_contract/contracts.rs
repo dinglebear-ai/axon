@@ -64,6 +64,8 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
             "offset",
             "query",
             "since",
+            "source_kinds",
+            "source_urls",
         ],
     },
     RestRouteContract {
@@ -168,6 +170,8 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
             "loadout",
             "query",
             "since",
+            "source_kinds",
+            "source_urls",
         ],
     },
     RestRouteContract {
@@ -196,6 +200,8 @@ const REST_ROUTE_CONTRACTS: &[RestRouteContract] = &[
             "loadout",
             "query",
             "since",
+            "source_kinds",
+            "source_urls",
         ],
     },
     RestRouteContract {

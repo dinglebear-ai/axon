@@ -153,6 +153,9 @@ impl Default for ProjectionBatchConfig {
 
 #[derive(Clone)]
 pub struct Config {
+    /// Per-request retrieval scope. Empty preserves the configured corpus.
+    pub retrieval_source_kinds: Vec<axon_api::source::SourceKind>,
+    pub retrieval_source_urls: Vec<String>,
     /// Server-owned Labby integration used to resolve revision-bound ask/chat context.
     pub labby_url: Option<String>,
     pub labby_service_token: Option<String>,
@@ -603,6 +606,9 @@ pub struct Config {
 
     /// Model name for OpenAI-compatible synthesis completions. Env: `AXON_SYNTHESIS_OPENAI_MODEL`.
     pub openai_model: String,
+
+    /// Optional OpenAI-compatible temperature override (0..=2). Env: `AXON_OPENAI_TEMPERATURE`.
+    pub openai_temperature: Option<f64>,
 
     /// Model name for OpenAI-compatible direct chat. Env: `AXON_CHAT_OPENAI_MODEL`.
     pub openai_chat_model: String,

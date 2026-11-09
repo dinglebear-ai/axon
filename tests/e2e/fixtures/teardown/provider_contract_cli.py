@@ -44,6 +44,7 @@ def tailscale():
         state["tailscale"]["BackendState"] = "Stopped"; save(); return
 def tailscaled():
     state_file=Path(args[args.index("--state")+1]);socket_file=Path(args[args.index("--socket")+1])
+    time.sleep(float(os.environ.get("AXON_E2E_TAILSCALED_START_DELAY", "0")))
     state_file.write_text("faithful-isolated-state");socket_file.touch()
     stopping=False
     def stop(_sig,_frame):

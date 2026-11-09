@@ -20,7 +20,7 @@ use crate::{
 
 #[test]
 fn preparation_schema_version_is_semantic_and_stable() {
-    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-13");
+    assert_eq!(PREPARATION_SCHEMA_VERSION, "axon-document/schema-18");
     assert!(!PREPARATION_SCHEMA_VERSION.contains("pr"));
 }
 
@@ -937,9 +937,9 @@ fn decoded_utf16_is_redacted_before_parsing_and_range_validation() {
     );
     assert!(prepared.graph_candidates.iter().any(|candidate| {
         candidate
-            .merge_key
-            .as_deref()
-            .is_some_and(|key| key.contains("After the secret"))
+            .nodes
+            .iter()
+            .any(|node| node.label == "After the secret")
     }));
     assert!(prepared.warnings.iter().any(|warning| {
         warning.code == "document.content.pre_chunk_redacted" && warning.severity == Severity::Info
@@ -1052,14 +1052,8 @@ fn large_html_document_still_removes_non_content_payloads() {
 }
 
 #[test]
-fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
-    // Dead-code recovery (#298): a `"web"`-family document routed to
-    // `MarkdownSections` (the common web/crawl case) never passes
-    // `structured_payload` through `build_chunks`'s structured-parse branch --
-    // that only runs for `StructuredRecords`/`ApiSchema`. Confirm
-    // `project_structured_payload_metadata` still lands it on every chunk (and
-    // on the document itself, since `axon-vectors::point::point_payload`
-    // builds each point's payload from `document.metadata.clone()`).
+fn markdown_web_document_retains_structured_payload_once() {
+    // Markdown chunks inherit this document-level blob only at publication.
     let mut doc = source_doc(
         ContentKind::Markdown,
         "# Intro\nHello from the complete reference documentation for this application.\n\n## More\nText explains additional details of the application configuration.",
@@ -1098,13 +1092,8 @@ fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
             .contains("headline")
     );
     for chunk in &prepared.chunks {
-        assert_eq!(chunk.metadata["web_structured_kind"], "Article");
-        assert!(
-            chunk.metadata["web_structured_blob"]
-                .as_str()
-                .unwrap()
-                .contains("headline")
-        );
+        assert!(!chunk.metadata.contains_key("web_structured_kind"));
+        assert!(!chunk.metadata.contains_key("web_structured_blob"));
     }
 }
 
@@ -1220,12 +1209,12 @@ fn oversized_structured_record_is_bounded_before_embedding() {
             .iter()
             .all(|chunk| chunk.content.len() <= 4096)
     );
-    assert!(
-        prepared
-            .chunks
-            .iter()
-            .all(|chunk| chunk.source_range.json_pointer.as_deref() == Some("/items"))
-    );
+    for chunk in &prepared.chunks {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert!(start < end);
+        assert_eq!(chunk.content, body[start..end]);
+    }
 }
 
 #[test]
@@ -1285,7 +1274,10 @@ fn oversized_session_turn_keeps_turn_id_and_exact_ranges() {
 
 #[test]
 fn multi_megabyte_json_record_has_bounded_embedding_chunks() {
-    let body = format!("{{\"payload\":\"{}\"}}", "x".repeat(3_000_000));
+    let payload = (0..125_000)
+        .map(|i| format!("{i:012}abcdefghijkl"))
+        .collect::<String>();
+    let body = format!("{{\"payload\":\"{payload}\"}}");
     let PrepareSourceDocumentResult::Prepared(prepared) =
         crate::testing::preparer_for_small_fixtures()
             .prepare(request(
@@ -1417,9 +1409,9 @@ fn redacted_content_parses_and_validates_after_scrub() {
     // redacted line.
     assert!(
         prepared.graph_candidates.iter().any(|candidate| candidate
-            .merge_key
-            .as_deref()
-            .is_some_and(|key| key.contains("After the secret"))),
+            .nodes
+            .iter()
+            .any(|node| node.label == "After the secret")),
         "heading candidates after the redacted line must survive validation; got: {:?}",
         prepared
             .graph_candidates
@@ -1657,7 +1649,7 @@ fn local_binary_policy_is_consumed_before_prepared_payload_metadata() {
 }
 
 #[test]
-fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
+fn quality_rejects_junk_and_short_unidentified_chunks_but_preserves_turns() {
     let profiles = [
         ChunkingProfile::CodeSymbol,
         ChunkingProfile::CodeManifest,
@@ -1681,10 +1673,14 @@ fn all_profiles_reject_short_and_punctuation_only_embedding_chunks() {
                     profile,
                 ))
                 .unwrap();
-            assert!(
-                matches!(result, PrepareSourceDocumentResult::Skipped(_)),
-                "{profile}: {source}"
-            );
+            if profile == ChunkingProfile::SessionTurns && source == "identifier" {
+                assert!(matches!(result, PrepareSourceDocumentResult::Prepared(_)));
+            } else {
+                assert!(
+                    matches!(result, PrepareSourceDocumentResult::Skipped(_)),
+                    "{profile}: {source}"
+                );
+            }
         }
     }
 }
@@ -1746,7 +1742,10 @@ fn default_quality_cutoff_rejects_a_sub_200_character_document() {
             ChunkingProfile::PlainTextWindows,
         ))
         .unwrap();
-    assert!(matches!(result, PrepareSourceDocumentResult::Skipped(_)));
+    assert!(
+        matches!(result, PrepareSourceDocumentResult::Skipped(skipped)
+        if skipped.reason == axon_api::source::ContentSkipReason::NoSearchableChunks)
+    );
 }
 
 #[test]
@@ -1790,4 +1789,337 @@ fn shared_minimum_cannot_exceed_non_markdown_chunk_capacity() {
         ))
         .unwrap();
     assert!(matches!(result, PrepareSourceDocumentResult::Prepared(_)));
+}
+
+#[test]
+fn large_document_metadata_does_not_fan_out_across_prepared_chunks() {
+    let text = (0..128)
+        .map(|i| {
+            format!(
+                "## Section {i}\n{}\n",
+                "Reference material with useful details. ".repeat(20)
+            )
+        })
+        .collect::<String>();
+    let mut doc = source_doc(ContentKind::Markdown, &text);
+    let shared = "x".repeat(60 * 1024);
+    doc.metadata
+        .insert("web_structured_blob".to_string(), shared.clone().into());
+    let PrepareSourceDocumentResult::Prepared(prepared) =
+        crate::testing::preparer_for_small_fixtures()
+            .prepare(PrepareSourceDocumentRequest {
+                document: doc,
+                generation: SourceGenerationId::from("gen-metadata-fanout"),
+                profile: Some(ChunkingProfile::MarkdownSections),
+                parse_facts: Vec::new(),
+                graph_candidates: Vec::new(),
+                warnings: Vec::new(),
+                errors: Vec::new(),
+            })
+            .unwrap()
+    else {
+        panic!("expected prepared document")
+    };
+    assert!(prepared.chunks.len() >= 64);
+    assert_eq!(prepared.metadata["web_structured_blob"], shared);
+    // Count owned serialized blob bytes, rather than allocator-dependent RSS.
+    let retained_blob_bytes = std::iter::once(&prepared.metadata)
+        .chain(prepared.chunks.iter().map(|chunk| &chunk.metadata))
+        .filter_map(|metadata| metadata.get("web_structured_blob"))
+        .filter_map(serde_json::Value::as_str)
+        .map(str::len)
+        .sum::<usize>();
+    assert_eq!(retained_blob_bytes, 60 * 1024);
+}
+
+#[test]
+fn short_session_turns_remain_distinct_records() {
+    let input = request(
+        ContentKind::PlainText,
+        "Please explain
+Use the cache",
+        "gen-short-turns",
+        ChunkingProfile::SessionTurns,
+    );
+    let PrepareSourceDocumentResult::Prepared(doc) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("useful turns must survive")
+    };
+    assert_eq!(doc.chunks.len(), 2);
+    assert_ne!(
+        doc.chunks[0].source_range.session_turn_id,
+        doc.chunks[1].source_range.session_turn_id
+    );
+}
+
+#[test]
+fn partial_scope_changes_emitted_chunk_boundaries() {
+    for profile in [
+        ChunkingProfile::PlainTextWindows,
+        ChunkingProfile::MarkdownSections,
+        ChunkingProfile::CodeSymbol,
+    ] {
+        let text = (0..180)
+            .map(|n| format!("useful content record {n:04} with distinct context\n"))
+            .collect::<String>();
+        let mut input = request(ContentKind::PlainText, &text, "gen-partial", profile);
+        let PrepareSourceDocumentResult::Prepared(full) =
+            DocumentPreparer::default().prepare(input.clone()).unwrap()
+        else {
+            panic!("full")
+        };
+        input
+            .document
+            .metadata
+            .insert("source_scope".into(), "partial".into());
+        let PrepareSourceDocumentResult::Prepared(partial) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("partial")
+        };
+        assert!(
+            partial.chunks.len() > full.chunks.len(),
+            "{profile}: partial={}, full={}",
+            partial.chunks.len(),
+            full.chunks.len()
+        );
+        assert!(
+            partial
+                .chunks
+                .iter()
+                .all(|c| c.content.chars().count() <= 1000)
+        );
+    }
+}
+
+#[test]
+fn concise_ast_code_and_structured_records_survive_default_quality_floor() {
+    for (kind, profile, path, body) in [
+        (
+            ContentKind::Code,
+            ChunkingProfile::CodeSymbol,
+            "cleanup.py",
+            "def cleanup():\n    return True\n",
+        ),
+        (
+            ContentKind::Code,
+            ChunkingProfile::CodeSymbol,
+            "run.sh",
+            "#!/bin/sh\nexec service start\n",
+        ),
+        (
+            ContentKind::Json,
+            ChunkingProfile::StructuredRecords,
+            "settings.json",
+            r#"{"enabled":true}"#,
+        ),
+        (
+            ContentKind::Toml,
+            ChunkingProfile::StructuredRecords,
+            "settings.toml",
+            "enabled = true\n",
+        ),
+    ] {
+        let mut input = request(kind, body, "tiny-structural", profile);
+        input.document.path = Some(path.into());
+        input.document.canonical_uri = format!("file:///{path}");
+        input.document.source_item_key = SourceItemKey::from(path);
+        let result = DocumentPreparer::default().prepare(input).unwrap();
+        let PrepareSourceDocumentResult::Prepared(doc) = result else {
+            panic!("missing {path}");
+        };
+        assert!(!doc.chunks.is_empty());
+        validate_prepared_document(&doc).unwrap();
+    }
+}
+
+#[test]
+fn tiny_comments_imports_and_malformed_code_do_not_bypass_quality_floor() {
+    for body in ["# comment only\n", "import os\n", "def broken(\n"] {
+        let mut input = request(
+            ContentKind::Code,
+            body,
+            "tiny-noise",
+            ChunkingProfile::CodeSymbol,
+        );
+        input.document.path = Some("module.py".into());
+        assert!(matches!(
+            DocumentPreparer::default().prepare(input).unwrap(),
+            PrepareSourceDocumentResult::Skipped(_)
+        ));
+    }
+}
+
+#[test]
+fn malformed_and_scalar_structured_documents_keep_quality_floor() {
+    for (kind, body) in [
+        (ContentKind::Json, "{broken"),
+        (ContentKind::Yaml, "# only comment"),
+        (ContentKind::Toml, "enabled = ["),
+        (ContentKind::Yaml, "just a scalar"),
+    ] {
+        assert!(matches!(
+            DocumentPreparer::default()
+                .prepare(request(
+                    kind,
+                    body,
+                    "tiny-invalid-record",
+                    ChunkingProfile::StructuredRecords
+                ))
+                .unwrap(),
+            PrepareSourceDocumentResult::Skipped(_)
+        ));
+    }
+}
+
+#[test]
+fn default_routing_recovers_complete_valid_configs_after_short_record_filtering() {
+    let entries = (0..28)
+        .map(|i| {
+            (
+                format!("provenance_field_{i}"),
+                format!("build_identifier_{i}"),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let json = serde_json::to_string_pretty(&entries).unwrap();
+    let yaml = entries
+        .iter()
+        .map(|(k, v)| format!("{k}: {v}\n"))
+        .collect::<String>();
+    for (kind, path, body) in [
+        (ContentKind::Json, "assets/provenance.json", json),
+        (ContentKind::Yaml, "runtime/config.yaml", yaml),
+    ] {
+        assert!(body.len() > 700);
+        let mut input = request(
+            kind,
+            &body,
+            "structured-fallback",
+            ChunkingProfile::StructuredRecords,
+        );
+        input.profile = None;
+        input.document.path = Some(path.into());
+        input.document.canonical_uri = format!("file:///{path}");
+        input.document.source_item_key = SourceItemKey::from(path);
+        let PrepareSourceDocumentResult::Prepared(doc) =
+            DocumentPreparer::default().prepare(input).unwrap()
+        else {
+            panic!("complete config omitted: {path}");
+        };
+        if kind == ContentKind::Json {
+            assert!(
+                doc.warnings
+                    .iter()
+                    .any(|w| w.code == "chunk.structured_quality_fallback")
+            );
+            assert_eq!(doc.chunking_method, "plain_text_windows");
+        }
+        assert_eq!(doc.prepare_version, "axon-document/schema-18");
+        for (key, value) in &entries {
+            assert!(
+                doc.chunks
+                    .iter()
+                    .any(|c| c.content.contains(key) && c.content.contains(value))
+            );
+        }
+        for chunk in &doc.chunks {
+            let start = chunk.source_range.byte_start.unwrap() as usize;
+            let end = chunk.source_range.byte_end.unwrap() as usize;
+            assert_eq!(chunk.content, body[start..end]);
+            assert!(chunk.content.len() <= crate::text::MAX_PLAIN_TEXT_CHUNK_BYTES);
+            assert!(chunk.content.chars().count() <= crate::text::MAX_PLAIN_TEXT_CHUNK_CHARS);
+        }
+        validate_prepared_document(&doc).unwrap();
+    }
+}
+
+#[test]
+fn default_routing_does_not_recover_malformed_or_scalar_configs() {
+    for (kind, path, body) in [
+        (ContentKind::Json, "config.json", "{broken"),
+        (ContentKind::Yaml, "config.yaml", "just a scalar"),
+        (ContentKind::Toml, "config.toml", "enabled = ["),
+        (ContentKind::Json, "config.json", "true"),
+    ] {
+        let mut input = request(
+            kind,
+            body,
+            "invalid-config",
+            ChunkingProfile::StructuredRecords,
+        );
+        input.profile = None;
+        input.document.path = Some(path.into());
+        input.document.canonical_uri = format!("file:///{path}");
+        input.document.source_item_key = SourceItemKey::from(path);
+        assert!(matches!(
+            DocumentPreparer::default().prepare(input).unwrap(),
+            PrepareSourceDocumentResult::Skipped(_)
+        ));
+    }
+}
+
+#[test]
+fn default_json_projection_never_publishes_empty_citation_ranges() {
+    let body = serde_json::json!({"objective": "Operators safely manage persistent sessions and recovery through the QA VM controller. ".repeat(5)}).to_string();
+    let mut input = request(
+        ContentKind::Json,
+        &body,
+        "json-citation",
+        ChunkingProfile::StructuredRecords,
+    );
+    input.profile = None;
+    input.document.path = Some("review-marker.json".into());
+    input.document.canonical_uri = "file:///review-marker.json".into();
+    let PrepareSourceDocumentResult::Prepared(doc) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("valid record omitted")
+    };
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.code == "chunk.structured_quality_fallback")
+    );
+    for chunk in doc.chunks {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert!(start < end);
+        assert_eq!(chunk.content, body[start..end]);
+        let lines = body.lines().collect::<Vec<_>>();
+        let lo = chunk.source_range.line_start.unwrap() as usize;
+        let hi = chunk.source_range.line_end.unwrap() as usize;
+        assert!(lines[lo - 1..hi].join("\n").contains(&chunk.content));
+    }
+}
+
+#[test]
+fn crlf_ast_graph_quotes_validate_against_literal_source() {
+    let body = format!(
+        "\r\n// é\r\nfn example() {{\r\n    let message = \"{}\";\r\n}}\r\n",
+        "Useful source context explaining safe runtime configuration. ".repeat(7)
+    );
+    let mut input = request(
+        ContentKind::Code,
+        &body,
+        "crlf-evidence",
+        ChunkingProfile::CodeSymbol,
+    );
+    input.document.path = Some("file.rs".into());
+    let PrepareSourceDocumentResult::Prepared(doc) =
+        DocumentPreparer::default().prepare(input).unwrap()
+    else {
+        panic!("expected prepared CRLF code")
+    };
+    assert!(!doc.graph_candidates.is_empty());
+    for candidate in &doc.graph_candidates {
+        for evidence in &candidate.evidence {
+            if let (Some(range), Some(quote)) = (&evidence.range, &evidence.quote)
+                && let Some((start, end)) = range.byte_start.zip(range.byte_end)
+            {
+                assert!(body[start as usize..end as usize].contains(quote));
+            }
+        }
+    }
 }

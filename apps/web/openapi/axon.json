@@ -11,7 +11,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "7.5.0"
+    "version": "7.5.1"
   },
   "paths": {
     "/healthz": {
@@ -82,7 +82,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -112,7 +112,7 @@
             }
           },
           "404": {
-            "description": "",
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -157,7 +157,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -187,7 +187,7 @@
             }
           },
           "502": {
-            "description": "",
+            "description": "HTTP 502 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -265,7 +265,7 @@
             }
           },
           "404": {
-            "description": "",
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -320,7 +320,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -4501,7 +4501,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -5013,7 +5013,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8171,6 +8171,296 @@
         ]
       }
     },
+    "/v1/synthesis/account": {
+      "get": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "status_openapi_marker",
+        "responses": {
+          "200": {
+            "description": "HTTP 200 response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Generation active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/synthesis/account/login": {
+      "post": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "start_openapi_marker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "HTTP 200 response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or missing account-switch confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Generation or sign-in active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported content type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/synthesis/account/login/cancel": {
+      "post": {
+        "tags": [
+          "codex-control"
+        ],
+        "operationId": "cancel_openapi_marker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "HTTP 200 response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported content type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Account unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/uploads": {
       "get": {
         "tags": [
@@ -8207,7 +8497,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8270,7 +8560,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8280,7 +8570,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "HTTP 400 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8345,7 +8635,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8375,7 +8665,7 @@
             }
           },
           "404": {
-            "description": "",
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8428,7 +8718,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8458,7 +8748,7 @@
             }
           },
           "404": {
-            "description": "",
+            "description": "HTTP 404 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8513,7 +8803,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8523,7 +8813,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "HTTP 400 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8603,7 +8893,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
+            "description": "HTTP 200 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -8613,7 +8903,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "HTTP 400 response",
             "content": {
               "application/json": {
                 "schema": {
@@ -9264,10 +9554,10 @@
             "schema": {
               "oneOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/components/schemas/LifecycleStatus"
                 },
                 {
-                  "$ref": "#/components/schemas/LifecycleStatus"
+                  "type": "null"
                 }
               ]
             }
@@ -9620,6 +9910,28 @@
           "status_url": {
             "type": "string"
           }
+        }
+      },
+      "AccountStatus": {
+        "type": "object",
+        "required": [
+          "account",
+          "login"
+        ],
+        "properties": {
+          "account": {
+            "description": "Masked summary of the account used for synthesis, never raw auth."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "login": {
+            "$ref": "#/components/schemas/LoginStatus"
+          },
+          "rate_limits": {}
         }
       },
       "AdapterOptions": {
@@ -9976,10 +10288,10 @@
           "pendingApproval": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AgentToolProposal"
               },
               {
-                "$ref": "#/components/schemas/AgentToolProposal"
+                "type": "null"
               }
             ]
           },
@@ -10219,20 +10531,20 @@
           "job_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobId"
               },
               {
-                "$ref": "#/components/schemas/JobId"
+                "type": "null"
               }
             ]
           },
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ArtifactKind"
               },
               {
-                "$ref": "#/components/schemas/ArtifactKind"
+                "type": "null"
               }
             ]
           },
@@ -10247,10 +10559,10 @@
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           }
@@ -10327,10 +10639,10 @@
           "job_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobId"
               },
               {
-                "$ref": "#/components/schemas/JobId"
+                "type": "null"
               }
             ]
           },
@@ -10351,10 +10663,10 @@
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           }
@@ -10489,6 +10801,12 @@
                     "items": {
                       "$ref": "#/components/schemas/QueryHit"
                     }
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SourceWarning"
+                    }
                   }
                 }
               },
@@ -10604,20 +10922,20 @@
                   "inline": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/InlineSourceResult"
                       },
                       {
-                        "$ref": "#/components/schemas/InlineSourceResult"
+                        "type": "null"
                       }
                     ]
                   },
                   "job": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/JobDescriptor"
                       },
                       {
-                        "$ref": "#/components/schemas/JobDescriptor"
+                        "type": "null"
                       }
                     ]
                   },
@@ -10648,10 +10966,10 @@
                   "watch": {
                     "oneOf": [
                       {
-                        "type": "null"
+                        "$ref": "#/components/schemas/WatchResult"
                       },
                       {
-                        "$ref": "#/components/schemas/WatchResult"
+                        "type": "null"
                       }
                     ]
                   }
@@ -10889,6 +11207,18 @@
             "type": "string"
           }
         }
+      },
+      "CancelBody": {
+        "type": "object",
+        "required": [
+          "login_id"
+        ],
+        "properties": {
+          "login_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "CanonicalCitation": {
         "type": "object",
@@ -11406,10 +11736,10 @@
           "secret_ref": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SecretRef"
               },
               {
-                "$ref": "#/components/schemas/SecretRef"
+                "type": "null"
               }
             ]
           }
@@ -11510,10 +11840,10 @@
           "rpc_probe": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RpcProbeResult"
               },
               {
-                "$ref": "#/components/schemas/RpcProbeResult"
+                "type": "null"
               }
             ]
           },
@@ -11532,10 +11862,10 @@
           "verified": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/EndpointVerification"
               },
               {
-                "$ref": "#/components/schemas/EndpointVerification"
+                "type": "null"
               }
             ]
           }
@@ -11649,10 +11979,10 @@
           "scope": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceScope"
               },
               {
-                "$ref": "#/components/schemas/SourceScope"
+                "type": "null"
               }
             ]
           }
@@ -12262,10 +12592,10 @@
           "chunk_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ChunkId"
               },
               {
-                "$ref": "#/components/schemas/ChunkId"
+                "type": "null"
               }
             ]
           },
@@ -12276,10 +12606,10 @@
           "document_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DocumentId"
               },
               {
-                "$ref": "#/components/schemas/DocumentId"
+                "type": "null"
               }
             ]
           },
@@ -12301,10 +12631,10 @@
           "range": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceRange"
               },
               {
-                "$ref": "#/components/schemas/SourceRange"
+                "type": "null"
               }
             ]
           },
@@ -12339,30 +12669,30 @@
           "node_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/GraphNodeId"
               },
               {
-                "$ref": "#/components/schemas/GraphNodeId"
+                "type": "null"
               }
             ]
           },
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           },
           "source_item_key": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceItemKey"
               },
               {
-                "$ref": "#/components/schemas/SourceItemKey"
+                "type": "null"
               }
             ]
           },
@@ -12436,10 +12766,10 @@
           "created_at": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
@@ -12464,10 +12794,10 @@
           "updated_at": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           }
@@ -12540,10 +12870,10 @@
           "filters": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/GraphQueryFilters"
               },
               {
-                "$ref": "#/components/schemas/GraphQueryFilters"
+                "type": "null"
               }
             ]
           },
@@ -12612,20 +12942,20 @@
           "edge_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/GraphEdgeId"
               },
               {
-                "$ref": "#/components/schemas/GraphEdgeId"
+                "type": "null"
               }
             ]
           },
           "node_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/GraphNodeId"
               },
               {
-                "$ref": "#/components/schemas/GraphNodeId"
+                "type": "null"
               }
             ]
           }
@@ -12829,10 +13159,10 @@
           "scope": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceScope"
               },
               {
-                "$ref": "#/components/schemas/SourceScope"
+                "type": "null"
               }
             ]
           }
@@ -12866,10 +13196,10 @@
           "content": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ContentRef"
               },
               {
-                "$ref": "#/components/schemas/ContentRef"
+                "type": "null"
               }
             ]
           },
@@ -12949,10 +13279,10 @@
           "canceled_at": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
@@ -12976,11 +13306,11 @@
           "last_safe_stage": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/PipelinePhase",
                 "description": "Last completed safe point (stage phase) before cancellation unwound."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -13015,10 +13345,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobKind"
               },
               {
-                "$ref": "#/components/schemas/JobKind"
+                "type": "null"
               }
             ]
           },
@@ -13033,20 +13363,20 @@
           "older_than": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LifecycleStatus"
               },
               {
-                "$ref": "#/components/schemas/LifecycleStatus"
+                "type": "null"
               }
             ]
           }
@@ -13138,30 +13468,30 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobKind"
               },
               {
-                "$ref": "#/components/schemas/JobKind"
+                "type": "null"
               }
             ]
           },
           "older_than": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LifecycleStatus"
               },
               {
-                "$ref": "#/components/schemas/LifecycleStatus"
+                "type": "null"
               }
             ]
           }
@@ -13183,10 +13513,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LifecycleStatus"
               },
               {
-                "$ref": "#/components/schemas/LifecycleStatus"
+                "type": "null"
               }
             ]
           },
@@ -13290,10 +13620,10 @@
           "stage_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/StageId"
               },
               {
-                "$ref": "#/components/schemas/StageId"
+                "type": "null"
               }
             ]
           },
@@ -13450,10 +13780,10 @@
           "kind": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobKind"
               },
               {
-                "$ref": "#/components/schemas/JobKind"
+                "type": "null"
               }
             ]
           },
@@ -13468,10 +13798,10 @@
           "stale_before": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           }
@@ -13522,10 +13852,10 @@
           "from_phase": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PipelinePhase"
               },
               {
-                "$ref": "#/components/schemas/PipelinePhase"
+                "type": "null"
               }
             ]
           },
@@ -13580,10 +13910,10 @@
           "counts": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/StageCounts"
               },
               {
-                "$ref": "#/components/schemas/StageCounts"
+                "type": "null"
               }
             ]
           },
@@ -13599,10 +13929,10 @@
           "last_error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceError"
               },
               {
-                "$ref": "#/components/schemas/SourceError"
+                "type": "null"
               }
             ]
           },
@@ -13612,10 +13942,10 @@
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           },
@@ -13628,10 +13958,10 @@
           "watch_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WatchId"
               },
               {
-                "$ref": "#/components/schemas/WatchId"
+                "type": "null"
               }
             ]
           }
@@ -13650,10 +13980,10 @@
           "committed_generation": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceGenerationId"
               },
               {
-                "$ref": "#/components/schemas/SourceGenerationId"
+                "type": "null"
               }
             ]
           },
@@ -13793,6 +14123,55 @@
           "narrowed"
         ]
       },
+      "LoginBody": {
+        "type": "object",
+        "required": [
+          "switch_account"
+        ],
+        "properties": {
+          "switch_account": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LoginStatus": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "expires_in_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "login_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "user_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verification_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "LogoVariant": {
         "type": "object",
         "required": [
@@ -13831,10 +14210,10 @@
           "rpc_probe": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RpcProbeResult"
               },
               {
-                "$ref": "#/components/schemas/RpcProbeResult"
+                "type": "null"
               }
             ]
           },
@@ -13913,10 +14292,10 @@
           "expires_at": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
@@ -13931,10 +14310,10 @@
           "last_reinforced_at": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
@@ -13952,10 +14331,10 @@
           "review_after": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           }
@@ -14020,10 +14399,10 @@
           "scope": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MemoryScope"
               },
               {
-                "$ref": "#/components/schemas/MemoryScope"
+                "type": "null"
               }
             ]
           }
@@ -14041,11 +14420,11 @@
           "artifact": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/ArtifactRef",
                 "description": "Artifact backing this export, when written through the artifact\nboundary (contract \"Import and Export\": \"export writes an artifact or\nstream with redacted content according to caller scope\"). `None` when\nthe caller only requested the in-memory record list (e.g. a direct\n`axon-memory` store call with no artifact root configured)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -14277,10 +14656,10 @@
           "memory": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MemoryItem"
               },
               {
-                "$ref": "#/components/schemas/MemoryItem"
+                "type": "null"
               }
             ]
           }
@@ -14353,21 +14732,21 @@
           "contradicts": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MemoryId",
                 "description": "Memory this record conflicts with (`contradicted` status only)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "decay": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MemoryDecayPolicy"
               },
               {
-                "$ref": "#/components/schemas/MemoryDecayPolicy"
+                "type": "null"
               }
             ]
           },
@@ -14408,11 +14787,11 @@
           "superseded_by": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/MemoryId",
                 "description": "Memory this record was replaced by (`superseded` status only)."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -14842,10 +15221,10 @@
                 "job_id": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/JobId"
                     },
                     {
-                      "$ref": "#/components/schemas/JobId"
+                      "type": "null"
                     }
                   ]
                 },
@@ -14866,10 +15245,10 @@
                 "source_id": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/SourceId"
                     },
                     {
-                      "$ref": "#/components/schemas/SourceId"
+                      "type": "null"
                     }
                   ]
                 }
@@ -14921,10 +15300,10 @@
                 "counts": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/StageCounts"
                     },
                     {
-                      "$ref": "#/components/schemas/StageCounts"
+                      "type": "null"
                     }
                   ]
                 },
@@ -14940,10 +15319,10 @@
                 "last_error": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/SourceError"
                     },
                     {
-                      "$ref": "#/components/schemas/SourceError"
+                      "type": "null"
                     }
                   ]
                 },
@@ -14953,10 +15332,10 @@
                 "source_id": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/SourceId"
                     },
                     {
-                      "$ref": "#/components/schemas/SourceId"
+                      "type": "null"
                     }
                   ]
                 },
@@ -14969,10 +15348,10 @@
                 "watch_id": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/WatchId"
                     },
                     {
-                      "$ref": "#/components/schemas/WatchId"
+                      "type": "null"
                     }
                   ]
                 }
@@ -15028,10 +15407,10 @@
                 "artifact_id": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/ArtifactId"
                     },
                     {
-                      "$ref": "#/components/schemas/ArtifactId"
+                      "type": "null"
                     }
                   ]
                 },
@@ -15058,10 +15437,10 @@
                 "retention_until": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/Timestamp"
                     },
                     {
-                      "$ref": "#/components/schemas/Timestamp"
+                      "type": "null"
                     }
                   ]
                 },
@@ -15139,20 +15518,20 @@
                 "last_job_id": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/JobId"
                     },
                     {
-                      "$ref": "#/components/schemas/JobId"
+                      "type": "null"
                     }
                   ]
                 },
                 "last_status": {
                   "oneOf": [
                     {
-                      "type": "null"
+                      "$ref": "#/components/schemas/LifecycleStatus"
                     },
                     {
-                      "$ref": "#/components/schemas/LifecycleStatus"
+                      "type": "null"
                     }
                   ]
                 },
@@ -15680,10 +16059,10 @@
           "generation": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceGenerationId"
               },
               {
-                "$ref": "#/components/schemas/SourceGenerationId"
+                "type": "null"
               }
             ]
           },
@@ -15720,10 +16099,10 @@
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           },
@@ -15733,10 +16112,10 @@
           "vector_selector": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/VectorDeleteSelector"
               },
               {
-                "$ref": "#/components/schemas/VectorDeleteSelector"
+                "type": "null"
               }
             ]
           }
@@ -15760,10 +16139,10 @@
           "generation": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceGenerationId"
               },
               {
-                "$ref": "#/components/schemas/SourceGenerationId"
+                "type": "null"
               }
             ]
           },
@@ -15776,10 +16155,10 @@
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           },
@@ -15884,11 +16263,23 @@
           },
           "rerank_score": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Legacy compatibility field; ordinary query currently mirrors `score`.\nThis field alone does not establish that a separate reranker ran."
           },
           "score": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Provider retrieval score (dense similarity or hybrid fusion score)."
+          },
+          "score_kind": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueryScoreKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "snippet": {
             "type": "string"
@@ -15944,8 +16335,23 @@
             "items": {
               "$ref": "#/components/schemas/QueryHit"
             }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
           }
         }
+      },
+      "QueryScoreKind": {
+        "type": "string",
+        "description": "Scoring semantics of a returned retrieval result, independent of its numeric value.",
+        "enum": [
+          "dense_similarity",
+          "hybrid_fusion",
+          "code_search"
+        ]
       },
       "ReadAction": {
         "type": "string",
@@ -16590,10 +16996,10 @@
           "agent": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AgentTurnOptions"
               },
               {
-                "$ref": "#/components/schemas/AgentTurnOptions"
+                "type": "null"
               }
             ]
           },
@@ -16716,10 +17122,10 @@
           "loadout": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LoadoutBinding"
               },
               {
-                "$ref": "#/components/schemas/LoadoutBinding"
+                "type": "null"
               }
             ]
           },
@@ -16731,6 +17137,26 @@
               "string",
               "null"
             ]
+          },
+          "source_kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SourceKind"
+            },
+            "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds."
+          },
+          "source_urls": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus."
           }
         },
         "additionalProperties": false
@@ -16756,20 +17182,20 @@
           "agent": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AgentTurnOptions"
               },
               {
-                "$ref": "#/components/schemas/AgentTurnOptions"
+                "type": "null"
               }
             ]
           },
           "loadout": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LoadoutBinding"
               },
               {
-                "$ref": "#/components/schemas/LoadoutBinding"
+                "type": "null"
               }
             ]
           },
@@ -16795,10 +17221,10 @@
           "agent": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AgentTurnResult"
               },
               {
-                "$ref": "#/components/schemas/AgentTurnResult"
+                "type": "null"
               }
             ]
           },
@@ -16808,10 +17234,10 @@
           "loadout": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LoadoutResolution"
               },
               {
-                "$ref": "#/components/schemas/LoadoutResolution"
+                "type": "null"
               }
             ]
           },
@@ -16837,10 +17263,10 @@
           "render_mode": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RenderMode"
               },
               {
-                "$ref": "#/components/schemas/RenderMode"
+                "type": "null"
               }
             ]
           },
@@ -16942,10 +17368,10 @@
           "mode": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RestExtractMode"
               },
               {
-                "$ref": "#/components/schemas/RestExtractMode"
+                "type": "null"
               }
             ]
           },
@@ -16958,10 +17384,10 @@
           "render_mode": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RenderMode"
               },
               {
-                "$ref": "#/components/schemas/RenderMode"
+                "type": "null"
               }
             ]
           },
@@ -17056,10 +17482,10 @@
           "edge_type": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RestMemoryEdgeType"
               },
               {
-                "$ref": "#/components/schemas/RestMemoryEdgeType"
+                "type": "null"
               }
             ]
           },
@@ -17094,10 +17520,10 @@
           "memory_type": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RestMemoryNodeType"
               },
               {
-                "$ref": "#/components/schemas/RestMemoryNodeType"
+                "type": "null"
               }
             ]
           },
@@ -17152,10 +17578,10 @@
           "subaction": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RestMemorySubaction"
               },
               {
-                "$ref": "#/components/schemas/RestMemorySubaction"
+                "type": "null"
               }
             ]
           },
@@ -17246,6 +17672,26 @@
               "string",
               "null"
             ]
+          },
+          "source_kinds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SourceKind"
+            },
+            "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds."
+          },
+          "source_urls": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus."
           }
         },
         "additionalProperties": false
@@ -17424,10 +17870,10 @@
           "render_mode": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/RenderMode"
               },
               {
-                "$ref": "#/components/schemas/RenderMode"
+                "type": "null"
               }
             ]
           },
@@ -17465,10 +17911,10 @@
           "backend": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/DocumentBackend"
               },
               {
-                "$ref": "#/components/schemas/DocumentBackend"
+                "type": "null"
               }
             ]
           },
@@ -17627,11 +18073,11 @@
           "protocol": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RpcProtocol",
                 "description": "Detected protocol, or `null` when no protocol matched."
+              },
+              {
+                "type": "null"
               }
             ]
           },
@@ -17659,11 +18105,11 @@
           "transport": {
             "oneOf": [
               {
-                "type": "null"
-              },
-              {
                 "$ref": "#/components/schemas/RpcTransport",
                 "description": "Transport the protocol was observed over."
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -17964,10 +18410,10 @@
           "provider_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ProviderId"
               },
               {
-                "$ref": "#/components/schemas/ProviderId"
+                "type": "null"
               }
             ]
           },
@@ -17980,10 +18426,10 @@
           "source_item_key": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceItemKey"
               },
               {
-                "$ref": "#/components/schemas/SourceItemKey"
+                "type": "null"
               }
             ]
           }
@@ -18248,10 +18694,10 @@
           "authority_hint": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AuthorityHint"
               },
               {
-                "$ref": "#/components/schemas/AuthorityHint"
+                "type": "null"
               }
             ]
           },
@@ -18294,10 +18740,10 @@
           "scope": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceScope"
               },
               {
-                "$ref": "#/components/schemas/SourceScope"
+                "type": "null"
               }
             ]
           },
@@ -18353,20 +18799,20 @@
           "inline": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/InlineSourceResult"
               },
               {
-                "$ref": "#/components/schemas/InlineSourceResult"
+                "type": "null"
               }
             ]
           },
           "job": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobDescriptor"
               },
               {
-                "$ref": "#/components/schemas/JobDescriptor"
+                "type": "null"
               }
             ]
           },
@@ -18397,10 +18843,10 @@
           "watch": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WatchResult"
               },
               {
-                "$ref": "#/components/schemas/WatchResult"
+                "type": "null"
               }
             ]
           }
@@ -18481,20 +18927,20 @@
           "last_job_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobId"
               },
               {
-                "$ref": "#/components/schemas/JobId"
+                "type": "null"
               }
             ]
           },
           "last_refreshed_at": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
@@ -18525,10 +18971,10 @@
           "watch_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WatchId"
               },
               {
-                "$ref": "#/components/schemas/WatchId"
+                "type": "null"
               }
             ]
           }
@@ -18559,10 +19005,10 @@
           "source_item_key": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceItemKey"
               },
               {
-                "$ref": "#/components/schemas/SourceItemKey"
+                "type": "null"
               }
             ]
           }
@@ -18694,10 +19140,10 @@
           "error": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ApiError"
               },
               {
-                "$ref": "#/components/schemas/ApiError"
+                "type": "null"
               }
             ]
           },
@@ -18707,10 +19153,10 @@
           "job_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobId"
               },
               {
-                "$ref": "#/components/schemas/JobId"
+                "type": "null"
               }
             ]
           },
@@ -18734,10 +19180,10 @@
           "warning": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceWarning"
               },
               {
-                "$ref": "#/components/schemas/SourceWarning"
+                "type": "null"
               }
             ]
           }
@@ -18789,16 +19235,22 @@
                 "items": {
                   "$ref": "#/components/schemas/QueryHit"
                 }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceWarning"
+                }
               }
             }
           },
           "job": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobDescriptor"
               },
               {
-                "$ref": "#/components/schemas/JobDescriptor"
+                "type": "null"
               }
             ]
           },
@@ -18808,10 +19260,10 @@
           "pagination": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PageInfo"
               },
               {
-                "$ref": "#/components/schemas/PageInfo"
+                "type": "null"
               }
             ]
           },
@@ -18861,10 +19313,10 @@
               "backend": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/DocumentBackend"
                   },
                   {
-                    "$ref": "#/components/schemas/DocumentBackend"
+                    "type": "null"
                   }
                 ]
               },
@@ -18933,10 +19385,10 @@
           "job": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobDescriptor"
               },
               {
-                "$ref": "#/components/schemas/JobDescriptor"
+                "type": "null"
               }
             ]
           },
@@ -18946,10 +19398,10 @@
           "pagination": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/PageInfo"
               },
               {
-                "$ref": "#/components/schemas/PageInfo"
+                "type": "null"
               }
             ]
           },
@@ -19115,10 +19567,10 @@
           "source_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceId"
               },
               {
-                "$ref": "#/components/schemas/SourceId"
+                "type": "null"
               }
             ]
           }
@@ -19168,10 +19620,10 @@
           "status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/UploadStatusKind"
               },
               {
-                "$ref": "#/components/schemas/UploadStatusKind"
+                "type": "null"
               }
             ]
           }
@@ -19203,10 +19655,10 @@
           "artifact_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ArtifactId"
               },
               {
-                "$ref": "#/components/schemas/ArtifactId"
+                "type": "null"
               }
             ]
           },
@@ -19233,10 +19685,10 @@
           "retention_until": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/Timestamp"
               },
               {
-                "$ref": "#/components/schemas/Timestamp"
+                "type": "null"
               }
             ]
           },
@@ -19318,10 +19770,10 @@
               "generation": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SourceGenerationId"
                   },
                   {
-                    "$ref": "#/components/schemas/SourceGenerationId"
+                    "type": "null"
                   }
                 ]
               },
@@ -19398,10 +19850,10 @@
               "generation": {
                 "oneOf": [
                   {
-                    "type": "null"
+                    "$ref": "#/components/schemas/SourceGenerationId"
                   },
                   {
-                    "$ref": "#/components/schemas/SourceGenerationId"
+                    "type": "null"
                   }
                 ]
               },
@@ -19552,10 +20004,10 @@
           "refresh": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceRefreshPolicy"
               },
               {
-                "$ref": "#/components/schemas/SourceRefreshPolicy"
+                "type": "null"
               }
             ]
           },
@@ -19634,10 +20086,10 @@
           "scope": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceScope"
               },
               {
-                "$ref": "#/components/schemas/SourceScope"
+                "type": "null"
               }
             ]
           },
@@ -19672,20 +20124,20 @@
           "job": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobDescriptor"
               },
               {
-                "$ref": "#/components/schemas/JobDescriptor"
+                "type": "null"
               }
             ]
           },
           "latest_job": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobDescriptor"
               },
               {
-                "$ref": "#/components/schemas/JobDescriptor"
+                "type": "null"
               }
             ]
           },
@@ -19745,10 +20197,10 @@
           "latest_job_summary": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobSummary"
               },
               {
-                "$ref": "#/components/schemas/JobSummary"
+                "type": "null"
               }
             ]
           },
@@ -19774,20 +20226,20 @@
           "last_job_id": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/JobId"
               },
               {
-                "$ref": "#/components/schemas/JobId"
+                "type": "null"
               }
             ]
           },
           "last_status": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/LifecycleStatus"
               },
               {
-                "$ref": "#/components/schemas/LifecycleStatus"
+                "type": "null"
               }
             ]
           },
@@ -19830,40 +20282,40 @@
           "limits": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/SourceLimits"
               },
               {
-                "$ref": "#/components/schemas/SourceLimits"
+                "type": "null"
               }
             ]
           },
           "metadata": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/MetadataMap"
               },
               {
-                "$ref": "#/components/schemas/MetadataMap"
+                "type": "null"
               }
             ]
           },
           "options": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/AdapterOptions"
               },
               {
-                "$ref": "#/components/schemas/AdapterOptions"
+                "type": "null"
               }
             ]
           },
           "schedule": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/WatchSchedule"
               },
               {
-                "$ref": "#/components/schemas/WatchSchedule"
+                "type": "null"
               }
             ]
           }

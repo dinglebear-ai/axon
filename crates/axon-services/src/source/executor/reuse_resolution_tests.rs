@@ -64,6 +64,23 @@ async fn resolve_case(
     response_304: bool,
     cache: Option<ContentRef>,
 ) -> (ResolvedAcquisition, usize) {
+    resolve_case_with_refresh(
+        compatible,
+        failed_sibling,
+        response_304,
+        cache,
+        SourceRefreshPolicy::IfStale,
+    )
+    .await
+}
+
+async fn resolve_case_with_refresh(
+    compatible: bool,
+    failed_sibling: bool,
+    response_304: bool,
+    cache: Option<ContentRef>,
+    refresh: SourceRefreshPolicy,
+) -> (ResolvedAcquisition, usize) {
     let adapter = ConditionalAdapter {
         inner: FakeSourceAdapter::new(AdapterRef {
             name: "web".into(),
@@ -82,7 +99,8 @@ async fn resolve_case(
         8,
     );
     runtime.document_cache = Arc::new(FakeCoreBoundaries::new());
-    let request = SourceRequest::new("https://example.test/page");
+    let mut request = SourceRequest::new("https://example.test/page");
+    request.refresh = refresh;
     let routed = crate::source::routing::resolve_source_route(&request).unwrap();
     let mut plan = crate::source::dispatch::family_source_plan(
         &request.source,
@@ -91,6 +109,7 @@ async fn resolve_case(
         None,
         None,
     );
+    plan.request.refresh = refresh;
     plan.route.source.source_id = SourceId::new("src_reuse");
     let execution = crate::source::SourceExecutionContext::inline(request, None);
     let input = SourcePipelineInput {
@@ -310,4 +329,28 @@ async fn missing_or_unresolved_cache_refetch_keeps_new_manifest_metadata() {
         );
         assert!(result.reused_item_keys.is_empty());
     }
+}
+
+#[tokio::test]
+async fn force_seed_persists_acquired_identity_for_followup_reuse() {
+    let (result, _) = resolve_case_with_refresh(
+        true,
+        false,
+        false,
+        Some(ContentRef::InlineText {
+            text: "cached body".into(),
+        }),
+        SourceRefreshPolicy::Force,
+    )
+    .await;
+    assert!(
+        result.reused_item_keys.is_empty(),
+        "force must still process the body"
+    );
+    assert_eq!(result.acquisition.fetched_items.len(), 1);
+    assert_eq!(
+        result.acquisition.manifest.items[0].content_hash.as_deref(),
+        Some("same-hash"),
+        "persist the acquired representation hash, not the discovery hash, for the next if_stale comparison"
+    );
 }

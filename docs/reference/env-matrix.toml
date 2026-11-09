@@ -3671,6 +3671,18 @@ compatibility = "canonical"
 reason = "OpenAI-compatible model override for direct chat. Falls back to the synthesis model when unset."
 
 [[env]]
+key = "AXON_OPENAI_TEMPERATURE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Optional finite OpenAI-compatible temperature override in the inclusive range 0 to 2. Runtime-only until a typed TOML field is wired; unset preserves provider defaults."
+
+[[env]]
 key = "AXON_OPENAI_API_KEY"
 classification = "keep-env"
 runtime_placement = "both"

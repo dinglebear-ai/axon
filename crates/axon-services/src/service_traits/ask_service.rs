@@ -112,6 +112,8 @@ impl AskService for AskServiceImpl {
         let cfg = apply_ask_overrides(
             self.ctx.cfg(),
             AskTransportOverrides {
+                source_kinds: request.source_kinds,
+                source_urls: request.source_urls,
                 collection: request.collection,
                 since: request.since,
                 before: request.before,

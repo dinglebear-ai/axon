@@ -188,3 +188,58 @@ fn malicious_supplied_outcome_is_not_observed_or_published_as_ast_metadata() {
         );
     }
 }
+
+#[test]
+fn structural_outcome_flag_preserves_legacy_and_rejects_invalid_claims() {
+    for status in ["parsed", "partial", "unsupported", "failed"] {
+        let mut value = serde_json::json!({
+            "code_ast_status": status,
+            "code_grammar": if matches!(status, "parsed" | "partial") { Some("rust") } else { None },
+            "code_symbol_count": 0,
+            "symbol_extraction_status": if matches!(status, "parsed" | "partial") { "ast" } else { "none" },
+        });
+        assert_eq!(
+            crate::PreparationObservation::from_value(&value).ast_status(),
+            Some(status)
+        );
+        value["code_searchable_structure"] = serde_json::json!(false);
+        assert_eq!(
+            crate::PreparationObservation::from_value(&value).ast_status(),
+            Some(status)
+        );
+        value["code_searchable_structure"] = serde_json::json!(true);
+        assert_eq!(
+            crate::PreparationObservation::from_value(&value).ast_status(),
+            (status == "parsed").then_some(status)
+        );
+        for invalid in [
+            serde_json::json!("true"),
+            serde_json::json!(1),
+            serde_json::Value::Null,
+        ] {
+            value["code_searchable_structure"] = invalid;
+            assert_eq!(
+                crate::PreparationObservation::from_value(&value).ast_status(),
+                None
+            );
+        }
+    }
+}
+
+#[test]
+fn freshly_parsed_structural_outcome_is_observed_and_preserved() {
+    let (result, observed) = crate::DocumentPreparer::default()
+        .prepare_observed(request("module.rs", "pub fn ready() -> bool { true }\n"))
+        .unwrap();
+    assert_eq!(observed.outcome_label(), "ast_clean");
+    let PrepareSourceDocumentResult::Prepared(doc) = result else {
+        panic!("AST-backed concise function must be retained");
+    };
+    assert_eq!(doc.chunking_method, "tree_sitter");
+    let outcome = doc
+        .parse_facts
+        .iter()
+        .find(|fact| fact.fact_kind == "code_parse_outcome")
+        .unwrap();
+    assert_eq!(outcome.value["code_searchable_structure"], true);
+}

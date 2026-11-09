@@ -580,6 +580,46 @@ impl SourceAdapter for CandidateSourceAdapter {
         self.inner.normalize(plan, acquisition).await
     }
 
+    fn wants_archive(&self, plan: &SourcePlan) -> bool {
+        plan.route
+            .validated_options
+            .values
+            .contains_key("warc_path")
+    }
+
+    async fn begin_archive(
+        &self,
+        plan: &SourcePlan,
+    ) -> Result<Option<Box<dyn axon_adapters::SourceArchiveWriter>>, ApiError> {
+        let providers = Arc::new(axon_adapters::boundary::FakeAdapterProviders::new());
+        axon_adapters::web::WebSourceAdapter::new(providers.clone(), providers)
+            .begin_archive(plan)
+            .await
+    }
+
+    async fn begin_archive_in(
+        &self,
+        plan: &SourcePlan,
+        directory: &Path,
+    ) -> Result<Option<Box<dyn axon_adapters::SourceArchiveWriter>>, ApiError> {
+        let providers = Arc::new(axon_adapters::boundary::FakeAdapterProviders::new());
+        axon_adapters::web::WebSourceAdapter::new(providers.clone(), providers)
+            .begin_archive_in(plan, directory)
+            .await
+    }
+
+    fn build_archive(
+        &self,
+        plan: &SourcePlan,
+        _items: &[axon_api::source::AcquiredSourceItem],
+    ) -> Option<axon_adapters::GeneratedArchive> {
+        assert!(
+            !self.wants_archive(plan),
+            "streaming path must not rebuild the complete archive"
+        );
+        None
+    }
+
     async fn artifact_candidates(
         &self,
         plan: &SourcePlan,
@@ -589,8 +629,7 @@ impl SourceAdapter for CandidateSourceAdapter {
     ) -> std::result::Result<Vec<ArtifactCandidate>, ApiError> {
         Ok(documents
             .iter()
-            .enumerate()
-            .map(|(index, document)| {
+            .map(|document| {
                 let mut manifest_metadata = MetadataMap::new();
                 manifest_metadata.insert(
                     "axonSourceItemKey".to_string(),
@@ -598,7 +637,14 @@ impl SourceAdapter for CandidateSourceAdapter {
                 );
                 ArtifactCandidate {
                     schema_version: ARTIFACT_CANDIDATE_SCHEMA_VERSION.to_string(),
-                    id: ArtifactCandidateId::from(format!("cand_pipeline_{index}")),
+                    id: axon_adapters::artifact_candidate_id(
+                        &axon_adapters::artifact_candidate_dedupe(
+                            &document.canonical_uri,
+                            None,
+                            Some(&document.source_item_key.0),
+                            None,
+                        ),
+                    ),
                     canonical_source_uri: document.canonical_uri.clone(),
                     source_provider: "axon".to_string(),
                     observed_at: Timestamp("2026-08-19T14:00:00Z".to_string()),
@@ -1390,8 +1436,12 @@ async fn failed_generation_never_delivers_artifact_candidates() {
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let jobs = Arc::new(FakeJobWatchStore::new());
     let sink = Arc::new(CommitAwareCandidateSink::new(ledger.clone()));
-    let runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs)
+    let outbox = Arc::new(
+        crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(root.path().join("outbox")),
+    );
+    let mut runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs)
         .with_artifact_candidate_sink(sink.clone());
+    runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
     let adapter =
         CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "SKILL.md",
@@ -1425,6 +1475,12 @@ async fn failed_generation_never_delivers_artifact_candidates() {
     assert!(
         sink.deliveries().is_empty(),
         "failed generation leaked a ghost candidate to the sink"
+    );
+    let pending = outbox.pending().await.unwrap();
+    assert_eq!(
+        pending.len(),
+        1,
+        "publication errors preserve intent until ledger reconciliation"
     );
 }
 
@@ -1721,3 +1777,178 @@ mod refresh_inventory_tests;
 
 #[path = "failure_diagnostics_tests.rs"]
 mod failure_diagnostics_tests;
+
+#[tokio::test]
+async fn streamed_candidates_are_paged_and_recovered_only_after_commit() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source").to_string_lossy().to_string();
+    std::fs::create_dir_all(&source).unwrap();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let outbox_path = root.path().join("outbox");
+    let outbox =
+        Arc::new(crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(&outbox_path));
+    let mut runtime = test_runtime_with_jobs(
+        Arc::new(FakeVectorStore::new("fake-vector")),
+        ledger.clone(),
+        Arc::new(FakeJobWatchStore::new()),
+    );
+    runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
+    let mut inner = FakeSourceAdapter::new(route.adapter.clone());
+    for index in 0..35 {
+        inner = inner.with_item(
+            format!("skill-{index}/SKILL.md"), axon_api::source::ContentKind::Markdown,
+            "# Demo skill\nThis skill describes searchable source preparation and artifact candidate delivery.",
+        );
+    }
+    let adapter = CandidateSourceAdapter::new(inner);
+    let output = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("publication succeeds with disabled candidate sink");
+    outbox.shutdown_drain().await;
+    let reopened =
+        Arc::new(crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(&outbox_path));
+    let pending = reopened.pending().await.unwrap();
+    assert!(
+        pending.len() >= 3,
+        "pages: {}, candidates: {}",
+        pending.len(),
+        pending
+            .iter()
+            .map(|page| page.candidates.len())
+            .sum::<usize>()
+    );
+    assert!(pending.iter().all(|page| page.candidates.len() <= 16));
+    assert_eq!(
+        pending
+            .iter()
+            .map(|page| page.candidates.len())
+            .sum::<usize>(),
+        35
+    );
+    assert!(
+        pending
+            .iter()
+            .all(|page| page.generation == output.generation)
+    );
+    assert_eq!(
+        ledger.committed_generation(&route.source.source_id).await,
+        Some(output.generation)
+    );
+    let sink = Arc::new(CommitAwareCandidateSink::new(ledger.clone()));
+    let mut recovered_runtime = test_runtime(
+        Arc::new(FakeVectorStore::new("fresh-recovery-vector")),
+        ledger,
+    )
+    .with_artifact_candidate_sink(sink.clone());
+    recovered_runtime.artifact_candidate_outbox = Some(Arc::clone(&reopened));
+    crate::source::spawn_artifact_candidate_outbox_drain(&recovered_runtime);
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if reopened.pending().await.unwrap().is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("fresh runtime drains committed pages without acquiring the source");
+    reopened.shutdown_drain().await;
+    let deliveries = sink.deliveries();
+    assert!(deliveries.iter().all(|(_, committed)| *committed));
+    assert_eq!(
+        deliveries
+            .iter()
+            .map(|(batch, _)| batch.candidates.len())
+            .sum::<usize>(),
+        35
+    );
+    let candidate_ids = deliveries
+        .iter()
+        .flat_map(|(batch, _)| {
+            batch
+                .candidates
+                .iter()
+                .map(|candidate| candidate.id.clone())
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(candidate_ids.len(), 35);
+}
+
+#[tokio::test]
+async fn pipeline_streams_archive_to_verified_file_without_legacy_generation_materialization() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source").to_string_lossy().to_string();
+    std::fs::create_dir_all(&source).unwrap();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let mut runtime = test_runtime(Arc::new(FakeVectorStore::new("vectors")), ledger);
+    let artifacts = root.path().join("artifacts");
+    runtime.artifact_store = Arc::new(axon_core::boundary::FileArtifactStore::new(&artifacts));
+    let work_root = root.path().join("generation-work");
+    runtime.generation_work_root = Some(work_root.clone());
+    let adapter = CandidateSourceAdapter::new(
+        FakeSourceAdapter::new(route.adapter.clone())
+            .with_item(
+                "first.md",
+                axon_api::source::ContentKind::Markdown,
+                "# First\nSearchable source preparation and source archive content.",
+            )
+            .with_item(
+                "second.md",
+                axon_api::source::ContentKind::Markdown,
+                "# Second\nSearchable source preparation and another archive content.",
+            ),
+    );
+    let mut plan = family_source_plan(&source, &route, false, None, None);
+    plan.route
+        .validated_options
+        .values
+        .insert("warc_path".into(), serde_json::json!("requested.warc"));
+    let output = dispatch_materialized(
+        &runtime,
+        &adapter,
+        plan,
+        "axon-test",
+        "owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .unwrap();
+    let archive = output
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_kind == axon_api::source::ArtifactKind::Warc)
+        .expect("published archive");
+    let bytes = std::fs::read(artifacts.join(format!("{}.bin", archive.artifact_id.0))).unwrap();
+    let text = String::from_utf8(bytes.clone()).unwrap();
+    assert_eq!(text.matches("WARC-Type: response").count(), 2);
+    assert!(text.contains("# First"));
+    assert!(text.contains("# Second"));
+    assert_eq!(archive.size_bytes, Some(bytes.len() as u64));
+    use sha2::{Digest as _, Sha256};
+    assert_eq!(
+        archive.content_hash.as_deref(),
+        Some(format!("sha256:{}", hex::encode(Sha256::digest(&bytes))).as_str())
+    );
+    let remaining = std::fs::read_dir(work_root)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        remaining,
+        vec![std::ffi::OsString::from(".registry.lock")],
+        "published receipt reclaims work and staged archive after settlement"
+    );
+}

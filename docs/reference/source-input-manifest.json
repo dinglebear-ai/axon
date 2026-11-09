@@ -27,7 +27,7 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:3f9f4c2f386d8181215ffee80f2558a1ea7a366803b3d8a184d52bc466a6b936"
+          "checksum": "sha256:9e52221b1476b8dd9b9adcf4e7c7d77194b4e5bfa4c8062064ef0c047a45051a"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
@@ -45,7 +45,7 @@
           "checksum": "sha256:0468d29d96b581762ceee6f32adb7b3b091d1fa0af4b6d71c33b7c4e2819ac7f"
         }
       ],
-      "manifest_checksum": "sha256:22e4140a1d583f93fb0190d2f0b787c949908e08a3b335af36aef09764851c26"
+      "manifest_checksum": "sha256:21f19fa15997717b17b1b966a6abe468ea4b54fc5461dd69b8e3d17a0fbf1baa"
     },
     {
       "family": "api",
@@ -94,7 +94,7 @@
         {
           "path": "crates/axon-api/src/source/document.rs",
           "kind": "rust_module",
-          "checksum": "sha256:a336d5bd224aa9072bbb581f339bb27085e59c5db83ba771dfed42995bdc589d"
+          "checksum": "sha256:7969c51cf01773c35d4d72f2a8b4ce18e8d7960121524a1e66e861dc1e4acd35"
         },
         {
           "path": "crates/axon-api/src/source/embedding_cache.rs",
@@ -317,7 +317,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "sha256:663871b080fdd8f1c87992f03dfbfd6ea77496af5aa96f8f80c2851cbf61546e"
+      "manifest_checksum": "sha256:4c46285c057a726f7738dcb4d0f7dc23d8d25d69fa3d99de56e6c24090ad61db"
     },
     {
       "family": "cli",
@@ -563,7 +563,7 @@
         {
           "path": "crates/axon-api/src/action/requests.rs",
           "kind": "rust_module",
-          "checksum": "sha256:cda8958025c515f1ec7a97d42f0d0e6e658e1a9f15ccc4f2f3dcf619a1f70e92"
+          "checksum": "sha256:8a1aef6466df04ff0e37182ad914ec6d98b3d69c351561c2e9369044891d5415"
         },
         {
           "path": "crates/axon-api/src/action/requests/discovery.rs",
@@ -583,7 +583,7 @@
         {
           "path": "crates/axon-api/src/action/utility.rs",
           "kind": "rust_module",
-          "checksum": "sha256:622c9ebbf4795bf032a0f45f53c1699f8c0d69585e459a2fa94d67c9b164aed0"
+          "checksum": "sha256:ac9fa00cf1abb7729800cbe0a4bd1c9e6ef0b5a15c76357bec8cc2169a56da68"
         },
         {
           "path": "crates/axon-mcp/src/schema.rs",
@@ -661,7 +661,7 @@
           "checksum": "sha256:99732a3eeb6720e2c6c39e68ef9926b93578191b2a5eb2d5a22e660f92c4d8e6"
         }
       ],
-      "manifest_checksum": "sha256:33e7cc4bf0ee8bfcff4a30013b178eea102d33fd850b30b908fcf0bee22a6490"
+      "manifest_checksum": "sha256:b5a6dd0689598cd562f1950be42706ff626344407e8bb7570a3cd7fc816315de"
     },
     {
       "family": "openapi",
@@ -685,7 +685,7 @@
         {
           "path": "crates/axon-web/src/schema_registry/codex_routes.rs",
           "kind": "rust_module",
-          "checksum": "sha256:ebcfe554161e465811c11a3afa630f3fc651df0f1c3eeed04adbd486d53de26b"
+          "checksum": "sha256:f35a5b1a21d9cde8344f93e8e58784fde317d03650c321892c4b3eb8876d8e03"
         },
         {
           "path": "crates/axon-web/src/schema_registry/extract_routes.rs",
@@ -743,7 +743,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "sha256:ae58f57030ef8b80d66a64f3230de64ff6ec832e0a6aa8d6c6d8273165e19a64"
+      "manifest_checksum": "sha256:41b066fc0ba5209924e7364f8254e30199c0af81125b7ba57d1742cc57e62af4"
     },
     {
       "family": "presentation",
@@ -799,7 +799,7 @@
         {
           "path": "crates/axon-core/src/boundary.rs",
           "kind": "rust_module",
-          "checksum": "sha256:c3b7ab8dd174b9d6388c56e0cb24670a17eabbd154cb39933eb14d1d7ec57ef3"
+          "checksum": "sha256:17e8f26f5d29e0203564d26bc9ced2bb8b34d97685177fce32f21a84cb614503"
         },
         {
           "path": "crates/axon-embedding/src/fake.rs",
@@ -842,7 +842,7 @@
           "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
         }
       ],
-      "manifest_checksum": "sha256:6c4c46135fcbe313719127200fe4a93390241d095c286f4a5e82656e29fe7c38"
+      "manifest_checksum": "sha256:0d886135e9bfeb9ee22c8bc0ca62fd1d391267bef7fd1377de6f548c51404073"
     },
     {
       "family": "vector-payload",

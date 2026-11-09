@@ -184,6 +184,15 @@ async fn production_schedulers_share_one_gate_before_pool_acquisition() {
         warmed.push(pool.acquire().await.expect("pre-warm pool connection"));
     }
     drop(warmed);
+    // A dropped pooled connection returns asynchronously; settle pre-warming
+    // before checking that gate waiters leave an immediately usable slot.
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while pool.num_idle() < pool.options().get_max_connections() as usize {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("pre-warmed pool connections must finish returning before contention");
     let held = axon_core::sqlite::ImmediateTx::begin(&pool)
         .await
         .expect("hold writer lock");

@@ -11,7 +11,7 @@
   "refs": ["refs/heads/main"],
   "events": ["push", "schedule", "workflow_dispatch"],
   "environment": "axon-live-e2e",
-  "subject": "repo:dinglebear-ai/axon:environment:axon-live-e2e",
+  "subject": "repo:dinglebear-ai@301925356/axon@1160613618:environment:axon-live-e2e",
   "token_max_age_seconds": 600,
   "token_max_lifetime_seconds": 600,
   "clock_skew_seconds": 30,

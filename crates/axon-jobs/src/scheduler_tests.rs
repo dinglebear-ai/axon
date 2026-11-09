@@ -492,6 +492,15 @@ async fn shared_write_gate_blocks_before_acquiring_pool_connections() {
         warmed.push(pool.acquire().await.expect("pre-warm pool connection"));
     }
     drop(warmed);
+    // PoolConnection::drop returns connections asynchronously. Establish the
+    // idle-slot precondition before testing gate contention with try_acquire.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pool.num_idle() < pool.options().get_max_connections() as usize {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("pre-warmed pool connections must finish returning before contention");
 
     let held = axon_core::sqlite::ImmediateTx::begin(&pool)
         .await

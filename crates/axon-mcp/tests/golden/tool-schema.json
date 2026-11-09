@@ -313,6 +313,28 @@
             "string",
             "null"
           ]
+        },
+        "source_kinds": {
+          "default": null,
+          "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds.",
+          "items": {
+            "$ref": "#/$defs/AskRequest_ask_SourceKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "source_urls": {
+          "default": null,
+          "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -323,6 +345,23 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "AskRequest_ask_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
       ],
       "type": "string"
     },
@@ -1055,6 +1094,28 @@
                 "string",
                 "null"
               ]
+            },
+            "source_kinds": {
+              "default": null,
+              "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds.",
+              "items": {
+                "$ref": "#/$defs/AxonToolInput_query_SourceKind"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "source_urls": {
+              "default": null,
+              "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
           "required": [
@@ -1707,6 +1768,28 @@
               "description": "Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.\nRestricts results to content indexed on or after this date.",
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "source_kinds": {
+              "default": null,
+              "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds.",
+              "items": {
+                "$ref": "#/$defs/AxonToolInput_ask_SourceKind"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "source_urls": {
+              "default": null,
+              "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
                 "null"
               ]
             }
@@ -3028,6 +3111,23 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "AxonToolInput_ask_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
       ],
       "type": "string"
     },
@@ -4891,6 +4991,23 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "AxonToolInput_query_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
       ],
       "type": "string"
     },
@@ -9112,6 +9229,28 @@
             "string",
             "null"
           ]
+        },
+        "source_kinds": {
+          "default": null,
+          "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds.",
+          "items": {
+            "$ref": "#/$defs/Operation_ask_Input_ask_SourceKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "source_urls": {
+          "default": null,
+          "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -9122,6 +9261,23 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "Operation_ask_Input_ask_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
       ],
       "type": "string"
     },
@@ -13619,6 +13775,28 @@
             "string",
             "null"
           ]
+        },
+        "source_kinds": {
+          "default": null,
+          "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds.",
+          "items": {
+            "$ref": "#/$defs/Operation_query_Input_query_SourceKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "source_urls": {
+          "default": null,
+          "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -13629,6 +13807,23 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "Operation_query_Input_query_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
       ],
       "type": "string"
     },
@@ -16028,6 +16223,28 @@
             "string",
             "null"
           ]
+        },
+        "source_kinds": {
+          "default": null,
+          "description": "Restrict retrieval before ranking; omitted or empty searches all source kinds.",
+          "items": {
+            "$ref": "#/$defs/QueryRequest_query_SourceKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "source_urls": {
+          "default": null,
+          "description": "Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -16038,6 +16255,23 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "QueryRequest_query_SourceKind": {
+      "enum": [
+        "web",
+        "local",
+        "git",
+        "registry",
+        "feed",
+        "reddit",
+        "youtube",
+        "session",
+        "cli_tool",
+        "mcp_tool",
+        "memory",
+        "upload"
       ],
       "type": "string"
     },
@@ -19082,7 +19316,7 @@
         "path": "crates/axon-api/src/action/prune_request.rs"
       },
       {
-        "checksum": "sha256:cda8958025c515f1ec7a97d42f0d0e6e658e1a9f15ccc4f2f3dcf619a1f70e92",
+        "checksum": "sha256:8a1aef6466df04ff0e37182ad914ec6d98b3d69c351561c2e9369044891d5415",
         "kind": "rust_module",
         "path": "crates/axon-api/src/action/requests.rs"
       },
@@ -19102,7 +19336,7 @@
         "path": "crates/axon-api/src/action/requests/watch.rs"
       },
       {
-        "checksum": "sha256:622c9ebbf4795bf032a0f45f53c1699f8c0d69585e459a2fa94d67c9b164aed0",
+        "checksum": "sha256:ac9fa00cf1abb7729800cbe0a4bd1c9e6ef0b5a15c76357bec8cc2169a56da68",
         "kind": "rust_module",
         "path": "crates/axon-api/src/action/utility.rs"
       },

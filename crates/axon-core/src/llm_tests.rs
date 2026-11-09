@@ -206,3 +206,20 @@ fn chat_model_falls_back_to_synthesis_model_when_unset() {
 
     assert_eq!(req.model.as_deref(), Some("gemini-synthesis"));
 }
+
+#[test]
+fn openai_temperature_is_optional_bounded_and_finite() {
+    assert_eq!(parse_openai_temperature(None).unwrap(), None);
+    assert_eq!(parse_openai_temperature(Some("0.2")).unwrap(), Some(0.2));
+    let cfg = Config {
+        openai_temperature: Some(0.2),
+        ..Config::default()
+    };
+    assert_eq!(
+        LlmBackendConfig::from_config(&cfg).openai_temperature,
+        Some(0.2)
+    );
+    for bad in ["-0.1", "2.1", "NaN", "inf", "not-a-number"] {
+        assert!(parse_openai_temperature(Some(bad)).is_err(), "{bad}");
+    }
+}

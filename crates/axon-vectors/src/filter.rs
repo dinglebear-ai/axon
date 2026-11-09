@@ -290,7 +290,14 @@ fn payload_matches_value(payload: &MetadataMap, field: &str, expected: &Value) -
             .and_then(Value::as_str)
             .is_some_and(|actual| datetime_range_matches(actual, range));
     }
-    payload.get(field).is_some_and(|actual| {
+    let actual = if field == "chunk_locator.canonical_uri" {
+        payload
+            .get("chunk_locator")
+            .and_then(|locator| locator.get("canonical_uri"))
+    } else {
+        payload.get(field)
+    };
+    actual.is_some_and(|actual| {
         actual == expected || value_matches_string_value(field, actual, expected)
     })
 }

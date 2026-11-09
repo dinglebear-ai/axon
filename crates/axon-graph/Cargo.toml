@@ -12,6 +12,8 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+base64 = "0.22"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }

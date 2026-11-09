@@ -10,6 +10,8 @@ pub const MODULE_NAME: &str = "query";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetrievalRequest {
+    pub source_kinds: Vec<axon_api::source::SourceKind>,
+    pub source_urls: Vec<String>,
     pub query: String,
     pub collection: String,
     pub limit: u32,
@@ -50,6 +52,8 @@ pub struct RetrievalMatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetrievalResult {
+    pub score_kind: axon_api::result::QueryScoreKind,
+    pub warnings: Vec<axon_api::source::SourceWarning>,
     pub plan: RetrievalPlan,
     pub matches: Vec<RetrievalMatch>,
     pub context: ContextBundle,

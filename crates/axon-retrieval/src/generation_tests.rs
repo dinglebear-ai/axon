@@ -13,6 +13,8 @@ fn retrieval_filters_exclude_unpublished_vectors_by_default() {
         generation: None,
         allowed_visibility: vec![Visibility::Public],
         namespace_filters: Vec::new(),
+        source_kinds: Vec::new(),
+        source_urls: Vec::new(),
         excluded_source_kinds: Vec::new(),
         hybrid: true,
         hybrid_candidates: None,

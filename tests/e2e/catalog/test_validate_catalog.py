@@ -23,6 +23,14 @@ class CatalogValidationTests(unittest.TestCase):
     def test_current_catalog_reconciles_all_inventories(self):
         self.assertEqual([], validator.validate(self.catalog))
 
+    def test_synthesis_account_surface_cannot_escape_advertised_inventory(self):
+        candidate = copy.deepcopy(self.catalog)
+        candidate["operations"] = [
+            item for item in candidate["operations"] if item["id"] != "surface:synthesis"
+        ]
+        errors = validator.validate(candidate)
+        self.assertTrue(any("unclassified advertised operations" in error and "surface:synthesis" in error for error in errors))
+
     def test_inventory_reads_canonical_json_not_markdown(self):
         fixtures = {
             validator.CLI_REGISTRY: {"commands": [{"name": "code-search", "path": ["code-search"]}]},

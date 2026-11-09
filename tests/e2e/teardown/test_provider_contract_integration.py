@@ -259,6 +259,7 @@ class ProviderContractIntegrationTests(unittest.TestCase):
             for name in ("tailscale","tailscaled"):(bindir/name).symlink_to(script)
             provider_state=root/"providers.json";provider_state.write_text(json.dumps({"fail_next":None,"tailscale":{"BackendState":"Running","Self":{"ID":f"{run}_node"},"Peer":{}},"docker":{},"compose":{},"watch":{},"uploads":{}}))
             old=os.environ.get("AXON_E2E_PROVIDER_STATE");os.environ["AXON_E2E_PROVIDER_STATE"]=str(provider_state)
+            old_delay=os.environ.get("AXON_E2E_TAILSCALED_START_DELAY");os.environ["AXON_E2E_TAILSCALED_START_DELAY"]="0.5"
             pid=None
             try:
                 header,resources=teardown.manifest_api.load(Path(allocation["manifest"]));resource=next(r for r in resources if r.resource_type=="tailscale_node")
@@ -272,5 +273,7 @@ class ProviderContractIntegrationTests(unittest.TestCase):
                     except ProcessLookupError:pass
                 if old is None:os.environ.pop("AXON_E2E_PROVIDER_STATE",None)
                 else:os.environ["AXON_E2E_PROVIDER_STATE"]=old
+                if old_delay is None:os.environ.pop("AXON_E2E_TAILSCALED_START_DELAY",None)
+                else:os.environ["AXON_E2E_TAILSCALED_START_DELAY"]=old_delay
 
 if __name__=="__main__":unittest.main()

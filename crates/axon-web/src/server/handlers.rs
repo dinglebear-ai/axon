@@ -62,3 +62,6 @@ pub use config::{
     panel_doctor, panel_status, save_config, save_env_config,
 };
 pub use setup::setup_targets;
+
+#[path = "handlers/synthesis_account.rs"]
+pub mod synthesis_account;

@@ -7,7 +7,7 @@
 //! "Structured Record Chunking".
 
 use crate::chunk::DocumentChunk;
-use crate::text::source_range;
+use crate::text::SourcePositions;
 
 /// Splits YAML at top-level (column-0) keys/list items. Nested content
 /// (anything indented) stays attached to its owning top-level record.
@@ -59,6 +59,7 @@ pub(crate) fn csv_records(text: &str) -> Vec<DocumentChunk> {
     if lines.is_empty() {
         return Vec::new();
     }
+    let positions = SourcePositions::new(text);
     let header_line = lines.remove(0);
     let headers: Vec<String> = split_csv_line(header_line.text)
         .into_iter()
@@ -82,7 +83,7 @@ pub(crate) fn csv_records(text: &str) -> Vec<DocumentChunk> {
             if record.is_empty() {
                 return None;
             }
-            let mut range = source_range(text, line.start, line.end);
+            let mut range = positions.source_range(line.start, line.end);
             range.csv_row = Some(row_idx as u32);
             Some(
                 DocumentChunk::new(record, range)
@@ -109,6 +110,7 @@ pub(crate) fn xml_records(text: &str) -> Vec<DocumentChunk> {
         root_open_end
     };
 
+    let positions = SourcePositions::new(text);
     let mut chunks = Vec::new();
     let mut depth = 0i32;
     let mut record_start: Option<usize> = None;
@@ -138,7 +140,7 @@ pub(crate) fn xml_records(text: &str) -> Vec<DocumentChunk> {
             {
                 let content = text[start..tag_end].to_string();
                 let name = element_name(&text[start..]);
-                let mut range = source_range(text, start, tag_end);
+                let mut range = positions.source_range(start, tag_end);
                 range.xml_xpath = Some(format!("/*/{name}"));
                 chunks.push(
                     DocumentChunk::new(content, range)
@@ -151,7 +153,7 @@ pub(crate) fn xml_records(text: &str) -> Vec<DocumentChunk> {
         } else if depth == 0 {
             let content = text[idx..tag_end].to_string();
             let name = element_name(&text[idx..]);
-            let mut range = source_range(text, idx, tag_end);
+            let mut range = positions.source_range(idx, tag_end);
             range.xml_xpath = Some(format!("/*/{name}"));
             chunks.push(
                 DocumentChunk::new(content, range)
@@ -237,6 +239,7 @@ fn sectioned_chunks(
         starts.insert(0, 0);
     }
     starts.push(text.len());
+    let positions = SourcePositions::new(text);
     starts
         .windows(2)
         .filter_map(|pair| {
@@ -246,7 +249,7 @@ fn sectioned_chunks(
                 return None;
             }
             let (field, value) = path_for(content);
-            let mut range = source_range(text, start, end);
+            let mut range = positions.source_range(start, end);
             if field == "yaml_path" {
                 range.yaml_path = Some(value.clone());
             }

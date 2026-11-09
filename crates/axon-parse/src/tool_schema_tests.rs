@@ -148,10 +148,9 @@ fn extracts_cli_help_commands_and_options() {
     assert!(parsed.graph_candidates.iter().any(|candidate| {
         candidate.kind == "tool_definition"
             && candidate
-                .merge_key
-                .as_deref()
-                .unwrap_or_default()
-                .contains("axon scrape")
+                .nodes
+                .iter()
+                .any(|node| node.label == "axon scrape")
     }));
     assert!(
         parsed

@@ -127,6 +127,9 @@ use super::{handlers, routing};
         handlers::uploads::put_upload_content,
         handlers::uploads::complete_upload,
         handlers::uploads::abort_upload,
+        handlers::synthesis_account::status_openapi_marker,
+        handlers::synthesis_account::start_openapi_marker,
+        handlers::synthesis_account::cancel_openapi_marker,
         handlers::codex_control::snapshot_openapi_marker,
         handlers::codex_control::events_openapi_marker,
         handlers::codex_control::resource_openapi_marker,
@@ -337,7 +340,36 @@ struct ApiDoc;
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
     let mut document = ApiDoc::openapi();
     apply_security_metadata(&mut document);
+    ensure_response_descriptions(&mut document);
     document
+}
+
+// Utoipa 6 omits empty descriptions; Android's OpenAPI generator requires
+// every Response Object to serialize the OpenAPI-required description field.
+fn ensure_response_descriptions(document: &mut utoipa::openapi::OpenApi) {
+    for item in document.paths.paths.values_mut() {
+        for operation in [
+            &mut item.get,
+            &mut item.put,
+            &mut item.post,
+            &mut item.delete,
+            &mut item.options,
+            &mut item.head,
+            &mut item.patch,
+            &mut item.trace,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            for (status, response) in &mut operation.responses.responses {
+                if let RefOr::T(response) = response
+                    && response.description.is_empty()
+                {
+                    response.description = format!("HTTP {status} response");
+                }
+            }
+        }
+    }
 }
 
 fn apply_security_metadata(document: &mut utoipa::openapi::OpenApi) {
@@ -412,7 +444,7 @@ fn auth_error_response(description: &'static str) -> RefOr<Response> {
     // that don't declare their own 401/403 response.
     response.content.insert(
         "application/json".to_string(),
-        Content::new(Some(Ref::from_schema_name("ErrorBody"))),
+        RefOr::T(Content::new(Some(Ref::from_schema_name("ErrorBody")))),
     );
     RefOr::T(response)
 }

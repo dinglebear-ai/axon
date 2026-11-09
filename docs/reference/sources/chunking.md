@@ -94,6 +94,21 @@ symbol extraction rules, **and** fallback tests exist. `symbol_extraction_status
 unsupported` is valid and searchable. Initial targets: Rust, TS/JS, Python, Go,
 Java/Kotlin, C/C++, C#, Ruby/PHP/Elixir/Dart, Shell/PowerShell.
 
+Recognized extensionless scripts use a bounded interpreter-header probe; the
+shared parser resolves Python, shell and other recognized shebang languages
+without executing the file. Explicit language hints and recognized extensions
+remain authoritative. Unknown interpreters retain bounded fallback chunking.
+
+Code-symbol embeddings may include a bounded prefix containing a safe relative
+file path, language and symbol. The prefix uses only spare capacity within the
+existing 4,096-byte and 2,000-character shared chunk ceiling (at most 768 bytes);
+if capacity is unavailable, the optional prefix is omitted. Source text is never
+truncated to make room. The embedding provider admits the complete input against
+its configured limits without requesting truncation. The literal chunk content,
+hash, source ranges and citations remain unchanged; contextual text is separate
+from the returned source body. Preparation schema `axon-document/schema-18`
+invalidates processing reuse for these changes.
+
 ## Chunk identity (1:1 with vector points)
 
 Each chunk has deterministic `chunk_id`/`chunk_key`, `content_hash`,
@@ -134,7 +149,11 @@ The shared quality gate counts trimmed characters against
 `AXON_CHUNK_MIN_CHARS`). Short symbols and path references first borrow
 compatible, bounded literal context. Chunks that still fall below the configured
 minimum are omitted. Punctuation-only and structurally empty chunks are removed
-regardless of the minimum. This quality floor is separate from Markdown's
+regardless of the minimum. A nonempty input with no surviving final chunks is
+reported as `no_searchable_chunks`, with preparation-stage `chunk_quality_filter`
+diagnostics identifying the source item, input size and configured minimum.
+`empty_content` remains reserved for empty or whitespace-only acquired input.
+This quality floor is separate from Markdown's
 `markdown-min-chars` packing target. The effective minimum is clamped to 1 through
 the smaller of 2,000 and the resolved Markdown maximum, and is included in processing identity, so changing
 it re-prepares otherwise unchanged source documents.
@@ -149,3 +168,37 @@ Git inventory excludes historical plan/session documentation directories by
 default. Set the source option `include_historical_docs: true` to include them;
 `exclude_paths` still applies. Normal product documentation, tests, and generated
 reference documentation remain eligible.
+
+Partial source scopes (`diff`, `partial`, `fragment`, and `incremental`)
+proportionally reduce concrete character ceilings using the routed token-budget
+ratio. Markdown packing and overlap use the same scope adjustment. Token budgets
+remain advisory; this adjustment does not claim exact tokenizer enforcement.
+Meaningful session turns and structured records retain their identities even when
+shorter than the general minimum chunk length.
+
+Git inventory includes structured JSON, YAML, TOML and XML source/configuration,
+conventional service/configuration suffixes (`.conf`, `.service`, `.socket`,
+`.timer`, `.target`, `.mount`, `.automount`, `.preset`, `.te`, `.fc`) and named
+build files including Containerfile. Extensionless files require a recognized
+shebang plus a text-like bounded prefix; an executable permission bit alone does
+not admit arbitrary files. Full, capped and retained-item discovery apply the
+same content eligibility. Ignore files, explicit source exclusions, symlink
+policy and acquisition size limits still apply.
+
+Concise complete code documents below the configured prose floor are retained only
+when a successful AST parse identifies executable/declaration structure. Comment,
+import-only, unsupported and malformed tiny code keep the normal quality policy.
+Tiny JSON, YAML and TOML mappings/sequences with successful serde validation
+and concrete record anchors are also retained. These exceptions preserve literal bodies and parser anchors and do not
+change per-chunk byte/character ceilings or the floor for ordinary prose/large files.
+
+When a `CodeManifest`, `ApiSchema` or `StructuredRecords` projection loses every
+chunk to quality filtering or emits a nonempty chunk without nonempty source byte
+coordinates, a nonempty JSON/YAML mapping or sequence or TOML table is
+validated again and represented by bounded literal source windows. This fallback
+preserves field names, values and exact redacted source coordinates and emits
+`chunk.structured_quality_fallback`; actual chunking is `plain_text_windows`.
+The configured floor remains in force for normal-sized source documents; only
+complete validated documents shorter than that floor use a one-character floor.
+Malformed and scalar input does not qualify. Schema 18 requires reprocessing
+schema-17 and older documents to acquire these previously missing configuration records.

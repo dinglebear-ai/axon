@@ -260,6 +260,14 @@ impl LedgerStore for SqliteLedgerStore {
         generation::committed_generation(self, &source_id).await
     }
 
+    async fn generation_receipt(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<crate::store::GenerationReceipt>> {
+        generation::generation_receipt(self, &source_id, &generation).await
+    }
+
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
         retry_ledger_write("ledger complete generation", || {
             generation::complete_generation(self, generation.clone())

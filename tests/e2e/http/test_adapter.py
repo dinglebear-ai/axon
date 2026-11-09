@@ -44,6 +44,9 @@ class HttpAdapterTests(unittest.TestCase):
                          "behavioral_operations", "contract_only"):
             self.assertTrue(groups[required], required)
         self.assertEqual({
+            "GET /v1/synthesis/account",
+            "POST /v1/synthesis/account/login",
+            "POST /v1/synthesis/account/login/cancel",
             "GET /v1/codex",
             "GET /v1/codex/events",
             "GET /v1/codex/operations",

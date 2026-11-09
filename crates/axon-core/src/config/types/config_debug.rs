@@ -203,6 +203,7 @@ impl fmt::Debug for Config {
             .field("openai_base_url", &redacted_url(&self.openai_base_url))
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)
+            .field("openai_temperature", &self.openai_temperature)
             .field("synthesis_high_context", &self.synthesis_high_context)
             .field("openai_chat_model", &self.openai_chat_model)
             .field(

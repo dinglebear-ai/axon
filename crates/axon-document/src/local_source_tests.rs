@@ -167,3 +167,32 @@ fn local_doc(path: &str, content_kind: ContentKind, text: &str) -> SourceDocumen
         parser_hints: Vec::new(),
     }
 }
+
+#[test]
+fn extensionless_python_shebang_reaches_ast_chunks_and_preserves_source_ranges() {
+    let body = "#!/usr/bin/env python3\nimport sys\n\ndef update_system(source_path):\n    selected_update = source_path.strip()\n    return selected_update + ' complete system update configuration'\n";
+    let prepared = prepare(local_doc(
+        "build_files/os-update/update",
+        ContentKind::Code,
+        body,
+    ));
+    assert_eq!(prepared.chunking_profile, "code_symbol");
+    assert_eq!(prepared.chunking_method, "tree_sitter");
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.metadata["code_language"] == "python")
+    );
+    assert!(
+        prepared
+            .parse_facts
+            .iter()
+            .any(|fact| fact.fact_kind == "code_symbol")
+    );
+    for chunk in prepared.chunks {
+        let start = chunk.source_range.byte_start.unwrap() as usize;
+        let end = chunk.source_range.byte_end.unwrap() as usize;
+        assert_eq!(chunk.content, body[start..end]);
+    }
+}

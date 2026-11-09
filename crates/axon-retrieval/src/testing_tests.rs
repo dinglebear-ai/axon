@@ -78,6 +78,8 @@ fn sample_result() -> RetrievalResult {
     }];
     let context = ContextBundle::from_matches(&matches, 4096, 512);
     RetrievalResult {
+        score_kind: axon_api::result::QueryScoreKind::HybridFusion,
+        warnings: Vec::new(),
         plan: RetrievalPlan {
             collection: "axon-test".to_string(),
             limit: 3,
@@ -85,6 +87,8 @@ fn sample_result() -> RetrievalResult {
             generation: None,
             allowed_visibility: vec![Visibility::Public],
             namespace_filters: Vec::new(),
+            source_kinds: Vec::new(),
+            source_urls: Vec::new(),
             excluded_source_kinds: Vec::new(),
             hybrid: true,
             hybrid_candidates: None,
@@ -107,6 +111,8 @@ fn sample_request() -> RetrievalRequest {
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
+        source_kinds: Vec::new(),
+        source_urls: Vec::new(),
         excluded_source_kinds: Vec::new(),
         hybrid: true,
         hybrid_candidates: None,

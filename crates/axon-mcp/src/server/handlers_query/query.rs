@@ -31,6 +31,8 @@ impl AxonMcpServer {
             since: req.since,
             before: req.before,
             hybrid_search_enabled: req.hybrid_search,
+            retrieval_source_kinds: req.source_kinds,
+            retrieval_source_urls: req.source_urls,
             ..ConfigOverrides::default()
         });
 
@@ -55,6 +57,7 @@ impl AxonMcpServer {
                 "query": query,
                 "limit": pagination.limit,
                 "offset": pagination.offset,
+                "warnings": result.warnings,
                 "results": serde_json::to_value(&result.results).map_err(|e| internal_error(format!("serialize query results: {e}")))?,
             }),
             InlineHint::Default,

@@ -29,7 +29,7 @@ impl LlmBackendKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LlmBackendConfig {
     pub kind: LlmBackendKind,
     pub gemini_cmd: String,
@@ -38,6 +38,7 @@ pub struct LlmBackendConfig {
     pub openai_base_url: Option<String>,
     pub openai_api_key: Option<String>,
     pub openai_model: Option<String>,
+    pub openai_temperature: Option<f64>,
     pub codex_cmd: String,
     pub codex_model: Option<String>,
     pub codex_home: Option<PathBuf>,
@@ -74,6 +75,7 @@ impl Default for LlmBackendConfig {
             openai_base_url: None,
             openai_api_key: None,
             openai_model: None,
+            openai_temperature: None,
             codex_cmd: "codex".to_string(),
             codex_model: None,
             codex_home: None,
@@ -94,6 +96,7 @@ impl LlmBackendConfig {
                 .unwrap_or_else(|| "gemini".to_string()),
             gemini_model: non_empty(cfg.headless_gemini_model.clone()),
             gemini_home: cfg.headless_gemini_home.clone(),
+            openai_temperature: cfg.openai_temperature,
             openai_base_url: non_empty(cfg.openai_base_url.clone()),
             openai_api_key: non_empty(cfg.openai_api_key.clone()),
             openai_model: non_empty(cfg.openai_model.clone()),
@@ -255,7 +258,7 @@ impl ReasoningEffort {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompletionRequest {
     pub system_prompt: Option<String>,
     pub user_prompt: String,
@@ -392,6 +395,20 @@ pub trait TextCompleter: Send + Sync {
 pub fn normalize_stream_flag(mut req: CompletionRequest, stream: bool) -> CompletionRequest {
     req.stream = stream;
     req
+}
+
+/// Parse an optional OpenAI-compatible sampling override without changing provider defaults.
+pub fn parse_openai_temperature(value: Option<&str>) -> Result<Option<f64>, String> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let temperature = value.parse::<f64>().map_err(|_| {
+        "AXON_OPENAI_TEMPERATURE must be a finite number between 0 and 2".to_string()
+    })?;
+    if !temperature.is_finite() || !(0.0..=2.0).contains(&temperature) {
+        return Err("AXON_OPENAI_TEMPERATURE must be a finite number between 0 and 2".into());
+    }
+    Ok(Some(temperature))
 }
 
 fn non_empty(value: String) -> Option<String> {

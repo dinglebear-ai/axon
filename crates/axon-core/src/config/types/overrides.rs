@@ -23,6 +23,8 @@ use std::path::PathBuf;
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct ConfigOverrides {
+    pub retrieval_source_kinds: Option<Vec<axon_api::source::SourceKind>>,
+    pub retrieval_source_urls: Option<Vec<String>>,
     /// Override `Config::max_pages` (0 = uncapped).
     pub max_pages: Option<u32>,
 
@@ -175,6 +177,12 @@ impl Config {
         }
         if let Some(ref v) = overrides.before {
             cfg.before = Some(v.clone());
+        }
+        if let Some(urls) = &overrides.retrieval_source_urls {
+            cfg.retrieval_source_urls = urls.clone();
+        }
+        if let Some(kinds) = &overrides.retrieval_source_kinds {
+            cfg.retrieval_source_kinds = kinds.clone();
         }
         if let Some(v) = overrides.hybrid_search_enabled {
             cfg.hybrid_search_enabled = v;

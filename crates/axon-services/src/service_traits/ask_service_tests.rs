@@ -22,6 +22,8 @@ async fn fake_ask_service_ask_returns_seeded_answer() {
     fake.seed_answer("what is axon?", "a rag engine");
 
     let request = AskRequest {
+        source_kinds: None,
+        source_urls: None,
         query: Some("what is axon?".to_string()),
         diagnostics: None,
         explain: None,
@@ -119,6 +121,8 @@ async fn fake_ask_service_suggest_returns_result() {
 async fn fake_ask_service_works_through_trait_object() {
     let fake: Arc<dyn AskService> = Arc::new(FakeAskService::new());
     let request = AskRequest {
+        source_kinds: None,
+        source_urls: None,
         query: Some("hello".to_string()),
         diagnostics: None,
         explain: None,

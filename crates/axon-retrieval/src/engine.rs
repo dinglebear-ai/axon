@@ -93,6 +93,7 @@ where
     pub async fn retrieve(&self, request: RetrievalRequest) -> Result<RetrievalResult, ApiError> {
         let plan =
             RetrievalPlan::from_request(&request, self.config.access.allowed_visibility.clone());
+        validate_source_urls(&plan.source_urls)?;
         let dense_vector = self.embed_query(&request.query).await?;
         // bm42 sparse arm: compute the query's sparse vector locally (Qdrant
         // applies IDF server-side). An empty sparse vector (all-stopword / tiny
@@ -100,6 +101,15 @@ where
         let sparse_vector = request.hybrid.then(|| {
             axon_vectors::bm42::compute_bm42_sparse(ChunkId::new("query"), &request.query)
         });
+        // Match the vector search body: empty BM42 terms use named dense search.
+        let score_kind = if sparse_vector
+            .as_ref()
+            .is_some_and(|sparse| !sparse.indices.is_empty())
+        {
+            axon_api::result::QueryScoreKind::HybridFusion
+        } else {
+            axon_api::result::QueryScoreKind::DenseSimilarity
+        };
         let mut search_metadata = MetadataMap::new();
         if let Some(hybrid_candidates) = plan.hybrid_candidates {
             search_metadata.insert(
@@ -127,6 +137,7 @@ where
             .results
             .iter()
             .filter(|item| !excluded_by_source_kind(item, &plan))
+            .filter(|item| source_url_allowed(item, &plan))
             .map(match_from_vector)
             .collect::<Result<Vec<_>, _>>()?;
         let context = ContextBundle::from_matches(&matches, plan.byte_budget, plan.token_budget);
@@ -151,6 +162,8 @@ where
             .collect();
 
         Ok(RetrievalResult {
+            score_kind,
+            warnings: search.warnings,
             plan,
             matches,
             context,
@@ -159,6 +172,13 @@ where
     }
 
     async fn embed_query(&self, query: &str) -> Result<Vec<f32>, ApiError> {
+        // Effective capabilities retain the configured query-instruction gate.
+        // Format before embed so cache keys identify the actual provider input.
+        let capability = self.embedding_provider.capabilities().await?;
+        let query_instruction_enabled = capability
+            .embedding
+            .as_ref()
+            .is_some_and(|embedding| query_instruction_supported(embedding.instruction_support));
         let result = self
             .embedding_provider
             .embed(EmbeddingBatch {
@@ -168,7 +188,11 @@ where
                 model: self.config.embedding_model.clone(),
                 items: vec![EmbeddingInput {
                     chunk_id: ChunkId::new("query"),
-                    text: query.to_string(),
+                    text: if query_instruction_enabled {
+                        query_embedding_text(&self.config.embedding_model, query)
+                    } else {
+                        query.to_string()
+                    },
                     content_kind: ContentKind::PlainText,
                     metadata: MetadataMap::new(),
                 }],
@@ -242,7 +266,37 @@ fn excluded_by_source_kind(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bo
         .any(|kind| kind == source_kind)
 }
 
+/// Exact canonical document identities, never host or prefix matching.
+fn source_url_allowed(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bool {
+    plan.source_urls.is_empty()
+        || item
+            .payload
+            .get("chunk_locator")
+            .and_then(|locator| locator.get("canonical_uri"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|uri| plan.source_urls.iter().any(|allowed| allowed == uri))
+}
+
+fn validate_source_urls(urls: &[String]) -> Result<(), ApiError> {
+    if urls.len() > 64
+        || urls.iter().any(|url| {
+            url.is_empty()
+                || url.len() > 4096
+                || url.trim() != url
+                || url.chars().any(char::is_control)
+        })
+    {
+        return Err(ApiError::new(
+            "retrieval.invalid_source_urls",
+            ErrorStage::Retrieving,
+            "source_urls must contain at most 64 exact canonical URIs, each 1-4096 bytes with no surrounding whitespace or control characters; reduce or correct the allowlist before retrying",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiError> {
+    validate_source_urls(&plan.source_urls)?;
     let mut filters = MetadataMap::new();
     filters.insert(
         "visibility".to_string(),
@@ -260,6 +314,18 @@ pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiErr
     );
     if let Some(source_id) = &plan.source_id {
         filters.insert("source_id".to_string(), serde_json::json!(source_id.0));
+    }
+    if !plan.source_urls.is_empty() {
+        filters.insert(
+            "chunk_locator.canonical_uri".to_string(),
+            serde_json::json!(plan.source_urls),
+        );
+    }
+    if !plan.source_kinds.is_empty() {
+        filters.insert(
+            "source_kind".to_string(),
+            serde_json::json!(plan.source_kinds),
+        );
     }
     if !plan.namespace_filters.is_empty() {
         filters.insert(
@@ -357,4 +423,28 @@ fn require_clean_redaction_status(item: &VectorSearchMatch) -> Result<(), ApiErr
 
 fn payload_string(payload: &MetadataMap, field: &str) -> Option<String> {
     payload.get(field)?.as_str().map(ToString::to_string)
+}
+
+/// Qwen's asymmetric retrieval contract requires an instruction on queries only.
+/// Keep it in the actual text so providers configured without generic prefix
+/// support still receive the correct input, and embedding caches key it exactly.
+/// https://huggingface.co/Qwen/Qwen3-Embedding-0.6B#transformers-usage
+pub(crate) fn query_embedding_text(model: &str, query: &str) -> String {
+    match model {
+        "Qwen/Qwen3-Embedding-0.6B" | "Qwen/Qwen3-Embedding-4B" | "Qwen/Qwen3-Embedding-8B" => {
+            format!(
+                "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{query}"
+            )
+        }
+        _ => query.to_string(),
+    }
+}
+
+/// Document-only support must never enable query preprocessing.
+pub(crate) fn query_instruction_supported(support: axon_api::source::InstructionSupport) -> bool {
+    matches!(
+        support,
+        axon_api::source::InstructionSupport::QueryOnly
+            | axon_api::source::InstructionSupport::QueryAndDocument
+    )
 }

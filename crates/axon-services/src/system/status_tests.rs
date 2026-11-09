@@ -98,3 +98,41 @@ fn build_identity_is_complete_and_schema_versioned() {
     assert!(!identity.build_profile.is_empty());
     assert_eq!(identity.schema_epoch, 1);
 }
+
+#[tokio::test]
+async fn full_status_uses_runtime_readiness_without_integrity_scan() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfg = axon_core::config::Config {
+        sqlite_path: dir.path().join("jobs.db"),
+        ..axon_core::config::Config::test_default()
+    };
+    let ctx = crate::context::ServiceContext::new(std::sync::Arc::new(cfg))
+        .await
+        .expect("service context");
+    let result = full_status(&ctx).await.expect("status");
+    assert_eq!(result.payload["sqlite"]["check"], "runtime");
+    assert_eq!(result.payload["sqlite"]["ok"], true);
+    assert!(result.payload["sqlite"].get("quick_check").is_none());
+    assert!(!result.degraded, "{:?}", result.warnings);
+    ctx.shutdown_background_tasks().await;
+}
+
+#[test]
+fn status_keeps_runtime_readiness_failures_visible() {
+    let error = sqlite_status_error(&serde_json::json!({
+        "ok": false,
+        "check": "runtime",
+        "runtime_ioerr_count": 0,
+        "active_owner_observed": false
+    }))
+    .expect("runtime failure");
+    assert!(error.contains("active database ownership"));
+    assert!(!error.contains("quick_check"));
+    assert!(
+        sqlite_status_error(&serde_json::json!({
+            "ok": false, "check": "runtime", "runtime_ioerr_count": 2
+        }))
+        .expect("IOERR failure")
+        .contains("IOERR")
+    );
+}

@@ -47,6 +47,8 @@ impl QueryService for QueryServiceImpl {
             since: request.since,
             before: request.before,
             hybrid_search_enabled: request.hybrid_search,
+            retrieval_source_kinds: request.source_kinds,
+            retrieval_source_urls: request.source_urls,
             ..ConfigOverrides::default()
         });
         crate::query::query(&self.ctx, &cfg, &text, opts)
@@ -83,7 +85,10 @@ impl QueryService for FakeQueryService {
             .take(limit)
             .cloned()
             .collect();
-        Ok(QueryResult { results })
+        Ok(QueryResult {
+            results,
+            warnings: Vec::new(),
+        })
     }
 }
 

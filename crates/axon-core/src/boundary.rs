@@ -26,6 +26,17 @@ pub struct ArtifactBytesWriteRequest {
     pub metadata: MetadataMap,
 }
 
+pub struct ArtifactFileWriteRequest {
+    pub kind: ArtifactKind,
+    pub content_type: String,
+    pub file: std::fs::File,
+    pub size_bytes: u64,
+    pub content_hash: String,
+    pub source_id: Option<SourceId>,
+    pub job_id: Option<JobId>,
+    pub metadata: MetadataMap,
+}
+
 #[async_trait]
 pub trait ArtifactStore: Send + Sync {
     async fn put(&self, artifact: ArtifactWriteRequest) -> Result<ArtifactHandle>;
@@ -37,6 +48,62 @@ pub trait ArtifactStore: Send + Sync {
                 bytes_base64: base64::engine::general_purpose::STANDARD.encode(artifact.bytes),
                 mime_type: artifact.content_type,
             },
+            source_id: artifact.source_id,
+            job_id: artifact.job_id,
+            metadata: artifact.metadata,
+        })
+        .await
+    }
+    /// Pure identity prediction permits durable cleanup ownership before a write.
+    #[allow(clippy::result_large_err)] // ArtifactStore exposes structured ApiError values.
+    fn sealed_file_identity(
+        &self,
+        _artifact: &ArtifactFileWriteRequest,
+    ) -> Result<Option<ArtifactHandle>> {
+        Ok(None)
+    }
+    async fn put_file(&self, artifact: ArtifactFileWriteRequest) -> Result<ArtifactHandle> {
+        use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _};
+        if artifact.size_bytes > 64 * 1024 * 1024 {
+            return Err(ApiError::new(
+                "artifact.streaming_unsupported",
+                ErrorStage::Publishing,
+                "artifact store requires streaming support above 64 MiB",
+            ));
+        }
+        let mut file = tokio::fs::File::from_std(artifact.file);
+        file.rewind().await.map_err(|error| {
+            ApiError::new(
+                "artifact.read_failed",
+                ErrorStage::Publishing,
+                error.to_string(),
+            )
+        })?;
+        let mut bytes = Vec::new();
+        file.take(artifact.size_bytes + 1)
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|error| {
+                ApiError::new(
+                    "artifact.read_failed",
+                    ErrorStage::Publishing,
+                    error.to_string(),
+                )
+            })?;
+        use sha2::{Digest as _, Sha256};
+        if bytes.len() as u64 != artifact.size_bytes
+            || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != artifact.content_hash
+        {
+            return Err(ApiError::new(
+                "artifact.integrity_failed",
+                ErrorStage::Publishing,
+                "artifact stream differs from sealed receipt",
+            ));
+        }
+        self.put_bytes(ArtifactBytesWriteRequest {
+            kind: artifact.kind,
+            content_type: artifact.content_type,
+            bytes,
             source_id: artifact.source_id,
             job_id: artifact.job_id,
             metadata: artifact.metadata,

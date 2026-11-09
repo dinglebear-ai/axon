@@ -165,6 +165,8 @@ pub fn apply_extract_overrides(cfg: &Config, req: &ExtractTransportOverrides) ->
 
 #[derive(Debug, Clone, Default)]
 pub struct AskTransportOverrides {
+    pub source_kinds: Option<Vec<axon_api::source::SourceKind>>,
+    pub source_urls: Option<Vec<String>>,
     pub collection: Option<String>,
     pub since: Option<String>,
     pub before: Option<String>,
@@ -187,6 +189,12 @@ pub struct AskTransportOverrides {
 
 pub fn apply_ask_overrides(cfg: &Config, req: AskTransportOverrides) -> Config {
     let mut cfg = cfg.clone();
+    if let Some(urls) = req.source_urls {
+        cfg.retrieval_source_urls = urls;
+    }
+    if let Some(kinds) = req.source_kinds {
+        cfg.retrieval_source_kinds = kinds;
+    }
     if let Some(c) = req.collection {
         cfg.collection = c;
     }

@@ -9,7 +9,10 @@ fn projection_cli_batch_renderer_outputs_tagged_outcomes() {
         items: vec![BatchItem {
             index: 0,
             input: Some("needle".to_string()),
-            outcome: BatchOutcome::Completed(QueryResult { results: vec![] }),
+            outcome: BatchOutcome::Completed(QueryResult {
+                results: vec![],
+                warnings: Vec::new(),
+            }),
         }],
         summary: BatchSummary {
             total: 1,
@@ -84,7 +87,10 @@ fn projection_batch_directory_writes_one_no_clobber_file_per_item() {
     let items = vec![BatchItem {
         index: 7,
         input: Some("secret-source".to_string()),
-        outcome: BatchOutcome::Completed(QueryResult { results: vec![] }),
+        outcome: BatchOutcome::Completed(QueryResult {
+            results: vec![],
+            warnings: Vec::new(),
+        }),
     }];
 
     write_batch_directory(&directory, Some("item-{index}.json"), &items).unwrap();

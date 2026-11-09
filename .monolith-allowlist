@@ -6,12 +6,4 @@
 # Format:
 #   path/to/file.rs  # expires: YYYY-MM-DD | owner: <name> | split: <plan>
 
-# Vendored lab-auth source (upstream pinned SHA 87cec324).
-# Cannot be split — upstream code vendored to resolve libsqlite3-sys link conflict.
-# Renewed 2026-10-01: sqlx 0.8 and upstream rusqlite remain incompatible
-# libsqlite3-sys link owners; see vendor/lab-auth/Cargo.toml pinned dependency.
-# Remove after their libsqlite3-sys versions converge.
-vendor/lab-auth/src/authorize.rs  # expires: 2026-10-28 | owner: jmagar | split: N/A (upstream vendored)
-vendor/lab-auth/src/sqlite.rs     # expires: 2026-10-28 | owner: jmagar | split: N/A (upstream vendored)
-vendor/lab-auth/src/google.rs     # expires: 2026-10-28 | owner: jmagar | split: N/A (upstream vendored)
-vendor/lab-auth/src/middleware.rs  # expires: 2026-10-28 | owner: jmagar | split: N/A (upstream vendored)
+# Vendored lab-auth modules now meet the same limits as first-party code.

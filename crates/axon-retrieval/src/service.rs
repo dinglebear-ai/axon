@@ -35,6 +35,8 @@ const DEFAULT_TOKEN_BUDGET: u32 = u32::MAX;
 /// standard read set (public/internal/derived) via [`RetrievalAccess::standard`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryServiceRequest {
+    pub source_kinds: Vec<axon_api::source::SourceKind>,
+    pub source_urls: Vec<String>,
     pub query: String,
     pub collection: String,
     pub limit: u32,
@@ -62,6 +64,8 @@ pub struct QueryServiceHit {
 /// Result of [`run_query`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryServiceResult {
+    pub score_kind: axon_api::result::QueryScoreKind,
+    pub warnings: Vec<axon_api::source::SourceWarning>,
     pub hits: Vec<QueryServiceHit>,
 }
 
@@ -78,6 +82,49 @@ pub async fn run_query(
     embedding_model: impl Into<String>,
     embedding_dimensions: u32,
     request: QueryServiceRequest,
+) -> Result<QueryServiceResult, ApiError> {
+    run_query_with_diversity(
+        store,
+        provider,
+        embedding_provider_id,
+        embedding_model,
+        embedding_dimensions,
+        request,
+        true,
+    )
+    .await
+}
+
+/// Retrieve score-ordered candidates for ask, which owns its own context ranking.
+/// Preserve the candidate set before that ranking instead of applying query-page diversity.
+pub async fn run_query_candidates(
+    store: Arc<dyn VectorStore>,
+    provider: Arc<dyn EmbeddingProvider>,
+    embedding_provider_id: ProviderId,
+    embedding_model: impl Into<String>,
+    embedding_dimensions: u32,
+    request: QueryServiceRequest,
+) -> Result<QueryServiceResult, ApiError> {
+    run_query_with_diversity(
+        store,
+        provider,
+        embedding_provider_id,
+        embedding_model,
+        embedding_dimensions,
+        request,
+        false,
+    )
+    .await
+}
+
+async fn run_query_with_diversity(
+    store: Arc<dyn VectorStore>,
+    provider: Arc<dyn EmbeddingProvider>,
+    embedding_provider_id: ProviderId,
+    embedding_model: impl Into<String>,
+    embedding_dimensions: u32,
+    request: QueryServiceRequest,
+    diversify: bool,
 ) -> Result<QueryServiceResult, ApiError> {
     // Resolve the provider's *actual* identity from its capabilities. The
     // engine cross-checks the embed response's provider_id/model/dimensions, and
@@ -107,10 +154,19 @@ pub async fn run_query(
         // generation cannot consume the entire public result window. Qdrant also
         // filters retired generations, so this primarily covers legacy/cutover
         // fossils whose `retired_epoch` was never stamped.
-        limit: requested_limit.saturating_mul(2),
+        // A small public limit still needs the complete first diversity window.
+        limit: if diversify {
+            requested_limit
+                .saturating_mul(2)
+                .max(crate::rank::DIVERSITY_WINDOW_SIZE as u32)
+        } else {
+            requested_limit.saturating_mul(2)
+        },
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
+        source_kinds: request.source_kinds,
+        source_urls: request.source_urls,
         // Exclude memory documents by source kind — memory search has its
         // own dedicated request path (`crate::memory::memory_retrieval_filter`)
         // that opts in explicitly.
@@ -151,9 +207,21 @@ pub async fn run_query(
         .collect();
 
     retain_latest_document_generations(&mut hits);
+    if diversify {
+        crate::rank::diversify_documents(&mut hits, |hit| {
+            (
+                hit.citation.source_id.clone(),
+                hit.citation.document_id.clone(),
+            )
+        });
+    }
     hits.truncate(requested_limit as usize);
 
-    Ok(QueryServiceResult { hits })
+    Ok(QueryServiceResult {
+        score_kind: result.score_kind,
+        hits,
+        warnings: result.warnings,
+    })
 }
 
 /// Remove hits from older committed generations of the same stable document.

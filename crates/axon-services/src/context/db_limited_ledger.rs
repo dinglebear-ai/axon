@@ -130,6 +130,15 @@ impl LedgerStore for DbLimitedLedgerStore {
         self.inner.committed_generation(source_id).await
     }
 
+    async fn generation_receipt(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<axon_ledger::store::GenerationReceipt>> {
+        let _permit = self.permit().await?;
+        self.inner.generation_receipt(source_id, generation).await
+    }
+
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
         let _permit = self.permit().await?;
         self.inner.complete_generation(generation).await

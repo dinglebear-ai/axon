@@ -27,7 +27,7 @@ fn point(n: usize) -> VectorPoint {
     })
 }
 
-fn batch(points: usize) -> VectorPointBatch {
+pub(super) fn batch(points: usize) -> VectorPointBatch {
     VectorPointBatch {
         batch_id: BatchId::new(uuid::Uuid::from_u128(7)),
         collection: "axon-test".to_string(),
@@ -259,7 +259,7 @@ fn concurrent_put_server(
     (format!("http://{address}"), arrivals, handle)
 }
 
-fn test_collection_spec() -> CollectionSpec {
+pub(super) fn test_collection_spec() -> CollectionSpec {
     CollectionSpec {
         collection: "axon-test".to_string(),
         dense: VectorConfig {

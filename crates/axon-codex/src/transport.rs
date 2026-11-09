@@ -111,7 +111,12 @@ impl ControlTransport {
             alive,
             server_requests,
         };
-        transport.initialize().await?;
+        if let Err(error) = transport.initialize().await {
+            transport.stop().await.map_err(|_| {
+                "codex_control_cleanup_failed: initialization child could not be reaped".to_string()
+            })?;
+            return Err(error);
+        }
         Ok(transport)
     }
 
@@ -435,3 +440,15 @@ fn rpc_error(error: RpcError) -> String {
 #[cfg(test)]
 #[path = "transport_tests.rs"]
 mod tests;
+
+// Cancellation of an account/session future must not detach a live auth writer.
+impl Drop for ControlTransport {
+    fn drop(&mut self) {
+        self.reader_task.abort();
+        self.stderr_task.abort();
+        self.alive.store(false, Ordering::Release);
+        if let Ok(mut child) = self.child.try_lock() {
+            let _ = child.start_kill();
+        }
+    }
+}

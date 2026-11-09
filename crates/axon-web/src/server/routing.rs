@@ -43,6 +43,9 @@ pub(super) fn router(
         panel,
         service_context: Arc::clone(&service_context),
         codex_control: super::state::build_codex_control(&cfg),
+        synthesis_account: axon_services::synthesis_account::SynthesisAccountService::from_config(
+            &cfg,
+        ),
     };
     let rest_routes = protect_routes(
         read_routes(Arc::clone(&cfg), Arc::clone(&service_context)),
@@ -295,6 +298,18 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
 /// satisfy this scope.
 fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
+        .route(
+            "/v1/synthesis/account",
+            get(handlers::synthesis_account::status),
+        )
+        .route(
+            "/v1/synthesis/account/login",
+            post(handlers::synthesis_account::start),
+        )
+        .route(
+            "/v1/synthesis/account/login/cancel",
+            post(handlers::synthesis_account::cancel),
+        )
         .merge(codex_routes::read_routes())
         .merge(codex_routes::admin_routes())
         .nest(

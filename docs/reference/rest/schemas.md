@@ -17,7 +17,7 @@ See the family contract for declared output paths.
 | `crates/axon-web/src/schema_registry.rs` | `sha256:7b3c49f7035155cedbff3fc52f748671252746b9af5ebfc4ffc8e7b9b1f54695` |
 | `crates/axon-web/src/schema_registry/admin_watch_routes.rs` | `sha256:61efed61fa1bed07586644d080a1a8cc68d52641c4fb4db2e0500b6fb58d1852` |
 | `crates/axon-web/src/schema_registry/agent_routes.rs` | `sha256:c381c1a1cba5ad003b90848f87fbbe784c11e37e9dcf320603eaa1c06d0b72d5` |
-| `crates/axon-web/src/schema_registry/codex_routes.rs` | `sha256:ebcfe554161e465811c11a3afa630f3fc651df0f1c3eeed04adbd486d53de26b` |
+| `crates/axon-web/src/schema_registry/codex_routes.rs` | `sha256:f35a5b1a21d9cde8344f93e8e58784fde317d03650c321892c4b3eb8876d8e03` |
 | `crates/axon-web/src/schema_registry/extract_routes.rs` | `sha256:ed5a2623857d813b13af1785ea4a5e49b97b0241092b94dbf58f39a6a24cc3b6` |
 | `crates/axon-web/src/schema_registry/graph_routes.rs` | `sha256:11e98efece91d4ff1dc7201fb031de58300ed3651111277b12573170c3211716` |
 | `crates/axon-web/src/schema_registry/helpers.rs` | `sha256:2ba52309e46521a200a37950aea2edb5afc76ec1aa72417d9d0b777ed2b58856` |
@@ -72,7 +72,7 @@ Generated from the owner crate schema registry.
 
 ## Route Registry
 
-114 records from the linked canonical artifact.
+117 records from the linked canonical artifact.
 
 | method | path | request_dto | result_dto | requires_auth_scope | streaming |
 |---|---|---|---|---|---|
@@ -116,6 +116,7 @@ Generated from the owner crate schema registry.
 | GET | /v1/sources/{source_id} | not specified | SourceSummary | read | false |
 | GET | /v1/stats | not specified | StatsResponse | read | false |
 | GET | /v1/status | not specified | StatusResponse | read | false |
+| GET | /v1/synthesis/account | not specified | AccountStatus | admin | false |
 | GET | /v1/uploads | UploadListRequest | Page&lt;UploadStatus&gt; | read | false |
 | GET | /v1/uploads/{upload_id} | not specified | UploadStatus | read | false |
 | GET | /v1/watches | not specified | Page&lt;WatchSummary&gt; | read | false |
@@ -182,6 +183,8 @@ Generated from the owner crate schema registry.
 | POST | /v1/suggest | SuggestRequest | SuggestResponse | read | false |
 | POST | /v1/summarize | SummarizeRequest | SummarizeResponse | read | false |
 | POST | /v1/summarize/stream | SummarizeRequest | StreamEvent | write | true |
+| POST | /v1/synthesis/account/login | LoginBody | AccountStatus | admin | false |
+| POST | /v1/synthesis/account/login/cancel | CancelBody | AccountStatus | admin | false |
 | POST | /v1/uploads | UploadCreateRequest | UploadCreateResult | write | false |
 | POST | /v1/uploads/{upload_id}/complete | UploadCompleteRequest | UploadCompleteResult | write | false |
 | POST | /v1/watches | WatchRequest | WatchResult | write | false |

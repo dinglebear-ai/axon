@@ -108,6 +108,7 @@ pub(super) struct PreparedWorkEnvelope {
     pub(super) prepared: Vec<PreparedDocument>,
     pub(super) side_effects: PreparedBatchSideEffects,
     pub(super) is_final: bool,
+    #[cfg(test)]
     pub(super) estimated_bytes: usize,
     _chunk_permit: OwnedSemaphorePermit,
     _job_byte_permit: OwnedSemaphorePermit,
@@ -256,6 +257,7 @@ impl PreparedBatchSender {
             prepared,
             side_effects,
             is_final,
+            #[cfg(test)]
             estimated_bytes,
             _chunk_permit: chunk_permit,
             _job_byte_permit: job_byte_permit,
@@ -295,10 +297,6 @@ fn serialized_size(value: &impl serde::Serialize) -> anyhow::Result<usize> {
 impl PreparedBatchReceiver {
     pub(super) async fn recv(&mut self) -> Option<PreparedWorkEnvelope> {
         self.receiver.recv().await
-    }
-
-    pub(super) fn is_channel_closed(&self) -> bool {
-        self.receiver.is_closed()
     }
 }
 

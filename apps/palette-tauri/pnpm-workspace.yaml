@@ -9,6 +9,13 @@ overrides:
   tldts: 7.0.30
   tldts-core: 7.0.30
   vite: ^7.3.5
+  "@ts-morph/common>minimatch": ^11.0.1
+  # 0.18.11 was deprecated after an accidental breaking publication.
+  katex: 0.18.10
+  "fast-uri@3": ^3.1.9
+  "ip-address@10": ^10.7.4
+  "undici@7": ^7.30.2
+  "systeminformation@5": ^5.33.16
 
 onlyBuiltDependencies:
   - esbuild
@@ -17,3 +24,8 @@ onlyBuiltDependencies:
 allowBuilds:
   esbuild: true
   msw: true
+
+# GHSA-gcqx-w48m-w2h4 has no published fix. Keep audit visible; regression
+# tests exercise the installed transitive package, including its CJS entry.
+patchedDependencies:
+  deepmerge@4.3.1: patches/deepmerge@4.3.1.patch

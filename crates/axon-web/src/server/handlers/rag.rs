@@ -33,13 +33,19 @@ pub(crate) async fn query(
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<axon_api::source::SuccessEnvelope<services::types::QueryResult>>, HttpError> {
     let query = required_text(&req.query, "query")?;
-    let cfg = with_query_overrides(
+    let mut cfg = with_query_overrides(
         &cfg,
         req.collection,
         req.since,
         req.before,
         req.hybrid_search,
     )?;
+    if let Some(urls) = req.source_urls {
+        cfg.retrieval_source_urls = urls;
+    }
+    if let Some(kinds) = req.source_kinds {
+        cfg.retrieval_source_kinds = kinds;
+    }
     let result = services::query::query_with_auth(
         &state.service_context,
         &cfg,

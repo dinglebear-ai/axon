@@ -79,3 +79,56 @@ fn rest_route_contract_fields_match_openapi_schema_properties() {
         );
     }
 }
+
+#[test]
+fn rag_requests_accept_typed_source_scope_and_reject_unknown_kinds() {
+    use super::client_contract::{RestAskRequest, RestQueryRequest};
+    for kinds in [
+        serde_json::json!(["web", "git"]),
+        serde_json::json!(["session"]),
+        serde_json::json!([]),
+    ] {
+        let query = serde_json::json!({"query":"Unraid parity", "source_kinds": kinds});
+        assert!(
+            serde_json::from_value::<RestQueryRequest>(query.clone()).is_ok(),
+            "query must support explicit source scope"
+        );
+        assert!(
+            serde_json::from_value::<RestAskRequest>(query).is_ok(),
+            "ask must support the same source scope"
+        );
+    }
+    let invalid = serde_json::json!({"query":"Unraid parity", "source_kinds":["invented"]});
+    assert!(serde_json::from_value::<RestQueryRequest>(invalid.clone()).is_err());
+    assert!(serde_json::from_value::<RestAskRequest>(invalid).is_err());
+}
+
+#[test]
+fn canonical_source_urls_reach_request_config_without_changing_shared_defaults() {
+    use crate::client_contract::RestAskRequest;
+    use crate::transport::{AskTransportOverrides, apply_ask_overrides};
+    let request: RestAskRequest = serde_json::from_value(serde_json::json!({
+        "query": "document question", "source_urls": ["https://example.com/canonical"]
+    }))
+    .unwrap();
+    let base = axon_core::config::Config::default();
+    let cfg = apply_ask_overrides(
+        &base,
+        AskTransportOverrides {
+            source_urls: request.source_urls,
+            ..Default::default()
+        },
+    );
+    assert_eq!(cfg.retrieval_source_urls, ["https://example.com/canonical"]);
+    assert!(base.retrieval_source_urls.is_empty());
+    let inherited = apply_ask_overrides(&cfg, AskTransportOverrides::default());
+    assert_eq!(inherited.retrieval_source_urls, cfg.retrieval_source_urls);
+    let cleared = apply_ask_overrides(
+        &cfg,
+        AskTransportOverrides {
+            source_urls: Some(Vec::new()),
+            ..Default::default()
+        },
+    );
+    assert!(cleared.retrieval_source_urls.is_empty());
+}

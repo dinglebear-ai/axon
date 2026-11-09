@@ -1,13 +1,13 @@
 //! Ask retrieval and context assembly through axon-retrieval.
 
-use std::collections::BTreeSet;
 use std::error::Error;
 
 use axon_api::source::{AuthSnapshot, OperationKind};
 use axon_core::config::Config;
 use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
-use axon_retrieval::{QueryServiceRequest, run_query};
+use axon_retrieval::QueryServiceRequest;
+use axon_retrieval::service::run_query_candidates;
 
 use super::provider_execution::ReadExecution;
 use super::synthesis::assemble::assemble_explain_result;
@@ -17,6 +17,7 @@ use crate::context::ServiceContext;
 use crate::types::AskResult;
 
 mod explain;
+mod implementation;
 mod ranking;
 
 const CONTEXT_PREFIX: &str = "Sources:
@@ -126,6 +127,8 @@ async fn retrieval_ask_context_with_ranking(
         serde_json::json!({
             "query": question,
             "collection": cfg.collection,
+            "source_kinds": cfg.retrieval_source_kinds,
+            "source_urls": cfg.retrieval_source_urls,
             "label": label,
         }),
         auth_snapshot,
@@ -146,13 +149,10 @@ async fn retrieval_ask_context_with_ranking(
         cfg.collection, fetch_limit, cfg.ask_hybrid_candidates, cfg.ask_chunk_limit,
     ));
 
-    let raw_result = run_query(
-        store,
-        provider,
-        provider_id,
-        model,
-        dimensions,
+    let raw_result = implementation::retrieve(
         QueryServiceRequest {
+            source_kinds: cfg.retrieval_source_kinds.clone(),
+            source_urls: cfg.retrieval_source_urls.clone(),
             query: question.to_string(),
             collection: cfg.collection.clone(),
             limit: fetch_limit,
@@ -162,6 +162,17 @@ async fn retrieval_ask_context_with_ranking(
                 .then(|| u32::try_from(cfg.ask_hybrid_candidates.max(1)).unwrap_or(u32::MAX)),
             since,
             before,
+        },
+        cfg.ask_min_relevance_score,
+        |request| {
+            run_query_candidates(
+                store.clone(),
+                provider.clone(),
+                provider_id.clone(),
+                model.to_string(),
+                dimensions,
+                request,
+            )
         },
     )
     .await;
@@ -173,23 +184,44 @@ async fn retrieval_ask_context_with_ranking(
         )))
     })?;
 
+    for warning in &result.warnings {
+        axon_core::logging::log_warn(&format!("{}: {}", warning.code, warning.message));
+    }
     let retrieval_elapsed_ms = retrieval_started.elapsed().as_millis();
-    let mut ranked =
-        ranking::rank_candidates(cfg, question, result.hits, cfg.hybrid_search_enabled);
+    // Two-arm results carry RRF scores even when each arm searched densely.
+    // Keep cosine thresholds/lexical deltas off this incompatible score scale;
+    // implementation::retrieve already applies the dense floor before fusion.
+    let mut ranked = ranking::rank_candidates(
+        cfg,
+        question,
+        result.hits,
+        result.score_kind == axon_api::result::QueryScoreKind::HybridFusion,
+    );
     if ranked.ranked_indices.is_empty() {
-        return Err(Box::new(ServiceError::new(if cfg.hybrid_search_enabled {
-            "ask retrieval returned candidates, but none passed source-quality/named-product identity filtering"
+        return Err(Box::new(ServiceError::new(
+            if result.score_kind == axon_api::result::QueryScoreKind::HybridFusion {
+                "ask retrieval returned candidates, but none passed source-quality/named-product identity filtering"
                 .to_string()
-        } else {
-            format!(
-                "ask retrieval returned no candidates above relevance threshold {:.3}",
-                cfg.ask_min_relevance_score
-            )
-        })));
+            } else {
+                format!(
+                    "ask retrieval returned no candidates above relevance threshold {:.3}",
+                    cfg.ask_min_relevance_score
+                )
+            },
+        )));
     }
 
-    let ask_ctx = build_ask_context_from_ranking(cfg, &mut ranked, retrieval_elapsed_ms);
+    let mut ask_ctx = build_ask_context_from_ranking(cfg, &mut ranked, retrieval_elapsed_ms);
+    append_retrieval_warnings(&mut ask_ctx, &result.warnings);
     Ok((ask_ctx, ranked))
+}
+
+fn append_retrieval_warnings(ctx: &mut AskContext, warnings: &[axon_api::source::SourceWarning]) {
+    // Keep stable codes, actionable messages, severity, retryability and lineage
+    // within the existing string-warning wire contract for answers and explain.
+    ctx.warnings.extend(warnings.iter().map(|warning| {
+        serde_json::to_string(warning).expect("source warnings contain JSON-serializable fields")
+    }));
 }
 
 fn validate_retrieval_config(cfg: &Config, label: &str) -> Result<(), Box<dyn Error>> {
@@ -207,7 +239,7 @@ fn build_ask_context_from_ranking(
     retrieval_elapsed_ms: u128,
 ) -> AskContext {
     let context_started = std::time::Instant::now();
-    let ordered_indices = document_diverse_ranked_order(ranked);
+    let ordered_indices = implementation::document_diverse_ranked_order(ranked);
     let budget = ranked.effective_budget;
     let chunk_limit = budget
         .chunk_limit
@@ -336,23 +368,6 @@ fn push_context_budget_warnings(
             "ask context skipped {budget_skips} candidate(s) that could not fit the effective context budget"
         ));
     }
-}
-
-fn document_diverse_ranked_order(ranked: &ranking::RankingResult) -> Vec<usize> {
-    let mut seen_documents = BTreeSet::new();
-    let mut first_chunks = Vec::with_capacity(ranked.ranked_indices.len());
-    let mut repeated_chunks = Vec::new();
-    for index in ranked.ranked_indices.iter().copied() {
-        let identity =
-            normalize::canonical_source_identity(&ranked.candidates[index].hit.canonical_uri);
-        if seen_documents.insert(identity) {
-            first_chunks.push(index);
-        } else {
-            repeated_chunks.push(index);
-        }
-    }
-    first_chunks.extend(repeated_chunks);
-    first_chunks
 }
 
 fn legacy_full_doc_controls_configured(cfg: &Config) -> bool {

@@ -21,7 +21,18 @@ axon-web = { path = "../axon-web" }
 anyhow = "1"
 flate2 = "1"
 tar = "0.4"
-zip = "3"
+# Retain the explicitly selected archive codecs when upgrading ZIP.
+zip = { version = "9.0.5", default-features = false, features = [
+  "aes-crypto",
+  "bzip2-rs",
+  "deflate64",
+  "deflate",
+  "lzma",
+  "ppmd",
+  "time",
+  "zstd",
+  "xz",
+] }
 axum = { version = "0.8", features = ["ws"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }

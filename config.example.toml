@@ -358,6 +358,8 @@
 # Non-secret model names. Env vars still win.
 # Env: AXON_SYNTHESIS_OPENAI_MODEL
 # synthesis-openai-model = ""
+# Optional runtime-only OpenAI-compatible sampling override: AXON_OPENAI_TEMPERATURE=0.2
+# Finite range 0..=2. Unset omits the field and preserves provider defaults.
 # Env: AXON_CHAT_OPENAI_MODEL
 # chat-openai-model = ""
 # Env: AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL or AXON_HEADLESS_GEMINI_MODEL

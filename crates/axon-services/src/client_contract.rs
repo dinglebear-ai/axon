@@ -131,6 +131,12 @@ pub struct RestExtractRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RestQueryRequest {
+    /// Restrict retrieval before ranking; omitted or empty searches all source kinds.
+    #[serde(default)]
+    pub source_kinds: Option<Vec<axon_api::source::SourceKind>>,
+    /// Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.
+    #[serde(default)]
+    pub source_urls: Option<Vec<String>>,
     pub query: String,
     pub collection: Option<String>,
     pub limit: Option<usize>,
@@ -200,6 +206,12 @@ pub struct RestResearchRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RestAskRequest {
+    /// Restrict retrieval before ranking; omitted or empty searches all source kinds.
+    #[serde(default)]
+    pub source_kinds: Option<Vec<axon_api::source::SourceKind>>,
+    /// Exact canonical URI allowlist before candidate limits; at most 64 entries of 4096 bytes. Omitted or empty preserves the corpus.
+    #[serde(default)]
+    pub source_urls: Option<Vec<String>>,
     pub query: String,
     #[serde(default)]
     pub collection: Option<String>,
@@ -359,6 +371,8 @@ pub struct ClientQueryRequest {
 impl From<ClientQueryRequest> for RestQueryRequest {
     fn from(req: ClientQueryRequest) -> Self {
         Self {
+            source_kinds: None,
+            source_urls: None,
             query: req.query,
             collection: req.collection,
             limit: req.limit,

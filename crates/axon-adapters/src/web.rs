@@ -377,6 +377,61 @@ impl SourceAdapter for WebSourceAdapter {
             .contains_key("warc_path")
     }
 
+    async fn begin_archive(
+        &self,
+        plan: &SourcePlan,
+    ) -> Result<Option<Box<dyn crate::SourceArchiveWriter>>> {
+        if !self.wants_archive(plan) {
+            return Ok(None);
+        }
+        let writer = tokio::task::spawn_blocking(warc::StreamingArchive::new)
+            .await
+            .map_err(|error| {
+                ApiError::new(
+                    "archive.worker_failed",
+                    ErrorStage::Publishing,
+                    error.to_string(),
+                )
+            })?
+            .map_err(|error| {
+                ApiError::new(
+                    "archive.write_failed",
+                    ErrorStage::Publishing,
+                    error.to_string(),
+                )
+            })?;
+        Ok(Some(Box::new(writer)))
+    }
+
+    async fn begin_archive_in(
+        &self,
+        plan: &SourcePlan,
+        directory: &std::path::Path,
+    ) -> Result<Option<Box<dyn crate::SourceArchiveWriter>>> {
+        if !self.wants_archive(plan) {
+            return Ok(None);
+        }
+        let directory = directory.to_path_buf();
+        let writer =
+            tokio::task::spawn_blocking(move || warc::StreamingArchive::new_in(&directory))
+                .await
+                .map_err(|error| {
+                    ApiError::new(
+                        "archive.worker_failed",
+                        ErrorStage::Publishing,
+                        error.to_string(),
+                    )
+                })?
+                .map_err(|error| {
+                    ApiError::new(
+                        "archive.write_failed",
+                        ErrorStage::Publishing,
+                        error.to_string(),
+                    )
+                })?;
+        Ok(Some(Box::new(writer)))
+    }
+
     fn build_archive(
         &self,
         plan: &SourcePlan,

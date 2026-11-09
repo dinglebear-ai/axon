@@ -69,6 +69,8 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         serde_json::json!({
             "query": text,
             "collection": cfg.collection,
+            "source_kinds": cfg.retrieval_source_kinds,
+            "source_urls": cfg.retrieval_source_urls,
         }),
         auth_snapshot,
     )
@@ -94,6 +96,8 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         model,
         dimensions,
         QueryServiceRequest {
+            source_kinds: cfg.retrieval_source_kinds.clone(),
+            source_urls: cfg.retrieval_source_urls.clone(),
             query: text.to_string(),
             collection: cfg.collection.clone(),
             limit: fetch_limit.max(1),
@@ -123,6 +127,10 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         ))
     })?;
 
+    let hybrid_scoring = cfg.hybrid_search_enabled
+        && !axon_vectors::bm42::compute_bm42_sparse(axon_api::source::ChunkId::new("query"), text)
+            .indices
+            .is_empty();
     let results = result
         .hits
         .into_iter()
@@ -130,6 +138,11 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
         .enumerate()
         .map(|(idx, hit)| QueryHit {
+            score_kind: Some(if hybrid_scoring {
+                axon_api::result::QueryScoreKind::HybridFusion
+            } else {
+                axon_api::result::QueryScoreKind::DenseSimilarity
+            }),
             rank: (opts.offset + idx + 1) as u64,
             score: hit.score,
             rerank_score: hit.score,
@@ -152,7 +165,10 @@ pub async fn query_via_retrieval_with_cfg_and_auth(
         })
         .collect();
 
-    Ok(QueryResult { results })
+    Ok(QueryResult {
+        results,
+        warnings: result.warnings,
+    })
 }
 
 pub(super) fn query_hybrid_candidate_limit(cfg: &Config) -> Option<u32> {

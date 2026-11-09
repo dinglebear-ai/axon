@@ -138,7 +138,7 @@ async fn discover_lists_repo_files_and_excludes_git_dir() {
 }
 
 #[tokio::test]
-async fn discover_keeps_only_code_and_documentation_before_applying_item_cap() {
+async fn discover_keeps_source_and_structured_configuration_before_applying_item_cap() {
     let repo = fixture_repo();
     fs::create_dir_all(repo.join("docs")).unwrap();
     for (path, contents) in [
@@ -164,18 +164,20 @@ async fn discover_keeps_only_code_and_documentation_before_applying_item_cap() {
     assert_eq!(
         keys,
         [
+            "AAA.json",
             "README.md",
             "docs/guide.mdx",
             "docs/page.html",
             "src/api.proto",
             "src/app.css",
-            "src/lib.rs"
+            "src/lib.rs",
+            "src/settings.yaml"
         ]
     );
 
     let (capped, truncated) =
         collect_capped_git_keys(&repo, &policy::GitInventoryPolicy::default(), 2).unwrap();
-    assert_eq!(capped, ["README.md", "docs/guide.mdx"]);
+    assert_eq!(capped, ["AAA.json", "README.md"]);
     assert!(truncated);
     fs::remove_dir_all(repo).unwrap();
 }
@@ -546,3 +548,6 @@ fn git_inventory_history_policy_is_explicit_and_preserves_real_code() {
         .insert("include_historical_docs".into(), "true".into());
     assert!(policy::GitInventoryPolicy::from_options(&options).is_err());
 }
+
+#[path = "git_inventory_tests.rs"]
+mod inventory;

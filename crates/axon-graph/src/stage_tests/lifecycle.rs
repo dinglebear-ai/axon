@@ -90,7 +90,19 @@ async fn graph_journal_and_external_side_effects_share_one_budget() {
         .await
         .unwrap_err();
     assert!(error.message.contains("combined 256 MiB"));
-    assert!(stage.reserve_side_effect_bytes(2).await.is_err());
+    assert_eq!(
+        error.details["used_bytes"],
+        (256 * 1024 * 1024 - 1_u64).to_string()
+    );
+    assert_eq!(
+        error.details["limit_bytes"],
+        (256 * 1024 * 1024_u64).to_string()
+    );
+    assert_eq!(error.details["budget_component"], "graph_journal");
+    assert!(error.details["requested_bytes"].parse::<u64>().unwrap() > 1);
+    let error = stage.reserve_side_effect_bytes(2).await.unwrap_err();
+    assert_eq!(error.details["budget_component"], "generation_side_effects");
+    assert_eq!(error.details["requested_bytes"], "2");
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM graph_nodes")
         .fetch_one(live.pool())
         .await

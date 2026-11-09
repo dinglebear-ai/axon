@@ -93,6 +93,8 @@ impl Drop for QueueSummaryTask {
     }
 }
 
+pub(crate) const GENERATION_WORK_ADMISSION: usize = 4;
+
 #[derive(Clone)]
 pub struct TargetLocalSourceRuntime {
     pub(crate) graph_stage_pool: Option<sqlx::SqlitePool>,
@@ -133,6 +135,9 @@ pub struct TargetLocalSourceRuntime {
     /// is unchanged unless a sink (for example Depot) is explicitly configured.
     pub artifact_candidate_sink: Arc<dyn ArtifactCandidateSink>,
     pub(crate) artifact_candidate_outbox: Option<SharedArtifactCandidateOutbox>,
+    pub(crate) generation_work_root: Option<std::path::PathBuf>,
+    pub(crate) generation_work_gate: Arc<tokio::sync::Mutex<()>>,
+    pub(crate) generation_work_slots: Arc<Semaphore>,
     source_adapters: Arc<OnceCell<SourceAdapterRegistry>>,
     pub(crate) web_source_adapter: Arc<dyn SourceAdapter>,
     /// Real acquisition boundaries injected into the canonical web adapter.
@@ -244,6 +249,9 @@ impl TargetLocalSourceRuntime {
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             artifact_candidate_sink: Arc::new(NoopArtifactCandidateSink),
             artifact_candidate_outbox: None,
+            generation_work_root: None,
+            generation_work_gate: Arc::new(tokio::sync::Mutex::new(())),
+            generation_work_slots: Arc::new(Semaphore::new(GENERATION_WORK_ADMISSION)),
             source_adapters: Arc::new(OnceCell::new()),
             web_source_adapter,
             fetch_provider,
@@ -365,6 +373,9 @@ impl ServiceContext {
             write_gate,
         )
         .await?;
+        if let Err(error) = crate::source::recover_generation_work(&runtime).await {
+            tracing::warn!(error=%error, "generation work startup reconciliation deferred; existing publications remain available");
+        }
         crate::source::spawn_artifact_candidate_outbox_drain(&runtime);
         Ok(Some(Arc::new(runtime)))
     }

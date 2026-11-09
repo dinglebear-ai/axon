@@ -792,3 +792,127 @@ fn distinct_session_documents_survive_citation_normalization_when_requested() {
     assert!(validation.valid, "{normalized}");
     assert_eq!(validation.canonical_citation_count, 2);
 }
+
+#[test]
+fn implementation_intent_admits_relevant_working_example_among_crowded_plans() {
+    let mut cfg = exgpt_cfg();
+    cfg.ask_candidate_limit = 30;
+    cfg.ask_chunk_limit = 5;
+    let mut hits = (0..20)
+        .map(|n| {
+            hit(
+                &format!("https://example.com/project/.wip/extension-{n}.md"),
+                0.9 - n as f64 * 0.001,
+                "Product 8 extension implementation plan and future design details.",
+            )
+        })
+        .collect::<Vec<_>>();
+    hits.push(hit(
+        "https://example.com/project/examples/extension/main.rs",
+        0.7,
+        "Product 8 extension working example: impl Extension for Example { fn register() {} }",
+    ));
+    let (ctx, _) = context_from_hits(&cfg, "How do I create a Product 8 extension?", hits);
+    assert!(
+        ctx.context.contains("examples/extension/main.rs"),
+        "working implementation must reach synthesis rather than only old plans"
+    );
+    assert!(
+        !ctx.context.contains("/.wip/"),
+        "superseded plans must not contradict available implementation in synthesis"
+    );
+}
+
+#[test]
+fn conceptual_question_preserves_existing_relevance_order() {
+    let cfg = exgpt_cfg();
+    let (ctx, _) = context_from_hits(
+        &cfg,
+        "What is a Product 8 extension?",
+        vec![
+            hit(
+                "https://example.com/concepts.md",
+                0.9,
+                "An extension adds a feature.",
+            ),
+            hit(
+                "https://example.com/examples/main.rs",
+                0.7,
+                "impl Extension for Example {}",
+            ),
+        ],
+    );
+    assert!(
+        ctx.context.find("concepts.md").unwrap() < ctx.context.find("examples/main.rs").unwrap()
+    );
+}
+
+#[test]
+fn explicit_planning_history_and_missing_implementation_preserve_plan_evidence() {
+    let cfg = exgpt_cfg();
+    let plans = vec![
+        hit(
+            "https://example.com/.wip/extension.md",
+            0.9,
+            "Original extension proposal and planned implementation.",
+        ),
+        hit(
+            "https://example.com/examples/main.rs",
+            0.8,
+            "impl Extension for Example {}",
+        ),
+    ];
+    for question in [
+        "How did plans to create the extension evolve?",
+        "What is the history of how to create the extension?",
+        "What is the extension roadmap?",
+    ] {
+        let (ctx, _) = context_from_hits(&cfg, question, plans.clone());
+        assert!(ctx.context.contains("/.wip/"), "{question}");
+    }
+    let (ctx, _) = context_from_hits(
+        &cfg,
+        "How do I create an extension?",
+        vec![plans[0].clone()],
+    );
+    assert!(
+        ctx.context.contains("/.wip/"),
+        "Do not erase the only evidence when no implementation is available"
+    );
+}
+
+#[test]
+fn retrieval_warnings_survive_answer_and_explain_projection() {
+    let cfg = exgpt_cfg();
+    let (mut ctx, ranked) = context_from_hits(
+        &cfg,
+        "alpha",
+        vec![hit("https://docs.invalid/a", 0.9, "alpha evidence")],
+    );
+    let warning = axon_api::source::SourceWarning {
+        code: "retrieval.noncurrent_candidates_excluded".into(),
+        severity: axon_api::source::Severity::Degraded,
+        message: "Excluded noncurrent evidence; retry after publication cleanup".into(),
+        source_item_key: None,
+        retryable: true,
+    };
+    append_retrieval_warnings(&mut ctx, std::slice::from_ref(&warning));
+    let trace = explain::build_explain_trace(&cfg, "alpha", &ranked, &ctx.context);
+    let explained = assemble_explain_result(&cfg, "alpha", &ctx, trace, 0);
+    let timing = crate::query::synthesis::timing::AskTiming::new(false, std::time::Instant::now());
+    let answered = crate::query::synthesis::assemble::assemble_ask_result(
+        &cfg,
+        "alpha",
+        &ctx,
+        "alpha [1]",
+        0,
+        0,
+        &timing,
+        false,
+    );
+    for result in [explained, answered] {
+        let restored: axon_api::source::SourceWarning =
+            serde_json::from_str(result.warnings.last().unwrap()).unwrap();
+        assert_eq!(restored, warning);
+    }
+}

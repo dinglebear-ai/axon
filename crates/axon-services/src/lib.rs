@@ -67,6 +67,7 @@ pub use source::{index_source, index_source_with_progress};
 pub mod source_jobs;
 pub mod summarize;
 pub mod sync;
+pub mod synthesis_account;
 pub mod system;
 pub mod transport;
 pub mod types;
