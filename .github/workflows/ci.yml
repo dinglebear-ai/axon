@@ -1087,6 +1087,11 @@ jobs:
     # this downstream consumer explicitly evaluates its own result contract.
     if: ${{ always() && needs.binary-smoke-build.result == 'success' && needs.changes.outputs.run_mcp_smoke == 'true' }}
     timeout-minutes: 35
+    env:
+      AXON_COLLECTION: axon_e2e_mcp_smoke_${{ github.run_id }}_${{ github.run_attempt }}
+      MCP_E2E_OWNED_COLLECTION: axon_e2e_mcp_smoke_${{ github.run_id }}_${{ github.run_attempt }}
+      MCP_E2E_ISOLATED_HTTP: '1'
+      MCPORTER_SKIP_BUILD: '1'
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - name: Fetch MCP doc fixture for smoke test
