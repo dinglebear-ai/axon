@@ -71,5 +71,5 @@
     "test:dependencies": "node --test scripts/dependency-hardening.mjs"
   },
   "type": "module",
-  "version": "6.2.2"
+  "version": "6.3.0"
 }
