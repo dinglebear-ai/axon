@@ -43,7 +43,8 @@ where
         );
     }
 
-    let result = op().await;
+    // Keep nested source-publication state off the tracking and MCP poll frames.
+    let result = Box::pin(op()).await;
 
     if let Some(descriptor) = descriptor {
         let outcome = result.as_ref().map(|_| ()).map_err(|e| e.to_string());
@@ -59,3 +60,7 @@ where
 
     result
 }
+
+#[cfg(test)]
+#[path = "job_tracking_tests.rs"]
+mod tests;
