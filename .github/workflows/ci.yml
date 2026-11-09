@@ -1242,8 +1242,17 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
         run: |
-          ./target/debug/axon mcp --transport http &
-          echo $! > /tmp/axon-mcp.pid
+          mkdir -p .cache/mcporter-test
+          (
+            set +e
+            ./target/debug/axon mcp --transport http > .cache/mcporter-test/server.log 2>&1 &
+            server_pid=$!
+            echo "$server_pid" > /tmp/axon-mcp.pid
+            wait "$server_pid"
+            server_status=$?
+            printf '%s\n' "$server_status" > .cache/mcporter-test/server-exit-code.txt
+            exit "$server_status"
+          ) &
           for _ in {1..30}; do
             if nc -z 127.0.0.1 8001 2>/dev/null; then
               echo "axon MCP HTTP server ready on :8001"
@@ -1259,7 +1268,17 @@ jobs:
           AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:55333
-        run: ./scripts/test-mcp-tools-mcporter.sh
+        run: |
+          set +e
+          ./scripts/test-mcp-tools-mcporter.sh
+          smoke_status=$?
+          if ! kill -0 "$(cat /tmp/axon-mcp.pid)" 2>/dev/null; then
+            smoke_status=1
+            echo "MCP smoke server exited before the sweep completed" >&2
+            cat .cache/mcporter-test/server-exit-code.txt >&2 || true
+            tail -80 .cache/mcporter-test/server.log >&2
+          fi
+          exit "$smoke_status"
 
       - name: Upload mcporter logs
         if: always()

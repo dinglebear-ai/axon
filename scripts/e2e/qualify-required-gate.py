@@ -87,7 +87,12 @@ def qualify(report,canonical,reliability,mutations,policy,catalog,quarantine,his
  if remaining and mode == "observe":
   return {"schema":1,"status":"observation_pending","required_check":policy["required_check"],"observed_trusted_main_runs":len(runs),"observed_trusted_scenario_min_runs":observed_scenario_minimum,"minimum_trusted_main_runs":minimum,"remaining_trusted_main_runs":remaining,"enforced":False,"rollback":policy["rollback"]}
  require(len(runs)>=minimum,"forged run count cannot satisfy observation window")
- require(observed_scenario_minimum>=minimum and all(item.get("runs",0)>=minimum for item in segments),"trusted reliability window is insufficient")
+ current_segments = [
+  item for item in segments
+  if (item.get("scenario_id"), item.get("tier")) in trusted_scenario_runs
+  and item.get("provider_versions", {}) == canonical.get("provider_versions", {})
+ ]
+ require(observed_scenario_minimum>=minimum and current_segments and all(item.get("runs",0)>=minimum for item in current_segments),"trusted reliability window is insufficient")
  return {"schema":1,"status":"passed","required_check":policy["required_check"],"coverage":{"numerator":behavioral,"denominator":denominator,"percent":round(percent,2),"critical_lifecycles":sorted(lifecycles)},
          "budgets":policy["budgets"],"workflow_history_runs":len(runs),"workflow_p95_ms":workflow_p95,"reliability_segments":len(segments),"oracle_mutants":len(mutations["scenarios"]),"rollback":policy["rollback"]}
 def seal(value):

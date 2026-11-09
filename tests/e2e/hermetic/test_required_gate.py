@@ -13,7 +13,7 @@ def fixtures():
   "expected_stages":names,"stages":[{"name":name,"status":"passed"} for name in names],"cleanup":{"teardown":{"status":"passed"},"isolation":{"status":"passed"}}}
  scenario=gate.reporting.Scenario("source.inline.happy","hermetic","source","cli");scenario.attempt("passed",10);scenario.cleanup={"success":True}
  canonical=gate.reporting.suite_report([scenario],tested_sha="a"*40,provider_versions={"axon":"workspace"},policy={"workflow_repository":"dinglebear-ai/axon","workflow_file":"e2e-hermetic.yml","workflow_ref":"refs/heads/main","workflow_run_id":"100","workflow_run_attempt":1})
- reliability={"segments":[{"runs":5,"failures":0,"quarantined":False,"runtime_ms":{"p50":10,"p95":10}}],"escalations":[],"quarantined_scenarios":0}
+ reliability={"segments":[{"scenario_id":"source.inline.happy","tier":"hermetic","provider_versions":{"axon":"workspace"},"runs":5,"failures":0,"quarantined":False,"runtime_ms":{"p50":10,"p95":10}}],"escalations":[],"quarantined_scenarios":0}
  mutations={"summary":{"status":"passed"},"policy":{"fixed_repository_oracles":True},"scenarios":[{"status":"passed"} for _ in range(8)]}
  reports=[]
  for index in range(5):
@@ -31,6 +31,27 @@ def new_scenario_fixtures():
  return values
 
 class RequiredGateTests(unittest.TestCase):
+ def test_retired_context_does_not_block_a_complete_current_window(self):
+  for retired_field, retired_value in (("scenario_id", "source.legacy.happy"), ("provider_versions", {"axon": "older"})):
+   with self.subTest(retired_field=retired_field):
+    values = list(fixtures())
+    retired = copy.deepcopy(values[2]["segments"][0])
+    retired.update({retired_field: retired_value, "runs": 3})
+    values[2]["segments"].append(retired)
+    for mode in ("observe", "enforce"):
+     self.assertEqual("passed", gate.qualify(*values, artifact_bytes=100, mode=mode)["status"])
+
+ def test_retired_context_health_and_latency_still_fail_closed(self):
+  for unhealthy in ({"failures": 1}, {"quarantined": True}, {"runtime_ms": {"p95": 10**12}}):
+   with self.subTest(unhealthy=unhealthy):
+    values = list(fixtures())
+    retired = copy.deepcopy(values[2]["segments"][0])
+    retired.update({"scenario_id": "source.legacy.happy", "runs": 3, **unhealthy})
+    values[2]["segments"].append(retired)
+    for mode in ("observe", "enforce"):
+     with self.assertRaises(gate.QualificationError):
+      gate.qualify(*values, artifact_bytes=100, mode=mode)
+
  def test_observation_counts_trusted_runs_for_a_new_scenario(self):
   values = new_scenario_fixtures()
   decision = gate.seal(gate.qualify(*values, artifact_bytes=100, mode="observe"))
