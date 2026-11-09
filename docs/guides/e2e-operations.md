@@ -79,7 +79,7 @@ Operators, not repository automation, deploy:
   and cleanup contract.
 
 The workflow pins Tailscale action
-`780049a30b6ff5c378a9e7b389d15ece7a204888` and client `1.94.0`, uses WIF rather
+`780049a30b6ff5c378a9e7b389d15ece7a204888` and client `1.94.2`, uses WIF rather
 than a long-lived OAuth secret, and has only `contents: read` and
 `id-token: write`. Trusted triggers are protected main, schedule, and approved
 manual dispatch—never forks, pull requests, `pull_request_target`, or merge refs.
