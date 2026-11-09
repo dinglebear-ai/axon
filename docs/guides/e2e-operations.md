@@ -63,6 +63,9 @@ in `config/e2e/hermetic-required-policy.json`. Required runs reject non-loopback
 routing, carry no live credentials, use `cancel-in-progress: false`, and retain
 cleanup evidence on failure. The candidate never counts toward its own history;
 prior-main reports are bound to GitHub API run identity and artifact digests.
+The qualification window counts those runs per current scenario and provider
+version set. Observation mode reports `observation_pending` and the remaining
+count until that window is complete. Promotion enforces the configured minimum.
 Repository code does not mutate branch protection. Details are in
 `docs/guides/e2e-hermetic-ci.md`.
 

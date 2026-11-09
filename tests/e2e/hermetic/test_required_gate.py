@@ -21,7 +21,66 @@ def fixtures():
  history={"schema":1,"repository":"dinglebear-ai/axon","workflow":"e2e-hermetic.yml","trusted_ref":"refs/heads/main","reports":reports}
  attestations={"schema":1,"source":"github-actions-api","repository":"dinglebear-ai/axon","workflow":"e2e-hermetic.yml","trusted_ref":"refs/heads/main","runs":[{"run_id":str(100+index),"run_attempt":1,"head_sha":"a"*40,"head_branch":"main","event":"push","conclusion":"success","repository":"dinglebear-ai/axon","workflow":"e2e-hermetic.yml","trusted_ref":"refs/heads/main","artifact_id":1000+index,"artifact_name":f"e2e-hermetic-{100+index}-1","artifact_digest":"sha256:"+"b"*64,"artifact_expired":False} for index in range(5)]}
  return report,canonical,reliability,mutations,policy,catalog,{"quarantines":[]},history,attestations
+def new_scenario_fixtures():
+ values = list(fixtures())
+ for report in values[7]["reports"][:3]:
+  report["scenarios"][0]["scenario_id"] = "source.legacy.happy"
+  unsigned = {key: value for key, value in report.items() if key != "report_sha256"}
+  report["report_sha256"] = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+ values[2]["segments"][0]["runs"] = 3
+ return values
+
 class RequiredGateTests(unittest.TestCase):
+ def test_observation_counts_trusted_runs_for_a_new_scenario(self):
+  values = new_scenario_fixtures()
+  decision = gate.seal(gate.qualify(*values, artifact_bytes=100, mode="observe"))
+  self.assertEqual("observation_pending", decision["status"])
+  self.assertEqual(5, decision["observed_trusted_main_runs"])
+  self.assertEqual(2, decision["observed_trusted_scenario_min_runs"])
+  self.assertEqual(3, decision["remaining_trusted_main_runs"])
+  gate.verify(decision, allow_observation=True)
+  with self.assertRaises(gate.QualificationError):
+   gate.verify(decision)
+
+ def test_current_or_claimed_counts_cannot_promote_a_new_scenario(self):
+  values = new_scenario_fixtures()
+  values[2]["segments"][0]["runs"] = 5
+  with self.assertRaisesRegex(gate.QualificationError, "trusted reliability window"):
+   gate.qualify(*values, artifact_bytes=100, mode="enforce")
+
+ def test_observation_validates_short_history_provenance(self):
+  values = list(fixtures())
+  values[7]["reports"] = values[7]["reports"][:2]
+  values[8]["runs"] = values[8]["runs"][:2]
+  values[7]["reports"][0]["tested_sha"] = "b" * 40
+  with self.assertRaisesRegex(gate.QualificationError, "digest/provenance"):
+   gate.qualify(*values, artifact_bytes=100, mode="observe")
+
+ def test_observation_rejects_unhealthy_reliability(self):
+  values = new_scenario_fixtures()
+  values[2]["segments"][0]["failures"] = 1
+  with self.assertRaises(gate.QualificationError):
+   gate.qualify(*values, artifact_bytes=100, mode="observe")
+
+ def test_provider_changes_require_matching_trusted_observations(self):
+  values = list(fixtures())
+  for report in values[7]["reports"]:
+   report["provider_versions"] = {"axon": "older"}
+   unsigned = {key: value for key, value in report.items() if key != "report_sha256"}
+   report["report_sha256"] = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+  decision = gate.qualify(*values, artifact_bytes=100, mode="observe")
+  self.assertEqual("observation_pending", decision["status"])
+  self.assertEqual(0, decision["observed_trusted_scenario_min_runs"])
+  self.assertEqual(5, decision["remaining_trusted_main_runs"])
+  with self.assertRaises(gate.QualificationError):
+   gate.qualify(*values, artifact_bytes=100, mode="enforce")
+
+ def test_observation_rejects_missing_current_scenarios(self):
+  values = list(fixtures())
+  values[1]["scenarios"] = []
+  with self.assertRaisesRegex(gate.QualificationError, "current canonical scenarios"):
+   gate.qualify(*values, artifact_bytes=100, mode="observe")
+
  def test_all_proven_inputs_promote_and_seal(self):
   decision=gate.seal(gate.qualify(*fixtures(),artifact_bytes=100));gate.verify(decision);self.assertEqual("E2E Hermetic Required",decision["required_check"])
  def test_observation_mode_bootstraps_without_weakening_enforcement(self):

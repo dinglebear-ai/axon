@@ -54,10 +54,11 @@ def qualify(report,canonical,reliability,mutations,policy,catalog,quarantine,his
   require(item.get("artifact_expired") is False,"GitHub evidence artifact is expired or expiry is unknown")
   attested[key]=item
  runs=history.get("reports",[])
- if len(runs)<minimum and mode=="observe":
-  return {"schema":1,"status":"observation_pending","required_check":policy["required_check"],"observed_trusted_main_runs":len(runs),"minimum_trusted_main_runs":minimum,"remaining_trusted_main_runs":minimum-len(runs),"enforced":False,"rollback":policy["rollback"]}
- require(len(runs)>=minimum,"forged run count cannot satisfy observation window")
- require(segments and all(item.get("runs",0)>=minimum and item.get("failures")==0 and not item.get("quarantined") for item in segments),"trusted reliability window is insufficient")
+ # Count promotion observations from verified historical main runs.
+ trusted_scenario_runs = {
+  (item["scenario_id"], item["tier"]): 0 for item in canonical.get("scenarios", [])
+ }
+ require(trusted_scenario_runs, "current canonical scenarios are absent")
  durations=[];identities=set()
  for run in runs:
   try:reporting.validate_report(run)
@@ -70,10 +71,23 @@ def qualify(report,canonical,reliability,mutations,policy,catalog,quarantine,his
   identity=(run_id,attempt);require(identity not in identities,"duplicate canonical workflow run cannot satisfy observation window");identities.add(identity)
   attestation=attested.get(identity);require(attestation is not None,"canonical history run is absent from GitHub API attestations")
   require(attestation.get("head_sha")==run.get("tested_sha"),"canonical tested SHA disagrees with GitHub run attestation")
+  if run.get("provider_versions", {}) == canonical.get("provider_versions", {}):
+   observed = {(item["scenario_id"], item["tier"]) for item in run["scenarios"]}
+   for scenario in observed.intersection(trusted_scenario_runs):
+    trusted_scenario_runs[scenario] += 1
   durations.append(run["timing"]["total_ms"])
- ordered=sorted(durations);workflow_p95=ordered[min(len(ordered)-1,max(0,math.ceil(len(ordered)*.95)-1))]
- require(workflow_p95<=policy["budgets"]["p95_wall_seconds"]*1000,"trusted workflow p95 wall budget exceeded")
+ require(segments and all(item.get("failures")==0 and not item.get("quarantined") for item in segments),"trusted reliability window is unhealthy")
+ workflow_p95 = None
+ if durations:
+  ordered=sorted(durations);workflow_p95=ordered[min(len(ordered)-1,max(0,math.ceil(len(ordered)*.95)-1))]
+  require(workflow_p95<=policy["budgets"]["p95_wall_seconds"]*1000,"trusted workflow p95 wall budget exceeded")
  require(all(item.get("runtime_ms",{}).get("p95",10**12)<=policy["budgets"]["p95_wall_seconds"]*1000 for item in segments),"per-scenario p95 budget exceeded")
+ observed_scenario_minimum = min(trusted_scenario_runs.values())
+ remaining = max(0, minimum - len(runs), minimum - observed_scenario_minimum)
+ if remaining and mode == "observe":
+  return {"schema":1,"status":"observation_pending","required_check":policy["required_check"],"observed_trusted_main_runs":len(runs),"observed_trusted_scenario_min_runs":observed_scenario_minimum,"minimum_trusted_main_runs":minimum,"remaining_trusted_main_runs":remaining,"enforced":False,"rollback":policy["rollback"]}
+ require(len(runs)>=minimum,"forged run count cannot satisfy observation window")
+ require(observed_scenario_minimum>=minimum and all(item.get("runs",0)>=minimum for item in segments),"trusted reliability window is insufficient")
  return {"schema":1,"status":"passed","required_check":policy["required_check"],"coverage":{"numerator":behavioral,"denominator":denominator,"percent":round(percent,2),"critical_lifecycles":sorted(lifecycles)},
          "budgets":policy["budgets"],"workflow_history_runs":len(runs),"workflow_p95_ms":workflow_p95,"reliability_segments":len(segments),"oracle_mutants":len(mutations["scenarios"]),"rollback":policy["rollback"]}
 def seal(value):
