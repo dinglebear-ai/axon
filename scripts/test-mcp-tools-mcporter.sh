@@ -265,7 +265,7 @@ run_suite() {
 
   echo "== $mode direct actions ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and (((.data.data | type) == "object") or (.data.artifact.artifact_id | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
-  run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and (.data.data.actions | type == "object")' call_tool action:help
+  run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and .data.response_mode == "inline" and (.data.inline.actions | type == "object")' call_tool action:help response_mode:inline
   run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and (((.data.data.all_ok | type) == "boolean") or ((.data.shape.all_ok | type) == "boolean"))' call_tool action:doctor
   if [[ "${MCP_E2E_REQUIRE_PROVIDERS:-0}" == "1" ]]; then
     run_case "${prefix}_provider_preflight" assert_ok "$OUTDIR/${prefix}_doctor.log" '.ok == true and (.data.data.all_ok // .data.shape.all_ok) == true'

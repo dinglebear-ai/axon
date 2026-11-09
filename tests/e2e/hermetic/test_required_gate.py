@@ -13,7 +13,7 @@ def fixtures():
   "expected_stages":names,"stages":[{"name":name,"status":"passed"} for name in names],"cleanup":{"teardown":{"status":"passed"},"isolation":{"status":"passed"}}}
  scenario=gate.reporting.Scenario("source.inline.happy","hermetic","source","cli");scenario.attempt("passed",10);scenario.cleanup={"success":True}
  canonical=gate.reporting.suite_report([scenario],tested_sha="a"*40,provider_versions={"axon":"workspace"},policy={"workflow_repository":"dinglebear-ai/axon","workflow_file":"e2e-hermetic.yml","workflow_ref":"refs/heads/main","workflow_run_id":"100","workflow_run_attempt":1})
- reliability={"segments":[{"runs":5,"failures":0,"quarantined":False,"runtime_ms":{"p50":10,"p95":10}}],"escalations":[],"quarantined_scenarios":0}
+ reliability={"segments":[{"scenario_id":"source.inline.happy","tier":"hermetic","provider_versions":{"axon":"workspace"},"runs":5,"failures":0,"quarantined":False,"runtime_ms":{"p50":10,"p95":10}}],"escalations":[],"quarantined_scenarios":0}
  mutations={"summary":{"status":"passed"},"policy":{"fixed_repository_oracles":True},"scenarios":[{"status":"passed"} for _ in range(8)]}
  reports=[]
  for index in range(5):
@@ -21,7 +21,87 @@ def fixtures():
  history={"schema":1,"repository":"dinglebear-ai/axon","workflow":"e2e-hermetic.yml","trusted_ref":"refs/heads/main","reports":reports}
  attestations={"schema":1,"source":"github-actions-api","repository":"dinglebear-ai/axon","workflow":"e2e-hermetic.yml","trusted_ref":"refs/heads/main","runs":[{"run_id":str(100+index),"run_attempt":1,"head_sha":"a"*40,"head_branch":"main","event":"push","conclusion":"success","repository":"dinglebear-ai/axon","workflow":"e2e-hermetic.yml","trusted_ref":"refs/heads/main","artifact_id":1000+index,"artifact_name":f"e2e-hermetic-{100+index}-1","artifact_digest":"sha256:"+"b"*64,"artifact_expired":False} for index in range(5)]}
  return report,canonical,reliability,mutations,policy,catalog,{"quarantines":[]},history,attestations
+def new_scenario_fixtures():
+ values = list(fixtures())
+ for report in values[7]["reports"][:3]:
+  report["scenarios"][0]["scenario_id"] = "source.legacy.happy"
+  unsigned = {key: value for key, value in report.items() if key != "report_sha256"}
+  report["report_sha256"] = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+ values[2]["segments"][0]["runs"] = 3
+ return values
+
 class RequiredGateTests(unittest.TestCase):
+ def test_retired_context_does_not_block_a_complete_current_window(self):
+  for retired_field, retired_value in (("scenario_id", "source.legacy.happy"), ("provider_versions", {"axon": "older"})):
+   with self.subTest(retired_field=retired_field):
+    values = list(fixtures())
+    retired = copy.deepcopy(values[2]["segments"][0])
+    retired.update({retired_field: retired_value, "runs": 3})
+    values[2]["segments"].append(retired)
+    for mode in ("observe", "enforce"):
+     self.assertEqual("passed", gate.qualify(*values, artifact_bytes=100, mode=mode)["status"])
+
+ def test_retired_context_health_and_latency_still_fail_closed(self):
+  for unhealthy in ({"failures": 1}, {"quarantined": True}, {"runtime_ms": {"p95": 10**12}}):
+   with self.subTest(unhealthy=unhealthy):
+    values = list(fixtures())
+    retired = copy.deepcopy(values[2]["segments"][0])
+    retired.update({"scenario_id": "source.legacy.happy", "runs": 3, **unhealthy})
+    values[2]["segments"].append(retired)
+    for mode in ("observe", "enforce"):
+     with self.assertRaises(gate.QualificationError):
+      gate.qualify(*values, artifact_bytes=100, mode=mode)
+
+ def test_observation_counts_trusted_runs_for_a_new_scenario(self):
+  values = new_scenario_fixtures()
+  decision = gate.seal(gate.qualify(*values, artifact_bytes=100, mode="observe"))
+  self.assertEqual("observation_pending", decision["status"])
+  self.assertEqual(5, decision["observed_trusted_main_runs"])
+  self.assertEqual(2, decision["observed_trusted_scenario_min_runs"])
+  self.assertEqual(3, decision["remaining_trusted_main_runs"])
+  gate.verify(decision, allow_observation=True)
+  with self.assertRaises(gate.QualificationError):
+   gate.verify(decision)
+
+ def test_current_or_claimed_counts_cannot_promote_a_new_scenario(self):
+  values = new_scenario_fixtures()
+  values[2]["segments"][0]["runs"] = 5
+  with self.assertRaisesRegex(gate.QualificationError, "trusted reliability window"):
+   gate.qualify(*values, artifact_bytes=100, mode="enforce")
+
+ def test_observation_validates_short_history_provenance(self):
+  values = list(fixtures())
+  values[7]["reports"] = values[7]["reports"][:2]
+  values[8]["runs"] = values[8]["runs"][:2]
+  values[7]["reports"][0]["tested_sha"] = "b" * 40
+  with self.assertRaisesRegex(gate.QualificationError, "digest/provenance"):
+   gate.qualify(*values, artifact_bytes=100, mode="observe")
+
+ def test_observation_rejects_unhealthy_reliability(self):
+  values = new_scenario_fixtures()
+  values[2]["segments"][0]["failures"] = 1
+  with self.assertRaises(gate.QualificationError):
+   gate.qualify(*values, artifact_bytes=100, mode="observe")
+
+ def test_provider_changes_require_matching_trusted_observations(self):
+  values = list(fixtures())
+  for report in values[7]["reports"]:
+   report["provider_versions"] = {"axon": "older"}
+   unsigned = {key: value for key, value in report.items() if key != "report_sha256"}
+   report["report_sha256"] = hashlib.sha256(json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+  decision = gate.qualify(*values, artifact_bytes=100, mode="observe")
+  self.assertEqual("observation_pending", decision["status"])
+  self.assertEqual(0, decision["observed_trusted_scenario_min_runs"])
+  self.assertEqual(5, decision["remaining_trusted_main_runs"])
+  with self.assertRaises(gate.QualificationError):
+   gate.qualify(*values, artifact_bytes=100, mode="enforce")
+
+ def test_observation_rejects_missing_current_scenarios(self):
+  values = list(fixtures())
+  values[1]["scenarios"] = []
+  with self.assertRaisesRegex(gate.QualificationError, "current canonical scenarios"):
+   gate.qualify(*values, artifact_bytes=100, mode="observe")
+
  def test_all_proven_inputs_promote_and_seal(self):
   decision=gate.seal(gate.qualify(*fixtures(),artifact_bytes=100));gate.verify(decision);self.assertEqual("E2E Hermetic Required",decision["required_check"])
  def test_observation_mode_bootstraps_without_weakening_enforcement(self):

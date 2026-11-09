@@ -60,7 +60,7 @@ class LiveContractTests(unittest.TestCase):
   self.assertIn("if: github.event_name == 'workflow_dispatch'",text)
   self.assertIn("needs: [admission, manual-approval]",text)
   self.assertIn("needs.manual-approval.result == 'success'",text)
-  self.assertIn("tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888",text);self.assertIn("version: 1.94.0",text)
+  self.assertIn("tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888",text);self.assertIn("version: 1.94.2",text)
   self.assertIn("tags: tag:axon-ci-e2e",text);self.assertIn("cancel-in-progress: false",text);self.assertIn("ref: ${{ github.sha }}",text)
   self.assertIn("E2E Live admission (no private access)",text);self.assertGreaterEqual(text.count("validate-live-invocation.py"),2)
   for action in re.findall(r"uses:\s*([^\s]+)",text):self.assertRegex(action,r"^[^@]+@[0-9a-f]{40}$")

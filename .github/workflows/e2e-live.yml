@@ -108,7 +108,7 @@ jobs:
           oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
           audience: ${{ vars.TS_WIF_AUDIENCE }}
           tags: tag:axon-ci-e2e
-          version: 1.94.0
+          version: 1.94.2
           use-cache: 'false'
           ping: ${{ secrets.AXON_E2E_EXPECTED_PEERS }}
       - name: Verify exact peers and enforcing authenticated gateways
